@@ -26,27 +26,33 @@ A successfully advertised service IP route on an external router does not guaran
 # Check what service CIDRs are being advertised
 
 NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
-kubectl exec -n calico-system ${NODE_POD} -- birdcl show route | grep "10.96"
+kubectl exec -n calico-system ${NODE_POD} -c calico-node -- birdcl show route | grep "10.96"
 
 # Verify from each node
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
   POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=${node} -o name | head -1)
   echo "=== $node ==="
-  kubectl exec -n calico-system ${POD} -- birdcl show route | grep "10.96"
+  kubectl exec -n calico-system ${POD} -c calico-node -- birdcl show route | grep "10.96"
 done
 ```
 
 ## Validate External Route Reachability
 
-From an external host with the BGP route:
+First get the service IP from a workstation with cluster access:
+
+```bash
+SVC_IP=$(kubectl get svc my-service -o jsonpath='{.spec.clusterIP}')
+echo "${SVC_IP}"
+```
+
+Then, from an external host with the BGP route:
 
 ```bash
 # Check route presence
 ip route | grep "10.96"
 
 # Test service connectivity
-SVC_IP=$(kubectl get svc my-service -o jsonpath='{.spec.clusterIP}')
 curl -v http://${SVC_IP}:80/
 
 # Test with timeout
@@ -55,10 +61,16 @@ curl --connect-timeout 5 http://${SVC_IP}:80/
 
 ## Validate LoadBalancer IP
 
-For LoadBalancer IP advertisement:
+For LoadBalancer IP advertisement, first get the LoadBalancer IP from a workstation with cluster access:
 
 ```bash
 LB_IP=$(kubectl get svc my-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "${LB_IP}"
+```
+
+Then test from the external host:
+
+```bash
 curl -v http://${LB_IP}:80/
 ```
 
@@ -67,7 +79,7 @@ curl -v http://${LB_IP}:80/
 Confirm service has healthy endpoints before testing:
 
 ```bash
-kubectl get endpoints my-service
+kubectl get endpointslice -l kubernetes.io/service-name=my-service
 kubectl describe svc my-service
 ```
 
@@ -98,7 +110,7 @@ Verify kube-proxy has rules for the service IP:
 iptables -t nat -L KUBE-SERVICES -n | grep <service-ip>
 
 # Or with eBPF mode
-kubectl exec -n calico-system ${NODE_POD} -- calico-bpf -d service list
+kubectl exec -n calico-system ${NODE_POD} -c calico-node -- calico-node -bpf nat dump | grep <service-ip>
 ```
 
 ## Conclusion
