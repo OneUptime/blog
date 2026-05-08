@@ -10,13 +10,13 @@ Description: Learn how to customize Podman container list output using Go templa
 
 > Custom output formatting transforms raw container data into exactly the view you need, whether for human reading or machine parsing.
 
-The `--format` flag in `podman ps` uses Go templates to give you complete control over what columns appear and how they are displayed. This guide covers all available format fields, template functions, and practical formatting patterns.
+The `--format` flag in `podman ps` uses Go templates to give you complete control over what columns appear and how they are displayed. This guide covers commonly used format fields, template functions, and practical formatting patterns.
 
 ---
 
 ## Available Format Fields
 
-Here are the template fields you can use with `podman ps --format`:
+Here are common template fields you can use with `podman ps --format`:
 
 | Field | Description |
 |-------|-------------|
@@ -75,10 +75,10 @@ podman ps --format json
 podman ps --format json | jq '.'
 
 # Extract specific fields with jq
-podman ps --format json | jq '.[] | {name: .Names, image: .Image, state: .State}'
+podman ps --format json | jq '.[] | {name: .Names[0], image: .Image, state: .State}'
 
 # Create custom JSON structure
-podman ps --format json | jq '[.[] | {name: .Names, ports: .Ports, status: .State}]'
+podman ps --format json | jq '[.[] | {name: .Names[0], ports: .Ports, status: .State}]'
 ```
 
 ## Go Template Functions
@@ -106,7 +106,7 @@ podman ps -a --format '{{.Names}} {{if eq .State "running"}}[OK]{{else}}[DOWN]{{
 ```bash
 # Generate CSV format
 echo "Name,Image,Status,Ports"
-podman ps --format "{{.Names}},{{.Image}},{{.Status}},{{.Ports}}"
+podman ps --format json | jq -r '.[] | [.Names[0], .Image, .Status, (.Ports | tostring)] | @csv'
 ```
 
 ### TSV Output
