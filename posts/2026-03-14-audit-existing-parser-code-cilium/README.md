@@ -10,7 +10,7 @@ Description: Learn how to audit existing parser code and libraries within Cilium
 
 ## Introduction
 
-When building or extending Layer 7 protocol support in Cilium, one of the most important early steps is auditing the existing parser code and libraries already present in the codebase. Cilium ships with parsers for several protocols including HTTP, Kafka, and DNS, each of which demonstrates patterns and conventions that any new parser should follow.
+When building or extending Layer 7 protocol support in Cilium, one of the most important early steps is auditing the existing proxy and policy code already present in the codebase. Current Cilium releases provide built-in Layer 7 policy handling for HTTP and DNS, while custom Envoy integrations are configured through CiliumEnvoyConfig resources. Kafka-aware policy support and the older Envoy Go Extensions (`proxylib`) framework were deprecated in Cilium 1.18 and have since been removed.
 
 Auditing existing parsers helps you understand how Cilium's Envoy-based proxy architecture processes traffic, how protocol-specific logic is wired into the policy engine, and where shared utilities can be reused. This prevents duplicating effort and ensures consistency across the codebase.
 
@@ -19,14 +19,14 @@ In this guide, we will walk through a systematic approach to finding, reading, a
 ## Prerequisites
 
 - A cloned copy of the Cilium repository (https://github.com/cilium/cilium)
-- Go 1.21 or later installed
+- The Go version specified in the Cilium repository's `go.mod` file
 - Familiarity with Go interfaces and struct embedding
 - Basic understanding of Cilium's L7 proxy architecture
 - Access to a Kubernetes cluster with Cilium installed (for runtime verification)
 
 ## Locating Parser Code in the Cilium Repository
 
-Cilium's L7 parsers live in well-defined locations within the source tree. Start by identifying these directories.
+Cilium's L7 proxy and policy code lives in well-defined locations within the source tree. Start by identifying these directories.
 
 ```bash
 # Clone the Cilium repository if you haven't already
@@ -34,77 +34,87 @@ Cilium's L7 parsers live in well-defined locations within the source tree. Start
 git clone https://github.com/cilium/cilium.git
 cd cilium
 
-# Find all parser-related directories under the proxylib package
-find proxylib/ -type d | sort
+# Find the main L7 proxy and policy implementation files
+find pkg/proxy pkg/envoy pkg/fqdn pkg/policy -type f -name "*.go" | sort
 ```
 
-The primary location for Go-based L7 parsers is `proxylib/`. Each protocol has its own subdirectory:
+The primary locations for current L7 proxy integration are:
 
 ```text
-proxylib/
-├── accesslog/
-├── cassandra/
-├── memcached/
-├── proxylib/
-├── r2d2/
-├── test/
-└── testparsers/
+pkg/
+├── envoy/        # Envoy xDS integration and HTTP policy translation
+├── fqdn/         # DNS proxy and FQDN policy support
+├── policy/       # L7 parser type selection and policy data structures
+└── proxy/        # Redirect lifecycle and proxy implementation selection
 ```
 
-For Envoy-based parsers (HTTP, Kafka, DNS), the relevant configuration lives in the `envoy/` directory and the policy definitions in `pkg/policy/`:
+For Envoy-based HTTP policy handling and custom CiliumEnvoyConfig redirects, the relevant integration lives in `pkg/envoy/`, `pkg/proxy/`, and `pkg/policy/`. DNS policy enforcement is handled by Cilium's DNS proxy integration:
 
 ```bash
-# Find Envoy filter configurations
-find envoy/ -name "*.go" | head -20
+# Find Envoy integration code
+find pkg/envoy/ -name "*.go" | head -20
 
 # Find L7 policy rule definitions
-find pkg/policy/ -name "*l7*" -o -name "*parser*" | sort
+find pkg/policy/ -name "*.go" | xargs grep -n "L7Parser\\|L7Rules\\|ParserType"
+
+# Find DNS proxy integration code
+find pkg/proxy pkg/fqdn -name "*.go" | xargs grep -n "DNS"
 ```
 
 ## Analyzing Parser Interfaces and Contracts
 
-Every Cilium Go-based parser implements a common interface. Understanding this contract is essential before writing or modifying any parser.
+Cilium no longer uses the old Go `proxylib` parser interface. Current L7 handling is wired through proxy redirects, policy parser types, DNS proxy integration, and Envoy xDS resources. Understanding those contracts is essential before writing or modifying protocol support.
 
 ```bash
-# Examine the core parser interface
-grep -rn "type Parser interface" proxylib/
+# Examine the proxy redirect interface
+grep -rn "type RedirectImplementation interface" pkg/proxy/
+
+# Examine the policy interface that selects the L7 parser type
+grep -rn "type ProxyPolicy interface" pkg/policy/
+
+# Examine Envoy listener management
+grep -rn "type XDSServer interface" pkg/envoy/
 ```
 
-The key interface typically looks like this in the proxylib framework:
+The key interfaces currently look like this in the proxy and policy framework:
 
 ```go
-// Parser is the interface all L7 protocol parsers must implement
-type Parser interface {
-    // OnData is called when data is available on the connection.
-    // The dataArray contains slices of byte data.
-    // reply indicates if this is a reply (true) or request (false).
-    // Returns an OpType indicating what action to take and how many bytes were consumed.
-    OnData(reply bool, reader *Reader) (OpType, int)
+// RedirectImplementation is the generic proxy redirect interface that each
+// proxy redirect type must implement.
+type RedirectImplementation interface {
+    GetRedirect() *Redirect
+    UpdateRules(rules policy.L7DataMap) (revert.RevertFunc, error)
+    Close()
 }
 
-// ParserFactory creates new parser instances for each connection
-type ParserFactory interface {
-    Create(connection *Connection) Parser
+// ProxyPolicy is any type which encodes state needed to redirect to an L7 proxy.
+type ProxyPolicy interface {
+    GetPerSelectorPolicies() L7DataMap
+    GetL7Parser() L7ParserType
+    GetIngress() bool
+    GetPort() uint16
+    GetProtocol() u8proto.U8proto
+    GetListener() string
 }
 ```
 
-Review how existing parsers implement these interfaces:
+Review how existing proxy implementations use these interfaces:
 
 ```bash
-# Check how the Cassandra parser implements OnData
-grep -A 30 "func.*OnData" proxylib/cassandra/cassandraparser.go
+# Check how the DNS redirect updates L7 rules
+grep -A 30 "func (dr \\*dnsRedirect) UpdateRules" pkg/proxy/dns.go
 
-# Check how the Memcached parser implements OnData
-grep -A 30 "func.*OnData" proxylib/memcached/memcachedparser.go
+# Check how the Envoy redirect is created
+grep -A 40 "func (p \\*envoyProxyIntegration) createRedirect" pkg/proxy/envoyproxy.go
 ```
 
 ```mermaid
 graph TD
     A[Incoming L7 Traffic] --> B[Cilium Envoy Proxy]
-    B --> C{Protocol Detection}
-    C --> D[proxylib Framework]
-    D --> E[ParserFactory.Create]
-    E --> F[Parser.OnData]
+    B --> C{Policy Parser Type}
+    C --> D[Proxy Redirect]
+    D --> E[DNS Proxy or Envoy xDS]
+    E --> F[Policy Rule Evaluation]
     F --> G{Policy Decision}
     G -->|Allow| H[Forward Traffic]
     G -->|Deny| I[Drop / Inject Error]
@@ -112,33 +122,35 @@ graph TD
 
 ## Evaluating Shared Libraries and Utilities
 
-Cilium provides shared utilities that parsers should reuse rather than reimplement.
+Cilium provides shared proxy, policy, and access logging utilities that protocol integrations should reuse rather than reimplement.
 
 ```bash
-# List shared utility files in proxylib
-ls -la proxylib/proxylib/
+# List shared proxy files
+ls -la pkg/proxy/
 
-# Examine the Reader utility used for byte-level parsing
-grep -n "type Reader" proxylib/proxylib/*.go
+# Examine redirect and proxy policy contracts
+grep -n "type RedirectImplementation" pkg/proxy/*.go
+grep -n "type L7ParserType" pkg/policy/*.go
 
 # Check access logging utilities
-ls -la proxylib/accesslog/
+ls -la pkg/proxy/accesslog/
 ```
 
 Key shared components to audit include:
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Reader | `proxylib/proxylib/reader.go` | Safe byte reading with bounds checking |
-| Connection | `proxylib/proxylib/connection.go` | Connection state management |
-| AccessLog | `proxylib/accesslog/` | Structured access logging |
-| TestFramework | `proxylib/test/` | Test helpers for parser testing |
+| RedirectImplementation | `pkg/proxy/redirect.go` | Common lifecycle for proxy redirects |
+| L7ParserType | `pkg/policy/l4.go` | Parser type selection for HTTP, DNS, TLS, and CRD redirects |
+| EnvoyL7RulesTranslator | `pkg/envoy/policy/` | Translation of Cilium HTTP rules into Envoy policy resources |
+| DNS Proxy | `pkg/proxy/dns.go`, `pkg/fqdn/` | DNS policy enforcement and FQDN rule integration |
+| AccessLog | `pkg/proxy/accesslog/` | Structured access logging |
 
-Review the test parsers for reference implementations:
+Review the tests for reference behavior:
 
 ```bash
-# The test parsers show minimal but complete implementations
-cat proxylib/testparsers/blockparser.go
+# Proxy, Envoy, DNS, and policy tests show expected behavior
+find pkg/proxy pkg/envoy pkg/fqdn pkg/policy -name "*_test.go" | sort
 ```
 
 ## Conducting the Security Audit
@@ -147,13 +159,13 @@ When auditing existing parsers for security, check for these specific concerns:
 
 ```bash
 # Check for unbounded reads or missing length validation
-grep -rn "make\(\[\]byte" proxylib/ --include="*.go"
+grep -rn "make\(\[\]byte" pkg/proxy pkg/envoy pkg/fqdn pkg/policy --include="*.go"
 
 # Look for potential integer overflow in length calculations
-grep -rn "int32\|int16\|uint16" proxylib/ --include="*.go"
+grep -rn "int32\|int16\|uint16" pkg/proxy pkg/envoy pkg/fqdn pkg/policy --include="*.go"
 
 # Check for proper error handling on parse failures
-grep -rn "return ERROR\|return NOP\|return DROP" proxylib/ --include="*.go"
+grep -rn "return .*error\|return nil,.*err\|denied\|DROPPED" pkg/proxy pkg/envoy pkg/fqdn pkg/policy --include="*.go"
 ```
 
 Create a checklist script to automate parts of the audit:
@@ -162,19 +174,19 @@ Create a checklist script to automate parts of the audit:
 #!/bin/bash
 # audit-parsers.sh - Audit Cilium parser code for common issues
 
-PROXYLIB_DIR="proxylib"
+L7_DIRS="pkg/proxy pkg/envoy pkg/fqdn pkg/policy"
 
 echo "=== Checking for missing bounds checks ==="
-grep -rn "\[.*:\]" "$PROXYLIB_DIR" --include="*.go" | grep -v "_test.go" | grep -v "vendor"
+grep -rn "\[.*:\]" $L7_DIRS --include="*.go" | grep -v "_test.go" | grep -v "vendor"
 
 echo "=== Checking for panic-prone operations ==="
-grep -rn "panic\|log.Fatal" "$PROXYLIB_DIR" --include="*.go" | grep -v "_test.go"
+grep -rn "panic\|log.Fatal" $L7_DIRS --include="*.go" | grep -v "_test.go"
 
 echo "=== Checking for proper connection cleanup ==="
-grep -rn "Close\|Cleanup\|Reset" "$PROXYLIB_DIR" --include="*.go" | grep -v "_test.go"
+grep -rn "Close\|Cleanup\|Reset" $L7_DIRS --include="*.go" | grep -v "_test.go"
 
-echo "=== Verifying all parsers register themselves ==="
-grep -rn "RegisterParserFactory" "$PROXYLIB_DIR" --include="*.go" | grep -v "_test.go"
+echo "=== Verifying L7 parser type handling ==="
+grep -rn "ParserTypeHTTP\|ParserTypeDNS\|ParserTypeCRD\|ParserTypeTLS" pkg/policy pkg/proxy pkg/envoy --include="*.go" | grep -v "_test.go"
 ```
 
 ## Verification
@@ -182,23 +194,23 @@ grep -rn "RegisterParserFactory" "$PROXYLIB_DIR" --include="*.go" | grep -v "_te
 Verify your audit findings by running the existing parser test suites:
 
 ```bash
-# Run all proxylib tests
+# Run L7 proxy, Envoy, DNS, and policy tests
 cd cilium
-go test ./proxylib/... -v
+go test ./pkg/proxy/... ./pkg/envoy/... ./pkg/fqdn/... ./pkg/policy/... -v
 
 # Run tests with race detection enabled
-go test ./proxylib/... -race -v
+go test ./pkg/proxy/... ./pkg/envoy/... ./pkg/fqdn/... ./pkg/policy/... -race -v
 
 # Check test coverage to identify untested code paths
-go test ./proxylib/... -coverprofile=coverage.out
+go test ./pkg/proxy/... ./pkg/envoy/... ./pkg/fqdn/... ./pkg/policy/... -coverprofile=coverage.out
 go tool cover -html=coverage.out -o coverage.html
 ```
 
-Confirm parser registrations are complete:
+Confirm parser type handling is complete:
 
 ```bash
-# Verify each parser registers its factory
-grep -rn "func init()" proxylib/ --include="*.go" | grep -v test
+# Verify known parser types and redirect implementations
+grep -rn "ParserTypeHTTP\|ParserTypeDNS\|ParserTypeCRD\|ParserTypeTLS" pkg/policy pkg/proxy pkg/envoy --include="*.go" | grep -v "_test.go"
 ```
 
 ## Troubleshooting
@@ -207,14 +219,14 @@ grep -rn "func init()" proxylib/ --include="*.go" | grep -v test
 Ensure your Go version matches the one specified in the Cilium `go.mod` file. Run `go mod tidy` to resolve dependency issues.
 
 **Problem: Cannot find parser code for HTTP/Kafka**
-HTTP and Kafka are handled by Envoy natively, not through the Go proxylib framework. Check `envoy/` for their filter configurations and `pkg/proxy/` for the Go integration layer.
+HTTP policy enforcement is integrated through Envoy and the Go code under `pkg/envoy/`, `pkg/proxy/`, and `pkg/policy/`. Kafka-aware Cilium network policies were deprecated in Cilium 1.18 and removed afterward, so current Cilium trees do not contain a supported Kafka parser or policy implementation.
 
 **Problem: Audit script reports false positives**
 Some slice operations are protected by preceding length checks. Always review the surrounding context before flagging an issue. Look for guard clauses like `if len(data) < expectedLen` above the flagged line.
 
 **Problem: Test coverage report shows 0% for some parsers**
-Ensure you are running tests from the repository root and that all build tags are included: `go test -tags "privileged_tests" ./proxylib/...`
+Ensure you are running tests from the repository root and that you include the relevant packages. Some integration-heavy paths may require Cilium's documented test environment rather than a plain local `go test` run.
 
 ## Conclusion
 
-Auditing existing parser code in Cilium is a foundational step before building or modifying L7 protocol support. By systematically examining the proxylib directory structure, understanding the Parser and ParserFactory interfaces, reviewing shared utilities, and checking for security concerns, you build the knowledge needed to contribute safely and effectively. Always run the existing test suites to validate your understanding and use coverage reports to identify areas that may need additional scrutiny.
+Auditing existing parser and proxy code in Cilium is a foundational step before building or modifying L7 protocol support. By systematically examining the proxy, Envoy, DNS, and policy packages, understanding the redirect and policy interfaces, reviewing shared utilities, and checking for security concerns, you build the knowledge needed to contribute safely and effectively. Always run the existing test suites to validate your understanding and use coverage reports to identify areas that may need additional scrutiny.
