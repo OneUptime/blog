@@ -36,6 +36,7 @@ For IPIP encapsulation: MTU = (interface MTU) - 20. For bare wire (no encapsulat
 
 ```bash
 microk8s kubectl patch configmap calico-config -n kube-system \
+  --type merge \
   --patch '{"data":{"veth_mtu":"1480"}}'
 ```
 
@@ -70,13 +71,14 @@ metadata:
   name: felix-metrics
   namespace: kube-system
 spec:
+  clusterIP: None
   selector:
     k8s-app: calico-node
   ports:
   - name: metrics
     port: 9091
+    targetPort: 9091
     protocol: TCP
-  type: ClusterIP
 EOF
 ```
 
@@ -86,17 +88,26 @@ EOF
 microk8s enable prometheus
 ```
 
-This installs a Prometheus and Grafana stack that can scrape Calico Felix metrics automatically.
+This deploys the Prometheus Operator. Configure its scrape targets or ServiceMonitors to collect the Calico Felix metrics service.
 
 ## Step 6: Set Resource Limits on Calico DaemonSet
 
 ```bash
-microk8s kubectl patch daemonset calico-node -n kube-system --type=json -p='[
-  {"op":"add","path":"/spec/template/spec/containers/0/resources","value":{
-    "requests":{"cpu":"100m","memory":"128Mi"},
-    "limits":{"cpu":"300m","memory":"512Mi"}
-  }}
-]'
+microk8s kubectl patch daemonset calico-node -n kube-system --type=strategic -p='{
+  "spec":{
+    "template":{
+      "spec":{
+        "containers":[{
+          "name":"calico-node",
+          "resources":{
+            "requests":{"cpu":"100m","memory":"128Mi"},
+            "limits":{"cpu":"300m","memory":"512Mi"}
+          }
+        }]
+      }
+    }
+  }
+}'
 ```
 
 ## Step 7: Restart and Verify
