@@ -12,7 +12,7 @@ Description: A guide to validating that calicoctl is correctly installed and ful
 
 Installing calicoctl is only half the job. Validating that it works correctly against your specific Calico cluster ensures that operators can rely on it when they need to manage network policies, inspect endpoints, or troubleshoot connectivity issues. A validated installation means the binary runs, connects to the datastore, can read and write resources, and matches the cluster version.
 
-This guide provides a comprehensive validation procedure that goes beyond checking the version number. We validate binary integrity, datastore read and write operations, resource compatibility, and command-line completion setup.
+This guide provides a comprehensive validation procedure that goes beyond checking the version number. We validate binary availability, datastore read and write operations, and resource compatibility.
 
 Running validation after every installation or upgrade prevents the frustrating experience of discovering that calicoctl does not work during an incident when you need it most.
 
@@ -25,7 +25,7 @@ Running validation after every installation or upgrade prevents the frustrating 
 
 ## Binary Validation
 
-Verify the binary is genuine, correct architecture, and correct version.
+Verify the binary is present, executable, the expected architecture, and correct version.
 
 ```bash
 #!/bin/bash
@@ -80,7 +80,7 @@ echo "=== Datastore Connectivity Validation ==="
 
 # Test 1: Read nodes
 echo -n "Read nodes: "
-calicoctl get nodes -o name 2>/dev/null
+calicoctl get nodes 2>/dev/null
 if [ $? -eq 0 ]; then
   echo "  Status: PASS"
 else
@@ -206,14 +206,14 @@ echo "calicoctl version: ${CTL_VERSION}"
 CLUSTER_VERSION=$(calicoctl version 2>/dev/null | grep "Cluster Version" | awk '{print $NF}')
 echo "Cluster version: ${CLUSTER_VERSION}"
 
-# Compare major.minor versions
-CTL_MAJOR_MINOR=$(echo ${CTL_VERSION} | grep -oP 'v?\d+\.\d+')
-CLUSTER_MAJOR_MINOR=$(echo ${CLUSTER_VERSION} | grep -oP 'v?\d+\.\d+')
+# Compare versions. calicoctl and Calico should use the same version.
+CTL_NORMALIZED=${CTL_VERSION#v}
+CLUSTER_NORMALIZED=${CLUSTER_VERSION#v}
 
-if [ "${CTL_MAJOR_MINOR}" = "${CLUSTER_MAJOR_MINOR}" ]; then
-  echo "Version compatibility: PASS (major.minor match)"
+if [ "${CTL_NORMALIZED}" = "${CLUSTER_NORMALIZED}" ]; then
+  echo "Version compatibility: PASS (versions match)"
 else
-  echo "Version compatibility: WARNING (${CTL_MAJOR_MINOR} vs ${CLUSTER_MAJOR_MINOR})"
+  echo "Version compatibility: WARNING (${CTL_VERSION} vs ${CLUSTER_VERSION})"
   echo "Recommend upgrading calicoctl to match cluster version"
 fi
 ```
@@ -261,9 +261,9 @@ echo "Results: ${PASS} passed, ${FAIL} failed"
 
 - **Binary validation passes but datastore fails**: Check the calicoctl configuration file. Verify KUBECONFIG or etcd connection settings are correct.
 - **Read works but write fails**: Check RBAC permissions. The service account or user may have read-only access to Calico resources.
-- **Version mismatch warning**: Download the calicoctl version matching your cluster. Minor version differences are usually compatible; major version differences are not.
+- **Version mismatch warning**: Download the calicoctl version matching your cluster. Calico and calicoctl versions should be the same; mismatched versions can cause calicoctl calls to fail unless you explicitly use `--allow-version-mismatch`.
 - **Validation passes on one machine but fails on another**: Compare configuration files and environment variables between the machines. Network access to the datastore may differ.
 
 ## Conclusion
 
-Validating calicoctl installation provides confidence that the tool will work when needed. By checking binary integrity, datastore connectivity, read and write operations, and version compatibility, you ensure a fully functional installation. Run this validation suite after every installation, upgrade, or cluster migration to maintain a reliable calicoctl setup.
+Validating calicoctl installation provides confidence that the tool will work when needed. By checking binary availability, datastore connectivity, read and write operations, and version compatibility, you ensure a fully functional installation. Run this validation suite after every installation, upgrade, or cluster migration to maintain a reliable calicoctl setup.
