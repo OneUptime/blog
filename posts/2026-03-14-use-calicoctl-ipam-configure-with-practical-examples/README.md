@@ -10,7 +10,7 @@ Description: Configure Calico's IP Address Management with calicoctl ipam config
 
 ## Introduction
 
-Calico's IPAM (IP Address Management) system is responsible for allocating IP addresses to pods across your cluster. The `calicoctl ipam configure` command allows you to tune IPAM behavior, most notably the strict affinity setting that controls whether IP blocks are exclusively owned by a single node.
+Calico's IPAM (IP Address Management) system is responsible for allocating IP addresses to pods across your cluster. The `calicoctl ipam configure` command allows you to tune IPAM behavior, most notably the strict affinity setting that controls whether nodes may borrow IP addresses from blocks affine to other nodes.
 
 Proper IPAM configuration is crucial for large clusters where IP address exhaustion, fragmentation, or allocation conflicts can occur. Understanding and correctly configuring IPAM parameters prevents pods from getting stuck in pending state due to IP allocation failures.
 
@@ -28,17 +28,22 @@ The primary setting controlled by `calicoctl ipam configure` is strict affinity:
 ```bash
 # View current IPAM configuration
 
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 Output:
 
-```yaml
-StrictAffinity: false
+```text
++--------------------+-------+
+|      PROPERTY      | VALUE |
++--------------------+-------+
+| StrictAffinity     | false |
+| AutoAllocateBlocks | true  |
++--------------------+-------+
 ```
 
-- **StrictAffinity: false** (default): IP blocks can be shared across nodes when a node's primary blocks are exhausted. This maximizes IP utilization but can complicate routing.
-- **StrictAffinity: true**: Each IP block is exclusively assigned to a single node. Required for certain cloud provider integrations and simplifies routing at the cost of potentially lower IP utilization.
+- **StrictAffinity: false** (default): Nodes can borrow addresses from blocks that are affine to other nodes when their own blocks are exhausted. This maximizes IP utilization but can make IP-to-node ownership less direct.
+- **StrictAffinity: true**: Borrowing IP addresses from blocks affine to other nodes is not allowed. Required for Calico for Windows when using Calico IPAM, and useful when you need predictable IP-to-node mapping, at the cost of potentially lower IP utilization.
 
 ## Enabling Strict Affinity
 
@@ -47,12 +52,11 @@ StrictAffinity: false
 calicoctl ipam configure --strictaffinity=true
 
 # Verify the change
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 When to use strict affinity:
-- Running on AWS with VPC routing
-- Using Azure CNI integration
+- Running Calico for Windows with Calico IPAM
 - When you need predictable IP-to-node mapping
 - When external systems need to route to pods based on IP prefix
 
@@ -63,7 +67,7 @@ When to use strict affinity:
 calicoctl ipam configure --strictaffinity=false
 
 # Verify
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 When to disable strict affinity:
@@ -71,13 +75,13 @@ When to disable strict affinity:
 - Clusters with highly variable pod counts per node
 - When IP utilization is more important than routing simplicity
 
-## Practical Example: AWS VPC Integration
+## Practical Example: AWS Single-Subnet Routing
 
-For AWS deployments with VPC routing:
+For AWS deployments using Calico routing within a single VPC subnet:
 
 ```bash
-# Step 1: Enable strict affinity (required for AWS VPC routing)
-calicoctl ipam configure --strictaffinity=true
+# Step 1: Verify the current IPAM configuration
+calicoctl ipam show --show-configuration
 
 # Step 2: Verify IP pools are configured correctly
 calicoctl get ippools -o yaml
@@ -115,12 +119,12 @@ metadata:
   name: default-pool
 spec:
   cidr: 10.244.0.0/16
-  blockSize: 26  # 64 IPs per block per node
+  blockSize: 26  # 64 IPs per block
   natOutgoing: true
   nodeSelector: all()
 ```
 
-With strict affinity enabled and blockSize of 26, each node gets exclusive blocks of 64 IPs.
+With strict affinity enabled and blockSize of 26, each affine block contains 64 IPs and cannot be borrowed from by another node.
 
 ## Impact Assessment Before Changing
 
@@ -133,7 +137,7 @@ echo "=== IPAM Configuration Assessment ==="
 
 # Current setting
 echo "Current configuration:"
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # Current IP utilization
 echo ""
@@ -164,7 +168,7 @@ After configuring IPAM:
 
 ```bash
 # Verify configuration
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # Check IP allocation still works
 kubectl run test-ipam --image=busybox --restart=Never -- sleep 30
@@ -177,11 +181,11 @@ calicoctl ipam show --show-blocks
 
 ## Troubleshooting
 
-- **Pods stuck in pending after enabling strict affinity**: The node may have exhausted its block allocation. Check with `calicoctl ipam show --show-blocks` and consider adding more IP pools.
-- **IP conflicts after disabling strict affinity**: Run `calicoctl ipam check` to identify and resolve any conflicts.
+- **Pods stuck in pending after enabling strict affinity**: The node may have exhausted its block allocation, reached the configured per-host block limit, or the pool may have no free blocks. Check with `calicoctl ipam show --show-blocks` and consider adding more IP pools.
+- **Suspected IPAM inconsistencies**: Run `calicoctl ipam check` to identify leaked or incorrectly allocated IPs.
 - **Cannot change strict affinity**: Ensure you have admin-level access to the Calico datastore.
 - **IP utilization dropped after enabling strict affinity**: This is expected. Each node exclusively owns its blocks, so some IPs in partially-used blocks become unavailable to other nodes.
 
 ## Conclusion
 
-`calicoctl ipam configure` gives you control over how Calico allocates IP addresses across your cluster. The strict affinity setting is the most impactful configuration, affecting routing behavior, IP utilization, and cloud provider integration. Always assess the impact before changing this setting in production and verify IP allocation works correctly afterward.
+`calicoctl ipam configure` gives you control over how Calico allocates IP addresses across your cluster. The strict affinity setting is the most impactful configuration, affecting IP utilization and whether workloads can use addresses from blocks affine to other nodes. Always assess the impact before changing this setting in production and verify IP allocation works correctly afterward.
