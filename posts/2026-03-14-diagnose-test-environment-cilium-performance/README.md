@@ -20,7 +20,7 @@ This guide covers the systematic verification of your Cilium performance test en
 
 - Kubernetes cluster with Cilium v1.14+
 - Multiple worker nodes for testing
-- `kubectl`, `cilium` CLI, and node-level access
+- `kubectl`, `cilium` CLI, access to `cilium-dbg` in Cilium agent pods, and node-level access
 - Understanding of your hardware specifications
 
 ## Checking Node Consistency
@@ -59,7 +59,7 @@ cilium status --verbose
 cilium config view | grep -E "tunnel|routing|bpf|encryption"
 # Compare across nodes
 for pod in $(kubectl get pods -n kube-system -l k8s-app=cilium -o name); do
-  echo "=== $pod ===" && kubectl exec -n kube-system $pod -- cilium config view | md5sum
+  echo "=== $pod ===" && kubectl exec -n kube-system "$pod" -c cilium-agent -- cilium-dbg config --all | md5sum
 done
 ```
 
@@ -92,11 +92,12 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl get ciliumendpoints --all-namespaces -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -127,21 +128,22 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+ENDPOINT_ID=$(kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json | jq -r '.[0].id')
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -153,12 +155,12 @@ Hubble provides historical flow data that helps identify patterns:
 cilium hubble port-forward &
 
 # Query recent flows with filters
-hubble observe --protocol TCP --last 500 -o json | \
-  jq 'select(.verdict == "DROPPED") | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
+hubble observe --protocol TCP --verdict DROPPED --last 500 -o json | \
+  jq '.flow | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
 
 # Get flow statistics by source and destination
 hubble observe --last 1000 -o json | \
-  jq -r '\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)' | \
+  jq -r '.flow | "\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)"' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
@@ -168,7 +170,8 @@ For deep datapath analysis, use BPF tracing tools:
 
 ```bash
 # Trace BPF program execution time
-bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
+sudo sysctl kernel.bpf_stats_enabled=1
+bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt: (.run_cnt // 0), run_time_ns: (.run_time_ns // 0), avg_ns: (if (.run_cnt // 0) > 0 then ((.run_time_ns // 0) / .run_cnt | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
 bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
