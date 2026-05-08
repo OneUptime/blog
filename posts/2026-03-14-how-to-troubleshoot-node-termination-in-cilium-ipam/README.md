@@ -68,7 +68,7 @@ done
 
 ```bash
 # Check operator logs for GC events
-kubectl logs -n kube-system -l name=cilium-operator | \
+kubectl logs -n kube-system -l io.cilium/app=operator | \
   grep -iE "garbage|cleanup|delete.*node" | tail -20
 
 # Check operator GC interval
@@ -76,7 +76,7 @@ kubectl get configmap cilium-config -n kube-system \
   -o jsonpath='{.data.nodes-gc-interval}'
 
 # Verify operator is healthy
-kubectl get pods -n kube-system -l name=cilium-operator
+kubectl get pods -n kube-system -l io.cilium/app=operator
 ```
 
 ## Recovering Leaked CIDRs
@@ -99,15 +99,16 @@ echo "Leaked CIDRs: $((ALLOCATED - ACTIVE))"
 ```bash
 echo "Nodes: $(kubectl get nodes --no-headers | wc -l)"
 echo "CiliumNodes: $(kubectl get ciliumnodes --no-headers | wc -l)"
-cilium status | grep IPAM
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --all-addresses | grep IPAM
 ```
 
 ## Troubleshooting
 
 - **Finalizers prevent deletion**: Use `kubectl patch` to remove them, then delete.
 - **Operator not performing GC**: Check operator is running and has RBAC for CiliumNode deletion.
-- **CIDRs not returned to pool**: May need operator restart. In severe cases, update the cluster CIDR list.
-- **Race condition during scale-down**: Increase terminationGracePeriodSeconds for the agent.
+- **CIDRs not returned to pool**: May need operator restart. In severe cluster-pool exhaustion cases, add a new CIDR to `clusterPoolIPv4PodCIDRList` or `clusterPoolIPv6PodCIDRList`; do not change existing entries.
+- **Race condition during scale-down**: Verify node deletion events reach the Kubernetes API server and the Cilium operator remains available to delete orphaned CiliumNode resources.
 
 ## Conclusion
 
