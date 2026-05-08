@@ -53,7 +53,7 @@ podman search redis --filter stars=100 --limit 10
 
 ## Filtering for Official Images
 
-Official images are maintained by the software authors or Docker.
+Official images are registry-designated trusted images. On Docker Hub, Docker Official Images are curated by Docker, often in collaboration with upstream maintainers.
 
 ```bash
 # Search only official images
@@ -188,7 +188,7 @@ echo ""
 
 # Show popular community images
 echo "=== Popular Community Images ==="
-podman search "$PURPOSE" --filter stars="$MIN_STARS" --limit 10 \
+podman search "$PURPOSE" --filter is-official=false --filter stars="$MIN_STARS" --limit 10 \
   --format "table {{.Name}}\t{{.Stars}}\t{{.Official}}"
 
 echo ""
