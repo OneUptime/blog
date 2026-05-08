@@ -18,7 +18,7 @@ Cache validation catches issues where the operator has stale data, where new sub
 
 - Kubernetes cluster on a cloud provider with Cilium
 - kubectl and Cilium CLI configured
-- Cloud provider CLI (az, aws, or gcloud) for comparison
+- Cloud provider CLI (az or aws) for comparison
 
 ## Validating Interface Discovery
 
@@ -32,7 +32,7 @@ NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
 for node in $NODES; do
   # Check CiliumNode has interface data
   IFACE_COUNT=$(kubectl get ciliumnode "$node" -o json | \
-    jq '.spec.azure.interfaces // .spec.eni.enis // {} | length')
+    jq '.status.azure.interfaces // .status.eni.enis // {} | length')
 
   if [ "$IFACE_COUNT" -eq 0 ]; then
     echo "FAIL: Node $node has no cached interfaces"
@@ -76,7 +76,7 @@ az network nic list --resource-group my-rg -o table
 # Compare with Cilium cache
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
-  cached_interfaces: (.spec.azure.interfaces // [] | length)
+  cached_interfaces: (.status.azure.interfaces // [] | length)
 }'
 ```
 
@@ -90,7 +90,7 @@ aws ec2 describe-network-interfaces \
 # Compare with Cilium cache
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
-  cached_enis: (.spec.eni.enis // {} | length)
+  cached_enis: (.status.eni.enis // {} | length)
 }'
 ```
 
@@ -100,7 +100,7 @@ kubectl get ciliumnodes -o json | jq '.items[] | {
 # Check when CiliumNode was last updated
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
-  last_update: .metadata.managedFields[-1].time
+  last_update: ([.metadata.managedFields[]?.time] | max)
 }'
 
 # Check operator last sync time
