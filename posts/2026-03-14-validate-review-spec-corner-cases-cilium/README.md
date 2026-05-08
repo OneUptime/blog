@@ -18,8 +18,9 @@ Without this validation step, corner case documentation becomes theoretical - yo
 
 - Documented corner cases from specification review
 - Parser implementation with corner case handling
+- A Cilium/proxy checkout for a Cilium version that still includes Envoy Go Extensions (proxylib); proxylib support was removed from Cilium 1.20
 - Reference implementation for comparison testing
-- Go 1.21 or later with fuzzing support
+- Go 1.18 or later with fuzzing support
 - Protocol test vectors (if available from spec body)
 
 ## Building Corner Case Test Vectors
@@ -27,6 +28,15 @@ Without this validation step, corner case documentation becomes theoretical - yo
 Create targeted test vectors for each documented corner case:
 
 ```go
+func testReader(input []byte) *proxylib.Reader {
+    if len(input) == 0 {
+        reader := proxylib.NewReader(nil, false)
+        return &reader
+    }
+    reader := proxylib.NewReader([][]byte{input}, false)
+    return &reader
+}
+
 func TestCornerCases(t *testing.T) {
     tests := []struct {
         name       string
@@ -40,16 +50,16 @@ func TestCornerCases(t *testing.T) {
             name:      "CC-001: zero-length body",
             caseID:    "CORNER_CASE_001",
             input:     []byte{0x00, 0x00, 0x00, 0x00}, // length=0
-            wantOp:    proxylib.DROP,
-            wantN:     0,
-            rationale: "Zero-length bodies rejected per security decision",
+            wantOp:    proxylib.ERROR,
+            wantN:     int(proxylib.ERROR_INVALID_FRAME_LENGTH),
+            rationale: "Zero-length bodies rejected as malformed input",
         },
         {
             name:      "CC-002: unknown command type",
             caseID:    "CORNER_CASE_002",
             input:     append([]byte{0x00, 0x00, 0x00, 0x05, 0xFF}, make([]byte, 4)...),
-            wantOp:    proxylib.DROP,
-            wantN:     0,
+            wantOp:    proxylib.ERROR,
+            wantN:     int(proxylib.ERROR_INVALID_FRAME_TYPE),
             rationale: "Unknown commands rejected to prevent policy bypass",
         },
         {
@@ -72,16 +82,16 @@ func TestCornerCases(t *testing.T) {
             name:      "CC-005: reserved flags set to non-zero",
             caseID:    "CORNER_CASE_005",
             input:     buildMessageWithFlags(0x01, 1, []byte("test"), 0xFF),
-            wantOp:    proxylib.DROP,
-            wantN:     0,
+            wantOp:    proxylib.ERROR,
+            wantN:     int(proxylib.ERROR_INVALID_FRAME_TYPE),
             rationale: "Reserved flags must be zero per spec",
         },
         {
             name:      "CC-006: signed negative length",
             caseID:    "CORNER_CASE_006",
             input:     []byte{0x80, 0x00, 0x00, 0x01}, // -2147483647 as signed
-            wantOp:    proxylib.DROP,
-            wantN:     0,
+            wantOp:    proxylib.ERROR,
+            wantN:     int(proxylib.ERROR_INVALID_FRAME_LENGTH),
             rationale: "Negative lengths indicate malformed or malicious input",
         },
     }
@@ -89,7 +99,7 @@ func TestCornerCases(t *testing.T) {
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             parser := &Parser{state: stateRunning}
-            reader := proxylib.NewTestReader(tt.input)
+            reader := testReader(tt.input)
 
             gotOp, gotN := parser.OnData(false, reader)
 
@@ -123,7 +133,7 @@ func TestCornerCaseCrossImplementation(t *testing.T) {
         t.Run(fmt.Sprintf("cross_impl_%d", i), func(t *testing.T) {
             // Our parser
             ourParser := &Parser{state: stateRunning}
-            ourReader := proxylib.NewTestReader(input)
+            ourReader := testReader(input)
             ourOp, ourN := ourParser.OnData(false, ourReader)
 
             // Reference implementation
@@ -151,7 +161,7 @@ flowchart TD
     C --> E{Ref result}
 
     D -->|PASS| F{Ref says valid?}
-    D -->|DROP| G{Ref says valid?}
+    D -->|DROP/ERROR| G{Ref says valid?}
 
     F -->|Yes| H[Agreement - OK]
     F -->|No| I[We accept what ref rejects - INVESTIGATE]
@@ -195,7 +205,7 @@ func TestSpecBoundaries(t *testing.T) {
         t.Run(b.name, func(t *testing.T) {
             input := buildInputForBoundary(b.field, b.value)
             parser := &Parser{state: stateRunning}
-            reader := proxylib.NewTestReader(input)
+            reader := testReader(input)
 
             op, _ := parser.OnData(false, reader)
 
@@ -223,16 +233,16 @@ func FuzzCornerCaseDiscovery(f *testing.F) {
 
     f.Fuzz(func(t *testing.T, data []byte) {
         parser := &Parser{state: stateRunning}
-        reader := proxylib.NewTestReader(data)
+        reader := testReader(data)
 
         op, n := parser.OnData(false, reader)
 
         // If the parser accepts this input, verify it is actually valid
-        if op == proxylib.PASS && n > 0 {
+        if op == proxylib.PASS && n > 0 && n <= len(data) {
             // Re-parse the accepted portion and verify consistency
             accepted := data[:n]
             parser2 := &Parser{state: stateRunning}
-            reader2 := proxylib.NewTestReader(accepted)
+            reader2 := testReader(accepted)
 
             op2, n2 := parser2.OnData(false, reader2)
             if op2 != proxylib.PASS || n2 != n {
