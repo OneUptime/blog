@@ -10,7 +10,7 @@ Description: Configure Calico observability capabilities for network visibility,
 
 ## Introduction
 
-Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), flow logs for connection-level visibility, and integration with Grafana for dashboards. This guide covers how to configure and use these capabilities effectively.
+Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), flow logs for connection-level visibility, and integration with Grafana for dashboards. Calico Open Source exposes flow logs through Goldmane and Whisker; Calico Cloud and Calico Enterprise also support file-based flow logs. This guide covers how to configure and use these capabilities effectively.
 
 ## Key Commands
 
@@ -21,18 +21,20 @@ kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
-# Enable flow logs
+# Enable file-based flow logs in Calico Cloud or Calico Enterprise
 kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"flowLogsFlushInterval":"15s","flowLogsFileEnabled":true}}'
 
 # Check BGP peer state
-calicoctl node status
+sudo calicoctl node status
 
 # View metrics
-CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+CALICO_NS=$(kubectl get pods -A -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.namespace}')
+CALICO_POD=$(kubectl get pods -A -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
+kubectl exec -n "${CALICO_NS}" "${CALICO_POD}" -c calico-node -- \
   wget -qO- http://localhost:9091/metrics | grep felix | head -20
 ```
 
@@ -60,11 +62,11 @@ spec:
   groups:
     - name: calico.network
       rules:
-        - alert: CalicoHighDenyRate
+        - alert: CalicoDataplaneFailures
           expr: rate(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           annotations:
-            summary: "High Calico policy deny rate on {{ $labels.instance }}"
+            summary: "Calico dataplane updates are failing on {{ $labels.instance }}"
         - alert: CalicoFelixMetricsDown
           expr: up{job="calico-node-metrics"} == 0
           for: 5m
@@ -74,4 +76,4 @@ spec:
 
 ## Conclusion
 
-Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates iptables programming errors), high policy deny rate (indicates policy misconfiguration or security events), and IPAM utilization (indicates capacity issues). Configure alerts for all three from day one in production clusters.
+Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates dataplane programming errors), high policy deny rate from flow logs (indicates policy misconfiguration or security events), and IPAM utilization (indicates capacity issues). Configure alerts for all three from day one in production clusters.
