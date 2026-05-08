@@ -19,6 +19,7 @@ This guide provides a structured troubleshooting workflow for the most common ca
 ## Prerequisites
 
 - calicoctl installed with etcd datastore configuration
+- calicoctl version that matches the Calico version running on your cluster
 - Access to the etcd cluster (directly or through calicoctl)
 - etcdctl v3 installed for direct etcd verification
 - openssl for certificate inspection
@@ -143,7 +144,7 @@ Systematically verify each configuration parameter:
 
 ```bash
 # Display the current calicoctl configuration
-cat /etc/calicoctl/calicoctl.cfg
+cat /etc/calico/calicoctl.cfg
 
 # Verify environment variables
 echo "DATASTORE_TYPE: ${DATASTORE_TYPE:-not set}"
@@ -163,7 +164,7 @@ done
 
 # Test with explicit config
 export DATASTORE_TYPE=etcdv3
-calicoctl get nodes --config=/etc/calicoctl/calicoctl.cfg
+calicoctl get nodes --config=/etc/calico/calicoctl.cfg
 ```
 
 ## Step 5: Check Calico Data in etcd
