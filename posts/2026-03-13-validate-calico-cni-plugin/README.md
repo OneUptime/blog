@@ -26,7 +26,7 @@ Validating the Calico CNI plugin involves confirming that the configuration file
 kubectl get nodes -o name | while read node; do
   node_name=$(echo $node | cut -d/ -f2)
   echo "=== $node_name ==="
-  kubectl debug node/$node_name -it --image=busybox -- \
+  kubectl debug node/$node_name --image=busybox -- \
     cat /host/etc/cni/net.d/10-calico.conflist 2>/dev/null | grep -E "type|ipam|mtu"
 done
 ```
@@ -34,8 +34,11 @@ done
 ## Step 2: Verify CNI Binaries Are Installed
 
 ```bash
-# Check for Calico CNI binary on nodes
-kubectl exec -n calico-system ds/calico-node -- ls -la /host/opt/cni/bin/ | grep calico
+# Check for Calico CNI binaries from each calico-node pod
+kubectl get pods -n calico-system -l k8s-app=calico-node -o name | while read pod; do
+  echo "=== $pod ==="
+  kubectl exec -n calico-system "$pod" -- ls -la /host/opt/cni/bin/ | grep calico
+done
 # Should show: calico, calico-ipam
 ```
 
@@ -59,7 +62,8 @@ When a pod is created, Calico CNI creates a WorkloadEndpoint resource:
 calicoctl get workloadendpoints -n default | grep cni-test
 
 # Inspect the WEP
-calicoctl get wep -n default cni-test-1-eth0 -o yaml
+WEP_NAME=$(calicoctl get workloadendpoints -n default -o go-template='{{range .}}{{range .Items}}{{if eq .Spec.Pod "cni-test-1"}}{{.ObjectMeta.Name}}{{end}}{{end}}{{end}}')
+calicoctl get workloadendpoint -n default "$WEP_NAME" -o yaml
 ```
 
 ```mermaid
@@ -103,7 +107,8 @@ kubectl exec cni-test-1 -- wget -q -O- http://checkip.amazonaws.com
 
 ```bash
 # Check CNI plugin logs on a specific node
-kubectl exec -n calico-system ds/calico-node -- \
+CALICO_NODE_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -n 1)
+kubectl exec -n calico-system "$CALICO_NODE_POD" -- \
   tail -50 /var/log/calico/cni/cni.log
 # Look for any errors during pod creation
 ```
