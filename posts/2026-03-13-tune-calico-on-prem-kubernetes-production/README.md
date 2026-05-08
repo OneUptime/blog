@@ -12,7 +12,7 @@ Description: A guide to performance-tuning Calico for high-throughput, low-laten
 
 Default Calico settings prioritize compatibility over performance. On on-premises clusters, where you control both the network hardware and the node operating system, you can tune Calico more aggressively than in cloud environments. The payoff is measurable: lower latency, higher throughput, and better resource efficiency under production load.
 
-On-prem production tuning focuses on eliminating unnecessary encapsulation overhead through native BGP routing, setting the correct MTU for your physical network, enabling eBPF for kernel-bypass networking, tuning Felix's internal timers, and sizing IPAM blocks appropriately for your cluster density.
+On-prem production tuning focuses on eliminating unnecessary encapsulation overhead through native BGP routing, setting the correct MTU for your physical network, enabling eBPF to bypass iptables-based service handling, tuning Felix's internal timers, and sizing IPAM blocks appropriately for your cluster density.
 
 This guide covers the most impactful tuning parameters for production Calico deployments on on-premises infrastructure.
 
@@ -21,65 +21,70 @@ This guide covers the most impactful tuning parameters for production Calico dep
 - Calico installed on an on-prem Kubernetes cluster
 - Physical network that supports BGP routing
 - `kubectl` and `calicoctl` installed
-- Nodes running Linux kernel 5.3+ for eBPF support
+- Nodes running Linux kernel 5.10+ for eBPF support, or Red Hat 8.4+ with kernel 4.18.0-305 or later
 
 ## Step 1: Eliminate Overlay Encapsulation
 
-With BGP routing to physical switches, overlay encapsulation is unnecessary and adds 50-100 bytes of overhead per packet.
+With BGP routing to physical switches, overlay encapsulation is unnecessary and adds 20-50 bytes of overhead per packet for common IP-in-IP and VXLAN overlays.
 
 ```bash
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"encapsulation":"None"}}'
+  --patch '{"spec":{"ipipMode":"Never","vxlanMode":"Never"}}'
 ```
 
 Ensure BGP is properly configured before disabling encapsulation.
 
 ## Step 2: Enable eBPF Dataplane
 
-The eBPF dataplane bypasses iptables for packet processing, reducing latency and CPU usage significantly.
+The eBPF dataplane bypasses kube-proxy and iptables for Kubernetes service handling, reducing latency and CPU usage significantly.
 
 ```bash
-# Disable kube-proxy first (eBPF replaces it)
-
-kubectl patch ds -n kube-system kube-proxy \
-  -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
-
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"bpfEnabled":true,"bpfDisableUnprivileged":false}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
 ```
 
-## Step 3: Set MTU to Physical Network Maximum
+## Step 3: Set MTU to the Highest Non-Fragmenting Value
 
-For standard 10GbE networks without jumbo frames:
+For standard 10GbE networks without jumbo frames and without an overlay path:
 
 ```bash
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"calicoNetwork":{"mtu":1500}}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1500}}}'
 ```
 
-For networks with jumbo frames (9000 MTU):
+If you use the eBPF service dataplane's default NodePort forwarding, account for its VXLAN handoff and use physical MTU minus 50 bytes:
 
 ```bash
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"calicoNetwork":{"mtu":9000}}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 ```
 
 ## Step 4: Tune Felix Timers
 
-For stable production clusters, increase refresh intervals to reduce CPU overhead.
+For stable production clusters using the iptables dataplane on Linux kernel 4.11 or later, increase refresh intervals to reduce CPU overhead.
 
 ```bash
 calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"iptablesRefreshInterval":"90s","routeRefreshInterval":"90s","netlinkTimeout":"10s"}}'
+  --patch '{"spec":{"iptablesRefreshInterval":"5m","routeRefreshInterval":"5m"}}'
 ```
 
 ## Step 5: Optimize IPAM Block Size
 
-For clusters with predictable node counts, tune block size to minimize IPAM fragmentation.
+For clusters with predictable node counts, tune block size to minimize IPAM fragmentation. Set this before installation when possible; Calico does not allow editing `blockSize` directly on an existing IP pool.
 
-```bash
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"blockSize":26}}'
+```yaml
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+    - blockSize: 26
+      cidr: 10.244.0.0/16
+      encapsulation: None
+      natOutgoing: Enabled
+      nodeSelector: all()
 ```
 
 ## Step 6: Enable Calico Metrics
@@ -91,8 +96,37 @@ calicoctl patch felixconfiguration default \
 
 Create a ServiceMonitor if using Prometheus Operator:
 
-```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico-prometheus.yaml
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+  - name: metrics
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: calico-felix
+  namespace: calico-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: calico-node
+  namespaceSelector:
+    matchNames:
+    - calico-system
+  endpoints:
+  - port: metrics
 ```
 
 ## Conclusion
