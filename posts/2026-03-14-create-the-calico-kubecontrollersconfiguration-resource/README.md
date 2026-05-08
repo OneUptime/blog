@@ -12,7 +12,7 @@ Description: Learn how to define and apply a Calico KubeControllersConfiguration
 
 Calico uses custom Kubernetes resources to configure networking and security in your cluster. The KubeControllersConfiguration resource is one of these building blocks, and understanding how to create it properly is essential for any Kubernetes operator running Calico.
 
-This guide walks you through defining a KubeControllersConfiguration manifest, understanding each field, and applying it to your cluster. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn the correct way to create this resource.
+This guide walks you through defining a KubeControllersConfiguration manifest, understanding each field, and applying it to your cluster. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn the correct way to manage this resource.
 
 By the end of this post you will have a working KubeControllersConfiguration resource applied to your cluster, with a clear understanding of what each field controls and how to verify that the resource is active.
 
@@ -29,8 +29,10 @@ The KubeControllersConfiguration resource uses the Calico API group `projectcali
 
 - `logSeverityScreen`: Log verbosity for kube-controllers.
 - `controllers.node.reconcilerPeriod`: How often the node controller syncs.
-- `controllers.node.hostEndpoint.autoCreate`: When `Enabled`, auto-creates HostEndpoints.
+- `controllers.node.hostEndpoint.autoCreate`: When `Enabled`, auto-creates HostEndpoints. The default is `Disabled`.
 - `controllers.policy.reconcilerPeriod`: How often K8s NetworkPolicies are synced to Calico.
+- `controllers.namespace.reconcilerPeriod`: How often namespace profiles are synced.
+- `controllers.serviceAccount.reconcilerPeriod`: How often service account profiles are synced.
 
 > **Note:** Must be named `default`. Only one can exist in a cluster.
 
@@ -49,14 +51,18 @@ spec:
     node:
       reconcilerPeriod: 5m
       hostEndpoint:
-        autoCreate: Enabled
+        autoCreate: Disabled
     policy:
       reconcilerPeriod: 5m
     workloadEndpoint:
       reconcilerPeriod: 5m
+    namespace:
+      reconcilerPeriod: 5m
+    serviceAccount:
+      reconcilerPeriod: 5m
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a documented default. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
@@ -78,14 +84,14 @@ calicoctl apply -f kubecontrollersconfiguration.yaml
 
 ## Verification
 
-Confirm that the resource was created successfully:
+Confirm that the resource was applied successfully:
 
 ```bash
 # List KubeControllersConfiguration resources
 kubectl get kubecontrollersconfiguration.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe kubecontrollersconfiguration.projectcalico.org
+kubectl describe kubecontrollersconfiguration.projectcalico.org default
 
 # Verify with calicoctl
 calicoctl get kubecontrollersconfiguration -o yaml
@@ -94,23 +100,23 @@ calicoctl get kubecontrollersconfiguration -o yaml
 Check the Calico component logs for any warnings or errors related to the new resource:
 
 ```bash
-# Check calico-node logs
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
+# Check kube-controllers logs
+kubectl logs -n calico-system deployment/calico-kube-controllers --tail=50
 ```
 
 ## Troubleshooting
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `KubeControllersConfiguration`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- Check that the Calico CRD is installed: `kubectl get crd kubecontrollersconfigurations.crd.projectcalico.org`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
-- Check Felix and Typha logs for error messages.
+- Restart the kube-controllers deployment: `kubectl rollout restart deployment calico-kube-controllers -n calico-system`.
+- Check kube-controllers logs for error messages.
 
 
 ## Advanced Configuration Options
@@ -119,7 +125,7 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Node labels can be referenced by Calico configuration such as HostEndpoint templates. For example, you can label nodes before using selectors in templates or policies:
 
 ```bash
 # Label nodes for targeted configuration
@@ -151,14 +157,14 @@ When using GitOps tools like Flux or Argo CD, ensure your Calico CRDs are applie
 
 Resource Naming Conventions
 
-Adopt a consistent naming convention for your Calico resources:
+Adopt a consistent naming convention for Calico resources that support custom names:
 
 - Use descriptive names that indicate the resource's purpose (e.g., `production-pod-pool` instead of `pool-1`)
 - Include environment or cluster identifiers for multi-cluster setups
 - Avoid special characters; use lowercase letters, numbers, and hyphens only
 
-Following these conventions makes it easier to manage resources at scale and reduces the risk of accidental modifications to the wrong resource.
+Following these conventions makes it easier to manage resources at scale and reduces the risk of accidental modifications to the wrong resource. For KubeControllersConfiguration, keep the required name `default`.
 
 ## Conclusion
 
-You have created a Calico KubeControllersConfiguration resource, applied it to your cluster, and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with `calicoctl` before applying to production clusters.
+You have applied a Calico KubeControllersConfiguration resource to your cluster and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with `calicoctl` before applying to production clusters.
