@@ -38,13 +38,13 @@ hubble observe --namespace production
 # Filter by specific pod
 hubble observe --pod production/frontend-abc123
 
-# Filter by pod label using workload name
+# Filter by workload name
 hubble observe --to-workload backend
 
 # Filter by source and destination
 hubble observe --from-namespace staging --to-namespace production
 
-# Filter by verdict (FORWARDED, DROPPED, ERROR, AUDIT)
+# Filter by verdict (FORWARDED, DROPPED, AUDIT, REDIRECTED, ERROR, TRACED, TRANSLATED)
 hubble observe --verdict DROPPED
 
 # Filter by protocol
@@ -149,7 +149,7 @@ hubble:
       filePath: /var/run/cilium/hubble/events.log
 
       # Include filters: only export flows matching these criteria
-      includeFilters:
+      allowList:
         # Export all dropped packets
         - '{"verdict":["DROPPED"]}'
         # Export flows from production namespace
@@ -158,7 +158,7 @@ hubble:
         - '{"destination_port":["53"]}'
 
       # Exclude filters: exclude flows matching these criteria
-      excludeFilters:
+      denyList:
         # Exclude health checks
         - '{"source_pod":["kube-system/kube-probe"]}'
         # Exclude node-to-node traffic
@@ -169,7 +169,7 @@ hubble:
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
   --set hubble.export.static.enabled=true \
-  --set-json 'hubble.export.static.includeFilters=["{\"verdict\":[\"DROPPED\"]}"]'
+  --set hubble.export.static.allowList[0]='{"verdict":["DROPPED"]}'
 ```
 
 ## Real-World Filter Recipes
@@ -183,7 +183,7 @@ hubble observe --verdict DROPPED --type policy-verdict
 # Debugging: Track DNS resolution for a specific service
 hubble observe --from-workload my-app --to-port 53 --type l7
 
-# Performance: Find TCP retransmissions
+# Performance: Find TCP resets and SYN/ACK packets
 hubble observe --type trace --protocol TCP -o json | python3 -c "
 import json, sys
 for line in sys.stdin:
@@ -192,7 +192,7 @@ for line in sys.stdin:
     if flags.get('RST') or flags.get('SYN') and flags.get('ACK'):
         src = f.get('flow',{}).get('source',{})
         dst = f.get('flow',{}).get('destination',{})
-        print(f\"RST/SYNACK: {src.get('pod_name','?')} -> {dst.get('pod_name','?')}\")
+        print(f\"TCP flags: {src.get('pod_name','?')} -> {dst.get('pod_name','?')}\")
 "
 
 # Compliance: Audit all external traffic
