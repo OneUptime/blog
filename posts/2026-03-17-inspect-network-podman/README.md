@@ -64,8 +64,9 @@ podman network inspect mynetwork --format '{{ .Created }}'
 podman ps --filter network=mynetwork --format "{{ .Names }}\t{{ .ID }}"
 
 # Get container IP addresses on the network
-for ctr in $(podman ps --filter network=mynetwork --format "{{ .Names }}"); do
-  ip=$(podman inspect "$ctr" --format '{{ range .NetworkSettings.Networks }}{{ .IPAddress }}{{ end }}')
+NET="mynetwork"
+for ctr in $(podman ps --filter network="$NET" --format "{{ .Names }}"); do
+  ip=$(podman inspect "$ctr" --format "{{ with index .NetworkSettings.Networks \"$NET\" }}{{ .IPAddress }}{{ end }}")
   echo "$ctr: $ip"
 done
 ```
@@ -108,7 +109,7 @@ echo "Gateway: $(podman network inspect $NET --format '{{ range .Subnets }}{{ .G
 echo "DNS: $(podman network inspect $NET --format '{{ .DNSEnabled }}')"
 echo "Internal: $(podman network inspect $NET --format '{{ .Internal }}')"
 echo "Connected containers:"
-podman ps --filter network=$NET --format "  - {{ .Names }} ({{ .ID }})"
+podman ps --filter network="$NET" --format "  - {{ .Names }} ({{ .ID }})"
 ```
 
 ## Summary
