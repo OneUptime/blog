@@ -19,7 +19,7 @@ This guide provides the specific steps for managing identity-relevant labels in 
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI, `helm`, and `kubectl`
+- `cilium` CLI, `helm`, `kubectl`, `jq`, and `gawk`
 - `iperf3` and `netperf` for benchmarking
 - Prometheus and Grafana for monitoring
 - Node-level root access
@@ -32,7 +32,7 @@ set -euo pipefail
 
 # Check identity count
 
-IDS=$(cilium identity list | wc -l)
+IDS=$(kubectl get ciliumidentities.cilium.io --no-headers | wc -l)
 PODS=$(kubectl get pods --all-namespaces --no-headers | wc -l)
 RATIO=$(echo "scale=2; $IDS / $PODS" | bc)
 
@@ -51,40 +51,45 @@ echo "PASS: Identity count is well-optimized"
 ## Label Configuration Validation
 
 ```bash
-# Verify label configuration
-LABELS=$(cilium config view | grep "^labels" | awk '{print $2}')
-echo "Identity-relevant labels: $LABELS"
+# Verify label pattern configuration. Cilium stores these as regular
+# expression patterns in the cilium-config ConfigMap.
+LABELS=$(kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.labels}')
+echo "Identity-relevant label patterns: ${LABELS:-<default>}"
 
-# Verify expected labels are included
-for EXPECTED in "k8s:app" "k8s:io.kubernetes.pod.namespace"; do
-  if echo "$LABELS" | grep -q "$EXPECTED"; then
-    echo "PASS: $EXPECTED is included"
-  else
-    echo "FAIL: $EXPECTED is missing"
-  fi
-done
+if [ -z "$LABELS" ]; then
+  echo "PASS: Default Cilium label patterns are in use"
+else
+  # Verify expected label patterns are included
+  for EXPECTED in "app" "io\\.kubernetes\\.pod\\.namespace"; do
+    if echo "$LABELS" | grep -q "$EXPECTED"; then
+      echo "PASS: $EXPECTED is included"
+    else
+      echo "FAIL: $EXPECTED is missing"
+    fi
+  done
+fi
 ```
 
 ## Performance Impact Validation
 
 ```bash
-# Verify policy computation time is reasonable
-POLICY_TIME=$(kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep policy_computation | awk '{print $2}')
-echo "Policy computation time: $POLICY_TIME"
+# Verify policy implementation and identity update metrics are available
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | \
+  grep -E 'policy_implementation_delay|policy_incremental_update_duration|identity_updater_timer_duration'
 ```
 
 ## Verification
 
 ```bash
-cilium identity list | wc -l
-cilium config view | grep labels
+kubectl get ciliumidentities.cilium.io --no-headers | wc -l
+kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.labels}{"\n"}'
 ```
 
 ## Troubleshooting
 
-- **Identity count not decreasing after label change**: Wait for garbage collection (up to 15 minutes).
+- **Identity count not decreasing after label change**: Restart the relevant Cilium agents or affected workloads so endpoints pick up the new label pattern, then wait for Cilium Operator identity garbage collection.
 - **Policies broken after label restriction**: Add the missing label to the identity-relevant list.
-- **Cannot reduce below certain count**: Namespace-level identities are the minimum.
+- **Cannot reduce below certain count**: Cilium always preserves required identity labels such as reserved labels, namespace, policy cluster, service account, and selected application labels.
 - **Agent memory still high**: Identity reduction takes effect gradually as endpoints regenerate.
 
 ## Comprehensive Validation Methodology
@@ -129,7 +134,7 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+echo "${SAMPLES[@]}" | tr ' ' '\n' | gawk '
 {
   sum += $1
   sumsq += $1 * $1
@@ -187,7 +192,7 @@ Cluster: $(kubectl config current-context)
 ## Test Environment
 - Nodes: $(kubectl get nodes --no-headers | wc -l)
 - Pods: $(kubectl get pods --all-namespaces --no-headers | wc -l)
-- Identities: $(cilium identity list 2>/dev/null | wc -l)
+- Identities: $(kubectl get ciliumidentities.cilium.io --no-headers 2>/dev/null | wc -l)
 
 ## Results
 HEADER
