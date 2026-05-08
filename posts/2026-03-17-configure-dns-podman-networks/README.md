@@ -44,7 +44,9 @@ podman run -d --name app \
   --dns 1.1.1.1 \
   docker.io/library/alpine:latest tail -f /dev/null
 
-# Verify the DNS configuration
+# Inspect the resolver configuration
+# On DNS-enabled custom networks, resolv.conf may point to aardvark-dns,
+# which forwards external lookups to the configured DNS servers.
 podman exec app cat /etc/resolv.conf
 ```
 
@@ -133,10 +135,10 @@ podman exec app nslookup google.com
 # Check if the Podman DNS server (aardvark-dns) is running
 ps aux | grep aardvark-dns
 
-# Check DNS logs
-journalctl -u aardvark-dns --no-pager -n 20 2>/dev/null
+# Check journal entries related to aardvark-dns
+journalctl --no-pager -n 200 | grep aardvark-dns
 ```
 
 ## Summary
 
-Podman custom networks provide automatic DNS resolution between containers using the aardvark-dns plugin. Configure custom DNS servers with `--dns`, search domains with `--dns-search`, and resolver options with `--dns-option`. Use network aliases for service discovery with multiple DNS names per container. System-wide DNS defaults can be set in `containers.conf`.
+Podman custom networks provide automatic DNS resolution between containers using aardvark-dns. Configure custom DNS servers with `--dns`, search domains with `--dns-search`, and resolver options with `--dns-option`. Use network aliases for service discovery with multiple DNS names per container. System-wide DNS defaults can be set in `containers.conf`.
