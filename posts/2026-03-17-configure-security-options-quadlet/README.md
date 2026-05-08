@@ -30,7 +30,7 @@ PublishPort=8080:8080
 
 # Drop all capabilities and add back only what is needed
 DropCapability=all
-AddCapability=net_bind_service
+AddCapability=CAP_NET_BIND_SERVICE
 
 [Service]
 Restart=on-failure
@@ -54,7 +54,7 @@ ReadOnly=true
 # Provide a writable tmpfs for temp files
 Tmpfs=/tmp:size=50M
 Tmpfs=/run:size=10M
-Volume=appdata.volume:/app/data
+Volume=appdata:/app/data
 
 [Service]
 Restart=on-failure
@@ -97,7 +97,7 @@ SecurityLabelDisable=true
 [Container]
 Image=docker.io/myorg/myapp:latest
 # Use a custom seccomp profile
-PodmanArgs=--security-opt=seccomp=/path/to/custom-seccomp.json
+SeccompProfile=/path/to/custom-seccomp.json
 ```
 
 ## No New Privileges
@@ -107,7 +107,7 @@ Prevent the container process from gaining additional privileges:
 ```ini
 [Container]
 Image=docker.io/myorg/myapp:latest
-PodmanArgs=--security-opt=no-new-privileges:true
+NoNewPrivileges=true
 DropCapability=all
 ReadOnly=true
 ```
@@ -118,15 +118,16 @@ ReadOnly=true
 # Reload and start
 systemctl --user daemon-reload
 systemctl --user start secure-app.service
+systemctl --user start readonly-app.service
 
 # Check capabilities
-podman inspect secure-app --format '{{.HostConfig.CapDrop}}'
-podman inspect secure-app --format '{{.HostConfig.CapAdd}}'
+podman inspect systemd-secure-app --format '{{.HostConfig.CapDrop}}'
+podman inspect systemd-secure-app --format '{{.HostConfig.CapAdd}}'
 
 # Check if read-only
-podman inspect secure-app --format '{{.HostConfig.ReadonlyRootfs}}'
+podman inspect systemd-readonly-app --format '{{.HostConfig.ReadonlyRootfs}}'
 ```
 
 ## Summary
 
-Quadlet provides native directives like `DropCapability`, `AddCapability`, `ReadOnly`, and SELinux label options, plus `PodmanArgs` for additional security options. Drop unnecessary capabilities, use read-only root filesystems, configure SELinux labels, apply custom seccomp profiles, and prevent privilege escalation. Following the principle of least privilege helps protect your host and other containers.
+Quadlet provides native directives like `DropCapability`, `AddCapability`, `ReadOnly`, `SeccompProfile`, `NoNewPrivileges`, and SELinux label options, plus `PodmanArgs` for additional security options. Drop unnecessary capabilities, use read-only root filesystems, configure SELinux labels, apply custom seccomp profiles, and prevent privilege escalation. Following the principle of least privilege helps protect your host and other containers.
