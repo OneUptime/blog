@@ -12,17 +12,18 @@ Description: Learn how to secure host-level policies in Cilium for Kubernetes. T
 
 Securing host-level policies in Cilium is essential for maintaining a robust Kubernetes network security posture. Cilium leverages eBPF technology to provide deep visibility and control over network traffic, making it possible to enforce fine-grained security policies at the kernel level.
 
-This guide focuses on practical steps to harden your host firewall configuration using CiliumNetworkPolicy resources. You will learn how to create policies that restrict access, implement defense-in-depth strategies, and verify that your security controls are working as intended.
+This guide focuses on practical steps to harden your host firewall configuration using CiliumClusterwideNetworkPolicy resources. You will learn how to create policies that restrict access, implement defense-in-depth strategies, and verify that your security controls are working as intended.
 
 Whether you are setting up a new cluster or hardening an existing one, these security practices will help you reduce your attack surface and protect your workloads from unauthorized access.
 
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24+)
-- Cilium installed (v1.14+) via Helm
+- Cilium installed (v1.14+) via Helm with the host firewall enabled
 - `cilium` CLI tool installed
 - `kubectl` configured for cluster access
 - Hubble enabled for network flow observation
+- `hubble` CLI tool installed
 - Basic understanding of Kubernetes networking concepts
 
 ## Understanding the Security Model
@@ -31,7 +32,7 @@ Before implementing security controls, it is important to understand how Cilium 
 
 ```mermaid
 graph TD
-    A[Identify Security Requirements] --> B[Define CiliumNetworkPolicy]
+    A[Identify Security Requirements] --> B[Define CiliumClusterwideNetworkPolicy]
     B --> C[Apply Default-Deny Baseline]
     C --> D[Add Allow Rules for Legitimate Traffic]
     D --> E[Test with Hubble Monitoring]
@@ -58,7 +59,7 @@ cilium config view | grep policy-enforcement
 
 ## Implementing Security Policies
 
-Apply a CiliumNetworkPolicy to restrict access to your host policy adjustment resources.
+Apply a CiliumClusterwideNetworkPolicy to restrict access to your host policy adjustment resources.
 
 ```yaml
 # Apply this policy to restrict access based on identity
@@ -95,19 +96,19 @@ spec:
 kubectl apply -f policy.yaml
 
 # Verify the policy was accepted
-kubectl get cnp -n production
+kubectl get ccnp host-policy-baseline
 ```
 
 ### Hardening with Default-Deny
 
-Implement a default-deny baseline to ensure no traffic flows unless explicitly allowed:
+Implement a default-deny baseline for workload namespaces to ensure no traffic flows unless explicitly allowed:
 
 ```yaml
-# Default-deny policy ensures zero-trust networking
+# Default-deny policy ensures zero-trust networking for production pods
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
-  name: default-deny-host-policy
+  name: default-deny-production
   namespace: production
 spec:
   endpointSelector: {}
@@ -131,7 +132,8 @@ hubble observe --verdict DROPPED --namespace production --output compact
 
 # Check endpoint security status
 # List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp --all-namespaces
+kubectl get ccnp
 ```
 
 ## Advanced Security Configuration
@@ -148,7 +150,7 @@ For enhanced protection, consider these additional hardening measures:
 cilium config view | grep policy-enforcement
 
 # List all identities and verify they match expected workloads
-cilium identity list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list
 ```
 
 
@@ -184,7 +186,7 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 ```
 
 ```bash
@@ -194,12 +196,12 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | jq '.[] | .status.labels'`.
 - **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
