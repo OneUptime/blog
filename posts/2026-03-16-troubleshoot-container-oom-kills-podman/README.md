@@ -50,8 +50,8 @@ podman inspect --format '{{.HostConfig.Memory}}' my-container
 # Check memory swap limit
 podman inspect --format '{{.HostConfig.MemorySwap}}' my-container
 
-# View all resource limits at once
-podman inspect --format '{{json .HostConfig.Resources}}' my-container | python3 -m json.tool
+# View all host configuration, including resource limits
+podman inspect --format '{{json .HostConfig}}' my-container | python3 -m json.tool
 ```
 
 ## Monitor Memory Usage in Real Time
@@ -68,10 +68,10 @@ podman stats --no-stream my-container
 # Monitor all running containers
 podman stats --no-stream
 
-# Check memory usage from inside the container
+# Check memory usage from inside the container on cgroups v2
 podman exec my-container cat /sys/fs/cgroup/memory.current
 
-# Check the memory limit as seen by the container
+# Check the memory limit as seen by the container on cgroups v2
 podman exec my-container cat /sys/fs/cgroup/memory.max
 ```
 
@@ -87,8 +87,8 @@ podman run -d --memory 512m my-image:latest
 # --memory-swap = total memory + swap
 podman run -d --memory 512m --memory-swap 1g my-image:latest
 
-# Disable swap entirely for the container
-podman run -d --memory 512m --memory-swap 512m my-image:latest
+# Set a larger total memory + swap limit
+podman run -d --memory 512m --memory-swap 768m my-image:latest
 
 # Set a soft memory limit (reservation)
 podman run -d --memory 512m --memory-reservation 256m my-image:latest
@@ -105,11 +105,11 @@ Understand what is consuming memory inside the container.
 # Check process memory usage inside the container
 podman exec my-container ps aux --sort=-%mem | head -10
 
-# Get detailed memory info
+# Get host-level memory info visible inside the container
 podman exec my-container cat /proc/meminfo
 
-# Check for memory-mapped files
-podman exec my-container cat /proc/self/maps | wc -l
+# Check memory-mapped files for the container's main process
+podman exec my-container cat /proc/1/maps | wc -l
 
 # Check cgroup memory stats
 podman exec my-container cat /sys/fs/cgroup/memory.stat
@@ -135,7 +135,7 @@ podman run -d --oom-score-adj -500 my-image:latest
 podman run -d \
   --memory 1g \
   --memory-reservation 512m \
-  --memory-swap 1g \
+  --memory-swap 1536m \
   my-image:latest
 ```
 
@@ -154,7 +154,7 @@ done
 podman exec my-container jmap -dump:format=b,file=/tmp/heap.hprof 1
 podman cp my-container:/tmp/heap.hprof ./heap.hprof
 
-# For Node.js, enable heap snapshots
+# For Node.js, cap V8 old-space below the container memory limit
 podman run -d \
   --memory 1g \
   -e NODE_OPTIONS="--max-old-space-size=768" \
@@ -178,10 +178,10 @@ services:
           memory: 256M
     # Alternative syntax for Podman
     mem_limit: 512m
-    memswap_limit: 512m
+    memswap_limit: 768m
     mem_reservation: 256m
 ```
 
 ## Summary
 
-OOM kills are detectable through `podman inspect`, exit code 137, and kernel logs. Set memory limits based on observed usage with 20-30% headroom, disable swap to make memory behavior predictable, and monitor usage over time to catch memory leaks early. The `podman stats` and `podman update` commands are your primary tools for ongoing memory management.
+OOM kills are detectable through `podman inspect`, exit code 137, and kernel logs. Set memory limits based on observed usage with 20-30% headroom, cap swap to make memory behavior predictable, and monitor usage over time to catch memory leaks early. The `podman stats` and `podman update` commands are your primary tools for ongoing memory management.
