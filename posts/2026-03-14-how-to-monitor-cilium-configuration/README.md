@@ -21,6 +21,7 @@ This guide sets up monitoring for configuration state, drift detection, and heal
 - Kubernetes cluster with Cilium installed
 - Prometheus and Grafana deployed
 - kubectl and Cilium CLI configured
+- jq installed for the ConfigMap hash script
 
 ## Monitoring Agent Configuration State
 
@@ -35,9 +36,9 @@ prometheus:
 Key metrics:
 
 ```promql
-# Agent uptime (detects restarts from bad config)
+# Agent process uptime (detects restarts from bad config)
 
-cilium_agent_uptime_seconds
+time() - process_start_time_seconds{namespace="kube-system", pod=~"cilium-.*"}
 
 # BPF map operations
 rate(cilium_bpf_map_ops_total{operation="update"}[5m])
@@ -76,7 +77,7 @@ graph LR
 ```bash
 #!/bin/bash
 IMAGES=$(kubectl get pods -n kube-system -l k8s-app=cilium \
-  -o jsonpath='{.items[*].spec.containers[0].image}')
+  -o jsonpath='{.items[*].spec.containers[?(@.name=="cilium-agent")].image}')
 UNIQUE=$(echo "$IMAGES" | tr ' ' '\n' | sort -u)
 COUNT=$(echo "$UNIQUE" | wc -l)
 
@@ -101,8 +102,8 @@ spec:
       rules:
         - alert: CiliumAgentFrequentRestarts
           expr: >
-            sum(rate(kube_pod_container_status_restarts_total{
-              container="cilium-agent"}[30m])) > 2
+            sum(increase(kube_pod_container_status_restarts_total{
+              namespace="kube-system", container="cilium-agent"}[30m])) > 2
           for: 5m
           labels:
             severity: critical
@@ -110,8 +111,9 @@ spec:
             summary: "Cilium agent restarting frequently"
         - alert: CiliumAgentVersionMismatch
           expr: >
-            count(count by (container_image)
-              (kube_pod_container_info{container="cilium-agent"})) > 1
+            count(count by (image)
+              (kube_pod_container_info{
+                namespace="kube-system", container="cilium-agent"})) > 1
           for: 30m
           labels:
             severity: warning
@@ -122,14 +124,15 @@ spec:
 ## Verification
 
 ```bash
-kubectl port-forward -n kube-system svc/cilium-agent 9962:9962 &
-curl -s http://localhost:9962/metrics | grep cilium_agent_uptime
+POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-system "pod/$POD" 9962:9962 &
+curl -s http://localhost:9962/metrics | grep process_start_time_seconds
 cilium status
 ```
 
 ## Troubleshooting
 
-- **Agent uptime metric missing**: Enable Prometheus metrics in Helm values.
+- **Agent process metrics missing**: Enable Prometheus metrics in Helm values.
 - **False alerts during upgrades**: Add maintenance window or increase `for` duration.
 - **ConfigMap changes frequently**: Use Kubernetes audit logs to track who is modifying it.
 - **Version mismatch persists**: Check DaemonSet rollout status.
