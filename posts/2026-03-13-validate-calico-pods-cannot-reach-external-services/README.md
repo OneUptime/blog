@@ -12,7 +12,7 @@ Description: Validate that external service connectivity is restored for Calico 
 
 Validating that external service connectivity is restored for Calico pods requires testing multiple connectivity layers - DNS, ICMP, TCP, and HTTPS - from pods on each node in the cluster. Testing from a single pod is insufficient because natOutgoing or iptables state may differ node-by-node.
 
-Complete validation also includes confirming the natOutgoing configuration is correct on all IP pools and verifying that Felix has programmed MASQUERADE rules on each node. These configuration checks confirm the fix is durable and will not revert on calico-node restart.
+Complete validation also includes confirming the natOutgoing configuration is correct on all enabled workload IP pools and verifying that Felix has programmed MASQUERADE rules on each node. These configuration checks confirm the fix is durable and will not revert on calico-node restart.
 
 ## Symptoms
 
@@ -31,45 +31,53 @@ Complete validation also includes confirming the natOutgoing configuration is co
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   kubectl run dns-test-$(echo $NODE | sed 's/[^a-z0-9]/-/g') \
-    --image=busybox --restart=Never \
+    --image=busybox --restart=Never --labels=app=dns-test \
     --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" \
+    --command \
     -- nslookup google.com
 done
 
 sleep 15
 kubectl get pods | grep dns-test
-kubectl logs -l run=dns-test 2>/dev/null || \
+kubectl logs -l app=dns-test 2>/dev/null || \
   for POD in $(kubectl get pods | grep dns-test | awk '{print $1}'); do
     echo "--- $POD ---"; kubectl logs $POD
   done
-kubectl delete pods -l run=dns-test 2>/dev/null || true
+kubectl delete pods -l app=dns-test 2>/dev/null || true
 ```
 
 **Validation Step 2: Test TCP external connectivity from each node**
 
 ```bash
-for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | head -5); do
+for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n'); do
   SAFE_NODE=$(echo $NODE | sed 's/[^a-z0-9]/-/g')
   kubectl run tcp-test-$SAFE_NODE \
-    --image=busybox --restart=Never \
+    --image=busybox --restart=Never --labels=app=tcp-test \
     --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" \
-    -- wget -qO- --timeout=10 http://1.1.1.1
+    --command \
+    -- sh -c "wget -q -T 10 -O- http://1.1.1.1 >/dev/null && echo TCP_OK"
 done
 
 sleep 15
-for POD in $(kubectl get pods | grep tcp-test | awk '{print $1}'); do
+for POD in $(kubectl get pods -l app=tcp-test -o name); do
   echo -n "$POD: "
   kubectl logs $POD 2>&1 | head -1
 done
-kubectl get pods | grep tcp-test | awk '{print $1}' | xargs kubectl delete pod
+kubectl delete pods -l app=tcp-test
 ```
 
-**Validation Step 3: Verify natOutgoing on all IP pools**
+**Validation Step 3: Verify natOutgoing on enabled workload IP pools**
 
 ```bash
 FAIL=0
-for POOL in $(calicoctl get ippool -o jsonpath='{.items[*].metadata.name}'); do
-  NAT=$(calicoctl get ippool $POOL -o jsonpath='{.spec.natOutgoing}')
+for POOL in $(calicoctl get ippool -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}'); do
+  DISABLED=$(calicoctl get ippool $POOL -o go-template='{{range .}}{{range .Items}}{{.Spec.Disabled}}{{end}}{{end}}')
+  if [ "$DISABLED" = "true" ]; then
+    echo "SKIP: IP pool $POOL is disabled"
+    continue
+  fi
+
+  NAT=$(calicoctl get ippool $POOL -o go-template='{{range .}}{{range .Items}}{{.Spec.NATOutgoing}}{{end}}{{end}}')
   if [ "$NAT" != "true" ]; then
     echo "FAIL: IP pool $POOL has natOutgoing: $NAT"
     FAIL=1
@@ -77,14 +85,14 @@ for POOL in $(calicoctl get ippool -o jsonpath='{.items[*].metadata.name}'); do
     echo "PASS: IP pool $POOL natOutgoing: true"
   fi
 done
-[ $FAIL -eq 0 ] && echo "All IP pools validated"
+[ $FAIL -eq 0 ] && echo "All enabled workload IP pools validated"
 ```
 
 **Validation Step 4: Verify MASQUERADE rules on nodes**
 
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  COUNT=$(ssh $NODE "sudo iptables -t nat -L POSTROUTING -n 2>/dev/null | grep -c MASQUERADE" 2>/dev/null || echo "0")
+  COUNT=$(ssh $NODE "sudo iptables-save -t nat 2>/dev/null | grep -c -- '-j MASQUERADE'" 2>/dev/null || echo "0")
   if [ "$COUNT" -gt "0" ]; then
     echo "PASS: Node $NODE has $COUNT MASQUERADE rules"
   else
@@ -96,10 +104,11 @@ done
 **Validation Step 5: Full connectivity test including HTTPS**
 
 ```bash
-kubectl run full-validate --image=nicolaka/netshoot --restart=Never -- \
-  sh -c "nslookup google.com && curl -s --connect-timeout 10 https://ifconfig.me && echo HTTPS_OK"
+kubectl run full-validate --image=nicolaka/netshoot --restart=Never \
+  --command \
+  -- sh -c "nslookup google.com && curl -s --connect-timeout 10 https://ifconfig.me && echo HTTPS_OK"
 
-kubectl wait pod full-validate --for=condition=Ready --timeout=60s
+kubectl wait pod/full-validate --for=condition=Ready --timeout=60s
 kubectl logs full-validate
 kubectl delete pod full-validate
 ```
@@ -111,7 +120,7 @@ flowchart TD
     C -- No --> D[Check CoreDNS and NetworkPolicy for DNS egress]
     C -- Yes --> E[TCP external test from each node]
     E --> F{TCP passing all nodes?}
-    F -- No --> G[Check natOutgoing on all IP pools]
+    F -- No --> G[Check natOutgoing on enabled workload IP pools]
     F -- Yes --> H[Verify MASQUERADE rules on nodes]
     H --> I{Rules present?}
     I -- No --> J[Restart calico-node on affected nodes]
@@ -127,4 +136,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating external service connectivity restoration requires per-node DNS and TCP tests, natOutgoing verification on all IP pools, and MASQUERADE rule checks on each node. A fix that passes single-pod testing may still have gaps on other nodes that require calico-node reconciliation time.
+Validating external service connectivity restoration requires per-node DNS and TCP tests, natOutgoing verification on enabled workload IP pools, and MASQUERADE rule checks on each node. A fix that passes single-pod testing may still have gaps on other nodes that require calico-node reconciliation time.
