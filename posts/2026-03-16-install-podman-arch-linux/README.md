@@ -39,11 +39,11 @@ Install Podman from the official Arch repositories:
 sudo pacman -S podman buildah skopeo
 ```
 
-Install additional packages needed for rootless containers:
+Install additional packages commonly used with rootless containers:
 
 ```bash
 # Install dependencies for rootless operation
-sudo pacman -S slirp4netns fuse-overlayfs crun
+sudo pacman -S passt fuse-overlayfs crun
 ```
 
 ## Step 3: Verify the Installation
@@ -82,13 +82,13 @@ cat /etc/subgid
 
 ## Step 5: Configure Storage
 
-Set up the storage driver for rootless Podman:
+Set up the storage driver for rootless Podman if your system needs `fuse-overlayfs`:
 
 ```bash
 # Create the local containers configuration directory
 mkdir -p ~/.config/containers
 
-# Configure storage to use fuse-overlayfs for rootless mode
+# Configure storage to use fuse-overlayfs for rootless mode when native overlay is unavailable
 cat > ~/.config/containers/storage.conf <<EOF
 [storage]
 driver = "overlay"
@@ -187,10 +187,10 @@ If you get `ERRO[0000] cannot find newuidmap` errors:
 sudo pacman -S shadow
 ```
 
-If overlay storage fails in rootless mode:
+If overlay storage fails in rootless mode on a system that cannot use native rootless overlay:
 
 ```bash
-# Ensure fuse-overlayfs is installed and reset storage
+# Ensure fuse-overlayfs is installed, use the storage.conf example above if needed, and reset storage
 sudo pacman -S fuse-overlayfs
 podman system reset
 ```
@@ -205,4 +205,4 @@ cat /sys/fs/cgroup/cgroup.controllers
 
 ## Summary
 
-Podman on Arch Linux benefits from the rolling release model, giving you access to the newest features. With `fuse-overlayfs` for rootless storage and `slirp4netns` for networking, you get a complete rootless container environment. The AUR provides additional options for development builds.
+Podman on Arch Linux benefits from the rolling release model, giving you access to the newest features. With rootless overlay storage support and `pasta` from the `passt` package for networking, you get a complete rootless container environment. The AUR provides additional options for development builds.
