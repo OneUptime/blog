@@ -40,7 +40,7 @@ podman build -t myimage:latest \
   https://raw.githubusercontent.com/myorg/myapp/main/Containerfile
 ```
 
-Note that when building from a remote Containerfile URL, there is no build context. This means COPY and ADD instructions that reference local files will fail. The Containerfile must be self-contained.
+Note that when building from a remote Containerfile URL, Podman uses the downloaded Containerfile in a temporary context. This means COPY and ADD instructions that reference local project files will fail. The Containerfile must be self-contained.
 
 ## Using a Remote Containerfile with a Local Context
 
@@ -61,10 +61,11 @@ Build from tarballs attached to GitHub releases.
 ```bash
 # Build from a GitHub release tarball
 podman build -t myapp:v1.0.0 \
+  -f myapp-1.0.0/Containerfile \
   https://github.com/myorg/myapp/archive/refs/tags/v1.0.0.tar.gz
 ```
 
-The tarball must contain a Containerfile or Dockerfile at its root level (or within a single top-level directory).
+The tarball must contain a Containerfile or Dockerfile at its root level. If the archive has a top-level directory, pass the Containerfile path inside the extracted archive with `-f`.
 
 ## Building from a Remote Context with Authentication
 
