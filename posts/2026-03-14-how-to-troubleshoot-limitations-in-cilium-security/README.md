@@ -22,6 +22,7 @@ Effective troubleshooting starts with understanding what Cilium can and cannot d
 - `cilium` CLI tool installed
 - `kubectl` configured for cluster access
 - Hubble CLI installed for flow observation
+- Access to the `cilium-dbg` CLI inside Cilium agent pods
 - Familiarity with CiliumNetworkPolicy resources
 
 ## Diagnosing Policy Enforcement Failures
@@ -29,16 +30,19 @@ Effective troubleshooting starts with understanding what Cilium can and cannot d
 The first step in troubleshooting is determining whether policies are being applied correctly.
 
 ```bash
-# List all Cilium endpoints and their policy enforcement status
-
-cilium endpoint list -o json | \
+# List Cilium endpoints on a Cilium agent and their policy enforcement status
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | \
   jq '.[] | {id: .id, labels: .status.labels, policy: .status.policy.realized}'
 
 # Check for endpoints in a "not-ready" state
-cilium endpoint list | grep -v "ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | \
+  jq '.[] | select(.status.state != "ready") | {id: .id, state: .status.state, labels: .status.labels}'
 
 # View detailed status for a specific endpoint
-cilium endpoint get <ENDPOINT_ID> -o json | jq '.status.policy'
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint get <ENDPOINT_ID> -o json | jq '.status.policy'
 ```
 
 ### Identifying Identity Resolution Issues
@@ -47,14 +51,16 @@ Identity mismatches are a common cause of policy failures. When a pod's identity
 
 ```bash
 # List all identities known to Cilium
-cilium identity list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list
 
 # Check the identity assigned to a specific pod
-kubectl get cep <POD_NAME> -n <NAMESPACE> -o json | \
+kubectl get ciliumendpoint <POD_NAME> -n <NAMESPACE> -o json | \
   jq '.status.identity'
 
 # Verify that identity labels match your policy selectors
-cilium identity get <IDENTITY_ID> -o json | jq '.labels'
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity get <IDENTITY_ID> -o json | jq '.labels'
 ```
 
 ### Debugging DNS-Based Policy Issues
@@ -63,10 +69,12 @@ DNS-based policies require DNS queries to pass through Cilium's DNS proxy. If DN
 
 ```bash
 # Check the Cilium DNS proxy status
-cilium status --verbose | grep -A 10 "DNS"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | grep -A 10 "DNS"
 
 # View cached FQDN to IP mappings
-cilium fqdn cache list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg fqdn cache list
 
 # Monitor DNS queries in real time
 hubble observe --protocol dns --output json | \
@@ -83,6 +91,7 @@ metadata:
   namespace: production
 spec:
   dnsPolicy: ClusterFirst
+  restartPolicy: Never
   containers:
     - name: debug
       image: busybox:1.36
@@ -95,8 +104,9 @@ spec:
 Layer 7 policies add complexity and potential failure points. Use these techniques to diagnose L7-related problems.
 
 ```bash
-# Check Envoy proxy status for all Cilium agents
-kubectl -n kube-system exec -it ds/cilium -- cilium status --verbose | \
+# Check Envoy proxy status on a Cilium agent
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | \
   grep -A 15 "Proxy"
 
 # View Envoy access logs for denied requests
@@ -127,7 +137,7 @@ hubble observe --verdict DROPPED --output json | \
 
 # Generate a Hubble flow summary
 hubble observe --last 1000 --output json | \
-  jq '[.flow.verdict] | group_by(.) | map({verdict: .[0], count: length})'
+  jq -s '[.[].flow.verdict] | group_by(.) | map({verdict: .[0], count: length})'
 ```
 
 ## Verification
@@ -138,21 +148,23 @@ After applying fixes, verify that policies are working correctly.
 # Run a connectivity test using Cilium's built-in test suite
 cilium connectivity test
 
-# Check that all endpoints are healthy
-cilium endpoint health
+# Check health for a specific endpoint
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint health <ENDPOINT_ID>
 
 # Verify specific policy rules are in the realized state
-cilium policy get -o json | \
-  jq '.[] | select(.metadata.name == "your-policy-name")'
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint get <ENDPOINT_ID> -o json | jq '.status.policy.realized'
 
 # Monitor for any remaining policy drops
-cilium monitor --type drop --output json | head -50
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop --json | head -50
 ```
 
 ## Troubleshooting
 
 - **Endpoints stuck in regenerating state**: Check Cilium agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent | grep "regenerat"`.
-- **FQDN cache empty**: Confirm that the DNS proxy is enabled with `cilium status --verbose` and that pods resolve DNS through kube-dns.
+- **FQDN cache empty**: Confirm that the DNS proxy is enabled with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg status --verbose` and that pods resolve DNS through kube-dns.
 - **L7 policies not matching**: Verify the Envoy proxy is running correctly and that the port matches the application protocol.
 - **High drop rate after policy change**: Use `hubble observe --verdict DROPPED` to identify which flows are affected and adjust the policy accordingly.
 
