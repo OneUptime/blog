@@ -70,16 +70,20 @@ Cap the maximum read speed from a device:
 podman run --rm \
   --device-read-bps /dev/sda:10mb \
   alpine sh -c "
+    dd if=/dev/zero of=/tmp/read-test bs=1M count=50 oflag=direct 2>/dev/null
     echo 'Reading with 10MB/s limit...'
-    time dd if=/dev/zero of=/dev/null bs=1M count=50 2>&1
+    time dd if=/tmp/read-test of=/dev/null bs=1M iflag=direct 2>&1
+    rm -f /tmp/read-test
   "
 
 # Limit reads to 1 megabyte per second (very restrictive)
 podman run --rm \
   --device-read-bps /dev/sda:1mb \
   alpine sh -c "
+    dd if=/dev/zero of=/tmp/read-test bs=1M count=5 oflag=direct 2>/dev/null
     echo 'Reading with 1MB/s limit...'
-    time dd if=/dev/zero of=/dev/null bs=1M count=5 2>&1
+    time dd if=/tmp/read-test of=/dev/null bs=1M iflag=direct 2>&1
+    rm -f /tmp/read-test
   "
 ```
 
@@ -116,16 +120,20 @@ Control the number of read operations per second:
 podman run --rm \
   --device-read-iops /dev/sda:100 \
   alpine sh -c "
+    dd if=/dev/zero of=/tmp/read-test bs=4k count=500 oflag=direct 2>/dev/null
     echo 'Reading with 100 IOPS limit...'
-    time dd if=/dev/zero of=/dev/null bs=4k count=500 2>&1
+    time dd if=/tmp/read-test of=/dev/null bs=4k iflag=direct 2>&1
+    rm -f /tmp/read-test
   "
 
 # Limit to 1000 IOPS
 podman run --rm \
   --device-read-iops /dev/sda:1000 \
   alpine sh -c "
+    dd if=/dev/zero of=/tmp/read-test bs=4k count=5000 oflag=direct 2>/dev/null
     echo 'Reading with 1000 IOPS limit...'
-    time dd if=/dev/zero of=/dev/null bs=4k count=5000 2>&1
+    time dd if=/tmp/read-test of=/dev/null bs=4k iflag=direct 2>&1
+    rm -f /tmp/read-test
   "
 ```
 
