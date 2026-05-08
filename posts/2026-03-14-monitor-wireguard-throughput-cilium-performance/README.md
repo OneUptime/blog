@@ -25,17 +25,17 @@ Effective monitoring ensures you detect throughput degradation from WireGuard-sp
 
 ## Enabling WireGuard Metrics
 
-Cilium exports WireGuard-related metrics automatically when encryption is enabled:
+Cilium exports general forwarding, drop, and feature metrics when Prometheus metrics are enabled, while WireGuard tunnel throughput can be measured from the `cilium_wg0` interface:
 
 ```bash
 # Verify metrics are available
 
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i encrypt
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -E 'transparent_encryption|forward_bytes_total|drop_count_total'
 
 # Key metrics:
-# cilium_wireguard_peers - Number of WireGuard peers
-# cilium_forward_bytes_total - Bytes forwarded (includes encrypted)
-# cilium_drop_count_total{reason="Encryption"} - Encryption-related drops
+# cilium_feature_adv_connect_and_lb_transparent_encryption{mode="wireguard"} - WireGuard encryption enabled
+# cilium_forward_bytes_total - Bytes forwarded by the Cilium datapath
+# cilium_drop_count_total - Packets dropped by the Cilium datapath, labeled by reason and direction
 ```
 
 ## WireGuard Interface Monitoring
@@ -79,15 +79,16 @@ spec:
             ERRORS=$(cat /sys/class/net/cilium_wg0/statistics/rx_errors 2>/dev/null || echo 0)
 
             # Write Prometheus metrics
-            cat > /tmp/metrics << PROM
-            wireguard_rx_bytes_total $RX
-            wireguard_tx_bytes_total $TX
-            wireguard_rx_packets_total $RX_PKT
-            wireguard_tx_packets_total $TX_PKT
-            wireguard_errors_total $ERRORS
-            PROM
+            cat > /tmp/metrics <<PROM
+          wireguard_rx_bytes_total $RX
+          wireguard_tx_bytes_total $TX
+          wireguard_rx_packets_total $RX_PKT
+          wireguard_tx_packets_total $TX_PKT
+          wireguard_errors_total $ERRORS
+          PROM
             sleep 15
-          done
+          done &
+          exec httpd -f -p 9101 -h /tmp
         ports:
         - containerPort: 9101
 ```
@@ -120,13 +121,13 @@ spec:
         severity: warning
       annotations:
         summary: "WireGuard interface errors detected"
-    - alert: WireGuardPeerDown
-      expr: cilium_wireguard_peers < count(kube_node_info) - 1
+    - alert: WireGuardEncryptionDisabled
+      expr: cilium_feature_adv_connect_and_lb_transparent_encryption{mode="wireguard"} != 1
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Not all nodes have WireGuard peer connections"
+        summary: "WireGuard encryption is not enabled on a Cilium agent"
 ```
 
 ## Grafana Dashboard
@@ -158,11 +159,11 @@ Create a dashboard comparing encrypted vs unencrypted performance:
         ]
       },
       {
-        "title": "WireGuard Peer Count",
+        "title": "WireGuard Encryption Enabled",
         "type": "stat",
         "targets": [
           {
-            "expr": "cilium_wireguard_peers"
+            "expr": "cilium_feature_adv_connect_and_lb_transparent_encryption{mode=\"wireguard\"}"
           }
         ]
       }
@@ -175,10 +176,10 @@ Create a dashboard comparing encrypted vs unencrypted performance:
 
 ```bash
 # Verify metrics collection
-curl -s http://prometheus:9090/api/v1/query?query=wireguard_tx_bytes_total
+curl -G -s http://prometheus:9090/api/v1/query --data-urlencode 'query=wireguard_tx_bytes_total'
 
 # Check WireGuard peer status
-cilium encrypt status
+cilium encryption status --per-node-details
 
 # Verify dashboard data
 echo "Open Grafana and check the WireGuard Performance dashboard"
@@ -187,7 +188,7 @@ echo "Open Grafana and check the WireGuard Performance dashboard"
 ## Troubleshooting
 
 - **No WireGuard metrics**: Verify `cilium_wg0` interface exists on nodes with `ip link show cilium_wg0`.
-- **Peer count incorrect**: Check Cilium agent logs for WireGuard peer negotiation errors.
+- **Peer status incorrect**: Check `cilium encryption status --per-node-details` and Cilium agent logs for WireGuard peer negotiation errors.
 - **Throughput ratio too low**: Profile CPU usage during transfer; check for CPU saturation from crypto.
 - **Errors on WireGuard interface**: Check kernel logs with `dmesg | grep wireguard`.
 
