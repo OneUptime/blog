@@ -29,7 +29,7 @@ Validate Calico configurations before applying them to production:
 ```bash
 # Use calicoctl to validate manifests
 
-calicoctl apply -f calico-config.yaml --dry-run
+calicoctl validate -f calico-config.yaml
 
 # Compare your manifest against the live configuration
 diff <(calicoctl get ippools -o yaml) ippool.yaml
@@ -48,7 +48,7 @@ set -euo pipefail
 
 for manifest in calico-resources/*.yaml; do
   echo "Validating $manifest..."
-  calicoctl apply -f "$manifest" --dry-run || exit 1
+  calicoctl validate -f "$manifest" || exit 1
 done
 
 echo "All Calico manifests are valid."
@@ -63,10 +63,10 @@ Set up monitoring to detect drift before it causes errors:
 calicoctl ipam show
 
 # Verify all calico-node pods are healthy
-kubectl get pods -n calico-system -l k8s-app=calico-node
+kubectl get pods -A -l k8s-app=calico-node
 
 # Check for warning events
-kubectl get events -n calico-system --field-selector type=Warning
+kubectl get events -A --field-selector type=Warning | grep -E 'calico-system|kube-system|tigera-operator|calico-node'
 ```
 
 ## Prevention Strategy 4: Capacity Planning
@@ -105,7 +105,7 @@ calicoctl get bgpconfigurations -o yaml > pre-upgrade-bgp.yaml
 calicoctl get globalnetworkpolicies -o yaml > pre-upgrade-gnp.yaml
 
 # Verify cluster health before upgrading
-kubectl get pods -n calico-system
+kubectl get pods -A -l k8s-app=calico-node
 calicoctl node status
 ```
 
@@ -148,18 +148,18 @@ After deploying a Calico configuration change:
 - [ ] All calico-node pods are Running with zero restarts
 - [ ] Cross-node pod connectivity has been tested
 - [ ] DNS resolution works from test pods
-- [ ] No new Warning events in the calico-system namespace
+- [ ] No new Calico-related Warning events
 - [ ] Prometheus metrics show no anomalies
 - [ ] The change has been documented in the team's change log
 
 ```bash
 # Automated post-deployment verification
 echo "Checking calico-node pods..."
-kubectl get pods -n calico-system -l k8s-app=calico-node --no-headers | grep -v Running && echo "FAIL: Some calico-node pods not running" || echo "PASS: All calico-node pods running"
+kubectl get pods -A -l k8s-app=calico-node --no-headers | grep -v Running && echo "FAIL: Some calico-node pods not running" || echo "PASS: All calico-node pods running"
 
 echo "Checking for warning events..."
-WARNINGS=$(kubectl get events -n calico-system --field-selector type=Warning --no-headers 2>/dev/null | wc -l)
-echo "Warning events in calico-system: $WARNINGS"
+WARNINGS=$(kubectl get events -A --field-selector type=Warning --no-headers 2>/dev/null | grep -E 'calico-system|kube-system|tigera-operator|calico-node' | wc -l)
+echo "Calico-related warning events: $WARNINGS"
 
 echo "Checking IPAM health..."
 calicoctl ipam show
@@ -192,7 +192,7 @@ After applying any fix, systematically verify each layer of the Calico stack:
 
 ```bash
 # Layer 1: Calico system pods
-kubectl get pods -n calico-system -o wide
+kubectl get pods -A -l k8s-app=calico-node -o wide
 
 # Layer 2: IPAM consistency
 calicoctl ipam check
@@ -200,8 +200,8 @@ calicoctl ipam check
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: DNS resolution
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- nslookup kubernetes.default.svc
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
