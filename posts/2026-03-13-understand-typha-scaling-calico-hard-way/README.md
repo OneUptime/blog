@@ -42,8 +42,8 @@ Understanding when Felix connects, disconnects, and reconnects to Typha explains
 ```plaintext
 Startup:
 1. Felix starts on a new node
-2. Felix resolves the calico-typha Service DNS name
-3. Kubernetes returns one Typha pod IP (round-robin across ready endpoints)
+2. Felix discovers ready Typha endpoints from the calico-typha Service
+3. Felix chooses one ready Typha endpoint from a shuffled endpoint list
 4. Felix opens a TCP connection to that Typha pod on port 5473
 5. Felix receives a full state snapshot from Typha (all current resources)
 6. Felix begins receiving incremental updates as resources change
@@ -56,7 +56,7 @@ Steady state:
 Typha pod restart:
 1. Typha pod is deleted or crashes
 2. Felix detects connection drop (TCP disconnect or timeout)
-3. Felix re-resolves the Service DNS name
+3. Felix refreshes the ready Typha endpoint list
 4. Felix connects to a different Typha pod endpoint
 5. Felix receives a new full state snapshot
 6. Policy enforcement briefly uses stale state during reconnect window
@@ -81,11 +81,12 @@ This formula is based on two constraints:
 Verify these assumptions against your actual resource usage:
 
 ```bash
-# Check Typha memory and CPU usage across all pods
+# Check Typha memory and CPU usage across all pods.
 
 kubectl top pods -n kube-system -l k8s-app=calico-typha
 
-# Compare to the number of Felix clients connected per pod
+# Compare to the number of Felix clients connected per pod.
+# This assumes Typha Prometheus metrics are enabled on port 9093.
 for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
   connections=$(kubectl exec -n kube-system $pod -- \
     wget -qO- http://localhost:9093/metrics 2>/dev/null \
@@ -98,23 +99,25 @@ done
 
 ## Step 4: Understanding Connection Distribution
 
-Felix resolves the Typha Service DNS name once on startup and connects to one pod. It does not rebalance unless the connection drops. This means:
+Felix discovers Typha endpoints at startup and connects to one ready pod. It does not move an established connection just because you add a Typha replica. This means:
 
-- New nodes connecting after a scale-up event will spread across all Typha pods (DNS round-robin)
+- New nodes connecting after a scale-up event can spread across all ready Typha pods because Felix shuffles the endpoint list
 - Old nodes continue using their existing connections even if one pod has more connections than others
 - After a Typha pod restart, all Felix agents that were connected to it must reconnect, causing a burst of simultaneous reconnections to the remaining pods
 
-This is why setting `TYPHA_MAXCONNECTIONSLOWERLIMIT` on each Typha pod matters: when a pod reaches its connection limit, it sends Felix a redirect response, causing Felix to try the next endpoint. This naturally distributes connections across all healthy pods.
+This is why setting `TYPHA_CONNECTIONREBALANCINGMODE=kubernetes` and appropriate connection limits on each Typha pod matters: Typha calculates a per-pod connection target from the number of nodes and Typha endpoints. If a pod is above that target, it drops existing connections gradually so Felix reconnects to another ready endpoint. `TYPHA_MAXCONNECTIONSLOWERLIMIT` is the floor for that calculated target, not a hard "reject new clients at this number" cap.
 
 ```yaml
 # typha-connection-cap.yaml
-# Typha environment variable that caps connections per pod to enforce distribution
+# Typha environment variables that enable Kubernetes-aware connection rebalancing
 # Place this in the Typha Deployment's container env section
 env:
+  - name: TYPHA_CONNECTIONREBALANCINGMODE
+    value: "kubernetes"
   - name: TYPHA_MAXCONNECTIONSLOWERLIMIT
     value: "100"
-    # When this pod has 100 active connections, new Felix clients will be redirected
-    # to other Typha endpoints, preventing hot spots
+    # Typha will not calculate a rebalance target below 100 active connections.
+    # Pods above the calculated target gradually drop connections so Felix reconnects.
 ```
 
 ---
@@ -132,10 +135,10 @@ kubectl port-forward -n kube-system $TYPHA_POD 9093:9093 &
 sleep 2
 
 # Rate of connections accepted (high rate indicates a reconnection storm)
-curl -s http://localhost:9093/metrics | grep typha_connections_accepted_total
+curl -s http://localhost:9093/metrics | grep '^typha_connections_accepted '
 
-# Rate of snapshots generated (one per reconnecting Felix client)
-curl -s http://localhost:9093/metrics | grep typha_snapshots_generated_total
+# Rate of snapshots generated (binary snapshots may be reused across reconnecting clients)
+curl -s http://localhost:9093/metrics | grep '^typha_snapshots_generated'
 
 kill %1
 ```
@@ -144,10 +147,10 @@ kill %1
 
 ## Best Practices
 
-- Always set `TYPHA_MAXCONNECTIONSLOWERLIMIT` to enforce connection distribution; without it, Felix agents connect to the Typha pod whose DNS response they received last, which can be uneven.
+- Enable `TYPHA_CONNECTIONREBALANCINGMODE=kubernetes` and set sensible lower and upper connection limits; without rebalancing, Felix agents keep their existing Typha connections and distribution can remain uneven after scale events.
 - Size memory limits generously - the per-client send buffer is allocated when Felix connects, and a sudden influx of reconnecting clients can spike memory usage well above the steady-state value.
 - Use the rolling restart strategy (`kubectl rollout restart`) instead of deleting pods directly; it staggers restarts to limit the simultaneous reconnection load.
-- Monitor `typha_snapshots_generated_total` rate as an indicator of reconnection events; a spike above the baseline indicates a pod restart or Felix agent restart event.
+- Monitor `typha_connections_accepted`, `typha_snapshots_generated`, and `typha_snapshots_reused` rates as indicators of reconnect activity; a spike above the baseline indicates a pod restart or Felix agent restart event.
 - When planning Typha scaling, factor in the reconnection storm: a pod that serves 200 Felix clients will generate 200 simultaneous reconnects when it restarts. Size your remaining pods to handle this burst.
 
 ---
