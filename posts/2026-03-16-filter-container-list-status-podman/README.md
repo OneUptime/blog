@@ -19,11 +19,11 @@ When managing many containers, you need to filter the list to find specific ones
 Podman containers can be in these states:
 
 - `created` - Container has been created but never started
+- `initialized` - Container storage has been initialized but the container is not running
 - `running` - Container is currently running
 - `paused` - Container processes are frozen
 - `exited` - Container has stopped (process exited)
-- `dead` - Container is in a dead/error state
-- `removing` - Container is being removed
+- `unknown` - Container state cannot be determined
 
 ## Filtering Running Containers
 
@@ -81,11 +81,11 @@ Use multiple `--filter` flags to match containers in any of the specified states
 # Show containers that are either running or paused
 podman ps -a --filter status=running --filter status=paused
 
-# Show all non-running containers (exited + created)
+# Show common non-running containers (exited + created)
 podman ps -a --filter status=exited --filter status=created
 
 # Show everything except running
-podman ps -a --filter status=exited --filter status=created --filter status=paused
+podman ps -a --filter status=exited --filter status=created --filter status=initialized --filter status=paused --filter status=unknown
 ```
 
 ## Practical Examples
@@ -124,8 +124,8 @@ podman ps -a --filter status=exited -q | xargs -r podman rm
 # Remove all created (never started) containers
 podman ps -a --filter status=created -q | xargs -r podman rm
 
-# Remove dead containers
-podman ps -a --filter status=dead -q | xargs -r podman rm -f
+# Remove containers in an unknown state
+podman ps -a --filter status=unknown -q | xargs -r podman rm -f
 ```
 
 ### Status Dashboard
@@ -138,7 +138,7 @@ echo "Container Status Dashboard"
 echo "========================="
 echo ""
 
-for status in running paused exited created dead; do
+for status in running paused exited created initialized unknown; do
   COUNT=$(podman ps -a --filter status=$status -q | wc -l)
   if [ "$COUNT" -gt 0 ]; then
     echo "[$status] ($COUNT containers)"
