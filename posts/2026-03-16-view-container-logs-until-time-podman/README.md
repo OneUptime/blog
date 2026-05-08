@@ -28,7 +28,7 @@ podman logs --until "2026-03-16T15:00:00" my-container
 podman logs --until "2026-03-16T15:00:00Z" my-container
 
 # View logs until a Unix timestamp
-podman logs --until 1773940200 my-container
+podman logs --until 1773673200 my-container
 ```
 
 ## Define a Time Window with --since and --until
@@ -166,7 +166,7 @@ podman logs \
 # Analyze log volume per hour
 for hour in $(seq 0 23); do
   HOUR_START=$(printf "2026-03-16T%02d:00:00" $hour)
-  HOUR_END=$(printf "2026-03-16T%02d:00:00" $((hour + 1)))
+  HOUR_END=$(date -d "2026-03-16 $hour:00:00 1 hour" +"%Y-%m-%dT%H:%M:%S")
   COUNT=$(podman logs --since "$HOUR_START" --until "$HOUR_END" my-container 2>&1 | wc -l)
   printf "Hour %02d: %d lines\n" $hour $COUNT
 done
