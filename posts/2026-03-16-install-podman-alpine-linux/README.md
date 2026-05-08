@@ -51,10 +51,10 @@ Install Podman and its dependencies:
 
 ```bash
 # Install Podman with rootless dependencies
-sudo apk add podman fuse-overlayfs slirp4netns shadow-uidmap
+sudo apk add podman fuse-overlayfs slirp4netns shadow shadow-subids
 ```
 
-The `shadow-uidmap` package provides `newuidmap` and `newgidmap` needed for rootless containers.
+The `shadow-subids` package provides `newuidmap` and `newgidmap` needed for rootless containers, and the `shadow` package provides `usermod`.
 
 ## Step 4: Configure the Kernel Modules
 
@@ -103,9 +103,9 @@ mount_program = "/usr/bin/fuse-overlayfs"
 EOF
 ```
 
-## Step 7: Enable cgroups v2
+## Step 7: Enable cgroups
 
-Alpine Linux supports cgroups v2, which Podman uses for resource management:
+Alpine Linux supports cgroups v2, and current Alpine releases use unified cgroups by default. Enable the cgroups service so Podman can use cgroups for resource management:
 
 ```bash
 # Check if cgroups v2 is enabled
