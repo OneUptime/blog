@@ -25,8 +25,18 @@ Auditing AWS secrets in Cilium means reviewing how credentials are stored, used,
 
 aws iam list-attached-role-policies --role-name cilium-role
 
-# Get the policy document
-aws iam get-role-policy --role-name cilium-role --policy-name CiliumPolicy
+# Get an attached managed policy document
+POLICY_ARN=$(aws iam list-attached-role-policies \
+  --role-name cilium-role \
+  --query 'AttachedPolicies[?PolicyName==`CiliumPolicy`].PolicyArn' \
+  --output text)
+VERSION_ID=$(aws iam get-policy \
+  --policy-arn "$POLICY_ARN" \
+  --query 'Policy.DefaultVersionId' \
+  --output text)
+aws iam get-policy-version \
+  --policy-arn "$POLICY_ARN" \
+  --version-id "$VERSION_ID"
 
 # Check for overly broad permissions
 aws iam simulate-principal-policy \
@@ -39,15 +49,15 @@ aws iam simulate-principal-policy \
 ```bash
 # Find all API calls made by Cilium
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=Username,AttributeValue=cilium-role \
-  --start-time $(date -d '7 days ago' +%Y-%m-%dT%H:%M:%S) \
-  --max-items 50
+  --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --max-items 50 | \
+  jq '.Events[] | select((.CloudTrailEvent | fromjson | .userIdentity.sessionContext.sessionIssuer.userName? // .userIdentity.userName? // "") == "cilium-role")'
 
 # Check for unusual API calls
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=Username,AttributeValue=cilium-role \
-  --start-time $(date -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) | \
-  jq '.Events[].EventName' | sort | uniq -c | sort -rn
+  --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) | \
+  jq -r '.Events[] | select((.CloudTrailEvent | fromjson | .userIdentity.sessionContext.sessionIssuer.userName? // .userIdentity.userName? // "") == "cilium-role") | .EventName' | \
+  sort | uniq -c | sort -rn
 ```
 
 ```mermaid
@@ -65,15 +75,15 @@ graph LR
 ```bash
 # Check for AWS credentials in secrets
 kubectl get secrets -n kube-system -o json | \
-  jq '.items[] | select(.data | keys[] | test("aws|key|secret"; "i")) | .metadata.name'
+  jq '.items[] | select(any((.data // {}) | keys[]; test("aws|key|secret"; "i"))) | .metadata.name'
 
 # Check for credentials in environment variables
 kubectl get deployment cilium-operator -n kube-system -o json | \
-  jq '.spec.template.spec.containers[].env[] | select(.name | test("AWS"; "i"))'
+  jq '.spec.template.spec.containers[].env[]? | select(.name | test("AWS"; "i"))'
 
 # Audit RBAC for secret access
-kubectl get rolebindings,clusterrolebindings -A -o json | \
-  jq '.items[] | select(.roleRef.name | test("secret"; "i")) | .metadata.name'
+kubectl get roles,clusterroles -A -o json | \
+  jq '.items[] | select(any(.rules[]?; ((.resources // []) | index("secrets") or index("*")))) | {kind, namespace: .metadata.namespace, name: .metadata.name}'
 ```
 
 ## Verification
@@ -81,7 +91,7 @@ kubectl get rolebindings,clusterrolebindings -A -o json | \
 ```bash
 # Verify audit findings
 aws iam get-role --role-name cilium-role
-kubectl exec -n kube-system -l k8s-app=cilium -- aws sts get-caller-identity
+kubectl get serviceaccount cilium-operator -n kube-system -o yaml
 ```
 
 ## Troubleshooting
