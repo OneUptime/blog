@@ -10,7 +10,7 @@ Description: Create Calico GlobalNetworkSet resources to define reusable sets of
 
 ## Introduction
 
-A Calico GlobalNetworkSet is a cluster-scoped resource that holds a collection of IP addresses, CIDRs, or domain names. You reference these sets from GlobalNetworkPolicy rules instead of hardcoding IP addresses directly into policies. This separation makes policy management cleaner and updates simpler.
+A Calico GlobalNetworkSet is a cluster-scoped resource that holds a collection of IP networks in CIDR notation. You reference these sets from GlobalNetworkPolicy rules instead of hardcoding IP addresses directly into policies. This separation makes policy management cleaner and updates simpler.
 
 GlobalNetworkSets are particularly useful for managing lists of trusted external services, blocked IP ranges, or partner network addresses. When an IP list changes, you update the GlobalNetworkSet once rather than editing every policy that references it.
 
@@ -136,10 +136,10 @@ Verify the labels are correctly set:
 calicoctl get globalnetworkset -o yaml | grep -A3 "labels:"
 ```
 
-Confirm the policy correctly references the network set by testing connectivity:
+Confirm the policy correctly references the network set by testing connectivity to an address in the deny list:
 
 ```bash
-kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=3 http://203.0.113.10/
+kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=3 http://198.18.0.1/
 ```
 
 ## Troubleshooting
@@ -152,7 +152,7 @@ Check that the GlobalNetworkSet exists:
 calicoctl get globalnetworkset threat-intel-blocklist -o yaml
 ```
 
-Verify the nets field contains valid CIDR notation. Single hosts must use /32 suffix:
+Verify the nets field contains valid CIDR notation. Single IPv4 hosts must use a /32 suffix, and single IPv6 hosts must use a /128 suffix:
 
 ```bash
 calicoctl get globalnetworkset -o yaml | grep -A10 "nets:"
