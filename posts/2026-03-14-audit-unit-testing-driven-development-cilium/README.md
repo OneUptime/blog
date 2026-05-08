@@ -127,16 +127,16 @@ Flag tests with weak assertions:
 // AUDIT FINDING: FAIL - test with no assertions
 func TestOnData_NoAssert(t *testing.T) {
     parser := &Parser{state: stateRunning}
-    reader := proxylib.NewTestReader(data)
-    parser.OnData(false, reader)
+    reader := proxylib.NewReader([][]byte{data}, false)
+    parser.OnData(false, &reader)
     // No assertion - test always passes
 }
 
 // AUDIT FINDING: FAIL - test only checks one of two return values
 func TestOnData_PartialAssert(t *testing.T) {
     parser := &Parser{state: stateRunning}
-    reader := proxylib.NewTestReader(data)
-    op, _ := parser.OnData(false, reader)  // Ignores byte count
+    reader := proxylib.NewReader([][]byte{data}, false)
+    op, _ := parser.OnData(false, &reader)  // Ignores byte count
     if op != proxylib.PASS {
         t.Error("wrong op")
     }
@@ -147,8 +147,8 @@ func TestOnData_PartialAssert(t *testing.T) {
 func TestOnData_FullAssert(t *testing.T) {
     parser := &Parser{state: stateRunning}
     msg := makeValidMessage(0x01, payload)
-    reader := proxylib.NewTestReader(msg)
-    op, n := parser.OnData(false, reader)
+    reader := proxylib.NewReader([][]byte{msg}, false)
+    op, n := parser.OnData(false, &reader)
 
     if op != proxylib.PASS {
         t.Errorf("Expected PASS, got %v", op)
