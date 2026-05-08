@@ -68,7 +68,7 @@ mindmap
       get -o yaml
       get --all-namespaces
     Write
-      apply (create or update)
+      apply (create or replace)
       create (new only)
       replace (update only)
       patch (partial update)
