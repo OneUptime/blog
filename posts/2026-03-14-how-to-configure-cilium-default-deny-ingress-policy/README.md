@@ -51,7 +51,8 @@ metadata:
   namespace: default
 spec:
   endpointSelector: {}
-  ingress: []
+  ingress:
+    - {}
 ```
 
 ```bash
@@ -78,7 +79,8 @@ metadata:
   namespace: $ns
 spec:
   endpointSelector: {}
-  ingress: []
+  ingress:
+    - {}
 EOF
   echo "Applied default deny to namespace: $ns"
 done
@@ -89,7 +91,7 @@ graph TD
     A[Default Deny Applied] --> B[All Ingress Blocked]
     B --> C[Create Allow Policies]
     C --> D[Frontend -> Backend Allowed]
-    C --> E[Monitoring -> All Allowed]
+    C --> E[Monitoring -> Port 9090 Allowed]
     C --> F[Other Traffic Blocked]
 ```
 
@@ -148,7 +150,8 @@ metadata:
   name: default-deny-ingress-clusterwide
 spec:
   endpointSelector: {}
-  ingress: []
+  ingress:
+    - {}
 ```
 
 ## Verification
@@ -179,7 +182,7 @@ kubectl exec -n default deploy/frontend -- \
 
 - **Policy not taking effect**: Check that Cilium agent is running and endpoints show `enforcing: true`.
 - **Legitimate traffic blocked**: Create specific allow policies for required communication paths.
-- **DNS resolution broken**: Add a policy allowing DNS traffic to kube-dns on port 53.
+- **DNS resolution broken**: If you also add default deny egress, add a policy allowing DNS traffic to kube-dns on port 53.
 - **Health checks failing**: Add allow policies for kubelet health check traffic.
 
 ## Conclusion
