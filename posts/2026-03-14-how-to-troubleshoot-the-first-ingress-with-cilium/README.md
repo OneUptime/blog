@@ -12,13 +12,14 @@ Description: How to diagnose and fix common issues when setting up your first Ci
 
 Cilium can function as a Kubernetes Ingress controller, replacing external solutions like NGINX Ingress. When setting up your first Cilium Ingress, common issues include the Ingress not getting an external IP, routing not reaching backend services, TLS termination failures, and HTTP path matching not working as expected.
 
-Most first-time Ingress issues stem from Cilium not being configured as an Ingress controller, missing IngressClass configuration, or the Envoy proxy not being enabled.
+Most first-time Ingress issues stem from Cilium not being configured as an Ingress controller, missing IngressClass configuration, or the Envoy proxy not running correctly.
 
 This guide walks through the most common setup issues and their fixes.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed (v1.14+)
+- Cilium configured with kube-proxy replacement and the L7 proxy enabled
 - kubectl configured
 - A test application deployed with a Service
 
@@ -27,9 +28,9 @@ This guide walks through the most common setup issues and their fixes.
 First, ensure Cilium Ingress is enabled:
 
 ```bash
-# Check if Ingress is enabled
-
-cilium status | grep -i ingress
+# Check if Ingress is enabled and the Cilium IngressClass exists
+kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-ingress-controller}{"\n"}'
+kubectl get ingressclass cilium
 
 # Enable Ingress controller
 helm upgrade cilium cilium/cilium \
@@ -38,6 +39,9 @@ helm upgrade cilium cilium/cilium \
   --set ingressController.enabled=true \
   --set ingressController.default=true \
   --set ingressController.loadbalancerMode=shared
+
+kubectl -n kube-system rollout restart deployment/cilium-operator
+kubectl -n kube-system rollout restart ds/cilium
 ```
 
 ## Diagnosing Ingress Issues
@@ -49,7 +53,8 @@ kubectl get ingress
 # Check if the Ingress has an address
 kubectl get ingress <name> -o jsonpath='{.status.loadBalancer.ingress}'
 
-# Check Cilium Envoy proxy
+# Check Cilium and, if enabled, the standalone Cilium Envoy DaemonSet
+kubectl get pods -n kube-system -l k8s-app=cilium
 kubectl get pods -n kube-system -l k8s-app=cilium-envoy
 
 # View Ingress-related events
@@ -83,6 +88,9 @@ helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set ingressController.service.type=NodePort
+
+kubectl -n kube-system rollout restart deployment/cilium-operator
+kubectl -n kube-system rollout restart ds/cilium
 ```
 
 ## Fixing Routing Issues
@@ -110,12 +118,15 @@ spec:
 EOF
 
 # Test routing
-INGRESS_IP=$(kubectl get ingress test-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -H "Host: test.example.com" http://$INGRESS_IP/
+INGRESS_ADDR=$(kubectl get ingress test-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -H "Host: test.example.com" http://$INGRESS_ADDR/
 
-# Check Envoy listeners
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  cilium bpf lb list
+# Check the Cilium proxy status
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg status | grep -i "proxy status"
+
+# Check for Ingress-related proxy programming messages
+kubectl logs -n kube-system ds/cilium --timestamps | grep -i cilium-ingress
 ```
 
 ## Fixing TLS Issues
@@ -155,8 +166,11 @@ EOF
 
 ```bash
 kubectl get ingress
-curl -v -H "Host: test.example.com" http://$INGRESS_IP/
-cilium status | grep -i ingress
+INGRESS_ADDR=$(kubectl get ingress test-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -v -H "Host: test.example.com" http://$INGRESS_ADDR/
+curl -vk --connect-to test.example.com:443:$INGRESS_ADDR:443 https://test.example.com/
+kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-ingress-controller}{"\n"}'
+kubectl get ingressclass cilium
 ```
 
 ## Troubleshooting
