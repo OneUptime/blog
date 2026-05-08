@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, WireGuard, Encryption, Performance, Throughput
 
-Description: How to tune Cilium's WireGuard encryption for maximum throughput, including kernel configuration, CPU allocation, and hardware offload options.
+Description: How to tune Cilium's WireGuard encryption for maximum throughput, including kernel configuration, CPU allocation, MTU, and routing options.
 
 ---
 
 ## Introduction
 
-Cilium supports WireGuard for transparent encryption of pod-to-pod traffic across nodes. WireGuard is significantly faster than IPsec due to its modern cryptographic primitives and lean kernel implementation, but it still adds CPU overhead for encryption and decryption operations that can reduce throughput compared to unencrypted networking.
+Cilium supports WireGuard for transparent encryption of pod-to-pod traffic across nodes. WireGuard can achieve high maximum throughput due to its modern cryptographic primitives and lean kernel implementation, but performance relative to IPsec depends on hardware and available acceleration. It still adds CPU overhead for encryption and decryption operations that can reduce throughput compared to unencrypted networking.
 
 Tuning WireGuard throughput in Cilium involves optimizing the kernel's WireGuard module, ensuring efficient CPU utilization for crypto operations, and configuring Cilium to minimize overhead in the encryption path.
 
@@ -29,17 +29,17 @@ This guide covers the specific tuning steps to maximize encrypted throughput wit
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
-  --set encryption.type=wireguard \
-  --set encryption.wireguard.userspaceFallback=false
+  --set encryption.type=wireguard
 ```
 
 Verify WireGuard is active:
 
 ```bash
-cilium encrypt status
-# Should show: Encryption: WireGuard
+cilium encryption status
+# Should show WireGuard encryption status for the nodes
 
-# Keys should be listed for each node
+# Inspect WireGuard interface, peer, and public key details from the Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg debuginfo --output json | jq .encryption
 
 # Verify WireGuard interfaces exist on nodes
 kubectl exec -n kube-system ds/cilium -- ip link show cilium_wg0
@@ -51,8 +51,8 @@ kubectl exec -n kube-system ds/cilium -- ip link show cilium_wg0
 # Ensure native WireGuard module is loaded (not wireguard-go)
 lsmod | grep wireguard
 
-# Check if AESNI/AVX is available for ChaCha20
-grep -E "aes|avx|ssse3" /proc/cpuinfo | head -3
+# Check whether SIMD instruction sets commonly used by optimized ChaCha20 code are available
+grep -E "avx|avx2|ssse3" /proc/cpuinfo | head -3
 
 # Increase UDP buffer sizes (WireGuard uses UDP)
 sysctl -w net.core.rmem_max=26214400
@@ -70,18 +70,18 @@ WireGuard processes packets in the context of the sending/receiving thread. Ensu
 perf record -g -e 'crypto:*' -a -- sleep 10
 perf report --stdio | head -20
 
-# Ensure WireGuard threads are on the same NUMA node as the NIC
+# Check the NIC NUMA node when investigating cross-NUMA CPU placement
 NIC_NUMA=$(cat /sys/class/net/eth0/device/numa_node)
 echo "NIC on NUMA node: $NIC_NUMA"
 ```
 
 ## MTU Optimization
 
-WireGuard adds 80 bytes of overhead (32-byte message header + 40-byte outer IP header + 8-byte UDP header). Adjust MTU to avoid fragmentation:
+WireGuard adds 60 bytes of overhead with an IPv4 outer header and 80 bytes with an IPv6 outer header (32-byte WireGuard transport data header + outer IP header + 8-byte UDP header). Use a conservative MTU when you need to support either address family:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=1420  # 1500 - 80 for WireGuard overhead
+  --set MTU=1420  # 1500 - 80 for conservative WireGuard overhead
 ```
 
 Alternatively, if your network supports jumbo frames:
@@ -92,7 +92,7 @@ ip link set eth0 mtu 9000
 
 # Set Cilium MTU for WireGuard
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=8870  # 9000 - 80 - 50 (WireGuard + potential VXLAN tunnel)
+  --set MTU=8870  # 9000 - 80 - 50 (conservative WireGuard + potential VXLAN tunnel)
 ```
 
 ## Enabling BPF Host Routing with WireGuard
@@ -101,7 +101,6 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
   --set encryption.type=wireguard \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set bpf.hostLegacyRouting=false \
@@ -116,20 +115,20 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 30 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 
 # Verify encryption is in use
-cilium encrypt status
+cilium encryption status
 
-# Check WireGuard interface stats
-kubectl exec -n kube-system ds/cilium -- wg show cilium_wg0
+# Check WireGuard interface and peer details
+kubectl exec -n kube-system ds/cilium -- cilium-dbg debuginfo --output json | jq .encryption
 
-# Compare encrypted vs unencrypted
-echo "Expected: 70-90% of unencrypted throughput"
+# Compare encrypted vs unencrypted and record the percentage for your hardware
+echo "Encrypted throughput: X% of unencrypted throughput"
 ```
 
 ## Troubleshooting
 
-- **Very low throughput (< 50% of baseline)**: Check `lsmod | grep wireguard` -- if using userspace fallback, performance will be poor.
+- **Very low throughput (< 50% of baseline)**: Check `lsmod | grep wireguard` -- current Cilium releases require kernel WireGuard support, and older userspace fallback modes perform poorly.
 - **MTU-related packet drops**: Check `kubectl exec -n kube-system ds/cilium -- ip -s link show cilium_wg0` for errors.
-- **WireGuard not encrypting traffic**: Verify with `tcpdump -i eth0 -n udp port 51871` that UDP WireGuard packets are visible.
+- **WireGuard not encrypting traffic**: Verify with `tcpdump -i eth0 -n udp port 51871` that UDP WireGuard packets are visible for cross-node traffic.
 - **CPU saturation on one core**: WireGuard is processed per-flow; ensure RSS distributes flows across cores.
 
 ## Systematic Tuning Methodology
@@ -193,4 +192,4 @@ Avoid these common mistakes in performance tuning:
 
 ## Conclusion
 
-Tuning WireGuard throughput in Cilium involves ensuring the kernel module is native (not userspace), optimizing UDP buffer sizes, configuring correct MTU, and using BPF host routing to minimize datapath overhead before and after encryption. With proper tuning, WireGuard typically achieves 70-90% of unencrypted throughput, making it a practical choice for transparent cluster encryption.
+Tuning WireGuard throughput in Cilium involves ensuring the kernel module is native (not userspace), optimizing UDP buffer sizes, configuring correct MTU, and using BPF host routing to minimize datapath overhead before and after encryption. With proper tuning and hardware-aware benchmarking, WireGuard can be a practical choice for transparent cluster encryption.
