@@ -53,8 +53,8 @@ echo "$STATUS"
 
 # Parse results
 if echo "$STATUS" | grep -q "Calico process is running"; then
-  TOTAL=$(echo "$STATUS" | grep -cE "node-to-node|global" || echo 0)
-  ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || echo 0)
+  TOTAL=$(echo "$STATUS" | grep -cE "node-to-node mesh|node specific|global" || true)
+  ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || true)
   DOWN=$((TOTAL - ESTABLISHED))
   
   echo ""
@@ -80,14 +80,14 @@ fi
 
 ## Incident Response Runbook
 
-```markdown
+````markdown
 ## BGP Incident Response Runbook
 
 ### Step 1: Assess
 Run on affected node:
 ```
 sudo calicoctl node status
-```text
+```
 
 ### Step 2: Classify
 - All peers down: CRITICAL - likely node or Calico process issue
@@ -99,7 +99,7 @@ For each down peer:
 ```
 ping <peer-ip>
 nc -zv <peer-ip> 179
-```text
+```
 
 ### Step 4: Remediate
 - Process not running: restart calico-node pod
@@ -111,11 +111,11 @@ nc -zv <peer-ip> 179
 ```
 sudo calicoctl node status
 kubectl run test --image=busybox --rm -it -- ping -c 3 <cross-node-pod-ip>
-```text
+```
 
 ### Step 6: Document
 Record incident details, root cause, and resolution.
-```
+````
 
 ## Regular Health Monitoring Schedule
 
@@ -168,9 +168,11 @@ for NODE in $NODES; do
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
   
   if [ -n "$POD" ]; then
-    ESTABLISHED=$(kubectl exec -n calico-system "$POD" -- calicoctl node status 2>/dev/null | grep -c "Established" || echo 0)
-    TOTAL=$(kubectl exec -n calico-system "$POD" -- calicoctl node status 2>/dev/null | grep -cE "node-to-node|global" || echo 0)
-    echo "node=$NODE established=$ESTABLISHED total=$TOTAL"
+    STATUS=$(kubectl exec -n calico-system "$POD" -- calicoctl node status 2>/dev/null)
+    ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || true)
+    TOTAL=$(echo "$STATUS" | grep -cE "node-to-node mesh|node specific|global" || true)
+    echo "calico_bgp_peers_established{node=\"$NODE\"} $ESTABLISHED"
+    echo "calico_bgp_peers_total{node=\"$NODE\"} $TOTAL"
   fi
 done
 ```
