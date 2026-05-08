@@ -28,7 +28,7 @@ This guide covers safe procedures for updating IPAM configuration, including swi
 Export the current IPAM configuration and block state:
 
 ```bash
-calicoctl get ipamconfiguration default -o yaml > ipam-backup.yaml
+calicoctl ipam show --show-configuration > ipam-configuration-snapshot.txt
 calicoctl ipam show --show-blocks > ipam-blocks-snapshot.txt
 ```
 
@@ -55,60 +55,30 @@ kubectl uncordon worker-3
 
 Apply the strict affinity configuration:
 
-```yaml
-apiVersion: projectcalico.org/v3
-kind: IPAMConfiguration
-metadata:
-  name: default
-spec:
-  strictAffinity: true
-  maxBlocksPerHost: 10
-```
-
 ```bash
-calicoctl replace -f ipam-strict.yaml
+calicoctl ipam configure --strictaffinity=true --max-blocks-per-host=10
 ```
 
 ## Adjusting maxBlocksPerHost
 
 Changing the block limit affects future allocations. Existing blocks beyond the new limit are not reclaimed automatically:
 
-```yaml
-apiVersion: projectcalico.org/v3
-kind: IPAMConfiguration
-metadata:
-  name: default
-spec:
-  strictAffinity: true
-  maxBlocksPerHost: 6
-```
-
 ```bash
-calicoctl replace -f ipam-adjusted-blocks.yaml
+calicoctl ipam configure --strictaffinity=true --max-blocks-per-host=6
 ```
 
 Verify the change is active:
 
 ```bash
-calicoctl get ipamconfiguration default -o yaml
+calicoctl ipam show --show-configuration
 ```
 
 ## Switching from Strict to Relaxed Affinity
 
 Switching back to relaxed affinity is generally safe since it only loosens restrictions:
 
-```yaml
-apiVersion: projectcalico.org/v3
-kind: IPAMConfiguration
-metadata:
-  name: default
-spec:
-  strictAffinity: false
-  maxBlocksPerHost: 0
-```
-
 ```bash
-calicoctl replace -f ipam-relaxed.yaml
+calicoctl ipam configure --strictaffinity=false --max-blocks-per-host=0
 ```
 
 ## Performing Changes During a Maintenance Window
@@ -121,10 +91,10 @@ For production clusters, coordinate IPAM changes with a maintenance window:
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do kubectl cordon $node; done
 
 # Step 2: Apply the IPAM change
-calicoctl replace -f ipam-updated.yaml
+calicoctl ipam configure --strictaffinity=true --max-blocks-per-host=10
 
 # Step 3: Verify the change took effect
-calicoctl get ipamconfiguration default -o yaml
+calicoctl ipam show --show-configuration
 
 # Step 4: Uncordon nodes one at a time and verify
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
@@ -140,16 +110,16 @@ done
 
 ## Rolling Back Changes
 
-If the update causes IP allocation failures, restore the backup:
+If the update causes IP allocation failures, restore the previous values from the backup:
 
 ```bash
-calicoctl apply -f ipam-backup.yaml
+calicoctl ipam configure --strictaffinity=<previous-true-or-false> --max-blocks-per-host=<previous-value>
 ```
 
 Verify the rollback:
 
 ```bash
-calicoctl get ipamconfiguration default -o yaml
+calicoctl ipam show --show-configuration
 ```
 
 Test that new pods get IPs:
@@ -163,7 +133,7 @@ kubectl run rollback-test --image=busybox --rm -it --restart=Never -- echo "IP a
 After the update, run a full verification:
 
 ```bash
-calicoctl get ipamconfiguration default -o yaml
+calicoctl ipam show --show-configuration
 calicoctl ipam show
 calicoctl ipam show --show-blocks
 ```
@@ -196,12 +166,12 @@ If strict affinity is enabled and a node has no blocks with free IPs, no new pod
 calicoctl ipam show --show-blocks | grep <node-name>
 ```
 
-Verify you are updating the resource named "default":
+Verify the active IPAM configuration:
 
 ```bash
-calicoctl get ipamconfiguration -o wide
+calicoctl ipam show --show-configuration
 ```
 
 ## Conclusion
 
-IPAM configuration updates require careful planning because they affect pod scheduling cluster-wide. Back up the current state before changes, drain nodes with borrowed IPs before enabling strict affinity, use maintenance windows for production changes, and verify IP allocation on every node after the update. Keep rollback manifests ready for immediate restoration if issues arise.
+IPAM configuration updates require careful planning because they affect pod scheduling cluster-wide. Back up the current state before changes, drain nodes with borrowed IPs before enabling strict affinity, use maintenance windows for production changes, and verify IP allocation on every node after the update. Keep rollback values ready for immediate restoration if issues arise.
