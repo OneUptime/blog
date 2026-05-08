@@ -10,7 +10,7 @@ Description: How to fix label exclusion issues in Cilium that cause identity exp
 
 ## Introduction
 
-Label exclusion in Cilium allows you to remove specific high-cardinality labels from identity computation while keeping all other labels identity-relevant. This is particularly useful for labels like `pod-template-hash` that are automatically added by Kubernetes controllers and have unique values per ReplicaSet.
+Label exclusion in Cilium allows you to remove specific high-cardinality labels from identity computation while keeping all other labels identity-relevant. This is particularly useful for labels like `pod-template-hash` that are automatically added by Kubernetes controllers and have unique values per ReplicaSet. Cilium excludes `pod-template-hash`, `controller-revision-hash`, and `pod-template-generation` by default in current releases, but the same pattern applies to other high-cardinality labels in your cluster.
 
 Preventing label exclusion issues requires default exclusion of known high-cardinality labels, automated cardinality monitoring, and identity growth alerting.
 
@@ -29,7 +29,7 @@ This guide provides the specific steps for managing label exclusion in Cilium.
 # Exclude common high-cardinality labels
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:!pod-template-hash k8s:!controller-revision-hash k8s:!pod-template-generation"
+  --set labels="!build-id !release-timestamp !git-sha"
 ```
 
 This approach is useful when you want most labels to remain identity-relevant but need to exclude specific problematic ones.
@@ -40,7 +40,7 @@ This approach is useful when you want most labels to remain identity-relevant bu
 # You can also use the include approach for more control
 # This is often cleaner for large clusters
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy"
+  --set labels="io\\.kubernetes\\.pod\\.namespace k8s-app app name"
 ```
 
 ## Verifying Exclusion
@@ -52,11 +52,13 @@ kubectl rollout status ds/cilium -n kube-system
 sleep 120
 
 # Check that excluded labels don't appear in identities
-cilium identity list -o json | jq '.[].labels[]' | grep "pod-template-hash" | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json | jq '.[].labels[]' | grep "build-id" | wc -l
 # Should be 0
 
 # Verify identity count decreased
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list | wc -l
 ```
 
 ## Automated Exclusion Discovery
@@ -67,7 +69,7 @@ cilium identity list | wc -l
 
 echo "Labels with >50 unique values (candidates for exclusion):"
 kubectl get pods --all-namespaces -o json | \
-  jq -r '[.items[].metadata.labels | to_entries[]] | group_by(.key) | .[] | {
+  jq -r '[.items[].metadata.labels // {} | to_entries[]] | group_by(.key) | .[] | {
     label: .[0].key,
     unique_values: ([.[].value] | unique | length),
     total_pods: length
@@ -78,16 +80,18 @@ kubectl get pods --all-namespaces -o json | \
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
-cilium identity list -o json | jq '.[0:3] | .[].labels'
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json | jq '.[0:3] | .[].labels'
 ```
 
 ## Troubleshooting
 
 - **Excluded label needed for policy**: Remove it from the exclusion list and add to include list instead.
 - **Identity count unchanged after exclusion**: Restart Cilium agents and wait for GC.
-- **New Deployment creates identities rapidly**: Its pod-template-hash may not be excluded.
-- **Exclusion syntax wrong**: Use `k8s:!label-name` format with the exclamation mark prefix.
+- **New Deployment creates identities rapidly**: Check for custom high-cardinality labels such as build IDs, timestamps, or Git SHAs.
+- **Exclusion syntax wrong**: Use `!label-name` format with the exclamation mark prefix.
 
 ## Implementing Changes Safely
 
@@ -164,12 +168,15 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5 kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop | head -5
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
@@ -196,4 +203,4 @@ Document the fix, its impact, and any follow-up actions needed in your team's ru
 
 ## Conclusion
 
-Fixing label exclusion in Cilium addresses one of the most common sources of identity explosion. By excluding automatically-generated high-cardinality labels like pod-template-hash and controller-revision-hash, you can reduce identity count by 50% or more in typical Kubernetes clusters, directly improving policy computation performance and reducing BPF map pressure.
+Fixing label exclusion in Cilium addresses one of the most common sources of identity explosion. By excluding high-cardinality labels such as build IDs, timestamps, and Git SHAs, you can significantly reduce identity count in affected Kubernetes clusters, directly improving policy computation performance and reducing BPF map pressure.
