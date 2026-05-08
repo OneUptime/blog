@@ -49,7 +49,7 @@ Each step in the agent's reasoning becomes a span. The full agent run is the roo
 For Python (the most common language for AI agents):
 
 ```bash
-pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp openai
 ```
 
 For TypeScript/Node.js:
@@ -58,14 +58,18 @@ For TypeScript/Node.js:
 npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http
 ```
 
-### Step 2: Initialize the Tracer
+### Step 2: Initialize OpenTelemetry
 
 ```python
-from opentelemetry import trace
+from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.trace import Status, StatusCode
 
 resource = Resource.create({
     "service.name": "my-ai-agent",
@@ -79,6 +83,13 @@ processor = BatchSpanProcessor(
 )
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="https://your-otlp-endpoint/v1/metrics")
+)
+metrics.set_meter_provider(
+    MeterProvider(resource=resource, metric_readers=[metric_reader])
+)
 
 tracer = trace.get_tracer("ai-agent")
 ```
@@ -105,7 +116,12 @@ def run_agent(user_input: str) -> str:
 This is where most of the value lives. Every LLM call should capture:
 
 ```python
-def call_llm(messages: list, model: str = "gpt-4") -> str:
+import time
+from openai import OpenAI
+
+client = OpenAI()
+
+def call_llm(messages: list, model: str = "gpt-4"):
     with tracer.start_as_current_span("llm.call") as span:
         span.set_attribute("llm.model", model)
         span.set_attribute("llm.message_count", len(messages))
@@ -115,7 +131,7 @@ def call_llm(messages: list, model: str = "gpt-4") -> str:
         span.set_attribute("llm.input_chars", len(input_text))
 
         start = time.time()
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=messages
         )
@@ -143,6 +159,8 @@ def call_llm(messages: list, model: str = "gpt-4") -> str:
 ### Step 5: Instrument Tool Calls
 
 ```python
+import json
+
 def execute_tool(tool_name: str, parameters: dict) -> str:
     with tracer.start_as_current_span(f"tool.{tool_name}") as span:
         span.set_attribute("tool.name", tool_name)
@@ -157,7 +175,7 @@ def execute_tool(tool_name: str, parameters: dict) -> str:
             span.set_attribute("tool.success", False)
             span.set_attribute("tool.error", str(e)[:500])
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
@@ -173,19 +191,19 @@ This is your cost metric. Track it as a histogram:
 from opentelemetry import metrics
 
 meter = metrics.get_meter("ai-agent")
-token_counter = meter.create_counter(
+token_histogram = meter.create_histogram(
     "agent.tokens.total",
     description="Total tokens consumed per agent run"
 )
-cost_counter = meter.create_counter(
+cost_histogram = meter.create_histogram(
     "agent.cost.usd",
     description="Estimated cost in USD per agent run"
 )
 
 # In your agent run:
 
-token_counter.add(total_tokens, {"model": model_name, "agent": agent_name})
-cost_counter.add(estimated_cost, {"model": model_name, "agent": agent_name})
+token_histogram.record(total_tokens, {"model": model_name, "agent": agent_name})
+cost_histogram.record(estimated_cost, {"model": model_name, "agent": agent_name})
 ```
 
 ### 2. Tool Call Success Rate
@@ -260,12 +278,25 @@ Traces show you the shape of execution. Logs show you why the agent made specifi
 
 ```python
 import logging
-from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 
+logger_provider = LoggerProvider(resource=resource)
+logger_provider.add_log_record_processor(
+    BatchLogRecordProcessor(
+        OTLPLogExporter(endpoint="https://your-otlp-endpoint/v1/logs")
+    )
+)
+set_logger_provider(logger_provider)
+
+handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+
 # Emit structured log events at decision points
 logger = logging.getLogger("ai-agent")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 def log_agent_decision(decision_type: str, details: dict):
     logger.info(
@@ -306,7 +337,7 @@ processors:
 
 exporters:
   otlphttp:
-    endpoint: "https://your-observability-platform/v1"
+    endpoint: "https://your-observability-platform"
     headers:
       Authorization: "Bearer ${OTLP_AUTH_TOKEN}"
 
