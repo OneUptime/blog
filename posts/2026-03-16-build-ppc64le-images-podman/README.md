@@ -123,6 +123,7 @@ podman build \
 A Containerfile that uses these arguments:
 
 ```dockerfile
+ARG GO_VERSION=1.21
 FROM golang:${GO_VERSION} AS builder
 ARG TARGETARCH
 ENV GOARCH=${TARGETARCH}
