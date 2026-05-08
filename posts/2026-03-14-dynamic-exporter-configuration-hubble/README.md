@@ -46,6 +46,7 @@ hubble:
       config:
         # ConfigMap to watch for dynamic export rules
         configMapName: cilium-hubble-export-config
+        createConfigMap: false
 ```
 
 ```bash
@@ -68,47 +69,40 @@ metadata:
   name: cilium-hubble-export-config
   namespace: kube-system
 data:
-  # Each key is an exporter name, each value is a JSON config
-  security-drops.json: |
-    {
-      "filePath": "/var/run/cilium/hubble/security-drops.log",
-      "fileMaxSizeMb": 10,
-      "fileMaxBackups": 3,
-      "end": "2026-04-14T00:00:00Z",
-      "includeFilters": [
-        {"verdict": ["DROPPED"]}
-      ],
-      "fieldMask": [
-        "time",
-        "source.namespace",
-        "source.pod_name",
-        "destination.namespace",
-        "destination.pod_name",
-        "destination.port",
-        "verdict",
-        "drop_reason"
-      ]
-    }
-  production-flows.json: |
-    {
-      "filePath": "/var/run/cilium/hubble/production-flows.log",
-      "fileMaxSizeMb": 20,
-      "fileMaxBackups": 5,
-      "includeFilters": [
-        {"source_pod": ["production/"]}
-      ],
-      "fieldMask": [
-        "time",
-        "source.namespace",
-        "source.pod_name",
-        "destination.namespace",
-        "destination.pod_name",
-        "destination.port",
-        "verdict",
-        "l4.TCP",
-        "Type"
-      ]
-    }
+  # Cilium mounts this key as /flowlog-config/flowlogs.yaml
+  flowlogs.yaml: |
+    flowLogs:
+    - name: security-drops
+      filePath: /var/run/cilium/hubble/security-drops.log
+      fileMaxSizeMb: 10
+      fileMaxBackups: 3
+      end: "2026-06-14T00:00:00Z"
+      includeFilters:
+      - verdict: ["DROPPED"]
+      fieldMask:
+      - time
+      - source.namespace
+      - source.pod_name
+      - destination.namespace
+      - destination.pod_name
+      - l4
+      - verdict
+      - drop_reason_desc
+    - name: production-flows
+      filePath: /var/run/cilium/hubble/production-flows.log
+      fileMaxSizeMb: 20
+      fileMaxBackups: 5
+      includeFilters:
+      - source_pod: ["production/"]
+      fieldMask:
+      - time
+      - source.namespace
+      - source.pod_name
+      - destination.namespace
+      - destination.pod_name
+      - l4
+      - verdict
+      - Type
 ```
 
 ```bash
@@ -121,8 +115,8 @@ graph TD
     B --> C{ConfigMap changed?}
     C -->|Yes| D[Parse new export rules]
     C -->|No| E[Continue with current rules]
-    D --> F[security-drops.json]
-    D --> G[production-flows.json]
+    D --> F[security-drops]
+    D --> G[production-flows]
     F --> H[/var/run/cilium/hubble/security-drops.log]
     G --> I[/var/run/cilium/hubble/production-flows.log]
 ```
@@ -133,51 +127,46 @@ The key advantage is changing exports without restarts:
 
 ```bash
 # Add a new exporter rule during an incident
-kubectl -n kube-system get configmap cilium-hubble-export-config -o yaml > /tmp/export-config.yaml
+kubectl -n kube-system get configmap cilium-hubble-export-config \
+  -o jsonpath='{.data.flowlogs\.yaml}' > /tmp/flowlogs.yaml
 
-# Edit to add a new investigation-specific exporter
-cat >> /tmp/investigation-rule.json << 'EOF'
-{
-  "filePath": "/var/run/cilium/hubble/investigation.log",
-  "fileMaxSizeMb": 50,
-  "fileMaxBackups": 2,
-  "end": "2026-03-15T00:00:00Z",
-  "includeFilters": [
-    {"source_pod": ["default/suspicious-app"]},
-    {"destination_pod": ["default/suspicious-app"]}
-  ],
-  "fieldMask": [
-    "time",
-    "source.namespace",
-    "source.pod_name",
-    "source.labels",
-    "destination.namespace",
-    "destination.pod_name",
-    "destination.labels",
-    "destination.port",
-    "verdict",
-    "drop_reason",
-    "l4.TCP",
-    "l7",
-    "Type",
-    "IP.source",
-    "IP.destination"
-  ]
-}
+# Edit /tmp/flowlogs.yaml to add a new investigation-specific exporter
+printf '\n' >> /tmp/flowlogs.yaml
+cat >> /tmp/flowlogs.yaml << 'EOF'
+- name: investigation
+  filePath: /var/run/cilium/hubble/investigation.log
+  fileMaxSizeMb: 50
+  fileMaxBackups: 2
+  end: "2026-06-15T00:00:00Z"
+  includeFilters:
+  - source_pod: ["default/suspicious-app"]
+  - destination_pod: ["default/suspicious-app"]
+  fieldMask:
+  - time
+  - source.namespace
+  - source.pod_name
+  - source.labels
+  - destination.namespace
+  - destination.pod_name
+  - destination.labels
+  - verdict
+  - drop_reason_desc
+  - l4
+  - l7
+  - Type
+  - IP
 EOF
 
 # Update the ConfigMap
 kubectl -n kube-system create configmap cilium-hubble-export-config \
-  --from-file=security-drops.json=security-drops.json \
-  --from-file=production-flows.json=production-flows.json \
-  --from-file=investigation.json=/tmp/investigation-rule.json \
+  --from-file=flowlogs.yaml=/tmp/flowlogs.yaml \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Cilium will pick up the change within ~60s due to ConfigMap propagation delay
 # No restart needed!
 
 # Verify the new exporter is active
-sleep 15
+sleep 60
 kubectl -n kube-system exec ds/cilium -- ls -la /var/run/cilium/hubble/investigation.log
 ```
 
@@ -189,32 +178,18 @@ Dynamic exporters support time-based expiration:
 # Set an end time so the exporter automatically stops
 # Useful for investigation-scoped exports that should not run indefinitely
 
-# Check which exporters are active
-kubectl -n kube-system exec ds/cilium -- ls -la /var/run/cilium/hubble/*.log
+# Check which exporter files exist
+kubectl -n kube-system exec ds/cilium -- sh -c 'ls -la /var/run/cilium/hubble/*.log'
 
-# Remove an exporter by removing its key from the ConfigMap
-kubectl -n kube-system get configmap cilium-hubble-export-config -o json | python3 -c "
-import json, sys
-cm = json.load(sys.stdin)
-data = cm.get('data', {})
-print('Active exporters:')
-for name, config in data.items():
-    cfg = json.loads(config)
-    end = cfg.get('end', 'no expiry')
-    print(f'  {name}: path={cfg[\"filePath\"]}, expires={end}')
-"
+# Review the configured exporters
+kubectl -n kube-system get configmap cilium-hubble-export-config \
+  -o jsonpath='{.data.flowlogs\.yaml}'
 
-# Remove the investigation exporter after it is no longer needed
-kubectl -n kube-system get configmap cilium-hubble-export-config -o json | \
-  python3 -c "
-import json, sys
-cm = json.load(sys.stdin)
-del cm['data']['investigation.json']
-del cm['metadata']['resourceVersion']
-del cm['metadata']['uid']
-del cm['metadata']['creationTimestamp']
-json.dump(cm, sys.stdout)
-" | kubectl apply -f -
+# Remove the investigation exporter from /tmp/flowlogs.yaml after it is no longer needed,
+# then apply the updated ConfigMap
+kubectl -n kube-system create configmap cilium-hubble-export-config \
+  --from-file=flowlogs.yaml=/tmp/flowlogs.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Verification
@@ -223,7 +198,7 @@ Confirm dynamic exporter configuration is working:
 
 ```bash
 # 1. ConfigMap is created and has data
-kubectl -n kube-system get configmap cilium-hubble-export-config -o jsonpath='{.data}' | python3 -m json.tool
+kubectl -n kube-system get configmap cilium-hubble-export-config -o jsonpath='{.data.flowlogs\.yaml}'
 
 # 2. Export files are being created
 kubectl -n kube-system exec ds/cilium -- ls -la /var/run/cilium/hubble/
@@ -253,7 +228,7 @@ kubectl -n kube-system get configmap cilium-hubble-export-config -o jsonpath='{.
 
 - **Export file not created for new rule**: Check Cilium agent logs for parsing errors: `kubectl -n kube-system logs ds/cilium --tail=50 | grep -i "export\|configmap"`.
 
-- **JSON parse error in ConfigMap**: Validate your JSON before applying: `cat rule.json | python3 -m json.tool`.
+- **YAML parse error in ConfigMap**: Validate your `flowlogs.yaml` before applying.
 
 - **Expired exporter still running**: The expiration check happens at the watch interval. Wait for the next check cycle. If it persists, remove the rule manually from the ConfigMap.
 
