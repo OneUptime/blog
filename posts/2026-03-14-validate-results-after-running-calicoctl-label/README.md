@@ -53,7 +53,7 @@ metadata:
 calicoctl get nodes -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-items = data.get('items', [data]) if 'items' in data else [data]
+items = data if isinstance(data, list) else data.get('items', [data])
 for node in items:
     name = node['metadata']['name']
     labels = node['metadata'].get('labels', {})
@@ -69,15 +69,39 @@ for node in items:
 The most important validation is confirming that your policies select the right resources:
 
 ```bash
-# Check which nodes match a specific selector
-# Use calicoctl get with label selectors
-calicoctl get nodes -l env=production
+# Check which nodes have a specific label value
+calicoctl get nodes -o json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+items = data if isinstance(data, list) else data.get('items', [data])
+for item in items:
+    labels = item.get('metadata', {}).get('labels', {})
+    if labels.get('env') == 'production':
+        print(item['metadata']['name'])
+"
 
 # Check host endpoints with specific labels
-calicoctl get hostendpoints -l zone=us-east-1a
+calicoctl get hostendpoints -o json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+items = data if isinstance(data, list) else data.get('items', [data])
+for item in items:
+    labels = item.get('metadata', {}).get('labels', {})
+    if labels.get('zone') == 'us-east-1a':
+        print(item['metadata']['name'])
+"
 
-# Verify workload endpoints
-calicoctl get workloadendpoints -l app=frontend --all-namespaces
+# Verify workload endpoints across all namespaces
+calicoctl get workloadendpoints --all-namespaces -o json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+items = data if isinstance(data, list) else data.get('items', [data])
+for item in items:
+    labels = item.get('metadata', {}).get('labels', {})
+    if labels.get('app') == 'frontend':
+        namespace = item['metadata'].get('namespace', 'default')
+        print(namespace + '/' + item['metadata']['name'])
+"
 ```
 
 ## Cross-Referencing Labels with Policies
@@ -85,7 +109,7 @@ calicoctl get workloadendpoints -l app=frontend --all-namespaces
 ```bash
 #!/bin/bash
 # validate-policy-selectors.sh
-# Checks that every policy selector matches at least one resource
+# Checks whether simple policy selectors match at least one endpoint
 
 echo "=== Policy Selector Validation ==="
 
@@ -93,12 +117,45 @@ echo "=== Policy Selector Validation ==="
 POLICIES=$(calicoctl get globalnetworkpolicies -o json)
 
 echo "$POLICIES" | python3 -c "
-import json, sys, subprocess
+import json, re, sys, subprocess
 
-data = json.load(sys.stdin)
-items = data.get('items', [data]) if 'items' in data else [data]
+def items_from_output(text):
+    data = json.loads(text)
+    return data if isinstance(data, list) else data.get('items', [data])
 
-for policy in items:
+def get_items(kind, *extra_args):
+    result = subprocess.run(
+        ['calicoctl', 'get', kind, *extra_args, '-o', 'json'],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f'  Error reading {kind}: {result.stderr.strip()}')
+        return []
+    return items_from_output(result.stdout)
+
+def matches_simple_selector(selector, labels):
+    selector = selector.strip()
+    if selector == 'all()':
+        return True
+    has_match = re.fullmatch(r'has\(([A-Za-z0-9_.\-/]+)\)', selector)
+    if has_match:
+        return has_match.group(1) in labels
+    eq_match = re.fullmatch(r'([A-Za-z0-9_.\-/]+)\s*==\s*(.+)', selector)
+    if eq_match:
+        value = eq_match.group(2).strip().strip(chr(34) + chr(39))
+        return labels.get(eq_match.group(1)) == value
+    neq_match = re.fullmatch(r'([A-Za-z0-9_.\-/]+)\s*!=\s*(.+)', selector)
+    if neq_match:
+        value = neq_match.group(2).strip().strip(chr(34) + chr(39))
+        return labels.get(neq_match.group(1)) != value
+    return None
+
+policies = items_from_output(sys.stdin.read())
+workloads = get_items('workloadendpoints', '--all-namespaces')
+hosts = get_items('hostendpoints')
+endpoints = workloads + hosts
+
+for policy in policies:
     name = policy['metadata']['name']
     selector = policy.get('spec', {}).get('selector', '')
     
@@ -109,24 +166,23 @@ for policy in items:
     print(f'Policy: {name}')
     print(f'  Selector: {selector}')
     
-    # Try to find matching nodes
-    result = subprocess.run(
-        ['calicoctl', 'get', 'nodes', '-l', selector, '-o', 'json'],
-        capture_output=True, text=True
-    )
-    
-    if result.returncode == 0:
-        try:
-            matches = json.loads(result.stdout)
-            match_items = matches.get('items', [])
-            count = len(match_items)
-            print(f'  Matching nodes: {count}')
-            if count == 0:
-                print(f'  WARNING: No nodes match this selector!')
-        except json.JSONDecodeError:
-            print(f'  Could not parse match results')
+    count = 0
+    unsupported = False
+    for endpoint in endpoints:
+        labels = endpoint.get('metadata', {}).get('labels', {})
+        matched = matches_simple_selector(selector, labels)
+        if matched is None:
+            unsupported = True
+            break
+        if matched:
+            count += 1
+
+    if unsupported:
+        print('  Selector is too complex for this script; validate it with a targeted traffic test.')
     else:
-        print(f'  Error checking selector: {result.stderr.strip()}')
+        print(f'  Matching endpoints: {count}')
+        if count == 0:
+            print(f'  WARNING: No endpoints match this selector!')
     print()
 "
 ```
@@ -144,10 +200,22 @@ calicoctl get nodes -o json | python3 -c "
 import json, sys, re
 
 data = json.load(sys.stdin)
-items = data.get('items', [data]) if 'items' in data else [data]
+items = data if isinstance(data, list) else data.get('items', [data])
 
-key_pattern = re.compile(r'^([a-zA-Z][a-zA-Z0-9.-]*/)?[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$')
-value_pattern = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$|^$')
+dns_label = r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
+prefix_pattern = re.compile(rf'^(?:{dns_label}\.)*{dns_label}$')
+name_pattern = re.compile(r'^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,61}[A-Za-z0-9])?$')
+value_pattern = re.compile(r'^(?:[A-Za-z0-9](?:[A-Za-z0-9._-]{0,61}[A-Za-z0-9])?)?$')
+
+def valid_key(key):
+    parts = key.split('/', 1)
+    if len(parts) == 2:
+        prefix, name = parts
+        if len(prefix) > 253 or not prefix_pattern.match(prefix):
+            return False
+    else:
+        name = parts[0]
+    return len(name) <= 63 and bool(name_pattern.match(name))
 
 errors = 0
 for node in items:
@@ -155,7 +223,7 @@ for node in items:
     labels = node['metadata'].get('labels', {})
     
     for k, v in labels.items():
-        if not key_pattern.match(k):
+        if not valid_key(k):
             print(f'INVALID KEY on {name}: \"{k}\"')
             errors += 1
         if v and not value_pattern.match(str(v)):
@@ -175,21 +243,22 @@ else:
 The ultimate validation is testing that labeled resources actually experience the correct network policy behavior:
 
 ```bash
-# Deploy test pods on labeled nodes
-kubectl run test-prod --image=busybox --restart=Never \
-  --overrides='{"spec":{"nodeSelector":{"env":"production"}}}' \
+# Deploy labeled test pods. These labels are copied to Calico workload endpoints.
+kubectl run client-prod --image=busybox --restart=Never \
+  --labels=env=production \
   -- sleep 3600
 
-kubectl run test-staging --image=busybox --restart=Never \
-  --overrides='{"spec":{"nodeSelector":{"env":"staging"}}}' \
-  -- sleep 3600
+kubectl run server-staging --image=nginx --restart=Never \
+  --labels=env=staging
+
+kubectl wait --for=condition=Ready pod/client-prod pod/server-staging --timeout=60s
 
 # Test connectivity between pods
-kubectl exec test-prod -- wget -qO- --timeout=5 http://test-staging 2>&1
-kubectl exec test-staging -- wget -qO- --timeout=5 http://test-prod 2>&1
+STAGING_IP=$(kubectl get pod server-staging -o jsonpath='{.status.podIP}')
+kubectl exec client-prod -- wget -qO- --timeout=5 "http://${STAGING_IP}" 2>&1
 
 # Clean up test pods
-kubectl delete pod test-prod test-staging --grace-period=0
+kubectl delete pod client-prod server-staging
 ```
 
 ## Comprehensive Validation Script
@@ -204,10 +273,10 @@ echo ""
 
 # 1. Count labeled resources
 echo "--- Resource Counts ---"
-NODE_COUNT=$(calicoctl get nodes -o json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('items',[])) if 'items' in d else 1)")
+NODE_COUNT=$(calicoctl get nodes -o json | python3 -c "import json,sys; d=json.load(sys.stdin); items=d if isinstance(d,list) else d.get('items',[d]); print(len(items))")
 echo "Total Calico nodes: $NODE_COUNT"
 
-LABELED_COUNT=$(calicoctl get nodes -l env -o json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('items',[])) if 'items' in d else 0)" 2>/dev/null)
+LABELED_COUNT=$(calicoctl get nodes -o json | python3 -c "import json,sys; d=json.load(sys.stdin); items=d if isinstance(d,list) else d.get('items',[d]); print(sum(1 for n in items if 'env' in n.get('metadata',{}).get('labels',{})))" 2>/dev/null)
 echo "Nodes with 'env' label: ${LABELED_COUNT:-0}"
 
 if [ "${LABELED_COUNT:-0}" -lt "$NODE_COUNT" ]; then
@@ -221,7 +290,7 @@ echo "--- Label Consistency ---"
 ENVS=$(calicoctl get nodes -o json | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-items = d.get('items', [d]) if 'items' in d else [d]
+items = d if isinstance(d, list) else d.get('items', [d])
 envs = set()
 for n in items:
     e = n.get('metadata',{}).get('labels',{}).get('env','')
