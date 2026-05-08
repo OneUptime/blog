@@ -114,7 +114,7 @@ podman run -d \
   --name production-web \
   --memory 512m \
   --memory-reservation 256m \
-  --memory-swap 512m \
+  --memory-swap 1g \
   --cpus 2 \
   --cpuset-cpus "0,1" \
   --pids-limit 200 \
@@ -166,12 +166,9 @@ podman update --memory 2g --cpus 3 --pids-limit 500 production-web
 Verify that your limits actually work:
 
 ```bash
-# Test memory limit with a stress tool
-podman run --rm --memory 128m alpine sh -c "
-  # Try to allocate more than 128MB
-  dd if=/dev/zero of=/dev/null bs=1M count=256
-  echo 'Memory test complete'
-"
+# Test memory limit by allocating more than the configured limit
+podman run --rm --memory 128m python:3.12-slim \
+  python -c "data = bytearray(256 * 1024 * 1024); print('Memory test complete')"
 
 # Test CPU limit - this should be throttled to 1 CPU
 podman run --rm --cpus 1 alpine sh -c "
@@ -193,7 +190,7 @@ podman run -d --pod my-pod --name web --memory 256m --cpus 1 nginx:latest
 podman run -d --pod my-pod --name api --memory 512m --cpus 2 node:20-slim sleep infinity
 
 # View stats for all containers in the pod
-podman stats --no-stream --filter "pod=my-pod"
+podman pod stats --no-stream my-pod
 ```
 
 ## Summary
