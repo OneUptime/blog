@@ -10,7 +10,7 @@ Description: Build a validation framework for Calico namespace-based network pol
 
 ## Introduction
 
-Validating namespace-based Calico policies requires checking both the policy definitions and the namespace label state. A syntactically valid policy that references a namespace label that doesn't exist will silently fail to apply. Validation should catch these mismatches before they reach production.
+Validating namespace-based Calico policies requires checking both the policy definitions and the namespace label state. A syntactically valid policy that references a namespace label that doesn't exist will still apply, but the selector will match no namespaces. Validation should catch these mismatches before they reach production.
 
 Unlike pod label validation, namespace label validation is often overlooked because namespaces are less frequently modified. But a missing or incorrect namespace label can leave an entire application tier unprotected or blocked.
 
@@ -26,27 +26,38 @@ Unlike pod label validation, namespace label validation is often overlooked beca
 #!/bin/bash
 # validate-namespace-labels.sh
 
-REQUIRED_NS_LABELS=("environment" "team")
 POLICY_DIR="policies/"
 EXIT_CODE=0
 
-# Extract all namespace selectors from policies
-NS_SELECTORS=$(grep -r "namespaceSelector" $POLICY_DIR | grep -oP "(?<=namespaceSelector: ).*" | sort | uniq)
+# Extract simple namespace selectors such as: environment == 'production'
+NS_SELECTORS=$(grep -rh "namespaceSelector:" "$POLICY_DIR" | sed -E "s/.*namespaceSelector:[[:space:]]*//" | sort | uniq)
 
 echo "Validating namespace selectors in policies..."
-echo "$NS_SELECTORS" | while read selector; do
+while IFS= read -r selector; do
+  [ -z "$selector" ] && continue
+  selector="${selector%\"}"
+  selector="${selector#\"}"
+  selector="${selector%\'}"
+  selector="${selector#\'}"
   echo "Checking: $selector"
-  # Check if any namespace matches
-  KEY=$(echo "$selector" | cut -d= -f1 | tr -d "' ")
-  VALUE=$(echo "$selector" | cut -d= -f3 | tr -d "' ")
-  MATCHES=$(kubectl get namespaces -l "$KEY=$VALUE" --no-headers 2>/dev/null | wc -l)
+  if [[ "$selector" =~ ^[\"\']?([A-Za-z0-9./_-]+)[[:space:]]*==[[:space:]]*[\"\']?([^\"\']+)[\"\']?$ ]]; then
+    KEY="${BASH_REMATCH[1]}"
+    VALUE="${BASH_REMATCH[2]}"
+  else
+    echo "ERROR: Selector '$selector' is not a simple equality selector this script can evaluate"
+    EXIT_CODE=1
+    continue
+  fi
+
+  # Check if any namespace matches. kubectl uses Kubernetes label-selector syntax here.
+  MATCHES=$(kubectl get namespaces -l "$KEY=$VALUE" -o name 2>/dev/null | wc -l)
   if [ "$MATCHES" -eq 0 ]; then
-    echo "WARNING: Selector '$selector' matches 0 namespaces"
+    echo "ERROR: Selector '$selector' matches 0 namespaces"
     EXIT_CODE=1
   else
     echo "OK: Selector '$selector' matches $MATCHES namespaces"
   fi
-done
+done <<< "$NS_SELECTORS"
 exit $EXIT_CODE
 ```
 
@@ -90,7 +101,7 @@ print("All namespaces have required labels")
 # Validate all namespace-based policies
 for f in policies/namespace-*.yaml; do
   echo "Validating: $f"
-  calicoctl apply -f "$f" --dry-run && echo "PASS" || echo "FAIL: $f"
+  calicoctl validate -f "$f" && echo "PASS" || echo "FAIL: $f"
 done
 ```
 
