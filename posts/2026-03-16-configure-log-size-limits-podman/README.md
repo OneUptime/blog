@@ -19,12 +19,16 @@ Container logs grow continuously as long as the container runs. A busy web serve
 Before setting limits, understand your current log disk usage.
 
 ```bash
-# Check log file size for a specific container
+# Check log file size for a specific container using a file-based log driver
 
 LOG_PATH=$(podman inspect --format '{{.LogPath}}' my-container)
-ls -lh "$LOG_PATH"
+if [ -n "$LOG_PATH" ] && [ -f "$LOG_PATH" ]; then
+  ls -lh "$LOG_PATH"
+else
+  echo "No container log file found. The container may be using journald."
+fi
 
-# Check log sizes for all containers
+# Check log sizes for all containers using file-based logs
 for c in $(podman ps -a --format '{{.Names}}'); do
   LOG_PATH=$(podman inspect --format '{{.LogPath}}' "$c" 2>/dev/null)
   if [ -n "$LOG_PATH" ] && [ -f "$LOG_PATH" ]; then
@@ -33,8 +37,14 @@ for c in $(podman ps -a --format '{{.Names}}'); do
   fi
 done | sort -t: -k2 -h -r
 
-# Check total disk usage of all container logs
-podman system df -v 2>/dev/null | head -20
+# Check total disk usage of file-based container logs
+TOTAL_KB=$(for c in $(podman ps -a --format '{{.Names}}'); do
+  LOG_PATH=$(podman inspect --format '{{.LogPath}}' "$c" 2>/dev/null)
+  if [ -n "$LOG_PATH" ] && [ -f "$LOG_PATH" ]; then
+    du -k "$LOG_PATH"
+  fi
+done | awk '{sum += $1} END {print sum}')
+numfmt --from-unit=1024 --to=iec "${TOTAL_KB:-0}" 2>/dev/null || echo "${TOTAL_KB:-0}K"
 ```
 
 ## Set Log Size Limits Per Container
@@ -61,22 +71,20 @@ podman run -d \
 # Size units: b (bytes), k (kilobytes), m (megabytes), g (gigabytes)
 ```
 
-## Set Log Size Limits with Rotation
+## Set Log Size Limits for File-Based Logs
 
-Combine `max-size` with `max-file` to retain multiple rotated log files.
+Podman supports `max-size` for file-based container logs. When the log reaches the limit, Podman truncates and reopens the log file; it does not retain multiple rotated files with Docker's `max-file` option.
 
 ```bash
-# Keep 3 log files of 10MB each (30MB total max)
+# Keep the log file at 10MB or less
 podman run -d \
   --log-opt max-size=10m \
-  --log-opt max-file=3 \
   --name web \
   nginx:latest
 
-# Keep 5 log files of 50MB each (250MB total max)
+# Keep the log file at 50MB or less
 podman run -d \
   --log-opt max-size=50m \
-  --log-opt max-file=5 \
   --name api \
   my-api:latest
 
@@ -101,11 +109,11 @@ EOF
 # For root Podman (system-wide)
 # Edit /etc/containers/containers.conf with the same settings
 
-# Verify the configuration
-podman info --format '{{.Host.LogSizeMax}}'
-
 # Test with a new container (should use the default limit)
 podman run -d --name test alpine sh -c 'while true; do echo "log line"; sleep 0.1; done'
+
+# Verify the setting on the new container
+podman inspect --format '{{.HostConfig.LogConfig.Size}}' test
 ```
 
 ## Different Limits for Different Log Drivers
@@ -120,11 +128,11 @@ podman run -d \
   --name test-k8s \
   alpine sh -c 'while true; do echo "test"; sleep 0.01; done'
 
-# json-file driver with size limit and rotation
+# json-file driver with size limit
+# In Podman, json-file is an alias for k8s-file
 podman run -d \
   --log-driver json-file \
   --log-opt max-size=10m \
-  --log-opt max-file=3 \
   --name test-json \
   alpine sh -c 'while true; do echo "test"; sleep 0.01; done'
 
@@ -136,7 +144,7 @@ podman run -d \
 
 ## Monitor Log Growth
 
-Track log file growth to determine appropriate limits.
+Track log file growth to determine appropriate limits. This script is for containers using file-based logging, such as `k8s-file`.
 
 ```bash
 #!/bin/bash
@@ -146,6 +154,10 @@ CONTAINER="$1"
 INTERVAL="${2:-60}"  # Check every 60 seconds by default
 
 LOG_PATH=$(podman inspect --format '{{.LogPath}}' "$CONTAINER")
+if [ -z "$LOG_PATH" ]; then
+  echo "No container log file found. The container may be using journald."
+  exit 1
+fi
 
 echo "Monitoring log growth for $CONTAINER"
 echo "Log file: $LOG_PATH"
@@ -176,12 +188,12 @@ podman run --rm my-image:latest timeout 60 sh -c 'my-app' 2>&1 | wc -c
 #
 # Example: 100KB/min, want 24 hours retention:
 # 100 * 1024 * 60 * 24 = ~147MB
-# Set max-size=150m with max-file=1
+# Set max-size=150m
 
 # For production, common settings:
-# Low-volume services:  max-size=10m,  max-file=3  (30MB total)
-# Medium services:      max-size=50m,  max-file=3  (150MB total)
-# High-volume services: max-size=100m, max-file=5  (500MB total)
+# Low-volume services:  max-size=10m
+# Medium services:      max-size=50m
+# High-volume services: max-size=100m
 ```
 
 ## Log Size in Podman Compose
@@ -195,7 +207,6 @@ services:
       driver: k8s-file
       options:
         max-size: "10m"
-        max-file: "3"
 
   api:
     image: my-api:latest
@@ -203,7 +214,6 @@ services:
       driver: json-file
       options:
         max-size: "50m"
-        max-file: "5"
 
   worker:
     image: my-worker:latest
@@ -211,9 +221,8 @@ services:
       driver: k8s-file
       options:
         max-size: "100m"
-        max-file: "3"
 ```
 
 ## Summary
 
-Log size limits are essential for production Podman deployments. Set `max-size` per container or system-wide via `containers.conf` to cap individual log file sizes, and combine with `max-file` to control the total number of retained files. Monitor log growth rates to determine appropriate limits, and use different settings for high-volume versus low-volume services. Without these limits, a single container can fill your disk.
+Log size limits are essential for production Podman deployments. Set `max-size` per container or system-wide via `containers.conf` to cap individual log file sizes. Monitor log growth rates to determine appropriate limits, and use different settings for high-volume versus low-volume services. Without these limits, a single container can fill your disk.
