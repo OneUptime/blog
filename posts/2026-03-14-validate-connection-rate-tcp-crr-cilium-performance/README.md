@@ -51,7 +51,7 @@ RESULTS=()
 
 for i in $(seq 1 $RUNS); do
   CRR=$(kubectl exec netperf-client -- \
-    netperf -H $SERVER_IP -t TCP_CRR -l 15 2>/dev/null | tail -1 | awk '{print $1}')
+    netperf -H "$SERVER_IP" -t TCP_CRR -l 15 -P 0 -v 0 2>/dev/null | awk '{print $1}')
   RESULTS+=($CRR)
   echo "Run $i: $CRR conn/s"
   sleep 3
@@ -82,7 +82,7 @@ SAMPLES=()
 
 for i in $(seq 1 10); do
   CRR=$(kubectl exec netperf-client -- \
-    netperf -H $SERVER_IP -t TCP_CRR -l 30 2>/dev/null | tail -1 | awk '{print $1}')
+    netperf -H "$SERVER_IP" -t TCP_CRR -l 30 -P 0 -v 0 2>/dev/null | awk '{print $1}')
   SAMPLES+=($CRR)
   echo "Sample $i (t=${i}x30s): $CRR conn/s"
 done
@@ -109,13 +109,13 @@ Test CRR through different network paths:
 ```bash
 #!/bin/bash
 echo "=== Direct Pod-to-Pod ==="
-kubectl exec netperf-client -- netperf -H $POD_IP -t TCP_CRR -l 15
+kubectl exec netperf-client -- netperf -H "$POD_IP" -t TCP_CRR -l 15
 
 echo "=== Via ClusterIP Service ==="
-kubectl exec netperf-client -- netperf -H $SVC_IP -t TCP_CRR -l 15
+kubectl exec netperf-client -- netperf -H "$SVC_IP" -t TCP_CRR -l 15
 
 echo "=== Via NodePort Service ==="
-kubectl exec netperf-client -- netperf -H $NODE_IP -p $NODE_PORT -t TCP_CRR -l 15
+kubectl exec netperf-client -- netperf -H "$NODE_IP" -p "$NODE_PORT" -t TCP_CRR -l 15
 
 # Each path exercises different NAT and BPF code paths
 # All should meet minimum CRR requirements
@@ -132,14 +132,14 @@ kubectl get svc netperf-server
 echo "All tests should show PASS status"
 
 # Verify no resource exhaustion during tests
-cilium bpf ct list global | wc -l
-cilium bpf nat list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf nat list | wc -l
 ```
 
 ## Troubleshooting
 
 - **CRR varies wildly between runs**: Check CPU governor, increase test duration to 30+ seconds.
-- **Sustained test shows degradation**: Likely conntrack table filling up. Monitor with `cilium bpf ct list global | wc -l`.
+- **Sustained test shows degradation**: Likely conntrack table filling up. Monitor with `kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l`.
 - **Service path much slower than direct**: This is expected due to NAT. Ensure socket LB is enabled for improvement.
 - **Validation flaky in CI**: Use longer test durations and more lenient thresholds for CI environments.
 
@@ -177,6 +177,9 @@ Use proper statistical methods to analyze results:
 #!/bin/bash
 # Collect 20 samples for statistical significance
 SAMPLES=()
+SAMPLE_FILE=$(mktemp)
+trap 'rm -f "$SAMPLE_FILE"' EXIT
+
 for i in $(seq 1 20); do
   RESULT=$(kubectl exec perf-client -- iperf3 -c perf-server -t 15 -P 1 -J | \
     jq '.end.sum_sent.bits_per_second')
@@ -185,7 +188,8 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+printf "%s\n" "${SAMPLES[@]}" | sort -n > "$SAMPLE_FILE"
+awk '
 {
   sum += $1
   sumsq += $1 * $1
@@ -197,8 +201,8 @@ END {
   stddev = sqrt(variance)
   cv = (stddev / mean) * 100
 
-  # Sort for percentiles
-  n = asort(data)
+  # Input is already sorted for percentiles
+  n = NR
   p50 = data[int(n * 0.5)]
   p95 = data[int(n * 0.95)]
   p99 = data[int(n * 0.99)]
@@ -210,7 +214,7 @@ END {
   printf "P50: %.2f Gbps\n", p50 / 1e9
   printf "P95: %.2f Gbps\n", p95 / 1e9
   printf "P99: %.2f Gbps\n", p99 / 1e9
-}'
+}' "$SAMPLE_FILE"
 ```
 
 ### Acceptance Criteria Documentation
