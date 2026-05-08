@@ -15,22 +15,22 @@ Derived policy issues occur when the effective policy on an endpoint does not ma
 ## Prerequisites
 
 - Kubernetes cluster with Cilium
-- kubectl and Cilium CLI configured
+- kubectl, Hubble CLI, and access to `cilium-dbg` in the Cilium agent pod
 
 ## Diagnosing Derived Policy Issues
 
 ```bash
 # Check the derived policy on a specific endpoint
 
-cilium endpoint get <endpoint-id> -o json | \
+cilium-dbg endpoint get <endpoint-id> -o json | \
   jq '.status.policy.realized'
 
 # List all policies affecting an endpoint
-cilium endpoint get <endpoint-id> -o json | \
-  jq '.status.policy.spec.policy-map-state'
+cilium-dbg endpoint get <endpoint-id> -o jsonpath='{range ..status.policy.realized.l4.ingress[*].derived-from-rules}{@}{"\n"}{end}' | \
+  tr -d '][' | xargs -I{} cilium-dbg policy get {}
 
-# Trace a specific policy decision
-cilium policy trace -s <src-identity> -d <dst-identity> --dport <port>
+# Inspect selector-to-identity mappings for policy decisions
+cilium-dbg policy selectors -o json
 ```
 
 ```mermaid
@@ -60,8 +60,8 @@ kubectl get ciliumnetworkpolicies -n default -o json | jq '.items[] | {
 ## Forcing Policy Recalculation
 
 ```bash
-# Trigger endpoint regeneration
-cilium endpoint config <endpoint-id> ConntrackLocal=Enabled
+# Wait for endpoints to apply a policy revision
+cilium-dbg policy wait <policy-revision>
 
 # Or restart the agent (last resort)
 kubectl delete pod -n kube-system <cilium-pod-on-node>
@@ -70,17 +70,17 @@ kubectl delete pod -n kube-system <cilium-pod-on-node>
 ## Verification
 
 ```bash
-cilium endpoint get <endpoint-id> -o json | jq '.status.policy'
-cilium policy trace -s <src> -d <dst> --dport <port>
-hubble observe --to-endpoint <endpoint-id> --last 10
+cilium-dbg endpoint get <endpoint-id> -o json | jq '.status.policy'
+cilium-dbg bpf policy get --all
+hubble observe --pod <pod-name> --last 10
 ```
 
 ## Troubleshooting
 
 - **Policies not merging correctly**: Cilium uses union (OR) for matching policies. Multiple allow policies are additive.
 - **Identity changed**: Label changes cause identity recalculation. Check current identity matches policy expectations.
-- **Stale derived policy**: Force regeneration or restart the agent.
+- **Stale derived policy**: Wait for the target policy revision or restart the agent.
 
 ## Conclusion
 
-Derived policy troubleshooting requires understanding how Cilium merges multiple policies for each endpoint. Use policy trace and endpoint inspection to see the effective rules.
+Derived policy troubleshooting requires understanding how Cilium merges multiple policies for each endpoint. Use selector inspection, Hubble flow data, and endpoint inspection to see the effective rules.
