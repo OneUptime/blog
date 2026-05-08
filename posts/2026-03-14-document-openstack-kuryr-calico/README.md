@@ -30,19 +30,22 @@ sequenceDiagram
     participant K8s as Kubernetes API
     participant Kuryr as Kuryr Controller
     participant Neutron as Neutron API
+    participant Calico as Calico Datastore
     participant Felix as Calico Felix
     participant Node as Compute Node
 
     K8s->>Kuryr: Pod created
     Kuryr->>Neutron: Create port
-    Neutron->>Felix: New endpoint
-    Felix->>Node: Program routes + iptables
+    Neutron->>Calico: Write endpoint data
+    Calico->>Felix: New endpoint
+    Felix->>Node: Program routes + policy
     Note over Node: Pod has connectivity
 
     K8s->>Kuryr: NetworkPolicy created
     Kuryr->>Neutron: Create security group rules
-    Neutron->>Felix: Updated security rules
-    Felix->>Node: Update iptables rules
+    Neutron->>Calico: Write security data
+    Calico->>Felix: Updated security rules
+    Felix->>Node: Update policy rules
 ```
 
 Document the component responsibilities:
@@ -58,18 +61,18 @@ Document the component responsibilities:
 
 ## Neutron (with Calico Plugin)
 - Manages network and port abstractions
-- Translates port information to Calico workload endpoints
-- Provides the API layer between Kuryr and Calico
+- Translates port and security information into Calico datastore state
+- Provides the Neutron API layer used by Kuryr, with the Calico driver implementing the backend
 
 ## Calico Felix
 - Programs routes on compute nodes for both VM and pod endpoints
-- Enforces security rules via iptables or eBPF
-- Manages route distribution via BIRD BGP
+- Enforces security rules according to the configured Calico dataplane
+- Works with BIRD, which propagates local workload routes over BGP
 
 ## Key Interaction Points
-1. Pod creation: Kuryr -> Neutron -> Calico (route + policy)
-2. Pod deletion: Kuryr -> Neutron -> Calico (cleanup)
-3. Policy change: Kuryr -> Neutron -> Calico (rule update)
+1. Pod creation: Kuryr -> Neutron -> Calico datastore -> Felix (route + policy)
+2. Pod deletion: Kuryr -> Neutron -> Calico datastore -> Felix (cleanup)
+3. Policy change: Kuryr -> Neutron -> Calico datastore -> Felix (rule update)
 4. Service creation: Kuryr -> Neutron -> Load Balancer
 ```
 
@@ -114,7 +117,9 @@ fi
 # Step 4: Check Calico endpoint
 echo ""
 echo "--- Step 4: Calico Endpoint ---"
-calicoctl get workloadendpoints --all-namespaces -o wide 2>/dev/null | grep "${POD_IP}"
+if [ -n "${POD_IP}" ]; then
+  calicoctl get workloadendpoints --all-namespaces -o wide 2>/dev/null | grep "${POD_IP}"
+fi
 
 # Step 5: Check routes on compute node
 echo ""
@@ -138,8 +143,8 @@ echo "Pre-checks:"
 echo "  1. Check current Kuryr controller health:"
 echo "     kubectl get pods -n kube-system -l app=kuryr-controller"
 echo ""
-echo "  2. Count current Neutron ports managed by Kuryr:"
-echo "     openstack port list --device-owner kuryr:bound -f value | wc -l"
+echo "  2. Count current KuryrPort CRDs:"
+echo "     kubectl get kuryrports --all-namespaces --no-headers 2>/dev/null | wc -l"
 echo ""
 echo "Steps:"
 echo "  1. Rolling restart of Kuryr controller:"
@@ -164,9 +169,9 @@ echo "=== Documentation Verification ==="
 echo "1. Kuryr controller running:"
 kubectl get pods -n kube-system -l app=kuryr-controller
 echo ""
-echo "2. Neutron ports match pods:"
+echo "2. KuryrPort CRDs match pods:"
 echo "   Pods: $(kubectl get pods --all-namespaces --no-headers | wc -l)"
-echo "   Kuryr ports: $(openstack port list --device-owner kuryr:bound -f value -c ID 2>/dev/null | wc -l)"
+echo "   KuryrPorts: $(kubectl get kuryrports --all-namespaces --no-headers 2>/dev/null | wc -l)"
 ```
 
 ## Troubleshooting
