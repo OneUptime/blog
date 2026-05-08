@@ -30,7 +30,9 @@ rate(envoy_cluster_upstream_rq_xx{envoy_response_code_class="5", envoy_cluster_n
 
 # Latency per version
 histogram_quantile(0.99,
-  rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~".*backend.*"}[5m]))
+  sum by (le, envoy_cluster_name) (
+    rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~".*backend.*"}[5m])
+  ))
 ```
 
 ## Hubble Monitoring
@@ -42,7 +44,7 @@ hubble observe --protocol http --to-label version=v2 -n default --last 50
 
 # Compare error rates
 hubble observe --protocol http --to-label version=v2 \
-  --http-status 500-599 --last 20
+  --http-status 5+ --last 20
 ```
 
 ```mermaid
