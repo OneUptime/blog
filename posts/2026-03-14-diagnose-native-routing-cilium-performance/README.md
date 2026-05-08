@@ -27,9 +27,9 @@ This guide provides the specific steps and commands for native routing performan
 ## Verifying Native Routing Mode
 
 ```bash
-cilium status --verbose | grep -E "DatapathMode|Host Routing"
-cilium config view | grep -E "tunnel|routing-mode"
-# Should show: tunnel=disabled, routing-mode=native
+kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data.routing-mode}{"\n"}'
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep "Host Routing"
+# Should show: native for routing-mode and Host Routing: BPF
 
 ```
 
@@ -59,7 +59,7 @@ kubectl exec client-2 -- iperf3 -c $SERVER_1_IP -t 20 -P 1 -J | jq '.end.sum_sen
 
 ```bash
 # BPF host routing should be enabled with native routing
-cilium status --verbose | grep "Host Routing"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep "Host Routing"
 # Should show: Host Routing: BPF
 # If it shows "Legacy", performance is sub-optimal
 ```
@@ -67,14 +67,15 @@ cilium status --verbose | grep "Host Routing"
 ## Verification
 
 ```bash
-cilium status --verbose | grep -E "DatapathMode|Host Routing|Routing"
+kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data.routing-mode}{"\n"}'
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep "Host Routing"
 ip route show | head -20
 ```
 
 ## Troubleshooting
 
-- **Routes not appearing**: Check autoDirectNodeRoutes and ensure nodes are on the same L2 segment, or use BGP.
-- **BPF host routing not activating**: Requires kubeProxyReplacement=true and compatible kernel (5.10+).
+- **Routes not appearing**: Check `autoDirectNodeRoutes` / `auto-direct-node-routes` and ensure nodes are on the same L2 segment, or use a routing component such as BGP.
+- **BPF host routing not activating**: Requires eBPF kube-proxy replacement, eBPF masquerading, and a compatible kernel.
 - **Asymmetric throughput**: Check for different NIC speeds or route path differences between nodes.
 - **BGP peering not establishing**: Verify BGP ASN configuration and firewall rules for TCP port 179.
 
@@ -88,17 +89,17 @@ DIAG_DIR="/tmp/cilium-diag-$(date +%Y%m%d-%H%M%S)"
 mkdir -p $DIAG_DIR
 
 # Collect Cilium status
-cilium status --verbose > $DIAG_DIR/cilium-status.txt
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --verbose > $DIAG_DIR/cilium-status.txt
 
 # Collect Cilium configuration
-cilium config view > $DIAG_DIR/cilium-config.txt
+kubectl -n kube-system get configmap cilium-config -o yaml > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -133,17 +134,17 @@ The `cilium monitor` command provides real-time visibility into the eBPF datapat
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o json | jq '.[0].id')
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -156,11 +157,11 @@ cilium hubble port-forward &
 
 # Query recent flows with filters
 hubble observe --protocol TCP --last 500 -o json | \
-  jq 'select(.verdict == "DROPPED") | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
+  jq 'select(.flow.verdict == "DROPPED") | {src: .flow.source.pod_name, dst: .flow.destination.pod_name, reason: .flow.drop_reason_desc}'
 
 # Get flow statistics by source and destination
 hubble observe --last 1000 -o json | \
-  jq -r '\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)' | \
+  jq -r '\(.flow.source.namespace)/\(.flow.source.pod_name) -> \(.flow.destination.namespace)/\(.flow.destination.pod_name): \(.flow.verdict)' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
