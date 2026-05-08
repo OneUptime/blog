@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Installation, Linux, Container, DevOps, openSUSE
 
-Description: A complete guide to installing and configuring Podman on openSUSE Leap and Tumbleweed, including rootless setup and YaST integration.
+Description: A complete guide to installing and configuring Podman on openSUSE Leap and Tumbleweed, including rootless setup and systemd integration.
 
 ---
 
-> openSUSE provides Podman through its official repositories with seamless integration into the YaST system management tools.
+> openSUSE provides Podman through its official repositories with integration into the standard system management tools.
 
 openSUSE, backed by SUSE, offers strong container support through both its stable Leap and rolling-release Tumbleweed editions. Podman is available in the default repositories for both. This guide covers installation, configuration, and practical usage.
 
@@ -16,19 +16,26 @@ openSUSE, backed by SUSE, offers strong container support through both its stabl
 
 ## Prerequisites
 
-- openSUSE Leap 15.4+ or openSUSE Tumbleweed
+- openSUSE Leap 16.0+ or openSUSE Tumbleweed
 - A user account with sudo privileges
 - An active internet connection
 
 ## Step 1: Update Your System
 
-Refresh repositories and update packages:
+Refresh repositories and update packages. On Leap, use:
 
 ```bash
 # Refresh repositories and update all packages
 
 sudo zypper refresh
 sudo zypper update -y
+```
+
+On Tumbleweed, use a distribution upgrade to move to the latest snapshot:
+
+```bash
+sudo zypper refresh
+sudo zypper dup -y
 ```
 
 ## Step 2: Install Podman
@@ -80,11 +87,11 @@ sudo usermod --add-subuids 100000-165535 $(whoami)
 sudo usermod --add-subgids 100000-165535 $(whoami)
 ```
 
-Install the rootless networking tool:
+Install the default rootless networking helper:
 
 ```bash
-# Install slirp4netns for rootless networking
-sudo zypper install -y slirp4netns
+# Install the pasta user-mode networking helper
+sudo zypper install -y passt
 ```
 
 ## Step 5: Run a Test Container
@@ -172,16 +179,21 @@ docker run --rm docker.io/library/alpine echo "Hello from Podman"
 Auto-start containers on boot:
 
 ```bash
-# Create a container to generate a service for
-podman run -d --name my-service -p 8080:80 docker.io/library/nginx:latest
+# Create a Quadlet container unit
+mkdir -p ~/.config/containers/systemd
+cat > ~/.config/containers/systemd/my-service.container <<'EOF'
+[Container]
+Image=docker.io/library/nginx:latest
+ContainerName=my-service
+PublishPort=8080:80
 
-# Generate a systemd service file
-mkdir -p ~/.config/systemd/user
-podman generate systemd --new --name my-service > ~/.config/systemd/user/container-my-service.service
+[Install]
+WantedBy=default.target
+EOF
 
-# Enable the service
+# Start the generated service
 systemctl --user daemon-reload
-systemctl --user enable container-my-service.service
+systemctl --user start my-service.service
 
 # Enable lingering for user services to start at boot
 sudo loginctl enable-linger $(whoami)
@@ -206,7 +218,7 @@ If rootless containers fail with permission errors:
 podman system reset
 
 # Verify kernel support for user namespaces
-sysctl kernel.unprivileged_userns_clone
+sysctl user.max_user_namespaces
 ```
 
 ## Summary
