@@ -32,6 +32,8 @@ If you have been running containers with `podman run` commands, converting them 
 | `--pull` | `Pull=` |
 | `--secret` | `Secret=` |
 | `--userns` | `UserNS=` |
+| `--tmpfs` | `Tmpfs=` |
+| `--memory` | `Memory=` |
 
 ## Example: Converting a Simple Web Server
 
@@ -88,6 +90,7 @@ Converted Quadlet files:
 ```ini
 # ~/.config/containers/systemd/pgdata.volume
 [Volume]
+VolumeName=pgdata
 ```
 
 ```ini
@@ -149,7 +152,7 @@ EnvironmentFile=/opt/myapp/.env
 AutoUpdate=registry
 DropCapability=all
 AddCapability=net_bind_service
-PodmanArgs=--memory=512m
+Memory=512m
 PodmanArgs=--cpus=1.5
 
 [Service]
