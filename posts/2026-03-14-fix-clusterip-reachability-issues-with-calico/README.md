@@ -52,7 +52,7 @@ If using eBPF mode, Felix handles service traffic instead of kube-proxy:
 calicoctl get felixconfiguration default -o yaml | grep bpfEnabled
 ```
 
-If `bpfEnabled: true`, ensure kube-proxy is disabled (they conflict). If `bpfEnabled: false`, ensure kube-proxy IS running.
+If `bpfEnabled: true`, Calico can replace kube-proxy for Kubernetes service handling, so kube-proxy should normally be disabled. If your distribution keeps kube-proxy running, set `bpfKubeProxyIptablesCleanupEnabled: false` to prevent iptables rule flapping. If `bpfEnabled: false`, ensure kube-proxy IS running.
 
 ## Step 3: Verify Service Endpoints
 
@@ -64,7 +64,7 @@ kubectl get endpoints <service-name> -n <namespace>
 kubectl get svc <service-name> -n <namespace> -o yaml
 ```
 
-If endpoints are empty, the issue is with pod selectors, not Calico.
+If endpoints are empty, the issue is usually with pod selectors, pod readiness, or manually managed service backends, not Calico dataplane programming.
 
 ## Verification
 
@@ -75,7 +75,7 @@ After applying the fix, verify the error is resolved:
 kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' | tail -20
 
 # Verify all calico-node pods are running
-kubectl get pods -n calico-system -l k8s-app=calico-node
+kubectl get pods -A -l k8s-app=calico-node
 
 # Test pod connectivity
 kubectl run verify-fix --image=busybox --rm -it --restart=Never -- ping -c 3 <test-pod-ip>
@@ -112,7 +112,7 @@ When making changes to fix networking issues in Calico, follow these operational
 echo "=== Node Status ==="
 kubectl get nodes
 echo "=== Calico Pods ==="
-kubectl get pods -n calico-system -o wide
+kubectl get pods -A -l k8s-app=calico-node -o wide
 echo "=== Recent Warnings ==="
 kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' | tail -10
 echo "=== IPAM Status ==="
@@ -138,16 +138,16 @@ After applying any fix, systematically verify each layer of the Calico stack:
 
 ```bash
 # Layer 1: Calico system pods
-kubectl get pods -n calico-system -o wide
+kubectl get pods -A -l k8s-app=calico-node -o wide
 
-# Layer 2: IPAM consistency
-calicoctl ipam check
+# Layer 2: IPAM allocation status
+calicoctl ipam show --show-blocks
 
-# Layer 3: Node-to-node connectivity
+# Layer 3: Node-to-node BGP status
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Service ClusterIP connectivity
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 --no-check-certificate https://kubernetes.default.svc/healthz
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
