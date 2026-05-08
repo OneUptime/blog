@@ -16,6 +16,7 @@ Auditing a secured application checks that policies follow security best practic
 
 - Kubernetes cluster with Cilium and secured application
 - kubectl configured
+- jq installed
 
 ## Policy Coverage Audit
 
@@ -51,7 +52,7 @@ kubectl get ciliumendpoints -n $NAMESPACE -o json | jq '.items[] | {
 kubectl get ciliumnetworkpolicies -n demo -o json | jq '.items[] | select(.spec.ingress[]? | .fromEndpoints[]? == {}) | .metadata.name'
 
 # Check for missing egress restrictions
-kubectl get ciliumnetworkpolicies -n demo -o json | jq '.items[] | select(.spec.egress == null) | .metadata.name'
+kubectl get ciliumnetworkpolicies -n demo -o json | jq '.items[] | select((.spec.egress // []) | length == 0) | .metadata.name'
 ```
 
 ## Generating Audit Report
@@ -61,8 +62,8 @@ echo "=== Audit Report ==="
 echo "Namespace: demo"
 echo "Date: $(date)"
 echo "Total policies: $(kubectl get ciliumnetworkpolicies -n demo --no-headers | wc -l)"
-echo "Default deny present: $(kubectl get ciliumnetworkpolicies -n demo -o name | grep -c deny)"
-echo "Pods with enforcement: $(kubectl get ciliumendpoints -n demo -o json | jq '[.items[] | select(.status.policy.ingress.enforcing == true)] | length')"
+echo "Ingress-enforced endpoints: $(kubectl get ciliumendpoints -n demo -o json | jq '[.items[] | select(.status.policy.ingress.enforcing == true)] | length')"
+echo "Egress-enforced endpoints: $(kubectl get ciliumendpoints -n demo -o json | jq '[.items[] | select(.status.policy.egress.enforcing == true)] | length')"
 ```
 
 ```mermaid
