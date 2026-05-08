@@ -17,7 +17,7 @@ Building from source is useful when you need a version not yet available in your
 ## Prerequisites
 
 - A Linux system (Fedora, Debian/Ubuntu, or similar)
-- Go 1.21 or later
+- Go 1.24.2 or later for current Podman releases (check the `go` directive in `go.mod` for the version you build)
 - Git
 - A user account with sudo privileges
 - At least 4GB of free disk space
@@ -40,10 +40,16 @@ sudo dnf install -y \
   libseccomp-devel \
   device-mapper-devel \
   glib2-devel \
+  libselinux-devel \
+  systemd-devel \
   btrfs-progs-devel \
   conmon \
   containers-common \
   crun \
+  netavark \
+  aardvark-dns \
+  nftables \
+  passt \
   slirp4netns \
   iptables \
   go-md2man
@@ -55,7 +61,7 @@ sudo dnf install -y \
 # Install development tools and Podman build dependencies
 sudo apt install -y \
   git \
-  golang \
+  golang-go \
   make \
   gcc \
   pkg-config \
@@ -64,9 +70,17 @@ sudo apt install -y \
   libseccomp-dev \
   libdevmapper-dev \
   libglib2.0-dev \
+  libsystemd-dev \
+  libselinux1-dev \
+  libapparmor-dev \
   libbtrfs-dev \
+  btrfs-progs \
   conmon \
   crun \
+  netavark \
+  aardvark-dns \
+  nftables \
+  passt \
   slirp4netns \
   iptables \
   go-md2man
@@ -80,10 +94,10 @@ Verify Go is installed and meets the minimum version:
 # Check Go version
 go version
 
-# If Go is not installed or too old, install the latest version
-wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
+# If Go is not installed or too old, install a current supported version
+wget https://go.dev/dl/go1.26.3.linux-amd64.tar.gz
 sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.26.3.linux-amd64.tar.gz
 
 # Add Go to your PATH
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
@@ -120,10 +134,10 @@ git checkout v5.3.0
 ```bash
 # Build Podman with standard options
 cd /tmp/podman-src
-make BUILDTAGS="seccomp"
+make BUILDTAGS="selinux seccomp exclude_graphdriver_devicemapper"
 
 # For a build with systemd support (recommended on systemd-based systems)
-make BUILDTAGS="seccomp systemd"
+make BUILDTAGS="selinux seccomp systemd exclude_graphdriver_devicemapper"
 ```
 
 The build produces the `podman` binary in the `bin/` directory:
@@ -141,7 +155,7 @@ ls -la bin/podman
 ```bash
 # Install Podman and its man pages
 cd /tmp/podman-src
-sudo make install
+sudo env PATH=$PATH make install PREFIX=/usr
 
 # Verify the installation
 which podman
@@ -162,7 +176,7 @@ conmon --version 2>/dev/null
 git clone https://github.com/containers/conmon.git /tmp/conmon-src
 cd /tmp/conmon-src
 make
-sudo make install
+sudo make podman
 ```
 
 ### Install crun (OCI Runtime)
@@ -185,6 +199,7 @@ which netavark 2>/dev/null
 
 # Install from package manager if available
 sudo dnf install -y netavark aardvark-dns  # Fedora
+sudo apt install -y netavark aardvark-dns  # Debian/Ubuntu
 # or build from source
 git clone https://github.com/containers/netavark.git /tmp/netavark-src
 cd /tmp/netavark-src
@@ -199,23 +214,8 @@ sudo make install
 sudo mkdir -p /etc/containers
 
 # Install default configuration files
-sudo cp /tmp/podman-src/vendor/github.com/containers/image/v5/registries.conf /etc/containers/ 2>/dev/null
-
-# Create a basic registries configuration
-sudo tee /etc/containers/registries.conf <<EOF
-unqualified-search-registries = ['docker.io', 'quay.io']
-EOF
-
-# Create a basic policy file
-sudo tee /etc/containers/policy.json <<EOF
-{
-  "default": [
-    {
-      "type": "insecureAcceptAnything"
-    }
-  ]
-}
-EOF
+sudo curl -L -o /etc/containers/registries.conf https://raw.githubusercontent.com/containers/image/main/registries.conf
+sudo curl -L -o /etc/containers/policy.json https://raw.githubusercontent.com/containers/image/main/default-policy.json
 ```
 
 ## Step 9: Configure Rootless Support
@@ -225,8 +225,10 @@ EOF
 sudo usermod --add-subuids 100000-165535 $(whoami)
 sudo usermod --add-subgids 100000-165535 $(whoami)
 
-# Install slirp4netns if not already present
-which slirp4netns || sudo dnf install -y slirp4netns
+# Install pasta or slirp4netns if not already present
+if ! command -v pasta >/dev/null && ! command -v slirp4netns >/dev/null; then
+  sudo dnf install -y passt slirp4netns || sudo apt install -y passt slirp4netns
+fi
 ```
 
 ## Step 10: Verify the Source Build
@@ -262,7 +264,7 @@ sudo cp bin/podman-remote /usr/local/bin/
 ```bash
 # Build with all common tags
 cd /tmp/podman-src
-make BUILDTAGS="seccomp systemd exclude_graphdriver_btrfs"
+make BUILDTAGS="selinux seccomp systemd exclude_graphdriver_devicemapper exclude_graphdriver_btrfs"
 ```
 
 ### Cross-Compile for ARM
@@ -270,7 +272,7 @@ make BUILDTAGS="seccomp systemd exclude_graphdriver_btrfs"
 ```bash
 # Build for ARM64
 cd /tmp/podman-src
-GOARCH=arm64 make BUILDTAGS="seccomp"
+GOARCH=arm64 make BUILDTAGS="selinux seccomp exclude_graphdriver_devicemapper"
 ```
 
 ## Updating a Source Installation
@@ -283,8 +285,8 @@ git checkout v5.4.0  # Replace with the new version
 
 # Rebuild and reinstall
 make clean
-make BUILDTAGS="seccomp systemd"
-sudo make install
+make BUILDTAGS="selinux seccomp systemd exclude_graphdriver_devicemapper"
+sudo env PATH=$PATH make install PREFIX=/usr
 
 # Verify the update
 podman --version
