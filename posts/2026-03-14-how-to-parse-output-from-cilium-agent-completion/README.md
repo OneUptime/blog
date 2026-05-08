@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, CLI
 
-Description: A practical guide covering how to parse output from cilium-agent completion with step-by-step instructions and real-world examples for production Kubernetes clusters.
+Description: A practical guide covering how to parse output from cilium-agent completion with step-by-step instructions and real-world examples.
 
 ---
 
@@ -12,113 +12,106 @@ Description: A practical guide covering how to parse output from cilium-agent co
 
 Shell completion dramatically improves CLI productivity by providing tab-completion for commands, subcommands, flags, and arguments. Setting up completion for your shell takes only a few minutes and saves significant time in daily operations.
 
-In this guide, we cover cilium-agent shell completion for your shell in a Kubernetes environment. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing without the overhead of traditional iptables-based networking stacks.
+In this guide, we cover cilium-agent shell completion output and how to inspect it safely. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing without the overhead of traditional iptables-based networking stacks.
 
-Whether you are running a small development cluster or a large production environment with thousands of pods, the techniques in this guide will help you maintain a reliable Cilium deployment. We provide step-by-step instructions with real commands and configuration examples that you can adapt to your environment.
+Whether you are checking generated completion scripts during an upgrade or packaging completions for developer workstations, the techniques in this guide will help you inspect the output consistently. We provide step-by-step instructions with real commands and examples that you can adapt to your environment.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
-- `kubectl` configured for cluster access
-- `cilium` CLI installed (matching your Cilium version)
-- Helm 3.x for configuration management
-- Basic familiarity with Kubernetes networking concepts
-- Access to cluster nodes for troubleshooting (recommended)
-- Prometheus and Grafana for metrics visualization (recommended)
+- The `cilium-agent` binary available in your shell or inside the Cilium agent container image
+- A shell supported by the completion command: bash, zsh, fish, or PowerShell
+- `bash-completion` installed if you plan to load bash completions interactively
+- Basic familiarity with shell pipelines
+- Standard text processing tools such as `grep`, `awk`, `sed`, and `wc`
 
 ## Understanding Output Formats
 
-Cilium CLI commands support multiple output formats that are suitable for different parsing needs.
+The `cilium-agent completion` command generates shell-specific completion scripts. It does not emit JSON; choose the shell subcommand that matches the format you want to inspect.
 
 ```bash
-# Default human-readable output
+# Bash completion script
+cilium-agent completion bash
 
-cilium status
+# Zsh completion script
+cilium-agent completion zsh
 
-# JSON output for programmatic parsing
-cilium status -o json
+# Fish completion script
+cilium-agent completion fish
 
-# JSON output for endpoint listing
-cilium endpoint list -o json
+# PowerShell completion script
+cilium-agent completion powershell
 
-# JSON output for identity listing
-cilium identity list -o json
+# Disable completion descriptions where supported
+cilium-agent completion bash --no-descriptions
 ```
 
-## Parsing with jq
+## Parsing with grep and awk
 
-The `jq` tool is the most effective way to parse Cilium JSON output.
+Because completion output is a shell script, use shell-aware checks and conservative text filters rather than a JSON parser.
 
 ```bash
-# Parse endpoint list to extract specific fields
-cilium endpoint list -o json | jq '.[] | {id: .id, state: .status.state, identity: .status.identity.id}'
+# Save bash completion output for repeatable inspection
+cilium-agent completion bash > /tmp/cilium-agent-completion.bash
 
-# Count endpoints by state
-cilium endpoint list -o json | jq '[.[] | .status.state] | group_by(.) | map({state: .[0], count: length})'
+# Confirm the script contains cilium-agent completion definitions
+grep -n 'cilium-agent' /tmp/cilium-agent-completion.bash | head
 
-# Extract identity labels
-cilium identity list -o json | jq '.[] | {id: .id, labels: .labels}'
+# List long flags embedded in the generated bash completion script
+grep -Eo -- '--[A-Za-z0-9][A-Za-z0-9_-]*' /tmp/cilium-agent-completion.bash | sort -u
 
-# Filter for specific conditions
-cilium endpoint list -o json | jq '[.[] | select(.status.state != "ready")] | length'
+# Count generated completion lines for a quick smoke check
+wc -l /tmp/cilium-agent-completion.bash
 
-# Parse service list
-cilium service list -o json | jq '.[] | {id: .spec.id, frontend: .spec.frontend_address, backends: (.spec.backend_addresses | length)}'
+# Inspect fish completion entries
+cilium-agent completion fish | awk '/^complete -c cilium-agent/ {print}'
 ```
 
 ## Building Scripts with Parsed Output
 
 ```bash
 #!/bin/bash
-# cilium-report.sh
-# Generate a structured report from Cilium CLI output
+# cilium-completion-report.sh
+# Generate a structured report from cilium-agent completion output
 
-echo "=== Cilium Cluster Report ==="
+echo "=== cilium-agent Completion Report ==="
 echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
 
-# Parse status
-STATUS=$(cilium status -o json 2>/dev/null)
-if [ $? -eq 0 ]; then
-    echo "Cilium State: $(echo "$STATUS" | jq -r '.cilium.state // "unknown"')"
-    echo "Cluster Mesh: $(echo "$STATUS" | jq -r '.cluster_mesh.state // "disabled"')"
-fi
+for shell in bash zsh fish powershell; do
+    output=$(cilium-agent completion "$shell" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        echo "$shell: generation failed"
+        continue
+    fi
 
-# Parse endpoints
-ENDPOINTS=$(cilium endpoint list -o json 2>/dev/null)
-if [ $? -eq 0 ]; then
-    TOTAL=$(echo "$ENDPOINTS" | jq 'length')
-    READY=$(echo "$ENDPOINTS" | jq '[.[] | select(.status.state == "ready")] | length')
-    echo "Endpoints: $READY/$TOTAL ready"
-fi
-
-# Parse identities
-IDENTITIES=$(cilium identity list -o json 2>/dev/null)
-if [ $? -eq 0 ]; then
-    echo "Identities: $(echo "$IDENTITIES" | jq 'length')"
-fi
+    lines=$(printf '%s\n' "$output" | wc -l | awk '{print $1}')
+    flags=$(printf '%s\n' "$output" | grep -Eo -- '--[A-Za-z0-9][A-Za-z0-9_-]*' | sort -u | wc -l | awk '{print $1}')
+    echo "$shell: $lines lines, $flags long-flag references"
+done
 ```
 
 ## Integration with Monitoring Tools
 
 ```bash
-# Output metrics in a format suitable for custom exporters
-cilium metrics list 2>/dev/null | while IFS= read -r line; do
-    # Parse the metric name and value
-    metric_name=$(echo "$line" | awk '{print $1}')
-    metric_value=$(echo "$line" | awk '{print $NF}')
-    echo "cilium.$metric_name $metric_value $(date +%s)"
+# Output simple CI-friendly checks for generated completion scripts
+for shell in bash zsh fish powershell; do
+    if cilium-agent completion "$shell" >/tmp/cilium-agent-completion-"$shell" 2>/dev/null; then
+        bytes=$(wc -c </tmp/cilium-agent-completion-"$shell")
+        echo "cilium_agent_completion_bytes{shell=\"$shell\"} $bytes"
+    else
+        echo "cilium_agent_completion_generation_failed{shell=\"$shell\"} 1"
+    fi
 done
 ```
 
 ```mermaid
 flowchart LR
-    A[Cilium CLI] --> B[-o json]
-    B --> C[jq Parser]
-    C --> D[Filtered Data]
+    A[cilium-agent completion] --> B[Shell Script Output]
+    B --> C[grep/awk Parser]
+    C --> D[Filtered Script Data]
     D --> E{Output Target}
     E --> F[Script Report]
-    E --> G[Monitoring System]
+    E --> G[CI Check]
     E --> H[CI/CD Pipeline]
 ```
 
@@ -127,27 +120,26 @@ flowchart LR
 ```bash
 # Robust parsing with error handling
 parse_cilium_data() {
-    local cmd="$1"
     local output
     
-    output=$($cmd 2>/dev/null)
+    output=$("$@" 2>/dev/null)
     if [ $? -ne 0 ]; then
-        echo "ERROR: Command failed: $cmd" >&2
+        echo "ERROR: Command failed: $*" >&2
         return 1
     fi
     
-    # Validate JSON
-    echo "$output" | jq . > /dev/null 2>&1
+    # Validate that the generated script references cilium-agent
+    printf '%s\n' "$output" | grep -q 'cilium-agent'
     if [ $? -ne 0 ]; then
-        echo "ERROR: Invalid JSON from: $cmd" >&2
+        echo "ERROR: Unexpected completion output from: $*" >&2
         return 1
     fi
     
-    echo "$output"
+    printf '%s\n' "$output"
 }
 
 # Usage
-parse_cilium_data "cilium endpoint list -o json" | jq length
+parse_cilium_data cilium-agent completion bash | wc -l
 ```
 
 
@@ -156,63 +148,62 @@ parse_cilium_data "cilium endpoint list -o json" | jq length
 After completing the steps above, run a comprehensive verification to confirm everything is working as expected.
 
 ```bash
-# Check overall Cilium deployment health
-cilium status --verbose
+# Confirm the completion command exists
+cilium-agent completion --help
 
-# Verify inter-node connectivity
-cilium health status
+# Generate bash completion output
+cilium-agent completion bash > /tmp/cilium-agent-completion.bash
 
-# Confirm all Cilium pods are running and ready
-kubectl get pods -n kube-system -l k8s-app=cilium -o wide
+# Verify the generated file is not empty
+test -s /tmp/cilium-agent-completion.bash
 
-# Verify the Cilium operator is healthy
-kubectl get pods -n kube-system -l name=cilium-operator
+# Confirm the generated script references cilium-agent
+grep -q 'cilium-agent' /tmp/cilium-agent-completion.bash
 
-# Check for recent error events
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tail -10
+# Check zsh generation
+cilium-agent completion zsh >/tmp/cilium-agent-completion.zsh
 
-# Run a connectivity test to validate the data plane
-cilium connectivity test --single-node
+# Check fish generation
+cilium-agent completion fish >/tmp/cilium-agent-completion.fish
 
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+# Check PowerShell generation
+cilium-agent completion powershell >/tmp/cilium-agent-completion.ps1
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **`cilium-agent` not found**: Verify that the Cilium agent binary is on your `PATH`, or run the command from an environment that contains the Cilium agent image.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Bash completions do not load**: Install the `bash-completion` package, then load the generated script with `source <(cilium-agent completion bash)` or install it under `/etc/bash_completion.d/cilium-agent`.
 
-- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
+- **Zsh completions do not load**: Ensure completion is initialized in zsh with `autoload -U compinit; compinit`, then place the generated `_cilium-agent` file in a directory listed in `$fpath`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **Fish completions do not load**: Write the generated script to `~/.config/fish/completions/cilium-agent.fish` and start a new shell.
 
-- **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
+- **PowerShell completions do not load**: Pipe the generated script to `Out-String | Invoke-Expression` for the current session or add the generated content to your PowerShell profile.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Parsed output changes after an upgrade**: Regenerate the completion script after upgrading Cilium, because flags and subcommands can change between releases.
 
-To collect a comprehensive diagnostic bundle for further analysis:
+To collect a reusable completion file for further analysis:
 
 ```bash
-# Generate a Cilium sysdump containing all diagnostic information
-# This collects logs, configs, BPF maps, and cluster state
-cilium sysdump --output-filename cilium-diag-$(date +%Y%m%d)
+# Generate a dated bash completion script
+cilium-agent completion bash > cilium-agent-completion-$(date +%Y%m%d).bash
 ```
 
 ## Conclusion
 
-This guide covered cilium-agent shell completion for your shell with practical steps you can apply to your Kubernetes cluster. Regular monitoring, systematic validation, and proactive management are essential for maintaining a healthy Cilium deployment at any scale.
+This guide covered cilium-agent shell completion output with practical steps you can apply to your scripts and CI checks. Regular validation is useful when you package completions or upgrade Cilium versions.
 
 Key takeaways from this guide:
 
-- Always assess the current state before making changes to your Cilium configuration
-- Use Helm for configuration management to ensure consistency and reproducibility across environments
-- Monitor Cilium metrics through Prometheus to detect issues before they impact workloads
-- Test changes in a staging environment before applying them to production clusters
-- Maintain runbooks documenting your Cilium configuration decisions and operational procedures
-- Use `cilium sysdump` to collect comprehensive diagnostic data when investigating issues
+- Generate completion output for the specific shell you need to support
+- Treat completion output as shell script, not JSON
+- Use `grep`, `awk`, `sed`, and `wc` for lightweight inspection
+- Use `--no-descriptions` when you need a smaller completion script without descriptions
+- Regenerate completion files after upgrading Cilium
+- Validate that generated scripts are non-empty before publishing them
 
-As your cluster grows and evolves, revisit these configurations periodically and adjust them to match your current requirements. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
+As your environment grows and evolves, revisit these scripts periodically and adjust them to match your current Cilium version. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
