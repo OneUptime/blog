@@ -56,7 +56,7 @@ podman pull --platform linux/amd64 nginx:1.25
 podman pull --platform linux/arm64 nginx:1.25
 
 # Pull the ARM v7 version for Raspberry Pi
-podman pull --platform linux/arm/v7 alpine:3.19
+podman pull --platform linux/arm --variant v7 alpine:3.19
 
 # Pull the s390x version for IBM mainframes
 podman pull --platform linux/s390x ubuntu:22.04
@@ -74,10 +74,10 @@ podman pull --platform linux/amd64 nginx:latest
 podman pull --platform linux/arm64 nginx:latest
 
 # ARM 32-bit v7 (older Raspberry Pi models)
-podman pull --platform linux/arm/v7 nginx:latest
+podman pull --platform linux/arm --variant v7 nginx:latest
 
 # ARM 32-bit v6 (Raspberry Pi Zero)
-podman pull --platform linux/arm/v6 alpine:latest
+podman pull --platform linux/arm --variant v6 alpine:latest
 
 # IBM Power
 podman pull --platform linux/ppc64le nginx:latest
@@ -118,7 +118,7 @@ Pull images for multiple platforms to create your own multi-arch manifests.
 podman pull --platform linux/amd64 nginx:1.25
 podman pull --platform linux/arm64 nginx:1.25
 
-# List images and see both platforms
+# List image IDs, then inspect each ID if you need to verify architecture
 podman images --format "{{.Repository}}:{{.Tag}} {{.ID}}" | grep nginx
 
 # Create a manifest list from both platform images
@@ -147,18 +147,21 @@ podman inspect nginx:1.25 \
   --format 'OS: {{.Os}}, Arch: {{.Architecture}}, Variant: {{.Variant}}'
 ```
 
-## Setting a Default Platform
+## Using a Shell Helper for a Default Platform
 
-If you frequently pull for a non-native platform, you can set environment variables.
+If you frequently pull for a non-native platform, you can define a shell helper.
 
 ```bash
-# Set the default platform for the current session
-export CONTAINERS_PLATFORM="linux/arm64"
-podman pull nginx:1.25
+# Define a helper for the current session
+podman-pull-arm64() {
+  podman pull --platform linux/arm64 "$@"
+}
+
+podman-pull-arm64 nginx:1.25
 # This will pull the ARM64 version
 
 # Or add it to your shell profile for persistence
-echo 'export CONTAINERS_PLATFORM="linux/arm64"' >> ~/.bashrc
+echo 'podman-pull-arm64() { podman pull --platform linux/arm64 "$@"; }' >> ~/.bashrc
 source ~/.bashrc
 ```
 
