@@ -30,12 +30,13 @@ Monitor aggregation reduces CPU usage but can hide security-relevant events:
 ```yaml
 # Security-conscious aggregation settings
 
-# Use 'medium' not 'maximum' to preserve drop visibility
-monitorAggregation: medium
-monitorAggregationInterval: 5s
+# Use 'medium' to preserve useful visibility without emitting every trace event
+bpf:
+  monitorAggregation: medium
+  monitorInterval: 5s
 
-# Ensure drop events are never aggregated away
-monitorAggregationFlags: "all"
+  # Notify when each TCP flag is first observed for a connection
+  monitorFlags: "all"
 ```
 
 ```bash
@@ -44,8 +45,8 @@ hubble observe --verdict DROPPED --last 50
 
 # Compare drop counts at different aggregation levels
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_drop_count_total"
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | \
+  grep "hubble_drop_total"
 ```
 
 ```mermaid
@@ -61,21 +62,23 @@ graph TD
     C --> C1[Most events visible]
     C --> C2[Moderate CPU savings]
 
-    D --> D1[Drops and new connections visible]
+    D --> D1[New connections, TCP flag changes, periodic updates, and drops visible]
     D --> D2[Good CPU savings]
 
-    E --> E1[Only new connections and drops]
+    E --> E1[Currently equivalent to medium]
     E --> E2[Maximum CPU savings]
-    E --> E3[May miss port scan details]
+    E --> E3[Alias behavior may change]
 
     style D fill:#90EE90
     style E fill:#FFD700
 ```
 
-Critical: never use `maximum` aggregation if you need to detect:
-- Port scanning (individual connection attempts are aggregated)
-- Data exfiltration patterns (TCP flag details lost)
-- Lateral movement (short-lived connections may be missed)
+Critical: do not rely on monitor aggregation alone if you need packet-level evidence for:
+- Port scanning investigations
+- Data exfiltration patterns that require every packet or payload-level context
+- Lateral movement investigations where short-lived flows need close inspection
+
+In current Cilium releases, `maximum` is an alias for `medium`, but using `medium` keeps the intended behavior explicit.
 
 ## Securing Performance Metric Endpoints
 
@@ -110,29 +113,25 @@ hubble:
 Protect the metrics endpoint from unauthorized access:
 
 ```yaml
-# metrics-security-policy.yaml
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: hubble-metrics-security
-  namespace: kube-system
-spec:
-  endpointSelector:
-    matchLabels:
-      k8s-app: cilium
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            app.kubernetes.io/name: prometheus
-            io.kubernetes.pod.namespace: monitoring
-      toPorts:
-        - ports:
-            - port: "9965"
-              protocol: TCP
+# Metric TLS configuration with client authentication
+hubble:
+  metrics:
+    tls:
+      enabled: true
+      server:
+        mtls:
+          enabled: true
+          name: hubble-metrics-ca
 ```
 
 ```bash
-kubectl apply -f metrics-security-policy.yaml
+kubectl -n kube-system create configmap hubble-metrics-ca --from-file=ca.crt
+
+helm upgrade cilium cilium/cilium -n kube-system \
+  --reuse-values \
+  --set hubble.metrics.tls.enabled=true \
+  --set hubble.metrics.tls.server.mtls.enabled=true \
+  --set hubble.metrics.tls.server.mtls.name=hubble-metrics-ca
 ```
 
 ## Configuring Secure Event Buffering
@@ -143,8 +142,8 @@ The event buffer should be sized for both performance and security forensics:
 # Security-conscious buffer sizing
 hubble:
   # Keep enough history for incident investigation
-  # 30 minutes of flows at medium aggregation ~= 16384 events
-  eventBufferCapacity: "16384"
+  # Hubble event buffer capacity must be one less than a power of two
+  eventBufferCapacity: "16383"
 
   # Enable export for long-term forensic retention
   export:
@@ -162,20 +161,19 @@ hubble:
         - destination.namespace
         - destination.pod_name
         - destination.labels
-        - destination.port
+        - l4
         - verdict
-        - drop_reason
+        - drop_reason_desc
         - Type
       # Focus on security-relevant events
       allowList:
-        - '{"verdict":["DROPPED"]}'
-        - '{"verdict":["ERROR"]}'
+        - '{"verdict":["DROPPED","ERROR"]}'
 ```
 
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set hubble.eventBufferCapacity="16384" \
+  --set hubble.eventBufferCapacity="16383" \
   --set hubble.export.static.enabled=true
 ```
 
@@ -225,8 +223,8 @@ hubble observe --type l7 --protocol dns --last 5
 
 # 3. Metrics endpoint is restricted
 kubectl run test --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s --connect-timeout 3 http://cilium-agent.kube-system:9965/metrics 2>&1
-# Should fail
+  curl -sk --connect-timeout 3 https://hubble-metrics.kube-system:9965/metrics 2>&1
+# Should fail without a client certificate when mTLS is enabled
 
 # 4. Resource limits are enforced
 kubectl -n kube-system describe ds cilium | grep -A5 "Limits"
@@ -243,7 +241,7 @@ for line in sys.stdin:
 
 ## Troubleshooting
 
-- **Drop events disappearing after aggregation change**: Never use `maximum` aggregation for security-critical clusters. Switch back to `medium`.
+- **Drop events disappearing after aggregation change**: Confirm the cluster is using `medium` aggregation or lower, and check for Hubble lost events that indicate queue or buffer pressure.
 
 - **Resource limits causing OOM kills**: Check if the event buffer is too large for the memory limit. Reduce `eventBufferCapacity` or increase the memory limit.
 
@@ -253,4 +251,4 @@ for line in sys.stdin:
 
 ## Conclusion
 
-Security-conscious performance tuning of Hubble requires deliberate choices about which data to retain and which to aggregate away. Keep monitor aggregation at `medium` to preserve drop visibility, protect metric endpoints with network policies, size the event buffer for forensic retention, and enforce resource limits as a defense boundary. Every performance optimization should be validated against your security monitoring requirements before being applied to production.
+Security-conscious performance tuning of Hubble requires deliberate choices about which data to retain and which to aggregate away. Keep monitor aggregation at `medium` to preserve drop visibility, protect metric endpoints with TLS and client authentication, size the event buffer for forensic retention, and enforce resource limits as a defense boundary. Every performance optimization should be validated against your security monitoring requirements before being applied to production.
