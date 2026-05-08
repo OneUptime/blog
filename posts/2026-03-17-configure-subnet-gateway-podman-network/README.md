@@ -37,7 +37,7 @@ Restrict the pool of assignable container IPs within the subnet:
 podman network create \
   --subnet 10.50.0.0/24 \
   --gateway 10.50.0.1 \
-  --ip-range 10.50.0.100/25 \
+  --ip-range 10.50.0.100-10.50.0.254 \
   ranged-net
 
 # Containers will get IPs from 10.50.0.100 to 10.50.0.254
@@ -75,7 +75,7 @@ done
 ip route show
 ```
 
-## Using /16 and /8 Subnets
+## Using /16 Subnets
 
 ```bash
 # Large subnet for many containers
@@ -126,4 +126,4 @@ podman network create \
 
 ## Summary
 
-Configure custom subnets and gateways with `--subnet` and `--gateway` when creating Podman networks. Use `--ip-range` to restrict the assignable IP pool, and `--ip` to assign static addresses to individual containers. Always check existing subnets and host routes to avoid conflicts. Use different subnets for different application tiers to enforce network isolation.
+Configure custom subnets and gateways with `--subnet` and `--gateway` when creating Podman networks. Use `--ip-range` to restrict the assignable IP pool, and `--ip` to assign static addresses to individual containers. Always check existing subnets and host routes to avoid conflicts. Use different networks with different subnets for different application tiers to enforce network isolation.
