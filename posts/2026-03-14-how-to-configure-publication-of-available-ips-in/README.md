@@ -4,34 +4,34 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, IPAM, Networking, Configuration
 
-Description: How to configure Cilium IPAM to publish available IP counts, enabling external systems and autoscalers to make informed scheduling decisions.
+Description: How to read Cilium IPAM published available IP counts, enabling external systems and autoscalers to make informed scheduling decisions.
 
 ---
 
 ## Introduction
 
-Cilium IPAM can publish the number of available IP addresses per node, which is useful for cluster autoscalers and custom scheduling logic. When external systems know how many IPs are available on each node, they can make better decisions about where to schedule pods and when to scale the cluster.
+Cilium IPAM modes that track per-node IP pools can publish the number of available IP addresses per node, which is useful for cluster autoscalers and custom scheduling logic. When external systems know how many IPs are available on each node, they can make better decisions about where to schedule pods and when to scale the cluster.
 
-IP availability publication works through the CiliumNode custom resource, where each node reports its current IP pool status. This data is accessible via the Kubernetes API and can be consumed by monitoring systems, autoscalers, and custom controllers.
+IP availability publication works through the CiliumNode custom resource, where each node reports its current IP pool status. In CRD-backed and cloud-provider IPAM modes, available IPs are stored in fields such as `spec.ipam.pool` or `spec.ipam.available`, while allocated addresses are reported under `status.ipam.used`. This data is accessible via the Kubernetes API and can be consumed by monitoring systems, autoscalers, and custom controllers.
 
 This guide covers configuring IP availability publication and integrating it with common cluster management tools.
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium installed (v1.14+)
+- Kubernetes cluster with Cilium installed (v1.18+) using CRD-backed or cloud-provider IPAM
 - kubectl and Helm v3 configured
 - Optional: Cluster autoscaler or custom controller
 
 ## Enabling IP Availability Publication
 
-IP availability data is published in CiliumNode resources by default. Verify it is working:
+IP availability data is published in CiliumNode resources by supported IPAM modes. Verify it is working:
 
 ```bash
 # Check CiliumNode for IP availability data
 
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
-  available: (.spec.ipam.pool // {} | length),
+  total_pool: (.spec.ipam.pool // .spec.ipam.available // {} | length),
   used: (.status.ipam.used // {} | length)
 }'
 ```
@@ -40,14 +40,16 @@ kubectl get ciliumnodes -o json | jq '.items[] | {
 
 ```yaml
 # cilium-ip-publication.yaml
+azure:
+  enabled: true
 ipam:
-  mode: cluster-pool
-  operator:
-    clusterPoolIPv4PodCIDRList:
-      - "10.0.0.0/8"
-    clusterPoolIPv4MaskSize: 24
+  mode: azure
+  nodeSpec:
+    ipamPreAllocate: 10
 operator:
   replicas: 2
+  prometheus:
+    enabled: true
 ```
 
 ```bash
@@ -62,7 +64,7 @@ helm upgrade cilium cilium/cilium \
 ```bash
 # Get available IPs per node
 kubectl get ciliumnodes -o json | jq -r '.items[] |
-  "\(.metadata.name): available=\((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length))"'
+  "\(.metadata.name): available=\((.spec.ipam.pool // .spec.ipam.available // {} | length) - (.status.ipam.used // {} | length))"'
 
 # Watch for changes in real time
 kubectl get ciliumnodes -w
@@ -88,7 +90,7 @@ LOW_NODES=0
 
 kubectl get ciliumnodes -o json | jq -r --argjson min "$MIN_AVAILABLE" '
   .items[] |
-  ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length)) as $avail |
+  ((.spec.ipam.pool // .spec.ipam.available // {} | length) - (.status.ipam.used // {} | length)) as $avail |
   if $avail < $min then
     "LOW: \(.metadata.name) has \($avail) IPs available"
   else empty end'
@@ -96,12 +98,14 @@ kubectl get ciliumnodes -o json | jq -r --argjson min "$MIN_AVAILABLE" '
 
 ## Monitoring Published Data
 
+For AWS, Azure, and Alibaba Cloud IPAM modes, Cilium operator exposes per-node IPAM metrics:
+
 ```promql
 # Track available IPs per node
-cilium_ipam_available
+cilium_operator_ipam_available_ips
 
 # Alert when nodes are running low
-cilium_ipam_available < 10
+cilium_operator_ipam_available_ips < 10
 ```
 
 ```yaml
@@ -115,12 +119,12 @@ spec:
     - name: ip-availability
       rules:
         - alert: LowIPAvailability
-          expr: cilium_ipam_available < 10
+          expr: cilium_operator_ipam_available_ips < 10
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Node {{ $labels.node }} has fewer than 10 IPs available"
+            summary: "Node {{ $labels.target_node }} has fewer than 10 IPs available"
 ```
 
 ## Verification
