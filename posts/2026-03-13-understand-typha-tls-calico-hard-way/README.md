@@ -21,9 +21,9 @@ In a standard TLS connection, only the server presents a certificate (the client
 In the Typha context:
 
 1. Felix (client) connects to Typha (server) on port 5473
-2. Typha presents its server certificate (`typha-server.crt`)
-3. Felix verifies Typha's certificate against the CA (`typha-ca.crt`)
-4. Felix presents its client certificate (`felix-client.crt`)
+2. Typha presents its server certificate (`typha.crt`)
+3. Felix verifies Typha's certificate against the CA (`typhaca.crt`)
+4. Felix presents its client certificate (`calico-node.crt`)
 5. Typha verifies Felix's certificate against the same CA
 6. Both sides are authenticated - the connection is established
 
@@ -31,35 +31,36 @@ In the Typha context:
 
 | Certificate | Holder | Used By | Purpose |
 |-------------|--------|---------|---------|
-| `typha-ca.crt` | Both | Both | Root of trust for verification |
-| `typha-server.crt` | Typha | Felix (to verify Typha) | Proves Typha's identity |
-| `typha-server.key` | Typha | Typha | Signs the TLS handshake |
-| `felix-client.crt` | Felix | Typha (to verify Felix) | Proves Felix's identity |
-| `felix-client.key` | Felix | Felix | Signs the TLS handshake |
+| `typhaca.crt` | Both | Both | Root of trust for verification |
+| `typha.crt` | Typha | Felix (to verify Typha) | Proves Typha's identity |
+| `typha.key` | Typha | Typha | Signs the TLS handshake |
+| `calico-node.crt` | Felix | Typha (to verify Felix) | Proves Felix's identity |
+| `calico-node.key` | Felix | Felix | Signs the TLS handshake |
 
 ## Certificate Distribution in Kubernetes
 
-In a Kubernetes deployment, certificates are stored as Secrets and mounted into the respective containers.
+In the hard way Kubernetes deployment, the CA certificate is stored as a ConfigMap and the component certificates are stored as Secrets, then mounted into the respective containers.
 
 ```bash
-# Typha's certificates
+# Typha's CA and certificates
 
-kubectl get secret calico-typha-tls -n calico-system
+kubectl get configmap calico-typha-ca -n kube-system
+kubectl get secret calico-typha-certs -n kube-system
 
 # Felix's certificates
-kubectl get secret calico-felix-typha-tls -n calico-system
+kubectl get secret calico-node-certs -n kube-system
 ```
 
 Felix's certificate is distributed to each node either through a DaemonSet volume mount or, in a hard way binary installation, by copying the certificate files to each node.
 
 ## Subject Names and CN Verification
 
-Typha verifies that the Common Name (CN) or Subject Alternative Name (SAN) in Felix's certificate matches the expected value. By default, Felix presents a certificate with `CN=calico-felix`.
+Typha verifies that the Common Name (CN) or URI Subject Alternative Name (URI SAN) in Felix's certificate matches the expected value. In the Calico hard way guide, `TYPHA_CLIENTCN` is set to `calico-node`, so the client certificate used by `calico/node` presents `CN=calico-node`.
 
 ```bash
 # Verify Felix client certificate CN
-kubectl get secret calico-felix-typha-tls -n calico-system \
-  -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d | openssl x509 -noout -subject
 ```
 
 If the CN does not match Typha's expected value, the connection is rejected.
@@ -73,7 +74,7 @@ If TLS is not configured on either side:
 # Felix without TLS - connects without authenticating Typha
 
 # Check if TLS is configured
-kubectl get deployment calico-typha -n calico-system -o yaml | grep -i "TYPHA_CA\|TYPHA_SERVER" | wc -l
+kubectl get deployment calico-typha -n kube-system -o yaml | grep -i "TYPHA_CAFILE\|TYPHA_SERVERCERTFILE\|TYPHA_SERVERKEYFILE" | wc -l
 ```
 
 If this returns 0, TLS is not configured - this is insecure and should only be acceptable in isolated development environments.
@@ -84,11 +85,11 @@ Certificates have a validity period. When a certificate expires, TLS handshakes 
 
 ```bash
 # Check all relevant certificate expiry dates
-for secret in calico-typha-tls calico-felix-typha-tls; do
-  echo "Secret: $secret"
-  kubectl get secret $secret -n calico-system -o jsonpath='{.data.tls\.crt}' | \
-    base64 -d | openssl x509 -enddate -noout
-done
+kubectl get secret calico-typha-certs -n kube-system \
+  -o jsonpath='{.data.typha\.crt}' | base64 -d | openssl x509 -enddate -noout
+
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d | openssl x509 -enddate -noout
 ```
 
 ## Conclusion
