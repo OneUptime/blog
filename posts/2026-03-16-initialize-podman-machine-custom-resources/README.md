@@ -10,7 +10,7 @@ Description: Learn how to initialize a Podman machine with custom CPU, memory, a
 
 > Customizing your Podman machine resources during initialization ensures your containers have the compute power they need from the start.
 
-On macOS and Windows, Podman runs Linux containers inside a lightweight virtual machine called a Podman machine. By default, the machine is created with modest resources, but you can customize CPUs, memory, and disk size during initialization. This guide covers all the options available when setting up a Podman machine.
+On macOS and Windows, Podman runs Linux containers inside a lightweight virtual machine called a Podman machine. By default, the machine is created with modest resources, but you can customize CPUs, memory, and disk size during initialization. This guide covers the key resource options available when setting up a Podman machine.
 
 ---
 
@@ -37,14 +37,11 @@ podman machine info 2>/dev/null
 Before customizing, see what the defaults are:
 
 ```bash
-# Initialize a default machine (do not start it yet)
+# View available initialization options
 podman machine init --help
 ```
 
-Default values typically are:
-- CPUs: 1
-- Memory: 2048 MB
-- Disk Size: 100 GB
+Default values can vary by Podman version, provider, and the `[machine]` section of `containers.conf`. After initialization, use `podman machine inspect` to confirm the configured CPUs, memory, and disk size.
 
 ## Step 2: Initialize with Custom Resources
 
@@ -104,22 +101,24 @@ podman machine list
 ## Step 4: Initialize with a Custom VM Image
 
 ```bash
-# Use a specific Fedora CoreOS image
+# Use a supported Podman-provided machine image from a local path
 podman machine init \
   --cpus 4 \
   --memory 8192 \
-  --image /path/to/custom-image.qcow2
+  --image /path/to/podman-machine-image.qcow2
 
-# Or specify an image URL
+# Or specify a supported Podman-provided registry image
 podman machine init \
   --cpus 4 \
   --memory 8192 \
-  --image https://example.com/custom-vm.qcow2
+  --image docker://quay.io/podman/machine-os:5.7
 ```
+
+Current Podman versions support `--image` with a fully qualified registry reference, path, or URL. Registry references must use the `docker://registry/repo/image:version` form, and only images provided by Podman are supported.
 
 ## Step 5: Initialize with Volume Mounts
 
-Pre-configure volume mounts during initialization:
+Pre-configure volume mounts during initialization. On macOS, the default mounts usually include `$HOME:$HOME` unless changed in configuration:
 
 ```bash
 # Mount your home directory into the machine
@@ -146,7 +145,7 @@ podman machine init \
   --memory 8192 \
   --rootful
 
-# This allows running containers as root inside the VM
+# This makes the machine prefer the rootful Podman socket and connection
 ```
 
 ## Step 7: Start the Machine
@@ -192,29 +191,28 @@ podman run --rm docker.io/library/golang:latest sh -c "
 "
 ```
 
-## Recreating a Machine with Different Resources
+## Changing a Machine with Different Resources
 
-If you need to change resources after initialization:
+If you need to change resources after initialization, current Podman versions support `podman machine set` for QEMU machines. Disk size can only be increased:
 
 ```bash
-# Stop the current machine
+# Stop the current machine before changing VM settings
 podman machine stop
 
-# Remove it
-podman machine rm
-
-# Reinitialize with new resource settings
-podman machine init \
+# Update resource settings
+podman machine set \
   --cpus 8 \
   --memory 16384 \
   --disk-size 150
 
-# Start the new machine
+# Start the machine
 podman machine start
 
 # Verify
 podman machine inspect
 ```
+
+For providers or settings that cannot be changed with `podman machine set`, remove and reinitialize the machine with the updated settings.
 
 Resource Planning Guidelines
 
@@ -253,10 +251,9 @@ If the machine starts but containers run out of memory:
 # Check memory usage inside the machine
 podman machine ssh -- free -h
 
-# Recreate with more memory
+# For QEMU machines, stop and increase memory
 podman machine stop
-podman machine rm
-podman machine init --cpus 4 --memory 12288 --disk-size 100
+podman machine set --memory 12288
 podman machine start
 ```
 
@@ -269,13 +266,12 @@ podman machine ssh -- df -h
 # Prune unused resources
 podman system prune -a
 
-# If needed, recreate with larger disk
+# If needed, stop and increase the disk size
 podman machine stop
-podman machine rm
-podman machine init --cpus 4 --memory 8192 --disk-size 200
+podman machine set --disk-size 200
 podman machine start
 ```
 
 ## Summary
 
-Initializing a Podman machine with custom resources ensures your containers have adequate compute power from the start. Use named machines to maintain multiple resource profiles for different workloads. When resource needs change, simply remove and reinitialize the machine with updated settings. Plan your resource allocation based on whether you are doing light development, running databases, or building container images.
+Initializing a Podman machine with custom resources ensures your containers have adequate compute power from the start. Use named machines to maintain multiple resource profiles for different workloads. When resource needs change, update supported settings with `podman machine set` or remove and reinitialize the machine with updated settings. Plan your resource allocation based on whether you are doing light development, running databases, or building container images.
