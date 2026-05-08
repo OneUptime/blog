@@ -16,7 +16,7 @@ Podman runs Linux containers on macOS by managing a lightweight Linux virtual ma
 
 ## Prerequisites
 
-- macOS 12 (Monterey) or later
+- macOS 13 (Ventura) or later
 - Homebrew installed (visit https://brew.sh if needed)
 - At least 4GB of free RAM
 - Admin access for Homebrew installations
@@ -41,7 +41,7 @@ brew update
 brew install podman
 ```
 
-This installs the Podman CLI and the `qemu` virtual machine tools needed to run Linux containers on macOS.
+This installs the Podman CLI. On macOS, Podman uses a Linux virtual machine to run containers locally.
 
 ## Step 3: Initialize the Podman Machine
 
@@ -55,7 +55,7 @@ podman machine init
 podman machine start
 ```
 
-The initialization downloads a Fedora CoreOS image and configures it as the container runtime environment.
+The initialization downloads a custom Fedora CoreOS-based machine image and configures it as the container runtime environment.
 
 ## Step 4: Verify the Installation
 
@@ -79,9 +79,7 @@ Set up Podman as a Docker replacement:
 echo 'alias docker=podman' >> ~/.zshrc
 source ~/.zshrc
 
-# Or install the podman-docker helper
-# This creates a 'docker' symlink pointing to podman
-brew install podman-docker
+# Homebrew does not provide a podman-docker helper on macOS
 ```
 
 Enable the Docker-compatible socket:
@@ -163,7 +161,6 @@ brew install podman-compose
 # Create a docker-compose.yml file
 mkdir -p ~/dev/compose-test
 cat > ~/dev/compose-test/docker-compose.yml <<'EOF'
-version: '3'
 services:
   web:
     image: docker.io/library/nginx:alpine
