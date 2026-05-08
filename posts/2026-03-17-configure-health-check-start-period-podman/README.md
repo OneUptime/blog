@@ -33,7 +33,7 @@ podman run -d \
 
 ## How the Start Period Works
 
-During the start period, health checks still run, but failures do not count toward the retry limit. If a health check succeeds during this period, the container is immediately marked as healthy:
+During the start period, health checks still run, but failures do not count toward the retry limit while the container is still starting. If a health check succeeds during this period, the container is immediately marked as healthy:
 
 ```bash
 # Application with a slow database migration on startup
@@ -48,7 +48,7 @@ podman run -d \
 
 # During the first 120 seconds:
 #   - Health checks run every 10 seconds
-#   - Failures are ignored
+#   - Startup failures are ignored while the container remains in the starting state
 #   - First success marks the container as healthy
 # After 120 seconds:
 #   - Failures count toward the 3-retry limit
@@ -102,4 +102,4 @@ podman inspect --format='{{.Config.Healthcheck.StartPeriod}}' java-app
 
 ## Summary
 
-The `--health-start-period` flag provides a grace period during which health check failures are not counted. This is essential for applications with slow startup times such as Java services, ML model loading, or database migrations. Set it slightly longer than your worst-case startup time to avoid false unhealthy states during initialization.
+The `--health-start-period` flag provides a grace period during which startup health check failures are not counted while the container is still starting. This is essential for applications with slow startup times such as Java services, ML model loading, or database migrations. Set it slightly longer than your worst-case startup time to avoid false unhealthy states during initialization.
