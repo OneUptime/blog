@@ -21,10 +21,10 @@ Use the `--rm` flag to enable automatic cleanup:
 ```bash
 # Container is removed immediately after it exits
 
-podman run --rm alpine echo "This container will be auto-removed"
+podman run --rm --name temporary-basic alpine echo "This container will be auto-removed"
 
 # Verify it is gone
-podman ps -a --filter name=amazing_name 2>/dev/null | wc -l
+podman ps -a --filter name=temporary-basic --format "{{.Names}}" | wc -l
 ```
 
 ## Auto-Remove with Named Containers
@@ -164,12 +164,12 @@ podman run --rm --restart always alpine echo "test" 2>&1 || echo "Cannot combine
 podman run --rm \
   -v ./src:/src:Z \
   -v ./build:/build:Z \
-  golang:1.22 sh -c "cd /src && go build -o /build/app ." 2>/dev/null || echo "(example)"
+  golang:1.26 sh -c "cd /src && go build -o /build/app ." 2>/dev/null || echo "(example)"
 
 # Test step: run tests
 podman run --rm \
   -v ./src:/src:Z \
-  golang:1.22 sh -c "cd /src && go test ./..." 2>/dev/null || echo "(example)"
+  golang:1.26 sh -c "cd /src && go test ./..." 2>/dev/null || echo "(example)"
 
 # Lint step: check code style
 podman run --rm \
