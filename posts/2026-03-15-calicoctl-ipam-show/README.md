@@ -10,9 +10,9 @@ Description: Learn how to use calicoctl ipam show to view IP address allocation 
 
 ## Introduction
 
-Understanding how IP addresses are distributed and consumed across your Kubernetes cluster is essential for capacity planning and troubleshooting. The `calicoctl ipam show` command provides a detailed view of IP address allocations, including how many addresses are in use, available, and reserved per IP pool and per node.
+Understanding how IP addresses are distributed and consumed across your Kubernetes cluster is essential for capacity planning and troubleshooting. The `calicoctl ipam show` command provides a detailed view of IP address allocations, including how many addresses are in use and available per IP pool and, with block-level output, per allocation block.
 
-Without visibility into IPAM utilization, you risk running into IP address exhaustion, which causes new pods to fail scheduling. The `calicoctl ipam show` command gives you the data needed to proactively manage IP capacity.
+Without visibility into IPAM utilization, you risk running into IP address exhaustion, which can prevent new pods from starting successfully. The `calicoctl ipam show` command gives you the data needed to proactively manage IP capacity.
 
 This guide covers the various output options and practical uses of `calicoctl ipam show` for cluster monitoring and capacity planning.
 
@@ -33,11 +33,11 @@ calicoctl ipam show
 Example output:
 
 ```text
-+----------+--------------+-----------+------------+-----------+
-| GROUPING |     CIDR     | IPS TOTAL | IPS IN USE | IPS FREE  |
-+----------+--------------+-----------+------------+-----------+
-| IP Pool  | 10.244.0.0/16|    65536  |     342    |   65194   |
-+----------+--------------+-----------+------------+-----------+
++----------+---------------+-----------+------------+-------------+
+| GROUPING |     CIDR      | IPS TOTAL | IPS IN USE |  IPS FREE   |
++----------+---------------+-----------+------------+-------------+
+| IP Pool  | 10.244.0.0/16 |     65536 | 342 (0%)   | 65194 (99%) |
++----------+---------------+-----------+------------+-------------+
 ```
 
 ## Showing Per-Block Details
@@ -51,16 +51,16 @@ calicoctl ipam show --show-blocks
 This displays each /26 block and its utilization:
 
 ```text
-+----------+----------------+-----------+------------+-----------+
-| GROUPING |      CIDR      | IPS TOTAL | IPS IN USE | IPS FREE  |
-+----------+----------------+-----------+------------+-----------+
-| IP Pool  | 10.244.0.0/16  |    65536  |     342    |   65194   |
-| Block    | 10.244.0.0/26  |       64  |      12    |      52   |
-| Block    | 10.244.0.64/26 |       64  |      28    |      36   |
-| Block    | 10.244.1.0/26  |       64  |      15    |      49   |
-| Block    | 10.244.1.64/26 |       64  |       8    |      56   |
-| Block    | 10.244.2.0/26  |       64  |      31    |      33   |
-+----------+----------------+-----------+------------+-----------+
++----------+----------------+-----------+------------+-------------+
+| GROUPING |      CIDR      | IPS TOTAL | IPS IN USE |  IPS FREE   |
++----------+----------------+-----------+------------+-------------+
+| IP Pool  | 10.244.0.0/16  |     65536 | 342 (0%)   | 65194 (99%) |
+| Block    | 10.244.0.0/26  |        64 | 12 (19%)   | 52 (81%)    |
+| Block    | 10.244.0.64/26 |        64 | 28 (44%)   | 36 (56%)    |
+| Block    | 10.244.1.0/26  |        64 | 15 (23%)   | 49 (77%)    |
+| Block    | 10.244.1.64/26 |        64 | 8 (12%)    | 56 (88%)    |
+| Block    | 10.244.2.0/26  |        64 | 31 (48%)   | 33 (52%)    |
++----------+----------------+-----------+------------+-------------+
 ```
 
 ## Showing Configuration Details
@@ -71,7 +71,7 @@ View IPAM configuration alongside allocation data:
 calicoctl ipam show --show-configuration
 ```
 
-This includes the strict affinity setting and maximum blocks per host alongside the allocation summary.
+This includes the strict affinity and automatic block allocation settings.
 
 ## Monitoring IPAM Utilization Over Time
 
@@ -90,8 +90,16 @@ calicoctl ipam show --show-blocks >> "$OUTPUT_FILE"
 
 # Extract utilization percentage
 
-TOTAL=$(calicoctl ipam show 2>/dev/null | grep "IP Pool" | awk '{print $6}')
-USED=$(calicoctl ipam show 2>/dev/null | grep "IP Pool" | awk '{print $8}')
+read -r TOTAL USED < <(calicoctl ipam show 2>/dev/null | awk -F'|' '
+  /IP Pool/ {
+    gsub(/^[ \t]+|[ \t]+$/, "", $4)
+    gsub(/^[ \t]+|[ \t]+$/, "", $5)
+    split($5, used_parts, " ")
+    total += $4
+    used += used_parts[1]
+  }
+  END { print total, used }
+')
 
 if [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
   PERCENT=$((USED * 100 / TOTAL))
@@ -133,7 +141,14 @@ if [ -z "$REQUIRED_IPS" ]; then
   exit 1
 fi
 
-FREE_IPS=$(calicoctl ipam show 2>/dev/null | grep "IP Pool" | awk '{print $10}')
+FREE_IPS=$(calicoctl ipam show 2>/dev/null | awk -F'|' '
+  /IP Pool/ {
+    gsub(/^[ \t]+|[ \t]+$/, "", $6)
+    split($6, free_parts, " ")
+    free += free_parts[1]
+  }
+  END { print free }
+')
 
 echo "Required IPs: $REQUIRED_IPS"
 echo "Available IPs: $FREE_IPS"
@@ -170,4 +185,4 @@ The IPs in use count should be close to the number of running pods (some IPs may
 
 ## Conclusion
 
-The `calicoctl ipam show` command is an essential tool for monitoring IP address utilization in a Calico cluster. Regular monitoring of IPAM usage with block-level detail helps you plan capacity, identify uneven distribution, and catch IP exhaustion before it affects pod scheduling. Combined with alerting scripts, it forms a key part of Calico cluster operations.
+The `calicoctl ipam show` command is an essential tool for monitoring IP address utilization in a Calico cluster. Regular monitoring of IPAM usage with block-level detail helps you plan capacity, identify uneven distribution, and catch IP exhaustion before it prevents pods from starting successfully. Combined with alerting scripts, it forms a key part of Calico cluster operations.
