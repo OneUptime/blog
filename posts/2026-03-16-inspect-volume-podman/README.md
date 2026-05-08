@@ -112,7 +112,7 @@ podman volume inspect dbvol --format '{{index .Labels "app"}}'
 
 ```bash
 # Create a volume with options
-podman volume create --opt type=tmpfs --opt o=size=256m tmpvol
+podman volume create --opt device=tmpfs --opt type=tmpfs --opt o=size=256m tmpvol
 
 # Inspect the options
 podman volume inspect tmpvol --format '{{.Options}}'
@@ -131,7 +131,7 @@ echo "=== Volume Audit Report ==="
 echo "Generated: $(date)"
 echo ""
 
-podman volume list --format '{{.Name}}' | while read -r VOL; do
+podman volume ls --format '{{.Name}}' | while read -r VOL; do
     echo "Volume: ${VOL}"
     echo "  Driver: $(podman volume inspect "${VOL}" --format '{{.Driver}}')"
     echo "  Mount: $(podman volume inspect "${VOL}" --format '{{.Mountpoint}}')"
