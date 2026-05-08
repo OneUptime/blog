@@ -20,18 +20,18 @@ Windows containers also have higher base memory and CPU overhead than Linux cont
 - PowerShell (Administrator) access to Windows nodes
 - `kubectl` access from a Linux node
 
-## Step 1: Optimize VXLAN MTU for Windows
+## Step 1: Account for VXLAN MTU on Windows
 
-Windows VXLAN has the same 50-byte overhead as Linux VXLAN. Set the MTU to avoid fragmentation.
+VXLAN adds 50 bytes of overhead for IPv4 traffic. Calico for Windows supports VXLAN, but current Calico for Windows does not support configuring the Windows VXLAN MTU setting directly. For Linux workloads in the same VXLAN cluster, set the Calico MTU to avoid fragmentation.
 
 ```bash
 # On Linux, patch the Installation CR
 
-kubectl patch installation default --type merge \
+kubectl patch installation.operator.tigera.io default --type merge \
   --patch '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 ```
 
-On Windows nodes, verify the HNS network MTU:
+On Windows nodes, verify that the Calico HNS network exists and is using the expected network type:
 
 ```powershell
 Get-HnsNetwork | Where-Object { $_.Name -like "*calico*" } | Select-Object Name, Type
@@ -40,38 +40,37 @@ Get-HnsNetwork | Where-Object { $_.Name -like "*calico*" } | Select-Object Name,
 ## Step 2: Tune Windows Networking Stack
 
 ```powershell
-# Increase TCP receive window
-netsh int tcp set supplemental Internet cwnd=10
+# Use TCP receive window auto-tuning
+netsh int tcp set global autotuninglevel=normal
 
 # Enable RSS (Receive Side Scaling) for multi-core NIC utilization
 Enable-NetAdapterRss -Name "<nic-name>"
 
-# Set TCP chimney offload
-netsh int tcp set global chimney=enabled
+# Review the active TCP settings before changing other host-wide options
+netsh int tcp show global
 ```
 
 ## Step 3: Configure Windows Calico Service Resource Limits
 
-Edit the Calico Windows configuration to set appropriate resource limits.
+For operator-managed Calico for Windows, set resources on the `calicoNodeWindowsDaemonSet` in the Installation CR.
 
-```powershell
-# Edit C:\CalicoWindows\config.ps1
-$env:CALICO_NODE_CPU_LIMIT = "1"
-$env:CALICO_NODE_MEMORY_LIMIT = "512Mi"
+```bash
+kubectl patch installation.operator.tigera.io default --type merge \
+  --patch '{"spec":{"calicoNodeWindowsDaemonSet":{"spec":{"template":{"spec":{"containers":[{"name":"calico-node-windows","resources":{"requests":{"cpu":"100m","memory":"100Mi"},"limits":{"cpu":"1","memory":"1000Mi"}}}]}}}}}}'
 ```
 
 ## Step 4: Optimize HNS Policy Lists
 
-Windows HNS stores all network policies. For large clusters with many policies, HNS can become slow.
+Windows HNS stores network policy state. For large clusters with many policies or complex selectors, HNS policy programming can become slow.
 
 ```powershell
 # Check the number of HNS policy lists
 Get-HnsPolicyList | Measure-Object
 
-# If over 500, consider reducing the number of NetworkPolicy objects
+# If the count is unexpectedly high, review and reduce NetworkPolicy and Calico policy complexity
 ```
 
-## Step 5: Enable Windows Performance Counters
+## Step 5: Check Windows Performance Counters
 
 ```powershell
 # Check network performance counters
@@ -84,9 +83,11 @@ Get-Counter '\Network Interface(*)\Bytes Sent/sec'
 ```powershell
 # Check calico-node CPU and memory
 Get-Process -Name calico-node | Select-Object CPU, WorkingSet
-Get-Process -Name felix | Select-Object CPU, WorkingSet
+
+# For operator-managed installs, check the Windows DaemonSet resource usage from Kubernetes
+kubectl top pod -n calico-system -l k8s-app=calico-node-windows
 ```
 
 ## Conclusion
 
-Tuning Calico on Windows nodes for production focuses on VXLAN MTU optimization, Windows TCP stack tuning, HNS policy list management for large clusters, and monitoring the resource usage of the calico-node and felix Windows processes. These Windows-specific parameters complement the cluster-wide Calico tuning settings applied to the Linux control plane.
+Tuning Calico on Windows nodes for production focuses on accounting for VXLAN overhead, Windows TCP stack tuning, HNS policy list management for large clusters, and monitoring the resource usage of the Calico Windows node components. These Windows-specific checks complement the cluster-wide Calico tuning settings applied from the Linux control plane.
