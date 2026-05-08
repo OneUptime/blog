@@ -8,9 +8,9 @@ Description: Learn how to open interactive shell sessions inside running Podman 
 
 ---
 
-> Opening a shell inside a running container gives you full interactive access for troubleshooting and management.
+> Opening a shell inside a running container gives you direct interactive access for troubleshooting and management.
 
-Getting a shell prompt inside a running container is one of the most common tasks in container operations. Whether you need to inspect files, check processes, or debug application issues, having direct shell access is indispensable. This guide covers all the ways to open shell sessions inside running Podman containers.
+Getting a shell prompt inside a running container is one of the most common tasks in container operations. Whether you need to inspect files, check processes, or debug application issues, having direct shell access is indispensable. This guide covers common ways to open shell sessions inside running Podman containers.
 
 ---
 
@@ -53,7 +53,7 @@ You can write a helper function to automatically find an available shell:
 podman_shell() {
     local container="$1"
     for shell in /bin/bash /bin/ash /bin/sh; do
-        if podman exec "$container" test -f "$shell" 2>/dev/null; then
+        if podman exec "$container" test -x "$shell" 2>/dev/null; then
             podman exec -it "$container" "$shell"
             return
         fi
@@ -188,14 +188,14 @@ If you cannot open a shell, here are common issues and fixes:
 # Check if the container is actually running
 podman ps -a --filter name=my-app
 
-# Check what shells are available in the image
+# Check registered login shells, if the image provides /etc/shells
 podman exec my-app cat /etc/shells 2>/dev/null || echo "No /etc/shells file"
 
 # Try using the command directly without /bin/ prefix
 podman exec -it my-app sh
 
-# Check if the container has a non-standard entrypoint blocking exec
-podman inspect my-app --format '{{.Config.Entrypoint}}'
+# Check the container's entrypoint and command if it exits immediately
+podman inspect my-app --format 'Entrypoint={{.Config.Entrypoint}} Cmd={{.Config.Cmd}}'
 ```
 
 ## Cleanup
