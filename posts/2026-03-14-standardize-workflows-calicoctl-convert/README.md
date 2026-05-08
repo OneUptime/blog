@@ -20,7 +20,7 @@ This guide covers how to build a standardized team workflow around calicoctl con
 
 - A team planning or executing a K8s to Calico policy migration
 - Git repository for storing converted policies
-- calicoctl v3.27 or later
+- calicoctl v3.31.x
 - CI/CD platform
 
 ## Migration Runbook
@@ -212,7 +212,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
       - name: Validate all converted policies
