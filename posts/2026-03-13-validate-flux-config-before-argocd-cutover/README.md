@@ -51,20 +51,28 @@ echo "=== Validating Flux configuration for: $APP ==="
 check "Kustomization exists" \
   "kubectl get kustomization $APP -n $NAMESPACE"
 
-# Check 2: GitRepository source is healthy
+# Check 2: Flux source is healthy
 SOURCE=$(kubectl get kustomization $APP -n $NAMESPACE \
   -o jsonpath='{.spec.sourceRef.name}')
-check "GitRepository is Ready" \
-  "kubectl get gitrepository $SOURCE -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
+SOURCE_KIND=$(kubectl get kustomization $APP -n $NAMESPACE \
+  -o jsonpath='{.spec.sourceRef.kind}')
+SOURCE_NAMESPACE=$(kubectl get kustomization $APP -n $NAMESPACE \
+  -o jsonpath='{.spec.sourceRef.namespace}')
+SOURCE_NAMESPACE=${SOURCE_NAMESPACE:-$NAMESPACE}
+check "Source is Ready" \
+  "kubectl get $SOURCE_KIND $SOURCE -n $SOURCE_NAMESPACE -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
 
-# Check 3: Source has recent commit
-check "Source has fetched recent commit" \
-  "kubectl get gitrepository $SOURCE -n $NAMESPACE -o jsonpath='{.status.artifact.revision}' | grep -q ."
+# Check 3: Source has fetched an artifact revision
+check "Source has fetched an artifact revision" \
+  "kubectl get $SOURCE_KIND $SOURCE -n $SOURCE_NAMESPACE -o jsonpath='{.status.artifact.revision}' | grep -q ."
 
-# Check 4: Kustomization path exists in the source
+# Check 4: Kustomization path is configured or defaults to the source root
 PATH_VALUE=$(kubectl get kustomization $APP -n $NAMESPACE -o jsonpath='{.spec.path}')
-check "Kustomization path is set" \
-  "[ -n '$PATH_VALUE' ]"
+if [ -n "$PATH_VALUE" ]; then
+  check "Kustomization path is set to $PATH_VALUE" "true"
+else
+  check "Kustomization uses source root path" "true"
+fi
 
 # Check 5: Secrets referenced in Kustomization exist
 DECRYPTION_SECRET=$(kubectl get kustomization $APP -n $NAMESPACE \
@@ -121,8 +129,11 @@ echo "[DRY RUN] Would resume Flux Kustomization for $APP"
 echo "Command: flux resume kustomization $APP -n flux-system"
 
 # Show what Flux WOULD apply
-flux diff kustomization $APP -n flux-system 2>/dev/null || \
-  echo "Note: flux diff requires Flux to be active for this Kustomization"
+flux diff kustomization $APP -n flux-system
+DIFF_STATUS=$?
+if [ $DIFF_STATUS -gt 1 ]; then
+  echo "Note: flux diff requires the Kustomization and source artifact to be accessible"
+fi
 
 # Show current vs desired state comparison
 echo ""
@@ -131,7 +142,7 @@ kubectl get deployment -n $APP \
   -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.template.spec.containers[0].image}{"\n"}{end}'
 
 echo ""
-echo "Images in Flux source (from Git):"
+echo "Flux last applied revision:"
 kubectl get kustomization $APP -n flux-system \
   -o jsonpath='{.status.lastAppliedRevision}'
 ```
@@ -141,16 +152,17 @@ kubectl get kustomization $APP -n flux-system \
 ```bash
 # Verify health checks are correctly defined
 kubectl get kustomization myapp -n flux-system \
-  -o jsonpath='{.spec.healthChecks}' | python3 -m json.tool
+  -o jsonpath='{range .spec.healthChecks[*]}{.apiVersion}{"/"}{.kind}{" "}{.namespace}{"/"}{.name}{"\n"}{end}'
 
 # Manually check each health check resource
 HEALTH_CHECKS=$(kubectl get kustomization myapp -n flux-system \
   -o jsonpath='{range .spec.healthChecks[*]}{.kind}{" "}{.name}{" "}{.namespace}{"\n"}{end}')
 
 while IFS= read -r line; do
-  KIND=$(echo $line | awk '{print $1}')
-  NAME=$(echo $line | awk '{print $2}')
-  NS=$(echo $line | awk '{print $3}')
+  KIND=$(echo "$line" | awk '{print $1}')
+  NAME=$(echo "$line" | awk '{print $2}')
+  NS=$(echo "$line" | awk '{print $3}')
+  NS=${NS:-myapp}
   
   echo -n "Health check $KIND/$NAME in $NS: "
   kubectl get $KIND $NAME -n $NS > /dev/null 2>&1 && echo "EXISTS" || echo "MISSING!"
@@ -201,7 +213,7 @@ echo "=== Cutover complete for $APP at $(date) ==="
 - Schedule production cutovers during low-traffic periods with the team available.
 - Keep the rollback procedure documented and tested before executing cutover.
 - Validate that all Flux Notifications are configured and delivering before cutover (so you get alerts if something goes wrong post-cutover).
-- Take a kubectl snapshot of all resources before cutover: `kubectl get all -n myapp -o yaml > pre-cutover-snapshot.yaml`.
+- Take a kubectl snapshot of common workload resources before cutover: `kubectl get all -n myapp -o yaml > pre-cutover-snapshot.yaml`.
 - After cutover, monitor application metrics and error rates for at least 24 hours.
 
 ## Conclusion
