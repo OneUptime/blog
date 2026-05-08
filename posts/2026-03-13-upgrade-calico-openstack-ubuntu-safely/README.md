@@ -10,7 +10,7 @@ Description: A safe procedure for upgrading Calico on an Ubuntu OpenStack deploy
 
 ## Introduction
 
-Upgrading Calico in an Ubuntu OpenStack deployment requires upgrading the Calico Neutron plugin on the controller and the Felix agent on all compute nodes. The compute node upgrades are the most sensitive - restarting Felix on a compute node causes a brief interruption in policy enforcement for VMs on that node. During the restart, existing network connections are maintained (iptables rules persist), but new policy changes are not applied until Felix restarts successfully.
+Upgrading Calico in an Ubuntu OpenStack deployment requires upgrading the Calico Neutron plugin on the controller and the Felix agent on all compute nodes. The compute node upgrades are the most sensitive - restarting Felix on a compute node causes a brief pause in policy updates for VMs on that node. During the restart, existing network connections are maintained (iptables rules persist), but new policy changes are not applied until Felix restarts successfully.
 
 Upgrading compute nodes one at a time and verifying VM connectivity on each node before proceeding to the next is the safest approach.
 
@@ -23,7 +23,7 @@ Upgrading compute nodes one at a time and verifying VM connectivity on each node
 ## Step 1: Document Current Version
 
 ```bash
-dpkg -l calico-felix networking-calico | grep -E "^ii"
+dpkg -l calico-compute calico-control calico-common calico-dhcp-agent calico-felix networking-calico | grep -E "^ii"
 calicoctl version
 etcdctl version
 ```
@@ -34,16 +34,33 @@ etcdctl version
 calicoctl get felixconfiguration -o yaml > felix-backup.yaml
 calicoctl get bgpconfiguration -o yaml > bgp-backup.yaml
 calicoctl get ippool -o yaml > ippool-backup.yaml
-etcdctl ls /calico --recursive > etcd-calico-keys-backup.txt
+ETCDCTL_API=3 etcdctl snapshot save etcd-calico-snapshot.db
 ```
 
-## Step 3: Upgrade the Controller Node
+## Step 3: Upgrade Compute Nodes One at a Time
+
+```bash
+# On one compute node at a time
+sudo add-apt-repository ppa:project-calico/calico-<target-minor>
+sudo apt-get update
+sudo apt-get install calico-compute calico-felix calico-common \
+  networking-calico calico-dhcp-agent
+
+sudo systemctl restart calico-felix
+sudo systemctl status calico-felix
+calico-felix --version
+sudo calicoctl node status
+```
+
+Verify VMs on this compute node are still reachable before proceeding.
+
+## Step 4: Upgrade the Controller Node
 
 ```bash
 # On the controller
-
+sudo add-apt-repository ppa:project-calico/calico-<target-minor>
 sudo apt-get update
-sudo apt-get install --only-upgrade python3-networking-calico
+sudo apt-get install calico-control calico-common networking-calico
 
 sudo systemctl restart neutron-server
 sudo systemctl status neutron-server
@@ -51,24 +68,10 @@ sudo systemctl status neutron-server
 
 Verify Neutron is running correctly after the upgrade.
 
-## Step 4: Upgrade Compute Nodes One at a Time
-
-```bash
-# On one compute node at a time
-sudo apt-get update
-sudo apt-get install --only-upgrade calico-compute calico-felix
-
-sudo systemctl restart calico-felix
-sudo systemctl status calico-felix
-sudo calicoctl node status
-```
-
-Verify VMs on this compute node are still reachable before proceeding.
-
 ## Step 5: Update calicoctl
 
 ```bash
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+curl -L https://github.com/projectcalico/calico/releases/download/v<target-release>/calicoctl-linux-amd64 \
   -o /usr/local/bin/calicoctl
 chmod +x /usr/local/bin/calicoctl
 calicoctl version
@@ -82,8 +85,8 @@ calicoctl get workloadendpoints -A | wc -l
 openstack server list | grep -c ACTIVE
 ```
 
-The number of Calico workload endpoints should match the number of active OpenStack instances.
+The number of Calico workload endpoints should match the expected number of active OpenStack VM interfaces.
 
 ## Conclusion
 
-Safely upgrading Calico on Ubuntu OpenStack requires upgrading the Neutron plugin on the controller first, then upgrading Felix on compute nodes one at a time with connectivity verification after each node. The sequential compute node upgrade prevents a fleet-wide outage and ensures each node's VMs continue to be protected by Calico's policy enforcement throughout the upgrade process.
+Safely upgrading Calico on Ubuntu OpenStack requires upgrading Felix on compute nodes one at a time with connectivity verification after each node, then upgrading the Neutron plugin on the controller. The sequential compute node upgrade prevents a fleet-wide outage and ensures each node's VMs continue to use Calico's policy enforcement throughout the upgrade process.
