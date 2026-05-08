@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Hubble, Exporter, Configuration, Observability
 
-Description: Learn how to configure the Cilium Hubble exporter to send flow data to external systems, including setting up export targets, configuring filters, and tuning output formats.
+Description: Learn how to configure the Cilium Hubble exporter to write flow data for external systems, including file export, filters, field masks, and rotation settings.
 
 ---
 
 ## Introduction
 
-The Hubble exporter in Cilium allows you to send network flow data to external destinations for long-term storage, analysis, or integration with third-party observability platforms. While Hubble's built-in relay and UI are excellent for real-time inspection, the exporter enables you to persist flow data beyond the in-memory ring buffer.
+The Hubble exporter in Cilium allows you to write network flow data for long-term storage, analysis, or integration with third-party observability platforms. While Hubble's built-in relay and UI are excellent for real-time inspection, the exporter enables you to persist flow data beyond the in-memory ring buffer.
 
-The exporter supports multiple output formats and destinations, including file-based export for log aggregation systems, and can be configured with filters to control which flows are exported. This is critical for high-traffic clusters where exporting every flow would be prohibitively expensive.
+The exporter writes JSON-line formatted flow data to a file or to stdout for log aggregation systems, and can be configured with filters to control which flows are exported. This is critical for high-traffic clusters where exporting every flow would be prohibitively expensive.
 
 This guide walks you through configuring the Hubble exporter from scratch, including Helm values, filter configuration, and integration with common log pipelines.
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium 1.15+ installed
+- Kubernetes cluster with Cilium 1.18+ installed
 - Hubble enabled in your Cilium deployment
 - Helm 3 for configuration management
 - A log aggregation system (Fluentd, Fluent Bit, or similar) for consuming exported data
@@ -48,11 +48,9 @@ hubble:
         - source.pod_name
         - destination.namespace
         - destination.pod_name
-        - destination.port
         - verdict
-        - drop_reason
-        - l4.TCP
-        - l4.UDP
+        - drop_reason_desc
+        - l4
         - Type
 ```
 
@@ -167,20 +165,19 @@ volumeMounts:
 
 ## Monitoring Exporter Health
 
-Track the exporter's performance with Cilium metrics:
+Track Hubble flow processing and event loss with Hubble metrics:
 
 ```bash
-# Check exporter-related metrics
+# Check Hubble metrics
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | grep hubble_export
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | grep -E 'hubble_(lost_events|flows_processed)'
 
 # Key metrics:
-# hubble_export_events_total - total events exported
-# hubble_export_events_lost_total - events lost due to backpressure
-# hubble_export_file_rotations_total - file rotation count
+# hubble_flows_processed_total - total flows processed by Hubble (when the flow metric is enabled)
+# hubble_lost_events_total - events lost before Hubble could process them
 
 # PromQL alert for lost events
-# rate(hubble_export_events_lost_total[5m]) > 0
+# rate(hubble_lost_events_total[5m]) > 0
 ```
 
 ## Verification
@@ -226,7 +223,7 @@ print(f'Exported fields: {list(flow.get(\"flow\",{}).keys())}')
 
 - **Log aggregator not picking up data**: Ensure the volume mount paths are correct and that the log collector has read access to the Hubble export directory.
 
-- **High event loss**: The `hubble_export_events_lost_total` metric indicates backpressure. Increase the export buffer or reduce the flow rate with filters.
+- **High event loss**: The `hubble_lost_events_total` metric indicates Hubble is losing events before they can be processed. Increase the Hubble event buffer or reduce the flow rate with filters.
 
 ## Conclusion
 
