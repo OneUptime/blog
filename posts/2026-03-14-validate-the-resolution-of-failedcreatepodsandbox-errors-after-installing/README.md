@@ -36,9 +36,9 @@ Test pod creation on every node to confirm the fix is cluster-wide, not just on 
 NAMESPACE="sandbox-validation"
 kubectl create namespace "$NAMESPACE" 2>/dev/null
 
-# Get all schedulable nodes
-NODES=$(kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name \
-  | grep -v "NotReady")
+# Get all Ready, schedulable nodes
+NODES=$(kubectl get nodes --field-selector spec.unschedulable!=true \
+  --no-headers | awk '$2 == "Ready" {print $1}')
 
 FAILED=0
 for NODE in $NODES; do
@@ -89,7 +89,7 @@ kubectl get daemonset calico-node -n calico-system \
 for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
   NODE=$(kubectl get pod "$pod" -n calico-system -o jsonpath='{.spec.nodeName}')
-  STATUS=$(kubectl exec -n calico-system "$pod" -- calico-node -felix-ready 2>&1)
+  STATUS=$(kubectl exec -n calico-system "$pod" -- /bin/calico-node -felix-ready 2>&1)
   echo "$NODE ($pod): $STATUS"
 done
 
@@ -117,7 +117,7 @@ spec:
   natOutgoing: true
   nodeSelector: all()
   blockSize: 26
-  # vxlanMode and disabled should NOT be set unless intentional
+  # disabled should be false; vxlanMode should be Never or omitted when IPIP is intended
 ```
 
 ## Validating Network Connectivity Post-Fix
@@ -179,7 +179,7 @@ kubectl delete pod net-validate-server net-validate-client
 
 ## Sustained Validation with a DaemonSet
 
-For production confidence, run a DaemonSet that continuously validates sandbox creation across the cluster:
+For production confidence, run a DaemonSet that validates sandbox creation and sustained pod health across the cluster:
 
 ```yaml
 # sandbox-canary-daemonset.yaml
@@ -205,7 +205,7 @@ spec:
       containers:
         - name: canary
           image: busybox:1.36
-          command: ["sh", "-c", "echo sandbox-ok && sleep 3600"]
+          command: ["sh", "-c", "while true; do echo sandbox-ok; sleep 3600; done"]
           resources:
             requests:
               cpu: 10m
@@ -237,18 +237,30 @@ Run a final comprehensive check:
 # Confirm zero FailedCreatePodSandBox events in the last hour
 RECENT_FAILURES=$(kubectl get events --all-namespaces \
   --field-selector reason=FailedCreatePodSandBox \
-  -o jsonpath='{.items}' | python3 -c "
+  -o json | python3 -c "
 import sys, json
 from datetime import datetime, timezone, timedelta
-events = json.load(sys.stdin)
+events = json.load(sys.stdin).get('items', [])
 cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
-recent = [e for e in events if datetime.fromisoformat(e.get('lastTimestamp','2000-01-01T00:00:00Z').replace('Z','+00:00')) > cutoff]
+
+def event_time(event):
+    for field in ('lastTimestamp', 'eventTime', 'deprecatedLastTimestamp'):
+        value = event.get(field)
+        if value:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+    series = event.get('series') or {}
+    value = series.get('lastObservedTime')
+    if value:
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+recent = [e for e in events if event_time(e) > cutoff]
 print(len(recent))
 ")
 echo "FailedCreatePodSandBox events in last hour: $RECENT_FAILURES"
 
 # Verify all nodes have Ready status
-kubectl get nodes -o wide | grep -v " Ready "
+kubectl get nodes --no-headers | awk '$2 != "Ready" {print}'
 ```
 
 ## Troubleshooting
