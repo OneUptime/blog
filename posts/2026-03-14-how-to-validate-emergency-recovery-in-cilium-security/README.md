@@ -66,25 +66,31 @@ Apply the policy and verify it is enforced:
 ```yaml
 # Test policy for validation
 apiVersion: "cilium.io/v2"
-kind: CiliumClusterwideNetworkPolicy
+kind: CiliumNetworkPolicy
 metadata:
-  name: emergency-allow-all
+  name: emergency-allow-client-to-server
+  namespace: cilium-validate
   annotations:
     emergency.cilium.io/reason: "recovery-mode"
     emergency.cilium.io/timestamp: "2026-03-14T00:00:00Z"
 spec:
-  endpointSelector: {}
+  endpointSelector:
+    matchLabels:
+      app: server
   ingress:
-    - fromEntities:
-        - all
-  egress:
-    - toEntities:
-        - all
+    - fromEndpoints:
+        - matchLabels:
+            app: client
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
 ```
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl get ciliumendpoints -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, state: .status.state, policy: .status.status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -132,28 +138,28 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; ((FAIL+=1))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl get ciliumendpoints -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; ((FAIL+=1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl get cnp -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l)
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; ((PASS+=1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; ((FAIL+=1))
 fi
 
 echo ""
@@ -197,7 +203,7 @@ cilium status
 
 ```bash
 # Confirm all endpoints are healthy
-cilium endpoint health
+kubectl get ciliumendpoints -n cilium-validate
 ```
 
 ```bash
