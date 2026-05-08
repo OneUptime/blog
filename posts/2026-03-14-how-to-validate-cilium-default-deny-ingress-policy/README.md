@@ -55,8 +55,8 @@ echo "Errors: $ERRORS"
 
 kubectl get ciliumendpoints -n default -o json | jq '.items[] | {
   name: .metadata.name,
-  enforcing: .status.policy.ingress.enforcing
-}' | jq 'select(.enforcing != true)'
+  enforcement: .status.policy.realized["policy-enabled"]
+}' | jq 'select(.enforcement != "ingress" and .enforcement != "both")'
 ```
 
 ## Testing with Traffic Probes
@@ -67,7 +67,7 @@ kubectl run test-probe --image=busybox:1.36 --restart=Never -- sleep 3600
 
 # Attempt to reach a service (should be blocked)
 kubectl exec test-probe -- wget -qO- --timeout=3 http://backend:8080 2>&1
-# Expected: timeout/connection refused
+# Expected: timeout or failed connection
 
 # Clean up
 kubectl delete pod test-probe
@@ -89,7 +89,7 @@ graph TD
 ```bash
 kubectl get ciliumnetworkpolicies --all-namespaces
 hubble observe --verdict DROPPED --last 5
-cilium endpoint list | head -10
+kubectl get ciliumendpoints --all-namespaces
 ```
 
 ## Troubleshooting
