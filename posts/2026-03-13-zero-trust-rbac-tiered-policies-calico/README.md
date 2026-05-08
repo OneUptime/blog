@@ -10,18 +10,18 @@ Description: Implement zero trust security using RBAC for Tiered Policies in Cal
 
 ## Introduction
 
-RBAC for Tiered Policies is an advanced Calico feature that provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to zero trust RBAC Tiered Policies effectively in your Kubernetes cluster.
+RBAC for Tiered Policies is an advanced Calico feature that provides fine-grained access control for tiered network security policies using the `projectcalico.org/v3` API. This guide covers how to use RBAC with zero trust tiered policies effectively in your Kubernetes cluster.
 
-Calico's `projectcalico.org/v3` API provides rich support for RBAC Tiered Policies through its `GlobalNetworkPolicy`, `NetworkPolicy`, and related resources. Proper configuration of RBAC Tiered Policies is essential for maintaining a secure, well-controlled network fabric.
+Calico's `projectcalico.org/v3` API provides rich support for tiered policies through its `Tier`, `GlobalNetworkPolicy`, `NetworkPolicy`, and related resources. Kubernetes RBAC controls who can manage policies in each tier, which is essential for maintaining a secure, well-controlled network fabric.
 
 This guide provides production-tested patterns for zero trust RBAC Tiered Policies, including YAML examples, CLI commands, and troubleshooting techniques.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico tiered policy support
 - `calicoctl` and `kubectl` installed  
 - Basic understanding of Calico network policy concepts
-- Calico v3.26+ for full RBAC Tiered Policies feature support
+- Permissions to create Calico `Tier`, `NetworkPolicy`, and Kubernetes RBAC resources
 
 ## Core Configuration
 
@@ -29,11 +29,20 @@ The following YAML demonstrates the key pattern for RBAC Tiered Policies:
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: security
+spec:
+  order: 300
+  defaultAction: Deny
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
-  name: zero-trust-rbac-tiered-policies
+  name: security.zero-trust-rbac-tiered-policies
   namespace: production
 spec:
+  tier: security
   order: 100
   selector: all()
   ingress:
@@ -48,29 +57,64 @@ spec:
       destination:
         ports: [53]
     - action: Allow
+      protocol: TCP
+      destination:
+        ports: [53]
+    - action: Allow
       destination:
         selector: app == 'authorized-destination'
   types:
     - Ingress
     - Egress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: production-security-tier-policy-writer
+rules:
+  - apiGroups: ["projectcalico.org"]
+    resources: ["tiers"]
+    resourceNames: ["security"]
+    verbs: ["get"]
+  - apiGroups: ["projectcalico.org"]
+    resources: ["tier.networkpolicies"]
+    resourceNames: ["security.*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: production-security-tier-policy-writers
+  namespace: production
+subjects:
+  - kind: Group
+    name: production-security-admins
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: production-security-tier-policy-writer
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Implementation Steps
 
 ```bash
-# 1. Apply the policy
+# 1. Validate the policy and RBAC resources
+kubectl apply --dry-run=server -f zero-trust-rbac-tiered-policies.yaml
 
-calicoctl apply -f zero-trust-rbac-tiered-policies.yaml
+# 2. Apply the policy and RBAC resources
+kubectl apply -f zero-trust-rbac-tiered-policies.yaml
 
-# 2. Verify it's active
+# 3. Verify it's active
 calicoctl get networkpolicies -n production -o wide
+kubectl get networkpolicies.p --field-selector spec.tier=security -n production
 
-# 3. Test connectivity
+# 4. Test connectivity
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
 echo "Exit code: $?"
 
-# 4. Check policy hit counters (if Felix metrics enabled)
-curl -s http://localhost:9091/metrics | grep felix_denied
+# 5. Check Felix metrics (if metrics reporting is enabled)
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 ```
 
 ## Operational Commands
@@ -81,10 +125,10 @@ calicoctl get networkpolicies --all-namespaces
 calicoctl get globalnetworkpolicies
 
 # View policy details
-calicoctl get networkpolicy zero-trust-policy -n production -o yaml
+calicoctl get networkpolicy security.zero-trust-rbac-tiered-policies -n production -o yaml
 
 # Delete a policy if needed
-calicoctl delete networkpolicy zero-trust-policy -n production
+calicoctl delete networkpolicy security.zero-trust-rbac-tiered-policies -n production
 ```
 
 ## Architecture
@@ -97,14 +141,15 @@ flowchart TD
     E[calicoctl] -->|Manages| B
     F[Felix] -->|Enforces| B
     G[Prometheus :9091] -->|Metrics from| F
+    H[Kubernetes RBAC] -->|Controls access to| B
 ```
 
 ## Common Issues
 
-1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
-2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
-3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
-4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress
+1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `kubectl apply --dry-run=server -f zero-trust-rbac-tiered-policies.yaml` first
+2. **Selector not matching**: Use `kubectl get pods -l app=authorized-source` to verify label matches
+3. **Order conflicts**: Run `calicoctl get tiers -o wide` and `calicoctl get globalnetworkpolicies -o wide` to compare tier and policy order fields
+4. **DNS failures**: Ensure egress to TCP and UDP port 53 is allowed when restricting egress
 
 ## Conclusion
 
