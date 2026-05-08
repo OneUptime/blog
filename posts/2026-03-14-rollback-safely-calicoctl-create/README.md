@@ -21,6 +21,7 @@ This guide covers rollback strategies specific to `calicoctl create` operations,
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
+- Python 3 with PyYAML installed for the example scripts
 - Basic understanding of Calico resource types
 
 ## Tracking What Was Created
@@ -62,7 +63,11 @@ echo "Creating ${RESOURCE_KIND}/${RESOURCE_NAME}..."
 calicoctl create -f "$RESOURCE_FILE"
 
 echo "Created successfully. Logged to: $LOG_FILE"
-echo "To rollback: calicoctl delete ${RESOURCE_KIND} ${RESOURCE_NAME}"
+if [ "$RESOURCE_NS" = "cluster-scoped" ]; then
+  echo "To rollback: calicoctl delete ${RESOURCE_KIND} ${RESOURCE_NAME}"
+else
+  echo "To rollback: calicoctl delete ${RESOURCE_KIND} ${RESOURCE_NAME} -n ${RESOURCE_NS}"
+fi
 ```
 
 ## Safe Deletion for Rollback
@@ -104,8 +109,27 @@ echo "Step 2: Backup saved to: $BACKUP_FILE"
 # Step 3: Check for dependent resources
 echo "Step 3: Checking for dependencies..."
 if [ "$RESOURCE_KIND" = "GlobalNetworkSet" ] || [ "$RESOURCE_KIND" = "NetworkSet" ]; then
-  echo "  Checking if any policies reference this network set..."
-  calicoctl get globalnetworkpolicies -o yaml | grep -l "$RESOURCE_NAME" || echo "  No policy references found"
+  echo "  Network sets are matched by policy selectors against labels, not by object name."
+  echo "  Labels on this network set:"
+  echo "$CURRENT" | python3 -c "
+import sys, yaml
+doc = yaml.safe_load(sys.stdin)
+if isinstance(doc, list):
+    doc = doc[0] if doc else {}
+labels = doc.get('metadata', {}).get('labels', {})
+for key, value in labels.items():
+    print(f'    {key}: {value}')
+if not labels:
+    print('    (none)')
+"
+  echo "  Review policy source/destination selectors for matching labels before deletion."
+  if [ "$RESOURCE_KIND" = "GlobalNetworkSet" ]; then
+    calicoctl get globalnetworkpolicies -o yaml
+  elif [ -n "$NAMESPACE" ]; then
+    calicoctl get networkpolicies -n "$NAMESPACE" -o yaml
+  else
+    calicoctl get networkpolicies -o yaml
+  fi
 fi
 
 # Step 4: Delete the resource
@@ -136,11 +160,10 @@ export DATASTORE_TYPE=kubernetes
 
 echo "Rolling back all resources in: $RESOURCE_FILE"
 
-# Parse multi-document YAML and delete each resource in reverse order
+# Parse multi-document YAML and delete later-created resources first
 python3 -c "
 import yaml, sys
 docs = list(yaml.safe_load_all(open('$RESOURCE_FILE')))
-# Reverse order for safe deletion (dependencies first)
 for doc in reversed(docs):
     if doc is None:
         continue
@@ -190,6 +213,11 @@ export DATASTORE_TYPE=kubernetes
 # Extract resource info
 KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['kind'])")
 NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['metadata']['name'])")
+NAMESPACE=$(python3 -c "
+import yaml
+doc = yaml.safe_load(open('$RESOURCE_FILE'))
+print(doc['metadata'].get('namespace', ''))
+")
 
 # Create the resource
 echo "Creating ${KIND}/${NAME}..."
@@ -197,16 +225,23 @@ calicoctl create -f "$RESOURCE_FILE"
 
 # Wait and verify
 echo "Verifying for ${TIMEOUT_SECONDS} seconds..."
-sleep 10
+DEADLINE=$((SECONDS + TIMEOUT_SECONDS))
+while [ "$SECONDS" -lt "$DEADLINE" ]; do
+  if eval "$VERIFY_CMD" > /dev/null 2>&1; then
+    echo "Verification passed. Resource created successfully."
+    exit 0
+  fi
+  sleep 5
+done
 
-if eval "$VERIFY_CMD" > /dev/null 2>&1; then
-  echo "Verification passed. Resource created successfully."
+echo "Verification FAILED. Rolling back..."
+if [ -n "$NAMESPACE" ]; then
+  calicoctl delete "$KIND" "$NAME" -n "$NAMESPACE"
 else
-  echo "Verification FAILED. Rolling back..."
   calicoctl delete "$KIND" "$NAME"
-  echo "Rollback complete. Resource deleted."
-  exit 1
 fi
+echo "Rollback complete. Resource deleted."
+exit 1
 ```
 
 ## Verification
@@ -215,7 +250,8 @@ fi
 export DATASTORE_TYPE=kubernetes
 
 # Verify the resource was deleted (should return error or empty)
-calicoctl get globalnetworkpolicy <deleted-policy-name> 2>&1
+DELETED_POLICY_NAME="deleted-policy-name"
+calicoctl get globalnetworkpolicy "$DELETED_POLICY_NAME" 2>&1
 
 # Verify no orphaned resources remain
 calicoctl get globalnetworkpolicies -o wide
