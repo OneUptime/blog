@@ -19,7 +19,7 @@ This guide covers practical steps for using Cilium project Slack channels in you
 ## Prerequisites
 
 - Familiarity with the Cilium project and its ecosystem
-- Access to the Cilium Slack workspace (cilium.slack.com)
+- Access to the Cilium & eBPF Slack workspace (join via slack.cilium.io)
 - Willingness to participate in community discussions
 
 ## Navigating Cilium Slack Channels
@@ -30,11 +30,13 @@ The Cilium Slack workspace includes these essential channels:
 
 ```text
 #general           - General Cilium discussion
-#troubleshooting   - Help with Cilium issues
+#kubernetes        - Kubernetes-specific questions
+#networkpolicy     - Questions on network policies
 #development       - Development discussion
 #hubble            - Hubble observability
-#announcements     - Project announcements
-#community         - Community coordination
+#release           - Release announcements
+#service-mesh      - Cilium Service Mesh questions
+#tetragon          - Tetragon questions
 ```
 
 ### Getting Help
@@ -50,16 +52,16 @@ When asking for help:
 
 - Star channels you monitor regularly
 - Set notification preferences per channel
-- Check #announcements for release and security notices
+- Check #release for release announcements
 - Follow #development for upcoming changes
 
 ```mermaid
 flowchart TD
     A[Need Help?] --> B{What type?}
-    B -->|Installation/Config| C[#troubleshooting]
+    B -->|Installation/Config| C[#general]
     B -->|Bug Report| D[GitHub Issues]
     B -->|Feature Request| E[#development]
-    B -->|Community| F[#community]
+    B -->|Kubernetes| F[#kubernetes]
     B -->|Observability| G[#hubble]
 ```
 
@@ -69,10 +71,10 @@ Confirm Slack channels are accessible and active.
 
 ## Troubleshooting
 
-- **Cannot find meeting links**: Check the Cilium community calendar and #community Slack channel.
-- **Slack workspace access**: Request an invite through the Cilium website.
+- **Cannot find meeting links**: Check the Cilium community meeting notes and #development Slack channel.
+- **Slack workspace access**: Join through slack.cilium.io.
 - **GitHub permissions**: Ensure your account has the necessary access for the repositories you need.
-- **Timezone confusion**: All official times are in UTC. Use a timezone converter for your local time.
+- **Timezone confusion**: Check each meeting's listed timezone and use a timezone converter for your local time.
 
 ## Conclusion
 
