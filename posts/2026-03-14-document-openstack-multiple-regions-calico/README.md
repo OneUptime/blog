@@ -10,7 +10,7 @@ Description: A guide to creating operational documentation for multi-region Open
 
 ## Introduction
 
-Multi-region OpenStack documentation must cover scenarios that do not exist in single-region deployments. Operators need to understand which region owns which IP ranges, how cross-region routes propagate, where to investigate when cross-region connectivity fails, and how to handle region-specific incidents without impacting other regions.
+Multi-region OpenStack documentation must cover scenarios that do not exist in single-region deployments. Operators need to understand which region owns which IP ranges, how cross-region routes propagate, which Calico namespace maps to each OpenStack region, where to investigate when cross-region connectivity fails, and how to handle region-specific incidents without impacting other regions.
 
 This guide helps you create documentation that maps the multi-region topology, provides cross-region troubleshooting procedures, and establishes region-specific operational responsibilities. The documentation should be structured so that operators in any region can diagnose issues that may originate in another region.
 
@@ -21,6 +21,7 @@ Effective multi-region documentation prevents the common problem of operators in
 - An operational multi-region OpenStack deployment with Calico
 - Completed topology diagrams for each region
 - Understanding of cross-region BGP peering configuration
+- Understanding that Calico for multi-region OpenStack uses a shared Calico etcd datastore with a separate Calico namespace for each OpenStack region
 - Access to all regions for verification
 - Input from teams operating each region
 
@@ -34,7 +35,7 @@ graph TD
         A_C2[Compute A2]
         A_RR --- A_C1
         A_RR --- A_C2
-        A_POOL[IP Pool: 10.10.0.0/16]
+        A_POOL[VM Subnet: 10.10.0.0/16]
     end
     subgraph "Region B - US West"
         B_RR[RR-B: 172.16.2.1<br>AS 64513]
@@ -42,7 +43,7 @@ graph TD
         B_C2[Compute B2]
         B_RR --- B_C1
         B_RR --- B_C2
-        B_POOL[IP Pool: 10.20.0.0/16]
+        B_POOL[VM Subnet: 10.20.0.0/16]
     end
     A_RR -->|eBGP| B_RR
 ```
@@ -52,11 +53,11 @@ Document the region reference table:
 ```markdown
 # Multi-Region Reference
 
-| Region | Location | AS Number | VM CIDR | Route Reflector | Gateway IP |
-|--------|----------|-----------|---------|-----------------|------------|
-| Region A | US East | 64512 | 10.10.0.0/16 | 172.16.1.1 | 172.16.0.1 |
-| Region B | US West | 64513 | 10.20.0.0/16 | 172.16.2.1 | 172.16.0.2 |
-| Region C | EU West | 64514 | 10.30.0.0/16 | 172.16.3.1 | 172.16.0.3 |
+| Region | Location | Calico Namespace | AS Number | VM CIDR | Route Reflector | Gateway IP |
+|--------|----------|------------------|-----------|---------|-----------------|------------|
+| Region A | US East | openstack-region-region-a | 64512 | 10.10.0.0/16 | 172.16.1.1 | 172.16.0.1 |
+| Region B | US West | openstack-region-region-b | 64513 | 10.20.0.0/16 | 172.16.2.1 | 172.16.0.2 |
+| Region C | EU West | openstack-region-region-c | 64514 | 10.30.0.0/16 | 172.16.3.1 | 172.16.0.3 |
 
 ## IP-to-Region Quick Lookup
 - 10.10.x.x -> Region A (US East)
@@ -138,7 +139,7 @@ echo "Verify no policy blocks cross-region traffic in either region"
 5. Escalate to network team if WAN link is the issue
 
 ## P2 Response: Intermittent Connectivity
-1. Check for BGP route flapping: `journalctl -u calico-bird | grep "route changed"`
+1. Check for BGP route flapping: `journalctl -u bird | grep -i bgp`
 2. Verify route reflector is not overloaded (CPU/memory)
 3. Check inter-region link utilization for congestion
 4. Review recent BGP configuration changes
@@ -156,27 +157,32 @@ echo "Verify no policy blocks cross-region traffic in either region"
 # verify-multi-region-docs.sh
 echo "=== Multi-Region Documentation Verification ==="
 
-echo "Region IP ranges match documentation:"
+echo "OpenStack subnets match documentation:"
 for region in region-a region-b; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
   echo "${region}:"
-  DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
-    calicoctl get ippools -o wide 2>/dev/null
+  openstack --os-region-name "${region}" subnet list --long
 done
 
 echo ""
-echo "BGP AS numbers match documentation:"
+echo "Calico OpenStack namespaces contain workload endpoints:"
 for region in region-a region-b; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
-  as=$(DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
-    calicoctl get bgpconfiguration default -o yaml 2>/dev/null | grep asNumber)
-  echo "  ${region}: ${as}"
+  namespace="openstack-region-${region}"
+  echo "${namespace}:"
+  DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS:-http://127.0.0.1:2379}" \
+    calicoctl get workloadendpoints -n "${namespace}" 2>/dev/null
+done
+
+echo ""
+echo "BGP status on route reflectors matches documentation:"
+for rr in region-a-rr-01 region-b-rr-01; do
+  echo "${rr}:"
+  ssh "${rr}" 'sudo calicoctl node status'
 done
 ```
 
 ## Troubleshooting
 
-- **Documentation references wrong region for an IP range**: Maintain the IP-to-region lookup table in a single authoritative location. Update immediately when IP pools change.
+- **Documentation references wrong region for an IP range**: Maintain the IP-to-region lookup table in a single authoritative location. Update immediately when OpenStack subnets change.
 - **Operators in one region cannot access another region's tools**: Set up cross-region access with appropriate credentials. Document SSH jump hosts or VPN endpoints for each region.
 - **Incident response unclear about which team to contact**: Maintain a region-to-team mapping with current contact information. Include this in the on-call reference card.
 - **Cross-region debugging requires too many manual steps**: Build a diagnostic script that automates the cross-region troubleshooting procedure. Distribute it to all regions.
