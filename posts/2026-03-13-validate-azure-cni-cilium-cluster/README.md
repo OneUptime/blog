@@ -59,7 +59,7 @@ Each pod should be registered as a Cilium endpoint with an assigned identity.
 # List all Cilium endpoints in the cluster
 kubectl get ciliumendpoints -A
 
-# Check endpoint status details - look for "ready" policy enforcement state
+# Check endpoint status details - look for the "ready" endpoint state
 kubectl get ciliumendpoints -A -o jsonpath=\
 '{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.status.state}{"\n"}{end}'
 ```
@@ -70,8 +70,13 @@ Run explicit connectivity checks between pods on different nodes.
 
 ```bash
 # Deploy two test pods on separate nodes
-kubectl run test-client --image=busybox --restart=Never -- sleep 3600
-kubectl run test-server --image=nginx --restart=Never
+kubectl run test-client --image=busybox --restart=Never --labels=app=test-client --command -- sleep 3600
+kubectl run test-server --image=nginx --restart=Never --labels=app=test-server \
+  --overrides='{"apiVersion":"v1","spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchExpressions":[{"key":"app","operator":"In","values":["test-client"]}]},"topologyKey":"kubernetes.io/hostname"}]}}}}'
+
+# Wait for both pods to be running
+kubectl wait --for=condition=Ready pod/test-client --timeout=120s
+kubectl wait --for=condition=Ready pod/test-server --timeout=120s
 
 # Get the test-server pod IP
 SERVER_IP=$(kubectl get pod test-server -o jsonpath='{.status.podIP}')
@@ -88,14 +93,14 @@ kubectl exec test-client -- wget -qO- http://$SERVER_IP
 cilium connectivity test
 
 # Clean up test resources after validation
-cilium connectivity test --cleanup-on-success
+cilium connectivity test --cleanup
 ```
 
 ## Best Practices
 
 - Validate cluster networking immediately after provisioning before deploying workloads
-- Use `cilium monitor` to watch live packet events during connectivity tests
-- Check `kubectl describe ciliumnodes` to confirm Azure subnet assignments per node
+- Use `cilium-dbg monitor` from a Cilium agent pod to watch live packet events during connectivity tests
+- Check `kubectl describe ciliumnodes` to confirm per-node Cilium addressing and IPAM details
 - Set up Hubble for continuous observability rather than one-time validation
 - Automate connectivity tests in your CI/CD pipeline using `cilium connectivity test --junit-file`
 
