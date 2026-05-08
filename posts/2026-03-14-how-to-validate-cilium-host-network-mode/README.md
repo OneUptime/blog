@@ -17,6 +17,7 @@ Validating host network mode ensures that pods running in the node network names
 - Kubernetes cluster with Cilium installed
 - Host firewall enabled
 - kubectl and Cilium CLI configured
+- jq is not required for the examples below
 
 ## Validating Host Endpoint
 
@@ -29,10 +30,10 @@ echo "=== Host Network Validation ==="
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium \
     --field-selector spec.nodeName="$node" -o jsonpath='{.items[0].metadata.name}')
-  HOST_EP=$(kubectl exec -n kube-system "$CILIUM_POD" -- \
-    cilium endpoint list -o json | jq '.[] | select(.status.labels.security-relevant | join(",") | contains("reserved:host"))')
-  if [ -n "$HOST_EP" ]; then
-    echo "OK: Node $node has host endpoint"
+  HOST_EP_ID=$(kubectl exec -n kube-system "$CILIUM_POD" -- \
+    cilium-dbg endpoint list -o jsonpath='{[?(@.status.identity.id==1)].id}')
+  if [ -n "$HOST_EP_ID" ]; then
+    echo "OK: Node $node has host endpoint $HOST_EP_ID"
   else
     echo "FAIL: Node $node missing host endpoint"
   fi
@@ -56,6 +57,7 @@ fi
 
 ```bash
 # Test host-networked pod can reach regular pods
+# If host-net-pod uses cluster DNS, set dnsPolicy: ClusterFirstWithHostNet.
 kubectl exec host-net-pod -- curl -s --connect-timeout 5 http://regular-service/
 
 # Test regular pods can reach host-networked services
@@ -77,7 +79,8 @@ graph TD
 
 ```bash
 cilium status
-cilium endpoint list | grep host
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep 'Host firewall'
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep 'reserved:host'
 ```
 
 ## Troubleshooting
@@ -88,4 +91,4 @@ cilium endpoint list | grep host
 
 ## Conclusion
 
-Validate host network mode by checking host endpoints exist, host firewall is enabled, and bidirectional connectivity works. Host network mode requires explicit configuration for proper Cilium integration.
+Validate host network mode by checking host endpoints exist, host firewall is enabled, and bidirectional connectivity works. Host firewall enforcement for host-networked pods requires explicit Cilium configuration.
