@@ -85,7 +85,7 @@ EOF
 
 ## Pattern Syntax
 
-The `.containerignore` file supports glob patterns similar to `.gitignore`.
+The `.containerignore` file uses the same syntax as `.dockerignore`: newline-separated Unix shell-style glob patterns, with `!` for exceptions and `**` to match any number of directories.
 
 ```bash
 cat > .containerignore << 'EOF'
@@ -116,6 +116,7 @@ vendor/
 # Ignore everything, then explicitly include
 *
 !src/
+!src/**
 !package.json
 !package-lock.json
 !Containerfile
@@ -124,17 +125,20 @@ EOF
 
 ## Measuring the Impact
 
-Compare build context size with and without `.containerignore`.
+Compare the raw project size and build time with and without `.containerignore`.
 
 ```bash
-# Check current build context size
-echo "Without .containerignore:"
+# Check raw project size before ignore filtering
+echo "Project size before ignore filtering:"
 tar -cf - --exclude=.git . 2>/dev/null | wc -c | awk '{printf "%.2f MB\n", $1/1048576}'
 
-# Check what would be included with .containerignore
-echo "With .containerignore:"
-# Podman shows the context size during build
-podman build -t test:latest . 2>&1 | grep -i "context"
+# Build without ignore rules by using an empty ignore file
+echo "Without .containerignore rules:"
+time podman build --ignorefile /dev/null -t test:no-ignore .
+
+# Build with .containerignore applied
+echo "With .containerignore rules:"
+time podman build -t test:with-ignore .
 ```
 
 ## Node.js Project
@@ -299,7 +303,9 @@ cat > .containerignore << 'EOF'
 
 # Include only what the build needs
 !src/
+!src/**
 !public/
+!public/**
 !package.json
 !package-lock.json
 !tsconfig.json
