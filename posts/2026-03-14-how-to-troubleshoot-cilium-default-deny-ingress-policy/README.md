@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Policy, Troubleshooting, Security
 
-Description: How to diagnose and resolve issues with Cilium default deny ingress policies including blocked legitimate traffic, DNS failures, and health check problems.
+Description: How to diagnose and resolve issues with Cilium default deny policies including blocked legitimate traffic, DNS failures, and health check problems.
 
 ---
 
 ## Introduction
 
-Default deny ingress policies block all inbound traffic unless explicitly allowed. When things go wrong, the symptoms are clear: applications stop communicating. The challenge is identifying which traffic needs to be allowed and building the right policies without being too permissive.
+Default deny ingress policies block all inbound traffic unless explicitly allowed. Default deny egress policies do the same for outbound traffic. When things go wrong, the symptoms are clear: applications stop communicating. The challenge is identifying which traffic needs to be allowed and building the right policies without being too permissive.
 
-Common issues include DNS resolution failing (because DNS traffic is also blocked), Kubernetes health checks being blocked (causing pods to restart), and inter-service communication breaking that was previously working implicitly.
+Common issues include DNS resolution failing when egress is also denied, Kubernetes network health checks being blocked in clusters that enforce host-to-pod policy, and inter-service communication breaking that was previously working implicitly.
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium and default deny ingress applied
+- Kubernetes cluster with Cilium and default deny ingress applied, and default deny egress if troubleshooting DNS or external traffic
 - kubectl and Cilium CLI configured
 - Hubble enabled for flow observation
 
@@ -51,7 +51,7 @@ graph TD
 
 ## Fixing DNS Resolution
 
-DNS is almost always the first thing that breaks:
+When egress is also default denied, DNS is almost always the first thing that breaks:
 
 ```yaml
 # allow-dns.yaml
@@ -95,7 +95,7 @@ spec:
   endpointSelector: {}
   ingress:
     - fromEntities:
-        - health
+        - host
 ```
 
 ## Building Allow Policies from Hubble Data
@@ -125,11 +125,11 @@ kubectl exec -n default deploy/frontend -- \
 
 ## Troubleshooting
 
-- **Everything is blocked**: Start with DNS and health check allow policies before adding application policies.
-- **Hubble shows drops from "reserved:host"**: These are kubelet probes. Add health entity allow policy.
-- **Pods restarting**: Liveness/readiness probes are being blocked. Allow health check traffic.
+- **Everything is blocked**: If egress is denied too, start with DNS, then add health check and application policies.
+- **Hubble shows drops from "reserved:host"**: These are usually node-local sources such as kubelet HTTP/TCP probes. Add a host entity allow policy if your Cilium configuration enforces host-to-pod policy.
+- **Pods restarting**: Liveness/readiness probes can be blocked when host-to-pod policy is enforced. Allow probe traffic from the host entity.
 - **Cannot reach external services**: You need egress policies too, not just ingress.
 
 ## Conclusion
 
-Troubleshooting default deny ingress follows a pattern: use Hubble to see what is dropped, fix DNS first, allow health checks second, then build application-specific allow policies. Hubble is essential for this process as it shows you exactly which flows need to be permitted.
+Troubleshooting default deny policies follows a pattern: use Hubble to see what is dropped, fix DNS first when egress is denied, allow health checks second, then build application-specific allow policies. Hubble is essential for this process as it shows you exactly which flows need to be permitted.
