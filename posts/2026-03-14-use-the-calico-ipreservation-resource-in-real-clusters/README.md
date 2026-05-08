@@ -31,26 +31,43 @@ For clusters with fewer than 50 nodes, a straightforward IPReservation configura
 
 calicoctl get ipreservation -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check current Calico IPAM allocations
+calicoctl ipam show
 ```
 
-Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
+Start with a small set of reserved IPs or CIDRs and only add ranges when you have a measured reason to reserve them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), keep environment-specific reservations explicit in the resource names and reserved CIDRs:
 
-```bash
-# Label nodes by environment
-kubectl label node worker-1 environment=production
-kubectl label node worker-2 environment=staging
-
-# Verify labels
-kubectl get nodes --show-labels | grep environment
+```yaml
+apiVersion: projectcalico.org/v3
+kind: IPReservation
+metadata:
+  name: production-reserved-addresses
+spec:
+  reservedCIDRs:
+    - 192.168.10.10
+    - 192.168.10.20/32
+---
+apiVersion: projectcalico.org/v3
+kind: IPReservation
+metadata:
+  name: staging-reserved-addresses
+spec:
+  reservedCIDRs:
+    - 192.168.20.10
+    - 192.168.20.20/32
 ```
 
-Then reference these labels in your IPReservation manifest's node selectors to apply environment-specific settings.
+Then verify the reservations with:
+
+```bash
+calicoctl get ipreservation -o yaml
+```
+
+IPReservation resources do not support node selectors. They apply to Calico IPAM automatic address assignment across the cluster.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,9 +82,10 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Keep reservations to a small number of addresses or CIDR ranges relative to the IP pools
+- Prefer one or two IPReservation resources with multiple entries over many single-address resources
 - Use Typha to reduce the number of direct datastore connections
-- Monitor memory usage of calico-node pods when managing many IPReservation resources
+- Monitor memory usage of calico-node pods and IPAM allocation latency when managing reserved addresses
 
 ## Pattern 4: Combining with Other Calico Resources
 
@@ -91,13 +109,13 @@ Set up ongoing monitoring for your IPReservation resources:
 
 ```bash
 # Watch for changes to IPReservation resources
-kubectl get ipreservation.projectcalico.org -w
+kubectl get ipreservations.projectcalico.org -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health checks are enabled:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -124,17 +142,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 
 **Resource configuration not taking effect:**
 - Verify the resource is correctly applied: `calicoctl get ipreservation -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Check whether the address was already allocated before the reservation was created.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether too many addresses or a large portion of an IP pool has been reserved.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
-- Check for node-specific FelixConfiguration overrides.
+- Verify that workloads are using Calico IPAM automatic address assignment.
+- Check for pod annotations that request specific IP addresses.
 
 
 ## Additional Considerations
@@ -169,7 +187,7 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
