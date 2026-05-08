@@ -28,7 +28,7 @@ podman run -d --name web \
 
 podman run -d --name api \
   --network myapp-net \
-  docker.io/library/node:20 tail -f /dev/null
+  docker.io/library/alpine:latest tail -f /dev/null
 
 podman run -d --name db \
   --network myapp-net \
@@ -38,7 +38,6 @@ podman run -d --name db \
 # Access by name
 podman exec api ping -c 2 web
 podman exec api ping -c 2 db
-podman exec web ping -c 2 db
 ```
 
 ## How DNS Resolution Works
@@ -62,7 +61,7 @@ podman exec api nslookup 10.89.0.2
 ## DNS Does Not Work on the Default Network
 
 ```bash
-# The default "podman" network does not have DNS enabled
+# The default network mode does not provide container DNS discovery
 podman run -d --name test1 docker.io/library/alpine:latest tail -f /dev/null
 podman run -d --name test2 docker.io/library/alpine:latest tail -f /dev/null
 
@@ -82,10 +81,9 @@ podman run -d --name app \
   --network myapp-net \
   -e DATABASE_HOST=db \
   -e DATABASE_PORT=5432 \
-  -e REDIS_HOST=cache \
   docker.io/library/node:20 tail -f /dev/null
 
-# The app connects to "db" and "cache" by name
+# The app connects to "db" by name
 # No need to know or configure IP addresses
 ```
 
@@ -113,22 +111,21 @@ podman exec api ping -c 1 db-primary
 podman network create frontend-net
 podman network create backend-net
 
-podman run -d --name web --network frontend-net \
-  docker.io/library/nginx:latest
+podman run -d --name frontend-web --network frontend-net \
+  docker.io/library/alpine:latest tail -f /dev/null
 
-podman run -d --name db --network backend-net \
+podman run -d --name backend-db --network backend-net \
   -e POSTGRES_PASSWORD=secret \
   docker.io/library/postgres:16
 
-# web cannot resolve db (different networks)
-podman exec web ping -c 1 db
-# ping: bad address 'db'
+# frontend-web cannot resolve backend-db (different networks)
+podman exec frontend-web nslookup backend-db
 
-# Connect web to backend-net
-podman network connect backend-net web
+# Connect frontend-web to backend-net
+podman network connect backend-net frontend-web
 
-# Now web can resolve db
-podman exec web ping -c 1 db
+# Now frontend-web can resolve backend-db
+podman exec frontend-web nslookup backend-db
 ```
 
 ## Troubleshooting DNS Resolution
