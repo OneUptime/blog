@@ -19,12 +19,12 @@ Unused container images accumulate quickly, especially on build servers and deve
 An unused image is one that is not referenced by any container, whether running or stopped.
 
 ```bash
-# See which images are actively used by containers
+# See which image IDs are actively used by containers
 
-podman ps -a --format "{{.Image}}" | sort -u
+podman ps -a --no-trunc --format "{{.ImageID}}" | sort -u
 
-# Compare with all local images
-podman images --format "{{.Repository}}:{{.Tag}}" | sort
+# Compare with all local image IDs, including dangling images
+podman images -a --no-trunc --format "{{.Id}}" | sort
 
 # Images in the second list but not the first are candidates for removal
 ```
@@ -40,8 +40,8 @@ podman image prune -a
 # Remove all unused images without prompting
 podman image prune -af
 
-# See what would be removed before actually removing
-podman image prune -a --filter "until=0h"
+# List unused images before actually removing them
+podman images -a --format "{{.Repository}}:{{.Tag}} {{.ID}} {{.Containers}}" | awk '$3 == "0" { print $1, $2 }'
 ```
 
 ## Checking Space Before and After
@@ -98,7 +98,7 @@ podman image prune -a \
 `podman system prune` removes unused images along with other unused resources.
 
 ```bash
-# Remove unused containers, images, networks, and build cache
+# Remove stopped containers, unused networks, dangling images, and dangling build cache
 podman system prune
 
 # Remove ALL unused resources including volumes
