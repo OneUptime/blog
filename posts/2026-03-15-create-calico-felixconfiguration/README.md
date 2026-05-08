@@ -53,25 +53,41 @@ spec:
   failsafeInboundHostPorts:
     - protocol: tcp
       port: 22
-    - protocol: tcp
-      port: 53
     - protocol: udp
-      port: 53
+      port: 68
     - protocol: tcp
       port: 179
-    - protocol: udp
-      port: 67
+    - protocol: tcp
+      port: 2379
+    - protocol: tcp
+      port: 2380
+    - protocol: tcp
+      port: 5473
+    - protocol: tcp
+      port: 6443
+    - protocol: tcp
+      port: 6666
+    - protocol: tcp
+      port: 6667
   failsafeOutboundHostPorts:
-    - protocol: tcp
-      port: 53
     - protocol: udp
       port: 53
+    - protocol: udp
+      port: 67
     - protocol: tcp
       port: 179
     - protocol: tcp
-      port: 443
-    - protocol: udp
-      port: 67
+      port: 2379
+    - protocol: tcp
+      port: 2380
+    - protocol: tcp
+      port: 5473
+    - protocol: tcp
+      port: 6443
+    - protocol: tcp
+      port: 6666
+    - protocol: tcp
+      port: 6667
 ```
 
 Apply the configuration:
@@ -104,7 +120,7 @@ calicoctl apply -f felix-gpu-node.yaml
 
 ## Enabling BPF Data Plane
 
-To create a FelixConfiguration that enables the eBPF data plane:
+For manifest-based installations, create a FelixConfiguration that enables the eBPF data plane:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -113,6 +129,8 @@ metadata:
   name: default
 spec:
   bpfEnabled: true
+  ipipEnabled: false
+  vxlanEnabled: true
   bpfExternalServiceMode: DSR
   bpfLogLevel: Off
   bpfDataIfacePattern: "^(en|eth|ens|bond)"
@@ -187,7 +205,7 @@ For BPF mode issues, check kernel compatibility:
 kubectl exec -n kube-system -it $(kubectl get pod -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- uname -r
 ```
 
-BPF mode requires Linux kernel 5.3 or later.
+BPF mode requires Linux kernel 5.10 or later, except on Red Hat-derived distributions where Calico supports Red Hat 8.4 with kernel 4.18.0-305 or later because the required features are backported.
 
 ## Conclusion
 
