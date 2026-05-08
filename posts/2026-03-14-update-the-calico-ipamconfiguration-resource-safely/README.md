@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM
 
-Description: A step-by-step guide to modifying Calico IPAMConfiguration resources in production without causing downtime or connectivity issues.
+Description: A step-by-step guide to modifying Calico IPAMConfiguration resources in production while reducing the risk of downtime or connectivity issues.
 
 ---
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured IPAMConfiguration can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying IPAMConfiguration resources in production.
+Updating Calico resources in a running cluster requires care. A misconfigured IPAMConfiguration can affect new pod IP allocation or cause address allocation failures. This guide covers a safe workflow for modifying IPAMConfiguration resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
@@ -19,7 +19,8 @@ This post provides a repeatable process you can follow every time you need to up
 ## Prerequisites
 
 - A running Kubernetes cluster with Calico installed (v3.26+)
-- `kubectl` and `calicoctl` installed
+- `kubectl` installed, with access to the Calico API resources
+- `calicoctl` installed for IPAM status commands
 - Cluster-admin privileges
 - The current IPAMConfiguration manifest stored in version control
 
@@ -30,7 +31,7 @@ Before making any changes, export the current state as your baseline:
 ```bash
 # Export current resource to YAML
 
-calicoctl get ipamconfiguration -o yaml > ipamconfiguration-backup.yaml
+kubectl get ipamconfigurations default -o yaml > ipamconfiguration-backup.yaml
 
 # Store the backup safely
 cp ipamconfiguration-backup.yaml ipamconfiguration-backup-$(date +%Y%m%d%H%M%S).yaml
@@ -44,7 +45,7 @@ Open your IPAMConfiguration manifest and make the desired changes. Use `diff` to
 
 ```bash
 # Compare current live state with your updated manifest
-diff <(calicoctl get ipamconfiguration -o yaml) ipamconfiguration.yaml
+diff <(kubectl get ipamconfigurations default -o yaml) ipamconfiguration.yaml
 ```
 
 Review each changed field and consider its impact:
@@ -58,8 +59,8 @@ Review each changed field and consider its impact:
 Apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
-calicoctl apply -f ipamconfiguration.yaml
+# Apply the Calico API resource
+kubectl apply -f ipamconfiguration.yaml
 ```
 
 For critical changes, consider applying during a maintenance window and monitoring immediately after.
@@ -72,8 +73,8 @@ Watch for issues in the Calico component logs:
 # Watch calico-node logs for errors
 kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
 
-# Check Felix for configuration reload
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
+# Check for IPAM allocation or block errors
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "ipam\|allocation\|block"
 ```
 
 Run connectivity tests to verify that pods can still communicate:
@@ -92,7 +93,7 @@ Confirm the resource reflects your changes:
 
 ```bash
 # Verify the updated resource
-calicoctl get ipamconfiguration -o yaml
+kubectl get ipamconfigurations default -o yaml
 
 # Check that calico-node pods are healthy
 kubectl get pods -n calico-system -l k8s-app=calico-node
@@ -106,10 +107,10 @@ If the update causes problems, immediately revert to your backup:
 
 ```bash
 # Rollback to the previous configuration
-calicoctl apply -f ipamconfiguration-backup.yaml
+kubectl apply -f ipamconfiguration-backup.yaml
 
 # Verify rollback was successful
-calicoctl get ipamconfiguration -o yaml
+kubectl get ipamconfigurations default -o yaml
 ```
 
 ## Troubleshooting
@@ -124,8 +125,8 @@ calicoctl get ipamconfiguration -o yaml
 - Verify ASN numbers and peer IPs are correct.
 
 **Update appears to have no effect:**
-- Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Ensure the resource name is `default`; IPAMConfiguration is a singleton resource.
+- Check the apply output for field validation errors or warnings, and verify that the expected fields appear in the stored resource.
 
 
 ## Additional Considerations
@@ -137,9 +138,9 @@ If you operate multiple Kubernetes clusters with Calico, standardize your config
 ```bash
 # Compare Calico configurations across clusters
 # Export from each cluster and diff
-KUBECONFIG=cluster-1.kubeconfig calicoctl get felixconfiguration -o yaml > cluster1-felix.yaml
-KUBECONFIG=cluster-2.kubeconfig calicoctl get felixconfiguration -o yaml > cluster2-felix.yaml
-diff cluster1-felix.yaml cluster2-felix.yaml
+KUBECONFIG=cluster-1.kubeconfig kubectl get ipamconfigurations default -o yaml > cluster1-ipam.yaml
+KUBECONFIG=cluster-2.kubeconfig kubectl get ipamconfigurations default -o yaml > cluster2-ipam.yaml
+diff cluster1-ipam.yaml cluster2-ipam.yaml
 ```
 
 ### Upgrade Compatibility
@@ -151,7 +152,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crd ipamconfigurations.crd.projectcalico.org -o jsonpath='{.spec.versions[*].name}{"\n"}'
 ```
 
 ### Security Hardening
@@ -159,8 +160,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can update the IPAMConfiguration resource
+kubectl auth can-i update ipamconfigurations.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
@@ -168,7 +169,7 @@ kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 
 ### Capacity Planning for Large Deployments
 
-For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
+For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use Calico IPAM status output to track utilization and plan IP pool expansions before reaching capacity limits.
 
 ```bash
 # Monitor IPAM utilization
