@@ -33,17 +33,16 @@ Apply the following Helm values to configure encapsulation in cilium networking:
 
 # Encapsulation configuration for Cilium
 
+# Tunneling mode is the default routing mode
+routingMode: tunnel
+
 # VXLAN encapsulation (default)
-tunnel: vxlan
+tunnelProtocol: vxlan
 # Or use Geneve:
-# tunnel: geneve
+# tunnelProtocol: geneve
 
 # Tunnel port (default: 8472 for VXLAN, 6081 for Geneve)
 tunnelPort: 8472
-
-# Enable tunnel monitoring
-bpf:
-  tproxy: true
 
 # MTU auto-detection accounts for tunnel overhead
 # VXLAN adds 50 bytes, Geneve adds 50+ bytes
@@ -54,9 +53,9 @@ Apply the configuration:
 
 ```bash
 # Apply the configuration via Helm upgrade
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-encapsulation-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -143,8 +142,8 @@ cilium config view
 # Check which features are enabled
 cilium status --verbose | head -40
 
-# Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+# Review the effective BPF runtime configuration on a Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -153,13 +152,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test /pod-to-pod --test /pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl get ciliumendpoints --all-namespaces | head -20
 ```
 
 ## Troubleshooting
