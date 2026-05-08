@@ -28,18 +28,18 @@ This produces output similar to:
 
 ```text
 NAME                     VM TYPE     CREATED        LAST UP            CPUS        MEMORY      DISK SIZE
-podman-machine-default*  qemu        2 days ago     Currently running  2           2.147GB     107.4GB
+podman-machine-default   qemu        2 days ago     Currently running  2           2.147GB     107.4GB
 dev-machine              qemu        5 days ago     3 hours ago        4           4.295GB     214.7GB
 test-env                 applehv     1 week ago     Yesterday          1           1.074GB     53.69GB
 ```
 
-The asterisk (`*`) next to a machine name indicates that it is the currently active (default) machine.
+To identify the default machine, include the `Default` field in JSON or custom formatted output.
 
 ## Understanding Output Columns
 
 Each column in the listing provides important information:
 
-- **NAME** - The machine name. An asterisk marks the active default machine.
+- **NAME** - The machine name.
 - **VM TYPE** - The virtualization backend (qemu, applehv, hyperv, wsl).
 - **CREATED** - When the machine was first initialized.
 - **LAST UP** - When the machine was last running or if it is currently running.
@@ -76,6 +76,9 @@ podman machine ls --format json | jq -r '.[].Name'
 # Find machines that are currently running
 podman machine ls --format json | jq -r '.[] | select(.Running == true) | .Name'
 
+# Find the default machine
+podman machine ls --format json | jq -r '.[] | select(.Default == true) | .Name'
+
 # Get memory allocation for each machine
 podman machine ls --format json | jq -r '.[] | "\(.Name): \(.Memory)"'
 ```
@@ -88,7 +91,10 @@ You can use Go template syntax to customize the output columns.
 # Show only name and running status
 podman machine ls --format "{{.Name}}\t{{.Running}}"
 
-# Show name, CPUs, and memory in a readable format
+# Show name and default status
+podman machine ls --format "{{.Name}}\t{{.Default}}"
+
+# Show name, CPUs, memory, and disk size
 podman machine ls --format "table {{.Name}}\t{{.CPUs}}\t{{.Memory}}\t{{.DiskSize}}"
 
 # Show name and last up time
