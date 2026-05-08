@@ -53,7 +53,7 @@ Organize database credentials as JSON objects in the external store:
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-postgres.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-postgres-credentials
@@ -88,7 +88,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-redis.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-redis-credentials
@@ -118,7 +118,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-mysql.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-mysql-credentials
@@ -165,12 +165,15 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
           image: myapp:latest
           envFrom:
-            # Mount all keys from the postgres secret as env vars
+            # Mount all keys from the database secrets as env vars
             - secretRef:
                 name: myapp-postgres
             - secretRef:
@@ -197,7 +200,7 @@ spec:
     - name: secret-stores
     - name: reloader
   healthChecks:
-    - apiVersion: external-secrets.io/v1beta1
+    - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
       name: myapp-postgres-credentials
       namespace: default
@@ -208,8 +211,8 @@ spec:
 - Use template rendering to construct connection strings in the `ExternalSecret` rather than in application code; this keeps connection string format changes auditable in Git.
 - Use `envFrom.secretRef` for applications that need many database parameters, rather than listing each `env.valueFrom.secretKeyRef` individually.
 - Enable RDS or Cloud SQL automatic credential rotation and align the `refreshInterval` to be shorter than the rotation window.
-- Mount database credentials as volumes rather than environment variables when possible; volumes update automatically without a pod restart when the Secret changes.
-- Keep a `PGPASSWORD_PREVIOUS` key synced during dual-write rotation windows to allow in-flight transactions to complete with the old password.
+- Mount database credentials as volumes rather than environment variables when possible; volumes update automatically without a pod restart when the Secret changes, as long as the application re-reads the files and the Secret is not mounted with `subPath`.
+- Keep a `PGPASSWORD_PREVIOUS` key synced during rotation overlap windows to allow new connections to keep using the old password until the application has switched over.
 
 ## Conclusion
 
