@@ -33,7 +33,7 @@ Preventing issues is more effective than reactive troubleshooting. This section 
 ```bash
 # Establish baseline metrics for your cluster
 
-cilium metrics list | grep -E "endpoint_count|identity_count|policy_regeneration" > /tmp/cilium-baseline-$(date +%Y%m%d).txt
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep -E "cilium_endpoint|cilium_identity|cilium_endpoint_regeneration" > /tmp/cilium-baseline-$(date +%Y%m%d).txt
 
 # Document current resource usage
 kubectl top pods -n kube-system -l k8s-app=cilium > /tmp/cilium-resources-$(date +%Y%m%d).txt
@@ -66,12 +66,8 @@ operator:
       cpu: "200m"
       memory: "256Mi"
 
-# Optimize identity management to prevent identity exhaustion
-labels:
-  exclude:
-    - "k8s:pod-template-hash"
-    - "k8s:controller-revision-hash"
-    - "k8s:job-name"
+# Optimize identity management to prevent excessive identity creation
+labels: "!pod-template-hash !controller-revision-hash !job-name"
 
 # Enable monitoring for early detection
 prometheus:
@@ -103,7 +99,7 @@ spec:
     - name: cilium-prevention
       rules:
         - alert: CiliumHighIdentityCount
-          expr: cilium_identity_count > 5000
+          expr: sum(cilium_identity) > 5000
           for: 15m
           labels:
             severity: warning
@@ -147,7 +143,7 @@ cilium status
 kubectl top pods -n kube-system -l k8s-app=cilium
 
 # Monthly: Review identity count trends and label exclusion effectiveness
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list | wc -l
 cilium config view | grep -A 5 labels
 
 # Quarterly: Review and update Cilium version
@@ -165,7 +161,7 @@ After completing the steps above, run a comprehensive verification to confirm ev
 cilium status --verbose
 
 # Verify inter-node connectivity
-cilium health status
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-health status
 
 # Confirm all Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
@@ -180,24 +176,24 @@ kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tai
 cilium connectivity test --single-node
 
 # Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+echo "Cilium endpoints: $(kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 5.10 or later, or an equivalent distribution kernel such as RHEL 8.10's 4.18 kernel. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg policy get`. Verify node reachability with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-health status` and inspect remote-node entries with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg bpf ipcache list`.
 
 - **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep process_resident_memory`.
 
 - **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Policy not being enforced**: Verify the policy selectors match the intended pods using `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list`. Confirm the policy is applied with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg policy get`. Check that the endpoint has the correct identity with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint get <id>`.
 
 To collect a comprehensive diagnostic bundle for further analysis:
 
