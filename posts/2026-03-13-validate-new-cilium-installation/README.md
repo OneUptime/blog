@@ -47,8 +47,8 @@ Each node runs a Cilium agent pod. Inspect individual agent health to catch node
 # List all Cilium agent pods with their node assignments
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
-# Check detailed status for a specific Cilium agent
-kubectl exec -n kube-system ds/cilium -- cilium status --verbose
+# Check detailed status from a Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --verbose
 
 # Inspect agent logs for errors or warnings
 kubectl logs -n kube-system ds/cilium --tail=50
@@ -60,13 +60,13 @@ Confirm that Cilium has established correct tunnel or direct routing between nod
 
 ```bash
 # Show the Cilium endpoint list - each pod gets an endpoint entry
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
-# Check that BPF maps are populated with node routes
-kubectl exec -n kube-system ds/cilium -- cilium bpf tunnel list
+# In encapsulation mode, check that BPF tunnel maps are populated
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf tunnel list
 
 # Verify node-to-node health probes are passing
-kubectl exec -n kube-system ds/cilium -- cilium node list
+kubectl exec -n kube-system ds/cilium -- cilium-health status --verbose
 ```
 
 ## Step 4: Run the Full Connectivity Test Suite
@@ -80,8 +80,8 @@ cilium connectivity test
 # Run a subset of tests for faster validation during initial setup
 cilium connectivity test --test pod-to-pod-encryption --test pod-to-service
 
-# Clean up test namespace after validation
-cilium connectivity test --cleanup-on-completion
+# Clean up test artifacts without rerunning the tests
+cilium connectivity test --cleanup
 ```
 
 ## Step 5: Verify Network Policy Enforcement
@@ -107,7 +107,7 @@ spec:
 kubectl apply -f test-netpol.yaml
 
 # Confirm Cilium endpoint policy is updated
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -i policy
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -i policy
 
 # Remove the test policy when done
 kubectl delete -f test-netpol.yaml
