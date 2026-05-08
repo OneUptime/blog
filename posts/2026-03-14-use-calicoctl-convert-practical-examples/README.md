@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Migration, Calicoctl, Network Policy
 
-Description: Master calicoctl convert with practical examples for converting Kubernetes NetworkPolicy to Calico format, migrating between API versions, and batch-converting resources.
+Description: Master calicoctl convert with practical examples for converting Kubernetes NetworkPolicy to Calico format, converting to the Calico v3 API, and batch-converting resources.
 
 ---
 
 ## Introduction
 
-The `calicoctl convert` command transforms Kubernetes NetworkPolicy resources into Calico NetworkPolicy format. This is valuable when you want to leverage Calico-specific features like global policies, order fields, DNS-based rules, or advanced selector syntax that are not available in standard Kubernetes NetworkPolicy.
+The `calicoctl convert` command transforms Kubernetes NetworkPolicy resources into Calico NetworkPolicy format. This is valuable when you want to leverage Calico-specific features like global policies, order fields, deny and log actions, or advanced selector syntax that are not available in standard Kubernetes NetworkPolicy.
 
 Converting existing policies rather than rewriting them from scratch ensures continuity and reduces the risk of introducing errors during migration. The convert command handles the structural translation while preserving the intended network behavior.
 
@@ -21,6 +21,7 @@ This guide provides practical examples of using `calicoctl convert` for common m
 - calicoctl v3.27 or later
 - Kubernetes NetworkPolicy resources to convert
 - Basic understanding of both Kubernetes and Calico NetworkPolicy formats
+- PyYAML installed for the Python enhancement script
 
 ## Converting a Basic Kubernetes NetworkPolicy
 
@@ -67,20 +68,22 @@ The output will look like:
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
+  creationTimestamp: null
   name: allow-frontend
   namespace: production
 spec:
-  selector: app == "backend"
-  types:
-    - Ingress
   ingress:
-    - action: Allow
-      protocol: TCP
-      source:
-        selector: app == "frontend"
-      destination:
-        ports:
-          - 8080
+  - action: Allow
+    destination:
+      ports:
+      - 8080
+    protocol: TCP
+    source:
+      selector: projectcalico.org/orchestrator == 'k8s' && app == 'frontend'
+  order: 1000
+  selector: projectcalico.org/orchestrator == 'k8s' && app == 'backend'
+  types:
+  - Ingress
 ```
 
 ## Converting with Namespace Selectors
@@ -176,6 +179,7 @@ CONVERTED=$(calicoctl convert -f "$INPUT_FILE" -o yaml)
 
 # Step 2: Add Calico-specific enhancements
 echo "$CONVERTED" | python3 -c "
+import copy
 import yaml, sys
 
 doc = yaml.safe_load(sys.stdin)
@@ -186,12 +190,10 @@ doc['spec']['order'] = 500
 # Enhance with Calico-specific logging
 if 'ingress' in doc.get('spec', {}):
     # Add a Log action before Allow for audit purposes
-    log_rule = {
-        'action': 'Log',
-        'protocol': 'TCP'
-    }
+    log_rule = copy.deepcopy(doc['spec']['ingress'][0])
+    log_rule['action'] = 'Log'
     # Insert log rule at the beginning
-    # doc['spec']['ingress'].insert(0, log_rule)
+    doc['spec']['ingress'].insert(0, log_rule)
 
 print(yaml.dump(doc, default_flow_style=False))
 " > "${INPUT_FILE%.yaml}-calico-enhanced.yaml"
@@ -220,7 +222,7 @@ print(f\"Rules: {len(policy['spec'].get('ingress', []))} ingress, {len(policy['s
 flowchart LR
     A[K8s NetworkPolicy] -->|calicoctl convert| B[Calico NetworkPolicy]
     B --> C{Enhance?}
-    C -->|Yes| D[Add order, logging, DNS rules]
+    C -->|Yes| D[Add order, logging, deny rules]
     C -->|No| E[Use as-is]
     D --> F[calicoctl validate]
     E --> F
