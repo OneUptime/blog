@@ -19,33 +19,35 @@ This guide focuses on practical usage patterns for Cilium controllers, showing y
 ## Prerequisites
 
 - Kubernetes cluster running Cilium 1.14+
-- kubectl and cilium CLI installed
+- kubectl installed, with access to the in-pod `cilium-dbg` CLI
 - Prometheus with Cilium metrics enabled
 - Familiarity with Cilium endpoint and policy concepts
 
 ## Querying Controller State
 
-The primary interface for controller data is the `cilium status controllers` command:
+The primary interface for controller data is the in-pod `cilium-dbg status --all-controllers` command:
 
 ```bash
 # List all controllers with their current status
 
-kubectl -n kube-system exec ds/cilium -- cilium status controllers
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers
 
 # Get a specific controller by name pattern
-kubectl -n kube-system exec ds/cilium -- cilium status controllers | grep "policy"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers | grep "policy"
 
 # JSON output for programmatic analysis
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json
 ```
 
 Each controller entry contains these key fields:
 
 ```bash
 # Parse and display controller details
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | python3 -c "
 import json, sys
-for c in json.load(sys.stdin)[:5]:
+data = json.load(sys.stdin)
+controllers = data.get('controllers', [])
+for c in controllers[:5]:
     s = c.get('status', {})
     print(f\"Controller: {c['name']}\")
     print(f\"  Success count: {s.get('success-count', 0)}\")
@@ -60,19 +62,19 @@ for c in json.load(sys.stdin)[:5]:
 
 ## Correlating Controllers with Network Events
 
-Controllers map directly to observable network behavior. Understanding which controllers handle which operations helps you trace issues:
+Controllers often correlate with observable network behavior. Understanding which controller groups are active during common operations helps you trace issues:
 
 ```mermaid
 graph LR
-    A[Pod Created] --> B[endpoint-create controller]
-    B --> C[endpoint-regeneration controller]
+    A[Pod Created] --> B[endpoint-related controllers]
+    B --> C[endpoint regeneration]
     C --> D[BPF program compiled and attached]
 
-    E[NetworkPolicy Applied] --> F[policy-update controller]
-    F --> G[endpoint-regeneration controller]
+    E[NetworkPolicy Applied] --> F[policy and selector processing]
+    F --> G[endpoint regeneration]
     G --> H[BPF maps updated]
 
-    I[Node Joined] --> J[node-discovery controller]
+    I[Node Joined] --> J[node discovery or ipcache controllers]
     J --> K[Tunnel/routing updated]
 ```
 
@@ -81,19 +83,20 @@ To trace a specific operation through controllers:
 ```bash
 # Watch controllers in real-time while creating a pod
 # Terminal 1: Watch controllers
-kubectl -n kube-system exec ds/cilium -- watch -n 1 "cilium status controllers | grep -E 'endpoint|policy'"
+kubectl -n kube-system exec ds/cilium -- watch -n 1 "cilium-dbg status --all-controllers | grep -E 'endpoint|policy'"
 
-# Terminal 2: Create a test pod
+# Terminal 2: Capture the start time and create a test pod
+START=$(date -u +%Y-%m-%dT%H:%M:%S)
 kubectl run test-pod --image=nginx --restart=Never
 
 # After the pod is running, check which controllers ran
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
-import json, sys
-from datetime import datetime, timedelta
-now_str = '$(date -u +%Y-%m-%dT%H:%M:%S)'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | START="$START" python3 -c "
+import json, os, sys
 controllers = json.load(sys.stdin)
+controllers = controllers.get('controllers', [])
+start = os.environ['START']
 recent = [c for c in controllers
-          if c.get('status', {}).get('last-success-timestamp', '') > now_str[:16]]
+          if c.get('status', {}).get('last-success-timestamp', '')[:19] >= start]
 for c in recent:
     print(f\"Recently active: {c['name']}\")
 "
@@ -106,19 +109,22 @@ Controller run duration and frequency provide signals about cluster load:
 ```bash
 # Query: Average controller run duration over the last hour
 # High durations indicate the agent is under load
-curl -s 'http://localhost:9090/api/v1/query?query=rate(cilium_controllers_runs_duration_seconds_sum[1h])/rate(cilium_controllers_runs_duration_seconds_count[1h])' | python3 -m json.tool
+curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=rate(cilium_controllers_runs_duration_seconds_sum[1h])/rate(cilium_controllers_runs_duration_seconds_count[1h])' | python3 -m json.tool
 
 # Query: Total controller runs per minute (measures reconciliation load)
-curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(cilium_controllers_runs_total[5m]))*60' | python3 -m json.tool
+curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum(rate(cilium_controllers_runs_total[5m]))*60' | python3 -m json.tool
 
-# Query: Error ratio by controller name
-curl -s 'http://localhost:9090/api/v1/query?query=sum by (controller)(rate(cilium_controllers_runs_total{outcome="error"}[5m]))/sum by (controller)(rate(cilium_controllers_runs_total[5m]))>0' | python3 -m json.tool
+# Query: Failure ratio by controller group
+curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum by (group_name)(rate(cilium_controllers_group_runs_total{status="failure"}[5m]))/sum by (group_name)(rate(cilium_controllers_group_runs_total[5m]))>0' | python3 -m json.tool
 ```
 
-Key thresholds to watch:
+Key starting points to tune for your cluster:
 
 - Controller run duration above 30 seconds: indicates resource pressure
-- Error ratio above 5%: investigate specific failing controllers
+- Failure ratio above 5%: investigate specific failing controller groups
 - Consecutive failure count above 10: likely a persistent configuration issue
 
 ## Automating Controller Health Checks
@@ -127,6 +133,39 @@ Create a script to run as a CronJob for regular health checks:
 
 ```yaml
 # cilium-controller-check.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cilium-controller-health-check
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cilium-controller-health-check
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cilium-controller-health-check
+  namespace: kube-system
+subjects:
+  - kind: ServiceAccount
+    name: cilium-controller-health-check
+    namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cilium-controller-health-check
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -138,7 +177,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: cilium
+          serviceAccountName: cilium-controller-health-check
           containers:
             - name: checker
               image: bitnami/kubectl:latest
@@ -149,14 +188,10 @@ spec:
                   # Get all Cilium pods
                   PODS=$(kubectl get pods -n kube-system -l k8s-app=cilium -o name)
                   for pod in $PODS; do
-                    FAILING=$(kubectl exec -n kube-system $pod -- \
-                      cilium status controllers -o json 2>/dev/null | \
-                      python3 -c "
-                  import json, sys
-                  data = json.load(sys.stdin)
-                  failing = [c['name'] for c in data if c.get('status',{}).get('consecutive-failure-count',0) > 5]
-                  print('\n'.join(failing))
-                  " 2>/dev/null)
+                    FAILING=$(kubectl exec -n kube-system "$pod" -- \
+                      cilium-dbg status --all-controllers \
+                        -o jsonpath='{range .controllers[*]}{.name}{"\t"}{.status["consecutive-failure-count"]}{"\n"}{end}' 2>/dev/null | \
+                      awk '$2 > 5 {print $1}')
                     if [ -n "$FAILING" ]; then
                       echo "WARNING: $pod has failing controllers:"
                       echo "$FAILING"
@@ -177,13 +212,14 @@ Confirm your controller observability is working:
 # 1. List all controllers across all nodes
 for pod in $(kubectl get pods -n kube-system -l k8s-app=cilium -o name); do
   echo "=== $pod ==="
-  kubectl -n kube-system exec $pod -- cilium status controllers 2>/dev/null | tail -5
+  kubectl -n kube-system exec $pod -- cilium-dbg status --all-controllers 2>/dev/null | tail -5
 done
 
 # 2. Check for any currently failing controllers
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
+data = data.get('controllers', [])
 failing = [c for c in data if c.get('status',{}).get('consecutive-failure-count',0) > 0]
 print(f'Total controllers: {len(data)}, Failing: {len(failing)}')
 "
@@ -198,9 +234,9 @@ curl -s 'http://localhost:9090/api/v1/query?query=count(cilium_controllers_faili
 
 - **Cannot exec into Cilium pods**: Ensure your RBAC allows exec into kube-system pods. Check with `kubectl auth can-i exec pods -n kube-system`.
 
-- **Controller names are not descriptive**: Use `cilium status controllers -o json` to get the full controller metadata including the UUID and configuration parameters.
+- **Controller names are not descriptive**: Use `cilium-dbg status --all-controllers -o json` to get the full controller metadata including the UUID and configuration parameters.
 
-- **Too many controllers to monitor**: Focus on the critical ones: `endpoint-regeneration`, `policy-update`, `sync-to-k8s`, and `ipam-sync`. These cover the most impactful operations.
+- **Too many controllers to monitor**: Focus on controller names and groups matching endpoint regeneration, policy processing, Kubernetes synchronization, and IPAM/operator activity in your own output. Exact names vary by Cilium version and enabled features.
 
 ## Conclusion
 
