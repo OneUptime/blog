@@ -10,7 +10,7 @@ Description: Safely upgrade Calico on Google Kubernetes Engine clusters with min
 
 ## Introduction
 
-Google Kubernetes Engine offers automatic cluster upgrades which can interact with your Calico version if not managed carefully. While GKE's managed control plane handles Kubernetes version upgrades, Calico running on worker nodes is your responsibility to upgrade. Understanding how GKE's node auto-upgrade feature interacts with your Calico installation is essential for maintaining a stable network.
+Google Kubernetes Engine offers automatic cluster upgrades which can interact with your Calico version if not managed carefully. While GKE's managed control plane handles Kubernetes version upgrades, a self-managed Calico installation on worker nodes is your responsibility to upgrade. Understanding how GKE's node auto-upgrade feature interacts with your Calico installation is essential for maintaining a stable network.
 
 GKE's Container-Optimized OS (COS) nodes receive automatic kernel updates as part of node pool upgrades. These kernel updates can sometimes change the behavior of iptables or BPF programs that Calico relies on. Coordinating Calico upgrades with GKE node pool upgrades ensures compatibility and reduces risk.
 
@@ -18,10 +18,10 @@ This guide provides a safe upgrade path for Calico on GKE, including pre-upgrade
 
 ## Prerequisites
 
-- GKE cluster running Calico (Standard mode, not Autopilot)
+- GKE Standard cluster running a self-managed Calico installation with the Tigera Operator, not GKE Dataplane V2 or the GKE-managed network policy add-on
 - `gcloud` CLI with Kubernetes Engine Admin role
 - `kubectl` with cluster-admin access
-- `calicoctl` matching the current Calico version
+- `calicoctl` matching the current Calico version for backups, and the target version for post-upgrade checks
 - Maintenance window scheduled during low-traffic period
 
 ## Step 1: Check GKE Cluster and Calico Version Compatibility
@@ -89,15 +89,14 @@ Use the Tigera Operator to perform the rolling upgrade.
 
 ```bash
 # Download and apply the new Tigera Operator
-kubectl apply --server-side \
-  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Wait for operator to be ready
 kubectl rollout status deployment/tigera-operator -n tigera-operator --timeout=5m
-
-# Apply the updated Installation resource
-kubectl patch installation default --type merge --patch \
-  '{"spec":{"calicoNetwork":{"mtu":1440}}}'
 
 # Monitor calico-system pods rolling update
 kubectl get pods -n calico-system -w
@@ -115,9 +114,9 @@ kubectl get pods -n calico-system \
 # Check TigeraStatus
 kubectl get tigerastatus calico
 
-# Test pod connectivity across nodes
-kubectl run conn-test --image=busybox --restart=Never -- \
-  wget -qO- --timeout=5 http://kubernetes.default.svc.cluster.local
+# Test DNS and Kubernetes service connectivity from a pod
+kubectl run conn-test --image=curlimages/curl --restart=Never --rm -it -- \
+  curl -k --max-time 5 https://kubernetes.default.svc.cluster.local/version
 
 # Verify network policies are enforced
 calicoctl get networkpolicies -A --output=wide
