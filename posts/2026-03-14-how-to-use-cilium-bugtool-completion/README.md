@@ -12,7 +12,7 @@ Description: Learn how to enable and use shell completion for cilium-bugtool to 
 
 The `cilium-bugtool` command includes a `completion` subcommand that generates shell completion scripts. These completions enable tab-completion of cilium-bugtool subcommands, flags, and arguments in your terminal, making diagnostic workflows faster and less error-prone.
 
-Setting up shell completions for cilium-bugtool follows the same pattern as other Go CLI tools built with Cobra. The completion subcommand supports multiple shells and outputs a script you source in your shell configuration.
+Setting up shell completions for cilium-bugtool follows the same pattern as other Go CLI tools built with Cobra. The completion subcommand supports multiple shells and outputs a script you load or install in your shell configuration.
 
 This guide covers enabling completions for all supported shells and integrating them into your daily workflow.
 
@@ -21,9 +21,9 @@ This guide covers enabling completions for all supported shells and integrating 
 
 ## Prerequisites
 
-- `cilium-bugtool` binary available locally or in a Cilium pod
+- `cilium-bugtool` binary available locally
 - Shell environment (Bash 4+, Zsh 5+, Fish 3+, or PowerShell 5+)
-- `kubectl` access to a Cilium cluster (if binary is not local)
+- `bash-completion` package installed for Bash completions
 
 ## Generating Completion Scripts
 
@@ -41,9 +41,11 @@ cilium-bugtool completion zsh > /tmp/_cilium-bugtool
 
 # For Fish
 cilium-bugtool completion fish > ~/.config/fish/completions/cilium-bugtool.fish
+```
 
+```powershell
 # For PowerShell
-cilium-bugtool completion powershell > /tmp/cilium-bugtool.ps1
+cilium-bugtool completion powershell | Out-String | Invoke-Expression
 ```
 
 To make completions persistent across shell sessions:
@@ -53,11 +55,16 @@ To make completions persistent across shell sessions:
 echo 'source <(cilium-bugtool completion bash)' >> ~/.bashrc
 
 # Zsh - install to fpath
-cilium-bugtool completion zsh > "\${fpath[1]}/_cilium-bugtool"
+cilium-bugtool completion zsh > "${fpath[1]}/_cilium-bugtool"
 rm -f ~/.zcompdump*
 autoload -Uz compinit && compinit
 
 # Fish - already persistent from the file location above
+```
+
+```powershell
+# PowerShell - add the generated script output to your profile
+cilium-bugtool completion powershell >> $PROFILE
 ```
 
 
@@ -87,6 +94,3 @@ cilium-bugtool <TAB>
 ## Conclusion
 
 Shell completions for cilium-bugtool save time and reduce errors during diagnostic workflows. By generating and installing completion scripts for your preferred shell, you get instant access to all available commands and flags without consulting documentation.
-
-
-
