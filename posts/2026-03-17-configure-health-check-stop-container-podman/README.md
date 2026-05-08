@@ -8,9 +8,9 @@ Description: Learn how to configure Podman health checks to gracefully stop a co
 
 ---
 
-> The stop action gracefully shuts down an unhealthy container by sending SIGTERM, allowing the application to clean up before termination.
+> The stop action gracefully shuts down an unhealthy container by sending the container's configured stop signal, SIGTERM by default, allowing the application to clean up before termination.
 
-When a container becomes unhealthy, sometimes the best course of action is to stop it gracefully rather than restart or kill it. The `--health-on-failure stop` option sends a SIGTERM signal, giving the application time to perform cleanup operations like flushing buffers or closing connections.
+When a container becomes unhealthy, sometimes the best course of action is to stop it gracefully rather than restart or kill it. The `--health-on-failure stop` option stops the container with its configured stop signal, giving the application time to perform cleanup operations like flushing buffers or closing connections.
 
 ---
 
@@ -73,19 +73,19 @@ podman run -d \
 ```bash
 # Stop: Graceful shutdown with SIGTERM (allows cleanup)
 podman run -d --name app-stop \
-  --health-cmd "curl -f http://localhost:80/ || exit 1" \
+  --health-cmd "test -f /usr/share/nginx/html/index.html || exit 1" \
   --health-on-failure stop \
   nginx:latest
 
 # Kill: Immediate termination with SIGKILL (no cleanup)
 podman run -d --name app-kill \
-  --health-cmd "curl -f http://localhost:80/ || exit 1" \
+  --health-cmd "test -f /usr/share/nginx/html/index.html || exit 1" \
   --health-on-failure kill \
   nginx:latest
 
 # Restart: Stop and start the container again
 podman run -d --name app-restart \
-  --health-cmd "curl -f http://localhost:80/ || exit 1" \
+  --health-cmd "test -f /usr/share/nginx/html/index.html || exit 1" \
   --health-on-failure restart \
   nginx:latest
 ```
@@ -102,4 +102,4 @@ podman events --filter event=stop
 
 ## Summary
 
-The `--health-on-failure stop` option gracefully stops an unhealthy container by sending SIGTERM, allowing the application to execute cleanup handlers. This is ideal for services with important shutdown procedures or those managed by an external orchestrator that makes its own restart decisions. Use `--stop-timeout` to control how long Podman waits before forcefully killing the container.
+The `--health-on-failure stop` option gracefully stops an unhealthy container by using the container's configured stop signal, allowing the application to execute cleanup handlers. This is ideal for services with important shutdown procedures or those managed by an external orchestrator that makes its own restart decisions. Use `--stop-timeout` to control how long Podman waits before forcefully killing the container.
