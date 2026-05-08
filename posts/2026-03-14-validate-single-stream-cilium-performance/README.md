@@ -19,7 +19,7 @@ This guide covers establishing acceptance criteria, building automated validatio
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `iperf3` and `netperf` container images
+- Container image with `iperf3` and `jq` available
 - Prometheus and Grafana for metrics collection
 - Basic understanding of statistical concepts (mean, standard deviation, percentiles)
 - CI/CD system for automated validation
@@ -58,7 +58,7 @@ spec:
     spec:
       containers:
       - name: validator
-        image: networkstatic/iperf3
+        image: nicolaka/netshoot
         command:
         - /bin/sh
         - -c
@@ -127,7 +127,7 @@ declare -a RESULTS
 
 for i in $(seq 1 $NUM_RUNS); do
   BPS=$(kubectl run "iperf-client-$i" --image=networkstatic/iperf3 \
-    --rm -it --restart=Never -- \
+    --rm --attach --restart=Never --quiet -- \
     -c "$SERVER_IP" -t 30 -P 1 -J 2>/dev/null | jq '.end.sum_sent.bits_per_second')
   RESULTS+=("$BPS")
   echo "Run $i: $BPS bps"
@@ -171,14 +171,26 @@ echo "============================================="
 for src in $NODES; do
   for dst in $NODES; do
     if [ "$src" != "$dst" ]; then
-      # Run iperf3 between node pairs
-      BPS=$(kubectl run "test-${src}-${dst}" \
+      SERVER_POD="iperf-server-${src}-${dst}"
+      CLIENT_POD="test-${src}-${dst}"
+
+      # Start iperf3 server on the destination node
+      kubectl run "$SERVER_POD" \
         --image=networkstatic/iperf3 \
-        --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$src\"}}}" \
-        --rm -it --restart=Never -- \
+        --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$dst\"}}}" \
+        -- -s >/dev/null
+      kubectl wait --for=condition=ready "pod/$SERVER_POD" --timeout=30s
+      DST_IP=$(kubectl get pod "$SERVER_POD" -o jsonpath='{.status.podIP}')
+
+      # Run iperf3 between node pairs
+      BPS=$(kubectl run "$CLIENT_POD" \
+        --image=networkstatic/iperf3 \
+        --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$src\"}}}" \
+        --rm --attach --restart=Never --quiet -- \
         -c "$DST_IP" -t 10 -P 1 -J 2>/dev/null | jq '.end.sum_sent.bits_per_second')
 
       echo "$src -> $dst: $(echo "scale=2; $BPS / 1000000000" | bc) Gbps"
+      kubectl delete pod "$SERVER_POD" --ignore-not-found >/dev/null
     fi
   done
 done
@@ -211,7 +223,7 @@ kubectl get cronjobs -n monitoring
 # Run a known-bad test to verify failure detection
 # Temporarily throttle bandwidth and confirm validation catches it
 kubectl exec -n kube-system cilium-agent-xxx -- \
-  cilium bpf bandwidth list
+  cilium-dbg bpf bandwidth list
 
 # Check validation job history
 kubectl get jobs -n monitoring --sort-by=.metadata.creationTimestamp
