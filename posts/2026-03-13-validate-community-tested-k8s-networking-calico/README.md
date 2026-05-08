@@ -20,13 +20,13 @@ Community testing for Calico networking encompasses the Kubernetes conformance t
 - kubectl access
 - Kubernetes conformance test tools (optional)
 
-## Run Kubernetes Network Conformance Tests
+## Run Kubernetes Conformance Tests
 
 ```bash
 # Install sonobuoy for conformance testing
 
-wget https://github.com/vmware-tanzu/sonobuoy/releases/download/v0.56.0/sonobuoy_0.56.0_linux_amd64.tar.gz
-tar xzf sonobuoy_0.56.0_linux_amd64.tar.gz
+wget https://github.com/vmware-tanzu/sonobuoy/releases/download/v0.57.3/sonobuoy_0.57.3_linux_amd64.tar.gz
+tar xzf sonobuoy_0.57.3_linux_amd64.tar.gz
 
 # Run conformance tests
 ./sonobuoy run --mode=certified-conformance
@@ -45,7 +45,8 @@ git clone https://github.com/projectcalico/calico.git
 cd calico
 
 # Run e2e tests against your cluster
-make e2e-tests
+make -C e2e build
+make e2e-run KUBECONFIG=$KUBECONFIG
 ```
 
 ## Community-Recommended Configuration
@@ -58,8 +59,8 @@ metadata:
   name: default
 spec:
   logSeverityScreen: Warning
-  reportingInterval: 0s
-  mtu: 1480  # Conservative MTU for IP-in-IP
+  usageReportingInterval: 0s
+  ipipMTU: 1480  # Conservative MTU for IP-in-IP
   prometheusMetricsEnabled: true
 ```
 
