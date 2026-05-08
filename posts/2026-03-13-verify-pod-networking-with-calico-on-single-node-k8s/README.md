@@ -10,9 +10,9 @@ Description: Learn how to verify Calico pod networking is fully operational on a
 
 ## Introduction
 
-Verifying Calico pod networking on a single-node Kubernetes cluster covers component health, IP allocation, and connectivity. While the single-node setup eliminates cross-node routing concerns, you still need to verify that Calico's IPAM assigns pod IPs correctly, that DNS service discovery works, and that network policies can be enforced.
+Verifying Calico pod networking on a single-node Kubernetes cluster covers component health, IP allocation, and connectivity. While the single-node setup eliminates cross-node routing concerns, you still need to verify that Calico's IPAM assigns pod IPs correctly and that DNS service discovery works.
 
-On a single-node cluster, all pods run on the same node. This means inter-pod communication happens at the local network level without the IPIP or VXLAN encapsulation that would be needed for cross-node traffic. This simplifies the verification but also means some Calico features like BGP peer health are not applicable.
+On a single-node cluster, all pods run on the same node. This means inter-pod communication happens at the local network level without needing IPIP or VXLAN encapsulation for cross-node traffic. Cross-node encapsulation depends on your Calico IP pool configuration and is not exercised in this setup. This simplifies the verification but also means some Calico features like BGP peer health may not be applicable.
 
 This guide provides a targeted verification checklist for Calico on single-node Kubernetes, focusing on the features most relevant to this deployment type.
 
@@ -38,7 +38,7 @@ All should show `Running` with all containers in `Ready` state.
 calicoctl node status
 ```
 
-Felix should report as running. Bird may not show BGP peers (expected for single-node).
+Calico should report that the process is running. BIRD may not show BGP peers, which is expected for a single-node cluster without external BGP peers.
 
 ## Step 3: Verify IPAM
 
@@ -91,4 +91,4 @@ sudo iptables -t nat -L | grep cali | head -10
 
 ## Conclusion
 
-You have verified Calico pod networking on a single-node Kubernetes cluster through component health checks, IPAM inspection, pod connectivity tests, and iptables rule verification. All Calico features relevant to a single-node setup are confirmed working.
+You have verified Calico pod networking on a single-node Kubernetes cluster through component health checks, IPAM inspection, pod connectivity tests, and iptables rule verification. These checks confirm the core Calico networking path for a single-node setup.
