@@ -34,7 +34,7 @@ podman pod ls
 # Remove a running pod without stopping it first
 podman pod rm --force my-pod
 
-# This sends SIGKILL to all containers and removes them immediately
+# This stops running containers and removes them before removing the pod
 ```
 
 ## Removing a Pod by ID
@@ -53,7 +53,7 @@ podman pod rm "$POD_ID"
 # Remove specific pods by name
 podman pod rm pod-a pod-b pod-c
 
-# Remove all stopped pods
+# Remove pods with Exited status
 podman pod ls --filter status=exited -q | xargs -r podman pod rm
 ```
 
@@ -83,8 +83,8 @@ Named volumes used by containers in the pod are not removed when the pod is dele
 # Volumes persist after pod removal
 podman volume ls
 
-# Remove orphaned volumes manually
-podman volume prune
+# Remove orphaned named volumes manually
+podman volume prune --all
 ```
 
 ## Scripted Pod Cleanup
