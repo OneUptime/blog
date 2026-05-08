@@ -58,11 +58,14 @@ PostgreSQL uses shared memory extensively for its shared buffer pool:
 podman run -d --name postgres \
   --shm-size 256m \
   -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_SHARED_BUFFERS=128MB \
-  postgres:16
+  postgres:16 \
+  -c shared_buffers=128MB
 
 # Verify the shared memory allocation
 podman exec postgres sh -c "df -h /dev/shm"
+
+# Wait for PostgreSQL to accept connections
+podman exec postgres sh -c "until pg_isready -U postgres; do sleep 1; done"
 
 # Check PostgreSQL shared buffer configuration
 podman exec postgres sh -c "
@@ -112,7 +115,8 @@ podman run --rm --shm-size 128m alpine sh -c "
 podman run --rm --shm-size 64m alpine sh -c "
   echo 'Trying to write 100MB to 64MB /dev/shm...'
   dd if=/dev/zero of=/dev/shm/testfile bs=1M count=100 2>&1
-  echo 'Exit code: $?'
+  status=\$?
+  echo \"Exit code: \$status\"
 "
 ```
 
