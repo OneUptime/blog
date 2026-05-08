@@ -16,7 +16,7 @@ Manually running `calicoctl ipam show` does not scale across multiple clusters. 
 
 - Kubernetes clusters with Calico IPAM
 - CI/CD or scheduling system
-- `calicoctl` available in automation environments
+- `calicoctl` and kubeconfig access available in automation environments
 
 ## Kubernetes CronJob
 
@@ -35,14 +35,13 @@ spec:
           serviceAccountName: calicoctl
           containers:
           - name: ipam-task
-            image: calico/ctl:v3.27.0
-            command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Running calicoctl ipam show at $(date)"
-              calicoctl ipam show 
-              echo "Complete."
+            image: calico/ctl:v3.32.0
+            env:
+            - name: DATASTORE_TYPE
+              value: kubernetes
+            args:
+            - ipam
+            - show
           restartPolicy: Never
 ```
 
@@ -53,12 +52,13 @@ spec:
 # fleet-ipam-show.sh
 
 CONTEXTS=$(kubectl config get-contexts -o name)
+TMP_KUBECONFIG=$(mktemp)
+trap 'rm -f "$TMP_KUBECONFIG"' EXIT
 
 for CTX in $CONTEXTS; do
   echo "=== $CTX ==="
-  kubectl --context="$CTX" exec -n calico-system \
-    $(kubectl --context="$CTX" get pod -n calico-system -l k8s-app=calico-kube-controllers -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) \
-    -- calicoctl ipam show  2>/dev/null || echo "  Failed"
+  kubectl --context="$CTX" config view --raw --minify > "$TMP_KUBECONFIG" &&
+    DATASTORE_TYPE=kubernetes KUBECONFIG="$TMP_KUBECONFIG" calicoctl ipam show 2>/dev/null || echo "  Failed"
   echo ""
 done
 ```
@@ -75,8 +75,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run calicoctl ipam show
+        env:
+          DATASTORE_TYPE: kubernetes
+          KUBECONFIG: ${{ github.workspace }}/kubeconfig
         run: |
-          calicoctl ipam show 
+          calicoctl ipam show
 ```
 
 ## Verification
@@ -91,7 +94,7 @@ kubectl logs -n calico-system -l job-name=test-job -f
 ## Troubleshooting
 
 - **CronJob fails**: Check service account RBAC permissions for IPAM resources.
-- **Multi-cluster script timeouts**: Add `--request-timeout` to kubectl exec calls.
+- **Multi-cluster script timeouts**: Check kubeconfig context reachability and API server connectivity.
 - **Inconsistent results**: Ensure all clusters use the same calicoctl version.
 
 ## Conclusion
