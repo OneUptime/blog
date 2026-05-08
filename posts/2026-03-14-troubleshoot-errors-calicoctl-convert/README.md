@@ -12,7 +12,7 @@ Description: Diagnose and fix common calicoctl convert errors including unsuppor
 
 The `calicoctl convert` command transforms Kubernetes NetworkPolicy resources into Calico format. While straightforward for simple policies, it can fail or produce unexpected results with complex policies that use features like IPBlock ranges, port ranges, or unusual selector combinations.
 
-Understanding the common error patterns helps you work through conversion issues efficiently and produce correct Calico policies from any Kubernetes NetworkPolicy input.
+Understanding the common error patterns helps you work through conversion issues efficiently and produce correct Calico policies from supported Kubernetes NetworkPolicy input.
 
 ## Prerequisites
 
@@ -67,17 +67,18 @@ python3 -c "import yaml; yaml.safe_load(open('broken.yaml'))"
 # Fix any syntax errors, then retry
 ```
 
-## Error: Missing Required Fields
+## Error: Missing or Implicit Selector Fields
 
 ```bash
-# Error: missing podSelector
-cat > missing-selector.yaml <<EOF
+# Some linters or review tools may flag an implicit podSelector
+cat > explicit-selector.yaml <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: test
   namespace: default
 spec:
+  podSelector: {}
   policyTypes:
     - Ingress
   ingress:
@@ -86,9 +87,9 @@ spec:
 EOF
 
 # This should work because empty podSelector selects all pods
-calicoctl convert -f missing-selector.yaml -o yaml
+calicoctl convert -f explicit-selector.yaml -o yaml
 
-# If it fails, add explicit podSelector
+# Add explicit podSelector: {} if your source policy omitted it
 # podSelector: {} means "all pods in the namespace"
 ```
 
@@ -221,7 +222,7 @@ flowchart TD
 # Validate the converted output
 calicoctl convert -f k8s-netpol.yaml -o yaml | calicoctl validate -f -
 
-# Compare behavior by applying both
+# Compare behavior in separate test namespaces/clusters, or apply one policy at a time
 kubectl apply -f k8s-netpol.yaml
 calicoctl apply -f calico-netpol.yaml
 
@@ -231,9 +232,9 @@ kubectl exec deploy/frontend -- curl -s --max-time 5 http://backend:8080/health
 
 ## Troubleshooting
 
-- **Conversion produces empty ingress/egress**: The original K8s policy may have used an empty rule (which means "allow all"). Calico converts this differently. Review the original policy intent.
+- **Conversion produces no ingress/egress rules**: The original K8s policy may have used an empty ingress or egress list, which means "deny all" for that direction. An empty rule (`- {}`) means "allow all" for that direction and converts to a Calico allow rule with empty source/destination constraints. Review the original policy intent.
 - **Selector looks different after conversion**: Calico uses `==` syntax while K8s uses `matchLabels`. The behavior is identical; only the syntax differs.
-- **Named ports not converted**: Calico may not resolve named ports during conversion. Replace named ports with numeric ports in the converted output.
+- **Named ports not resolved to numbers**: Calico supports named ports and `convert` preserves the name rather than resolving it. Replace named ports with numeric ports only if the selected endpoints do not define the named port consistently.
 - **Multi-document YAML partially converts**: Convert each document separately if the multi-document file contains mixed resource types.
 
 ## Conclusion
