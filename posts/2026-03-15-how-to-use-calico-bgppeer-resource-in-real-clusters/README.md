@@ -91,7 +91,7 @@ kind: BGPPeer
 metadata:
   name: worker-to-rr
 spec:
-  nodeSelector: "!route-reflector == 'true'"
+  nodeSelector: route-reflector != 'true'
   peerSelector: route-reflector == 'true'
 ---
 apiVersion: projectcalico.org/v3
@@ -103,8 +103,21 @@ spec:
   peerSelector: route-reflector == 'true'
 ```
 
+Disable the node-to-node mesh so nodes use the route reflector peers instead of the default full mesh:
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: BGPConfiguration
+metadata:
+  name: default
+spec:
+  asNumber: 64512
+  nodeToNodeMeshEnabled: false
+```
+
 ```bash
 calicoctl apply -f rr-peers.yaml
+calicoctl apply -f bgp-config.yaml
 ```
 
 ## Pattern 3: Route Reflectors with External Uplinks
@@ -120,15 +133,13 @@ spec:
   peerIP: 10.0.0.1
   asNumber: 64501
   nodeSelector: route-reflector == 'true'
-  filters:
-    - external-upstream-filter
 ---
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
   name: worker-to-rr
 spec:
-  nodeSelector: "!route-reflector == 'true'"
+  nodeSelector: route-reflector != 'true'
   peerSelector: route-reflector == 'true'
 ---
 apiVersion: projectcalico.org/v3
@@ -140,8 +151,11 @@ spec:
   peerSelector: route-reflector == 'true'
 ```
 
+Use the same BGPConfiguration from Pattern 2 to disable the node-to-node mesh when using route reflector peers.
+
 ```bash
 calicoctl apply -f rr-upstream-peers.yaml
+calicoctl apply -f bgp-config.yaml
 ```
 
 ## Pattern 4: Multi-Site Cluster Federation
@@ -159,8 +173,6 @@ spec:
   peerIP: 192.168.2.10
   asNumber: 64520
   nodeSelector: gateway-node == 'true'
-  filters:
-    - cross-site-filter
 ```
 
 Cluster B configuration:
@@ -174,8 +186,6 @@ spec:
   peerIP: 192.168.1.10
   asNumber: 64512
   nodeSelector: gateway-node == 'true'
-  filters:
-    - cross-site-filter
 ```
 
 ```bash
@@ -195,8 +205,6 @@ metadata:
 spec:
   peerIP: 10.0.0.1
   asNumber: 64501
-  filters:
-    - upstream-filter
 ---
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
@@ -205,8 +213,6 @@ metadata:
 spec:
   peerIP: 10.0.0.2
   asNumber: 64501
-  filters:
-    - upstream-filter
 ```
 
 ## Verification
