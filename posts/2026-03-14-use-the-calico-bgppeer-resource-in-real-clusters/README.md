@@ -31,8 +31,8 @@ For clusters with fewer than 50 nodes, a straightforward BGPPeer configuration w
 
 calicoctl get bgppeer -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check the Calico configuration on a specific node
+calicoctl get node <node-name> -o yaml
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
@@ -65,7 +65,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Avoid broad, high-frequency CalicoNodeStatus collection; collect status only for the nodes you are actively debugging
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many BGPPeer resources
 
@@ -91,18 +91,18 @@ Set up ongoing monitoring for your BGPPeer resources:
 
 ```bash
 # Watch for changes to BGPPeer resources
-kubectl get bgppeer.projectcalico.org -w
+kubectl get bgppeers.projectcalico.org -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if the Felix health port is enabled and reachable:
 
 ```bash
 # Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+curl -s http://127.0.0.1:9099/liveness
+curl -s http://127.0.0.1:9099/readiness
 ```
 
 ## Verification
@@ -110,7 +110,7 @@ curl -s http://<node-ip>:9099/readiness
 After configuring the BGPPeer resource for your production use case, run a comprehensive check:
 
 ```bash
-# Verify Calico system health
+# Verify Calico status on the node being checked
 calicoctl node status
 
 # Ensure all calico-node pods are healthy
@@ -129,7 +129,7 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether any CalicoNodeStatus resources are collecting too frequently or across too many nodes.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
@@ -159,7 +159,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 # Check current Calico version
 calicoctl version
 
-# Review installed CRD versions
+# Review installed Calico CRDs
 kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 ```
 
@@ -169,15 +169,15 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update bgppeers.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent Calico system events
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
 ### Capacity Planning for Large Deployments
 
-For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
+For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use `calicoctl ipam show` to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
 
 ```bash
 # Monitor IPAM utilization
