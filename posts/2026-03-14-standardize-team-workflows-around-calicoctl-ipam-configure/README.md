@@ -81,7 +81,7 @@ if [ -z "$EXPECTED" ]; then
   exit 0
 fi
 
-ACTUAL=$(calicoctl ipam configure show | grep StrictAffinity | awk '{print $2}')
+ACTUAL=$(calicoctl ipam show --show-configuration | awk -F'|' '/StrictAffinity/ {gsub(/ /, "", $3); print $3}')
 
 if [ "$ACTUAL" = "$EXPECTED" ]; then
   echo "COMPLIANT: StrictAffinity=$ACTUAL (expected $EXPECTED for $CURRENT_CONTEXT)"
@@ -102,7 +102,7 @@ NEW_VALUE="${1:?Usage: $0 <true|false>}"
 
 echo "=== IPAM Configuration Change ==="
 echo "Pre-change state:"
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 calicoctl ipam show
 
 echo ""
@@ -111,7 +111,7 @@ calicoctl ipam configure --strictaffinity="$NEW_VALUE"
 
 echo ""
 echo "Post-change state:"
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 echo ""
 echo "Verifying IP allocation..."
