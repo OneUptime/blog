@@ -36,12 +36,12 @@ calicoctl get globalnetworkpolicy | grep emergency
 ```bash
 FAILED=0
 for NS in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
-  RESULT=$(kubectl run dns-val --image=busybox -n $NS --restart=Never --rm -i \
-    --timeout=10s -- nslookup kubernetes.default 2>&1)
-  if echo "$RESULT" | grep -q "Address"; then
+  if RESULT=$(kubectl run dns-val --image=busybox -n "$NS" --restart=Never --rm -i \
+    --pod-running-timeout=30s -- nslookup kubernetes.default 2>&1); then
     echo "PASS: $NS"
   else
     echo "FAIL: $NS"
+    echo "$RESULT"
     FAILED=1
   fi
 done
@@ -51,10 +51,12 @@ echo "DNS validation: $([ $FAILED -eq 0 ] && echo PASSED || echo FAILED)"
 **Validation Step 2: CoreDNS processing queries normally**
 
 ```bash
-kubectl exec -n kube-system \
-  $(kubectl get pods -n kube-system -l k8s-app=kube-dns -o name | head -1) \
-  -- wget -qO- http://localhost:9153/metrics \
-  | grep "coredns_dns_requests_total" | tail -5
+POD=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-system "pod/$POD" 19153:9153 >/tmp/coredns-port-forward.log 2>&1 &
+PF_PID=$!
+sleep 2
+curl -s http://127.0.0.1:19153/metrics | grep "coredns_dns_requests_total" | tail -5
+kill "$PF_PID"
 # Expected: increasing counter (queries being processed)
 
 ```
