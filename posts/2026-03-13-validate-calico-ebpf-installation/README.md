@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, eBPF, Installation, Validation
 
-Description: Validate a fresh Calico eBPF installation by confirming BPF programs, service routing, DNS, pod connectivity, and network policy enforcement are all working correctly.
+Description: Validate a fresh Calico eBPF installation by confirming eBPF mode, service routing, DNS, and pod connectivity are all working correctly.
 
 ---
 
 ## Introduction
 
-Validating a fresh Calico eBPF installation is a multi-step process that confirms not just that pods are running but that all layers of the networking stack are functioning correctly. A successful eBPF installation means: BPF programs are loaded in the kernel, service routing works without kube-proxy, DNS resolves correctly, pod-to-pod connectivity works, and network policies are enforced.
+Validating a fresh Calico eBPF installation is a multi-step process that confirms not just that pods are running but that all layers of the networking stack are functioning correctly. A successful eBPF installation means: eBPF mode is enabled, service routing works without kube-proxy, DNS resolves correctly, and pod-to-service connectivity works.
 
 ## Prerequisites
 
-- Calico eBPF installation completed
+- Calico eBPF installation completed with the Tigera Operator
 - `kubectl` with cluster-admin access
 
 ## Validation Script
@@ -54,21 +54,18 @@ check "calico-kube-controllers ready" \
 # 2. eBPF mode active
 echo ""
 echo "--- eBPF Mode ---"
-BPF_PROG_COUNT=$(kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  bpftool prog list 2>/dev/null | grep -c calico || echo 0)
-if [[ "${BPF_PROG_COUNT}" -gt 5 ]]; then
-  echo "OK:   BPF programs loaded (${BPF_PROG_COUNT} calico programs)"
-else
-  echo "FAIL: Insufficient BPF programs (${BPF_PROG_COUNT})"
-  FAILURES=$((FAILURES + 1))
-fi
+check "Installation configured for BPF dataplane" \
+  "kubectl get installation.operator.tigera.io default -o jsonpath='{.spec.calicoNetwork.linuxDataplane}' | grep -q BPF"
+
+check "calico-node BPF tooling available" \
+  "kubectl exec -n calico-system ds/calico-node -c calico-node -- calico-node -bpf help"
 
 IPTABLES_COUNT=$(kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  iptables-legacy -L -n 2>/dev/null | grep -c cali || echo 0)
+  iptables-legacy -L -n 2>/dev/null | grep -c cali || true)
 if [[ "${IPTABLES_COUNT}" -eq 0 ]]; then
-  echo "OK:   No iptables calico rules (eBPF mode confirmed)"
+  echo "OK:   No Calico iptables rules found on sampled node"
 else
-  echo "WARN: ${IPTABLES_COUNT} iptables rules found (may be transitioning)"
+  echo "INFO: ${IPTABLES_COUNT} Calico iptables rules found on sampled node"
 fi
 
 # 3. Node readiness
@@ -86,8 +83,8 @@ fi
 # 4. DNS and service routing
 echo ""
 echo "--- Service Routing (without kube-proxy) ---"
-kubectl run dns-test --image=busybox --restart=Never --rm -it \
-  --timeout=30s -- \
+kubectl run dns-test --image=busybox --restart=Never --rm -i \
+  --pod-running-timeout=30s --command -- \
   nslookup kubernetes.default.svc.cluster.local > /dev/null 2>&1 \
   && echo "OK:   DNS resolution working" \
   || { echo "FAIL: DNS resolution failed"; FAILURES=$((FAILURES + 1)); }
@@ -95,9 +92,9 @@ kubectl run dns-test --image=busybox --restart=Never --rm -it \
 # 5. Pod connectivity
 echo ""
 echo "--- Pod Connectivity ---"
-kubectl run connectivity-test --image=busybox --restart=Never --rm -it \
-  --timeout=30s -- \
-  wget -qO/dev/null --timeout=5 https://kubernetes.default.svc.cluster.local > /dev/null 2>&1 \
+kubectl run connectivity-test --image=curlimages/curl --restart=Never --rm -i \
+  --pod-running-timeout=30s --command -- \
+  curl -skI --connect-timeout 5 https://kubernetes.default.svc.cluster.local > /dev/null 2>&1 \
   && echo "OK:   Pod-to-service connectivity working" \
   || { echo "FAIL: Pod-to-service connectivity failed"; FAILURES=$((FAILURES + 1)); }
 
@@ -117,8 +114,9 @@ OK:   calico-node DaemonSet ready
 OK:   calico-kube-controllers ready
 
 --- eBPF Mode ---
-OK:   BPF programs loaded (24 calico programs)
-OK:   No iptables calico rules (eBPF mode confirmed)
+OK:   Installation configured for BPF dataplane
+OK:   calico-node BPF tooling available
+OK:   No Calico iptables rules found on sampled node
 
 --- Node Status ---
 OK:   All 3 nodes Ready
@@ -134,4 +132,4 @@ OK:   Pod-to-service connectivity working
 
 ## Conclusion
 
-A successful Calico eBPF installation validation confirms all five layers: component health, eBPF programs loaded, all nodes ready, service routing without kube-proxy, and pod-to-pod connectivity. The validation script provides a binary pass/fail result suitable for integration into CI/CD pipelines. Run it as the final step of any automated cluster provisioning workflow to confirm the installation is complete and functional before the cluster is handed off to application teams.
+A successful Calico eBPF installation validation confirms all five layers: component health, eBPF mode enabled, all nodes ready, service routing without kube-proxy, and pod-to-service connectivity. The validation script provides a binary pass/fail result suitable for integration into CI/CD pipelines. Run it as the final step of any automated cluster provisioning workflow to confirm the installation is complete and functional before the cluster is handed off to application teams.
