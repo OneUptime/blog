@@ -37,7 +37,7 @@ For a specific peer:
 calicoctl get bgppeer upstream-peer -o yaml > bgppeer-upstream-backup.yaml
 ```
 
-Record current session status:
+Record current session status on each affected node:
 
 ```bash
 calicoctl node status > bgp-session-status-before.txt
@@ -95,7 +95,7 @@ kubectl get nodes -l 'rack in (rack1,rack2)'
 # Step 2: Apply the updated peer
 calicoctl apply -f rack-peer-updated.yaml
 
-# Step 3: Verify new sessions
+# Step 3: Verify new sessions on each affected node
 calicoctl node status
 ```
 
@@ -117,7 +117,7 @@ spec:
     - external-upstream-filter
 EOF
 
-# Step 2: Wait for the new session to establish
+# Step 2: Wait for the new session to establish on each affected node
 watch calicoctl node status
 
 # Step 3: Once established, remove the old peer
@@ -142,7 +142,7 @@ spec:
     - external-upstream-filter
 EOF
 
-# Step 2: Verify new session establishes
+# Step 2: Verify new session establishes on each affected node
 calicoctl node status
 
 # Step 3: Remove old peer
@@ -154,10 +154,14 @@ calicoctl delete bgppeer upstream-peer
 Adding authentication to an existing peer causes a session reset. Coordinate with the remote peer operator to enable authentication on both sides simultaneously:
 
 ```bash
-# Step 1: Create the secret
+# Step 1: Create the secret in the namespace where calico-node runs
 kubectl create secret generic bgp-secrets -n calico-system --from-literal=peer-password=SecurePass123
 
-# Step 2: Update the peer (coordinate timing with remote operator)
+# Step 2: Grant calico-node permission to read the secret if it does not already have it
+kubectl create role bgp-secrets-reader -n calico-system --verb=get,list,watch --resource=secrets --resource-name=bgp-secrets
+kubectl create rolebinding bgp-secrets-reader -n calico-system --role=bgp-secrets-reader --serviceaccount=calico-system:calico-node
+
+# Step 3: Update the peer (coordinate timing with remote operator)
 calicoctl patch bgppeer upstream-peer -p '{
   "spec": {
     "password": {
@@ -169,7 +173,7 @@ calicoctl patch bgppeer upstream-peer -p '{
   }
 }'
 
-# Step 3: Verify session re-establishes
+# Step 4: Verify session re-establishes on each affected node
 watch calicoctl node status
 ```
 
@@ -178,10 +182,10 @@ watch calicoctl node status
 After any BGPPeer update, verify:
 
 ```bash
-# Check all BGP sessions
+# Check BGP sessions on each affected node
 calicoctl node status
 
-# Compare with pre-update status
+# Compare with pre-update status on the same node
 diff bgp-session-status-before.txt <(calicoctl node status)
 
 # Verify peer configuration
@@ -201,10 +205,10 @@ If sessions fail to re-establish after an update:
 - Restore from backup: `calicoctl apply -f bgppeer-upstream-backup.yaml`
 - Check for AS number mismatches between the BGPPeer and the remote router configuration
 - Verify firewall rules still allow TCP 179 to the new peer IP
-- For password changes, confirm the secret is in the correct namespace: `kubectl get secret bgp-secrets -n calico-system`
+- For password changes, confirm the secret is in the namespace where calico-node runs: `kubectl get secret bgp-secrets -n calico-system`
 - Check if nodeSelector still matches intended nodes: `kubectl get nodes --show-labels | grep rack`
 - Review calico-node logs: `kubectl logs -n calico-system -l k8s-app=calico-node | grep -i error`
 
 ## Conclusion
 
-Safe BGPPeer updates require understanding which changes are disruptive and which are not. Filter changes are safe, node selector changes are partially disruptive, and peer IP or AS number changes require a migration strategy with parallel peers. Always back up configurations before changes, use the create-then-delete migration pattern for disruptive updates, and verify sessions with `calicoctl node status` after every change.
+Safe BGPPeer updates require understanding which changes are disruptive and which are not. Filter changes are safe, node selector changes are partially disruptive, and peer IP or AS number changes require a migration strategy with parallel peers. Always back up configurations before changes, use the create-then-delete migration pattern for disruptive updates, and verify sessions with `calicoctl node status` on each affected node after every change.
