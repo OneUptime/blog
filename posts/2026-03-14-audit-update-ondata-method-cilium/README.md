@@ -14,7 +14,7 @@ The OnData method is the most security-sensitive function in any Cilium L7 parse
 
 Unlike general code review, a security audit of OnData follows a specific checklist targeting classes of vulnerabilities known to affect protocol parsers: buffer overflows, integer overflows, state confusion, resource exhaustion, and policy bypass. Each check has a clear pass/fail criterion.
 
-This guide provides a repeatable audit methodology for OnData methods in Cilium's proxylib framework, suitable for both self-review and formal security assessment.
+This guide provides a repeatable audit methodology for OnData methods in Cilium's proxylib framework, suitable for both self-review and formal security assessment. The examples below use the `ReaderParser` form of `OnData`, which receives a `*proxylib.Reader`.
 
 ## Prerequisites
 
@@ -41,13 +41,19 @@ For each access found, verify a bounds check exists above it:
 
 ```go
 // AUDIT FINDING: FAIL - no bounds check before index access
-data, _ := reader.PeekSlice(reader.Length())
+data := make([]byte, reader.Length())
+if _, err := reader.PeekFull(data); err != nil {
+    return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
+}
 command := data[4]  // Could panic if len(data) < 5
 
 // AUDIT FINDING: PASS - bounds check precedes access
-data, _ := reader.PeekSlice(reader.Length())
+data := make([]byte, reader.Length())
+if _, err := reader.PeekFull(data); err != nil {
+    return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
+}
 if len(data) < 5 {
-    return proxylib.MORE, 5
+    return proxylib.MORE, 5 - len(data)
 }
 command := data[4]  // Safe - len(data) >= 5 guaranteed
 ```
@@ -72,23 +78,23 @@ grep -n "<<\|>>\|+\|-\|\*" proxylib/myprotocol/myprotocolparser.go | grep -v "//
 Check for overflow in length calculations:
 
 ```go
-// AUDIT FINDING: FAIL - potential integer overflow
-msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
-totalLen := 4 + msgLen  // If msgLen is near MaxInt, totalLen overflows
+// AUDIT FINDING: FAIL - unbounded length from network input
+msgLen := binary.BigEndian.Uint32(data[0:4])
+totalLen := 4 + int(msgLen)  // Unsafe on 32-bit platforms and may exceed parser limits
 
 // AUDIT FINDING: PASS - overflow prevented by range check
-msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
-if msgLen < 0 || msgLen > maxMessageSize {
-    return proxylib.DROP, 0
+msgLen := binary.BigEndian.Uint32(data[0:4])
+if msgLen > maxMessageSize {
+    return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
 }
-totalLen := 4 + msgLen  // Safe - msgLen bounded by maxMessageSize
+totalLen := 4 + int(msgLen)  // Safe - msgLen bounded by maxMessageSize
 ```
 
 ```mermaid
 graph TD
-    A[Read Length Field] --> B{Negative?}
-    B -->|Yes| C[DROP - Audit PASS]
-    B -->|No| D{Exceeds Max?}
+    A[Read Length Field] --> B{Conversion safe?}
+    B -->|No| C[ERROR - Audit PASS]
+    B -->|Yes| D{Exceeds Max?}
     D -->|Yes| C
     D -->|No| E{Overflow in total?}
     E -->|Possible| F[FAIL - Add bounds check]
@@ -108,22 +114,22 @@ if dataLen == 0 {
 
 // Path 2: Partial header
 if dataLen < headerSize {
-    return proxylib.MORE, headerSize  // AUDIT: PASS - requests header bytes
+    return proxylib.MORE, headerSize - dataLen  // AUDIT: PASS - requests missing header bytes
 }
 
 // Path 3: Invalid length
-if msgLen <= 0 || msgLen > maxMessageSize {
-    return proxylib.DROP, 0  // AUDIT: PASS - drops with 0 bytes
+if msgLen == 0 || msgLen > maxMessageSize {
+    return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)  // AUDIT: PASS - closes on invalid framing
 }
 
 // Path 4: Partial body
 if dataLen < totalLen {
-    return proxylib.MORE, totalLen  // AUDIT: Check - is totalLen > dataLen?
+    return proxylib.MORE, totalLen - dataLen  // AUDIT: Check - is totalLen > dataLen?
 }
 
 // Path 5: Policy denied
 if !allowed {
-    return proxylib.DROP, 0  // AUDIT: PASS - drops with 0 bytes
+    return proxylib.DROP, totalLen  // AUDIT: PASS - drops the denied frame
 }
 
 // Path 6: Success
@@ -132,12 +138,13 @@ return proxylib.PASS, totalLen  // AUDIT: Check - is totalLen <= dataLen?
 
 Contract rules to verify:
 
-| OpType | Consumed (n) | Invariant |
+| OpType | N meaning | Invariant |
 |--------|-------------|-----------|
-| PASS | n > 0 | n <= available data |
-| DROP | n == 0 | Always |
-| MORE | n > 0 | n > available data |
-| ERROR | n == 0 | Always |
+| PASS | Bytes to allow | `n > 0`; may exceed currently available data only after framing is validated |
+| DROP | Bytes to drop | `n > 0` for a denied frame |
+| MORE | Additional bytes needed beyond current input | `n > 0` |
+| ERROR | `proxylib.OpError` code | Use a valid proxylib error code such as `ERROR_INVALID_FRAME_LENGTH` |
+| NOP | No operation | Use `0` when no more input is expected |
 
 ## Audit Category 4: State Machine Integrity
 
@@ -145,14 +152,14 @@ Trace all state transitions and verify correctness:
 
 ```bash
 # Extract all state assignments
-grep -n "\.state\s*=" proxylib/myprotocol/myprotocolparser.go
+grep -n "\.state[[:space:]]*=" proxylib/myprotocol/myprotocolparser.go
 ```
 
 Verify these properties:
 
 1. **No backward transitions from terminal states**: Error and Closed states must never transition to Init or Running
 2. **All states handled in OnData**: The method must check and handle every possible state value
-3. **State is modified only within OnData**: No external goroutine or callback should change parser state
+3. **State is modified only within OnData or helpers it calls**: No external goroutine or callback should change parser state
 
 ```go
 // AUDIT CHECK: Is every state value handled?
@@ -164,14 +171,14 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     case stateRunning:
         // main parsing logic
     case stateError:
-        return proxylib.DROP, 0
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_TYPE)
     case stateClosed:
-        return proxylib.DROP, 0
+        return proxylib.NOP, 0
     default:
         // AUDIT FINDING: Is there a default case?
         // Without it, new states added later could fall through silently
         log.Error("Unknown parser state")
-        return proxylib.DROP, 0
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_TYPE)
     }
     // ...
 }
@@ -191,13 +198,15 @@ grep -n "_, *_\|_ =" proxylib/myprotocol/myprotocolparser.go
 
 ```go
 // AUDIT FINDING: FAIL - error ignored
-data, _ := reader.PeekSlice(totalLen)
+data := make([]byte, totalLen)
+_, _ = reader.PeekFull(data)
 
 // AUDIT FINDING: PASS - error handled
-data, err := reader.PeekSlice(totalLen)
+data := make([]byte, totalLen)
+_, err := reader.PeekFull(data)
 if err != nil {
     log.WithError(err).Warn("Failed to read message data")
-    return proxylib.DROP, 0
+    return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
 }
 ```
 
