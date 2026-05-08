@@ -10,7 +10,7 @@ Description: How to monitor Cilium L7 path translation performance and correctne
 
 ## Introduction
 
-Monitoring L7 path translation in production ensures rewrites continue working correctly and do not introduce latency or errors. Key monitoring targets are rewrite success rates, latency added by the proxy, error rates on rewritten paths, and configuration drift.
+Monitoring L7 path translation in production ensures rewrites continue working correctly and do not introduce latency or errors. Key monitoring targets are request rates, latency observed by the proxy, error rates on rewritten paths, and configuration drift.
 
 ## Prerequisites
 
@@ -25,11 +25,11 @@ Monitoring L7 path translation in production ensures rewrites continue working c
 
 rate(envoy_http_downstream_rq_total[5m])
 
-# Latency added by proxy
-histogram_quantile(0.99, rate(envoy_http_downstream_rq_time_bucket[5m]))
+# Request/response latency observed by the proxy, in milliseconds
+histogram_quantile(0.99, sum by (le) (rate(envoy_http_downstream_rq_time_bucket[5m])))
 
 # Error rate on rewritten routes
-rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m])
+sum(rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m]))
 ```
 
 ## Hubble L7 Flow Monitoring
@@ -41,7 +41,7 @@ hubble observe --protocol http -n default --last 20 -o json | \
 
 # Watch for errors on rewritten paths
 hubble observe --protocol http -n default \
-  --http-status 500-599 --last 20
+  --http-status 5+ --last 20
 ```
 
 ```mermaid
@@ -70,7 +70,7 @@ spec:
         - alert: PathTranslationHighLatency
           expr: >
             histogram_quantile(0.99,
-              rate(envoy_http_downstream_rq_time_bucket[5m])) > 2
+              sum by (le) (rate(envoy_http_downstream_rq_time_bucket[5m]))) > 2000
           for: 10m
           labels:
             severity: warning
@@ -81,7 +81,7 @@ spec:
 ## Verification
 
 ```bash
-cilium status | grep "L7 Proxy"
+cilium status --wait
 hubble observe --protocol http -n default --last 5
 kubectl get ciliumenvoyconfigs -n default
 ```
