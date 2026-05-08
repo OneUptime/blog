@@ -17,7 +17,8 @@ This guide covers practical approaches to automating `calicoctl node status` mon
 ## Prerequisites
 
 - Kubernetes cluster with Calico in BGP mode
-- `calicoctl` available on nodes or in monitoring pods
+- `calicoctl` installed on each node being checked
+- SSH access to nodes for cluster-wide checks
 - A monitoring or alerting system
 - Basic shell scripting knowledge
 
@@ -30,16 +31,12 @@ This guide covers practical approaches to automating `calicoctl node status` mon
 # Returns exit code 0 if all BGP peers are established, non-zero otherwise
 
 NODE_NAME="${1:-$(hostname)}"
-POD_NAME=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName="$NODE_NAME" \
-  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
-if [ -z "$POD_NAME" ]; then
-  echo "CRITICAL: No calico-node pod found on $NODE_NAME"
-  exit 2
+if [ "$NODE_NAME" = "$(hostname)" ]; then
+  OUTPUT=$(sudo calicoctl node status 2>&1)
+else
+  OUTPUT=$(ssh "$NODE_NAME" sudo calicoctl node status 2>&1)
 fi
-
-OUTPUT=$(kubectl exec -n calico-system "$POD_NAME" -- calicoctl node status 2>&1)
 
 # Check process is running
 if ! echo "$OUTPUT" | grep -q "Calico process is running"; then
@@ -48,7 +45,7 @@ if ! echo "$OUTPUT" | grep -q "Calico process is running"; then
 fi
 
 # Count peers
-TOTAL=$(echo "$OUTPUT" | grep -cE "node-to-node|global" || true)
+TOTAL=$(echo "$OUTPUT" | grep -cE "node-to-node|global|node specific" || true)
 ESTABLISHED=$(echo "$OUTPUT" | grep -c "Established" || true)
 DOWN=$((TOTAL - ESTABLISHED))
 
@@ -79,20 +76,11 @@ HEALTHY_NODES=0
 for NODE in $NODES; do
   TOTAL_NODES=$((TOTAL_NODES + 1))
   
-  POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
-    --field-selector spec.nodeName="$NODE" \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-  
-  if [ -z "$POD" ]; then
-    echo "$NODE: NO CALICO POD" | tee -a "$ALERT_FILE"
-    continue
-  fi
-  
-  STATUS=$(kubectl exec -n calico-system "$POD" -- calicoctl node status 2>&1)
+  STATUS=$(ssh "$NODE" sudo calicoctl node status 2>&1)
   
   if echo "$STATUS" | grep -q "Calico process is running"; then
     ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || true)
-    TOTAL_PEERS=$(echo "$STATUS" | grep -cE "node-to-node|global" || true)
+    TOTAL_PEERS=$(echo "$STATUS" | grep -cE "node-to-node|global|node specific" || true)
     
     if [ "$ESTABLISHED" -eq "$TOTAL_PEERS" ] && [ "$TOTAL_PEERS" -gt 0 ]; then
       echo "$NODE: OK ($ESTABLISHED/$TOTAL_PEERS peers)"
@@ -136,25 +124,26 @@ spec:
         spec:
           serviceAccountName: calicoctl
           hostNetwork: true
+          volumes:
+          - name: calico-run
+            hostPath:
+              path: /var/run/calico
+              type: Directory
           containers:
           - name: monitor
-            image: calico/ctl:v3.27.0
-            command:
-            - /bin/sh
-            - -c
-            - |
-              STATUS=$(calicoctl node status 2>&1)
-              if echo "$STATUS" | grep -q "Calico process is running"; then
-                ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || true)
-                echo "BGP peers established: $ESTABLISHED"
-                echo "$STATUS"
-              else
-                echo "ALERT: Calico process not running!"
-                echo "$STATUS"
-                exit 1
-              fi
+            image: calico/ctl:v3.32.0
+            securityContext:
+              privileged: true
+            volumeMounts:
+            - name: calico-run
+              mountPath: /var/run/calico
+            args:
+            - node
+            - status
           restartPolicy: Never
 ```
+
+When running `calicoctl node status` from a container, it still needs access to the local Calico node state. The hostPath mount above lets the command communicate with the Calico agent on the node where the CronJob pod is scheduled. Use a `calico/ctl` image tag that matches the Calico version running in your cluster, and inspect the Job logs for the status output.
 
 ## Prometheus Integration
 
@@ -172,9 +161,9 @@ while true; do
   
   STATUS=$(sudo calicoctl node status 2>&1)
   
-  TOTAL=$(echo "$STATUS" | grep -cE "node-to-node|global" || echo 0)
-  ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || echo 0)
-  RUNNING=$(echo "$STATUS" | grep -c "Calico process is running" || echo 0)
+  TOTAL=$(echo "$STATUS" | grep -cE "node-to-node|global|node specific" || true)
+  ESTABLISHED=$(echo "$STATUS" | grep -c "Established" || true)
+  RUNNING=$(echo "$STATUS" | grep -c "Calico process is running" || true)
   
   METRICS="# HELP calico_node_running Whether Calico process is running\n"
   METRICS+="# TYPE calico_node_running gauge\n"
@@ -186,7 +175,12 @@ while true; do
   METRICS+="# TYPE calico_bgp_peers_established gauge\n"
   METRICS+="calico_bgp_peers_established $ESTABLISHED\n"
   
-  echo -e "$METRICS" | nc -l -p "$PORT" -q 1 > /dev/null 2>&1
+  {
+    printf 'HTTP/1.1 200 OK\r\n'
+    printf 'Content-Type: text/plain; version=0.0.4\r\n'
+    printf '\r\n'
+    printf '%b' "$METRICS"
+  } | nc -l -p "$PORT" -q 1 > /dev/null 2>&1
 done
 ```
 
@@ -208,10 +202,10 @@ kubectl get jobs -n calico-system
 
 ## Troubleshooting
 
-- **CronJob pods fail with permission errors**: Ensure the service account has RBAC to exec into calico-node pods or run calicoctl directly.
+- **CronJob pods fail with permission errors**: Ensure the pod can mount `/var/run/calico` from the host and has the permissions needed to read the local Calico node state.
 - **Metrics endpoint not scraped**: Verify the port is accessible and the Prometheus scrape config targets the correct endpoint.
 - **False alerts during node scaling**: Add tolerance for newly added nodes that may not have established BGP sessions yet.
-- **Script hangs on large clusters**: Add timeouts to kubectl exec calls with `--request-timeout=10s`.
+- **Script hangs on large clusters**: Add timeouts to SSH calls, such as `timeout 10s ssh "$NODE" sudo calicoctl node status`.
 
 ## Conclusion
 
