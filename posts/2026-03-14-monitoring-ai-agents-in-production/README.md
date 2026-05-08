@@ -81,7 +81,7 @@ Track token usage per agent, per task, per user. Set budgets. Alert on anomalies
 ```yaml
 # Example alert rule
 - alert: AgentTokenBurnRate
-  expr: rate(agent_tokens_total[5m]) > 3 * avg_over_time(agent_tokens_total[24h])
+  expr: rate(agent_tokens_total[5m]) > 3 * avg_over_time(rate(agent_tokens_total[5m])[24h:5m])
   for: 2m
   labels:
     severity: critical
