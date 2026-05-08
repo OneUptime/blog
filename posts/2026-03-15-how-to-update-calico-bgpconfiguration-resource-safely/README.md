@@ -45,7 +45,7 @@ Before any update, check the current BGP status across all nodes:
 calicoctl node status
 ```
 
-Record the number of established BGP sessions and advertised routes:
+Record the current BGP configuration and node details for comparison:
 
 ```bash
 calicoctl get bgpconfiguration default -o yaml
@@ -178,4 +178,4 @@ If BGP sessions drop after an update:
 
 ## Conclusion
 
-Updating the BGPConfiguration resource safely requires a disciplined approach: back up first, validate changes with dry-run, apply incrementally, and verify immediately. Non-disruptive changes like adding CIDRs or communities can be applied at any time, while disruptive changes like AS number modifications or mesh toggling require a maintenance window and pre-configured alternatives. Always keep a backup ready for instant rollback.
+Updating the BGPConfiguration resource safely requires a disciplined approach: back up first, validate the updated manifest before applying it, apply incrementally, and verify immediately. Non-disruptive changes like adding CIDRs or communities can be applied at any time, while disruptive changes like AS number modifications or mesh toggling require a maintenance window and pre-configured alternatives. Always keep a backup ready for instant rollback.
