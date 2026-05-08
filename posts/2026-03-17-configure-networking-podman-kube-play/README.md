@@ -99,7 +99,7 @@ spec:
 podman kube play --network app-network multi-pod.yaml
 
 # The frontend can reach the backend by pod name
-podman exec frontend-web curl http://backend:5000
+podman exec frontend-web wget -qO- http://backend:5000
 ```
 
 ## Using Host Network
