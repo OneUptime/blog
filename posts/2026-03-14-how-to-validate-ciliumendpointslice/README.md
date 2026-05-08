@@ -43,13 +43,13 @@ kubectl get configmap cilium-config -n kube-system \
 
 echo "=== CES Coverage Validation ==="
 
-CEP_NAMES=$(kubectl get ciliumendpoints --all-namespaces \
-  -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | sort)
-CEP_COUNT=$(echo "$CEP_NAMES" | wc -l)
+CEP_NAMES=$(kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)"' | sort)
+CEP_COUNT=$(printf '%s\n' "$CEP_NAMES" | sed '/^$/d' | wc -l)
 
 CES_NAMES=$(kubectl get ciliumendpointslices --all-namespaces -o json | \
-  jq -r '[.items[].endpoints[]?.name] | sort | .[]')
-CES_EP_COUNT=$(echo "$CES_NAMES" | wc -l)
+  jq -r '.items[] | .namespace as $ns | .endpoints[]? | "\($ns)/\(.name)"' | sort)
+CES_EP_COUNT=$(printf '%s\n' "$CES_NAMES" | sed '/^$/d' | wc -l)
 
 echo "Individual CiliumEndpoints: $CEP_COUNT"
 echo "Endpoints in CiliumEndpointSlices: $CES_EP_COUNT"
@@ -59,6 +59,20 @@ if [ -n "$DUPES" ]; then
   echo "FAIL: Duplicate endpoints found in slices"
 else
   echo "PASS: No duplicate endpoints in slices"
+fi
+
+MISSING=$(comm -23 <(printf '%s\n' "$CEP_NAMES") <(printf '%s\n' "$CES_NAMES"))
+STALE=$(comm -13 <(printf '%s\n' "$CEP_NAMES") <(printf '%s\n' "$CES_NAMES"))
+if [ -n "$MISSING" ]; then
+  echo "FAIL: CiliumEndpoints missing from slices"
+  echo "$MISSING"
+fi
+if [ -n "$STALE" ]; then
+  echo "FAIL: Stale endpoints found in slices"
+  echo "$STALE"
+fi
+if [ -z "$MISSING" ] && [ -z "$STALE" ]; then
+  echo "PASS: Slice coverage matches CiliumEndpoints"
 fi
 ```
 
@@ -101,7 +115,7 @@ for ep in $SAMPLE; do
     -o jsonpath='{.status.identity.id}')
   CES_ID=$(kubectl get ciliumendpointslices --all-namespaces -o json | \
     jq -r --arg name "$ep" \
-    '.items[].endpoints[]? | select(.name == $name) | .identityID')
+    '.items[] | select(.namespace == "default") | .endpoints[]? | select(.name == $name) | .id')
   if [ "$CEP_ID" = "$CES_ID" ]; then
     echo "PASS: $ep identity matches (ID: $CEP_ID)"
   else
