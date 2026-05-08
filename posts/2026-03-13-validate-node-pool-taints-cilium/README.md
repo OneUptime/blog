@@ -74,24 +74,13 @@ done
 If Cilium is missing from tainted nodes, patch the DaemonSet with the required tolerations.
 
 ```yaml
-# cilium-tolerations-patch.yaml - add tolerations for custom node pool taints
+# cilium-tolerations-patch.yaml - replace tolerations with the complete desired list
 spec:
   template:
     spec:
       tolerations:
-      # Tolerate existing Cilium tolerations (keep them)
+      # Tolerate all taints so Cilium can run on every Linux node
       - operator: Exists
-        effect: NoSchedule
-      - operator: Exists
-        effect: NoExecute
-      # Add toleration for GPU node pool taint
-      - key: "nvidia.com/gpu"
-        operator: "Exists"
-        effect: "NoSchedule"
-      # Add toleration for high-memory node pool taint
-      - key: "workload-type"
-        value: "high-memory"
-        effect: "NoSchedule"
 ```
 
 ```bash
@@ -113,7 +102,7 @@ CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium --field-selector s
 kubectl exec -n kube-system $CILIUM_POD -- cilium status
 
 # Run the Cilium connectivity test targeting the tainted node
-cilium connectivity test --node-selector workload-type=high-memory
+cilium connectivity test --node-selector workload-type=high-memory --tolerations workload-type
 ```
 
 ## Best Practices
