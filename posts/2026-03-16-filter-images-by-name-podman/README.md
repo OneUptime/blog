@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Container Image
 
-Description: Learn how to filter and search local container images by name using Podman's reference filters, glob patterns, and formatting options.
+Description: Learn how to filter and search local container images by name using Podman's reference filters, regular expressions, and formatting options.
 
 ---
 
 > Filtering images by name helps you quickly find what you need in a local image store that may contain dozens or hundreds of images.
 
-As your local image store grows, finding specific images becomes important. Podman provides several methods for filtering images by name, from simple reference matching to glob patterns and formatted output. This guide covers all the ways to narrow down your image list by name.
+As your local image store grows, finding specific images becomes important. Podman provides several methods for filtering images by name, from simple reference matching to regular expressions and formatted output. This guide covers all the ways to narrow down your image list by name.
 
 ---
 
@@ -41,38 +41,38 @@ The `--filter reference=` option provides pattern-based filtering.
 # Filter by exact image name
 podman images --filter reference=nginx
 
-# Filter with a wildcard pattern
-podman images --filter reference='*nginx*'
+# Filter with a regular expression pattern
+podman images --filter reference='.*nginx.*'
 
 # Filter by registry and name
 podman images --filter reference='docker.io/library/nginx'
 
 # Filter by name and tag pattern
-podman images --filter reference='nginx:1.*'
+podman images --filter reference='nginx:1\..*'
 
 # Filter for all images from quay.io
-podman images --filter reference='quay.io/*'
+podman images --filter reference='quay.io/.*'
 ```
 
-## Glob Pattern Matching
+## Regular Expression Pattern Matching
 
-Use glob patterns for flexible name matching.
+Use regular expression patterns for flexible name matching.
 
 ```bash
 # Match images starting with "node"
-podman images --filter reference='node*'
+podman images --filter reference='node.*'
 
 # Match images containing "alpine" in the tag
-podman images --filter reference='*:*alpine*'
+podman images --filter reference=':.*alpine.*'
 
 # Match all Python slim images
-podman images --filter reference='python:*slim*'
+podman images --filter reference='python:.*slim.*'
 
 # Match images from any registry with a specific name
-podman images --filter reference='*/nginx:*'
+podman images --filter reference='(^|/)nginx:'
 
 # Match all UBI images from Red Hat
-podman images --filter reference='registry.access.redhat.com/ubi*'
+podman images --filter reference='registry.access.redhat.com/ubi.*'
 ```
 
 ## Combining Name Filters with Other Filters
@@ -81,13 +81,13 @@ Stack multiple filters to narrow results further.
 
 ```bash
 # Find nginx images that are dangling (untagged)
-podman images --filter reference='*nginx*' --filter dangling=true
+podman images --filter reference='.*nginx.*' --filter dangling=true
 
 # Find alpine images created before the last week
-podman images --filter reference='alpine*' --filter until=168h
+podman images --filter reference='alpine.*' --filter until=168h
 
 # Find Python images with a specific label
-podman images --filter reference='python*' --filter label=maintainer
+podman images --filter reference='python.*' --filter label=maintainer
 ```
 
 ## Formatting Filtered Output
@@ -96,17 +96,17 @@ Combine name filtering with custom output formats.
 
 ```bash
 # Show filtered images with only name and size
-podman images --filter reference='nginx*' \
+podman images --filter reference='nginx.*' \
   --format "{{.Repository}}:{{.Tag}} - {{.Size}}"
 
 # Show filtered images as JSON
-podman images --filter reference='alpine*' --format json
+podman images --filter reference='alpine.*' --format json
 
 # Show filtered image IDs only
-podman images --filter reference='python*' -q
+podman images --filter reference='python.*' -q
 
 # Table format with selected columns
-podman images --filter reference='node*' \
+podman images --filter reference='node.*' \
   --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"
 ```
 
@@ -122,7 +122,7 @@ SEARCH_TERM="${1:?Usage: $0 <search-term>}"
 
 echo "Searching for images matching '${SEARCH_TERM}'..."
 
-RESULTS=$(podman images --filter "reference=*${SEARCH_TERM}*" \
+RESULTS=$(podman images --filter "reference=.*${SEARCH_TERM}.*" \
   --format "{{.Repository}}:{{.Tag}}")
 
 if [ -z "$RESULTS" ]; then
@@ -141,10 +141,10 @@ When you have the same image pulled from different registries, filter to compare
 
 ```bash
 # See all nginx images regardless of registry
-podman images --filter reference='*/nginx:*'
+podman images --filter reference='(^|/)nginx:'
 
 # Compare sizes of nginx from different sources
-podman images --filter reference='*nginx*' \
+podman images --filter reference='.*nginx.*' \
   --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
 # Find duplicate images from different registries
@@ -158,10 +158,10 @@ For more advanced pattern matching, pipe output through grep.
 
 ```bash
 # Find images with semantic version tags
-podman images | grep -E ':[0-9]+\.[0-9]+\.[0-9]+'
+podman images --format "{{.Repository}}:{{.Tag}}" | grep -E ':[0-9]+\.[0-9]+\.[0-9]+'
 
 # Find all images with "latest" tag
-podman images | grep ':latest'
+podman images --format "{{.Repository}}:{{.Tag}}" | grep ':latest'
 
 # Find images from a specific organization
 podman images --format "{{.Repository}}:{{.Tag}}" | grep 'bitnami/'
@@ -190,4 +190,4 @@ podman images --filter reference=nginx:1.25 --format "{{.ID}} {{.Size}}" \
 
 ## Summary
 
-Podman provides flexible options for filtering images by name, from simple repository matching to glob patterns and reference filters. Combine these with custom formatting and other filters to build precise queries for your local image store. These techniques are essential for managing large image collections and scripting image management tasks.
+Podman provides flexible options for filtering images by name, from simple repository matching to regular expression patterns and reference filters. Combine these with custom formatting and other filters to build precise queries for your local image store. These techniques are essential for managing large image collections and scripting image management tasks.
