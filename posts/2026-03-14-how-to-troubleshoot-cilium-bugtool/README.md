@@ -34,7 +34,7 @@ flowchart TD
 
 ## Disk Space Issues
 
-The most common failure -- bugtool writes to /tmp inside the container:
+The most common failure -- bugtool uses /tmp inside the container by default:
 
 ```bash
 CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
@@ -47,11 +47,11 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 # Check existing bugtool archives consuming space
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  ls -lh /tmp/cilium-bugtool-*.tar.gz 2>/dev/null
+  sh -c 'ls -lh /tmp/cilium-bugtool-*.tar* 2>/dev/null || true'
 
 # Clean up old archives
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  rm -f /tmp/cilium-bugtool-*.tar.gz
+  sh -c 'rm -f /tmp/cilium-bugtool-*.tar*'
 
 # Try again with a different output directory
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -70,7 +70,7 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 # Check if the bugtool binary is executable
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  ls -la $(which cilium-bugtool 2>/dev/null || echo "/usr/bin/cilium-bugtool")
+  sh -c 'ls -la "$(command -v cilium-bugtool || echo /usr/bin/cilium-bugtool)"'
 
 # Try running with explicit path
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -86,13 +86,14 @@ When bugtool takes too long or times out:
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent \
   --request-timeout=300s -- cilium-bugtool
 
-# Collect only specific categories to reduce time
+# Shorten per-command waits and skip optional collectors to reduce time
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-bugtool --commands="cilium-dbg status,cilium-dbg endpoint list"
+  cilium-bugtool --exec-timeout=10s --envoy-dump=false --envoy-metrics=false \
+    --hubble-metrics=false --exclude-object-files
 
 # Check what is slow by monitoring the process
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  sh -c "cilium-bugtool &>/tmp/bugtool-log.txt & echo \$!"
+  sh -c "cilium-bugtool >/tmp/bugtool-log.txt 2>&1 & echo \$!"
 
 # Check progress
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -105,11 +106,13 @@ When the archive is created but missing expected data:
 
 ```bash
 # Extract and check what was collected
-tar tzf /tmp/cilium-bugtool.tar.gz | wc -l
+ARCHIVE=$(ls -t /tmp/cilium-bugtool-*.tar* | head -1)
+tar tf "$ARCHIVE" | wc -l
 echo "Expected: 30+ files"
 
 # Check for error markers in the archive
-tar xzf /tmp/cilium-bugtool.tar.gz -C /tmp/bugtool-check/
+rm -rf /tmp/bugtool-check && mkdir -p /tmp/bugtool-check
+tar xf "$ARCHIVE" -C /tmp/bugtool-check/
 find /tmp/bugtool-check/ -name "*.err" -o -name "*error*" | while read f; do
   echo "=== $f ==="
   cat "$f"
@@ -134,7 +137,7 @@ kubectl -n kube-system get pod "$CILIUM_POD" \
 
 # cilium-bugtool may have a different path in some versions
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  ls /usr/bin/cilium*
+  sh -c 'ls /usr/bin/cilium* 2>/dev/null'
 ```
 
 ## Agent State Issues
@@ -173,7 +176,7 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 echo "2. Checking archive..."
 ARCHIVE=$(kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  ls -t /tmp/cilium-bugtool-*.tar.gz | head -1)
+  sh -c 'ls -t /tmp/cilium-bugtool-*.tar* | head -1')
 echo "  Archive: $ARCHIVE"
 
 echo "3. Checking archive size..."
@@ -192,7 +195,7 @@ echo "  Files in archive"
 ## Troubleshooting
 
 - **"tar: Error is not recoverable"**: The archive was corrupted during copy. Retry with `kubectl cp` or use `cat` piped through kubectl exec.
-- **bugtool hangs indefinitely**: Kill the process and collect with `--commands` to identify which specific command hangs.
+- **bugtool hangs indefinitely**: Kill the process and rerun with a shorter `--exec-timeout` and optional collectors disabled to narrow down which step hangs.
 - **Empty archive (0 bytes)**: The bugtool binary may have crashed. Check for core dumps in /tmp and review agent logs.
 - **"socket not found" errors**: The agent API server may not be running. Collect system-level data manually as shown above.
 
