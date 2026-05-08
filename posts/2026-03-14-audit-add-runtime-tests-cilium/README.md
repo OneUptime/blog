@@ -48,7 +48,7 @@ echo "8. Connection lifecycle: ___"
 | BPF proxy redirect | testAllowedTraffic | Checks traffic flows | |
 | Policy enforcement | testDeniedTraffic | Checks server logs | |
 | Error injection | testErrorInjection | Checks client error | |
-| Access logging | testAccessLogging | Checks Hubble flows | |
+| Access logging | testAccessLogging | Checks proxy access logs | |
 | Policy updates | testPolicyUpdate | Checks enforcement change | |
 
 ## Audit Area 2: Assertion Strength
@@ -162,7 +162,7 @@ kubectl get all,cnp -n cilium-test
 
 # Generate audit summary
 echo "=== Runtime Test Audit Summary ==="
-echo "Test count: $(grep -c 'func test' proxylib/myprotocol/*_runtime_test.go)"
+echo "Test count: $(grep -hE 'func test|func Test' proxylib/myprotocol/*_runtime_test.go | wc -l)"
 echo "Integration points covered: _/8"
 echo "Strong assertions: _"
 echo "Timing issues: _"
