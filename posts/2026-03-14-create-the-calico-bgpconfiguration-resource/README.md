@@ -19,7 +19,7 @@ By the end of this post you will have a working BGPConfiguration resource applie
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24 or later)
-- Calico installed (v3.26 or later recommended)
+- Calico installed (v3.26 or later recommended), with the Calico API server installed if you plan to manage `projectcalico.org/v3` resources using `kubectl`
 - `kubectl` configured with cluster-admin privileges
 - `calicoctl` installed (optional but recommended for validation)
 
@@ -28,7 +28,7 @@ By the end of this post you will have a working BGPConfiguration resource applie
 The BGPConfiguration resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
 
 - `nodeToNodeMeshEnabled`: When true, Calico creates a full mesh of BGP peerings between all nodes. Disable this if you use dedicated BGP route reflectors.
-- `asNumber`: The default Autonomous System number for all nodes. Must be a valid private ASN (64512-65534) or public ASN you own.
+- `asNumber`: The default Autonomous System number for all nodes. Must be a valid AS number, such as a private ASN (64512-65534 or 4200000000-4294967294) or a public ASN you own.
 - `serviceClusterIPs`: List of CIDR blocks for Kubernetes ClusterIP services to advertise via BGP.
 - `serviceExternalIPs`: List of CIDR blocks for external service IPs to advertise via BGP.
 - `logSeverityScreen`: Log verbosity for BGP components. Valid values: Debug, Info, Warning, Error, Fatal.
@@ -52,17 +52,17 @@ spec:
     - cidr: 192.168.100.0/24
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+The logging, mesh, and AS number values match common defaults. Adjust the service CIDR values to match your environment before applying.
 
 ## Applying the Resource
 
-Apply the manifest using `kubectl`:
+Apply the manifest using `kubectl` when the Calico API server is installed:
 
 ```bash
 kubectl apply -f bgpconfiguration.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl`, especially on clusters where the Calico API server is not installed or when you want client-side validation and defaulting for Calico resources:
 
 ```bash
 # Apply with calicoctl for enhanced validation
@@ -70,7 +70,7 @@ Alternatively, use `calicoctl` which provides better validation for Calico resou
 calicoctl apply -f bgpconfiguration.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` checks field values against the Calico API schema before submitting. In newer Calico releases with the Calico API server installed, `kubectl` also receives server-side validation.
 
 ## Verification
 
@@ -81,13 +81,13 @@ Confirm that the resource was created successfully:
 kubectl get bgpconfiguration.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe bgpconfiguration.projectcalico.org
+kubectl describe bgpconfiguration.projectcalico.org default
 
 # Verify with calicoctl
 calicoctl get bgpconfiguration -o yaml
 ```
 
-Check the Calico component logs for any warnings or errors related to the new resource:
+Check the Calico component logs for any warnings or errors related to the new resource. Adjust the namespace if your installation runs Calico in `kube-system` instead of `calico-system`:
 
 ```bash
 # Check calico-node logs
@@ -98,15 +98,15 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `BGPConfiguration`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If using `kubectl`, check that the Calico API server is running: `kubectl get pods -n calico-apiserver`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
-- Check Felix and Typha logs for error messages.
+- Check the calico-node, Felix, and Typha logs for error messages.
+- Restart calico-node pods only after confirming the configuration is not being picked up, and do it during a maintenance window: `kubectl rollout restart daemonset calico-node -n calico-system`.
 
 
 ## Advanced Configuration Options
@@ -115,7 +115,7 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Node labels are useful with Calico resources that support selectors, such as `BGPPeer` and `IPPool`. They do not change which nodes use the global `default` BGPConfiguration; node-specific BGPConfiguration overrides use the name `node.<nodename>` and only support a subset of fields. For example, you can label nodes for later use in selector-based resources:
 
 ```bash
 # Label nodes for targeted configuration
