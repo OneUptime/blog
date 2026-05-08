@@ -12,7 +12,7 @@ Description: Implement zero trust microsegmentation in Kubernetes using Calico l
 
 Zero trust microsegmentation means every workload communicates only with the workloads it needs to reach, and those relationships are defined by explicit, auditable policy rules. Labels are the identity mechanism in Kubernetes - they define what a workload is, and Calico uses those labels to enforce what it can talk to.
 
-In a zero trust model, the label on a pod is essentially its cryptographic identity within the cluster (though Calico Enterprise with Istio integration provides cryptographic identity through mTLS). Without zero trust, a compromised pod can reach any other pod in the cluster. With label-based microsegmentation, a compromised pod is contained to only its explicitly allowed communication paths.
+In a zero trust model, the label on a pod is its policy identity within the cluster; it is not a cryptographic identity by itself. Calico with Istio integration can add cryptographic identity through mTLS. Without zero trust, a compromised pod can reach any other pod in the cluster. With label-based microsegmentation, a compromised pod is contained to only its explicitly allowed communication paths.
 
 This guide shows you how to implement zero trust microsegmentation using Calico label-based policies, covering the full application architecture from frontend to database with minimal-privilege traffic rules.
 
@@ -47,6 +47,7 @@ spec:
   selector: tier == 'backend'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'frontend'
       destination:
@@ -64,6 +65,7 @@ spec:
   selector: tier == 'data'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'backend'
       destination:
@@ -81,12 +83,64 @@ spec:
   selector: all()
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'monitoring'
       destination:
         ports: [9090, 9091, 8080]
   types:
     - Ingress
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: zt-allow-frontend-egress-to-api
+  namespace: production
+spec:
+  order: 100
+  selector: tier == 'frontend'
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: tier == 'backend'
+        ports: [8080]
+  types:
+    - Egress
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: zt-allow-api-egress-to-db
+  namespace: production
+spec:
+  order: 100
+  selector: tier == 'backend'
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: tier == 'data'
+        ports: [5432]
+  types:
+    - Egress
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: zt-allow-monitoring-egress-scrape
+  namespace: production
+spec:
+  order: 100
+  selector: tier == 'monitoring'
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: all()
+        ports: [9090, 9091, 8080]
+  types:
+    - Egress
 ```
 
 ## Step 3: Verify No Lateral Movement Is Possible
