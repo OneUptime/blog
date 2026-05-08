@@ -69,7 +69,7 @@ You can set a farm as the default so you do not need to specify `--farm` on ever
 podman farm update --default prod-farm
 
 # Now builds use prod-farm by default
-podman farm build -t myapp:latest .
+podman farm build -t registry.example.com/team/myapp:latest .
 ```
 
 ## Practical Workflow: Scaling Up a Farm
@@ -104,7 +104,7 @@ podman farm list
 FARM_NAME="prod-farm"
 
 # Get current connections
-CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM_NAME}"'"}}{{.Connections}}{{end}}' | tr ',' ' ')
+CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM_NAME}"'"}}{{range .Connections}}{{.}}{{"\n"}}{{end}}{{end}}')
 
 for CONN in ${CONNECTIONS}; do
     if ! podman --connection "${CONN}" info >/dev/null 2>&1; then
@@ -124,15 +124,15 @@ podman farm list
 ```bash
 # Trying to add a non-existent connection
 podman farm update --add nonexistent-node my-farm
-# Error: nonexistent-node is not a system connection
+# Error: cannot add to farm, "nonexistent-node" is not a system connection
 
 # Trying to update a non-existent farm
 podman farm update --add arm64-builder nonexistent-farm
-# Error: farm "nonexistent-farm" does not exist
+# Error: cannot update farm, "nonexistent-farm" farm doesn't exist
 
 # Trying to remove a connection not in the farm
 podman farm update --remove not-in-farm my-farm
-# This may succeed silently or produce a warning
+# Error: cannot remove from farm, "not-in-farm" is not a connection in the farm
 ```
 
 ## Verifying Updates
@@ -144,7 +144,7 @@ Always verify your changes after updating:
 podman farm list
 
 # Test all connections in the updated farm
-CONNECTIONS=$(podman farm list --format '{{if eq .Name "my-farm"}}{{.Connections}}{{end}}' | tr ',' ' ')
+CONNECTIONS=$(podman farm list --format '{{if eq .Name "my-farm"}}{{range .Connections}}{{.}}{{"\n"}}{{end}}{{end}}')
 
 for CONN in ${CONNECTIONS}; do
     echo -n "${CONN}: "
