@@ -23,6 +23,7 @@ This guide covers practical monitoring setups using shell scripts, Prometheus, a
 - `etcdctl` available for cluster health checks
 - Prometheus and Alertmanager (optional, for metrics and alerts)
 - `openssl` for certificate inspection
+- `jq` for parsing `calicoctl` JSON output
 
 ## Monitoring etcd Cluster Health
 
@@ -104,12 +105,12 @@ Run this via cron:
 ```bash
 # Add to crontab
 
-echo "*/5 * * * * /usr/local/bin/calicoctl-health-check.sh" | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/calicoctl-health-check.sh") | crontab -
 ```
 
 ## Exposing etcd Metrics to Prometheus
 
-etcd exposes metrics on port 2379 at `/metrics`. Create a Prometheus scrape configuration:
+etcd exposes metrics at `/metrics` on its client port, commonly 2379, or on URLs configured with `--listen-metrics-urls`. Create a Prometheus scrape configuration:
 
 ```yaml
 # prometheus.yml
@@ -157,7 +158,7 @@ groups:
           summary: "etcd member has no leader"
 
       - alert: EtcdHighFsyncDuration
-        expr: histogram_quantile(0.99, etcd_disk_wal_fsync_duration_seconds_bucket) > 0.5
+        expr: histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))) > 0.5
         for: 5m
         labels:
           severity: warning
