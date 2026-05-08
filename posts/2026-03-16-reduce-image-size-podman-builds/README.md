@@ -42,9 +42,7 @@ podman pull alpine:3.19
 podman pull gcr.io/distroless/static-debian12
 
 podman images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}" \
-  --filter "reference=ubuntu" \
-  --filter "reference=debian" \
-  --filter "reference=alpine"
+  | grep -E "(ubuntu|debian|alpine|distroless/static-debian12)"
 
 # Typical sizes:
 # ubuntu:22.04            ~77MB
@@ -149,7 +147,7 @@ RUN dnf install -y curl && \
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Node.js npm
-RUN npm ci --production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 ```
 
 ## 6. Use .containerignore
@@ -257,7 +255,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build && npm prune --production
+RUN npm run build && npm prune --omit=dev
 
 # Runtime stage
 FROM node:20-alpine
