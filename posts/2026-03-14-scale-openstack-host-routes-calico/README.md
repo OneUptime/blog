@@ -31,7 +31,7 @@ Route aggregation reduces the number of individual routes by summarizing contigu
 ```yaml
 # ippool-aggregation.yaml
 
-# Configure IP pools with block sizes that enable aggregation
+# Configure new IP pools with block sizes that enable aggregation
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -39,7 +39,7 @@ metadata:
 spec:
   cidr: 10.0.0.0/16
   # Block size determines route aggregation granularity
-  # Larger blocks = fewer routes but less efficient IP usage
+  # Less-specific blocks, such as /24, can reduce route count but may waste IPs
   blockSize: 26
   natOutgoing: true
   nodeSelector: all()
@@ -70,7 +70,7 @@ graph TD
 
 ## Optimizing BGP Route Distribution
 
-Tune BIRD configuration for efficient route distribution at scale.
+Tune Calico BGP configuration for efficient route distribution at scale.
 
 ```yaml
 # bgp-config-scaled.yaml
@@ -83,13 +83,11 @@ spec:
   # Disable full mesh when using route reflectors
   nodeToNodeMeshEnabled: false
   asNumber: 64512
-  # Control which routes are advertised
+  # Attach BGP communities to matching advertised prefixes
   prefixAdvertisements:
     - cidr: 10.0.0.0/16
       communities:
         - "64512:100"
-  # Keep alive and hold timers for stability
-  nodeMeshMaxRestartTime: 120s
 ```
 
 Configure route reflectors to handle large route tables:
@@ -111,10 +109,10 @@ spec:
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
-  name: rr-mesh
+  name: peer-with-route-reflectors
 spec:
-  # Route reflectors peer with each other
-  nodeSelector: route-reflector == 'true'
+  # All nodes peer with the selected route reflector nodes
+  nodeSelector: all()
   peerSelector: route-reflector == 'true'
 ```
 
@@ -146,15 +144,12 @@ done
 
 ## Managing Route Table Size on Compute Nodes
 
-Implement kernel-level optimizations for large route tables.
+Implement kernel-level optimizations for neighbor table pressure that often accompanies large route tables.
 
 ```bash
 #!/bin/bash
-# optimize-route-tables.sh
-# Apply kernel optimizations for large route tables on compute nodes
-
-# Increase route cache size
-sudo sysctl -w net.ipv4.route.max_size=8388608
+# optimize-neighbor-tables.sh
+# Apply neighbor table optimizations on compute nodes
 
 # Increase neighbor table size for ARP entries
 sudo sysctl -w net.ipv4.neigh.default.gc_thresh1=4096
@@ -163,8 +158,7 @@ sudo sysctl -w net.ipv4.neigh.default.gc_thresh3=16384
 
 # Persist settings
 cat << 'EOF' | sudo tee /etc/sysctl.d/99-calico-routes.conf
-# Route table scaling optimizations
-net.ipv4.route.max_size = 8388608
+# Neighbor table scaling optimizations
 net.ipv4.neigh.default.gc_thresh1 = 4096
 net.ipv4.neigh.default.gc_thresh2 = 8192
 net.ipv4.neigh.default.gc_thresh3 = 16384
@@ -203,10 +197,10 @@ done
 ## Troubleshooting
 
 - **Route count growing unbounded**: Check for IP address leaks from terminated VMs. Verify that Calico garbage collection is cleaning up stale endpoints with `calicoctl get workloadendpoints`.
-- **BGP convergence slow after node restart**: Increase the BIRD graceful restart timer. Check that route reflectors have sufficient memory for the full route table.
-- **Kernel route cache exhaustion**: Increase `net.ipv4.route.max_size`. Monitor with `cat /proc/net/rt_cache | wc -l` on affected nodes.
+- **BGP convergence slow after node restart**: Review graceful restart settings for the active BGP topology. For the default node-to-node mesh, check Calico's `nodeMeshMaxRestartTime`; for route reflectors, check the BIRD configuration used by those peerings. Confirm that route reflectors have sufficient memory for the full route table.
+- **Unexpected kernel route growth**: Inspect the route source with `ip route show proto bird` and reduce route volume through IPAM block sizing and route reflector topology. Modern Linux kernels no longer use the old IPv4 route cache, so `net.ipv4.route.max_size` and `/proc/net/rt_cache` are not useful tuning points for current deployments.
 - **ARP table overflow**: Increase neighbor table thresholds. This manifests as intermittent connectivity when the ARP table churns entries.
 
 ## Conclusion
 
-Scaling OpenStack host routes with Calico requires attention to route aggregation, BGP topology, and kernel-level tuning. By configuring appropriate IPAM block sizes, deploying route reflectors, and optimizing kernel route table parameters, you can maintain fast convergence and stable routing for large-scale OpenStack deployments. Monitor route table health continuously to catch issues before they affect VM connectivity.
+Scaling OpenStack host routes with Calico requires attention to route aggregation, BGP topology, and kernel-level tuning. By configuring appropriate IPAM block sizes, deploying route reflectors, and optimizing neighbor table parameters, you can maintain fast convergence and stable routing for large-scale OpenStack deployments. Monitor route table health continuously to catch issues before they affect VM connectivity.
