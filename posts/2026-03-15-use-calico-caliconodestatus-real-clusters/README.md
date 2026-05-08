@@ -19,17 +19,21 @@ This guide demonstrates real-world patterns for using CalicoNodeStatus in produc
 ## Prerequisites
 
 - A production Kubernetes cluster running Calico v3.20 or later
-- `calicoctl` installed and configured
+- Calico BGP networking enabled on Linux nodes
+- Calico API resources available through `kubectl`
+- `calicoctl` installed and configured for node-local checks
 - `kubectl` with cluster-admin access
 - BGP peering configured between nodes or with external routers
 
-## Setting Up Cluster-Wide Status Monitoring
+## Setting Up Targeted Status Monitoring
 
-Deploy CalicoNodeStatus resources for every node using a script:
+Deploy CalicoNodeStatus resources for the nodes you want to inspect using a script. Keep the number of active resources small, especially with short update intervals:
 
 ```bash
-for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-cat <<EOF | calicoctl apply -f -
+NODES="node01 node02"
+
+for node in $NODES; do
+cat <<EOF | kubectl apply -f -
 apiVersion: projectcalico.org/v3
 kind: CalicoNodeStatus
 metadata:
@@ -47,19 +51,21 @@ done
 
 ## Checking BGP Session Health
 
-Query BGP session status across all nodes:
+Query BGP session status across all active CalicoNodeStatus resources:
 
 ```bash
-for status in $(calicoctl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
+for status in $(kubectl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== $status ==="
-  calicoctl get caliconodestatus "$status" -o yaml | grep -A 10 "bgp:"
+  kubectl get caliconodestatus "$status" -o yaml | grep -A 20 "bgp:"
 done
 ```
 
 Look for peers with state other than `Established`, which indicates a problem:
 
 ```bash
-calicoctl get caliconodestatus node01-status -o yaml | grep -i "state:" | grep -v Established
+kubectl get caliconodestatus node01-status \
+  -o jsonpath='{range .status.bgp.peersV4[*]}{.peerIP}{" "}{.state}{"\n"}{end}{range .status.bgp.peersV6[*]}{.peerIP}{" "}{.state}{"\n"}{end}' \
+  | grep -v ' Established$'
 ```
 
 ## Monitoring Route Table Size
@@ -67,8 +73,8 @@ calicoctl get caliconodestatus node01-status -o yaml | grep -i "state:" | grep -
 Track the number of routes learned by each node to detect route leaks or missing routes:
 
 ```bash
-for status in $(calicoctl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
-  routes=$(calicoctl get caliconodestatus "$status" -o yaml | grep -c "dest:")
+for status in $(kubectl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
+  routes=$(kubectl get caliconodestatus "$status" -o yaml | grep -c "destination:")
   echo "$status: $routes routes"
 done
 ```
@@ -81,11 +87,13 @@ Create an automated health check that can run in CI or as a CronJob:
 #!/bin/bash
 FAILURES=0
 
-for status in $(calicoctl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
-  output=$(calicoctl get caliconodestatus "$status" -o yaml)
-
+for status in $(kubectl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
   # Check for non-established BGP peers
-  bad_peers=$(echo "$output" | grep -i "state:" | grep -v "Established" | wc -l)
+  bad_peers=$(
+    kubectl get caliconodestatus "$status" \
+      -o jsonpath='{range .status.bgp.peersV4[*]}{.state}{"\n"}{end}{range .status.bgp.peersV6[*]}{.state}{"\n"}{end}' \
+      | grep -vc '^Established$' || true
+  )
   if [ "$bad_peers" -gt 0 ]; then
     echo "ALERT: $status has $bad_peers non-established BGP peers"
     FAILURES=$((FAILURES + 1))
@@ -104,22 +112,22 @@ echo "All nodes healthy"
 During a network incident, increase the update frequency on affected nodes:
 
 ```bash
-calicoctl patch caliconodestatus node01-status -p '{"spec":{"updatePeriodSeconds":10}}'
+kubectl patch caliconodestatus node01-status --type=merge -p '{"spec":{"updatePeriodSeconds":10}}'
 ```
 
 Compare BGP peer counts between a healthy node and the problematic node:
 
 ```bash
 echo "=== Healthy Node ==="
-calicoctl get caliconodestatus healthy-node-status -o yaml | grep -A 5 "peersV4"
+kubectl get caliconodestatus healthy-node-status -o yaml | grep -A 20 "peersV4"
 echo "=== Problem Node ==="
-calicoctl get caliconodestatus problem-node-status -o yaml | grep -A 5 "peersV4"
+kubectl get caliconodestatus problem-node-status -o yaml | grep -A 20 "peersV4"
 ```
 
 After the incident, reset the update interval:
 
 ```bash
-calicoctl patch caliconodestatus node01-status -p '{"spec":{"updatePeriodSeconds":60}}'
+kubectl patch caliconodestatus node01-status --type=merge -p '{"spec":{"updatePeriodSeconds":60}}'
 ```
 
 ## Cleaning Up Status Resources for Removed Nodes
@@ -127,29 +135,30 @@ calicoctl patch caliconodestatus node01-status -p '{"spec":{"updatePeriodSeconds
 Periodically clean up CalicoNodeStatus resources for nodes that no longer exist:
 
 ```bash
-for status in $(calicoctl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
-  node=$(calicoctl get caliconodestatus "$status" -o yaml | grep "node:" | awk '{print $2}')
+for status in $(kubectl get caliconodestatus -o jsonpath='{.items[*].metadata.name}'); do
+  node=$(kubectl get caliconodestatus "$status" -o jsonpath='{.spec.node}')
   if ! kubectl get node "$node" &>/dev/null; then
     echo "Removing stale status for $node"
-    calicoctl delete caliconodestatus "$status"
+    kubectl delete caliconodestatus "$status"
   fi
 done
 ```
 
 ## Verification
 
-Verify all active nodes have corresponding CalicoNodeStatus resources:
+Verify your target nodes have corresponding CalicoNodeStatus resources:
 
 ```bash
-node_count=$(kubectl get nodes --no-headers | wc -l)
-status_count=$(calicoctl get caliconodestatus --no-headers | wc -l)
-echo "Nodes: $node_count, Status resources: $status_count"
+for node in $NODES; do
+  kubectl get caliconodestatus "${node}-status" \
+    -o jsonpath='{.metadata.name}{" -> "}{.spec.node}{"\n"}'
+done
 ```
 
 Confirm status data is fresh:
 
 ```bash
-calicoctl get caliconodestatus -o yaml | grep "lastUpdated"
+kubectl get caliconodestatus -o yaml | grep "lastUpdated"
 ```
 
 ## Troubleshooting
@@ -157,17 +166,17 @@ calicoctl get caliconodestatus -o yaml | grep "lastUpdated"
 If status data is missing for some nodes, check that calico-node is running on those nodes:
 
 ```bash
-kubectl get pods -n kube-system -l k8s-app=calico-node -o wide --no-headers | awk '{print $7}' | sort > /tmp/calico-nodes.txt
+kubectl get pods -n calico-system -l k8s-app=calico-node -o wide --no-headers | awk '{print $7}' | sort > /tmp/calico-nodes.txt
 kubectl get nodes --no-headers | awk '{print $1}' | sort > /tmp/all-nodes.txt
 diff /tmp/all-nodes.txt /tmp/calico-nodes.txt
 ```
 
-If BGP status shows zero peers on a node that should have peering, verify the node's BGP configuration:
+If BGP status shows zero peers on a node that should have peering, run the node-local BGP status check on that node:
 
 ```bash
-calicoctl node status
+sudo calicoctl node status
 ```
 
 ## Conclusion
 
-CalicoNodeStatus resources provide essential visibility into node-level networking state in production clusters. By deploying them across all nodes with appropriate update intervals, you can integrate Calico network health into your existing monitoring workflows, speed up incident response, and proactively detect BGP and routing issues before they affect workloads.
+CalicoNodeStatus resources provide essential visibility into node-level networking state in production clusters. By deploying them for the nodes you are actively investigating with appropriate update intervals, you can integrate Calico network health into your existing monitoring workflows, speed up incident response, and proactively detect BGP and routing issues before they affect workloads.
