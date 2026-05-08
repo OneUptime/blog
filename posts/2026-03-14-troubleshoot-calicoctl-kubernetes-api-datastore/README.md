@@ -89,8 +89,8 @@ fi
 # Layer 5: Calico RBAC
 echo ""
 echo "--- Layer 5: Calico RBAC ---"
-KUBECONFIG="${KUBECONFIG_PATH}" kubectl auth can-i list nodes.projectcalico.org 2>/dev/null
-KUBECONFIG="${KUBECONFIG_PATH}" kubectl auth can-i get globalnetworkpolicies.projectcalico.org 2>/dev/null
+KUBECONFIG="${KUBECONFIG_PATH}" kubectl auth can-i get clusterinformations.crd.projectcalico.org 2>/dev/null
+KUBECONFIG="${KUBECONFIG_PATH}" kubectl auth can-i list globalnetworksets.crd.projectcalico.org 2>/dev/null
 
 # Layer 6: calicoctl connectivity
 echo ""
@@ -120,10 +120,18 @@ flowchart TD
 # Common cause: Expired or invalid token
 
 # Check if the service account token is valid
+SA_NAME="calicoctl"
 SA_SECRET="calicoctl-token"
 NAMESPACE="kube-system"
 
 echo "=== Authentication Fix ==="
+
+# Ensure the service account exists before creating a token for it
+kubectl get serviceaccount ${SA_NAME} -n ${NAMESPACE} > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+  echo "ServiceAccount not found. Creating..."
+  kubectl create serviceaccount ${SA_NAME} -n ${NAMESPACE}
+fi
 
 # Check if the secret exists
 kubectl get secret ${SA_SECRET} -n ${NAMESPACE} > /dev/null 2>&1
@@ -148,8 +156,10 @@ echo "Token retrieved (first 20 chars): ${TOKEN:0:20}..."
 
 # Update kubeconfig with fresh token
 KUBECONFIG_PATH=$(grep kubeconfig /etc/calico/calicoctl.cfg | awk '{print $2}' | tr -d '"')
-# Use kubectl config set-credentials to update token
-echo "Update the token in: ${KUBECONFIG_PATH}"
+CURRENT_CONTEXT=$(kubectl config --kubeconfig="${KUBECONFIG_PATH}" current-context)
+USER_NAME=$(kubectl config --kubeconfig="${KUBECONFIG_PATH}" view -o jsonpath="{.contexts[?(@.name==\"${CURRENT_CONTEXT}\")].context.user}")
+kubectl config --kubeconfig="${KUBECONFIG_PATH}" set-credentials "${USER_NAME}" --token="${TOKEN}"
+echo "Updated token for user ${USER_NAME} in: ${KUBECONFIG_PATH}"
 ```
 
 ## Fixing RBAC Issues
@@ -171,7 +181,7 @@ kind: ClusterRole
 metadata:
   name: calicoctl-role
 rules:
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources: ["*"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
@@ -195,7 +205,7 @@ EOF
 # Verify fix
 echo ""
 echo "Verifying RBAC fix:"
-kubectl auth can-i list globalnetworkpolicies.projectcalico.org \
+kubectl auth can-i list globalnetworkpolicies.crd.projectcalico.org \
   --as=system:serviceaccount:kube-system:calicoctl
 ```
 
@@ -206,8 +216,8 @@ kubectl auth can-i list globalnetworkpolicies.projectcalico.org \
 
 echo "=== Configuration Fix ==="
 
-# Check environment variables that override config file
-echo "Environment overrides:"
+# Check environment variables that calicoctl can use if no readable config file is found
+echo "Environment variables:"
 echo "  DATASTORE_TYPE=${DATASTORE_TYPE:-not set}"
 echo "  CALICO_DATASTORE_TYPE=${CALICO_DATASTORE_TYPE:-not set}"
 echo "  CALICO_KUBECONFIG=${CALICO_KUBECONFIG:-not set}"
@@ -263,7 +273,7 @@ echo "Read/write: OK"
 
 ## Troubleshooting
 
-- **Config file not being read**: calicoctl looks for config at `/etc/calico/calicoctl.cfg` by default. Use `--config` flag to specify an alternate path, or set the `CALICO_DATASTORE_TYPE` and `CALICO_KUBECONFIG` environment variables.
+- **Config file not being read**: calicoctl can read configuration from `/etc/calico/calicoctl.cfg`, or you can use the `--config` flag to specify an alternate path. For the Kubernetes API datastore, calicoctl also uses the default kubeconfig at `$(HOME)/.kube/config` unless you specify another kubeconfig in the config file or with `KUBECONFIG`/`CALICO_KUBECONFIG`.
 - **"no kind CalicoAPIConfig" error**: The config file has incorrect syntax. Verify the apiVersion is `projectcalico.org/v3` and kind is `CalicoAPIConfig`.
 - **Works from one machine but not another**: Compare the kubeconfig files and network connectivity to the API server. The API server may only be accessible from certain networks.
 - **Intermittent failures**: The API server may be overloaded. Check API server health and response times. Consider increasing API server resources.
