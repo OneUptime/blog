@@ -46,12 +46,12 @@ calicoctl ipam show --show-blocks
 ## Step 3: Test Intra-Cluster Pod Communication
 
 ```bash
-kubectl run server --image=nginx -n default
-kubectl expose pod server --port=80 -n default
+kubectl run server --image=registry.access.redhat.com/ubi9/httpd-24:latest -n default
+kubectl expose pod server --port=8080 -n default
 kubectl run client --image=busybox -- sleep 300
 
 SERVER_IP=$(kubectl get pod server -o jsonpath='{.status.podIP}')
-kubectl exec client -- wget -qO- --timeout=5 http://$SERVER_IP
+kubectl exec client -- wget -qO- --timeout=5 http://$SERVER_IP:8080
 ```
 
 ## Step 4: Test Kubernetes API Server Connectivity
@@ -59,16 +59,18 @@ kubectl exec client -- wget -qO- --timeout=5 http://$SERVER_IP
 The API server runs in the management cluster. Verify pods can reach it.
 
 ```bash
-kubectl exec client -- wget -qO- --timeout=5 https://kubernetes.default.svc.cluster.local/healthz \
+kubectl exec client -- wget -qO- --timeout=5 https://kubernetes.default.svc.cluster.local/readyz \
   --no-check-certificate
 ```
 
 ## Step 5: Verify Cross-Cluster Isolation
 
-If you know an IP from another hosted cluster, verify it is not reachable.
+If you know an IP and open port from another hosted cluster, verify it is not reachable.
 
 ```bash
-kubectl exec client -- ping -c3 <other-hosted-cluster-pod-ip> || echo "Cross-cluster isolation working"
+kubectl exec client -- wget -qO- --timeout=5 http://<other-hosted-cluster-pod-ip>:<known-open-port> \
+  && echo "Unexpected cross-cluster reachability" \
+  || echo "Cross-cluster isolation working"
 ```
 
 ## Step 6: Test DNS Resolution
