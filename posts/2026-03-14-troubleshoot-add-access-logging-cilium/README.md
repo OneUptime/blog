@@ -21,7 +21,7 @@ This guide covers systematic troubleshooting for access logging problems in Cili
 - Cilium cluster with L7 policy applied
 - Hubble enabled and operational
 - Access to Cilium agent logs
-- `cilium monitor` CLI tool
+- `cilium-dbg monitor` CLI tool in the Cilium agent pod
 - Parser source code for reference
 
 ## Diagnosing Missing Log Entries
@@ -31,13 +31,14 @@ When expected log entries do not appear:
 ```bash
 # Step 1: Verify the proxy is active and processing traffic
 
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep -i "proxy\|envoy"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg envoy admin listeners
 
 # Step 2: Check if L7 policy is applied
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -i policy
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -i policy
 
 # Step 3: Monitor for any L7 events
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type l7
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type l7
 
 # Step 4: Check Hubble specifically
 hubble observe --type l7 --last 100
@@ -50,28 +51,28 @@ Common causes of missing entries:
 
 ```go
 // PROBLEM: logAccess is only called on the PASS path
-func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
+func (p *Parser) OnData(reply, endStream bool, dataArray [][]byte) (proxylib.OpType, int) {
     // ... parse ...
 
-    if !p.matchesPolicy(command) {
-        return proxylib.DROP, 0  // BUG: No access log for denied requests!
+    if !p.connection.Matches(command) {
+        return proxylib.DROP, msgLen  // BUG: No access log for denied requests!
     }
 
-    p.logAccess(reply, command, requestID, accesslog.VerdictForwarded)
-    return proxylib.PASS, totalLen
+    p.logAccess(cilium.EntryType_Request, command, requestID)
+    return proxylib.PASS, msgLen
 }
 
 // FIX: Log both allowed and denied requests
-func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
+func (p *Parser) OnData(reply, endStream bool, dataArray [][]byte) (proxylib.OpType, int) {
     // ... parse ...
 
-    if !p.matchesPolicy(command) {
-        p.logAccess(reply, command, requestID, accesslog.VerdictDenied)
-        return proxylib.DROP, 0
+    if !p.connection.Matches(command) {
+        p.logAccess(cilium.EntryType_Denied, command, requestID)
+        return proxylib.DROP, msgLen
     }
 
-    p.logAccess(reply, command, requestID, accesslog.VerdictForwarded)
-    return proxylib.PASS, totalLen
+    p.logAccess(cilium.EntryType_Request, command, requestID)
+    return proxylib.PASS, msgLen
 }
 ```
 
@@ -79,7 +80,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
 flowchart TD
     A[Missing Log Entry] --> B{Proxy active?}
     B -->|No| C[Check L7 policy applied]
-    B -->|Yes| D{cilium monitor shows L7?}
+    B -->|Yes| D{cilium-dbg monitor shows L7?}
     D -->|No| E[Check logAccess calls in parser]
     D -->|Yes| F{Hubble shows flows?}
     F -->|No| G[Check Hubble relay connection]
@@ -92,33 +93,43 @@ When log entries exist but contain wrong information:
 
 ```bash
 # Compare actual flow with logged data
-hubble observe --type l7 --protocol myprotocol -o json | jq '.flow.l7'
+hubble observe --type l7 -o json | jq '.flow.l7'
 
 # Check source/destination identity
-hubble observe --type l7 --protocol myprotocol -o json | jq '{src: .flow.source, dst: .flow.destination}'
+hubble observe --type l7 -o json | jq '{src: .flow.source, dst: .flow.destination}'
 ```
 
 ```go
 // PROBLEM: Request and response logging swapped
-func (p *Parser) logAccess(reply bool, command byte, requestID uint32, verdict accesslog.FlowVerdict) {
-    entry := &accesslog.LogRecord{
-        // BUG: Type should be TypeResponse when reply is true
-        Type: accesslog.TypeRequest, // Always logs as request!
-    }
-    // ...
+func (p *Parser) logAccess(reply bool, command string, requestID uint32) {
+    // BUG: EntryType should be EntryType_Response when reply is true.
+    p.connection.Log(cilium.EntryType_Request, &cilium.LogEntry_GenericL7{
+        GenericL7: &cilium.L7LogEntry{
+            Proto: "myprotocol",
+            Fields: map[string]string{
+                "command":    command,
+                "request_id": strconv.FormatUint(uint64(requestID), 10),
+            },
+        },
+    })
 }
 
 // FIX: Set type based on direction
-func (p *Parser) logAccess(reply bool, command byte, requestID uint32, verdict accesslog.FlowVerdict) {
-    logType := accesslog.TypeRequest
+func (p *Parser) logAccess(reply bool, command string, requestID uint32) {
+    entryType := cilium.EntryType_Request
     if reply {
-        logType = accesslog.TypeResponse
+        entryType = cilium.EntryType_Response
     }
 
-    entry := &accesslog.LogRecord{
-        Type: logType,
-    }
-    // ...
+    p.connection.Log(entryType, &cilium.LogEntry_GenericL7{
+        GenericL7: &cilium.L7LogEntry{
+            Proto: "myprotocol",
+            Fields: map[string]string{
+                "command":    command,
+                "request_id": strconv.FormatUint(uint64(requestID), 10),
+            },
+        },
+    })
 }
 ```
 
@@ -134,7 +145,7 @@ hubble status
 kubectl logs -n kube-system deployment/hubble-relay
 
 # Verify Hubble is listening
-kubectl exec -n kube-system ds/cilium -- cilium status | grep Hubble
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep Hubble
 
 # Test Hubble connectivity
 hubble observe --last 1
@@ -157,44 +168,29 @@ When logging causes performance degradation:
 
 ```bash
 # Check Envoy proxy latency metrics
-kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
-    curl -s http://localhost:9901/stats | grep downstream_rq_time
+kubectl exec -n kube-system ds/cilium -- \
+    cilium-dbg envoy admin metrics | grep downstream_rq_time
 
 # Check for log buffer overflow indicators
 kubectl logs -n kube-system ds/cilium -c cilium-agent | grep -i "buffer\|overflow\|dropped"
 ```
 
 ```go
-// Implement async logging to prevent blocking the parser
-type asyncLogger struct {
-    entries chan *accesslog.LogRecord
-    done    chan struct{}
-}
-
-func newAsyncLogger(bufferSize int) *asyncLogger {
-    al := &asyncLogger{
-        entries: make(chan *accesslog.LogRecord, bufferSize),
-        done:    make(chan struct{}),
+// Keep parser-side logging cheap. Do not bypass proxylib's access-log path.
+func (p *Parser) logAccess(entryType cilium.EntryType, command string, requestID uint32) {
+    if entryType == cilium.EntryType_Request && !p.sampleAllowedRequest(requestID) {
+        return
     }
-    go al.processEntries()
-    return al
-}
 
-func (al *asyncLogger) log(entry *accesslog.LogRecord) {
-    select {
-    case al.entries <- entry:
-        // Sent successfully
-    default:
-        // Buffer full - log a warning but do not block the parser
-        log.Warn("Access log buffer full, dropping entry")
-    }
-}
-
-func (al *asyncLogger) processEntries() {
-    defer close(al.done)
-    for entry := range al.entries {
-        accesslog.Log(entry)
-    }
+    p.connection.Log(entryType, &cilium.LogEntry_GenericL7{
+        GenericL7: &cilium.L7LogEntry{
+            Proto: "myprotocol",
+            Fields: map[string]string{
+                "command":    command,
+                "request_id": strconv.FormatUint(uint64(requestID), 10),
+            },
+        },
+    })
 }
 ```
 
@@ -209,27 +205,27 @@ kubectl exec test-client -- protocol-client batch-send \
     --target myservice:9000
 
 # Check that all requests were logged
-hubble observe --type l7 --protocol myprotocol --last 10 -o json | jq '.flow.verdict'
+hubble observe --type l7 --last 10 -o json | jq '.flow.verdict'
 
 # Count allowed vs denied
-hubble observe --type l7 --protocol myprotocol --last 100 -o json | \
+hubble observe --type l7 --last 100 -o json | \
     jq -r '.flow.verdict' | sort | uniq -c
 
 # Verify response logging
-hubble observe --type l7 --protocol myprotocol --last 100 -o json | \
+hubble observe --type l7 --last 100 -o json | \
     jq -r '.flow.l7.type' | sort | uniq -c
 ```
 
 ## Troubleshooting
 
 **Problem: Logs appear for HTTP but not for custom protocol**
-Ensure your parser calls `accesslog.Log()` explicitly. HTTP logging is built into Envoy, but custom proxylib parsers must implement logging themselves.
+Ensure your parser calls `p.connection.Log()` with a `cilium.LogEntry_GenericL7` value. HTTP logging is handled by Envoy, but custom proxylib parsers must emit their own generic L7 log entries.
 
 **Problem: Log timestamps are inconsistent across nodes**
 Use NTP-synchronized clocks and always log in UTC. If precision is critical, include monotonic timestamps alongside wall clock time.
 
 **Problem: Hubble observe shows no protocol field**
-Check that the `Protocol` field is set in your log entry. Some Hubble versions may filter by known protocols - verify with raw Hubble API output.
+Check that the `Proto` field is set in your `cilium.L7LogEntry`. Some Hubble filters are oriented around built-in protocols such as HTTP, DNS, and Kafka, so verify custom protocol entries with raw Hubble API output.
 
 **Problem: Log volume overwhelms storage**
 Implement per-connection or per-endpoint sampling. Log 100% of denied requests but sample allowed requests at a configurable rate (e.g., 10%).
