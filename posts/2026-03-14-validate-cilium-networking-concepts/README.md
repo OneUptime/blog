@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that Cilium networking concepts including eBPF datapath, identity-based security, and service mesh integration is correctly configured and functioning as expected in your...
+Description: Systematically validate that Cilium networking concepts including eBPF datapath, identity-based security, and service load balancing are correctly configured and functioning as expected in your...
 
 ---
 
 ## Introduction
 
-Validating cilium networking concepts ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. Cilium uses eBPF programs attached to network interfaces to implement networking, security, and observability features. Key concepts include endpoint identity, policy enforcement at the kernel level, and transparent service load balancing.
+Validating cilium networking concepts ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. Cilium uses eBPF programs attached to kernel networking hooks to implement networking, security, and observability features. Key concepts include endpoint identity, policy enforcement at the kernel level, and transparent service load balancing.
 
 Validation goes beyond checking pod status. It requires testing actual traffic flows, verifying configuration values, and confirming that the feature behaves as documented. A validation failure caught early prevents production incidents caused by misconfigured networking.
 
@@ -47,10 +47,9 @@ Use the Cilium connectivity test to validate the data path:
 # Run the full connectivity test suite
 cilium connectivity test
 
-# Run specific test categories
+# Run specific test categories by matching test names
 cilium connectivity test --test pod-to-pod
 cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -136,13 +135,14 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o json | \
+  python3 -c "import sys,json; print('\n'.join(str(e.get('id')) for e in json.load(sys.stdin) if e.get('status',{}).get('state') != 'ready'))"
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+# Compare CiliumEndpoint objects with running pods
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints --all-namespaces --no-headers | wc -l)
 POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
 echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
 ```
@@ -153,13 +153,13 @@ Confirm metrics are being collected for cilium networking concepts:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "bpf"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf metrics list
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list -p "drop"
 ```
 
 ## Verification
@@ -190,7 +190,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list -p "drop"`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
