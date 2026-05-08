@@ -10,17 +10,17 @@ Description: Learn how to securely implement error response injection in Cilium 
 
 ## Introduction
 
-When a Cilium L7 policy denies a request, the parser should not simply drop the connection silently. Instead, it should inject a protocol-appropriate error response that informs the client why the request was rejected. This is similar to how Cilium's HTTP proxy returns a 403 Forbidden response when an HTTP request violates policy.
+When a Cilium proxylib L7 policy denies a request, the parser should not simply drop the connection silently. Instead, it should inject a protocol-appropriate error response that informs the client why the request was rejected. This is similar to how Cilium's HTTP proxy returns a 403 Forbidden response when an HTTP request violates policy.
 
 Error response injection must be implemented carefully to avoid two classes of problems: information leakage (revealing internal policy details to potentially malicious clients) and denial of service (where crafting error responses consumes excessive resources or allows amplification attacks).
 
-This guide covers secure patterns for implementing error response injection in Cilium's proxylib framework.
+This guide covers secure patterns for implementing error response injection in Cilium's proxylib framework. Note: Envoy Go Extensions (proxylib) were deprecated in Cilium 1.18 and removed in Cilium 1.20, so these patterns apply only to Cilium/proxy versions that still include proxylib parsers.
 
 ## Prerequisites
 
 - A working Cilium L7 parser with policy matching
 - Understanding of your protocol's error response format
-- Familiarity with proxylib's InjectResponse API
+- Familiarity with proxylib's `Connection.Inject` API
 - Go 1.21 or later
 - Test infrastructure for verifying injected responses
 
@@ -35,12 +35,12 @@ The proxylib framework provides mechanisms to inject response data back to the c
 func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
     // ... parse request ...
 
-    if !p.matchesPolicy(command) {
+    if !p.connection.Matches(command) {
         // Inject a protocol-formatted error response
         errorResp := p.buildErrorResponse(command, requestID, "access denied")
         p.connection.Inject(true, errorResp) // true = inject as reply
 
-        return proxylib.DROP, 0
+        return proxylib.DROP, totalLen
     }
 
     return proxylib.PASS, totalLen
@@ -122,11 +122,11 @@ Error responses should not reveal internal policy details:
 
 ```go
 // BAD: Leaks policy information
-func (p *Parser) buildErrorMessage(command byte) string {
+func (p *Parser) buildLeakyErrorMessage(command byte) string {
     // This reveals policy rules to the client
     return fmt.Sprintf("Policy rule 'deny-delete-on-prod' blocked command %d "+
         "from identity %d to identity %d",
-        command, p.connection.SrcIdentity, p.connection.DstIdentity)
+        command, p.connection.SrcId, p.connection.DstId)
 }
 
 // GOOD: Generic error message
@@ -140,15 +140,15 @@ func (p *Parser) logPolicyDenial(command byte, requestID uint32) {
     log.WithFields(log.Fields{
         "command":     command,
         "requestID":   requestID,
-        "srcIdentity": p.connection.SrcIdentity,
-        "dstIdentity": p.connection.DstIdentity,
+        "srcIdentity": p.connection.SrcId,
+        "dstIdentity": p.connection.DstId,
     }).Info("L7 policy denied request")
 }
 ```
 
 ## Preventing Amplification Attacks
 
-Ensure error responses are not larger than the requests that trigger them:
+Ensure error responses are bounded relative to the requests that trigger them:
 
 ```go
 // amplificationCheck verifies the error response is not disproportionately
@@ -163,17 +163,18 @@ func (p *Parser) amplificationCheck(requestLen int, responseLen int) bool {
     return responseLen <= maxResponseLen
 }
 
-func (p *Parser) injectError(command byte, requestID uint32, requestLen int) {
+func (p *Parser) injectError(command byte, requestID uint32, requestLen int) (proxylib.OpType, int) {
     errorResp := p.buildErrorResponse(command, requestID, "request denied by policy")
 
     if !p.amplificationCheck(requestLen, len(errorResp)) {
         // Response too large relative to request - just drop without injection
         log.Warn("Error response exceeds amplification limit, dropping silently")
-        return
+        return proxylib.DROP, requestLen
     }
 
     p.connection.Inject(true, errorResp)
     p.logPolicyDenial(command, requestID)
+    return proxylib.DROP, requestLen
 }
 ```
 
@@ -188,18 +189,18 @@ const (
 )
 
 type rateLimiter struct {
-    tokens    int
-    maxTokens int
+    tokens    float64
+    maxTokens float64
     lastRefill time.Time
-    refillRate int // tokens per second
+    refillRate float64 // tokens per second
 }
 
 func newRateLimiter(rate int, burst int) *rateLimiter {
     return &rateLimiter{
-        tokens:     burst,
-        maxTokens:  burst,
+        tokens:     float64(burst),
+        maxTokens:  float64(burst),
         lastRefill: time.Now(),
-        refillRate: rate,
+        refillRate: float64(rate),
     }
 }
 
@@ -209,8 +210,7 @@ func (rl *rateLimiter) allow() bool {
     rl.lastRefill = now
 
     // Refill tokens
-    newTokens := int(elapsed.Seconds() * float64(rl.refillRate))
-    rl.tokens += newTokens
+    rl.tokens += elapsed.Seconds() * rl.refillRate
     if rl.tokens > rl.maxTokens {
         rl.tokens = rl.maxTokens
     }
