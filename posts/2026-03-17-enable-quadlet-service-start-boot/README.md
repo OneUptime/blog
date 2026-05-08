@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Quadlet, Systemd, Boot, Startup
 
-Description: Learn how to configure Quadlet container services to start automatically at boot using systemd enable and linger.
+Description: Learn how to configure Quadlet container services to start automatically at boot using the `[Install]` section and linger.
 
 ---
 
-> Ensure your Quadlet container services start automatically when the system boots by enabling them with systemctl and configuring user session persistence with loginctl.
+> Ensure your Quadlet container services start automatically when the system boots by adding an `[Install]` section and configuring user session persistence with loginctl.
 
-Having containers start automatically at boot is essential for production services. Quadlet integrates with systemd's enable mechanism and, for rootless containers, requires user linger to persist services beyond login sessions.
+Having containers start automatically at boot is essential for production services. Quadlet applies the `[Install]` section when systemd generates the service, and, for rootless containers, requires user linger to persist services beyond login sessions.
 
 ---
 
@@ -36,20 +36,17 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
-Enable the service:
+Reload systemd so Quadlet generates the service:
 
 ```bash
 # Reload systemd to detect the Quadlet file
 systemctl --user daemon-reload
 
-# Enable the service to start at boot
-systemctl --user enable webapp.service
-
 # Start it now as well
 systemctl --user start webapp.service
 
-# Verify it is enabled
-systemctl --user is-enabled webapp.service
+# Verify the generated service
+systemctl --user status webapp.service
 ```
 
 ## Enable User Linger for Rootless Services
@@ -77,8 +74,8 @@ sudo cp webapp.container /etc/containers/systemd/
 # Reload systemd
 sudo systemctl daemon-reload
 
-# Enable and start
-sudo systemctl enable --now webapp.service
+# Start it now
+sudo systemctl start webapp.service
 ```
 
 ## Verify Boot Startup
@@ -95,25 +92,29 @@ journalctl --user -u webapp.service -b
 ## Enable Multiple Services
 
 ```bash
-# Enable all your application services
-systemctl --user enable app-db.service
-systemctl --user enable app-api.service
-systemctl --user enable app-proxy.service
+# Reload systemd after adding the Quadlet files
+systemctl --user daemon-reload
 
-# Or start and enable in one command
-systemctl --user enable --now webapp.service
+# Start all your application services now
+systemctl --user start app-db.service
+systemctl --user start app-api.service
+systemctl --user start app-proxy.service
+
+# Or start a single generated service
+systemctl --user start webapp.service
 ```
 
 ## Disable Boot Startup
 
 ```bash
-# Disable the service from starting at boot
-systemctl --user disable webapp.service
+# Remove or comment out the [Install] section in webapp.container,
+# then reload systemd so Quadlet regenerates the service
+systemctl --user daemon-reload
 
-# The service will no longer start automatically
-systemctl --user is-enabled webapp.service
+# Stop the service if it is currently running
+systemctl --user stop webapp.service
 ```
 
 ## Summary
 
-To have Quadlet services start at boot, include `WantedBy=default.target` in the `[Install]` section and run `systemctl enable`. For rootless containers, enable user linger with `loginctl enable-linger` so services persist beyond login sessions. Rootful services use system-level systemctl and do not require linger.
+To have Quadlet services start at boot, include `WantedBy=default.target` in the `[Install]` section and reload systemd so Quadlet regenerates the service. For rootless containers, enable user linger with `loginctl enable-linger` so services persist beyond login sessions. Rootful services use system-level systemctl and do not require linger.
