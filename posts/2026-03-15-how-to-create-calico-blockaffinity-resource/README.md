@@ -10,9 +10,9 @@ Description: Understand the Calico BlockAffinity resource, how it is created dur
 
 ## Introduction
 
-The BlockAffinity resource in Calico maps IP address blocks to specific nodes. When a pod is scheduled on a node, Calico's IPAM system allocates an IP from a block that has affinity to that node. If no suitable block exists, a new block is carved from the configured IP pool and a BlockAffinity resource is created to record the assignment. This mechanism ensures that each node draws pod IPs from predictable, contiguous CIDR ranges.
+The BlockAffinity resource in Calico maps IP address blocks to specific nodes. When a pod is scheduled on a node, Calico's IPAM system tries to allocate an IP from a block that has affinity to that node. If another block is needed, a new block can be carved from the configured IP pool and a BlockAffinity resource is created to record the assignment. Calico can also assign borrowed IPs from blocks associated with other nodes when necessary. This mechanism lets each node usually draw pod IPs from associated, contiguous CIDR ranges while still allowing flexible allocation.
 
-Understanding BlockAffinity is important for troubleshooting IPAM issues, capacity planning, and managing IP address exhaustion. While BlockAffinity resources are typically created automatically by Calico's IPAM controller, there are situations where you may need to inspect, manage, or clean up stale affinities manually.
+Understanding BlockAffinity is important for troubleshooting IPAM issues, capacity planning, and managing IP address exhaustion. BlockAffinity resources are managed automatically by Calico IPAM, so operational work usually involves inspecting affinities and using Calico IPAM commands to clean up leaked or stale allocations.
 
 This guide covers how BlockAffinity resources work, how they are created, and how to manage them for common operational scenarios.
 
@@ -42,16 +42,16 @@ Key fields:
 
 - `cidr`: The IP block assigned to the node, carved from an IPPool
 - `node`: The Kubernetes node that owns this block
-- `state`: The affinity state, typically `confirmed` or `pendingDeletion`
+- `state`: The affinity state, one of `confirmed`, `pending`, or `pendingDeletion`
 
 ## How BlockAffinities Are Created
 
 BlockAffinity resources are created automatically when Calico IPAM needs to allocate IPs on a node. The process works as follows:
 
 1. A pod is scheduled on a node
-2. The Calico CNI plugin requests an IP from the IPAM controller
-3. The controller checks for existing blocks with affinity to that node
-4. If no block has available IPs, a new block is carved from the IPPool
+2. The Calico CNI plugin invokes Calico IPAM to request an IP
+3. Calico IPAM checks for existing blocks with affinity to that node
+4. If another block is needed and the IPPool has capacity, a new block is carved from the IPPool
 5. A BlockAffinity resource is created to record the assignment
 
 You can observe this by checking the existing affinities:
@@ -78,7 +78,7 @@ spec:
   nodeSelector: all()
 ```
 
-The default `blockSize` is 26 (64 IPs per block). A smaller block size means more BlockAffinity resources but less IP waste per node. A larger block size means fewer resources but potentially more wasted IPs on nodes with few pods.
+The default `blockSize` is 26 for IPv4 (64 IPs per block). In CIDR terms, reducing the prefix length, such as using `/24`, creates larger blocks and usually fewer BlockAffinity resources. Increasing the prefix length, such as using `/28`, creates smaller blocks and usually more BlockAffinity resources, but can reduce unused addresses on nodes with few pods.
 
 ```bash
 calicoctl apply -f ippool.yaml
@@ -115,8 +115,10 @@ calicoctl get blockaffinity -o yaml | grep "node:"
 kubectl get nodes -o name
 
 # Check for leaked IPs using ipam check and release from the report
+calicoctl datastore migrate lock
 calicoctl ipam check -o report.json
 calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Managing IP Exhaustion
@@ -152,7 +154,7 @@ EOF
 
 ## Handling Stale Block Affinities
 
-Over time, blocks may become mostly empty but still hold affinity to a node. Use the IPAM garbage collection to clean up:
+Over time, leaked IPAM allocations can prevent blocks from being fully released. Use the IPAM check and release workflow to clean up leaked addresses:
 
 ```bash
 # Show current IPAM state
@@ -162,8 +164,10 @@ calicoctl ipam show
 calicoctl ipam show --show-blocks
 
 # Check for leaked IPs and release them
+calicoctl datastore migrate lock
 calicoctl ipam check -o report.json
 calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Verification
@@ -189,9 +193,9 @@ calicoctl ipam check
 Common BlockAffinity issues:
 
 - Pod stuck in ContainerCreating with IPAM error: The node may have no blocks with available IPs. Check `calicoctl ipam show --show-blocks` and verify the IPPool has available space
-- Orphaned blocks after node deletion: Run `calicoctl ipam check -o report.json && calicoctl ipam release --from-report=report.json` to free leaked IPs from removed nodes
-- Uneven IP distribution: Nodes that have been running longer tend to accumulate more blocks. This is normal behavior. Consider using smaller block sizes for more even distribution
-- BlockAffinity in pendingDeletion state: The IPAM controller is waiting for all IPs in the block to be released before removing the affinity. Check for lingering pods or leaked IPs
+- Orphaned blocks after node deletion: Lock the datastore, run `calicoctl ipam check -o report.json`, then run `calicoctl ipam release --from-report=report.json` to free leaked IPs from removed nodes before unlocking the datastore
+- Uneven IP distribution: Nodes that have been running longer tend to accumulate more blocks. This is normal behavior. Consider using smaller CIDR blocks, such as a larger `blockSize` prefix length, for more even distribution
+- BlockAffinity in pendingDeletion state: Calico IPAM is waiting for all IPs in the block to be released before removing the affinity. Check for lingering pods or leaked IPs
 - IP pool exhaustion: Check `calicoctl ipam show` for utilization. Add new IPPools if the existing ones are full
 
 ## Conclusion
