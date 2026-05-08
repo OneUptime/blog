@@ -18,23 +18,25 @@ Key monitoring targets are publication frequency, data accuracy over time, and a
 
 - Kubernetes cluster with Cilium installed
 - Prometheus and Grafana deployed
-- kubectl configured
+- kubectl and jq configured
 
 ## Metrics for IP Publication
+
+These Prometheus metrics are emitted by `cilium-operator` for the AWS, Alibaba Cloud, and Azure IPAM plugins.
 
 ```promql
 # Available IPs per node
 
-cilium_ipam_available
+cilium_operator_ipam_available_ips
 
 # Used IPs per node
-cilium_ipam_used
+cilium_operator_ipam_used_ips
 
 # IP allocation rate
-rate(cilium_ipam_allocation_ops_total[5m])
+rate(cilium_operator_ipam_ip_allocation_ops_total[5m])
 
 # IP release rate
-rate(cilium_ipam_release_ops_total[5m])
+rate(cilium_operator_ipam_ip_release_ops_total[5m])
 ```
 
 ## Custom Monitoring Script
@@ -73,32 +75,32 @@ spec:
     - name: ip-publication
       rules:
         - alert: NodeIPsNearExhaustion
-          expr: cilium_ipam_available < 5
+          expr: cilium_operator_ipam_available_ips < 5
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Node {{ $labels.node }} has fewer than 5 IPs available"
+            summary: "Node {{ $labels.target_node }} has fewer than 5 IPs available"
         - alert: IPAllocationFailureRate
-          expr: rate(cilium_ipam_allocation_ops_total{status="failure"}[5m]) > 0
+          expr: rate(cilium_operator_ipam_allocation_duration_seconds_count{status!="success"}[5m]) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "IP allocation failures on {{ $labels.node }}"
+            summary: "IP allocation failures for subnet {{ $labels.subnet_id }}"
 ```
 
 ## Verification
 
 ```bash
-kubectl port-forward -n kube-system svc/cilium-agent 9962:9962 &
-curl -s http://localhost:9962/metrics | grep cilium_ipam
+kubectl port-forward -n kube-system deployment/cilium-operator 9963:9963 &
+curl -s http://localhost:9963/metrics | grep cilium_operator_ipam
 cilium status
 ```
 
 ## Troubleshooting
 
-- **Metrics not available**: Enable Prometheus metrics in Cilium Helm values.
+- **Metrics not available**: Verify `operator.prometheus.enabled=true` in Cilium Helm values and confirm you are using a supported cloud IPAM plugin.
 - **Available count seems stale**: Check agent health on that node.
 - **Alerts too noisy**: Adjust thresholds based on your node capacity.
 
