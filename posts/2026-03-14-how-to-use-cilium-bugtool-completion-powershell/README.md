@@ -23,7 +23,7 @@ This guide covers generating, installing, and using cilium-bugtool PowerShell co
 
 - PowerShell 5.1+ (Windows) or PowerShell 7+ (cross-platform)
 - `cilium-bugtool` binary available
-- `kubectl` access to a Cilium cluster
+- `kubectl` access to a Cilium cluster if you plan to run cilium-bugtool against Cilium pods
 
 ## Generating and Installing Completions
 
@@ -55,8 +55,9 @@ if (!(Test-Path -Path $PROFILE)) {
 Add-Content -Path $PROFILE -Value "`ncilium-bugtool completion powershell | Out-String | Invoke-Expression"
 
 # Alternatively, save to a file and dot-source it
-cilium-bugtool completion powershell > "$HOME\cilium-bugtool-completion.ps1"
-Add-Content -Path $PROFILE -Value ". $HOME\cilium-bugtool-completion.ps1"
+$completionPath = Join-Path $HOME "cilium-bugtool-completion.ps1"
+cilium-bugtool completion powershell > $completionPath
+Add-Content -Path $PROFILE -Value ". `"$completionPath`""
 ```
 
 ### Using the Completions
@@ -64,7 +65,7 @@ Add-Content -Path $PROFILE -Value ". $HOME\cilium-bugtool-completion.ps1"
 ```powershell
 # Complete subcommands
 cilium-bugtool <TAB>
-# Cycles through: completion, help
+# Cycles through available subcommands, such as completion
 
 # Complete flags
 cilium-bugtool --<TAB>
@@ -97,6 +98,5 @@ Write-Host "Completions working"
 ## Conclusion
 
 PowerShell completions for cilium-bugtool bring the same tab-completion productivity to Windows and cross-platform PowerShell environments. Once loaded into your profile, completions are available in every session.
-
 
 
