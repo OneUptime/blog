@@ -123,13 +123,13 @@ fi
 
 ## Clearing the Build Cache Manually
 
-You can clear the stored build cache without using `--no-cache`.
+You can clear unused build cache without using `--no-cache`.
 
 ```bash
-# Remove all build cache
+# Remove unused resources, including all build cache
 podman system prune -a -f
 
-# Remove only build cache (dangling images from builds)
+# Remove dangling images from local storage
 podman image prune -f
 
 # Check current cache usage
@@ -142,25 +142,27 @@ Sometimes the issue is a stale base image rather than the build cache itself.
 
 ```bash
 # Pull the latest base image before building
-podman build --pull -t myapp:latest .
+podman build --pull=always -t myapp:latest .
 
 # Combine with --no-cache for a completely fresh build
-podman build --pull --no-cache -t myapp:latest .
+podman build --pull=always --no-cache -t myapp:latest .
 ```
 
-The `--pull` flag ensures the base image is pulled from the registry even if a local copy exists.
+The `--pull=always` option ensures the base image is pulled from the registry even if a local copy exists.
 
 ## No-Cache for Specific Package Managers
 
 Some package managers have their own caching that persists in layers. Handle these explicitly.
 
 ```bash
-cat > Containerfile << 'EOF'
+cat > Containerfile.python << 'EOF'
 FROM docker.io/library/python:3.12-slim
 
 # pip --no-cache-dir prevents pip from caching within the layer
 RUN pip install --no-cache-dir flask gunicorn
+EOF
 
+cat > Containerfile.node << 'EOF'
 # npm cache clean ensures no npm cache in the layer
 FROM docker.io/library/node:20-alpine
 RUN npm install -g typescript && npm cache clean --force
@@ -173,7 +175,7 @@ EOF
 # Fresh build with a specific tag and platform
 podman build \
   --no-cache \
-  --pull \
+  --pull=always \
   --platform linux/amd64 \
   -t myapp:v1.0.0 \
   .
@@ -202,7 +204,7 @@ IMAGE="myapp"
 DATE=$(date +%Y%m%d)
 
 echo "Starting clean build: ${DATE}"
-podman build --no-cache --pull -t "${IMAGE}:clean-${DATE}" .
+podman build --no-cache --pull=always -t "${IMAGE}:clean-${DATE}" .
 
 echo "Running tests against clean build"
 podman run --rm "${IMAGE}:clean-${DATE}" /app/run-tests.sh
