@@ -18,10 +18,11 @@ This guide covers enabling, configuring, and tuning CES for production.
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.25+) with Cilium (v1.14+)
+- Kubernetes cluster (v1.25+) with Cilium (v1.16+ for the `ciliumEndpointSlice.enabled` Helm value shown below)
 - Helm v3 installed
 - kubectl configured with cluster access
 - Cilium CLI installed
+- CiliumEndpoint CRDs enabled and no dependency on Cilium Egress Gateway, which is not compatible with CES
 
 ## Enabling CiliumEndpointSlice
 
@@ -49,6 +50,9 @@ ciliumEndpointSlice:
     - nodes: 0
       limit: 10
       burst: 20
+    - nodes: 100
+      limit: 50
+      burst: 100
 ```
 
 ```bash
@@ -108,22 +112,22 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set ciliumEndpointSlice.enabled=true
 
-# Restart operator
-kubectl rollout restart deployment/cilium-operator -n kube-system
-
 # Verify CES resources are created
-kubectl get ciliumendpointslices --all-namespaces
+kubectl get ces
 
 # Monitor migration
-kubectl get ciliumendpointslices --all-namespaces --no-headers | wc -l
+kubectl get ces --no-headers | wc -l
+
+# After CES creation has stabilized, roll out the Cilium agents
+kubectl rollout restart daemonset/cilium -n kube-system
 ```
 
 ## Verification
 
 ```bash
-cilium status | grep -i "endpointslice"
-kubectl get ciliumendpointslices --all-namespaces
-CES_ENDPOINTS=$(kubectl get ciliumendpointslices --all-namespaces -o json | \
+cilium features status | grep -i "ciliumendpointslice"
+kubectl get ces
+CES_ENDPOINTS=$(kubectl get ces -o json | \
   jq '[.items[].endpoints[]] | length')
 echo "Endpoints in CES: $CES_ENDPOINTS"
 ```
@@ -137,4 +141,4 @@ echo "Endpoints in CES: $CES_ENDPOINTS"
 
 ## Conclusion
 
-CiliumEndpointSlice is essential for running Cilium at scale. Enable it early in large clusters and tune operator resources based on endpoint count. Migration from individual CiliumEndpoints is seamless.
+CiliumEndpointSlice is useful for running Cilium at scale. Enable it early in large clusters and tune operator resources based on endpoint count. For existing clusters, follow the documented migration order: let the operator create CES objects first, then roll out the agents.
