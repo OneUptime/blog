@@ -10,7 +10,7 @@ Description: A guide to creating effective operational documentation for OpenSta
 
 ## Introduction
 
-Operational documentation for OpenStack networking with Calico is essential because Calico fundamentally changes the networking model that most OpenStack operators are familiar with. Instead of OVS bridges and overlay networks, Calico uses direct Layer 3 routing with iptables or eBPF for security enforcement. Operations teams need documentation that explains this architecture and provides actionable troubleshooting procedures.
+Operational documentation for OpenStack networking with Calico is essential because Calico fundamentally changes the networking model that most OpenStack operators are familiar with. Instead of OVS bridges and overlay networks, Calico uses direct Layer 3 routing with Felix policy enforcement, typically using the standard iptables dataplane or the eBPF dataplane if your deployment has enabled it. Operations teams need documentation that explains this architecture and provides actionable troubleshooting procedures.
 
 This guide helps you create documentation that covers the architecture, common operational procedures, troubleshooting guides, and on-call reference cards. The goal is to enable any qualified operator to understand and troubleshoot the networking layer without requiring deep Calico expertise.
 
@@ -33,7 +33,7 @@ graph TD
     subgraph "Compute Node"
         VM1[VM Instance] --> TAP1[TAP Interface]
         VM2[VM Instance] --> TAP2[TAP Interface]
-        TAP1 --> FW1[Felix iptables Rules]
+        TAP1 --> FW1[Felix Policy Enforcement]
         TAP2 --> FW1
         FW1 --> RT[Linux Route Table]
         RT --> ETH[Physical NIC]
@@ -53,13 +53,13 @@ Document the key architectural differences from traditional OpenStack networking
 
 ### VM-to-VM on Same Compute Node
 1. Traffic exits source VM via TAP interface
-2. Felix iptables rules apply security group policies
+2. Felix policy enforcement applies security group policies
 3. Linux kernel routes packet to destination TAP interface
 4. No OVS bridge or overlay involved
 
 ### VM-to-VM on Different Compute Nodes
 1. Traffic exits source VM via TAP interface
-2. Felix iptables rules apply security group policies
+2. Felix policy enforcement applies security group policies
 3. Linux route table forwards to destination compute node
 4. Routing uses BGP-learned routes (via BIRD daemon)
 5. Destination compute node applies ingress security rules
@@ -67,9 +67,9 @@ Document the key architectural differences from traditional OpenStack networking
 
 ### VM-to-External
 1. Traffic exits VM via TAP interface
-2. Felix iptables rules apply egress security policies
-3. NAT applied (if configured in IP pool)
-4. Packet routed to external gateway via fabric
+2. Felix policy enforcement applies egress security policies
+3. Packet routed to external gateway via fabric
+4. Gateway or upstream router applies stateful PNAT for private IPv4 ranges, if configured
 ```
 
 ## Creating Operational Runbooks
@@ -88,7 +88,7 @@ echo ""
 
 # Step 1: Check Felix status on all compute nodes
 echo "--- Step 1: Felix Status ---"
-for node in $(openstack compute service list -f value -c Host | sort -u); do
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
   status=$(ssh ${node} 'sudo calicoctl node status 2>/dev/null | head -3')
   echo "Node: ${node}"
   echo "${status}"
@@ -97,16 +97,16 @@ done
 
 # Step 2: Check BGP session health
 echo "--- Step 2: BGP Sessions ---"
-for node in $(openstack compute service list -f value -c Host | sort -u); do
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
   sessions=$(ssh ${node} 'sudo calicoctl node status 2>/dev/null | grep -c Established')
-  total=$(ssh ${node} 'sudo calicoctl node status 2>/dev/null | grep -c "BGP"' )
+  total=$(ssh ${node} 'sudo calicoctl node status 2>/dev/null | awk '\''/^\|/ && $0 !~ /PEER ADDRESS/ {count++} END {print count+0}'\''' )
   echo "${node}: ${sessions}/${total} BGP sessions established"
 done
 
 # Step 3: Check for workload endpoint errors
 echo ""
 echo "--- Step 3: Workload Endpoints ---"
-total=$(calicoctl get workloadendpoints --all-namespaces 2>/dev/null | wc -l)
+total=$(calicoctl get workloadendpoints --all-namespaces 2>/dev/null | awk 'NR > 1 {count++} END {print count+0}')
 echo "Total workload endpoints: ${total}"
 ```
 
@@ -176,8 +176,8 @@ Create a quick-reference card for on-call operators.
 | File | Purpose |
 |------|---------|
 | /etc/calico/felix.cfg | Felix configuration |
-| /etc/cni/net.d/10-calico.conflist | CNI configuration |
-| /opt/cni/bin/calico | CNI plugin binary |
+| /etc/neutron/neutron.conf | Calico Neutron driver and DHCP agent configuration |
+| /etc/neutron/plugins/ml2/ml2_conf.ini | ML2 mechanism driver configuration, if using ML2 mode |
 | /var/log/calico/felix.log | Felix logs (if file logging enabled) |
 
 ## Escalation Contacts
