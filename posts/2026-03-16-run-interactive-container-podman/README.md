@@ -66,7 +66,7 @@ podman run -it --rm ubuntu:22.04 bash
 podman run -it --rm python:3.12 python3
 
 # Node.js image provides node REPL
-podman run -it --rm node:20 node
+podman run -it --rm node:24 node
 ```
 
 ## Exploring a Container's Filesystem
@@ -106,7 +106,7 @@ Mount your local directory for interactive development:
 
 ```bash
 # Mount current directory into the container
-podman run -it --rm -v $(pwd):/workspace -w /workspace node:20 bash
+podman run -it --rm -v $(pwd):/workspace -w /workspace node:24 bash
 
 # Inside the container:
 # ls                    - see your local files
@@ -127,13 +127,15 @@ podman run -d --name web nginx
 podman exec -it web bash
 
 # Inside the running container:
-ps aux                     # See running processes
-cat /var/log/nginx/error.log  # Check error logs
-curl localhost              # Test the service internally
+nginx -T                   # Inspect Nginx configuration
+curl localhost             # Test the service internally
 exit                        # Exit without stopping the container
 
 # The container keeps running after you exit exec
 podman ps
+
+# Check container logs from the host
+podman logs web
 ```
 
 ## Running Interactive Commands
@@ -148,7 +150,7 @@ podman run -it --rm alpine ping -c 3 google.com
 podman run -it --rm alpine nslookup google.com
 
 # Check a specific tool version
-podman run -it --rm golang:1.22 go version
+podman run -it --rm golang:1.26 go version
 
 # Run database migrations interactively
 podman run -it --rm \
@@ -166,7 +168,7 @@ Pass configuration into interactive sessions:
 podman run -it --rm \
     -e NODE_ENV=development \
     -e DEBUG=app:* \
-    node:20 bash
+    node:24 bash
 
 # Inside:
 # echo $NODE_ENV    - development
