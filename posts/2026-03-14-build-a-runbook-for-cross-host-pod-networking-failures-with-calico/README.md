@@ -68,6 +68,9 @@ Based on the diagnosis, apply the appropriate fix:
 **If IPAM/IP allocation issue:**
 ```bash
 calicoctl ipam show --show-blocks
+calicoctl ipam check -o report.json
+# If leaked addresses are confirmed and the datastore has been locked per your procedure:
+calicoctl ipam release --from-report=report.json
 ```
 
 **If connectivity issue:**
@@ -87,7 +90,7 @@ calicoctl apply -f /path/to/backup/calico-config.yaml
 kubectl get pods -n calico-system -l k8s-app=calico-node
 
 # Test connectivity
-kubectl run runbook-test --image=busybox --rm -it --restart=Never -- ping -c 5 <known-pod-ip>
+kubectl run runbook-test --image=busybox --rm -it --restart=Never -- ping -c 5 <known-pod-ip-on-another-node>
 
 # Check all previously failing pods are recovering
 kubectl get pods -A --field-selector status.phase!=Running | grep -v Completed
@@ -154,8 +157,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
