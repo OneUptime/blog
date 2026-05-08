@@ -55,12 +55,18 @@ spec:
 Validate service definitions in CI before deployment:
 
 ```bash
-# Script to validate service selectors match at least one deployment
-SERVICE_SELECTOR=$(kubectl get svc $SVC_NAME -n $NS -o jsonpath='{.spec.selector}')
-MATCHING_PODS=$(kubectl get pods -n $NS -l $(echo $SERVICE_SELECTOR | jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")') --no-headers | wc -l)
+# Script to validate service selectors match at least one running pod
+SERVICE_SELECTOR=$(kubectl get svc "$SVC_NAME" -n "$NS" -o json | jq -r '.spec.selector // {} | to_entries | map("\(.key)=\(.value)") | join(",")')
+
+if [ -z "$SERVICE_SELECTOR" ]; then
+  echo "ERROR: Service has no selector"
+  exit 1
+fi
+
+MATCHING_PODS=$(kubectl get pods -n "$NS" -l "$SERVICE_SELECTOR" --field-selector=status.phase=Running --no-headers | wc -l)
 
 if [ "$MATCHING_PODS" -eq 0 ]; then
-  echo "ERROR: Service selector matches zero pods"
+  echo "ERROR: Service selector matches zero running pods"
   exit 1
 fi
 ```
@@ -70,7 +76,7 @@ fi
 Write Calico network policies that allow required ClusterIP traffic by default.
 
 ```yaml
-# Baseline policy that allows DNS and essential cluster services
+# Baseline policy that allows cluster DNS lookups
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
@@ -112,19 +118,21 @@ spec:
 
 ## Configuring kube-proxy for Resilience
 
+For Kubernetes v1.35 and later, prefer `nftables` mode when your nodes and network plugin support it. Use IPVS mode on older clusters where `nftables` is not available.
+
 ```bash
-# Use IPVS mode for better scalability with many services
+# Edit kube-proxy configuration for your cluster's supported proxy mode
 kubectl edit configmap kube-proxy -n kube-system
 ```
 
 ```yaml
-# Recommended kube-proxy settings
+# Example kube-proxy settings for clusters that still use IPVS mode
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration
 mode: "ipvs"
 ipvs:
-  scheduler: "lc"             # least connection scheduling
-  minSyncPeriod: "0s"
+  scheduler: "rr"             # round-robin scheduling
+  minSyncPeriod: "1s"
   syncPeriod: "30s"
 conntrack:
   maxPerCore: 32768
@@ -155,10 +163,17 @@ kind: Deployment
 metadata:
   name: backend-api
 spec:
+  selector:
+    matchLabels:
+      app: backend-api
   template:
+    metadata:
+      labels:
+        app: backend-api
     spec:
       containers:
       - name: api
+        image: backend-api:1.0
         readinessProbe:
           httpGet:
             path: /healthz
@@ -189,14 +204,27 @@ kubectl run connectivity-test --image=nicolaka/netshoot --rm -it -- \
 Verify preventive measures are in place:
 
 ```bash
-# Audit all services for endpoint health
-kubectl get endpoints --all-namespaces | awk '$3 == "<none>" {print $1, $2}'
+# Audit services with no ready EndpointSlice endpoints
+kubectl get svc,endpointslice --all-namespaces -o json | \
+  jq -r '
+    [.items[] | select(.kind == "EndpointSlice") |
+      {
+        key: (.metadata.namespace + "/" + .metadata.labels["kubernetes.io/service-name"]),
+        ready: ([.endpoints[]? | select(.conditions.ready != false)] | length)
+      }
+    ] as $slices |
+    .items[] |
+    select(.kind == "Service" and .spec.type != "ExternalName") |
+    (.metadata.namespace + "/" + .metadata.name) as $key |
+    select(([$slices[] | select(.key == $key) | .ready] | add // 0) == 0) |
+    "\(.metadata.namespace) \(.metadata.name)"
+  '
 
 # Check conntrack headroom on all nodes
 for node in $(kubectl get nodes -o name); do
   echo "$node:"
-  kubectl debug node/${node#node/} -it --image=busybox -- \
-    cat /proc/sys/net/netfilter/nf_conntrack_max
+  kubectl debug node/${node#node/} -it --image=busybox --profile=sysadmin -- \
+    chroot /host cat /proc/sys/net/netfilter/nf_conntrack_max
 done
 ```
 
