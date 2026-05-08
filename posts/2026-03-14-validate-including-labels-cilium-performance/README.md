@@ -31,21 +31,62 @@ set -euo pipefail
 
 echo "=== Label Inclusion Validation ==="
 
-# Step 1: Verify configuration exists
+# Step 1: Verify inclusion configuration exists
 
-LABELS=$(cilium config view | grep "^labels")
-if [ -z "$LABELS" ]; then
-  echo "FAIL: No label inclusion configuration"
+LABEL_CONFIG=$(cilium config view | awk '$1 == "labels" { $1=""; sub(/^[[:space:]]+/, ""); print }')
+if [ -z "$LABEL_CONFIG" ]; then
+  echo "FAIL: No custom label inclusion configuration"
   exit 1
 fi
-echo "PASS: Label config: $LABELS"
+echo "PASS: Label config: $LABEL_CONFIG"
 
 # Step 2: Verify all policy labels are included
-POLICY_LABELS=$(kubectl get cnp --all-namespaces -o json 2>/dev/null | \
-  jq -r '[.items[].spec | .. | .matchLabels? // empty | keys[]] | unique | .[]' | sort)
-INCLUDED=$(cilium config view | grep "^labels" | sed 's/labels *//' | tr ' ' '\n' | sed 's/k8s://' | sort)
+POLICY_LABELS=$(kubectl get cnp,ccnp,netpol --all-namespaces -o json 2>/dev/null | \
+  jq -r '[
+    .items[].spec
+    | ..
+    | objects
+    | (.matchLabels? // {} | keys[]),
+      (.matchExpressions? // [] | .[]?.key)
+  ] | unique | .[]' | sort)
 
-MISSING=$(comm -23 <(echo "$POLICY_LABELS") <(echo "$INCLUDED"))
+DEFAULT_INCLUSIVE_PATTERNS=(
+  'reserved:.*'
+  'io\.kubernetes\.pod\.namespace'
+  'io\.cilium\.k8s\.namespace\.labels'
+  'io\.cilium\.k8s\.policy\.cluster'
+  'io\.cilium\.k8s\.policy\.serviceaccount'
+  'app\.kubernetes\.io'
+)
+
+read -r -a CONFIG_PATTERNS <<< "$LABEL_CONFIG"
+INCLUDE_PATTERNS=()
+for pattern in "${CONFIG_PATTERNS[@]}"; do
+  if [[ "$pattern" != !* ]]; then
+    INCLUDE_PATTERNS+=("$pattern")
+  fi
+done
+
+if [ "${#INCLUDE_PATTERNS[@]}" -eq 0 ]; then
+  echo "FAIL: labels config contains only exclusions; add inclusive label patterns"
+  exit 1
+fi
+
+MISSING=""
+while IFS= read -r label; do
+  [ -z "$label" ] && continue
+  MATCHED=false
+  for pattern in "${INCLUDE_PATTERNS[@]}" "${DEFAULT_INCLUSIVE_PATTERNS[@]}"; do
+    if [[ "$label" =~ ^${pattern} ]]; then
+      MATCHED=true
+      break
+    fi
+  done
+  if [ "$MATCHED" = false ]; then
+    MISSING+="${label}"$'\n'
+  fi
+done <<< "$POLICY_LABELS"
+
 if [ -n "$MISSING" ]; then
   echo "FAIL: Policy labels not included in identity config:"
   echo "$MISSING"
@@ -54,7 +95,8 @@ fi
 echo "PASS: All policy labels are included"
 
 # Step 3: Verify identity count is reasonable
-IDS=$(cilium identity list | wc -l)
+IDS=$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json | jq 'length')
 echo "Identity count: $IDS"
 if [ "$IDS" -gt 10000 ]; then
   echo "WARN: Identity count above 10000"
@@ -67,7 +109,8 @@ echo "Validation complete"
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json | jq 'length'
 ```
 
 ## Troubleshooting
@@ -98,9 +141,9 @@ kubectl get pods --all-namespaces --field-selector spec.nodeName=node-test-1 \
 ssh node-test-1 "for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > \$gov; done"
 ssh node-test-2 "for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > \$gov; done"
 
-# Uncordon for test workloads only
-kubectl uncordon node-test-1 node-test-2
+# Taint before uncordoning so only tolerated test workloads can schedule
 kubectl taint nodes node-test-1 node-test-2 dedicated=perf-testing:NoSchedule
+kubectl uncordon node-test-1 node-test-2
 ```
 
 ### Statistical Analysis
@@ -119,7 +162,7 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+echo "${SAMPLES[@]}" | tr ' ' '\n' | gawk '
 {
   sum += $1
   sumsq += $1 * $1
