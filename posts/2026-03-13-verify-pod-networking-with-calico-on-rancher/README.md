@@ -45,7 +45,7 @@ All pods should show `Running` with no restarts.
 calicoctl node status
 ```
 
-Verify that BGP sessions are `Established` between all nodes in the cluster.
+If your Calico deployment uses BGP, verify that the relevant BGP sessions are `Established`. Calico VXLAN deployments do not use BGP, so this command may show no peers in VXLAN-only clusters.
 
 ## Step 4: Verify IPAM
 
@@ -54,22 +54,25 @@ calicoctl ipam show
 calicoctl ipam show --show-blocks
 ```
 
-Each node should have an IP block allocated.
+Nodes running pods that use Calico IPAM should have allocated blocks or borrowed IPs from the Calico IP pools.
 
 ## Step 5: Deploy Cross-Node Test Pods
 
-Use node selectors to schedule pods on different nodes:
+Use `nodeName` overrides to schedule pods on different nodes:
 
 ```bash
 NODE1=$(kubectl get nodes -o name | head -1 | cut -d/ -f2)
 NODE2=$(kubectl get nodes -o name | sed -n '2p' | cut -d/ -f2)
 
 kubectl run pod-node1 --image=busybox --restart=Never \
-  --overrides="{\"spec\":{\"nodeName\":\"$NODE1\"}}" -- sleep 3600
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$NODE1\"}}" \
+  --command -- sleep 3600
 
 kubectl run pod-node2 --image=busybox --restart=Never \
-  --overrides="{\"spec\":{\"nodeName\":\"$NODE2\"}}" -- sleep 3600
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$NODE2\"}}" \
+  --command -- sleep 3600
 
+kubectl wait --for=condition=Ready pod/pod-node1 pod/pod-node2 --timeout=120s
 kubectl get pods -o wide
 ```
 
@@ -84,6 +87,7 @@ kubectl exec pod-node1 -- ping -c 4 $NODE2_POD_IP
 
 ```bash
 kubectl run nginx --image=nginx --port=80
+kubectl wait --for=condition=Ready pod/nginx --timeout=120s
 kubectl expose pod nginx --port=80 --name=nginx-svc
 kubectl exec pod-node1 -- wget -qO- http://nginx-svc.default.svc.cluster.local
 ```
@@ -93,6 +97,8 @@ kubectl exec pod-node1 -- wget -qO- http://nginx-svc.default.svc.cluster.local
 ```bash
 kubectl exec pod-node1 -- ping -c 4 8.8.8.8
 ```
+
+This confirms external egress only if your cluster network policies, firewall rules, and upstream network allow ICMP traffic.
 
 ## Conclusion
 
