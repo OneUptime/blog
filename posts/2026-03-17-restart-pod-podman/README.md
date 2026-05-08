@@ -8,9 +8,9 @@ Description: Learn how to restart a Podman pod to refresh all its containers in 
 
 ---
 
-> Restarting a pod stops and then starts all of its containers, useful for applying configuration changes or recovering from errors.
+> Restarting a pod stops running containers and starts them again, useful for applying mounted configuration changes or recovering from errors.
 
-Sometimes you need to cycle all containers in a pod without tearing it down. The `podman pod restart` command stops all member containers and then starts them again. This is useful after updating environment variables, changing mounted configuration files, or recovering from a misbehaving container.
+Sometimes you need to cycle all containers in a pod without tearing it down. The `podman pod restart` command stops running member containers and then starts them again; stopped containers in the pod are started. This is useful after changing mounted configuration files or recovering from a misbehaving container.
 
 ---
 
@@ -90,4 +90,4 @@ fi
 
 ## Summary
 
-Use `podman pod restart` to stop and start all containers in a pod. This is the quickest way to apply configuration changes or recover from container failures without recreating the pod. Combine with health checks to verify successful restarts.
+Use `podman pod restart` to stop and start running containers in a pod, while also starting stopped containers. This is the quickest way to apply mounted configuration changes or recover from container failures without recreating the pod. Combine with health checks to verify successful restarts.
