@@ -22,15 +22,17 @@ The `calicoctl ipam check` command is read-only and does not modify any cluster 
 If you mistakenly released an IP that was still in use:
 
 ```bash
-# The released IP will be reallocated when a new pod needs it
+# Releasing an IP does not remove it from any existing endpoint that is using it.
+# It only makes the address available for assignment again.
 
-# The original pod may need to be restarted to get a new IP
+# If the address was released while still in use, restart the affected pod
+# so it receives an IP that is allocated in Calico IPAM.
 kubectl delete pod <affected-pod> -n <namespace>
 
-# The pod's controller (Deployment, StatefulSet, etc.) will recreate it with a new IP
+# The pod's controller (Deployment, StatefulSet, etc.) will recreate it.
 ```
 
-Unfortunately, a released IP cannot be "un-released." The IP returns to the pool and may be allocated to a different pod.
+Unfortunately, a released IP cannot be "un-released." The IP returns to the pool and may be allocated to another endpoint.
 
 ## Reverting Block Affinity Cleanup
 
@@ -40,8 +42,8 @@ If you removed a block affinity that was still needed:
 # Check current block affinities
 kubectl get blockaffinities.crd.projectcalico.org
 
-# If a node lost its block affinity, the Calico node process
-# will automatically re-claim blocks when pods are scheduled
+# If a node lost its block affinity, Calico IPAM can claim new blocks
+# when pods are scheduled.
 # Restart calico-node on the affected node to force reinitialization
 kubectl delete pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=<node>
 ```
@@ -53,13 +55,17 @@ Always check before releasing:
 ```bash
 #!/bin/bash
 # safe-ipam-cleanup.sh
-# Performs a dry-run before any cleanup actions
+# Generates and reviews an IPAM check report before any cleanup actions
 
 echo "=== IPAM Cleanup Dry Run ==="
 echo ""
 
-# Show what would be cleaned up
-calicoctl ipam check
+# Prevent IPAM data from changing while the report is generated and reviewed
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
+
+# Generate a report that can be reviewed before any release action
+calicoctl ipam check -o report.json
 
 echo ""
 echo "Proposed actions:"
@@ -71,7 +77,9 @@ echo "$VALID_NODES" | while read -r node; do
 done
 
 echo ""
-echo "Review the above. To proceed with cleanup, run with --execute flag."
+echo "Review report.json and the node list above before running any cleanup commands."
+echo "If the leaked IP findings are valid, release them with:"
+echo "  calicoctl ipam release --from-report report.json"
 ```
 
 ## Verification
@@ -86,7 +94,7 @@ kubectl get pods --all-namespaces -o wide | grep -v Running | grep -v Completed
 
 ## Troubleshooting
 
-- **Pod lost its IP after release**: The pod needs to be restarted. Its controller will schedule a new instance.
+- **IP was released while still in use**: Restart the affected pod so its recreated instance receives an IP that is allocated in Calico IPAM.
 - **Node cannot allocate IPs after block cleanup**: Restart the calico-node pod on that node to force IPAM reinitialization.
 
 ## Conclusion
