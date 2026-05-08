@@ -27,7 +27,7 @@ The process works in three layers:
 
 # podman build --platform linux/arm64 .
 #   -> Podman pulls ARM64 base image
-#   -> RUN commands create ARM64 binaries
+#   -> RUN commands execute ARM64 binaries
 #   -> Kernel's binfmt_misc detects ARM64 ELF magic bytes
 #   -> Routes execution to qemu-aarch64-static
 #   -> QEMU translates ARM64 instructions to AMD64
@@ -95,19 +95,19 @@ ls /usr/bin/qemu-*-static
 
 ```bash
 # Test ARM64 emulation
-podman run --rm --platform linux/arm64 alpine:3.19 uname -m
+podman run --rm --platform linux/arm64 alpine:3.23 uname -m
 # Output: aarch64
 
 # Test s390x emulation
-podman run --rm --platform linux/s390x alpine:3.19 uname -m
+podman run --rm --platform linux/s390x alpine:3.23 uname -m
 # Output: s390x
 
 # Test ppc64le emulation
-podman run --rm --platform linux/ppc64le alpine:3.19 uname -m
+podman run --rm --platform linux/ppc64le alpine:3.23 uname -m
 # Output: ppc64le
 
 # Test ARMv7 emulation
-podman run --rm --platform linux/arm/v7 alpine:3.19 uname -m
+podman run --rm --platform linux/arm/v7 alpine:3.23 uname -m
 # Output: armv7l
 ```
 
@@ -117,7 +117,7 @@ podman run --rm --platform linux/arm/v7 alpine:3.19 uname -m
 mkdir -p ~/qemu-demo && cd ~/qemu-demo
 
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl file
 RUN echo "Architecture: $(uname -m)" > /arch.txt
 RUN curl --version > /curl-version.txt
@@ -144,14 +144,14 @@ QEMU emulation can be 5-20x slower than native execution. Minimize the emulated 
 ```bash
 cat > Containerfile <<'EOF'
 # Build stage runs NATIVELY (no QEMU)
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY . .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 go build -o /app
 
 # Runtime stage uses QEMU only for minimal operations
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates   # Quick operation under QEMU
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
@@ -165,14 +165,14 @@ podman build --platform linux/arm64 -t myapp:arm64 .
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM --platform=$BUILDPLATFORM alpine:3.19 AS fetcher
+FROM --platform=$BUILDPLATFORM alpine:3.23 AS fetcher
 ARG TARGETARCH
 RUN apk add --no-cache curl
 # Download runs natively, just fetching an ARM64 binary
 RUN curl -Lo /tmp/app "https://releases.example.com/app-linux-${TARGETARCH}" && \
     chmod +x /tmp/app
 
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=fetcher /tmp/app /usr/local/bin/app
 CMD ["app"]
 EOF
@@ -241,7 +241,7 @@ sudo dnf update qemu-user-static
 
 ## QEMU with Podman Machine (macOS)
 
-On macOS, Podman runs inside a Linux VM that includes QEMU.
+On macOS, Podman runs inside a Linux VM; foreign-architecture containers require binfmt/QEMU handlers inside that VM.
 
 ```bash
 # Initialize Podman machine with extra resources
@@ -250,9 +250,9 @@ podman machine init --cpus 4 --memory 8192 --disk-size 100
 # Start the machine
 podman machine start
 
-# QEMU is pre-configured in the machine
-podman run --rm --platform linux/arm64 alpine:3.19 uname -m
-podman run --rm --platform linux/amd64 alpine:3.19 uname -m
+# If binfmt/QEMU handlers are configured in the VM
+podman run --rm --platform linux/arm64 alpine:3.23 uname -m
+podman run --rm --platform linux/amd64 alpine:3.23 uname -m
 ```
 
 ## Supported Architectures
