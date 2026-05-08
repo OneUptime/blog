@@ -17,7 +17,7 @@ The cluster-level diagnostic bundle is invaluable for support cases because it p
 ## Prerequisites
 
 - A Kubernetes cluster with Calico installed
-- `calicoctl` v3.25+ with access to the Calico datastore
+- A `calicoctl` version that matches your Calico cluster version, with access to the Calico datastore
 - `kubectl` access with cluster-admin privileges
 - Sufficient disk space for the diagnostic bundle
 
@@ -30,18 +30,13 @@ calicoctl cluster diags
 This collects cluster-wide Calico resources and saves them to a tar.gz file:
 
 ```text
-Collecting cluster diagnostics...
-  Collecting ClusterInformation...
-  Collecting Nodes...
-  Collecting IPPools...
-  Collecting BGPConfigurations...
-  Collecting BGPPeers...
-  Collecting FelixConfigurations...
-  Collecting GlobalNetworkPolicies...
-  Collecting NetworkPolicies...
-  Collecting GlobalNetworkSets...
+==== Begin collecting diagnostics. ====
+Created temporary directory: /tmp/123456789
+Collecting Calico resources...
+Collecting core kubernetes resources...
   ...
-Diagnostics saved to calico-cluster-diags-20260314.tar.gz
+==== Producing a diagnostics bundle. ====
+Diagnostic bundle created at ./calico-diagnostics-20260314_120000.tar.gz
 ```
 
 ## Collecting Diagnostics for Support Cases
@@ -60,7 +55,7 @@ echo "=== Collecting Support Bundle ==="
 # 1. Cluster diagnostics
 echo "Collecting cluster diagnostics..."
 calicoctl cluster diags 2>/dev/null
-mv calico-cluster-diags-*.tar.gz "$BUNDLE_DIR/" 2>/dev/null
+mv calico-diagnostics-*.tar.gz "$BUNDLE_DIR/" 2>/dev/null
 
 # 2. Calico version info
 echo "Collecting version information..."
@@ -104,7 +99,7 @@ echo "Size: $(du -h ${BUNDLE_DIR}.tar.gz | cut -f1)"
 
 BUNDLE="$1"
 if [ -z "$BUNDLE" ]; then
-  echo "Usage: $0 <calico-cluster-diags.tar.gz>"
+  echo "Usage: $0 <calico-diagnostics.tar.gz>"
   exit 1
 fi
 
@@ -164,7 +159,7 @@ spec:
             - -c
             - |
               calicoctl cluster diags
-              cp calico-cluster-diags-*.tar.gz /diags/
+              cp calico-diagnostics-*.tar.gz /diags/
             volumeMounts:
             - name: diags
               mountPath: /diags
@@ -182,11 +177,11 @@ spec:
 calicoctl cluster diags
 
 # Verify the bundle
-ls -lh calico-cluster-diags-*.tar.gz
-tar tzf calico-cluster-diags-*.tar.gz | head -20
+ls -lh calico-diagnostics-*.tar.gz
+tar tzf calico-diagnostics-*.tar.gz | head -20
 
 # Analyze
-./analyze-cluster-diags.sh calico-cluster-diags-*.tar.gz
+./analyze-cluster-diags.sh calico-diagnostics-*.tar.gz
 ```
 
 ## Troubleshooting
