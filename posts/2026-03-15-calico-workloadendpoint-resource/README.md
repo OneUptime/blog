@@ -10,9 +10,9 @@ Description: A practical guide to understanding, querying, and leveraging Calico
 
 ## Introduction
 
-The WorkloadEndpoint resource in Calico represents a network interface associated with a workload, such as a Kubernetes pod. Each time a pod is scheduled onto a node, Calico creates a corresponding WorkloadEndpoint that tracks the pod's IP address, network namespace, interface name, and the security profiles applied to it.
+The WorkloadEndpoint resource in Calico represents a network interface associated with a workload, such as a Kubernetes pod. When Calico networking is set up for a pod, Calico creates a corresponding WorkloadEndpoint that tracks details such as the pod name, assigned IP CIDRs, host-side interface name, and the profiles applied to it.
 
-Understanding WorkloadEndpoints is essential for operators who need to debug connectivity issues, verify that network policies are correctly applied, or audit which endpoints exist on a given node. Unlike higher-level Kubernetes resources, WorkloadEndpoints give you a direct view into Calico's data plane state.
+Understanding WorkloadEndpoints is essential for operators who need to debug connectivity issues, verify that network policies are correctly applied, or audit which endpoints exist on a given node. Unlike higher-level Kubernetes resources, WorkloadEndpoints give you a direct view into the endpoint state that Calico uses to program policy and networking.
 
 This guide walks through practical techniques for listing, inspecting, and using WorkloadEndpoint resources in real production clusters running Calico as the CNI plugin.
 
@@ -30,7 +30,7 @@ Use `calicoctl` to list all WorkloadEndpoints in the cluster:
 ```bash
 # List all WorkloadEndpoints across all namespaces
 
-calicoctl get workloadendpoints -o wide
+calicoctl get workloadendpoints --all-namespaces -o wide
 
 # List WorkloadEndpoints in a specific namespace
 calicoctl get workloadendpoints --namespace=default -o wide
@@ -82,11 +82,11 @@ When troubleshooting a specific node, filter endpoints by the node name:
 calicoctl get workloadendpoints --all-namespaces -o wide | grep "node1"
 ```
 
-You can also use label selectors to filter:
+You can also filter by Calico's automatic namespace label in YAML output:
 
 ```bash
-# Filter by a specific label
-calicoctl get workloadendpoints -l "projectcalico.org/namespace==production" -o wide
+# Filter by the namespace label in YAML output
+calicoctl get workloadendpoints --all-namespaces -o yaml | grep -B 6 -A 20 "projectcalico.org/namespace: production"
 ```
 
 ## Correlating WorkloadEndpoints with Pod State
@@ -101,15 +101,17 @@ kubectl get pods -n default -o wide
 calicoctl get workloadendpoints -n default -o wide
 ```
 
-If a pod exists in Kubernetes but has no corresponding WorkloadEndpoint, Calico may not have processed the pod yet, or Felix may be experiencing issues on that node. Check Felix logs:
+If a pod exists in Kubernetes but has no corresponding WorkloadEndpoint, Calico may not have processed the pod yet, or Felix may be experiencing issues on that node. Check the calico-node logs, using the namespace where Calico is installed:
 
 ```bash
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50
+# Or, for manifest-based installs:
+kubectl logs -n kube-system -l k8s-app=calico-node -c calico-node --tail=50
 ```
 
 ## Checking Applied Profiles and Policies
 
-The `profiles` field in a WorkloadEndpoint lists the Calico profiles applied to the endpoint. These profiles correspond to Kubernetes namespace and service account policies:
+The `profiles` field in a WorkloadEndpoint lists the Calico profiles assigned to the endpoint. Profiles can contribute labels to endpoints and historically could also contain policy rules, though Calico recommends NetworkPolicy and GlobalNetworkPolicy for policy:
 
 ```bash
 # View profiles for a specific endpoint
@@ -119,7 +121,7 @@ calicoctl get workloadendpoint <endpoint-name> -n default -o yaml | grep -A 5 "p
 calicoctl get profile kns.default -o yaml
 ```
 
-This helps verify that the correct network policies are being applied to your workloads.
+This helps verify the endpoint's profile assignments and labels that policy may rely on.
 
 ## Debugging Interface Mapping
 
@@ -147,7 +149,7 @@ echo "WorkloadEndpoints: $WEP_COUNT, Running Pods: $POD_COUNT"
 calicoctl get workloadendpoints --all-namespaces -o yaml | grep -B 10 "ipNetworks: \[\]"
 ```
 
-The WorkloadEndpoint count should closely match the running pod count. Minor discrepancies can occur during pod scheduling transitions.
+The WorkloadEndpoint count should closely match the running pod count for pods that use Calico networking. Minor discrepancies can occur during pod scheduling transitions, and host-network pods do not have a normal Calico pod interface.
 
 ## Troubleshooting
 
