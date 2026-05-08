@@ -21,7 +21,7 @@ By the end of this post you will have a working GlobalNetworkPolicy resource app
 - A running Kubernetes cluster (v1.24 or later)
 - Calico installed (v3.26 or later recommended)
 - `kubectl` configured with cluster-admin privileges
-- `calicoctl` installed (optional but recommended for validation)
+- `calicoctl` installed, or a Calico installation with the Calico API server or native `projectcalico.org/v3` CRDs enabled for `kubectl` access
 
 ## Understanding the GlobalNetworkPolicy Resource
 
@@ -50,25 +50,23 @@ spec:
     - action: Deny
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set for a simple deny-all-egress example. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
-Apply the manifest using `kubectl`:
+Apply the manifest using `calicoctl`:
+
+```bash
+calicoctl apply -f globalnetworkpolicy.yaml
+```
+
+If your cluster has the Calico API server or native `projectcalico.org/v3` CRDs enabled, you can also use `kubectl`:
 
 ```bash
 kubectl apply -f globalnetworkpolicy.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
-
-```bash
-# Apply with calicoctl for enhanced validation
-
-calicoctl apply -f globalnetworkpolicy.yaml
-```
-
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` and the Calico API server provide validation and defaulting for Calico API resources.
 
 ## Verification
 
@@ -76,10 +74,10 @@ Confirm that the resource was created successfully:
 
 ```bash
 # List GlobalNetworkPolicy resources
-kubectl get globalnetworkpolicy.projectcalico.org -o wide
+kubectl get globalnetworkpolicy -o wide
 
 # Describe the specific resource for full details
-kubectl describe globalnetworkpolicy.projectcalico.org
+kubectl describe globalnetworkpolicy deny-all-egress
 
 # Verify with calicoctl
 calicoctl get globalnetworkpolicy -o yaml
@@ -88,7 +86,7 @@ calicoctl get globalnetworkpolicy -o yaml
 Check the Calico component logs for any warnings or errors related to the new resource:
 
 ```bash
-# Check calico-node logs
+# Check calico-node logs. For manifest-based installs, use kube-system instead.
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 ```
 
@@ -96,14 +94,14 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `GlobalNetworkPolicy`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If you are using `kubectl`, check that the Calico API server or native `projectcalico.org/v3` CRDs are available: `kubectl api-resources | grep projectcalico.org`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
+- Restart the calico-node pods. For manifest-based installs, use `kube-system` instead of `calico-system`: `kubectl rollout restart daemonset calico-node -n calico-system`.
 - Check Felix and Typha logs for error messages.
 
 
@@ -113,15 +111,15 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on Kubernetes resources enable you to build flexible policy configurations that apply differently across your cluster. For example, you can label namespaces and select them from a GlobalNetworkPolicy:
 
 ```bash
-# Label nodes for targeted configuration
-kubectl label node worker-1 calico-config=high-performance
-kubectl label node worker-2 calico-config=standard
+# Label namespaces for targeted policy
+kubectl label namespace production calico-policy=strict
+kubectl label namespace staging calico-policy=standard
 
 # Verify labels are applied
-kubectl get nodes --show-labels | grep calico-config
+kubectl get namespaces --show-labels | grep calico-policy
 ```
 
 ### Version Control and GitOps Integration
