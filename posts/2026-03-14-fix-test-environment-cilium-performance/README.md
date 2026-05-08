@@ -20,7 +20,8 @@ This guide provides actionable fixes for the most common test environment issues
 
 - Kubernetes cluster with Cilium v1.14+
 - Multiple worker nodes for testing
-- `kubectl`, `cilium` CLI, and node-level access
+- `kubectl`, `cilium` CLI, `jq`, `iperf3`, and node-level access
+- Metrics Server installed if you use `kubectl top` for monitoring
 - Understanding of your hardware specifications
 
 ## Standardizing Node Configuration
@@ -44,12 +45,16 @@ done
 
 ```bash
 # Cordon and drain test nodes
-kubectl cordon node-perf-1 node-perf-2
-kubectl drain node-perf-1 --ignore-daemonsets --delete-emptydir-data
+for node in node-perf-1 node-perf-2; do
+  kubectl cordon "$node"
+  kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data
+done
 
-# Uncordon only for test pods
-kubectl uncordon node-perf-1 node-perf-2
-kubectl taint nodes node-perf-1 node-perf-2 dedicated=perf-testing:NoSchedule
+# Taint before uncordoning so only pods with a matching toleration can schedule
+for node in node-perf-1 node-perf-2; do
+  kubectl taint nodes "$node" dedicated=perf-testing:NoSchedule
+  kubectl uncordon "$node"
+done
 ```
 
 ## Standardizing Cilium Configuration
@@ -57,7 +62,7 @@ kubectl taint nodes node-perf-1 node-perf-2 dedicated=perf-testing:NoSchedule
 ```bash
 
 # Document the exact Cilium config for reproducibility
-helm get values cilium -n kube-system -o yaml > cilium-test-config.yaml
+helm get values cilium -n kube-system --all -o yaml > cilium-test-config.yaml
 
 
 
@@ -90,7 +95,7 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
   --reuse-values \
   <your-changes-here>
 
-# Step 3: Wait for the Cilium agent on the test node to restart
+# Step 3: Wait for the Cilium DaemonSet rollout to complete
 kubectl rollout status ds/cilium -n kube-system --timeout=120s
 
 # Step 4: Run a quick benchmark on the test node
@@ -151,12 +156,13 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5s kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg monitor --type drop | head -5
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | \
+  awk 'NR > 1 && $NF == "ready" {ready++} NR > 1 && $NF != "ready" {notready++} END {print "ready: " ready+0; print "not-ready: " notready+0}'
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
