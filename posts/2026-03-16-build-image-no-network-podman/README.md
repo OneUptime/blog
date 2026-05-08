@@ -8,9 +8,9 @@ Description: Learn how to build container images without network access using Po
 
 ---
 
-> Building without network access guarantees that no external resources are fetched, making builds fully reproducible and secure.
+> Building without network access helps ensure that build steps do not fetch external resources, making builds more reproducible and easier to audit.
 
-Disabling network access during container builds is a security best practice that ensures builds are reproducible and do not depend on external services. It also prevents supply chain attacks where build steps could download malicious code. Podman supports building with no network through the `--network=none` flag. This guide covers the setup and practical patterns.
+Disabling network access during container builds is a security best practice that helps builds avoid dependencies on external services. It also reduces supply chain risk from build steps that could download malicious code. Podman supports disabling networking for `RUN` instructions through the `--network=none` flag. To avoid pulling base images during the build, make sure they are already present locally or add `--pull=never`. This guide covers the setup and practical patterns.
 
 ---
 
@@ -18,22 +18,22 @@ Disabling network access during container builds is a security best practice tha
 
 There are several important reasons to disable network during builds.
 
-- **Reproducibility**: Builds always produce the same result regardless of network state.
+- **Reproducibility**: Builds do not depend on network state when all inputs are pinned and available locally.
 - **Security**: Prevents exfiltration of build secrets and supply chain injection.
 - **Air-gapped compliance**: Required in high-security environments.
 - **Faster builds**: No DNS lookups or network timeouts.
 
 ## The --network=none Flag
 
-Disable all network access during the build process.
+Disable network access for `RUN` instructions during the build process.
 
 ```bash
 # Build with no network access
 
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 ```
 
-Any RUN instruction that attempts network access will fail.
+Any `RUN` instruction that attempts network access will fail.
 
 ## Preparing for Offline Builds
 
@@ -47,7 +47,8 @@ mkdir -p vendor
 pip download -r requirements.txt -d vendor/
 
 # For Node.js
-npm pack (for each dependency, or use npm ci with a local cache)
+npm ci
+tar -czf node_modules.tar.gz node_modules/
 
 # For Go
 go mod vendor
@@ -77,7 +78,7 @@ CMD ["python", "app.py"]
 EOF
 
 # Build with no network
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 ```
 
 ## Node.js Offline Build
@@ -102,7 +103,7 @@ COPY src/ ./src/
 CMD ["node", "src/server.js"]
 EOF
 
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 ```
 
 ## Go Offline Build with Vendored Dependencies
@@ -127,7 +128,7 @@ COPY --from=0 /app /usr/local/bin/app
 CMD ["app"]
 EOF
 
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 ```
 
 ## Rust Offline Build
@@ -160,7 +161,7 @@ COPY --from=0 /usr/src/app/target/release/myapp /usr/local/bin/
 CMD ["myapp"]
 EOF
 
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 ```
 
 ## System Packages in Offline Builds
@@ -170,8 +171,10 @@ For system packages, pre-download them and include in the build context.
 ```bash
 # Download deb packages on an internet-connected machine
 mkdir -p debs
-apt-get download curl ca-certificates
-mv *.deb debs/
+apt-get clean
+apt-get update
+apt-get install --download-only -y curl ca-certificates
+cp /var/cache/apt/archives/*.deb debs/
 
 cat > Containerfile << 'EOF'
 FROM docker.io/library/debian:bookworm-slim
@@ -180,13 +183,13 @@ FROM docker.io/library/debian:bookworm-slim
 COPY debs/ /tmp/debs/
 
 # Install from local packages
-RUN dpkg -i /tmp/debs/*.deb || apt-get -f install -y && \
+RUN dpkg -i /tmp/debs/*.deb && \
     rm -rf /tmp/debs/
 
 CMD ["bash"]
 EOF
 
-podman build --network=none -t offline-base:latest .
+podman build --pull=never --network=none -t offline-base:latest .
 ```
 
 ## Verifying No Network Access
@@ -195,7 +198,7 @@ Test that your build truly works without network.
 
 ```bash
 # This should fail if any step needs network
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 
 # Add a verification step to your Containerfile
 cat > Containerfile << 'EOF'
@@ -212,12 +215,12 @@ COPY . /app
 CMD ["sh"]
 EOF
 
-podman build --network=none -t secure-app:latest .
+podman build --pull=never --network=none -t secure-app:latest .
 ```
 
 ## Hybrid Approach: Network in Some Stages
 
-In multi-stage builds, you can use network in the first stage to download dependencies, then build without network in later stages.
+In multi-stage builds, you can use network in the first stage to download dependencies, then make later package installation steps use only local files.
 
 ```bash
 cat > Containerfile << 'EOF'
@@ -227,7 +230,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip download -r requirements.txt -d /wheels
 
-# Stage 2: Build without network
+# Stage 2: Install only from local files
 FROM docker.io/library/python:3.12-slim AS builder
 WORKDIR /app
 COPY --from=deps /wheels /wheels
@@ -237,7 +240,7 @@ COPY . .
 CMD ["python", "app.py"]
 EOF
 
-# Build normally (stage 1 uses network, stage 2 does not by design)
+# Build normally (stage 1 uses network; the package install step is isolated)
 podman build -t myapp:latest .
 ```
 
@@ -252,14 +255,14 @@ Use offline builds as a security gate in your pipeline.
 set -e
 
 echo "Step 1: Download dependencies (with network)"
-podman build --target deps -t myapp:deps .
+pip download -r requirements.txt -d ./wheels/
 
 echo "Step 2: Build application (without network)"
-podman build --network=none -t myapp:latest .
+podman build --pull=never --network=none -t myapp:latest .
 
 echo "Secure offline build completed successfully"
 ```
 
 ## Summary
 
-Building with `--network=none` is a security and reproducibility measure that ensures no external resources are fetched during the build. This requires pre-downloading all dependencies and including them in the build context. Use vendored dependencies for Go and Rust, pre-downloaded wheels for Python, and packed node_modules for Node.js. Verify your offline builds work by testing with the `--network=none` flag, and consider a hybrid approach using multi-stage builds where only the dependency-download stage has network access.
+Building with `--network=none` is a security and reproducibility measure that prevents `RUN` instructions from fetching external resources during the build. This requires pre-downloading all dependencies and including them in the build context, and using local base images when paired with `--pull=never`. Use vendored dependencies for Go and Rust, pre-downloaded wheels for Python, and packed node_modules for Node.js. Verify your offline builds work by testing with the `--network=none` flag, and consider a hybrid approach using multi-stage builds where the dependency-download stage is the only stage that needs network access.
