@@ -12,7 +12,7 @@ Description: Identify and resolve performance issues when comparing VXLAN and IP
 
 Choosing between VXLAN and IP-in-IP encapsulation in Calico is one of the most common architecture decisions when deploying Kubernetes networking. Both protocols solve the same problem - routing pod traffic across subnet boundaries - but with different tradeoffs in overhead, compatibility, and operational complexity.
 
-VXLAN uses 50 bytes of overhead per packet (UDP + VXLAN headers) and operates on UDP port 4789. IP-in-IP uses only 20 bytes of overhead (an additional IP header) and operates as protocol 4. Both work on any IP network, but VXLAN is more likely to traverse NAT devices because it uses UDP, while IP-in-IP may be blocked by firewalls unfamiliar with protocol 4.
+With an IPv4 underlay, VXLAN typically adds 50 bytes of overhead per packet (outer IP, UDP, VXLAN, and inner Ethernet headers) and operates on UDP port 4789. IP-in-IP adds 20 bytes of overhead (an additional IPv4 header) and operates as protocol 4. IP-in-IP in Calico supports IPv4 only, while VXLAN can also support IPv6 underlays on supported kernels. VXLAN is more likely to traverse NAT devices because it uses UDP, while IP-in-IP may be blocked by firewalls unfamiliar with protocol 4.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ VXLAN uses 50 bytes of overhead per packet (UDP + VXLAN headers) and operates on
 
 | Feature | VXLAN | IP-in-IP |
 |---------|-------|----------|
-| Overhead | 50 bytes | 20 bytes |
+| Overhead with IPv4 underlay | 50 bytes | 20 bytes |
 | Protocol | UDP 4789 | Protocol 4 |
 | Windows support | Yes | No |
 | Cloud NAT traversal | Better | Limited |
@@ -35,28 +35,32 @@ VXLAN uses 50 bytes of overhead per packet (UDP + VXLAN headers) and operates on
 ```bash
 # Switch to VXLAN
 
-calicoctl patch ippool default-ipv4-ippool --type merge \
-  --patch '{"spec":{"vxlanMode":"Always","ipipMode":"Never"}}'
+calicoctl patch ippool default-ipv4-ippool \
+  -p '{"spec":{"vxlanMode":"Always","ipipMode":"Never"}}'
 
 # Benchmark with iperf3
-kubectl run iperf-server --image=networkstatic/iperf3 -- iperf3 -s
+kubectl run iperf-server --image=networkstatic/iperf3 \
+  --restart=Never --command -- iperf3 -s
+kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 SRV=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 kubectl run iperf-client --image=networkstatic/iperf3 \
+  --restart=Never --attach --rm \
   --overrides='{"spec":{"nodeName":"different-node"}}' \
-  -- iperf3 -c ${SRV} -t 30 > vxlan-results.txt
+  --command -- iperf3 -c ${SRV} -t 30 > vxlan-results.txt
 ```
 
 ## Configure and Test IP-in-IP
 
 ```bash
 # Switch to IP-in-IP
-calicoctl patch ippool default-ipv4-ippool --type merge \
-  --patch '{"spec":{"ipipMode":"Always","vxlanMode":"Never"}}'
+calicoctl patch ippool default-ipv4-ippool \
+  -p '{"spec":{"ipipMode":"Always","vxlanMode":"Never"}}'
 
 # Benchmark
 kubectl run iperf-client2 --image=networkstatic/iperf3 \
+  --restart=Never --attach --rm \
   --overrides='{"spec":{"nodeName":"different-node"}}' \
-  -- iperf3 -c ${SRV} -t 30 > ipip-results.txt
+  --command -- iperf3 -c ${SRV} -t 30 > ipip-results.txt
 
 diff vxlan-results.txt ipip-results.txt
 ```
