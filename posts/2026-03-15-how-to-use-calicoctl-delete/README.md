@@ -12,7 +12,7 @@ Description: Learn how to safely use calicoctl delete to remove Calico resources
 
 The `calicoctl delete` command removes Calico resources from the datastore. This includes global network policies, IP pools, BGP peers, host endpoints, and network sets. Understanding how to use this command safely is critical because deleting certain resources, such as IP pools or network policies, can immediately impact network connectivity.
 
-Unlike `kubectl delete`, `calicoctl delete` operates on Calico-specific resources and understands their interdependencies. Some deletions are straightforward while others require careful sequencing to avoid disruptions.
+Unlike `kubectl delete`, `calicoctl delete` is designed for Calico resources and supports Calico resource types, aliases, and manifests. Some deletions are straightforward while others require careful sequencing to avoid disruptions.
 
 This guide covers practical examples of using `calicoctl delete` along with safety checks and best practices to avoid unintended outages.
 
@@ -101,12 +101,12 @@ calicoctl delete globalnetworkpolicy my-policy
 
 ```bash
 calicoctl get globalnetworkpolicy my-policy 2>&1
-# Should show "resource does not exist"
+# Should return no results
 ```
 
 ## Deleting IP Pools Safely
 
-Deleting an IP pool that is in use will orphan pod IP addresses. Always drain the pool first:
+Deleting an IP pool before workloads have moved to another pool can affect existing pods. Always drain the pool first:
 
 ```bash
 # Disable the pool to prevent new allocations
@@ -114,7 +114,7 @@ calicoctl patch ippool old-pool -p '{"spec": {"disabled": true}}'
 
 # Wait for workloads to be rescheduled or migrate traffic
 # Then verify no addresses are allocated from this pool
-calicoctl ipam show --ip=10.52.0.0
+calicoctl ipam show --show-blocks
 
 # Only then delete the pool
 calicoctl delete ippool old-pool
