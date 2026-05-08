@@ -31,7 +31,7 @@ That is all it takes. Podman creates a volume in its default storage location.
 
 ```bash
 # List all volumes
-podman volume list
+podman volume ls
 
 # Example output:
 # DRIVER    VOLUME NAME
@@ -82,7 +82,7 @@ Labels help you organize and identify volumes:
 podman volume create --label project=webapp --label env=production appdata
 
 # Filter volumes by label
-podman volume list --filter label=project=webapp
+podman volume ls --filter label=project=webapp
 
 # Inspect labels
 podman volume inspect appdata --format '{{.Labels}}'
@@ -92,6 +92,7 @@ podman volume inspect appdata --format '{{.Labels}}'
 
 ```bash
 # Create a volume with specific driver options
+# These local driver mount options require root privileges
 podman volume create --opt type=tmpfs --opt device=tmpfs --opt o=size=100m tmpvol
 
 # Create a volume backed by a specific directory
@@ -110,7 +111,7 @@ podman run --rm \
     sh -c "echo 'auto-created' > /app/data/status.txt"
 
 # Verify the volume was created
-podman volume list | grep newdata
+podman volume ls | grep newdata
 ```
 
 ## Practical Example: Database Storage
@@ -168,7 +169,7 @@ done
 
 echo ""
 echo "All volumes:"
-podman volume list
+podman volume ls
 ```
 
 ## Summary
