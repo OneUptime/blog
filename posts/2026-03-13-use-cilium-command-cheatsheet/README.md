@@ -40,8 +40,8 @@ kubectl exec -n kube-system <cilium-pod> -- cilium-dbg status
 flowchart TD
     A[Operator] --> B[cilium CLI]
     A --> C[kubectl exec + cilium-dbg]
-    B --> D[Hubble Relay]
-    B --> E[Cilium Operator]
+    B --> D[Kubernetes API]
+    D --> E[Cilium Pods and Operator]
     C --> F[Local Agent State]
     F --> G[eBPF Maps]
     F --> H[Endpoint Table]
@@ -58,25 +58,25 @@ kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint get <id>
 
 # Show endpoint health
-kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint health
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint health <id>
 ```
 
 ## Policy Commands
 
 ```bash
-# Show compiled policy for an endpoint
-kubectl exec -n kube-system ds/cilium -- cilium-dbg policy get
+# Show policy BPF maps
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all
 
-# Trace policy decision
+# Watch policy verdict events
 kubectl exec -n kube-system ds/cilium -- \
-  cilium-dbg policy trace --src-label app=client --dst-label app=server
+  cilium-dbg monitor --type policy-verdict
 ```
 
 ## BPF Map Inspection
 
 ```bash
 # List BPF maps
-kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg map list
 
 # Inspect CT table
 kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list
@@ -93,7 +93,7 @@ kubectl exec -n kube-system ds/cilium -- cilium-dbg fqdn cache list
 
 # Lookup FQDN in cache
 kubectl exec -n kube-system ds/cilium -- \
-  cilium-dbg fqdn cache list | grep api.example.com
+  cilium-dbg fqdn cache list --matchpattern api.example.com
 ```
 
 ## BGP Commands (if enabled)
@@ -103,7 +103,7 @@ kubectl exec -n kube-system ds/cilium -- \
 kubectl exec -n kube-system ds/cilium -- cilium-dbg bgp peers
 
 # View BGP routes
-kubectl exec -n kube-system ds/cilium -- cilium-dbg bgp routes advertised
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bgp routes advertised ipv4 unicast
 ```
 
 ## Collect Diagnostics
@@ -111,7 +111,7 @@ kubectl exec -n kube-system ds/cilium -- cilium-dbg bgp routes advertised
 ```bash
 # Run bugtool to collect all diagnostics
 kubectl exec -n kube-system <cilium-pod> -- \
-  cilium-bugtool --archivetype=tgz
+  cilium-bugtool --archiveType=gz
 
 # Copy the archive
 kubectl cp kube-system/<cilium-pod>:/tmp/cilium-bugtool-<timestamp>.tar.gz ./bugtool.tar.gz
