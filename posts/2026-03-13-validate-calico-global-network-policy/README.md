@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Global Policy, Security
 
-Description: Validate Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces.
+Description: Validate Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces and matching endpoints.
 
 ---
 
 ## Introduction
 
-Calico GlobalNetworkPolicy in Calico provides comprehensive network traffic controls using the `projectcalico.org/v3` API. This guide covers validate GlobalNetworkPolicy with production-ready configurations.
+Calico GlobalNetworkPolicy in Calico provides comprehensive network traffic controls using the `projectcalico.org/v3` API. This guide covers validating GlobalNetworkPolicy with production-ready configurations.
 
 ## Prerequisites
 
@@ -62,11 +62,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Check Felix metrics
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Review policy logs when Log rules are enabled
+journalctl -k | grep calico-packet
 ```
 
 ## Architecture
