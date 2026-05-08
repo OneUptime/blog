@@ -8,9 +8,9 @@ Description: Learn how to configure startup health check retries in Podman to co
 
 ---
 
-> Startup health check retries define how many times the startup probe can fail before the container is considered failed to start.
+> Startup health check retries define how many times the startup probe can fail before Podman restarts the container.
 
-The number of startup retries directly determines the maximum startup window for your application. Combined with the startup interval, it defines the total time Podman will wait for an application to become ready before taking failure action.
+The number of startup retries helps determine the startup window for your application. Combined with the startup interval, it defines roughly how long Podman will keep running the startup health check while waiting for an application to become ready.
 
 ---
 
@@ -28,15 +28,15 @@ podman run -d \
   --health-interval 30s \
   startup-app:latest
 
-# Maximum startup time: 30 retries * 5s interval = 150 seconds
+# Approximate startup retry window: 30 retries * 5s interval = 150 seconds
 ```
 
 ## Calculating Maximum Startup Time
 
 ```bash
-# Formula: max_startup_time = retries * interval
+# Formula: approximate_startup_retry_window = retries * interval
 
-# Fast-starting app: 10 retries * 2s = 20 seconds max
+# Fast-starting app: 10 retries * 2s = about 20 seconds
 podman run -d --name fast-app \
   --health-startup-cmd "curl -f http://localhost:3000/ready || exit 1" \
   --health-startup-interval 2s \
@@ -45,7 +45,7 @@ podman run -d --name fast-app \
   --health-interval 15s \
   fast-app:latest
 
-# Slow-starting app: 60 retries * 10s = 600 seconds (10 minutes) max
+# Slow-starting app: 60 retries * 10s = about 600 seconds (10 minutes)
 podman run -d --name slow-app \
   --health-startup-cmd "curl -f http://localhost:8080/ready || exit 1" \
   --health-startup-interval 10s \
@@ -89,7 +89,7 @@ podman run -d --name data-import-db \
 ## Combining Retries with Failure Action
 
 ```bash
-# Kill the container if startup retries are exhausted
+# Restart during startup retries; kill if the regular health check later becomes unhealthy
 podman run -d \
   --name strict-startup \
   --health-startup-cmd "curl -f http://localhost:8080/ready || exit 1" \
@@ -103,4 +103,4 @@ podman run -d \
 
 ## Summary
 
-The `--health-startup-retries` flag controls how many times the startup health check can fail before the container is considered failed. The maximum startup window equals retries multiplied by the startup interval. Set this value based on your application's worst-case startup time, adding some margin for variable conditions like cold caches or slow network connections.
+The `--health-startup-retries` flag controls how many times the startup health check can fail before Podman restarts the container. The approximate startup retry window equals retries multiplied by the startup interval. Set this value based on your application's worst-case startup time, adding some margin for variable conditions like cold caches or slow network connections.
