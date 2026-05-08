@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Window, Operator, Networking, CNI, Verification
+Tags: Calico, Kubernetes, Windows, Operator, Networking, CNI, Verification
 
 Description: A guide to verifying Calico pod networking on operator-managed Windows nodes, using both operator status checks and Windows-native verification.
 
@@ -25,15 +25,17 @@ However, HNS-level verification and Windows pod connectivity tests require Windo
 ```bash
 kubectl get tigerastatus
 kubectl describe tigerastatus calico
+kubectl describe tigerastatus calico-windows
 ```
 
-The TigeraStatus for Calico should show `Available: True` for all conditions, including Windows-specific ones.
+The TigeraStatus resources for Calico should show `Available: True` for all conditions, including the Windows-specific `calico-windows` resource.
 
 ## Step 2: Check Windows DaemonSet Pods
 
 ```bash
-kubectl get pods -n calico-system -o wide | grep windows
-kubectl logs -n calico-system <calico-node-windows-pod> --tail=30
+kubectl get pods -n calico-system -l k8s-app=calico-node-windows -o wide
+kubectl logs -n calico-system -l k8s-app=calico-node-windows -c node --tail=30
+kubectl logs -n calico-system -l k8s-app=calico-node-windows -c felix --tail=30
 ```
 
 ## Step 3: Check Windows Node Readiness
@@ -48,8 +50,10 @@ kubectl describe node <windows-node> | grep -A5 "Conditions:"
 ```powershell
 # On the Windows node
 
-Get-HnsNetwork | Where-Object { $_.Type -eq "Overlay" } | Select-Object Name, Type, AddressPrefix
-Get-HnsEndpoint | Measure-Object | Select-Object Count
+ipmo -DisableNameChecking C:\CalicoWindows\libs\hns\hns.psm1
+
+Get-HNSNetwork | Where-Object { $_.Type -eq "L2Bridge" } | Select-Object Name, Type, Subnets
+Get-HNSEndpoint | Measure-Object | Select-Object Count
 ```
 
 ## Step 5: Deploy and Test a Windows Pod
@@ -63,14 +67,17 @@ metadata:
 spec:
   nodeSelector:
     kubernetes.io/os: windows
+    node.kubernetes.io/windows-build: "10.0.20348"
   containers:
   - name: win
-    image: mcr.microsoft.com/windows/servercore:ltsc2019
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "while(\$true) { Start-Sleep 10 }"]
 EOF
 
 kubectl get pod win-verify -o wide
 ```
+
+Use a Windows container image tag and `node.kubernetes.io/windows-build` selector that match your Windows node version.
 
 ## Step 6: Test Cross-OS Connectivity
 
