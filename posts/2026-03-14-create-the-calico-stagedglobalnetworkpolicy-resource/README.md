@@ -19,7 +19,7 @@ By the end of this post you will have a working StagedGlobalNetworkPolicy resour
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24 or later)
-- Calico installed (v3.26 or later recommended)
+- Calico installed with the `StagedGlobalNetworkPolicy` API available
 - `kubectl` configured with cluster-admin privileges
 - `calicoctl` installed (optional but recommended for validation)
 
@@ -27,7 +27,7 @@ By the end of this post you will have a working StagedGlobalNetworkPolicy resour
 
 The StagedGlobalNetworkPolicy resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
 
-- `stagedAction`: Set to `Log` to preview the policy without enforcement.
+- `stagedAction`: Set to `Set` to preview adding or updating the policy without enforcement. If omitted, Calico defaults it to `Set`.
 - `order`, `selector`, `types`, `egress`/`ingress`: Identical to GlobalNetworkPolicy fields.
 
 Staged policies simulate network policy changes before enforcing them.
@@ -44,7 +44,7 @@ metadata:
 spec:
   order: 500
   selector: role == 'untrusted'
-  stagedAction: Log
+  stagedAction: Set
   types:
     - Egress
   egress:
@@ -64,15 +64,14 @@ Apply the manifest using `kubectl`:
 kubectl apply -f stagedglobalnetworkpolicy.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl` for validation before applying:
 
 ```bash
-# Apply with calicoctl for enhanced validation
-
-calicoctl apply -f stagedglobalnetworkpolicy.yaml
+# Validate with calicoctl
+calicoctl validate -f stagedglobalnetworkpolicy.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+In newer Calico releases, the Calico API server performs defaulting and validation server-side, so `kubectl` is the recommended tool for most Kubernetes API operations.
 
 ## Verification
 
@@ -83,10 +82,10 @@ Confirm that the resource was created successfully:
 kubectl get stagedglobalnetworkpolicy.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe stagedglobalnetworkpolicy.projectcalico.org
+kubectl describe stagedglobalnetworkpolicy.projectcalico.org staged-deny-untrusted-egress
 
-# Verify with calicoctl
-calicoctl get stagedglobalnetworkpolicy -o yaml
+# Verify the stored YAML
+kubectl get stagedglobalnetworkpolicy.projectcalico.org staged-deny-untrusted-egress -o yaml
 ```
 
 Check the Calico component logs for any warnings or errors related to the new resource:
@@ -103,7 +102,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 - Check that the Calico API server is running: `kubectl get pods -n calico-system`.
 
 **Validation errors:**
-- Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
+- Use `calicoctl validate -f stagedglobalnetworkpolicy.yaml` to get detailed validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
