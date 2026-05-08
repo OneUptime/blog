@@ -41,14 +41,28 @@ metadata:
   name: calicoctl-ipam-admin
 rules:
 - apiGroups: ["crd.projectcalico.org"]
-  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "ipamconfigurations"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "ipamconfigurations", "nodes", "clusterinformations"]
+  verbs: ["get", "list"]
 - apiGroups: [""]
   resources: ["pods", "nodes"]
   verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: calicoctl-ipam-admin
+subjects:
+- kind: User
+  name: calicoctl-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: calicoctl-ipam-admin
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ```bash
+# Replace calicoctl-user with the user, group, or service account that runs calicoctl.
 kubectl apply -f calicoctl-ipam-rbac.yaml
 ```
 
@@ -56,24 +70,25 @@ kubectl apply -f calicoctl-ipam-rbac.yaml
 
 ```bash
 # Verify Calico CRDs exist
-kubectl get crd | grep ipam
+kubectl get crd | grep -E 'ipam|blockaffinities|ippools'
 
 # Expected CRDs:
 # ipamblocks.crd.projectcalico.org
 # ipamhandles.crd.projectcalico.org
 # blockaffinities.crd.projectcalico.org
+# ippools.crd.projectcalico.org
 # ipamconfigurations.crd.projectcalico.org
 ```
 
-### Error: Invalid IP Address or CIDR
+### Error: Invalid IP Address
 
 ```bash
-# Verify the IP or CIDR format
-# CORRECT formats:
+# Verify the IP address format
+# CORRECT format:
 calicoctl ipam show --ip=10.244.0.5
-calicoctl ipam show --ip=192.168.0.0/16
 
 # WRONG formats:
+# calicoctl ipam show --ip=192.168.0.0/16 (CIDR is not accepted by --ip)
 # calicoctl ipam show --ip=10.244.0.5/33  (invalid prefix length)
 # calicoctl ipam show --ip=300.0.0.1      (invalid octet)
 ```
@@ -87,7 +102,7 @@ calicoctl ipam show --ip=192.168.0.0/16
 echo "=== IPAM Diagnostics ==="
 
 echo "--- Datastore ---"
-calicoctl version > /dev/null 2>&1 && echo "Connected" || echo "UNREACHABLE"
+calicoctl get nodes > /dev/null 2>&1 && echo "Connected" || echo "UNREACHABLE"
 
 echo "--- CRDs ---"
 for CRD in ipamblocks ipamhandles blockaffinities ipamconfigurations ippools; do
