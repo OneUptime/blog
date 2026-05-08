@@ -34,21 +34,20 @@ Apply the following Helm values to configure implementation modes in cilium netw
 # Implementation mode configuration
 
 # Option 1: VXLAN overlay (default, works everywhere)
-tunnel: vxlan
+routingMode: tunnel
+tunnelProtocol: vxlan
 
 # Option 2: Geneve overlay (better metadata support)
-# tunnel: geneve
+# routingMode: tunnel
+# tunnelProtocol: geneve
 
 # Option 3: Native routing (best performance, requires network support)
-# tunnel: disabled
+# routingMode: native
 # ipv4NativeRoutingCIDR: "10.42.0.0/16"
 # autoDirectNodeRoutes: true
 
-# Routing mode setting
-routingMode: tunnel
-
 # MTU auto-detection
-mtu: 0
+MTU: 0
 ```
 
 Apply the configuration:
@@ -57,7 +56,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-tunnel-mode-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -128,7 +127,7 @@ kubectl rollout status deployment/config-test --timeout=60s
 # Test connectivity
 kubectl run test-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/test-client --timeout=30s
-kubectl exec test-client -- wget -qO- --timeout=5 http://config-test-svc
+kubectl exec test-client -- wget -qO- -T 5 http://config-test-svc
 kubectl delete pod test-client
 kubectl delete -f test-deployment.yaml
 ```
@@ -145,7 +144,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -154,13 +153,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
