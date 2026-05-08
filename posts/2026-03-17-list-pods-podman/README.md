@@ -34,7 +34,7 @@ podman pod ls
 podman pod ls --format "{{.Name}}\t{{.Status}}"
 
 # Show pod name, number of containers, and creation time
-podman pod ls --format "table {{.Name}}\t{{.NumContainers}}\t{{.Created}}"
+podman pod ls --format "table {{.Name}}\t{{.NumberOfContainers}}\t{{.Created}}"
 ```
 
 ## Filtering Pods
@@ -44,7 +44,7 @@ podman pod ls --format "table {{.Name}}\t{{.NumContainers}}\t{{.Created}}"
 podman pod ls --filter status=running
 
 # List only stopped pods
-podman pod ls --filter status=exited
+podman pod ls --filter status=stopped
 
 # Filter by pod name
 podman pod ls --filter name=web
