@@ -42,7 +42,7 @@ curl -s https://api.github.com/repos/cilium/cilium/releases/latest | \
 
 Map roadmap features to your needs:
 1. Identify features you are waiting for
-2. Check which release they target
+2. Check whether they have a target release or active tracking issue
 3. Plan your upgrade cycle accordingly
 4. Test beta/RC releases in staging
 
@@ -53,6 +53,7 @@ Before depending on a roadmap feature:
 - Is there an active PR or design document?
 - What is the target release version?
 - Are there known limitations or prerequisites?
+- Is the feature tentative, since the project does not give date commitments?
 
 ### Communicating Roadmap to Stakeholders
 
@@ -68,10 +69,10 @@ Verify roadmap information is accessible and up to date.
 
 ## Troubleshooting
 
-- **Cannot find meeting links**: Check the Cilium community calendar and #community Slack channel.
+- **Cannot find meeting links**: Check the Cilium community meeting notes and #development Slack channel.
 - **Slack workspace access**: Request an invite through the Cilium website.
 - **GitHub permissions**: Ensure your account has the necessary access for the repositories you need.
-- **Timezone confusion**: All official times are in UTC. Use a timezone converter for your local time.
+- **Timezone confusion**: Official meeting times may be listed in different time zones, such as US/Pacific or UTC. Use a timezone converter for your local time.
 
 ## Conclusion
 
