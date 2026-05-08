@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, WireGuard, Monitoring, Latency, Prometheus
 
-Description: Set up monitoring for WireGuard's impact on request/response latency in Cilium, including per-transaction latency tracking and crypto overhead dashboards.
+Description: Set up monitoring for WireGuard's impact on request/response latency in Cilium, including synthetic request/response tracking and flow visibility dashboards.
 
 ---
 
@@ -14,13 +14,14 @@ Monitoring WireGuard's impact on request/response latency requires tracking both
 
 Unlike throughput monitoring where you can observe interface byte counters, latency monitoring requires synthetic benchmarks or application-level instrumentation. This guide covers both approaches to give comprehensive visibility into WireGuard's latency impact.
 
-The monitoring framework should answer two questions at all times: What is the current request/response latency? And how much of that latency is due to WireGuard encryption?
+The monitoring framework should answer two questions at all times: What is the current request/response latency? And how does it compare to a known unencrypted baseline?
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium v1.14+ and WireGuard enabled
 - Prometheus and Grafana
 - `netperf` for synthetic benchmarks
+- A `netserver` endpoint exposed as `netperf-server.monitoring`
 - Hubble metrics enabled
 
 ## Synthetic Latency Monitoring
@@ -44,7 +45,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              RR=$(netperf -H netperf-server.monitoring -t TCP_RR -l 10 -- -r 1,1 2>/dev/null | tail -1 | awk '{print $1}')
+              RR=$(netperf -P 0 -H netperf-server.monitoring -t TCP_RR -l 10 -- -r 1,1 2>/dev/null | awk '{print $NF}')
               cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/wg_latency
               cilium_wireguard_tcp_rr_tps $RR
               METRIC
@@ -74,17 +75,19 @@ spec:
         summary: "WireGuard TCP_RR dropped 20% below weekly average"
 ```
 
-## Hubble Flow Latency Metrics
+## Hubble Flow Visibility Metrics
 
 ```bash
-# Enable Hubble TCP metrics for flow-level latency
+# Enable Hubble TCP and flow metrics for flow-level visibility
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --set hubble.enabled=true \
   --set hubble.metrics.enabled="{dns,drop,tcp,flow}"
 
-# Monitor TCP connection duration (proxy for latency)
-hubble observe --protocol TCP -o json | \
-  jq 'select(.Type == "L3_L4") | .time'
+# Observe encrypted TCP flows. Hubble flow events show timestamps and verdicts,
+# not request/response latency.
+hubble observe --encrypted --protocol TCP -o json | \
+  jq '{time: .time, verdict: .flow.verdict}'
 ```
 
 ## Grafana Dashboard
@@ -97,8 +100,8 @@ hubble observe --protocol TCP -o json | \
       "targets": [{"expr": "cilium_wireguard_tcp_rr_tps"}]
     },
     {
-      "title": "WireGuard Peer Handshake Latency",
-      "targets": [{"expr": "cilium_wireguard_peers"}]
+      "title": "Hubble TCP Flags",
+      "targets": [{"expr": "sum by (flag) (rate(hubble_tcp_flags_total[5m]))"}]
     }
   ]
 }
@@ -141,12 +144,12 @@ Create three dashboards for complete visibility:
 
 1. **Overview Dashboard**: High-level cluster performance metrics
    - Aggregate throughput across all nodes
-   - P99 latency percentile
+   - Synthetic request/response latency or application latency percentiles
    - Active identity and endpoint counts
    - BPF map utilization gauges
 
 2. **Node Detail Dashboard**: Per-node performance metrics
-   - Per-node throughput and latency
+   - Per-node throughput and synthetic latency by test target
    - CPU utilization breakdown (user, system, softirq)
    - NIC statistics (drops, errors, queue depth)
    - Cilium agent resource usage
@@ -187,15 +190,15 @@ kubectl get pods -n kube-system -l k8s-app=cilium --no-headers | \
   awk '{print $1, $3, $4}'
 
 # Recent drops
-echo "\nRecent drops (last hour):"
+printf "\nRecent drops (last hour):\n"
 hubble observe --type drop --since 1h --last 10 -o compact 2>/dev/null || echo "N/A"
 
 # Resource usage
-echo "\nAgent resources:"
+printf "\nAgent resources:\n"
 kubectl top pods -n kube-system -l k8s-app=cilium --no-headers
 
 # Identity count
-echo "\nIdentity count:"
+printf "\nIdentity count:\n"
 cilium identity list 2>/dev/null | wc -l
 ```
 
@@ -205,4 +208,4 @@ Schedule a weekly review of performance trends including throughput baseline com
 
 ## Conclusion
 
-Monitoring WireGuard request/response performance in Cilium requires a combination of synthetic TCP_RR benchmarks and Hubble flow metrics. The synthetic benchmarks provide controlled, comparable measurements, while Hubble metrics reflect real production traffic patterns. Together with alerting on regressions, this monitoring framework ensures WireGuard's latency impact remains within acceptable bounds.
+Monitoring WireGuard request/response performance in Cilium requires a combination of synthetic TCP_RR benchmarks and Hubble flow visibility. The synthetic benchmarks provide controlled, comparable measurements, while Hubble reflects real production traffic patterns and encrypted flow visibility. Together with alerting on regressions, this monitoring framework ensures WireGuard's latency impact remains within acceptable bounds.
