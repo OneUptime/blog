@@ -156,7 +156,7 @@ podman ps -a
 Podman's `play kube` for Deployments does not provide:
 - Replica management (only one pod is created regardless of replicas field)
 - Rolling updates
-- Self-healing (crashed containers are not automatically restarted)
+- Full Deployment controller reconciliation, such as creating replacement pods when pods are deleted or rescheduling them to another node
 
 These features require a full Kubernetes cluster.
 
