@@ -87,11 +87,17 @@ sudo systemctl disable podman.service 2>/dev/null
 ## Step 4: Remove Generated systemd Unit Files
 
 ```bash
-# Remove user-generated container services
-rm -rf ~/.config/systemd/user/container-*.service
+# Remove user-generated container and pod services
+rm -f ~/.config/systemd/user/container-*.service
+rm -f ~/.config/systemd/user/pod-*.service
+
+# Remove system-level generated container and pod services
+sudo rm -f /etc/systemd/system/container-*.service
+sudo rm -f /etc/systemd/system/pod-*.service
 
 # Reload systemd
 systemctl --user daemon-reload
+sudo systemctl daemon-reload
 ```
 
 ## Step 5: Uninstall the Podman Package
@@ -113,7 +119,7 @@ sudo dnf autoremove -y
 sudo apt remove -y podman podman-docker buildah skopeo
 
 # Remove configuration files too
-sudo apt purge -y podman
+sudo apt purge -y podman podman-docker buildah skopeo
 
 # Clean up orphaned dependencies
 sudo apt autoremove -y
@@ -179,7 +185,7 @@ podman machine stop
 podman machine rm --force
 
 # Uninstall via winget
-winget uninstall RedHat.Podman
+winget uninstall --id RedHat.Podman --exact
 ```
 
 ## Step 6: Remove Remaining Data and Configuration
@@ -259,8 +265,12 @@ sudo podman system reset --force 2>/dev/null
 echo "Disabling services..."
 systemctl --user stop podman.socket 2>/dev/null
 systemctl --user disable podman.socket 2>/dev/null
+systemctl --user stop podman.service 2>/dev/null
+systemctl --user disable podman.service 2>/dev/null
 sudo systemctl stop podman.socket 2>/dev/null
 sudo systemctl disable podman.socket 2>/dev/null
+sudo systemctl stop podman.service 2>/dev/null
+sudo systemctl disable podman.service 2>/dev/null
 
 echo "Removing packages..."
 sudo dnf remove -y podman podman-docker buildah skopeo 2>/dev/null
