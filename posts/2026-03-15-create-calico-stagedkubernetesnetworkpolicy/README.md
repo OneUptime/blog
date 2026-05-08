@@ -35,7 +35,6 @@ metadata:
   name: allow-web-ingress
   namespace: production
 spec:
-  stagedAction: Set
   podSelector:
     matchLabels:
       app: web-frontend
@@ -59,7 +58,7 @@ kubectl apply -f allow-web-ingress-staged.yaml
 
 ## Creating a Namespace Isolation Policy
 
-Stage a policy that isolates a namespace by denying all ingress except from specific namespaces:
+Stage a policy that isolates a namespace by denying all ingress except from specific namespaces and selected pods in the same namespace:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -68,7 +67,6 @@ metadata:
   name: namespace-isolation
   namespace: finance
 spec:
-  stagedAction: Set
   podSelector: {}
   policyTypes:
     - Ingress
@@ -87,7 +85,7 @@ spec:
 
 ## Creating an Egress Restriction Policy
 
-Stage an egress policy that limits outbound connections to approved external services:
+Stage an egress policy that limits outbound connections to approved destinations:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -96,7 +94,6 @@ metadata:
   name: restrict-egress
   namespace: production
 spec:
-  stagedAction: Set
   podSelector:
     matchLabels:
       app: backend-api
@@ -135,7 +132,7 @@ Inspect a specific staged policy:
 kubectl get stagedkubernetesnetworkpolicy allow-web-ingress -n production -o yaml
 ```
 
-Confirm the stagedAction is set to `Set` and the policy has not been committed:
+Confirm the staged policy spec and metadata:
 
 ```bash
 kubectl describe stagedkubernetesnetworkpolicy allow-web-ingress -n production
