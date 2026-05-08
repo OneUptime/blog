@@ -20,7 +20,7 @@ Each instruction in a Containerfile (FROM, RUN, COPY, etc.) creates a temporary 
 
 ## The Default Behavior
 
-By default, Podman removes intermediate containers after a successful build. This is equivalent to using `--rm=true`.
+By default, Podman removes intermediate containers after a successful build. This is equivalent to using `--rm=true`, and current Podman also defaults `--force-rm` to true for failed builds.
 
 ```bash
 # These two commands are equivalent
@@ -44,21 +44,21 @@ If you want to inspect intermediate containers after a build, you can disable au
 # Keep intermediate containers after the build
 podman build --rm=false -t myapp:latest .
 
-# Now you can see the intermediate containers
-podman ps -a
+# Now you can see the intermediate containers, including external build containers
+podman ps -a --external
 
 # Inspect a specific intermediate container
 podman inspect <container-id>
 
-# Check logs from an intermediate container
-podman logs <container-id>
+# Mount an intermediate container to inspect its filesystem
+podman mount <container-id>
 ```
 
 This is useful when debugging build issues since you can examine the filesystem state at each step.
 
 ## Force Removing Containers on Build Failure
 
-By default, if a build fails, Podman may leave intermediate containers behind. The `--force-rm` flag ensures they are always removed, even when the build fails.
+Current Podman enables `--force-rm` by default, so intermediate containers are removed even when a build fails. Setting it explicitly documents the intended cleanup behavior.
 
 ```bash
 # Always remove intermediate containers, even on failure
@@ -114,7 +114,7 @@ podman ps -a --format "{{.ID}} {{.Image}} {{.Status}}"
 podman build --rm=false -t demo:v2 .
 
 # Now you can see intermediate containers
-podman ps -a --format "{{.ID}} {{.Image}} {{.Status}}"
+podman ps -a --external --format "{{.ID}} {{.Image}} {{.Status}}"
 ```
 
 ## Simulating a Failed Build
@@ -130,17 +130,17 @@ RUN exit 1  # This step will fail
 RUN echo "This step never runs"
 EOF
 
-# Build without --force-rm (may leave intermediate containers)
-podman build -f Containerfile.fail -t demo:fail . || true
+# Build with --force-rm disabled (may leave intermediate containers)
+podman build --force-rm=false -f Containerfile.fail -t demo:fail . || true
 
 # Check for leftover containers
-podman ps -a
+podman ps -a --external
 
 # Now build with --force-rm
 podman build --force-rm -f Containerfile.fail -t demo:fail . || true
 
 # Verify intermediates were cleaned up
-podman ps -a
+podman ps -a --external
 ```
 
 ## Cleaning Up After the Fact
@@ -151,14 +151,17 @@ If intermediate containers were left behind, you can clean them up manually.
 # Remove all stopped containers
 podman container prune -f
 
-# Remove only containers that match a pattern
-podman ps -a --filter "status=exited" --format "{{.ID}}" | xargs podman rm -f
+# Remove only exited containers
+podman rm --filter "status=exited" -f
 
-# Nuclear option: remove all unused containers, images, and volumes
+# Remove unused containers, networks, dangling images, and build cache
 podman system prune -f
 
-# Remove everything including unused images
-podman system prune --all -f
+# Remove everything including unused images and volumes
+podman system prune --all --volumes -f
+
+# Also remove build containers left by an interrupted build
+podman system prune --build -f
 ```
 
 ## Combining with Other Build Flags
@@ -208,4 +211,4 @@ echo "Build complete: ${IMAGE_NAME}:${IMAGE_TAG}"
 
 ## Summary
 
-Podman removes intermediate containers by default after successful builds. Use `--force-rm` to ensure cleanup even when builds fail, which is essential for CI/CD environments. When debugging, use `--rm=false` to keep intermediate containers for inspection. Always run `podman system prune` periodically to reclaim disk space from leftover artifacts.
+Podman removes intermediate containers by default after successful builds, and current Podman also removes them by default when builds fail. Use `--force-rm` explicitly to document cleanup behavior in CI/CD environments. When debugging, use `--rm=false` to keep intermediate containers for inspection. Run `podman system prune` periodically to reclaim disk space from leftover artifacts.
