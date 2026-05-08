@@ -30,6 +30,7 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
   --set encryption.type=wireguard \
   --set routingMode=native \
+  --set ipv4NativeRoutingCIDR=$NATIVE_CIDR \
   --set bpf.hostLegacyRouting=false \
   --set mtu=1380
 ```
@@ -47,16 +48,18 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
   --set encryption.type=ipsec \
   --set encryption.ipsec.keyFile=keys \
-  --set routingMode=native
+  --set routingMode=native \
+  --set ipv4NativeRoutingCIDR=$NATIVE_CIDR
 
-# Verify hardware offload is active
+# Inspect XFRM state and policy
 
-ip xfrm state | grep -i offload
+ip xfrm state
+ip xfrm policy
 ```
 
 Kernel tuning for IPsec:
 ```bash
-# Increase xfrm state hash table
+# Set the acquire request hard timeout
 sysctl -w net.core.xfrm_acq_expires=30
 ```
 
@@ -68,6 +71,7 @@ kubectl cordon node-1
 
 # Step 2: Update Cilium config
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set encryption.type=wireguard  # or ipsec
 
 # Step 3: Wait for rollout
@@ -77,13 +81,13 @@ kubectl rollout status ds/cilium -n kube-system
 kubectl uncordon node-1
 
 # Step 5: Verify all nodes use the new protocol
-cilium encrypt status
+cilium encryption status
 ```
 
 ## Verification
 
 ```bash
-cilium encrypt status
+cilium encryption status
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 30 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -170,12 +174,13 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5 kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop | \
+  head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
