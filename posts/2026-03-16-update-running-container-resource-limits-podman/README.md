@@ -52,7 +52,7 @@ podman update --memory 512m mem-test
 podman update --memory-reservation 256m mem-test
 
 # Set memory swap limit
-podman update --memory-swap 1g mem-test
+podman update --memory 512m --memory-swap 1g mem-test
 
 # Verify
 podman inspect mem-test --format '{{.HostConfig.Memory}}'
@@ -223,7 +223,7 @@ fi
 
 ## Listing All Updateable Resources
 
-Here is a reference of all resources you can update on a running container:
+Here is a reference of common resources you can update on a running container:
 
 ```bash
 # Memory options
