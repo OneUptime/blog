@@ -79,12 +79,12 @@ podman run -d --name api-v2 \
   --network-alias api \
   myapp-api:v2
 
-# Clients still connect to "api" - seamless switch
+# Clients still connect to "api" after the replacement
 ```
 
 ## Multiple Containers with the Same Alias
 
-When multiple containers share an alias, DNS returns all their IPs (round-robin):
+When multiple containers share an alias, DNS queries for that alias resolve to all matching containers:
 
 ```bash
 # Run multiple backend instances with the same alias
@@ -140,9 +140,10 @@ podman run -d --name myapp-db-1 \
   docker.io/library/postgres:16
 
 # Services communicate by alias
-podman exec myapp-web-1 ping -c 1 db
+podman run --rm --network myapp \
+  docker.io/library/alpine:latest ping -c 1 db
 ```
 
 ## Summary
 
-Network aliases in Podman provide additional DNS names for containers on specific networks. Add aliases with `--network-alias` at startup or when connecting to networks. Use aliases for service abstraction, rolling deployments, and round-robin DNS load balancing when multiple containers share the same alias. Aliases are network-specific, so a container can have different aliases on different networks.
+Network aliases in Podman provide additional DNS names for containers on specific networks. Add aliases with `--network-alias` at startup or `--alias` when connecting to networks. Use aliases for service abstraction, rolling deployments, and DNS-based service grouping when multiple containers share the same alias. Aliases are network-specific, so a container can have different aliases on different networks.
