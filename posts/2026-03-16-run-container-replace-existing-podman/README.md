@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Deployment, Replace
 
-Description: Learn how to use Podman's --replace flag to seamlessly swap out a running container with a new one using the same name.
+Description: Learn how to use Podman's --replace flag to replace an existing container with a new one using the same name.
 
 ---
 
@@ -116,7 +116,7 @@ deploy_service() {
 
 # Deploy or redeploy services
 deploy_service "web" "nginx:latest" "8080"
-deploy_service "web" "nginx:latest" "8080"  # Redeploy is seamless
+deploy_service "web" "nginx:latest" "8080"  # Redeploy uses the same command
 
 podman stop web && podman rm web
 ```
@@ -175,7 +175,7 @@ podman run -d --name myservice alpine sleep infinity
 podman run -d --replace --name myservice alpine sleep infinity
 
 # Both achieve the same result, but --replace is:
-# - Atomic (single command)
+# - A single command
 # - Idempotent (safe to run multiple times)
 # - Cleaner in scripts
 
@@ -230,7 +230,7 @@ podman stop logged-app && podman rm logged-app
 
 The `--replace` flag in Podman simplifies container updates and redeployments:
 
-- Use `--replace` with `--name` to atomically swap containers
+- Use `--replace` with `--name` to replace containers in a single command
 - The old container is stopped and removed before the new one starts
 - Named volumes persist across replacements
 - Works even if no existing container with that name exists (idempotent)
