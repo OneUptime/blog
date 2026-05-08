@@ -17,13 +17,14 @@ Sometimes you need to run a health check on demand rather than waiting for the n
 ## Running a Health Check Manually
 
 ```bash
-# Run the health check for a specific container
+# Run the health check for a specific running container
 
 podman healthcheck run my-web-app
 
 # The command returns the exit code:
 # 0 = healthy
 # 1 = unhealthy
+# 125 = Podman error, such as a missing container, no health check, or a stopped container
 echo $?
 ```
 
@@ -111,4 +112,4 @@ podman inspect --format='{{(index .State.Health.Log 0).ExitCode}}' my-web-app
 
 ## Summary
 
-The `podman healthcheck run` command triggers a health check immediately, bypassing the regular interval. This is useful for debugging health check configurations, testing during development, scripting startup dependencies, and verifying deployments in CI/CD pipelines. The command returns exit code 0 for healthy and 1 for unhealthy, making it easy to use in scripts.
+The `podman healthcheck run` command triggers a health check immediately, bypassing the regular interval. This is useful for debugging health check configurations, testing during development, scripting startup dependencies, and verifying deployments in CI/CD pipelines. The command returns exit code 0 for healthy, 1 for unhealthy, and 125 for Podman errors such as a missing container, a container without a health check, or a stopped container, making it easy to use in scripts.
