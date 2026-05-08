@@ -29,15 +29,15 @@ This guide covers the most impactful FAQ topics for Cilium users, organized by c
 
 **Q: Why does Cilium require a specific kernel version?**
 
-Cilium relies on eBPF, which requires kernel features introduced in Linux 4.9+. Advanced features like kube-proxy replacement and L7 policy require kernel 5.3+.
+Cilium relies on eBPF and related Linux kernel subsystems. Current Cilium releases recommend Linux kernel 5.10 or later, or an equivalent distribution kernel such as 4.18 on RHEL 8.10. Some advanced features require newer kernels or specific kernel configuration options.
 
 ```bash
 # Check your kernel version to verify compatibility
 
 uname -r
 
-# Check what Cilium features are available on your kernel
-cilium status --verbose | grep "Kernel"
+# Check what Cilium features are enabled across the cluster
+cilium features status
 ```
 
 **Q: How do I verify Cilium is working correctly after installation?**
@@ -65,7 +65,7 @@ kubectl get ciliumnetworkpolicies -A -o yaml | grep -A 5 "selector"
 
 # Inspect Cilium endpoint policy for a specific pod
 POD_IP=$(kubectl get pod <pod-name> -o jsonpath='{.status.podIP}')
-cilium endpoint list | grep $POD_IP
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg endpoint list | grep $POD_IP
 ```
 
 **Q: Why can't my pods reach the Kubernetes API server after applying egress policies?**
@@ -111,17 +111,17 @@ Kube-proxy replacement with eBPF improves performance by handling service traffi
 hubble observe --verdict DROPPED --follow
 
 # Use cilium monitor for low-level packet events
-cilium monitor --type drop
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg monitor --type drop
 ```
 
 **Q: Why does `cilium status` show some nodes as unreachable?**
 
 ```bash
 # Check Cilium node connectivity
-cilium connectivity test --test node-to-node
+kubectl -n kube-system exec -it ds/cilium -- cilium-health status --verbose
 
 # Inspect individual node status
-cilium node list
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg node list
 ```
 
 ## Best Practices
