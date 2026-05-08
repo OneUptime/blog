@@ -83,15 +83,21 @@ WantedBy=default.target
 When you set up readiness notification, dependent services will wait:
 
 ```ini
+# ~/.config/containers/systemd/mynet.network
+[Network]
+```
+
+```ini
 # ~/.config/containers/systemd/database.container
 [Unit]
 Description=PostgreSQL database
 
 [Container]
 Image=docker.io/library/postgres:16
-Volume=pgdata.volume:/var/lib/postgresql/data
+Volume=pgdata:/var/lib/postgresql/data
 Environment=POSTGRES_PASSWORD=secret
 Network=mynet.network
+NetworkAlias=database
 HealthCmd=pg_isready -U postgres || exit 1
 HealthInterval=5s
 HealthStartPeriod=30s
