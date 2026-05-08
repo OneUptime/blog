@@ -46,7 +46,7 @@ Check which IPs within each block are currently allocated vs. free.
 calicoctl ipam show --show-blocks
 
 # Check IP utilization per node - useful for detecting imbalanced allocation
-calicoctl ipam show --show-borrowed-ips
+calicoctl ipam show --show-borrowed
 ```
 
 ## Step 3: Correlate Block Affinities with Pod Counts
@@ -78,21 +78,24 @@ calicoctl get blockaffinity -o yaml | grep "node:" | \
 comm -23 /tmp/affinity-nodes.txt /tmp/active-nodes.txt
 ```
 
-## Step 5: Release Leaked Affinities
+## Step 5: Clean Up Leaked IPAM State
 
 ```bash
-# If you find a leaked affinity for a deleted node, release it
-calicoctl ipam release-leaked-ips --allow-version-mismatch
+# Check IPAM consistency and write a report of leaked or inconsistent allocations
+calicoctl ipam check -o /tmp/ipam-report.json --show-problem-ips
 
-# Or manually delete a specific block affinity for a removed node
-calicoctl delete blockaffinity <block-affinity-name>
+# Release leaked addresses from the report
+calicoctl ipam release --from-report=/tmp/ipam-report.json
+
+# If the retired node still exists as a Calico Node resource, remove it
+calicoctl delete node <node-name>
 ```
 
 ## Best Practices
 
 - Monitor IP pool utilization with `calicoctl ipam show` regularly
 - Set IP pool block size appropriately for your average pods-per-node count
-- Enable Calico's garbage collection for block affinities in large dynamic clusters
+- Run Calico node cleanup procedures when removing nodes from large dynamic clusters
 - Alert when IP pool utilization exceeds 80% to prevent exhaustion
 - Document expected block allocations and automate periodic audits
 
