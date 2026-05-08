@@ -58,7 +58,7 @@ cilium status --verbose
 
 ## Validating with Custom Test Workloads
 
-Deploy workloads that specifically test egress in cilium networking:
+Deploy workloads that validate baseline pod and service connectivity before testing egress-specific traffic:
 
 ```yaml
 # validation-workload.yaml
@@ -136,14 +136,14 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl get ciliumendpoints.cilium.io --all-namespaces
 
-# Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+# Check endpoint state from a Cilium agent
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
-POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
+# Compare endpoint and pod counts as a rough sanity check
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints.cilium.io --all-namespaces --no-headers | wc -l)
+POD_COUNT=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running --no-headers | wc -l)
 echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
 ```
 
@@ -153,13 +153,13 @@ Confirm metrics are being collected for egress in cilium networking:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "policy"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep -i "policy"
 
 # Verify Hubble is observing flows
-kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -190,9 +190,9 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
 
-Validating egress in cilium networking requires checking the active configuration matches your intent, running automated connectivity tests, deploying custom test workloads that exercise the specific feature, verifying endpoint health, and confirming metrics collection. A passing validation gives confidence that the feature is working correctly before production traffic flows through it.
+Validating egress in cilium networking requires checking the active configuration matches your intent, running automated connectivity tests, deploying custom test workloads that exercise representative traffic patterns, verifying endpoint health, and confirming metrics collection. A passing validation gives confidence that the feature is working correctly before production traffic flows through it.
