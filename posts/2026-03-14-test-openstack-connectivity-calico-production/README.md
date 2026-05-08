@@ -14,7 +14,7 @@ Testing OpenStack connectivity with Calico requires a methodical approach that g
 
 This guide walks through a structured connectivity test plan covering intra-network VM communication, cross-network routing, external access, and metadata service availability. Each test includes expected behavior specific to Calico's architecture.
 
-Understanding how Calico handles OpenStack networking is essential: there are no virtual switches, no overlay networks for intra-host traffic, and security groups are enforced via iptables or eBPF rules directly on the compute node.
+Understanding how Calico handles OpenStack networking is essential: there is no L2 adjacency between instances, Calico for OpenStack does not use VXLAN or IP-in-IP overlay encapsulation, and security groups are enforced via iptables rules directly on the compute node.
 
 ## Prerequisites
 
@@ -22,6 +22,7 @@ Understanding how Calico handles OpenStack networking is essential: there are no
 - At least 3 compute nodes for cross-node testing
 - OpenStack CLI tools configured with admin and tenant credentials
 - VM images with networking tools (curl, ping, traceroute, nc)
+- SSH access from the test runner to the VM addresses, or an equivalent bastion/floating IP workflow
 - Access to compute node logs and Calico configuration
 
 ## Setting Up Test Infrastructure
@@ -49,11 +50,12 @@ openstack subnet create --project connectivity-test \
   --network net-data --subnet-range 10.10.3.0/24 \
   --dns-nameserver 8.8.8.8 subnet-data
 
-# Create a router connecting the networks
-openstack router create --project connectivity-test test-router
-openstack router add subnet test-router subnet-web
-openstack router add subnet test-router subnet-app
-openstack router add subnet test-router subnet-data
+# Create a security group that allows the test traffic
+openstack security group create --project connectivity-test connectivity-test-sg
+openstack security group rule create --project connectivity-test \
+  --protocol icmp connectivity-test-sg
+openstack security group rule create --project connectivity-test \
+  --protocol tcp --dst-port 22 connectivity-test-sg
 ```
 
 Deploy test VMs across networks and compute nodes:
@@ -63,7 +65,7 @@ Deploy test VMs across networks and compute nodes:
 for i in 1 2 3; do
   openstack server create --project connectivity-test \
     --flavor m1.small --image ubuntu-22.04 \
-    --network net-web --security-group default \
+    --network net-web --security-group connectivity-test-sg \
     --availability-zone nova:compute-0${i} \
     web-vm-${i}
 done
@@ -71,13 +73,13 @@ done
 # Deploy VMs on the app network
 openstack server create --project connectivity-test \
   --flavor m1.small --image ubuntu-22.04 \
-  --network net-app --security-group default \
+  --network net-app --security-group connectivity-test-sg \
   app-vm-1
 
 # Deploy VMs on the data network
 openstack server create --project connectivity-test \
   --flavor m1.small --image ubuntu-22.04 \
-  --network net-data --security-group default \
+  --network net-data --security-group connectivity-test-sg \
   data-vm-1
 ```
 
@@ -116,7 +118,7 @@ test_connectivity "web-vm-2 -> web-vm-1 ICMP" \
   "ssh ubuntu@${WEB2_IP} 'ping -c 3 -W 5 ${WEB1_IP}'"
 
 echo ""
-echo "=== Cross-Network Tests (Via Router) ==="
+echo "=== Cross-Network Tests (Calico L3 Routing) ==="
 APP1_IP=$(openstack server show app-vm-1 -f value -c addresses | grep -oP '10\.10\.2\.\d+')
 DATA1_IP=$(openstack server show data-vm-1 -f value -c addresses | grep -oP '10\.10\.3\.\d+')
 
@@ -150,8 +152,8 @@ graph LR
     subgraph "net-data (10.10.3.0/24)"
         D1[data-vm-1]
     end
-    W1 -->|Router| A1
-    A1 -->|Router| D1
+    W1 -->|Calico L3 routing| A1
+    A1 -->|Calico L3 routing| D1
     W1 -->|External| EXT[Internet]
 ```
 
@@ -204,8 +206,8 @@ done
 ## Troubleshooting
 
 - **Intra-network ping fails**: Check that both VMs are on the same Calico network. Verify Felix is running on both compute nodes with `sudo calicoctl node status`.
-- **Cross-network routing fails**: Verify the OpenStack router is configured and that Calico has routes for all subnets. Check route tables on compute nodes.
-- **Metadata service unreachable**: Calico requires specific metadata proxy configuration. Verify that the metadata agent is running and that iptables rules for 169.254.169.254 exist on the compute node.
+- **Cross-network routing fails**: Verify that Calico has routes for all VM IPs. Check route tables on compute nodes and confirm BGP sessions between Calico nodes or route reflectors are established.
+- **Metadata service unreachable**: Calico uses the Nova metadata service without proxying by Neutron. Verify that the Nova metadata API is running on each compute node and that `service_neutron_metadata_proxy` and `service_metadata_proxy` are not set to `True` in `nova.conf`.
 - **Intermittent connectivity**: Check for asymmetric routing. Calico programs routes on each node independently, and transient inconsistencies can cause brief connectivity gaps during convergence.
 
 ## Conclusion
