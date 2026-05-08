@@ -112,7 +112,7 @@ podman images --filter label=maintainer=nginx
 Organize the image listing for better readability.
 
 ```bash
-# Sort images by size (largest first)
+# Sort images by size
 podman images --sort size
 
 # Sort by creation date
@@ -134,7 +134,7 @@ podman images --format "{{.Repository}}:{{.Tag}}"
 podman images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
 # JSON output for processing with jq
-podman images --format json | jq '.[].Names'
+podman images --format json | jq '.[].names'
 
 # Show image name, size, and creation date
 podman images --format "{{.Repository}}:{{.Tag}} | {{.Size}} | {{.Created}}"
