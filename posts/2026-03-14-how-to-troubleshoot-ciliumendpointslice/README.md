@@ -20,7 +20,7 @@ This guide walks through systematic troubleshooting for each scenario.
 
 - Kubernetes cluster with Cilium and CES enabled
 - kubectl configured with cluster access
-- Cilium CLI installed
+- Helm and jq installed
 - Access to Cilium operator logs
 
 ## Diagnostic Overview
