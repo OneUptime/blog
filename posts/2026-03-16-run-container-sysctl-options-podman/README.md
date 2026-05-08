@@ -37,7 +37,7 @@ podman run --rm \
 
 ## Namespaced vs Non-Namespaced Sysctls
 
-Only namespaced sysctls can be set safely in containers. These include most `net.*` parameters and some `kernel.*` parameters:
+Only namespaced sysctls can be set safely in containers. These include `net.*` parameters in a private network namespace and specific IPC-related `kernel.*` parameters:
 
 ```bash
 # Namespaced sysctls (safe to set per container)
@@ -60,7 +60,6 @@ Optimize the network stack for high-throughput applications:
 podman run -d --name high-perf-net \
   --sysctl net.core.somaxconn=65535 \
   --sysctl net.ipv4.tcp_max_syn_backlog=65535 \
-  --sysctl net.core.netdev_max_backlog=65535 \
   --sysctl net.ipv4.tcp_fin_timeout=30 \
   --sysctl net.ipv4.tcp_tw_reuse=1 \
   alpine sleep infinity
@@ -69,7 +68,6 @@ podman run -d --name high-perf-net \
 podman exec high-perf-net sh -c "
   echo 'somaxconn:' $(sysctl -n net.core.somaxconn)
   echo 'tcp_max_syn_backlog:' $(sysctl -n net.ipv4.tcp_max_syn_backlog)
-  echo 'netdev_max_backlog:' $(sysctl -n net.core.netdev_max_backlog)
   echo 'tcp_fin_timeout:' $(sysctl -n net.ipv4.tcp_fin_timeout)
   echo 'tcp_tw_reuse:' $(sysctl -n net.ipv4.tcp_tw_reuse)
 "
@@ -96,7 +94,7 @@ podman stop optimized-nginx && podman rm optimized-nginx
 
 ## Allowing Unprivileged Port Binding
 
-By default, ports below 1024 require root. You can change this:
+By default on Linux, ports below 1024 require root. You can change this inside the container's network namespace:
 
 ```bash
 # Allow binding to any port without root
@@ -239,7 +237,7 @@ podman run --rm \
 Sysctl options in Podman let you tune kernel parameters per container:
 
 - Use `--sysctl key=value` to set namespaced kernel parameters
-- Most `net.*` parameters can be safely tuned per container
+- `net.*` parameters can be tuned per container when the container has its own network namespace
 - Common tuning targets: connection backlog, TCP timeouts, port ranges, IP forwarding
 - Sysctl changes are isolated to the container and do not affect the host
 - Use `podman inspect` to verify configured sysctls
