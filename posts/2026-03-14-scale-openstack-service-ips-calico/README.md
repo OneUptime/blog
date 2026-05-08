@@ -4,62 +4,61 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Service IPs, Scaling, Networking
 
-Description: A guide to scaling OpenStack service IP management with Calico for large deployments, covering IP pool sizing, address allocation optimization, and service endpoint management.
+Description: A guide to scaling OpenStack service IP management with Calico for large deployments, covering Neutron pool sizing, address allocation optimization, and service endpoint management.
 
 ---
 
 ## Introduction
 
-Service IPs in OpenStack with Calico provide stable endpoints for services running on VMs. As deployments grow, managing the allocation, routing, and policy enforcement for service IPs becomes a scaling challenge. Each service IP adds routes to the data plane and requires policy rules for access control.
+Service IPs in OpenStack with Calico provide stable endpoints for services running on VMs. Calico supports these endpoints using standard Neutron mechanisms: floating IPs, or additional fixed IPs on the relevant Neutron port. As deployments grow, managing the allocation, routing, and policy enforcement for service IPs becomes a scaling challenge. Additional fixed IPs are routed directly to the VM, while floating IP traffic is DNAT'd to the VM's fixed IP.
 
-This guide covers scaling strategies for service IP management with Calico, including IP pool sizing for large deployments, efficient address allocation, route aggregation for service IPs, and monitoring allocation usage to prevent pool exhaustion.
+This guide covers scaling strategies for service IP management with Calico, including Neutron pool sizing for large deployments, efficient address allocation, BGP route management for service IPs, and monitoring allocation usage to prevent pool exhaustion.
 
-The key scaling consideration for service IPs is that unlike VM IPs which are typically allocated from large pools, service IPs often come from smaller, dedicated pools that can exhaust more quickly and cause service deployment failures.
+The key scaling consideration for service IPs is that unlike VM IPs which are typically allocated from large tenant pools, service IPs often come from smaller, dedicated Neutron allocation pools that can exhaust more quickly and cause service deployment failures.
 
 ## Prerequisites
 
 - An OpenStack deployment with Calico networking
-- Understanding of Calico IP pool and IPAM concepts
+- Understanding of Neutron subnets, allocation pools, ports, and floating IPs
 - `calicoctl` configured with datastore access
+- OpenStack CLI configured for the target cloud
 - Monitoring infrastructure for IP allocation tracking
 - Planning data for expected service growth
 
 ## Configuring Service IP Pools
 
-Create dedicated IP pools for service endpoints to separate them from VM networking.
-
-```yaml
-# service-ippool.yaml
-
-# Dedicated IP pool for OpenStack service endpoints
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: openstack-service-ips
-spec:
-  # Use a /16 for large-scale service IP allocation
-  cidr: 10.200.0.0/16
-  # Smaller block size for service IPs (more granular allocation)
-  blockSize: 28
-  # Services typically need NAT for external access
-  natOutgoing: true
-  # No encapsulation for direct routing
-  encapsulation: None
-  # Restrict to nodes labeled for service hosting
-  nodeSelector: service-host == 'true'
-```
+Create dedicated Neutron allocation pools for service endpoints. In Calico for OpenStack, service IPs are assigned with Neutron floating IPs or additional fixed IPs rather than by creating a Calico `IPPool`. Additional fixed IPs must come from a subnet on the VM port's network; floating IPs come from an external/provider network.
 
 ```bash
-# Apply the service IP pool
-calicoctl apply -f service-ippool.yaml
+# Create an external/provider range for floating service IPs
+openstack network create --external --share public
+openstack subnet create public-service-subnet \
+  --network public \
+  --subnet-range 10.200.0.0/16 \
+  --allocation-pool start=10.200.0.10,end=10.200.255.250 \
+  --gateway none \
+  --no-dhcp
 
-# Verify pool creation
-calicoctl get ippools -o wide
+# Create a service subnet on the target VM network for additional fixed IPs
+openstack subnet create service-subnet \
+  --network <target-vm-network> \
+  --subnet-range 10.201.0.0/16 \
+  --allocation-pool start=10.201.0.10,end=10.201.255.250 \
+  --gateway none \
+  --no-dhcp
+
+# Allocate a floating IP for a service endpoint
+openstack floating ip create --floating-ip-address 10.200.0.20 public
+openstack floating ip set --port <target-vm-port-id> 10.200.0.20
+
+# Or add an additional fixed IP directly to the VM port
+openstack port set <target-vm-port-id> \
+  --fixed-ip subnet=service-subnet,ip-address=10.201.0.30
 ```
 
 ## Monitoring IP Allocation
 
-Track IP pool usage to prevent exhaustion.
+Track service subnet usage to prevent exhaustion.
 
 ```bash
 #!/bin/bash
@@ -69,52 +68,48 @@ Track IP pool usage to prevent exhaustion.
 echo "=== Service IP Allocation Report ==="
 echo "Date: $(date)"
 
-# Show IPAM allocation summary
-calicoctl ipam show
+# Show allocated floating IPs
+openstack floating ip list --long
 
 echo ""
-echo "=== Per-Pool Usage ==="
-calicoctl ipam show --show-blocks 2>/dev/null
+echo "=== Service Subnet Usage ==="
+openstack port list --fixed-ip subnet=service-subnet
 
 echo ""
-echo "=== Allocation by Node ==="
-for node in $(calicoctl get nodes -o name 2>/dev/null); do
-  blocks=$(calicoctl ipam show --show-blocks 2>/dev/null | grep -c "${node}")
-  echo "  ${node}: ${blocks} IPAM blocks"
-done
+echo "=== Allocation Summary ==="
+allocated=$(openstack port list --fixed-ip subnet=service-subnet -f value -c ID | wc -l)
+total=65521
+pct=$((allocated * 100 / total))
+echo "Allocated service IPs: ${allocated}"
+echo "Approximate utilization: ${pct}%"
 
 # Alert if pool utilization exceeds 80%
 echo ""
 echo "=== Utilization Alerts ==="
-calicoctl ipam show 2>/dev/null | while read line; do
-  if echo "${line}" | grep -qP '\d+% allocated'; then
-    pct=$(echo "${line}" | grep -oP '\d+(?=% allocated)')
-    if [ "${pct}" -gt 80 ]; then
-      echo "WARNING: Pool utilization at ${pct}%"
-    fi
-  fi
-done
+if [ "${pct}" -gt 80 ]; then
+  echo "WARNING: Service subnet utilization at ${pct}%"
+fi
 ```
 
 ```mermaid
 graph TD
-    A[Service IP Pool<br>10.200.0.0/16] --> B[Block /28 Node 1]
-    A --> C[Block /28 Node 2]
-    A --> D[Block /28 Node 3]
-    B --> B1[Service A: 10.200.0.1]
-    B --> B2[Service B: 10.200.0.2]
-    C --> C1[Service C: 10.200.1.1]
+    A[Service Subnet<br>10.201.0.0/16] --> B[Allocation Range<br>10.201.0.10-10.201.255.250]
+    A --> C[Floating IPs]
+    A --> D[Additional Fixed IPs]
+    C --> C1[Service A: 10.200.0.20]
+    C --> C2[Service C: 10.200.1.1]
+    B --> B1[Service B: 10.201.0.30]
     D --> D1[Available]
     style D1 fill:#90EE90
 ```
 
 ## Optimizing Route Aggregation for Service IPs
 
-Aggregate service IP routes to reduce route table size.
+Use Calico BGP controls to keep route distribution manageable. In larger OpenStack deployments, route reflectors reduce the scaling cost of node-to-node BGP peering; `prefixAdvertisements` can attach communities to a service prefix for upstream routing policy, but it does not replace the need to plan where summarization is performed.
 
 ```yaml
 # bgp-service-aggregation.yaml
-# BGP configuration to aggregate service IP advertisements
+# BGP configuration to tag the service prefix for upstream policy
 apiVersion: projectcalico.org/v3
 kind: BGPConfiguration
 metadata:
@@ -122,9 +117,12 @@ metadata:
 spec:
   nodeToNodeMeshEnabled: false
   asNumber: 64512
-  # Advertise the aggregate service IP range
+  # Add BGP communities to advertisements for the service prefix
   prefixAdvertisements:
     - cidr: 10.200.0.0/16
+      communities:
+        - "64512:200"
+    - cidr: 10.201.0.0/16
       communities:
         - "64512:200"
 ```
@@ -135,26 +133,27 @@ Create policies that scale with the number of services.
 
 ```yaml
 # service-access-policy.yaml
-# Global policy for service IP access control
+# Global policy for service endpoint access control
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
   name: service-ip-access
 spec:
-  # Apply to all endpoints with service IPs
-  selector: has(service-name)
+  order: 10
+  # Apply to VMs in the OpenStack service project
+  selector: "projectcalico.org/openstack-project-name == 'service-project'"
   types:
     - Ingress
   ingress:
     # Allow from authorized consumers
     - action: Allow
       source:
-        selector: has(service-consumer)
+        selector: "projectcalico.org/openstack-project-name == 'service-consumers'"
       protocol: TCP
     # Allow health checks from monitoring
     - action: Allow
       source:
-        selector: role == 'monitoring'
+        selector: "projectcalico.org/openstack-project-name == 'monitoring'"
       protocol: TCP
       destination:
         ports:
@@ -168,28 +167,25 @@ spec:
 # verify-service-ip-scale.sh
 echo "=== Service IP Scaling Verification ==="
 
-echo "Service IP Pool:"
-calicoctl get ippools openstack-service-ips -o yaml
+echo "Service subnet:"
+openstack subnet show service-subnet
 
 echo ""
-echo "Allocated Service IPs:"
-calicoctl ipam show
+echo "Allocated floating IPs:"
+openstack floating ip list --long
 
 echo ""
 echo "Route count for service IPs:"
-for node in $(calicoctl get nodes -o name 2>/dev/null | head -3); do
-  node_name=$(echo ${node} | sed 's|node/||')
-  echo "  ${node_name}: checking routes..."
-done
+ip route | grep -Ec '^(10\.200\.|10\.201\.)'
 ```
 
 ## Troubleshooting
 
-- **Service IP pool exhausted**: Check for IP leaks from terminated services. Run `calicoctl ipam show --show-blocks` to identify over-allocated nodes. Consider expanding the pool CIDR.
-- **Routes for service IPs not propagating**: Verify BGP configuration includes the service IP CIDR in `prefixAdvertisements`. Check route reflector BGP sessions.
-- **Service IP conflicts**: Ensure the service IP pool CIDR does not overlap with VM pools or infrastructure networks. Use `calicoctl get ippools` to verify all pool CIDRs.
-- **Policy not applying to service endpoints**: Verify endpoints have the expected labels. Check that the policy selector matches the labels on service endpoints.
+- **Service IP pool exhausted**: Check for stale floating IPs and unused additional fixed IPs on terminated services. Use `openstack floating ip list` and `openstack port list --fixed-ip subnet=service-subnet` to identify allocations. Consider expanding the Neutron subnet allocation pool or adding another service subnet.
+- **Routes for service IPs not propagating**: Verify the service IP was added to the Neutron port or associated as a floating IP. Check BIRD and route reflector BGP sessions on the relevant compute nodes.
+- **Service IP conflicts**: Ensure the service subnet CIDR does not overlap with VM pools or infrastructure networks. Use `openstack subnet list` to verify all subnet CIDRs.
+- **Policy not applying to service endpoints**: Verify endpoints have the expected OpenStack-derived Calico labels. Check that the policy selector matches labels such as `projectcalico.org/openstack-project-name` or the relevant security group label.
 
 ## Conclusion
 
-Scaling service IPs in OpenStack with Calico requires dedicated IP pools, proactive allocation monitoring, route aggregation, and efficient policy management. By separating service IPs from VM IPs, monitoring utilization, and implementing aggregate route advertisements, you prevent service IP exhaustion and maintain efficient routing as your deployment grows.
+Scaling service IPs in OpenStack with Calico requires dedicated Neutron allocation pools, proactive allocation monitoring, BGP route planning, and efficient policy management. By separating service IPs from VM IPs, monitoring utilization, and managing route distribution, you prevent service IP exhaustion and maintain efficient routing as your deployment grows.
