@@ -24,8 +24,25 @@ Validating network policies means confirming they select the right endpoints, en
 echo "=== Policy Validation ==="
 
 for policy in $(kubectl get ciliumnetworkpolicies -n default -o jsonpath='{.items[*].metadata.name}'); do
-  SELECTOR=$(kubectl get ciliumnetworkpolicy "$policy" -n default -o jsonpath='{.spec.endpointSelector.matchLabels}')
-  MATCHING=$(kubectl get pods -n default -l "$(echo "$SELECTOR" | jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")')" --no-headers 2>/dev/null | wc -l)
+  SELECTOR=$(kubectl get ciliumnetworkpolicy "$policy" -n default -o json | jq -c '.spec.endpointSelector // {}')
+  LABEL_SELECTOR=$(echo "$SELECTOR" | jq -r '
+    def values_list: (.values // []) | map(tostring) | join(",");
+    [
+      (.matchLabels // {} | to_entries[] | "\(.key)=\(.value)"),
+      (.matchExpressions // [] | .[] |
+        if .operator == "In" then "\(.key) in (\(values_list))"
+        elif .operator == "NotIn" then "\(.key) notin (\(values_list))"
+        elif .operator == "Exists" then .key
+        elif .operator == "DoesNotExist" then "!\(.key)"
+        else empty end)
+    ] | join(",")')
+
+  if [ -n "$LABEL_SELECTOR" ]; then
+    MATCHING=$(kubectl get pods -n default -l "$LABEL_SELECTOR" --no-headers 2>/dev/null | wc -l)
+  else
+    MATCHING=$(kubectl get pods -n default --no-headers 2>/dev/null | wc -l)
+  fi
+
   echo "Policy '$policy' selects $MATCHING pods (selector: $SELECTOR)"
 done
 ```
@@ -53,7 +70,7 @@ kubectl exec deploy/web-frontend -- \
 # Test denied traffic
 kubectl exec deploy/unauthorized-pod -- \
   curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 http://api-backend:8080/
-# Expected: timeout or connection refused
+# Expected: timeout, or a non-2xx response if an L7 policy rejects the request
 ```
 
 ```mermaid
