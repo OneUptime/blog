@@ -36,7 +36,8 @@ For direct access to all host services:
 ```bash
 # Host network mode shares the host's network namespace
 podman run --rm --network host \
-  docker.io/library/alpine:latest curl http://localhost:3000
+  docker.io/library/alpine:latest \
+  sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl http://localhost:3000"
 
 # Everything on localhost is directly accessible
 podman run --rm --network host \
@@ -95,10 +96,10 @@ podman run -d --name myapp \
 For rootless containers using pasta:
 
 ```bash
-# Pasta allows access to host loopback by default
-podman run --rm --network pasta \
+# Enable gateway mapping so the container can reach host loopback services
+podman run --rm --network pasta:--map-gw \
   docker.io/library/alpine:latest \
-  sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://host.containers.internal:3000"
+  sh -c 'apk add --no-cache curl > /dev/null 2>&1 && GW=$(ip route show default | sed -n "s/^default via \([^ ]*\).*/\1/p") && curl -s "http://$GW:3000"'
 
 # With slirp4netns, enable host loopback access
 podman run --rm \
@@ -134,4 +135,4 @@ podman exec myapp sh -c "
 
 ## Summary
 
-Access host services from Podman containers using `host.containers.internal` hostname, `--add-host` with `host-gateway`, or the network gateway IP. For full access, use `--network host`. In development, map descriptive hostnames like `database` to `host-gateway` so container applications can connect to host services by name. Pasta networking provides the easiest host loopback access for rootless containers.
+Access host services from Podman containers using `host.containers.internal` hostname, `--add-host` with `host-gateway`, or the network gateway IP. For full access, use `--network host`. In development, map descriptive hostnames like `database` to `host-gateway` so container applications can connect to host services by name. For rootless containers using pasta, enable gateway mapping with `pasta:--map-gw` when you need direct access to host loopback services.
