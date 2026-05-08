@@ -39,7 +39,7 @@ calicoctl get nodes -o yaml > backup-nodes.yaml
 ```bash
 # Check CNI binaries exist on the affected node
 
-kubectl debug node/<affected-node> -it --image=busybox -- ls -la /host/opt/cni/bin/calico*
+kubectl debug node/<affected-node> -it --image=busybox -- sh -c 'ls -la /host/opt/cni/bin/calico*'
 
 # Check CNI configuration
 kubectl debug node/<affected-node> -it --image=busybox -- cat /host/etc/cni/net.d/10-calico.conflist
@@ -62,7 +62,7 @@ kubectl debug node/<affected-node> -it --image=busybox -- ls /host/etc/cni/net.d
 ## Step 4: Restart Kubelet
 
 ```bash
-kubectl debug node/<affected-node> -it --image=busybox -- nsenter -t 1 -m -- systemctl restart kubelet
+kubectl debug node/<affected-node> -it --image=ubuntu --profile=sysadmin -- chroot /host systemctl restart kubelet
 ```
 
 ## Verification
@@ -139,14 +139,14 @@ After applying any fix, systematically verify each layer of the Calico stack:
 # Layer 1: Calico system pods
 kubectl get pods -n calico-system -o wide
 
-# Layer 2: IPAM consistency
-calicoctl ipam check
+# Layer 2: IPAM allocation status
+calicoctl ipam show --show-blocks
 
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
 # Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- -T 5 http://kubernetes.default.svc/healthz
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
