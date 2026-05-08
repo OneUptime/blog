@@ -10,7 +10,7 @@ Description: A systematic guide to diagnosing and fixing common calicoctl patch 
 
 ## Introduction
 
-The `calicoctl patch` command applies partial updates to existing Calico resources without needing to specify the entire resource definition. While this makes targeted changes convenient, it also introduces unique error scenarios that differ from `apply` or `replace` operations. Patch errors often relate to incorrect JSON merge paths, type mismatches, or conflicts with the existing resource state.
+The `calicoctl patch` command applies partial updates to existing Calico resources without needing to specify the entire resource definition. While this makes targeted changes convenient, it also introduces unique error scenarios that differ from `apply` or `replace` operations. Patch errors often relate to incorrect JSON object structure, type mismatches, or conflicts with the existing resource state.
 
 Understanding the common error patterns and their root causes helps you resolve calicoctl patch failures quickly and avoid introducing misconfigurations into your Calico deployment.
 
@@ -21,7 +21,7 @@ This guide covers the most common calicoctl patch errors, their causes, and step
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
-- Basic understanding of JSON merge patch and strategic merge patch
+- Basic understanding of strategic merge patch
 
 ## Error: Resource Not Found
 
@@ -51,14 +51,12 @@ calicoctl patch globalnetworkpolicy my-policy -p '{spec: {order: 100}}'
 # Fix: Use valid JSON with quoted keys
 calicoctl patch globalnetworkpolicy my-policy -p '{"spec":{"order":100}}'
 
-# For complex patches, use a file instead of inline JSON
-cat > /tmp/patch.yaml <<EOF
-spec:
-  order: 100
-  selector: app == "web"
+# For complex patches, prepare JSON in a file and pass it to --patch
+cat > /tmp/patch.json <<EOF
+{"spec":{"order":100,"selector":"app == \"web\""}}
 EOF
 
-calicoctl patch globalnetworkpolicy my-policy --patch-file=/tmp/patch.yaml
+calicoctl patch globalnetworkpolicy my-policy --patch="$(cat /tmp/patch.json)"
 ```
 
 ## Error: Type Mismatch on Patch
@@ -118,7 +116,7 @@ For complex patch operations, use a step-by-step debugging approach:
 export DATASTORE_TYPE=kubernetes
 
 # Step 1: Get the current resource state
-calicoctl get globalnetworkpolicy my-policy -o yaml > /tmp/current.yaml
+calicoctl get globalnetworkpolicy my-policy -o json > /tmp/current.json
 
 # Step 2: Create the patch file
 cat > /tmp/patch.json <<'EOF'
@@ -140,14 +138,14 @@ cat > /tmp/patch.json <<'EOF'
 }
 EOF
 
-# Step 3: Preview the merged result
+# Step 3: Preview the merged result for object fields
 python3 -c "
-import json, yaml
+import json
 
-current = yaml.safe_load(open('/tmp/current.yaml'))
+current = json.load(open('/tmp/current.json'))
 patch = json.load(open('/tmp/patch.json'))
 
-# Simulate merge
+# Approximate strategic merge behavior for object fields
 def deep_merge(base, patch):
     for key, value in patch.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -157,11 +155,11 @@ def deep_merge(base, patch):
     return base
 
 result = deep_merge(current, patch)
-print(yaml.dump(result, default_flow_style=False))
+print(json.dumps(result, indent=2))
 "
 
 # Step 4: Apply the patch
-calicoctl patch globalnetworkpolicy my-policy --patch-file=/tmp/patch.json
+calicoctl patch globalnetworkpolicy my-policy --patch="$(cat /tmp/patch.json)"
 ```
 
 ```mermaid
@@ -173,7 +171,7 @@ flowchart TD
     B -->|Permission denied| F[Check RBAC permissions]
     B -->|Conflict| G[Retry the patch operation]
     C --> H[Use correct name]
-    D --> I[Use patch file instead of inline]
+    D --> I[Prepare JSON in a file and pass it to --patch]
     E --> J[Fix field types]
     F --> K[Add patch verb to ClusterRole]
     G --> L[Automatic retry]
@@ -202,10 +200,10 @@ calicoctl get globalnetworkpolicies -o wide
 ## Troubleshooting
 
 - **Patch succeeds but change is not visible**: The patch may have targeted the wrong field path. Verify the full resource YAML to check where the change landed.
-- **Array fields replaced instead of merged**: JSON merge patch replaces arrays entirely. If you need to add items to an array, get the current array, add items, and patch with the complete array.
+- **Array fields replaced instead of merged**: Do not assume list fields will be appended item-by-item. If you need to add items to an array, get the current array, add items, and patch with the complete array.
 - **"unknown field" error**: The field name is misspelled or not supported in your Calico version. Check the Calico resource API reference for valid field names.
 - **Patch applied but connectivity unchanged**: Felix may need a few seconds to process the updated policy. Check Felix logs for policy update events.
 
 ## Conclusion
 
-Troubleshooting calicoctl patch errors requires understanding both the patch format (JSON merge patch) and the target resource structure. The most common issues -- invalid JSON, wrong field types, missing resources, and RBAC gaps -- are quickly resolved once identified. Use the debugging workflow of getting current state, previewing the merge, and validating after application to ensure patches behave as expected.
+Troubleshooting calicoctl patch errors requires understanding both the patch format (JSON input using the default strategic merge patch type) and the target resource structure. The most common issues -- invalid JSON, wrong field types, missing resources, and RBAC gaps -- are quickly resolved once identified. Use the debugging workflow of getting current state, previewing the merge, and validating after application to ensure patches behave as expected.
