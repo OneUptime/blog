@@ -18,8 +18,8 @@ This guide covers the GitOps and automation practices that maintain consistent C
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI and `kubectl` access
+- Kubernetes cluster supported by your Cilium release, with Cilium v1.18+
+- `cilium` CLI, `kubectl`, and `yq` access
 - Node-level root access
 - Prometheus monitoring (recommended)
 
@@ -28,15 +28,14 @@ This guide covers the GitOps and automation practices that maintain consistent C
 ```yaml
 # cilium-perf-values.yaml - Version controlled
 
-tunnel: disabled
 routingMode: native
 autoDirectNodeRoutes: true
 kubeProxyReplacement: true
 bpf:
   masquerade: true
   hostLegacyRouting: false
-  ctGlobalTCPMax: 524288
-  ctGlobalAnyMax: 262144
+  ctTcpMax: 524288
+  ctAnyMax: 262144
 socketLB:
   enabled: true
 prometheus:
@@ -54,14 +53,21 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 ```bash
 #!/bin/bash
 # validate-config.sh - Run before every benchmark
-EXPECTED_HASH=$(md5sum cilium-perf-values.yaml | awk '{print $1}')
-ACTUAL_HASH=$(helm get values cilium -n kube-system -o yaml | md5sum | awk '{print $1}')
+EXPECTED_VALUES=$(mktemp)
+ACTUAL_VALUES=$(mktemp)
+trap 'rm -f "$EXPECTED_VALUES" "$ACTUAL_VALUES"' EXIT
+
+yq -o=json 'sort_keys(..)' cilium-perf-values.yaml > "$EXPECTED_VALUES"
+helm get values cilium -n kube-system -o yaml | yq -o=json 'sort_keys(..)' - > "$ACTUAL_VALUES"
+
+EXPECTED_HASH=$(md5sum "$EXPECTED_VALUES" | awk '{print $1}')
+ACTUAL_HASH=$(md5sum "$ACTUAL_VALUES" | awk '{print $1}')
 
 if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
   echo "FAIL: Cilium configuration has drifted"
   echo "Expected: $EXPECTED_HASH"
   echo "Actual: $ACTUAL_HASH"
-  diff <(cat cilium-perf-values.yaml) <(helm get values cilium -n kube-system -o yaml)
+  diff -u "$EXPECTED_VALUES" "$ACTUAL_VALUES"
   exit 1
 fi
 echo "PASS: Configuration matches expected"
@@ -80,11 +86,11 @@ spec:
   - name: cilium-config
     rules:
     - alert: CiliumConfigChanged
-      expr: changes(cilium_agent_boot_time[1h]) > 0
+      expr: cilium_drift_checker_config_delta > 0
       labels:
-        severity: info
+        severity: warning
       annotations:
-        summary: "Cilium agent restarted - configuration may have changed"
+        summary: "Cilium agent has unapplied ConfigMap changes"
 ```
 
 ## Verification
@@ -127,13 +133,15 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.14.x"
+      version: "1.18.x"
       sourceRef:
         kind: HelmRepository
         name: cilium
+        namespace: flux-system
   valuesFrom:
   - kind: ConfigMap
     name: cilium-values
+    valuesKey: cilium-values.yaml
 YAML
 ```
 
