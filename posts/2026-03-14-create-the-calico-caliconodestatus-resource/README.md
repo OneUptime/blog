@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: Learn how to define and apply a Calico CalicoNodeStatus resource to your Kubernetes cluster using kubectl and calicoctl.
+Description: Learn how to define and apply a Calico CalicoNodeStatus resource to your Kubernetes cluster using kubectl.
 
 ---
 
 ## Introduction
 
-Calico uses custom Kubernetes resources to configure networking and security in your cluster. The CalicoNodeStatus resource is one of these building blocks, and understanding how to create it properly is essential for any Kubernetes operator running Calico.
+Calico uses custom Kubernetes resources to configure networking and security in your cluster. The CalicoNodeStatus resource is a troubleshooting resource for collecting status from a node, and understanding how to create it properly is useful for any Kubernetes operator running Calico with BGP networking.
 
 This guide walks you through defining a CalicoNodeStatus manifest, understanding each field, and applying it to your cluster. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn the correct way to create this resource.
 
@@ -19,9 +19,10 @@ By the end of this post you will have a working CalicoNodeStatus resource applie
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24 or later)
-- Calico installed (v3.26 or later recommended)
+- Calico installed with BGP networking enabled (v3.26 or later recommended)
+- A Linux node to collect status from
 - `kubectl` configured with cluster-admin privileges
-- `calicoctl` installed (optional but recommended for validation)
+- `calicoctl` installed (optional for additional Calico troubleshooting commands)
 
 ## Understanding the CalicoNodeStatus Resource
 
@@ -29,7 +30,7 @@ The CalicoNodeStatus resource uses the Calico API group `projectcalico.org/v3`. 
 
 - `node`: The name of the Kubernetes node to report status for.
 - `classes`: Which status classes to report. Valid values: `Agent`, `BGP`, `Routes`.
-- `updatePeriodSeconds`: How often the status is refreshed. Minimum is 10 seconds.
+- `updatePeriodSeconds`: How often the status is refreshed. Accepted values are `0` to `86400`; `0` disables refresh.
 
 ## Creating the CalicoNodeStatus Manifest
 
@@ -49,25 +50,23 @@ spec:
   updatePeriodSeconds: 30
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a sensible example value. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
+
+Before applying, you can ask the Kubernetes API server to validate the manifest without creating the resource:
+
+```bash
+kubectl apply --dry-run=server -f caliconodestatus.yaml
+```
+
+Server-side dry-run checks the manifest against the API server and installed Calico resource schema before you submit the live object.
 
 Apply the manifest using `kubectl`:
 
 ```bash
 kubectl apply -f caliconodestatus.yaml
 ```
-
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
-
-```bash
-# Apply with calicoctl for enhanced validation
-
-calicoctl apply -f caliconodestatus.yaml
-```
-
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
 
 ## Verification
 
@@ -78,10 +77,10 @@ Confirm that the resource was created successfully:
 kubectl get caliconodestatus.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe caliconodestatus.projectcalico.org
+kubectl describe caliconodestatus.projectcalico.org worker-node-1
 
-# Verify with calicoctl
-calicoctl get caliconodestatus -o yaml
+# Read the collected status
+kubectl get caliconodestatus.projectcalico.org worker-node-1 -o yaml
 ```
 
 Check the Calico component logs for any warnings or errors related to the new resource:
@@ -95,15 +94,15 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `CalicoNodeStatus`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- Check that the Calico CRD is installed: `kubectl get crd caliconodestatuses.crd.projectcalico.org`.
 
 **Validation errors:**
-- Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
-- Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
+- Use `kubectl apply --dry-run=server -f caliconodestatus.yaml` to get validation messages before creating the resource.
+- Ensure field values match the types expected by the API, including a valid Kubernetes node name, valid status classes, and an integer update period between `0` and `86400`.
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
-- Check Felix and Typha logs for error messages.
+- Confirm the target is a Linux node running Calico with BGP networking enabled.
+- Check calico-node logs for error messages.
 
 
 ## Advanced Configuration Options
@@ -112,7 +111,7 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on Kubernetes nodes can help you organize and find the nodes you create CalicoNodeStatus resources for, but the CalicoNodeStatus resource itself targets exactly one node through `spec.node`:
 
 ```bash
 # Label nodes for targeted configuration
@@ -188,4 +187,4 @@ Each layer depends on the previous one. If Layer 1 fails, do not proceed to test
 
 ## Conclusion
 
-You have created a Calico CalicoNodeStatus resource, applied it to your cluster, and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with `calicoctl` before applying to production clusters.
+You have created a Calico CalicoNodeStatus resource, applied it to your cluster, and verified it is active. This resource is intended for targeted troubleshooting, so delete it when you no longer need node status collection. Keep your manifests in version control and validate changes with server-side dry-run before applying to production clusters.
