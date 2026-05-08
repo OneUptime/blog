@@ -45,6 +45,10 @@ metadata:
   namespace: cilium-parser-test
 spec:
   endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": cilium-parser-test
   egress:
     - toEndpoints:
         - matchLabels:
@@ -55,12 +59,17 @@ spec:
         - ports:
             - port: "6443"
               protocol: TCP
-    - toCIDR:
-        - 0.0.0.0/0
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 EOF
 ```
 
@@ -104,6 +113,27 @@ spec:
   ports:
     - port: 9000
       targetPort: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-client
+  namespace: cilium-parser-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-client
+  template:
+    metadata:
+      labels:
+        app: test-client
+        role: client
+    spec:
+      containers:
+        - name: client
+          image: myprotocol-client:test
+          command: ["sleep", "3600"]
 ```
 
 ## Executing Manual Test Plans
@@ -152,11 +182,11 @@ kubectl exec -n cilium-parser-test deploy/test-client -- \
 echo "=== Test 4: Denied command (DELETE) ==="
 kubectl exec -n cilium-parser-test deploy/test-client -- \
     protocol-client send --command DELETE --key testkey --target test-server:9000
-# Expected: error response from proxy
+# Expected: protocol-specific deny response or failed request from the proxy
 
 # Test 5: Monitor through Hubble
 echo "=== Test 5: Observe L7 flows ==="
-hubble observe --namespace cilium-parser-test --type l7 --last 20
+hubble observe --namespace cilium-parser-test -t l7 --last 20
 ```
 
 ```mermaid
@@ -226,7 +256,7 @@ Document test results:
 # Generate test summary
 echo "=== Manual Test Results ==="
 echo "Date: $(date -u)"
-echo "Cilium version: $(kubectl exec -n kube-system ds/cilium -- cilium version)"
+echo "Cilium version: $(kubectl exec -n kube-system ds/cilium -- cilium-dbg version)"
 echo ""
 echo "Test 1 - Baseline: PASS/FAIL"
 echo "Test 2 - Policy apply: PASS/FAIL"
@@ -241,10 +271,10 @@ echo "Test 5 - Hubble flows: PASS/FAIL"
 Check that both pods are running and the service is correctly configured. Verify the network policy allows intra-namespace traffic.
 
 **Problem: L7 policy does not take effect**
-Check that Cilium has processed the policy: `kubectl exec -n kube-system ds/cilium -- cilium policy get`. Verify endpoint labels match the policy selectors.
+Check that Cilium has processed the policy: `kubectl exec -n kube-system ds/cilium -- cilium-dbg policy get`. Verify endpoint labels match the policy selectors.
 
 **Problem: Cannot observe L7 flows in Hubble**
-Ensure Hubble is enabled and the Hubble relay is running. Check that the L7 proxy redirect is active: `kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list`.
+Ensure Hubble is enabled and the Hubble relay is running. Check that the L7 proxy redirect is active in the endpoint policy map: `kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all`.
 
 **Problem: Test environment leaks to production**
 Verify namespace isolation policy is applied. Check that the test namespace does not have access to production services by attempting connections.
