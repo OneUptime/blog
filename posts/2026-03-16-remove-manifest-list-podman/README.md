@@ -19,12 +19,12 @@ Manifest lists (also called manifest indexes) group multiple architecture-specif
 A manifest list is a pointer that references images for different platforms. When you create one with `podman manifest create`, it lives locally until you remove it.
 
 ```bash
-# List all manifest lists currently stored
+# Check whether a specific manifest list exists
 
-podman manifest inspect myapp:latest 2>/dev/null && echo "Manifest exists" || echo "No manifest"
+podman manifest exists myapp:latest && echo "Manifest exists" || echo "No manifest"
 
-# List all images including manifest lists
-podman images --all
+# List local manifest lists
+podman images --filter manifest=true
 ```
 
 ## Removing a Manifest List with podman manifest rm
@@ -109,7 +109,7 @@ IMAGE="registry.example.com/myapp"
 TAG="v1.0"
 
 # Clean up any existing manifest list from a previous run
-podman manifest rm "${IMAGE}:${TAG}" 2>/dev/null || true
+podman manifest rm --ignore "${IMAGE}:${TAG}"
 
 # Create a fresh manifest list
 podman manifest create "${IMAGE}:${TAG}"
@@ -121,7 +121,7 @@ for ARCH in amd64 arm64 ppc64le; do
 done
 
 # Push the manifest list
-podman manifest push "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
+podman manifest push --all "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
 
 # Clean up local manifest list after push
 podman manifest rm "${IMAGE}:${TAG}"
@@ -138,8 +138,8 @@ If you try to remove a manifest list that does not exist, Podman returns an erro
 podman manifest rm nonexistent:latest
 # Error: nonexistent:latest: image not known
 
-# Use conditional removal to avoid errors in scripts
-podman manifest rm myapp:latest 2>/dev/null || echo "Manifest not found, skipping."
+# Use --ignore to avoid errors in scripts
+podman manifest rm --ignore myapp:latest
 ```
 
 ## Removing All Local Manifest Lists
@@ -148,11 +148,11 @@ Podman does not have a dedicated command to remove all manifest lists at once, b
 
 ```bash
 # List all images that are manifest lists and remove them
-# Manifest lists appear as images with <none> or specific tags
-podman images --filter dangling=true --format '{{.ID}}' | \
+# Podman can filter images to only manifest lists
+podman images --filter manifest=true --format '{{.ID}}' | \
     xargs -r podman manifest rm 2>/dev/null
 
-# Or remove all images including manifest lists
+# Or remove all unused images, which can include manifest lists
 podman system prune --all --force
 ```
 
