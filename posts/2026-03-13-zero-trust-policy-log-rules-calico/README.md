@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Logging, Audit, Security
 
-Description: Implement zero trust security using Calico Policy Log Rules in Calico.
+Description: Implement zero trust security using Calico log rules.
 
 ---
 
 ## Introduction
 
-Calico Policy Log Rules in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to zero trust Policy Logging effectively.
+Calico log rules provide fine-grained network security visibility using the `projectcalico.org/v3` API. This guide covers how to use zero trust policy logging effectively.
 
-Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Policy Logging criteria.
+Calico's extensible policy model supports log rules through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your policy logging criteria.
 
 This guide provides practical techniques for zero trust Policy Logging in your Kubernetes cluster, following security best practices and production-tested patterns.
 
@@ -31,6 +31,7 @@ metadata:
   name: zt-default-deny
 spec:
   order: 1000
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   selector: all()
   types:
     - Ingress
@@ -49,10 +50,17 @@ spec:
   order: 100
   selector: all()
   ingress:
+    - action: Log
+      source:
+        selector: trust == 'verified'
     - action: Allow
       source:
         selector: trust == 'verified'
   egress:
+    - action: Log
+      destination:
+        ports: [53]
+      protocol: UDP
     - action: Allow
       destination:
         ports: [53]
@@ -83,4 +91,4 @@ flowchart TD
 
 ## Conclusion
 
-Zero Trust Policy Logging policies in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your Policy Logging policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
+Zero trust policy logging in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your log rules and allow policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
