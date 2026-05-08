@@ -70,7 +70,7 @@ Order instructions from least to most frequently changing:
 
 ```dockerfile
 # Good: Dependencies change less often than source code
-FROM node:20-alpine
+FROM docker.io/library/node:24-alpine
 
 WORKDIR /app
 
@@ -95,7 +95,7 @@ CMD ["node", "src/server.js"]
 
 ```dockerfile
 # Stage 1: Build (includes compilers, dev tools)
-FROM golang:1.21 AS builder
+FROM docker.io/library/golang:1.26-alpine AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -108,7 +108,7 @@ COPY --from=builder /app /app
 ENTRYPOINT ["/app"]
 ```
 
-Multi-stage builds reduce the amount of data transferred back from farm nodes.
+Multi-stage builds reduce the amount of image data pushed from farm nodes to the registry.
 
 ## Pre-Warm Remote Caches
 
@@ -118,7 +118,7 @@ Pull base images on remote nodes before building:
 #!/bin/bash
 # prewarm-caches.sh - Pull base images on all farm nodes
 
-BASE_IMAGES=("golang:1.21" "node:20-alpine" "alpine:latest")
+BASE_IMAGES=("docker.io/library/golang:1.26-alpine" "docker.io/library/node:24-alpine" "docker.io/library/alpine:latest")
 CONNECTIONS=("amd64-builder" "arm64-builder")
 
 for CONN in "${CONNECTIONS[@]}"; do
@@ -167,7 +167,7 @@ Farm builds already parallelize across nodes, but you can optimize within each b
 
 ```dockerfile
 # Parallelize package installation where possible
-FROM node:20-alpine
+FROM docker.io/library/node:24-alpine
 
 WORKDIR /app
 COPY package.json package-lock.json ./
