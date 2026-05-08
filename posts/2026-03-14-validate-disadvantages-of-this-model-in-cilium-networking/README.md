@@ -20,6 +20,7 @@ This guide provides a structured validation process with automated checks and ma
 
 - A Kubernetes cluster with Cilium installed and configured
 - The Cilium CLI installed
+- The Hubble CLI installed if validating Hubble flows
 - `kubectl` with cluster-admin access
 - Test workloads or the ability to create them
 
@@ -33,7 +34,8 @@ Verify the intended configuration is active:
 cilium config view | head -40
 
 # Specifically check settings related to disadvantages of native routing in cilium
-ip route show proto bird 2>/dev/null || ip route show | grep cilium
+cilium config view | grep -E 'routing-mode|ipv4-native-routing-cidr|auto-direct-node-routes|enable-bgp-control-plane'
+kubectl get ciliumnodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.ipam.podCIDRs}{"\n"}{end}'
 
 # Compare with expected Helm values
 helm get values cilium -n kube-system -o yaml
@@ -49,8 +51,8 @@ cilium connectivity test
 
 # Run specific test categories
 cilium connectivity test --test pod-to-pod
-cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+cilium connectivity test --test service
+cilium connectivity test --test dns
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -117,12 +119,12 @@ kubectl run validate-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/validate-client --timeout=30s
 
 # Test service access
-kubectl exec validate-client -- wget -qO- --timeout=5 http://validate-svc
+kubectl exec validate-client -- wget -qO- -T 5 http://validate-svc
 
 # Test direct pod IP access
 for IP in $(kubectl get pods -l app=validate-server -o jsonpath='{.items[*].status.podIP}'); do
   echo "Testing $IP..."
-  kubectl exec validate-client -- wget -qO- --timeout=5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
+  kubectl exec validate-client -- wget -qO- -T 5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
 done
 
 # Cleanup
@@ -136,13 +138,13 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
 
-# Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+# Check locally managed endpoints on a Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+# Compare endpoint count with running pods
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints --all-namespaces -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
 POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
 echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
 ```
@@ -153,13 +155,13 @@ Confirm metrics are being collected for disadvantages of native routing in ciliu
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "forward"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -i "forward"
 
 # Verify Hubble is observing flows
-kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
+hubble observe -P
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -171,7 +173,7 @@ echo "=== Disadvantages of Native Routing in Cilium Validation Summary ==="
 
 # 1. Configuration correct
 echo "1. Configuration:"
-ip route show proto bird 2>/dev/null || ip route show | grep cilium 2>/dev/null | head -5
+cilium config view | grep -E 'routing-mode|ipv4-native-routing-cidr|auto-direct-node-routes|enable-bgp-control-plane'
 
 # 2. Cilium healthy
 echo "2. Cilium Status:"
@@ -190,7 +192,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
