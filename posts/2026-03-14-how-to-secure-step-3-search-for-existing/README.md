@@ -21,6 +21,7 @@ Whether you are setting up a new cluster or hardening an existing one, these sec
 - A running Kubernetes cluster (v1.24+)
 - Cilium installed (v1.14+) via Helm
 - `cilium` CLI tool installed
+- `hubble` CLI tool installed
 - `kubectl` configured for cluster access
 - Hubble enabled for network flow observation
 - Basic understanding of Kubernetes networking concepts
@@ -86,7 +87,7 @@ spec:
 kubectl apply -f policy.yaml
 
 # Verify the policy was accepted
-kubectl get cnp -n production
+kubectl get cnp -n development
 ```
 
 ### Hardening with Default-Deny
@@ -120,9 +121,8 @@ spec:
 # Monitor for policy-related drops in real time
 hubble observe --verdict DROPPED --namespace production --output compact
 
-# Check endpoint security status
 # List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp --all-namespaces
 ```
 
 ## Advanced Security Configuration
@@ -138,8 +138,8 @@ For enhanced protection, consider these additional hardening measures:
 # Verify the current enforcement mode
 cilium config view | grep policy-enforcement
 
-# List all identities and verify they match expected workloads
-cilium identity list
+# List all Cilium identities and verify they match expected workloads
+kubectl get ciliumidentities
 ```
 
 
@@ -154,11 +154,11 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
-    src_ns: .source.namespace,
-    dst_ns: .destination.namespace,
-    port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
-  }' | sort | uniq -c | sort -rn
+  jq -r '.flow
+    | select(.source.namespace and .destination.namespace and .source.namespace != .destination.namespace)
+    | [.source.namespace, .destination.namespace, (.l4.TCP.destination_port // .l4.UDP.destination_port // "unknown")]
+    | @tsv' | \
+  sort | uniq -c | sort -rn
 
 # Ensure each namespace has appropriate policy coverage
 for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
@@ -175,7 +175,7 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
 ```
 
 ```bash
@@ -185,12 +185,12 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+hubble observe --verdict DROPPED --last 20 --output json
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl get ciliumendpoints -n production -o json | jq '.items[] | .status.identity.labels'`.
 - **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
