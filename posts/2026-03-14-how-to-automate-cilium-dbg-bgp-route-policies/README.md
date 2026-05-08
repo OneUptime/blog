@@ -10,7 +10,7 @@ Description: Automate BGP route policy validation using cilium-dbg bgp route-pol
 
 ## Introduction
 
-Cilium supports BGP for advertising pod and service CIDRs to external network infrastructure. The `cilium-dbg bgp route-policies` command provides visibility into BGP route policy configuration on each Cilium node.
+Cilium supports BGP for advertising Pod CIDR ranges and Service virtual IPs to external network infrastructure. The `cilium-dbg bgp route-policies` command provides visibility into BGP route policy configuration on each Cilium node.
 
 
 
@@ -19,10 +19,8 @@ This guide covers automating cilium-dbg bgp route-policies for monitoring and al
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured with Cilium BGP v2 resources such as CiliumBGPClusterConfig and CiliumBGPPeerConfig
 - `kubectl` access to cilium pods
-- `jq` for JSON processing
-- 
 
 ## Automated Route-Policies Collection
 
@@ -129,15 +127,15 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-dbg bgp route-policies 2>/dev/null && echo "Command succeeded"
 
-# Verify automation/parsing
+# Verify automation script
 bash collect-bgp-route-policies-state.sh
 ```
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
-- **No policies displayed**: Ensure route policy is defined in the CiliumBGPPeeringPolicy.
+- **"BGP is not enabled"**: Enable the BGP control plane with the `bgpControlPlane.enabled=true` Helm value.
+- **Empty output**: No matching BGP configuration or advertisements may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
+- **No policies displayed**: Ensure the CiliumBGPPeerConfig address family selects the intended CiliumBGPAdvertisement resources.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
 ## Conclusion
