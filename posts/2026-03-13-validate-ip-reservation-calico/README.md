@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPAM, Ip-reservation, Kubernetes, Networking, Ip-management
 
-Description: Learn how to validate Calico's IP reservation functionality, ensuring that specific IP addresses are correctly reserved from allocation and cannot be assigned to pods.
+Description: Learn how to validate Calico's IP reservation functionality, ensuring that specific IP addresses are correctly reserved from automatic allocation and cannot be auto-assigned to pods.
 
 ---
 
 ## Introduction
 
-Calico's IP reservation feature allows you to mark specific IP addresses within an IP pool as reserved, preventing them from being assigned to pods. This is essential in environments where certain IPs within the pod CIDR range are already in use by other systems, are reserved for future use, or must remain free for infrastructure devices like gateways, monitoring agents, or virtual appliances.
+Calico's IP reservation feature allows you to mark specific IP addresses within an IP pool as reserved, preventing them from being automatically assigned to pods. This is essential in environments where certain IPs within the pod CIDR range are already in use by other systems, are reserved for future use, or must remain free for infrastructure devices like gateways, monitoring agents, or virtual appliances.
 
 Without proper IP reservations, Calico's IPAM may allocate IPs that are already in use elsewhere in your network, leading to IP conflicts that cause pod connectivity failures. These conflicts are particularly difficult to diagnose because the pod may start successfully but fail to communicate, or two different services may appear to have the same IP.
 
@@ -24,45 +24,47 @@ This guide covers how to configure and validate IP reservations in Calico IPAM.
 
 ## Step 1: Create IP Reservations
 
-Use the `IPAMConfig` or direct block manipulation to reserve specific IPs.
+Use the `IPReservation` resource to reserve specific IPs or CIDR ranges.
 
 ```yaml
 # ipreservation.yaml - reserve specific IPs in a Calico IP pool
 
-# Method: Use a dedicated IPPool for reserved IPs and mark it as disabled
 apiVersion: projectcalico.org/v3
-kind: IPPool
+kind: IPReservation
 metadata:
-  name: reserved-infrastructure-ips
+  name: infrastructure-reserved-ips
 spec:
-  cidr: 10.244.0.0/28    # Reserve a small block for infrastructure IPs
-  disabled: true          # Disabled pools cannot be used for pod allocation
-  ipipMode: Never
-  vxlanMode: Never
-  natOutgoing: false
+  reservedCIDRs:
+    - 10.244.1.1/32       # Reserve a single infrastructure IP
+    - 10.244.0.0/28       # Reserve a small block for infrastructure IPs
 ```
 
 ```bash
-# Apply the reservation pool
+# Apply the reservation
 calicoctl apply -f ipreservation.yaml
 
-# Verify the reservation pool is created and disabled
-calicoctl get ippool reserved-infrastructure-ips -o yaml | grep "disabled:"
+# Verify the reservation is created
+calicoctl get ipreservation infrastructure-reserved-ips -o yaml
 ```
 
-## Step 2: Reserve Individual IPs Using IPAM Handles
+## Step 2: Reserve Individual IPs
 
 For finer-grained reservation of specific IPs within an active pool.
 
-```bash
-# Reserve a specific IP address so it cannot be auto-assigned
-# This uses calicoctl to allocate the IP with a specific handle
-calicoctl ipam release --ip=10.244.1.1 2>/dev/null || true
-calicoctl ipam allocate --ip=10.244.1.1 --handle="reserved-gateway-ip" \
-  --note="Infrastructure gateway - do not allocate to pods"
+```yaml
+# gateway-reservation.yaml - reserve one specific IP
+apiVersion: projectcalico.org/v3
+kind: IPReservation
+metadata:
+  name: reserved-gateway-ip
+spec:
+  reservedCIDRs:
+    - 10.244.1.1/32
+```
 
-# Verify the reservation
-calicoctl ipam show --show-handles | grep "reserved-gateway-ip"
+```bash
+calicoctl apply -f gateway-reservation.yaml
+calicoctl get ipreservation reserved-gateway-ip -o yaml
 ```
 
 ## Step 3: Validate Reserved IPs Are Not Assigned to Pods
@@ -73,21 +75,21 @@ Confirm that reserved IPs have not been allocated to any running pods.
 # List all pod IPs
 kubectl get pods -A -o wide --no-headers | awk '{print $7}' | sort > /tmp/pod-ips.txt
 
-# List reserved IPs (from handles)
-calicoctl ipam show --show-handles | \
-  grep "reserved-" | awk '{print $1}' | sort > /tmp/reserved-ips.txt
+# List reserved single IPs from IPReservation resources
+calicoctl get ipreservation -o yaml | \
+  awk '/reservedCIDRs:/ {in_list=1; next} in_list && /^[[:space:]]*-/ {gsub(/^[[:space:]]*-[[:space:]]*/, ""); sub(/\/32$/, ""); print} /^[^[:space:]-]/ {in_list=0}' | sort > /tmp/reserved-ips.txt
 
 # Check if any reserved IP appears in pod list (should be empty)
 comm -12 /tmp/pod-ips.txt /tmp/reserved-ips.txt
 echo "Conflicts found (should be empty):"
 ```
 
-## Step 4: Test That Reserved IPs Cannot Be Allocated
+## Step 4: Test How Manual IP Requests Behave
 
-Attempt to deploy a pod with a specific IP that should be reserved.
+IP reservations prevent automatic assignment. Calico annotations that request a specific IP address can still override an `IPReservation`, so use this test to confirm the documented manual-assignment behavior.
 
 ```bash
-# Try to request the reserved IP for a pod via annotation
+# Request the reserved IP for a pod via annotation
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
@@ -102,8 +104,7 @@ spec:
       command: ["sleep", "30"]
 EOF
 
-# If the reservation is working correctly, the pod should fail to start
-# or receive a different IP
+# The pod can receive the reserved IP because manual IP requests override IPReservation
 kubectl get pod test-reserved-ip -o jsonpath='{.status.podIP}'
 kubectl delete pod test-reserved-ip
 ```
@@ -113,25 +114,25 @@ kubectl delete pod test-reserved-ip
 Maintain visibility into all IP reservations across the cluster.
 
 ```bash
-# List all IPAM handles to see all reservations and their notes
-calicoctl ipam show --show-handles
+# List all IPReservation resources
+calicoctl get ipreservation -o yaml
 
 # Check for any reservations that may be stale (from deleted infrastructure)
-calicoctl ipam show --show-handles | grep "reserved-"
+calicoctl get ipreservation
 
-# View the total reserved IP count
-RESERVED=$(calicoctl ipam show --show-handles | grep "reserved-" | wc -l)
-echo "Total reserved IPs: $RESERVED"
+# View the total reserved CIDR count
+RESERVED=$(calicoctl get ipreservation -o yaml | grep -c "^[[:space:]]*- ")
+echo "Total reserved CIDRs: $RESERVED"
 ```
 
 ## Best Practices
 
 - Document all IP reservations in your network IPAM records alongside the Calico reservations
-- Use consistent naming conventions for reservation handles (e.g., `reserved-<purpose>-<ip>`)
+- Use consistent naming conventions for reservation resources (e.g., `reserved-<purpose>-<ip>`)
 - Reserve the first and last few IPs in each block for infrastructure use before deploying workloads
 - Review reservations periodically to remove stale entries that may be consuming scarce addresses
-- Use disabled IP pools for reserving entire address ranges rather than individual IPs when possible
+- Use a separate IP pool with a node selector such as `"!all()"` when you want to reserve a whole pool for manual assignments
 
 ## Conclusion
 
-Validating IP reservations in Calico ensures that critical infrastructure IPs are protected from pod allocation and that your reserved address inventory is accurate. By configuring reservations correctly and periodically auditing them, you prevent IP conflicts that can cause intermittent and difficult-to-diagnose connectivity failures.
+Validating IP reservations in Calico ensures that critical infrastructure IPs are protected from automatic pod allocation and that your reserved address inventory is accurate. By configuring reservations correctly and periodically auditing them, you prevent IP conflicts that can cause intermittent and difficult-to-diagnose connectivity failures.
