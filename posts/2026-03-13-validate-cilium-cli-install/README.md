@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, CLI, Kubernetes, Tool
 
-Description: A step-by-step guide to installing and validating the Cilium CLI tool, ensuring it is correctly installed, matches your cluster's Cilium version, and can communicate with your cluster.
+Description: A step-by-step guide to installing and validating the Cilium CLI tool, ensuring it is correctly installed, compatible with your cluster's Cilium version, and can communicate with your cluster.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A step-by-step guide to installing and validating the Cilium CLI to
 
 The Cilium CLI (`cilium`) is the primary tool for managing and validating Cilium installations on Kubernetes clusters. It provides commands for installing Cilium, checking status, running connectivity tests, enabling features like Hubble, and troubleshooting networking issues. Ensuring the CLI is correctly installed and version-compatible with your cluster is a prerequisite for all Cilium validation tasks.
 
-Version mismatches between the CLI and the running Cilium version can cause subtle validation failures where commands succeed but report incorrect information. It is important to install the CLI version that matches your cluster's Cilium version, or use the latest CLI which supports multiple cluster versions.
+Version mismatches between the CLI and the running Cilium version can cause subtle validation failures where commands succeed but report incorrect information. It is important to install a current CLI version that supports your cluster's Cilium version.
 
 This guide covers CLI installation, version validation, and confirming the CLI can communicate with your Kubernetes cluster.
 
@@ -59,8 +59,8 @@ cilium version
 # Verify the binary is in PATH
 which cilium
 
-# Display full version information including client and server versions
-cilium version --verbose
+# Display client version information without requiring cluster access
+cilium version --client
 ```
 
 ## Step 3: Validate CLI-to-Cluster Connectivity
@@ -79,21 +79,19 @@ cilium status --kubeconfig ~/.kube/configs/my-cluster.yaml
 cilium status --namespace cilium-system
 ```
 
-## Step 4: Verify CLI Version Matches Cluster
+## Step 4: Verify CLI and Cluster Versions
 
 ```bash
 # Get the Cilium version running in the cluster
 kubectl -n kube-system get pods -l k8s-app=cilium \
   -o jsonpath='{.items[0].spec.containers[0].image}'
 
-# Compare with the CLI version
+# Compare with the CLI version and confirm it is a current supported release
 cilium version
 
-# If versions differ significantly, install the matching CLI version
-CILIUM_VERSION="v1.15.5"  # Replace with your cluster's version
-curl -L --fail-with-body \
-  "https://github.com/cilium/cilium-cli/releases/download/v0.15.23/cilium-linux-amd64.tar.gz" \
-  -o /tmp/cilium.tar.gz
+# Check the latest stable CLI version available
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+echo "${CILIUM_CLI_VERSION}"
 ```
 
 ## Step 5: Test Key CLI Commands
@@ -104,16 +102,16 @@ Validate that all major CLI functions are operational.
 # Test connectivity test command availability
 cilium connectivity test --help
 
-# Test Hubble commands (if Hubble is enabled)
-cilium hubble status
+# Test Hubble commands
+cilium hubble port-forward --help
 
 # List Cilium-managed endpoints
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
 ```
 
 ## Best Practices
 
-- Keep the Cilium CLI updated to the latest minor version matching your cluster
+- Keep the Cilium CLI updated to a current release that supports your cluster
 - Use `cilium version` to confirm CLI-cluster version compatibility before running tests
 - Install the CLI in your CI/CD pipeline alongside `kubectl` for automated validation
 - Consider adding the CLI to your team's development tooling documentation
@@ -121,4 +119,4 @@ cilium endpoint list
 
 ## Conclusion
 
-A correctly installed and version-matched Cilium CLI is the foundation of all Cilium validation and troubleshooting workflows. By following the installation steps and verifying connectivity to your cluster, you ensure that CLI-based validation commands produce accurate results that reflect the actual state of your cluster's networking.
+A correctly installed and version-compatible Cilium CLI is the foundation of all Cilium validation and troubleshooting workflows. By following the installation steps and verifying connectivity to your cluster, you ensure that CLI-based validation commands produce accurate results that reflect the actual state of your cluster's networking.
