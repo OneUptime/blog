@@ -40,20 +40,20 @@ podman pull docker.io/library/nginx:1.25
 podman pull docker.io/bitnami/postgresql:16
 
 # Pull using the short form (if docker.io is in your search registries)
-podman pull docker.io/grafana/grafana:10.3.1
+podman pull grafana/grafana:10.3.1
 ```
 
 Official images on Docker Hub live under the `library` namespace. Community images use the publisher's username or organization name.
 
 ## Pulling from Quay.io
 
-Quay.io is Red Hat's container registry and hosts many popular open-source images.
+Quay.io is a Red Hat-owned container registry service and hosts many popular open-source images.
 
 ```bash
 # Pull Prometheus from Quay.io
 podman pull quay.io/prometheus/prometheus:v2.50.0
 
-# Pull CoreDNS from Quay.io
+# Pull etcd from Quay.io
 podman pull quay.io/coreos/etcd:v3.5.12
 
 # Pull a Quay.io hosted operator image
@@ -82,10 +82,10 @@ GitHub Container Registry (ghcr.io) hosts images associated with GitHub reposito
 
 ```bash
 # Login to GitHub Container Registry
-podman login ghcr.io -u YOUR_GITHUB_USERNAME
+echo YOUR_GITHUB_TOKEN | podman login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 # Pull a public image from GHCR
-podman pull ghcr.io/actions/runner:latest
+podman pull ghcr.io/actions/actions-runner:latest
 
 # Pull an organization's image
 podman pull ghcr.io/my-org/my-app:v1.0.0
@@ -105,7 +105,7 @@ aws ecr get-login-password --region us-east-1 | \
 podman pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 ```
 
-## Pulling from Google Container Registry
+## Pulling from Google Artifact Registry
 
 Google Artifact Registry is the recommended registry for GCP users.
 
@@ -146,7 +146,7 @@ Control which registries Podman searches when you use short image names.
 
 ```bash
 # View your current registry configuration
-podman info --format '{{range .Registries.Search}}{{.}}{{"\n"}}{{end}}'
+podman info --format '{{range index .Registries "search"}}{{.}}{{"\n"}}{{end}}'
 
 # Create or edit user-level configuration
 mkdir -p ~/.config/containers
