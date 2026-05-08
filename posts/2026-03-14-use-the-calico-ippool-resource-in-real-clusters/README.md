@@ -31,8 +31,8 @@ For clusters with fewer than 50 nodes, a straightforward IPPool configuration wo
 
 calicoctl get ippool -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check Calico's view of a specific node
+calicoctl get node <node-name> -o yaml
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
@@ -80,7 +80,7 @@ kubectl get crds | grep projectcalico
 # View all Calico configuration resources
 calicoctl get ippool -o yaml
 calicoctl get felixconfiguration -o yaml
-calicoctl get ippools -o yaml
+calicoctl get bgpconfiguration -o yaml
 ```
 
 Always consider the interaction between resources. For example, changes to BGP resources affect how IPPool routes are advertised, and FelixConfiguration changes affect how policies are enforced.
@@ -91,18 +91,18 @@ Set up ongoing monitoring for your IPPool resources:
 
 ```bash
 # Watch for changes to IPPool resources
-kubectl get ippool.projectcalico.org -w
+kubectl get ippools.projectcalico.org -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health reporting is enabled:
 
 ```bash
 # Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+kubectl exec -n calico-system <calico-node-pod> -c calico-node -- curl -s http://localhost:9099/liveness
+kubectl exec -n calico-system <calico-node-pod> -c calico-node -- curl -s http://localhost:9099/readiness
 ```
 
 ## Verification
@@ -168,8 +168,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
