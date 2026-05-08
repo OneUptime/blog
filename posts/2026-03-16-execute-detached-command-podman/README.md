@@ -27,10 +27,11 @@ podman run -d --name my-app nginx:latest
 podman exec -d my-app touch /tmp/background-task-started
 
 # Verify it ran
+sleep 1
 podman exec my-app ls /tmp/background-task-started
 ```
 
-The command starts immediately and your terminal is free for other work.
+Podman prints the exec session ID, the command starts immediately, and your terminal is free for other work.
 
 ## Running Long-Running Background Tasks
 
@@ -57,7 +58,7 @@ podman exec -d my-app /bin/bash -c "tar czf /tmp/logs-backup.tar.gz /var/log/ngi
 
 # Run a database backup in the background (PostgreSQL example)
 podman run -d --name my-db -e POSTGRES_PASSWORD=secret postgres:latest
-sleep 5  # Wait for DB to initialize
+until podman exec my-db pg_isready -U postgres; do sleep 1; done
 
 podman exec -d my-db /bin/bash -c "pg_dumpall -U postgres > /tmp/full-backup.sql 2>/dev/null"
 ```
@@ -70,14 +71,14 @@ Since detached commands do not show output directly, you need strategies to moni
 # Write output to a file and check it later
 podman exec -d my-app /bin/bash -c "ls -laR / > /tmp/full-listing.txt 2>&1"
 
-# Check if the process is still running
-podman exec my-app ps aux | grep "ls -laR"
+# Check whether output has started
+podman exec my-app /bin/bash -c 'test -s /tmp/full-listing.txt && echo "Output started" || echo "Waiting for output"'
 
 # Check the output file
 podman exec my-app wc -l /tmp/full-listing.txt
 
 # Use a sentinel file to signal completion
-podman exec -d my-app /bin/bash -c "heavy-task && touch /tmp/task-done || touch /tmp/task-failed"
+podman exec -d my-app /bin/bash -c "tar czf /tmp/logs-backup.tar.gz /var/log/nginx/ 2>/dev/null && touch /tmp/task-done || touch /tmp/task-failed"
 
 # Poll for completion
 podman exec my-app test -f /tmp/task-done && echo "Done" || echo "Still running"
@@ -132,7 +133,7 @@ You can start multiple background processes in the same container:
 ```bash
 # Start several monitoring processes
 podman exec -d my-app /bin/bash -c "while true; do echo CPU: \$(cat /proc/loadavg) >> /tmp/cpu.log; sleep 60; done"
-podman exec -d my-app /bin/bash -c "while true; do echo MEM: \$(free -m 2>/dev/null | head -2) >> /tmp/mem.log; sleep 60; done"
+podman exec -d my-app /bin/bash -c "while true; do echo MEM: \$(grep MemAvailable /proc/meminfo) >> /tmp/mem.log; sleep 60; done"
 podman exec -d my-app /bin/bash -c "while true; do echo DISK: \$(df -h / | tail -1) >> /tmp/disk.log; sleep 60; done"
 
 # Check all monitoring logs
