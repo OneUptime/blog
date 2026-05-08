@@ -69,24 +69,25 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: parser-test-policy
-  namespace: development
+  namespace: cilium-validate
 spec:
   endpointSelector:
     matchLabels:
-      app: parser-test-server
+      app: server
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: parser-test-client
+            app: client
       toPorts:
         - ports:
-            - port: "7070"
+            - port: "80"
               protocol: TCP
 ```
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl get cep -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, policy: .status.status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -134,28 +135,28 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; PASS=$((PASS + 1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; FAIL=$((FAIL + 1))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl get cep -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select(.status.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; PASS=$((PASS + 1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; FAIL=$((FAIL + 1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl get cnp -n "$NAMESPACE" -o json | jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; PASS=$((PASS + 1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; FAIL=$((FAIL + 1))
 fi
 
 echo ""
@@ -199,7 +200,7 @@ cilium status
 
 ```bash
 # Confirm all endpoints are healthy
-cilium endpoint health
+kubectl get cep -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"="}{.status.status.state}{"\n"}{end}'
 ```
 
 ```bash
