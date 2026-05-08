@@ -33,9 +33,11 @@ K3s must be installed with Flannel disabled so Cilium can take over networking:
 
 # The --flannel-backend=none flag prevents K3s from deploying Flannel
 # The --disable-network-policy flag prevents K3s from deploying its built-in network policy controller
+# The --disable-kube-proxy flag is required when Cilium replaces kube-proxy
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="\
   --flannel-backend=none \
   --disable-network-policy \
+  --disable-kube-proxy \
   --disable=traefik \
   --cluster-cidr=10.42.0.0/16 \
   --service-cidr=10.43.0.0/16" sh -
@@ -61,7 +63,7 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium with K3s-compatible settings
-helm install cilium cilium/cilium --version 1.16.5 \
+helm install cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   --set operator.replicas=1 \
   --set ipam.operator.clusterPoolIPv4PodCIDRList="10.42.0.0/16" \
@@ -108,7 +110,7 @@ hubble:
 
 ```bash
 # Install using the values file
-helm install cilium cilium/cilium --version 1.16.5 \
+helm install cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   -f cilium-values.yaml
 ```
@@ -136,10 +138,9 @@ If adding worker nodes to the cluster:
 # On the server node, get the join token
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# On each worker node, install K3s agent with Flannel disabled
+# On each worker node, install K3s agent and join it to the cluster
 curl -sfL https://get.k3s.io | K3S_URL="https://SERVER_IP:6443" \
-  K3S_TOKEN="NODE_TOKEN" \
-  INSTALL_K3S_EXEC="--flannel-backend=none" sh -
+  K3S_TOKEN="NODE_TOKEN" sh -
 
 # Back on the server, verify the worker joined and has Cilium running
 kubectl get nodes
@@ -153,10 +154,13 @@ Validate the Cilium installation is fully functional:
 ```bash
 # Install the Cilium CLI for validation
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
 curl -L --fail --remote-name-all \
-  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-sudo tar xzvf cilium-linux-amd64.tar.gz -C /usr/local/bin
-rm cilium-linux-amd64.tar.gz
+  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Run the Cilium status check
 cilium status
