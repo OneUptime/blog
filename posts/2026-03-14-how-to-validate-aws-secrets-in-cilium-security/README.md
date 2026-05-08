@@ -16,6 +16,7 @@ Validating AWS secrets configuration in Cilium ensures that credentials work cor
 
 - EKS or AWS Kubernetes cluster with Cilium
 - kubectl and AWS CLI configured
+- Permission to run a temporary AWS CLI pod in the `kube-system` namespace
 
 ## Validating Credential Access
 
@@ -23,10 +24,15 @@ Validating AWS secrets configuration in Cilium ensures that credentials work cor
 #!/bin/bash
 echo "=== AWS Credential Validation ==="
 
-# Test API access from Cilium pod
+# Test API access using the Cilium operator service account
+OPERATOR_SA=$(kubectl get deployment cilium-operator -n kube-system \
+  -o jsonpath='{.spec.template.spec.serviceAccountName}')
 
-IDENTITY=$(kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws sts get-caller-identity 2>/dev/null)
+IDENTITY=$(kubectl run aws-credential-check -n kube-system \
+  --rm -i --quiet --restart=Never \
+  --image=public.ecr.aws/aws-cli/aws-cli:2 \
+  --overrides="{\"spec\":{\"serviceAccountName\":\"${OPERATOR_SA}\"}}" \
+  -- sts get-caller-identity 2>/dev/null)
 if [ $? -eq 0 ]; then
   echo "PASS: AWS credentials working"
   echo "$IDENTITY" | jq .
@@ -34,26 +40,37 @@ else
   echo "FAIL: Cannot access AWS API"
 fi
 
-# Verify IRSA token exists
-TOKEN=$(kubectl exec -n kube-system -l k8s-app=cilium -- \
-  cat /var/run/secrets/eks.amazonaws.com/serviceaccount/token 2>/dev/null | head -c 20)
-if [ -n "$TOKEN" ]; then
-  echo "PASS: IRSA token mounted"
+# Verify IRSA role annotation exists
+ROLE_ARN=$(kubectl get serviceaccount "$OPERATOR_SA" -n kube-system \
+  -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}')
+if [ -n "$ROLE_ARN" ]; then
+  echo "PASS: IRSA role annotated: $ROLE_ARN"
 else
-  echo "WARN: No IRSA token found (may use instance profile)"
+  echo "WARN: No IRSA role annotation found (may use instance profile or EKS Pod Identity)"
 fi
 ```
 
 ## Validating Least Privilege
 
 ```bash
-# Test that Cilium can perform required operations
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws ec2 describe-network-interfaces --max-items 1
+# Test that the Cilium operator can perform a required ENI operation
+OPERATOR_SA=$(kubectl get deployment cilium-operator -n kube-system \
+  -o jsonpath='{.spec.template.spec.serviceAccountName}')
+
+kubectl run aws-permission-check -n kube-system \
+  --rm -i --quiet --restart=Never \
+  --image=public.ecr.aws/aws-cli/aws-cli:2 \
+  --overrides="{\"spec\":{\"serviceAccountName\":\"${OPERATOR_SA}\"}}" \
+  -- \
+  ec2 describe-network-interfaces --max-items 1
 
 # Test that overly broad permissions are denied
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws s3 ls 2>&1 | head -3
+kubectl run aws-s3-deny-check -n kube-system \
+  --rm -i --quiet --restart=Never \
+  --image=public.ecr.aws/aws-cli/aws-cli:2 \
+  --overrides="{\"spec\":{\"serviceAccountName\":\"${OPERATOR_SA}\"}}" \
+  -- \
+  s3 ls 2>&1 | head -3
 # Should show AccessDenied
 ```
 
@@ -73,25 +90,38 @@ graph TD
 ```bash
 # Check no static credentials in ConfigMaps
 kubectl get configmap cilium-config -n kube-system -o json | \
-  jq '.data | keys[] | select(test("aws|key|secret"; "i"))'
+  jq -r '.data // {} | to_entries[] |
+    select((.key | test("aws|access|key|secret"; "i")) or
+           (.value | test("AKIA|aws_access_key_id|aws_secret_access_key"; "i"))) |
+    .key'
 
-# Verify secrets have appropriate RBAC
-kubectl get rolebindings -n kube-system | grep secret
+# Verify whether the Cilium operator service account can read Kubernetes secrets
+OPERATOR_SA=$(kubectl get deployment cilium-operator -n kube-system \
+  -o jsonpath='{.spec.template.spec.serviceAccountName}')
+kubectl auth can-i get secrets \
+  --as="system:serviceaccount:kube-system:${OPERATOR_SA}" \
+  -n kube-system
 ```
 
 ## Verification
 
 ```bash
 cilium status | grep IPAM
-kubectl exec -n kube-system -l k8s-app=cilium -- aws sts get-caller-identity
+OPERATOR_SA=$(kubectl get deployment cilium-operator -n kube-system \
+  -o jsonpath='{.spec.template.spec.serviceAccountName}')
+kubectl run aws-final-check -n kube-system \
+  --rm -i --quiet --restart=Never \
+  --image=public.ecr.aws/aws-cli/aws-cli:2 \
+  --overrides="{\"spec\":{\"serviceAccountName\":\"${OPERATOR_SA}\"}}" \
+  -- sts get-caller-identity
 ```
 
 ## Troubleshooting
 
-- **API access fails**: Check IRSA setup and IAM role.
+- **API access fails**: Check IRSA or EKS Pod Identity setup and IAM role.
 - **Overly broad permissions**: Tighten IAM policy to only required EC2 actions.
 - **Secrets found in ConfigMap**: Migrate to IRSA immediately.
 
 ## Conclusion
 
-Validate AWS secrets by testing API access, confirming least-privilege permissions, and auditing secret storage. IRSA should be used instead of static credentials for production Cilium deployments.
+Validate AWS secrets by testing API access, confirming least-privilege permissions, and auditing secret storage. IRSA or EKS Pod Identity should be used instead of static credentials for production Cilium deployments.
