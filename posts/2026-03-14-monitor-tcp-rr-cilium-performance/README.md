@@ -10,9 +10,9 @@ Description: Set up comprehensive monitoring for TCP request/response latency in
 
 ## Introduction
 
-Monitoring TCP_RR (request/response) performance in production is essential for microservices architectures where end-to-end latency directly impacts user experience. While synthetic benchmarks like netperf give you a controlled measurement, production monitoring must capture real-world transaction latency across all pod-to-pod communication paths.
+Monitoring TCP_RR (request/response) performance in production is essential for microservices architectures where end-to-end latency directly impacts user experience. While synthetic benchmarks like netperf give you a controlled measurement, production monitoring should combine those controlled latency checks with real-world flow and drop signals across pod-to-pod communication paths.
 
-Cilium provides multiple monitoring integration points: Hubble flow metrics expose per-flow latency data, the Cilium agent exports eBPF datapath metrics to Prometheus, and kernel-level TCP metrics reveal socket behavior. Combining these gives a complete picture of TCP_RR performance in production.
+Cilium provides multiple monitoring integration points: Hubble flow metrics expose flow, TCP flag, drop, and L7 HTTP duration data, while the Cilium agent exports eBPF datapath metrics to Prometheus. Combining these with synthetic TCP_RR measurements gives a practical picture of request/response performance in production.
 
 This guide walks through setting up each monitoring layer and creating dashboards that surface latency regressions before they affect users.
 
@@ -34,27 +34,14 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
   --set operator.prometheus.enabled=true \
   --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
-  --set hubble.metrics.enabled="{dns:query;ignoreAAAA,drop,tcp,flow,flows-to-world,port-distribution,httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload}"
+  --set hubble.metrics.enableOpenMetrics=true \
+  --set prometheus.serviceMonitor.enabled=true \
+  --set operator.prometheus.serviceMonitor.enabled=true \
+  --set hubble.metrics.serviceMonitor.enabled=true \
+  --set hubble.metrics.enabled="{dns:query;ignoreAAAA,drop:labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction,tcp:labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction,flow:labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction,flows-to-world,port-distribution,httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction}"
 ```
 
-Create a ServiceMonitor to scrape Cilium metrics:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-agent
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: cilium
-  endpoints:
-  - port: metrics
-    interval: 15s
-  - port: hubble-metrics
-    interval: 15s
-```
+The ServiceMonitor flags above let the Cilium chart create the scrape resources for Cilium agent, Cilium operator, and Hubble metrics. If your Prometheus instance uses `serviceMonitorSelector` labels, add the required labels with the chart's `*.serviceMonitor.labels` values.
 
 ## Key Metrics for TCP_RR Monitoring
 
@@ -64,7 +51,7 @@ spec:
 # Important Hubble TCP metrics:
 
 # hubble_tcp_flags_total - TCP flag distribution (SYN, FIN, RST)
-# hubble_flows_processed_total - Total flow count
+# hubble_flows_processed_total - Total flow count by type, subtype, and verdict
 # hubble_drop_total - Packet drops by reason
 ```
 
@@ -72,7 +59,7 @@ spec:
 
 ```bash
 # Key metrics to monitor
-cilium metrics list | grep -E "bpf|forward|drop|policy"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list --match-pattern "bpf|forward|drop|policy"
 
 # Critical ones:
 # cilium_forward_count_total - Packets forwarded
@@ -92,28 +79,28 @@ Create a comprehensive dashboard:
     "title": "Cilium TCP_RR Performance",
     "panels": [
       {
-        "title": "TCP Flow Rate (flows/sec)",
-        "type": "graph",
+        "title": "Flow Event Rate (flows/sec)",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "rate(hubble_flows_processed_total{type=\"TRACE\",protocol=\"TCP\"}[5m])",
+            "expr": "sum by (source_workload, destination_workload) (rate(hubble_flows_processed_total[5m]))",
             "legendFormat": "{{source_workload}} -> {{destination_workload}}"
           }
         ]
       },
       {
-        "title": "TCP Retransmissions",
-        "type": "graph",
+        "title": "TCP SYN Rate",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "rate(hubble_tcp_flags_total{flag=\"SYN\"}[5m]) - rate(hubble_tcp_flags_total{flag=\"SYN-ACK\"}[5m])",
-            "legendFormat": "SYN without SYN-ACK (potential retransmits)"
+            "expr": "sum by (source_workload, destination_workload) (rate(hubble_tcp_flags_total{flag=\"SYN\"}[5m]))",
+            "legendFormat": "{{source_workload}} -> {{destination_workload}}"
           }
         ]
       },
       {
         "title": "BPF Conntrack Operations",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(cilium_bpf_map_ops_total{map_name=~\".*ct.*\",operation=\"update\"}[5m])",
@@ -123,7 +110,7 @@ Create a comprehensive dashboard:
       },
       {
         "title": "Packet Drop Rate",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(cilium_drop_count_total[5m])",
@@ -154,12 +141,12 @@ spec:
         spec:
           containers:
           - name: netperf
-            image: cilium/netperf
+            image: quay.io/cilium/network-perf:3.20-1772622563-6fd6a90
             command:
             - /bin/sh
             - -c
             - |
-              RESULT=$(netperf -H netperf-server.monitoring -t TCP_RR -l 10 -- -r 1,1 -o throughput,mean_latency,p99_latency 2>/dev/null)
+              RESULT=$(netperf -P 0 -j -H netperf-server.monitoring.svc -t TCP_RR -l 10 -- -r 1,1 -O THROUGHPUT,MEAN_LATENCY,P99_LATENCY 2>/dev/null)
               TPS=$(echo "$RESULT" | tail -1 | awk '{print $1}')
               MEAN_LAT=$(echo "$RESULT" | tail -1 | awk '{print $2}')
               P99_LAT=$(echo "$RESULT" | tail -1 | awk '{print $3}')
@@ -225,7 +212,7 @@ kubectl get jobs -n monitoring --sort-by=.metadata.creationTimestamp | tail -5
 ## Troubleshooting
 
 - **Hubble metrics not appearing**: Verify Hubble is enabled with `cilium status`. Check that the `hubble-metrics` port is exposed in the Cilium DaemonSet.
-- **Pushgateway metrics stale**: Check CronJob execution logs with `kubectl logs job/<job-name> -n monitoring`.
+- **Pushgateway metrics stale**: Check CronJob execution logs with `kubectl logs job/<job-name> -n monitoring` and confirm the `netperf-server` Service points to a running `netserver` pod.
 - **Dashboard shows no data**: Verify Prometheus is scraping the correct targets with `kubectl port-forward svc/prometheus 9090` and check Targets page.
 - **Alerting not working**: Confirm PrometheusRule CRD is installed and the operator is watching the monitoring namespace.
 
