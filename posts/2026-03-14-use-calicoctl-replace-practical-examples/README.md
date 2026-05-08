@@ -32,7 +32,7 @@ export DATASTORE_TYPE=kubernetes
 
 # Step 1: Get the current policy
 
-calicoctl get globalnetworkpolicy allow-web -o yaml > /tmp/allow-web-current.yaml
+calicoctl get globalnetworkpolicy allow-web -o yaml --export > /tmp/allow-web-current.yaml
 
 # Step 2: Create the replacement policy
 cat > /tmp/allow-web-new.yaml <<EOF
@@ -85,7 +85,7 @@ Update the entire Felix configuration for a cluster:
 export DATASTORE_TYPE=kubernetes
 
 # Get current config
-calicoctl get felixconfiguration default -o yaml > /tmp/felix-backup.yaml
+calicoctl get felixconfiguration default -o yaml --export > /tmp/felix-backup.yaml
 
 # Create replacement config
 cat > /tmp/felix-new.yaml <<EOF
@@ -95,12 +95,11 @@ metadata:
   name: default
 spec:
   logSeverityScreen: Warning
-  reportingInterval: 300s
+  usageReportingInterval: 24h0m0s
   ipipEnabled: true
   vxlanEnabled: false
   wireguardEnabled: false
   bpfEnabled: false
-  flowLogsFlushInterval: 300s
   prometheusMetricsEnabled: true
   prometheusMetricsPort: 9091
   healthEnabled: true
@@ -120,7 +119,7 @@ Modify an IPPool's configuration (note: CIDR changes require delete and recreate
 export DATASTORE_TYPE=kubernetes
 
 # Get current pool
-calicoctl get ippool default-ipv4-ippool -o yaml > /tmp/ippool-backup.yaml
+calicoctl get ippool default-ipv4-ippool -o yaml --export > /tmp/ippool-backup.yaml
 
 # Replace with updated settings (same CIDR, different encapsulation)
 cat > /tmp/ippool-new.yaml <<EOF
@@ -148,7 +147,7 @@ calicoctl get ippools -o wide
 export DATASTORE_TYPE=kubernetes
 
 # Backup current BGP config
-calicoctl get bgpconfiguration default -o yaml > /tmp/bgp-backup.yaml
+calicoctl get bgpconfiguration default -o yaml --export > /tmp/bgp-backup.yaml
 
 # Replace with new BGP settings
 cat > /tmp/bgp-new.yaml <<EOF
@@ -209,13 +208,9 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 RESOURCE_FILE="${1:?Usage: $0 <resource-file.yaml>}"
 
-# Extract metadata
-KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['kind'])")
-NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['metadata']['name'])")
-
 # Backup
-BACKUP="/tmp/replace-backup-${KIND}-${NAME}-$(date +%s).yaml"
-calicoctl get "$KIND" "$NAME" -o yaml > "$BACKUP"
+BACKUP="/tmp/replace-backup-$(date +%s).yaml"
+calicoctl get -f "$RESOURCE_FILE" -o yaml --export > "$BACKUP"
 echo "Backup saved: $BACKUP"
 
 # Validate
@@ -226,7 +221,7 @@ calicoctl replace -f "$RESOURCE_FILE"
 
 # Verify
 echo "Replacement complete. Current state:"
-calicoctl get "$KIND" "$NAME" -o yaml | head -30
+calicoctl get -f "$RESOURCE_FILE" -o yaml | head -30
 
 echo "Rollback command: calicoctl replace -f $BACKUP"
 ```
