@@ -98,7 +98,7 @@ To keep completions up to date when Cilium is upgraded, schedule the generation 
 (crontab -l 2>/dev/null; echo "0 2 * * * /usr/local/bin/install-cilium-zsh-completions.sh >> /var/log/cilium-completions.log 2>&1") | crontab -
 ```
 
-For a CI/CD pipeline approach, add the generation to your cluster provisioning:
+For a CI/CD pipeline approach, add the generation to your cluster provisioning and capture the Job logs as the generated artifact:
 
 ```yaml
 # completion-job.yaml
@@ -121,15 +121,22 @@ spec:
   backoffLimit: 1
 ```
 
+```bash
+kubectl -n kube-system logs job/cilium-completion-gen > _cilium-agent
+```
+
 ## Integrating with Oh My Zsh or Prezto
 
 If you use a zsh framework, place the completion file in the framework's custom directory:
 
 ```bash
 # For Oh My Zsh
+mkdir -p "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/cilium-agent"
 cilium-agent completion zsh > "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/cilium-agent/_cilium-agent"
+# Add cilium-agent to plugins=(...) in .zshrc so Oh My Zsh adds it to fpath
 
 # For Prezto
+mkdir -p "${ZDOTDIR:-$HOME}/.zprezto/modules/completion/external/src"
 cilium-agent completion zsh > "${ZDOTDIR:-$HOME}/.zprezto/modules/completion/external/src/_cilium-agent"
 ```
 
@@ -139,6 +146,7 @@ Add a snippet to your `.zshrc` to auto-generate if missing:
 # Add to .zshrc
 if ! type _cilium-agent > /dev/null 2>&1; then
   if command -v cilium-agent &> /dev/null; then
+    mkdir -p "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/cilium-agent"
     cilium-agent completion zsh > "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/cilium-agent/_cilium-agent"
     autoload -Uz compinit && compinit
   fi
@@ -168,7 +176,7 @@ echo $_comps[cilium-agent]
 ## Troubleshooting
 
 - **Completions not appearing after install**: Run `rm -f ~/.zcompdump*` then `compinit` to rebuild the cache.
-- **Permission denied writing to site-functions**: Use `sudo` or set `ZSH_COMPLETION_DIR` to a user-writable path like `~/.zsh/completions` and add it to your `fpath`.
+- **Permission denied writing to site-functions**: Use `sudo` or set `ZSH_COMPLETION_DIR` to a user-writable path like `$HOME/.zsh/completions` and add it to your `fpath`.
 - **Stale completions after Cilium upgrade**: Re-run the generation script or ensure your cron/timer is active.
 - **"command not found: cilium-agent"**: The binary may only exist inside the Cilium container. Use the kubectl exec method described above.
 
