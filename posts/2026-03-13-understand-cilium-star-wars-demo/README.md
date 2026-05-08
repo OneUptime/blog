@@ -10,7 +10,7 @@ Description: A comprehensive overview of the Cilium Star Wars demo and what it t
 
 ## Introduction
 
-The Cilium Star Wars demo is one of the most illustrative examples in the cloud-native networking world. It uses a fictional Star Wars scenario - the Galactic Empire attempting to communicate with the Death Star - to demonstrate how Cilium enforces network policies at Layer 3, Layer 4, and Layer 7 using eBPF. Rather than dry networking concepts, the demo places policy enforcement in a narrative context that makes the concepts immediately tangible.
+The Cilium Star Wars demo is one of the most illustrative examples in the cloud-native networking world. It uses a fictional Star Wars scenario - the Galactic Empire attempting to communicate with the Death Star - to demonstrate how Cilium enforces network policies at Layer 3, Layer 4, and Layer 7 using eBPF-based datapath enforcement and, for HTTP-aware L7 rules, Cilium's L7 proxy support. Rather than dry networking concepts, the demo places policy enforcement in a narrative context that makes the concepts immediately tangible.
 
 Cilium is a CNI (Container Network Interface) plugin for Kubernetes that leverages eBPF (extended Berkeley Packet Filter) to provide high-performance, observable, and secure networking. eBPF allows Cilium to run programs directly in the Linux kernel without kernel modifications, enabling dynamic insertion of network policies at runtime. The Star Wars demo showcases this power in a hands-on, exploratory way.
 
@@ -48,7 +48,7 @@ The key insight is that without any policy, both the `tiefighter` (Empire) and `
 ```bash
 # Apply the Star Wars demo manifests
 
-kubectl create -f https://raw.githubusercontent.com/cilium/cilium/HEAD/examples/minikube/http-sw-app.yaml
+kubectl create -f https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/minikube/http-sw-app.yaml
 
 # Verify the pods are running
 kubectl get pods -l org=empire
