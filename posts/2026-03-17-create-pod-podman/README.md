@@ -25,7 +25,7 @@ podman pod create --name my-pod
 podman pod ls
 ```
 
-When you create a pod, Podman automatically creates an infra container that holds the shared namespaces. This container runs a minimal pause process and stays alive as long as the pod exists.
+When you create a pod, Podman automatically creates an infra container that holds the shared namespaces. This container runs a minimal pause process and stays alive while the pod is running.
 
 ## Adding Containers to the Pod
 
@@ -68,10 +68,10 @@ podman pod stop my-pod
 podman pod rm my-pod
 ```
 
-## Creating a Pod in One Command
+## Creating a Pod and Containers in Sequence
 
 ```bash
-# Create a pod and run containers in a single sequence
+# Create a pod and run containers in sequence
 podman pod create --name app-pod
 podman run -d --pod app-pod --name app docker.io/library/node:20-alpine sleep 3600
 podman run -d --pod app-pod --name cache docker.io/library/redis:7-alpine
