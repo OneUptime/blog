@@ -66,7 +66,8 @@ kubectl -n kube-system get pods -l k8s-app=cilium -o name | \
   xargs -I {} kubectl -n kube-system top pod {}
 
 # Monitor the proxy redirect statistics
-cilium status --verbose | grep -A 5 "Proxy"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | grep -A 5 "Proxy"
 ```
 
 ### Limitation 3: DNS-Based Policies and TTL Caching
@@ -88,8 +89,8 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -126,8 +127,8 @@ spec:
         - health
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -136,11 +137,12 @@ spec:
 
 ```bash
 # Verify the default-deny policy is applied to all endpoints
-cilium endpoint list -o json | \
-  jq '.[].status.policy.realized.l4-ingress'
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '.items[].status.policy.realized'
 
 # Confirm that no unintended traffic is allowed
-cilium monitor --type drop --output json | head -20
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Verification
@@ -149,25 +151,28 @@ After implementing these security controls, verify they are working as expected.
 
 ```bash
 # Check that all policies are applied without errors
-cilium policy get -o json | jq '.[] | .metadata.name'
+kubectl get ciliumnetworkpolicies --all-namespaces
+kubectl get ciliumclusterwidenetworkpolicies
 
 # Test connectivity from a test pod to verify policies work
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- \
   wget --timeout=3 -q -O - http://web-frontend.production.svc.cluster.local
 
 # Verify Cilium endpoint health
-cilium endpoint health
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-health status --verbose
 
 # Check for policy drops in the monitor
-cilium monitor --type drop
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop
 ```
 
 ## Troubleshooting
 
-- **Policies not taking effect**: Run `cilium endpoint list` to confirm endpoints have the expected identity labels assigned.
+- **Policies not taking effect**: Run `kubectl get ciliumendpoints --all-namespaces -o json` to confirm endpoints have the expected identity labels assigned.
 - **DNS policies failing**: Ensure all pods are using the cluster DNS by checking `/etc/resolv.conf` inside the pod.
 - **High latency with L7 policies**: Check Envoy proxy resource usage and consider applying L7 policies only where strictly necessary.
-- **Identity resolution failures**: Verify that `cilium identity list` shows the expected identities for your pods.
+- **Identity resolution failures**: Verify that `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list` shows the expected identities for your pods.
 
 ## Conclusion
 
