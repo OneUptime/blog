@@ -55,9 +55,9 @@ kubectl top pod iperf-server
 ## Server Configuration Issues
 
 ```bash
-# iperf3 single-threaded limitation
-# iperf3 server uses a single thread per client connection
-# For multi-stream tests, consider using multiple server instances
+# iperf3 threading depends on version
+# iperf3 versions before 3.16 are single-threaded for a test; 3.16+ uses one thread per test stream
+# If the server process is CPU-bound, use a current iperf3 build or multiple server processes/ports
 
 # Check for socket buffer limits in the container
 kubectl exec iperf-server -- sysctl net.core.rmem_max
@@ -101,7 +101,7 @@ spec:
 
 ```bash
 # Run the validation checks above
-# All items should show PASS
+# Cilium components should report OK
 cilium status --verbose
 ```
 
@@ -127,12 +127,15 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 # Collect Cilium configuration
 cilium config view > $DIAG_DIR/cilium-config.txt
 
-# Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+# Select a Cilium agent pod for per-node datapath inspection
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
 
-# Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+# Collect BPF map information from the selected Cilium agent
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+
+# Collect endpoint information from the selected Cilium agent
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -163,21 +166,24 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath from a Cilium agent:
 
 ```bash
+# Select a Cilium agent pod for per-node datapath inspection
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json | jq '.[0].id')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -207,7 +213,7 @@ For deep datapath analysis, use BPF tracing tools:
 bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
-bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
+sudo bpftrace -e 'tracepoint:xdp:* { @cnt[probe] = count(); }'
 ```
 
 These diagnostic tools form a comprehensive toolkit for understanding exactly what happens to packets as they traverse Cilium's eBPF datapath.
