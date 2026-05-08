@@ -19,9 +19,8 @@ Docker Compose groups services that communicate over a shared network. Podman po
 Consider this typical Docker Compose setup:
 
 ```yaml
-# docker-compose.yml
+# compose.yaml
 
-version: '3.8'
 services:
   web:
     image: nginx:alpine
@@ -130,7 +129,7 @@ podman run -d --pod "$POD_NAME" --name db \
   -v db-data:/var/lib/postgresql/data \
   docker.io/library/postgres:16-alpine
 
-sleep 3  # Wait for database to initialize
+sleep 3  # Give the database a brief startup window
 
 podman run -d --pod "$POD_NAME" --name cache docker.io/library/redis:7-alpine
 
@@ -148,4 +147,4 @@ echo "Application started. Access at http://localhost:8080"
 
 ## Summary
 
-Migrate from Docker Compose to Podman pods by creating a pod with published ports, then running each service as a container inside the pod. Replace service-name-based hostnames with localhost, define ports at the pod level, and manage startup order manually or with init containers.
+Migrate from Docker Compose to Podman pods by creating a pod with published ports, then running each service as a container inside the pod. Replace service-name-based hostnames with localhost, define ports at the pod level, and manage startup order and readiness manually or with init containers.
