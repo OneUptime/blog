@@ -20,6 +20,7 @@ This guide shows you how to use Hubble, the Cilium monitor, and BPF debugging to
 
 - Kubernetes cluster with Cilium installed and Hubble enabled
 - cilium CLI and hubble CLI installed
+- Cilium Prometheus metrics enabled for metric-based checks
 - kubectl access to kube-system namespace
 - Understanding of basic networking concepts (TCP, UDP, ICMP)
 
@@ -36,7 +37,7 @@ hubble observe --verdict DROPPED
 hubble observe --verdict DROPPED --to-pod default/my-service
 
 # Filter drops by protocol and port
-hubble observe --verdict DROPPED --protocol TCP --to-port 8080
+hubble observe --verdict DROPPED --protocol tcp --to-port 8080
 
 # Get detailed drop information in JSON
 hubble observe --verdict DROPPED --last 50 -o json | python3 -c "
@@ -46,10 +47,11 @@ for line in sys.stdin:
     flow = f.get('flow', {})
     src = flow.get('source', {})
     dst = flow.get('destination', {})
+    l4 = flow.get('l4', {})
+    dst_port = l4.get('TCP', l4.get('UDP', {})).get('destination_port', 0)
     reason = flow.get('drop_reason_desc', 'unknown')
-    drop_reason = flow.get('drop_reason', 0)
-    print(f'{src.get(\"namespace\",\"?\")}/{src.get(\"pod_name\",\"?\")} -> {dst.get(\"namespace\",\"?\")}/{dst.get(\"pod_name\",\"?\")}:{dst.get(\"port\",0)}')
-    print(f'  Reason: {reason} (code: {drop_reason})')
+    print(f'{src.get(\"namespace\",\"?\")}/{src.get(\"pod_name\",\"?\")} -> {dst.get(\"namespace\",\"?\")}/{dst.get(\"pod_name\",\"?\")}:{dst_port}')
+    print(f'  Reason: {reason}')
     print()
 "
 ```
@@ -77,10 +79,10 @@ The Cilium monitor provides lower-level packet tracing:
 
 ```bash
 # Start the monitor for drop events
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop
 
 # Filter for a specific endpoint
-ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 for ep in json.load(sys.stdin):
     labels = ep.get('status',{}).get('identity',{}).get('labels',[])
@@ -89,10 +91,10 @@ for ep in json.load(sys.stdin):
             print(ep['id'])
             break
 ")
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop --related-to $ENDPOINT_ID
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop --related-to $ENDPOINT_ID
 
 # Get verbose output with packet headers
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop -v
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop -v
 ```
 
 ## Analyzing Drop Reasons
@@ -108,19 +110,19 @@ kubectl -n kube-system exec ds/cilium -- \
   sort -t'"' -k2
 
 # Common drop reason codes and their meanings:
-# 0   - Success (not a drop)
-# 2   - Invalid source MAC
-# 3   - Invalid destination MAC
-# 4   - Invalid source IP
-# 130 - Policy denied (L3)
-# 131 - Policy denied (L4)
-# 132 - Policy denied (L7)
-# 133 - Proxy redirection failure
-# 140 - Connection tracking map insertion failure
-# 141 - Invalid connection tracking state
-# 148 - Authentication required
-# 163 - No mapping for NAT
-# 181 - Unsupported L3 protocol
+# 0   - Unknown / non-drop reason
+# 130 - Invalid source MAC
+# 131 - Invalid destination MAC
+# 132 - Invalid source IP
+# 133 - Policy denied
+# 134 - Invalid packet
+# 138 - Cannot create connection tracking entry from packet
+# 139 - Unsupported L3 protocol
+# 155 - Connection tracking map insertion failure
+# 163 - Unknown connection tracking state
+# 167 - No mapping for NAT masquerade
+# 181 - Policy deny
+# 189 - Authentication required
 ```
 
 Investigate specific drop reasons:
@@ -137,9 +139,11 @@ for line in sys.stdin:
     if 'policy' in reason.lower() or 'denied' in reason.lower():
         src = flow.get('source', {})
         dst = flow.get('destination', {})
+        l4 = flow.get('l4', {})
+        dst_port = l4.get('TCP', l4.get('UDP', {})).get('destination_port', 0)
         policy_drops.append({
             'src': f\"{src.get('namespace','?')}/{src.get('pod_name','?')}\",
-            'dst': f\"{dst.get('namespace','?')}/{dst.get('pod_name','?')}:{dst.get('port',0)}\",
+            'dst': f\"{dst.get('namespace','?')}/{dst.get('pod_name','?')}:{dst_port}\",
             'reason': reason
         })
 for drop in policy_drops[:10]:
@@ -147,8 +151,8 @@ for drop in policy_drops[:10]:
 "
 
 # CT map overflow
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l
-kubectl -n kube-system exec ds/cilium -- cilium status | grep "CT Map"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list | grep "datapath_conntrack_gc"
 ```
 
 ## Deep Packet Tracing with BPF Debug
@@ -157,10 +161,10 @@ For difficult cases, enable BPF-level packet tracing:
 
 ```bash
 # Enable debug on a specific endpoint
-kubectl -n kube-system exec ds/cilium -- cilium endpoint config $ENDPOINT_ID Debug=true
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint config $ENDPOINT_ID debug=true
 
 # Watch the debug output (very verbose)
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop --type trace --related-to $ENDPOINT_ID -v
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop --type trace --related-to $ENDPOINT_ID -v
 
 # The trace output shows every BPF decision point:
 # - Policy lookup result
@@ -169,7 +173,7 @@ kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop --type trace
 # - Routing decision
 
 # IMPORTANT: Disable debug after investigation (it affects performance)
-kubectl -n kube-system exec ds/cilium -- cilium endpoint config $ENDPOINT_ID Debug=false
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint config $ENDPOINT_ID debug=false
 ```
 
 ## Investigating Policy-Related Drops
@@ -178,10 +182,12 @@ Most drops are caused by network policies:
 
 ```bash
 # Check which policies apply to the endpoint
-kubectl -n kube-system exec ds/cilium -- cilium endpoint get $ENDPOINT_ID -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get $ENDPOINT_ID -o json | python3 -c "
 import json, sys
 ep = json.load(sys.stdin)
-policy = ep[0].get('status', {}).get('policy', {})
+if isinstance(ep, list):
+    ep = ep[0]
+policy = ep.get('status', {}).get('policy', {})
 print('Ingress enforcement:', policy.get('spec', {}).get('policy-enabled', 'unknown'))
 
 # Show applied policy rules
@@ -222,13 +228,13 @@ kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
 
 ## Troubleshooting
 
-- **Drops happening but Hubble shows none**: Monitor aggregation may be hiding individual drop events. Set `monitorAggregation=none` temporarily for debugging.
+- **Drops happening but Hubble shows none**: Monitor aggregation may be hiding individual trace events. Set `monitor-aggregation=none` temporarily for debugging.
 
 - **Policy drops but no policy exists**: Check for default-deny behavior. A CiliumNetworkPolicy with an empty ingress or egress list acts as a default deny.
 
 - **CT map full**: Increase connection tracking table size in Helm values: `bpf.ctTcpMax` and `bpf.ctAnyMax`.
 
-- **Drops only on one node**: Check if that node has a different Cilium configuration or an older version. Run `kubectl -n kube-system exec <specific-pod> -- cilium version`.
+- **Drops only on one node**: Check if that node has a different Cilium configuration or an older version. Run `kubectl -n kube-system exec <specific-pod> -- cilium-dbg version`.
 
 - **Cannot reproduce drops**: Drops may be transient. Use Hubble export to capture drops to a file for later analysis.
 
