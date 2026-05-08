@@ -10,7 +10,7 @@ Description: Learn how to run Podman containers with a read-only root filesystem
 
 > A read-only filesystem is one of the simplest and most effective ways to harden a container against tampering and malware.
 
-Running containers with a read-only root filesystem prevents any process inside the container from modifying the filesystem. This is a powerful security measure that blocks attackers from installing backdoors, modifying binaries, or altering configuration files. Many applications work perfectly fine with a read-only root filesystem when you provide writable tmpfs mounts for the directories that genuinely need writes.
+Running containers with a read-only root filesystem prevents any process inside the container from modifying the image-backed root filesystem. Writable tmpfs mounts and volumes can still be used for paths that need writes. This is a powerful security measure that blocks attackers from installing backdoors, modifying binaries, or altering configuration files in the image-backed filesystem. Many applications work perfectly fine with a read-only root filesystem when you provide writable tmpfs mounts for the directories that genuinely need writes.
 
 ---
 
@@ -28,7 +28,7 @@ podman run --read-only --rm alpine sh -c "
 "
 ```
 
-The container can still read all files, but any write operation to the root filesystem will fail with a "Read-only file system" error.
+The container can still read files, but write operations to the image-backed root filesystem, such as creating `/test-file`, will fail with a "Read-only file system" error.
 
 ## Allowing Writes to Specific Directories with tmpfs
 
@@ -142,7 +142,7 @@ Check whether a container has a read-only filesystem:
 
 ```bash
 # Start a container
-podman run -d --read-only --name ro-test --tmpfs /tmp alpine sleep infinity
+podman run -d --read-only --name ro-test --tmpfs /tmp alpine sleep 3600
 
 # Inspect the read-only setting
 podman inspect ro-test --format '{{.HostConfig.ReadonlyRootfs}}'
