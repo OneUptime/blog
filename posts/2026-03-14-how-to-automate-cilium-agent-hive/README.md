@@ -21,7 +21,7 @@ This guide covers practical automation patterns for the cilium-agent hive comman
 - Kubernetes cluster with Cilium v1.14+
 - `kubectl` configured with cluster access
 - Bash scripting environment
-- `jq` and `dot` (graphviz) for processing output
+- `dot` (graphviz) for rendering graph output
 - Optional: CI/CD system (GitHub Actions, GitLab CI, etc.)
 
 ## Collecting Hive Data Across All Nodes
@@ -131,7 +131,7 @@ jobs:
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG }}" > /tmp/kubeconfig
-          export KUBECONFIG=/tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Collect hive graph
         run: |
@@ -175,6 +175,8 @@ OUTPUT="${2:-/tmp/cilium-hive-images}"
 mkdir -p "$OUTPUT"
 
 for dotfile in "$INPUT"/*.dot; do
+  [ -e "$dotfile" ] || continue
+
   basename=$(basename "$dotfile" .dot)
   echo "Rendering $basename..."
 
@@ -195,6 +197,39 @@ Deploy an in-cluster job that regularly validates the hive state:
 
 ```yaml
 # hive-monitor-cronjob.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cilium-hive-monitor
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cilium-hive-monitor
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cilium-hive-monitor
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: cilium-hive-monitor
+  namespace: kube-system
+roleRef:
+  kind: Role
+  name: cilium-hive-monitor
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -206,7 +241,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: cilium
+          serviceAccountName: cilium-hive-monitor
           containers:
           - name: hive-check
             image: bitnami/kubectl:latest
@@ -222,7 +257,7 @@ spec:
                 echo "ALERT: Hive graph is empty"
                 exit 1
               fi
-              NODES=$(echo "$GRAPH" | grep -c "->")
+              NODES=$(echo "$GRAPH" | grep -c -- "->")
               echo "Hive graph contains $NODES dependency edges"
           restartPolicy: OnFailure
 ```
