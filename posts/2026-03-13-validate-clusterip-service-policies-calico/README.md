@@ -10,11 +10,11 @@ Description: Validate Calico ClusterIP service policies to secure internal Kuber
 
 ## Introduction
 
-ClusterIP Service Policies in Calico gives you control over how traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure ClusterIP Services traffic effectively while maintaining service availability.
+Calico NetworkPolicies give you control over how traffic flows to and from the pods backing Kubernetes Services. The `projectcalico.org/v3` API provides the tools needed to secure ClusterIP Service traffic effectively while maintaining service availability.
 
-Proper ClusterIP Services policy configuration is essential for clusters that expose services to external traffic. Without it, any source can reach your NodePort or ClusterIP services, creating significant attack surface.
+Proper policy configuration is essential for clusters that expose services to external traffic, including ClusterIP services advertised outside the cluster. Without it, unauthorized sources can reach exposed services, creating significant attack surface.
 
-This guide covers validate ClusterIP Services policies in Calico with practical, production-tested configurations.
+This guide covers validating ClusterIP Service access with Calico policies and practical, production-tested configurations.
 
 ## Prerequisites
 
@@ -49,12 +49,12 @@ spec:
     - action: Allow
       destination:
         selector: app == 'database'
-      destination:
         ports: [5432]
     - action: Allow
-      protocol: UDP
       destination:
-        ports: [53]
+        services:
+          name: kube-dns
+          namespace: kube-system
     - action: Deny
   types:
     - Ingress
@@ -82,9 +82,9 @@ flowchart TD
     A[Client] -->|Request| B[ClusterIP Services]
     B -->|Calico Policy| C{Allow/Deny}
     C -->|Allowed| D[Backend Pods]
-    C -->|Denied| E[Blocked at Node]
+    C -->|Denied| E[Blocked by Policy]
 ```
 
 ## Conclusion
 
-ClusterIP Service Policies policies in Calico provide essential security controls for Kubernetes service traffic. Configure them carefully, test bidirectional traffic flows, and use staged policies to preview impact before enforcement. Regular monitoring of denial rates helps you detect misconfigurations and unauthorized access attempts before they impact service availability.
+Calico NetworkPolicies provide essential security controls for Kubernetes service traffic. Configure them carefully, test bidirectional traffic flows, and use staged policies to preview impact before enforcement. Regular monitoring of denial rates helps you detect misconfigurations and unauthorized access attempts before they impact service availability.
