@@ -26,6 +26,7 @@ Description=Web application with labels
 
 [Container]
 Image=docker.io/myorg/webapp:latest
+ContainerName=webapp
 PublishPort=8080:80
 
 # Add metadata labels
