@@ -34,12 +34,11 @@ Apply the following Helm values to configure cilium networking architecture:
 # Configuration reflecting Cilium architecture components
 
 # Cilium Agent settings
-agent:
-  enabled: true
+agent: true
 
 # Cilium Operator settings
 operator:
-  replicas: 1
+  replicas: 2
   # Enable operator metrics
   prometheus:
     enabled: true
@@ -64,13 +63,15 @@ prometheus:
   enabled: true
 ```
 
+If you are applying cluster-pool IPAM to an existing Cilium installation, do not change existing entries in `ipam.operator.clusterPoolIPv4PodCIDRList`; add a new CIDR if you need to expand the pool.
+
 Apply the configuration:
 
 ```bash
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-architecture-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -141,7 +142,7 @@ kubectl rollout status deployment/config-test --timeout=60s
 # Test connectivity
 kubectl run test-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/test-client --timeout=30s
-kubectl exec test-client -- wget -qO- --timeout=5 http://config-test-svc
+kubectl exec test-client -- wget -q -T 5 -O- http://config-test-svc
 kubectl delete pod test-client
 kubectl delete -f test-deployment.yaml
 ```
@@ -152,13 +153,13 @@ For production environments, consider these additional settings:
 
 ```bash
 # View all available configuration options
-cilium config view
+helm show values cilium/cilium --version 1.16.5
 
 # Check which features are enabled
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -173,7 +174,7 @@ cilium connectivity test --test pod-to-pod,pod-to-service
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl get ciliumendpoints --all-namespaces | head -20
 ```
 
 ## Troubleshooting
