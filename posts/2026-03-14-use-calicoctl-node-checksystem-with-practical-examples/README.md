@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, System Requirements, Kubernetes, Pre-flight Checks
 
-Description: Use calicoctl node checksystem to verify that a host meets all kernel and system requirements for running Calico, with practical pre-deployment validation examples.
+Description: Use calicoctl node checksystem to verify that a host meets Calico's kernel compatibility and module requirements, with practical pre-deployment validation examples.
 
 ---
 
 ## Introduction
 
-Before deploying Calico on a new node, you need to verify that the host's kernel and system configuration meet Calico's requirements. The `calicoctl node checksystem` command performs these pre-flight checks automatically, verifying kernel version, required kernel modules, network capabilities, and system parameters.
+Before deploying Calico on a new node, you need to verify that the host's kernel and module support meet Calico's requirements. The `calicoctl node checksystem` command performs these pre-flight checks automatically, verifying the kernel version and required kernel modules.
 
 Running this check before deployment prevents frustrating post-deployment failures where Calico partially works but cannot enforce certain policy types or use specific encapsulation modes. It is especially important when deploying on custom-built OS images or minimal distributions that may not include all required kernel modules.
 
@@ -31,22 +31,13 @@ Example output:
 
 ```text
 Checking kernel version...
-  OK: kernel version is 5.15.0
+                5.15.0                                      OK
 Checking kernel modules...
-  OK: ip_tables
-  OK: iptable_filter
-  OK: iptable_nat
-  OK: ip_set
-  OK: xt_set
-  OK: xt_mark
-  OK: xt_multiport
-  OK: xt_conntrack
-  OK: nf_conntrack
-  WARNING: ip_vs - module not loaded (required for kube-proxy IPVS mode)
-Checking sysctl parameters...
-  OK: net.ipv4.ip_forward = 1
-  WARNING: net.ipv6.conf.all.forwarding = 0 (should be 1 for IPv6)
-System check complete: 2 warnings, 0 errors
+                xt_conntrack                                OK
+                xt_u32                                      OK
+WARNING: Unable to detect the xt_set module as Loaded/Builtin module or lsmod
+                xt_set                                      FAIL
+system doesn't meet one or more minimum systems requirements to run Calico
 ```
 
 ## Pre-Deployment Validation Script
@@ -67,9 +58,9 @@ echo ""
 RESULT=$(sudo calicoctl node checksystem 2>&1)
 echo "$RESULT"
 
-# Count issues
-ERRORS=$(echo "$RESULT" | grep -c "ERROR" || echo 0)
-WARNINGS=$(echo "$RESULT" | grep -c "WARNING" || echo 0)
+# Count issues. checksystem reports missing required modules as FAIL.
+ERRORS=$(echo "$RESULT" | grep -c "FAIL" || true)
+WARNINGS=$(echo "$RESULT" | grep -c "WARNING" || true)
 
 echo ""
 echo "=== Summary ==="
@@ -93,31 +84,37 @@ fi
 ### Loading Missing Kernel Modules
 
 ```bash
-# Load required modules
+# Load commonly required modules that match your dataplane and options
 sudo modprobe ip_tables
+sudo modprobe ip6_tables
 sudo modprobe iptable_filter
 sudo modprobe iptable_nat
 sudo modprobe iptable_mangle
 sudo modprobe ip_set
 sudo modprobe xt_set
+sudo modprobe xt_u32
 sudo modprobe xt_mark
 sudo modprobe xt_multiport
 sudo modprobe xt_conntrack
+sudo modprobe xt_addrtype
 sudo modprobe nf_conntrack
 sudo modprobe vxlan  # For VXLAN encapsulation
 sudo modprobe ipip   # For IP-in-IP encapsulation
 
 # Make modules persist across reboots
-cat > /etc/modules-load.d/calico.conf << 'EOF'
+sudo tee /etc/modules-load.d/calico.conf > /dev/null << 'EOF'
 ip_tables
+ip6_tables
 iptable_filter
 iptable_nat
 iptable_mangle
 ip_set
 xt_set
+xt_u32
 xt_mark
 xt_multiport
 xt_conntrack
+xt_addrtype
 nf_conntrack
 vxlan
 ipip
@@ -127,12 +124,10 @@ EOF
 ### Fixing sysctl Parameters
 
 ```bash
-# Enable IP forwarding
-cat > /etc/sysctl.d/99-calico.conf << 'EOF'
+# Enable forwarding when required by your IPv4 or IPv6 deployment
+sudo tee /etc/sysctl.d/99-calico.conf > /dev/null << 'EOF'
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
-net.ipv4.conf.all.rp_filter = 1
-net.ipv4.conf.default.rp_filter = 1
 EOF
 
 # Apply immediately
@@ -153,7 +148,7 @@ while IFS= read -r HOST; do
   echo "=== $HOST ==="
   ssh "$HOST" "sudo calicoctl node checksystem 2>&1" || true
   
-  ERRORS=$(ssh "$HOST" "sudo calicoctl node checksystem 2>&1 | grep -c ERROR" 2>/dev/null || echo 0)
+  ERRORS=$(ssh "$HOST" "sudo calicoctl node checksystem 2>&1 | grep -c FAIL || true" 2>/dev/null)
   if [ "$ERRORS" -gt 0 ]; then
     FAILURES=$((FAILURES + 1))
   fi
@@ -175,7 +170,7 @@ exit $FAILURES
 echo "Fixing Calico system requirements..."
 
 # Load kernel modules
-MODULES="ip_tables iptable_filter iptable_nat ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack vxlan ipip"
+MODULES="ip_tables ip6_tables iptable_filter iptable_nat ip_set xt_set xt_u32 xt_mark xt_multiport xt_conntrack xt_addrtype nf_conntrack vxlan ipip"
 for MOD in $MODULES; do
   if ! lsmod | grep -q "^$MOD"; then
     echo "Loading module: $MOD"
@@ -214,4 +209,4 @@ sudo calicoctl node checksystem
 
 ## Conclusion
 
-Running `calicoctl node checksystem` before deploying Calico prevents the frustrating experience of a partially working network. By validating system requirements, loading missing kernel modules, and setting correct sysctl parameters, you ensure that Calico can fully function on every node in your cluster.
+Running `calicoctl node checksystem` before deploying Calico prevents the frustrating experience of a partially working network. By validating kernel compatibility, loading missing kernel modules, and setting required forwarding parameters for your deployment, you ensure that Calico can fully function on every node in your cluster.
