@@ -10,19 +10,17 @@ Description: Inspect BGP peer status and session details using cilium-dbg bgp pe
 
 ## Introduction
 
-Cilium supports BGP for advertising pod and service CIDRs to external network infrastructure. The `cilium-dbg bgp peers` command provides visibility into BGP peer session information on each Cilium node.
+Cilium supports BGP for advertising pod CIDRs and Service VIPs to external network infrastructure. The `cilium-dbg bgp peers` command provides visibility into BGP peer session information on each Cilium node.
 
-Understanding peer state is essential for diagnosing BGP connectivity issues. The peers command shows session status, timers, and message counters for each configured BGP neighbor.
+Understanding peer state is essential for diagnosing BGP connectivity issues. The peers command shows session status, uptime, address families, and received and advertised route counts for each configured BGP neighbor.
 
 This guide covers using cilium-dbg bgp peers for inspection and validation.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig, CiliumBGPPeerConfig, and CiliumBGPAdvertisement
 - `kubectl` access to cilium pods
-- 
-- 
 
 ## Inspecting Peers State
 
@@ -38,7 +36,7 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 ### Understanding the Output
 
-The `cilium-dbg bgp peers` command displays peer session information including addresses, ASN, state, and timers.
+The `cilium-dbg bgp peers` command displays peer session information including addresses, ASN, session state, uptime, address families, and received and advertised route counts.
 
 ### Multi-Node Inspection
 
@@ -62,17 +60,45 @@ done <<< "$PODS"
 ### BGP Configuration Reference
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: bgp-peering
+  name: cilium-bgp
 spec:
-  virtualRouters:
-  - localASN: 65001
-    exportPodCIDR: true
-    neighbors:
-    - peerAddress: "10.0.0.1/32"
+  nodeSelector:
+    matchLabels:
+      bgp: "enabled"
+  bgpInstances:
+  - name: "instance-65001"
+    localASN: 65001
+    peers:
+    - name: "peer-65000"
       peerASN: 65000
+      peerAddress: "10.0.0.1"
+      peerConfigRef:
+        name: "cilium-peer"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cilium-peer
+spec:
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: "bgp"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: bgp-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "PodCIDR"
 ```
 
 ```mermaid
@@ -97,8 +123,8 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
+- **"BGP is not enabled"**: Enable the BGP control plane with the Helm value `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP control plane resources may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
 - **Peers not establishing**: Verify network connectivity to peer on TCP/179 and ASN configuration.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
