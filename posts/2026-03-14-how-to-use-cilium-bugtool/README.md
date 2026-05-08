@@ -35,7 +35,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 
 # Run bugtool and create a diagnostic archive
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-bugtool
+  cilium-bugtool -o gz
 
 # The archive is created inside the container. Copy it out:
 ARCHIVE=$(kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -88,13 +88,17 @@ flowchart TD
 Collect only specific categories of data:
 
 ```bash
-# Collect only cilium-agent state (faster, smaller archive)
+# Generate a config file listing the commands bugtool would run
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-bugtool --commands="cilium-dbg status,cilium-dbg endpoint list"
+  cilium-bugtool --dry-run --config /tmp/cilium-bugtool.config
 
-# List available collection commands
-kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-bugtool --list
+# Run a smaller collection with only selected commands
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- sh -c '
+cat > /tmp/cilium-bugtool-selected.json <<EOF
+{"commands":["cilium-dbg status","cilium-dbg endpoint list"]}
+EOF
+cilium-bugtool -o gz --config /tmp/cilium-bugtool-selected.json
+'
 ```
 
 ## Analyzing the Output
@@ -105,7 +109,7 @@ Key files to examine in the archive:
 BUGDIR="/tmp/cilium-bugtool-output"
 
 # Find the extracted directory
-BUGDIR=$(find /tmp/cilium-bugtool-output -maxdepth 1 -type d | tail -1)
+BUGDIR=$(find /tmp/cilium-bugtool-output -mindepth 1 -maxdepth 1 -type d | tail -1)
 
 # Check agent status
 cat "$BUGDIR"/cmd-output/cilium-dbg-status* 2>/dev/null | head -30
@@ -148,7 +152,7 @@ while IFS=',' read -r pod node; do
 
   # Run bugtool
   kubectl -n kube-system exec "$pod" -c cilium-agent -- \
-    cilium-bugtool 2>/dev/null
+    cilium-bugtool -o gz 2>/dev/null
 
   # Copy archive
   ARCHIVE=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- \
@@ -190,9 +194,9 @@ echo "Archive size: $((SIZE / 1024))KB"
 ## Troubleshooting
 
 - **"No space left on device"**: The bugtool writes to /tmp inside the container. Check available space with `df -h` inside the container.
-- **Archive is very small**: Some commands may have failed. Run with verbose output to see which commands succeeded.
+- **Archive is very small**: Some commands may have failed. Review the command output, or generate the command config with `--dry-run --config /tmp/cilium-bugtool.config` to see what bugtool attempted to collect.
 - **Copy fails with "tar: Removing leading '/'"**: This warning is harmless. The copy should still succeed.
-- **Bugtool takes very long**: Large clusters with many endpoints generate more data. Use `--commands` to limit collection scope.
+- **Bugtool takes very long**: Large clusters with many endpoints generate more data. Use `--config` with a reduced command list to limit collection scope.
 
 ## Conclusion
 
