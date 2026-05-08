@@ -34,7 +34,7 @@ The general rule for Calico is:
 
 - Typha must be upgraded **before** Felix
 - A one minor version skew between Typha and Felix is usually supported (check release notes)
-- `calicoctl` should match the cluster's Calico API version
+- `calicoctl` should match the cluster's Calico version
 
 ```bash
 # Check the current versions of each component
@@ -48,7 +48,7 @@ kubectl get daemonset calico-node -n kube-system \
   -o jsonpath='{.spec.template.spec.containers[?(@.name=="calico-node")].image}{"\n"}'
 
 echo "=== Current calicoctl version ==="
-calicoctl version --client
+calicoctl version
 
 echo ""
 echo "Review the Calico release notes at:"
@@ -86,7 +86,7 @@ kubectl set image deployment/calico-typha \
   calico-typha=calico/typha:v3.27.0 \
   -n kube-system
 
-# Monitor the rolling update - each pod replacement takes ~45–60 seconds
+# Monitor the rolling update - timing depends on readiness and cluster conditions
 kubectl rollout status deployment/calico-typha -n kube-system --timeout=300s
 
 # Verify all pods are running the new version
@@ -111,7 +111,7 @@ kubectl logs -n kube-system -l k8s-app=calico-typha --tail=50 | grep -iE "error|
 # Confirm Felix agents are still connected to Typha
 TYPHA_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | head -1)
 kubectl exec -n kube-system $TYPHA_POD -- wget -qO- \
-  http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active
+  http://localhost:9093/metrics 2>/dev/null | grep typha_connections_streaming
 # Expected: non-zero value equal to approximately the number of nodes
 ```
 
@@ -156,7 +156,7 @@ echo "Felix version:"
 kubectl get pods -n kube-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].spec.containers[?(@.name=="calico-node")].image}'
 
-# Verify policy still enforced (apply and delete a test policy)
+# Verify Calico policy API write/read still works (apply and delete a test policy)
 cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -169,13 +169,13 @@ spec:
 EOF
 
 calicoctl get globalnetworkpolicy upgrade-verification-test && \
-  echo "Policy propagation: OK"
+  echo "Policy API write/read: OK"
 calicoctl delete globalnetworkpolicy upgrade-verification-test
 
 # Check Typha connections are healthy
 TYPHA_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | head -1)
 kubectl exec -n kube-system $TYPHA_POD -- wget -qO- \
-  http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active
+  http://localhost:9093/metrics 2>/dev/null | grep typha_connections_streaming
 ```
 
 ---
