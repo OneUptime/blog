@@ -29,7 +29,7 @@ echo "=== Kubernetes Nodes ==="
 kubectl get nodes -o name | sort
 
 echo "=== Calico Node Resources ==="
-calicoctl get nodes -o wide | sort
+calicoctl get nodes -o go-template='{{range .}}{{range .Items}}node/{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}' | sort
 ```
 
 Every Kubernetes node should have a corresponding Calico Node resource. Missing entries indicate the calico-node pod may not have started successfully on that node.
@@ -54,7 +54,7 @@ for node in data['items']:
 
 ```bash
 # Check BGP peer status for each node
-# Run on each node or check via calicoctl
+# Run calicoctl node status directly on each host running calico-node
 calicoctl node status
 
 # Check from a specific calico-node pod
@@ -76,7 +76,7 @@ graph TD
 ## Step 4: Validate Tunnel IP Assignments
 
 ```bash
-# Verify VXLAN tunnel addresses are assigned and unique
+# If VXLAN is enabled, verify VXLAN tunnel addresses are assigned and unique
 calicoctl get nodes -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -97,8 +97,20 @@ for node in data['items']:
 
 ```bash
 # Deploy test pods on different nodes
-kubectl run test-a --image=busybox -l test=connectivity -- sleep 3600
-kubectl run test-b --image=busybox -l test=connectivity -- sleep 3600
+NODE_A=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+NODE_B=$(kubectl get nodes -o jsonpath='{.items[1].metadata.name}')
+
+if [ -z "$NODE_B" ]; then
+  echo "Need at least two nodes for a cross-node connectivity test"
+  exit 1
+fi
+
+kubectl run test-a --image=busybox -l test=connectivity \
+  --overrides="{\"spec\":{\"nodeName\":\"$NODE_A\"}}" -- sleep 3600
+kubectl run test-b --image=busybox -l test=connectivity \
+  --overrides="{\"spec\":{\"nodeName\":\"$NODE_B\"}}" -- sleep 3600
+
+kubectl wait --for=condition=Ready pod/test-a pod/test-b --timeout=60s
 
 # Get pod IPs
 POD_A_IP=$(kubectl get pod test-a -o jsonpath='{.status.podIP}')
