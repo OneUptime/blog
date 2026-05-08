@@ -71,33 +71,38 @@ Validate that the configured credentials have appropriate RBAC permissions.
 ```bash
 #!/bin/bash
 # validate-rbac.sh
-# Validate RBAC permissions for all Calico resource types
+# Validate RBAC permissions for current calicoctl resource types
 
 echo "=== RBAC Validation ==="
 
-CALICO_RESOURCES=(
-  "nodes"
-  "globalnetworkpolicies"
-  "globalnetworksets"
-  "networkpolicies"
-  "networksets"
-  "ippools"
-  "ipamblocks"
-  "hostendpoints"
-  "workloadendpoints"
-  "felixconfigurations"
-  "bgpconfigurations"
-  "bgppeers"
-  "clusterinformations"
-  "profiles"
+CALICO_READ_CHECKS=(
+  "nodes|calicoctl get nodes"
+  "globalnetworkpolicies|calicoctl get globalnetworkpolicies"
+  "globalnetworksets|calicoctl get globalnetworksets"
+  "networkpolicies|calicoctl get networkpolicies --all-namespaces"
+  "networksets|calicoctl get networksets --all-namespaces"
+  "ippools|calicoctl get ippools"
+  "ipreservations|calicoctl get ipreservations"
+  "hostendpoints|calicoctl get hostendpoints"
+  "workloadendpoints|calicoctl get workloadendpoints --all-namespaces"
+  "felixconfigurations|calicoctl get felixconfigurations"
+  "bgpconfigurations|calicoctl get bgpconfigurations"
+  "bgpfilters|calicoctl get bgpfilters"
+  "bgppeers|calicoctl get bgppeers"
+  "clusterinformations|calicoctl get clusterinformations"
+  "kubecontrollersconfiguration|calicoctl get kubecontrollersconfiguration"
+  "profiles|calicoctl get profiles"
+  "tiers|calicoctl get tiers"
 )
 
 PASS=0
 FAIL=0
 
-for resource in "${CALICO_RESOURCES[@]}"; do
+for check in "${CALICO_READ_CHECKS[@]}"; do
+  resource="${check%%|*}"
+  cmd="${check#*|}"
   echo -n "  ${resource}: "
-  if calicoctl get ${resource} > /dev/null 2>&1; then
+  if ${cmd} > /dev/null 2>&1; then
     echo "READ OK"
     ((PASS++))
   else
@@ -291,7 +296,8 @@ check() {
 
 echo "--- Configuration ---"
 check "Config file exists" "test -f /etc/calico/calicoctl.cfg"
-check "Kubeconfig exists" "test -f $(grep kubeconfig /etc/calico/calicoctl.cfg 2>/dev/null | awk '{print $2}' | tr -d '"')"
+KUBECONFIG_PATH=$(grep 'kubeconfig:' /etc/calico/calicoctl.cfg 2>/dev/null | awk '{print $2}' | tr -d "'\"")
+check "Kubeconfig exists" "test -n '${KUBECONFIG_PATH}' && test -f '${KUBECONFIG_PATH}'"
 
 echo ""
 echo "--- Connectivity ---"
