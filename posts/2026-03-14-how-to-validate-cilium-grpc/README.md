@@ -33,14 +33,11 @@ Create a dedicated test environment for policy validation:
 
 kubectl create namespace cilium-validate
 
-# Deploy test workloads
-kubectl -n cilium-validate run server \
-  --image=nginx:1.25 --labels="app=server" --port=80
-kubectl -n cilium-validate expose pod server --port=80
+# Deploy the Cilium gRPC demo workloads
+kubectl -n cilium-validate create -f \
+  https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/kubernetes-grpc/cc-door-app.yaml
 
-kubectl -n cilium-validate run client \
-  --image=busybox:1.36 --labels="app=client" \
-  --command -- sleep 3600
+kubectl -n cilium-validate get pods,svc
 ```
 
 ```mermaid
@@ -68,16 +65,16 @@ Apply the policy and verify it is enforced:
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
-  name: grpc-service-policy
-  namespace: production
+  name: rule1
+  namespace: cilium-validate
 spec:
   endpointSelector:
     matchLabels:
-      app: grpc-server
+      app: cc-door-mgr
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: grpc-client
+            app: public-terminal
       toPorts:
         - ports:
             - port: "50051"
@@ -85,16 +82,17 @@ spec:
           rules:
             http:
               - method: "POST"
-                path: "/myservice.MyService/GetData"
+                path: "/cloudcity.DoorManager/GetName"
               - method: "POST"
-                path: "/myservice.MyService/ListItems"
+                path: "/cloudcity.DoorManager/GetLocation"
               - method: "POST"
-                path: "/grpc.health.v1.Health/Check" 
+                path: "/cloudcity.DoorManager/RequestMaintenance"
 ```
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl -n cilium-validate get cep -o json | \
+  jq '.items[] | {name: .metadata.name, id: .status.id, policy: .status.status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -111,17 +109,15 @@ cilium connectivity test
 hubble observe --namespace cilium-validate --output compact --last 50
 
 # Verify allowed traffic succeeds
-kubectl -n cilium-validate exec client -- \
-  wget --timeout=5 -q -O - http://server
+kubectl -n cilium-validate exec terminal-87 -- \
+  python3 /cloudcity/cc_door_client.py GetLocation 1
 
-# Verify unauthorized traffic is blocked
-kubectl -n cilium-validate run unauthorized \
-  --image=busybox:1.36 --rm -it --restart=Never \
-  --labels="app=unauthorized" -- \
-  wget --timeout=3 -q -O - http://server
+# Verify a disallowed gRPC method is denied
+kubectl -n cilium-validate exec terminal-87 -- \
+  python3 /cloudcity/cc_door_client.py SetAccessCode 1 999
 
-# Check Hubble for the expected drop
-hubble observe --namespace cilium-validate --verdict DROPPED --last 10
+# Check Hubble for recent L7 flow events
+hubble observe --namespace cilium-validate --protocol http --last 10
 ```
 
 ## Automated Validation Script
@@ -149,8 +145,8 @@ fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl -n "$NAMESPACE" get cep -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
   echo "PASS"; ((PASS++))
 else
@@ -159,7 +155,7 @@ fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl -n "$NAMESPACE" get cnp -o json | jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
   echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
 else
@@ -207,11 +203,11 @@ cilium status
 
 ```bash
 # Confirm all endpoints are healthy
-cilium endpoint health
+cilium-health status
 ```
 
 ```bash
-# Verify no policy violations
+# Review recent denied or dropped flows
 hubble observe --verdict DROPPED --last 20 --output compact
 ```
 
