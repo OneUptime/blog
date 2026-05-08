@@ -86,6 +86,7 @@ Podman does not support renaming pods after creation. If you need a different na
 
 ```bash
 # Remove the old pod and create with a new name
+podman pod stop old-name
 podman pod rm old-name
 podman pod create --name new-name
 ```
