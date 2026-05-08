@@ -19,7 +19,7 @@ This guide covers pre-delete safety measures, automated backup-before-delete wor
 ## Prerequisites
 
 - A running Kubernetes cluster with Calico installed
-- calicoctl v3.27 or later
+- calicoctl matching the Calico version running on the cluster (v3.27 or later for this guide)
 - kubectl access to the cluster
 - Understanding of Calico resource dependencies
 
@@ -235,13 +235,13 @@ diff <(calicoctl get globalnetworkpolicy <name> -o yaml) backup.yaml
 # Verify network connectivity is restored
 kubectl exec -it deploy/test-app -- curl -s --max-time 5 http://backend:8080/health
 
-# Check that all Calico nodes are healthy
+# Check BGP status from each Calico node
 calicoctl node status
 ```
 
 ## Troubleshooting
 
-- **"resource already exists" on restore**: The resource was recreated by another process. Use `calicoctl replace` instead of `calicoctl apply` to overwrite with the backup version.
+- **Resource was recreated before restore**: `calicoctl apply` will replace the existing resource spec with the backup version. If you need to fail unless the resource already exists, use `calicoctl replace` with the complete backup file instead.
 - **Restored IPPool shows different blockSize**: The IPPool was modified before deletion. Review the backup file and adjust if the original blockSize was different from what is needed.
 - **Policy restored but traffic still blocked**: Verify the policy order and selectors. Other policies may have been created during the outage that conflict with the restored policy.
 - **Backup directory is empty**: The delete was performed without the safe-delete wrapper. Check if etcd snapshots or Velero backups contain the deleted resource.
