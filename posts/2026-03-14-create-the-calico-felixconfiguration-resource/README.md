@@ -29,7 +29,7 @@ The FelixConfiguration resource uses the Calico API group `projectcalico.org/v3`
 
 - `logSeverityScreen`: Log level for Felix. Valid values: Debug, Info, Warning, Error, Fatal.
 - `reportingInterval`: Interval at which Felix reports its status.
-- `ipipEnabled`: Enable IPIP encapsulation for cross-subnet traffic.
+- `ipipEnabled`: Override whether Felix configures an IP-in-IP tunnel interface. In most Kubernetes deployments, configure IPIP encapsulation on IP pools with `ipipMode`.
 - `bpfEnabled`: Enable eBPF dataplane mode.
 - `wireguardEnabled`: Enable WireGuard encryption for pod-to-pod traffic.
 - `healthEnabled` / `healthPort`: Enable the Felix health endpoint and configure its port.
@@ -47,7 +47,6 @@ metadata:
 spec:
   logSeverityScreen: Info
   reportingInterval: 30s
-  ipipEnabled: true
   bpfEnabled: false
   wireguardEnabled: false
   healthEnabled: true
@@ -56,17 +55,17 @@ spec:
   prometheusMetricsPort: 9091
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a common example value. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
-Apply the manifest using `kubectl`:
+Apply the manifest using `kubectl`. This requires the Calico API server or native `projectcalico.org/v3` CRDs to be available in the cluster:
 
 ```bash
 kubectl apply -f felixconfiguration.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl`, which provides validation for Calico resources and can manage `projectcalico.org/v3` resources even when `kubectl` access to that API group is not enabled:
 
 ```bash
 # Apply with calicoctl for enhanced validation
@@ -74,7 +73,7 @@ Alternatively, use `calicoctl` which provides better validation for Calico resou
 calicoctl apply -f felixconfiguration.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` checks field values against the Calico API schema before submitting. When updating an existing resource with `calicoctl apply`, provide the complete intended spec because the resource specification is replaced.
 
 ## Verification
 
@@ -85,7 +84,7 @@ Confirm that the resource was created successfully:
 kubectl get felixconfiguration.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe felixconfiguration.projectcalico.org
+kubectl describe felixconfiguration.projectcalico.org default
 
 # Verify with calicoctl
 calicoctl get felixconfiguration -o yaml
@@ -98,18 +97,21 @@ Check the Calico component logs for any warnings or errors related to the new re
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 ```
 
+If your Calico installation runs `calico-node` in `kube-system`, use `-n kube-system` instead.
+
 ## Troubleshooting
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `FelixConfiguration`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If you are using `kubectl`, verify that the Calico API is available: `kubectl api-resources | grep projectcalico.org`.
+- For API server based installs, check that the Calico API server is running: `kubectl get pods -n calico-apiserver`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
+- Restart the calico-node pods if needed: `kubectl rollout restart daemonset calico-node -n calico-system`.
 - Check Felix and Typha logs for error messages.
 
 
@@ -117,17 +119,17 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 Beyond the basic manifest shown above, there are several advanced configuration patterns worth understanding for production deployments.
 
-### Using Labels for Targeted Configuration
+### Using Node-Specific Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+FelixConfiguration does not select nodes by label. To override Felix settings on one node, create a FelixConfiguration resource named `node.<nodename>`:
 
-```bash
-# Label nodes for targeted configuration
-kubectl label node worker-1 calico-config=high-performance
-kubectl label node worker-2 calico-config=standard
-
-# Verify labels are applied
-kubectl get nodes --show-labels | grep calico-config
+```yaml
+apiVersion: projectcalico.org/v3
+kind: FelixConfiguration
+metadata:
+  name: node.worker-1
+spec:
+  logSeverityScreen: Debug
 ```
 
 ### Version Control and GitOps Integration
@@ -153,6 +155,7 @@ Resource Naming Conventions
 
 Adopt a consistent naming convention for your Calico resources:
 
+- For FelixConfiguration, use `default` for global settings and `node.<nodename>` for node-specific overrides
 - Use descriptive names that indicate the resource's purpose (e.g., `production-pod-pool` instead of `pool-1`)
 - Include environment or cluster identifiers for multi-cluster setups
 - Avoid special characters; use lowercase letters, numbers, and hyphens only
