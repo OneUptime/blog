@@ -25,8 +25,7 @@ This guide is meant to be run interactively alongside your cluster. Do not skip 
 ## Step 1: Deploy the Application
 
 ```bash
-# Create the demo namespace (optional, demo uses default)
-
+# Deploy the demo application in the default namespace
 kubectl create -f https://raw.githubusercontent.com/cilium/cilium/HEAD/examples/minikube/http-sw-app.yaml
 
 # Wait for all pods to be running
@@ -91,8 +90,9 @@ kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/
 ## Step 6: Observe with Cilium Monitor
 
 ```bash
-# Watch policy drops in real time (run in separate terminal)
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+# Watch L7 policy verdicts in real time (run in separate terminal)
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec -ti "$CILIUM_POD" -- cilium-dbg monitor -v --type l7
 
 # In another terminal, trigger the blocked request
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
