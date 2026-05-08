@@ -25,8 +25,8 @@ This guide walks through a systematic verification process using kubectl, calico
 ## Step 1: Verify Calico Components Are Healthy
 
 ```bash
-kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
+kubectl get pods -A -l k8s-app=calico-node
+kubectl get pods -A -l k8s-app=calico-kube-controllers
 ```
 
 All pods should show `Running` status with ready containers.
@@ -37,25 +37,25 @@ All pods should show `Running` status with ready containers.
 kubectl get nodes -o wide
 ```
 
-All nodes should be in `Ready` state. The internal IP addresses listed are what Calico uses for inter-node routing.
+All nodes should be in `Ready` state. By default, the internal IP addresses listed are what Calico uses for inter-node routing.
 
-## Step 3: Inspect Calico Node Status with calicoctl
+## Step 3: Inspect Calico BGP Status with calicoctl
 
 ```bash
 calicoctl node status
 ```
 
-This command shows BGP peer status and data plane synchronization state. Look for `Established` BGP sessions between nodes.
+This command must be run on the node whose status you want to inspect. It shows the local Calico process status and BGP peering states. If your Calico installation uses BGP, look for `Established` BGP sessions between nodes. If your installation uses VXLAN only, Calico does not use BGP, so this check may show no BGP peers.
 
-## Step 4: Deploy Test Pods on Different Nodes
+## Step 4: Deploy Test Pods
 
 ```bash
-kubectl run pod-a --image=busybox --restart=Never -- sleep 3600
-kubectl run pod-b --image=busybox --restart=Never -- sleep 3600
+kubectl run pod-a --image=busybox --restart=Never --command -- sleep 3600
+kubectl run pod-b --image=busybox --restart=Never --command -- sleep 3600
 kubectl get pods -o wide
 ```
 
-Note the IP addresses assigned to each pod.
+Note the IP addresses assigned to each pod. To verify inter-node routing specifically, confirm from the `NODE` column that the pods are running on different Kind nodes.
 
 ## Step 5: Test Pod-to-Pod Connectivity
 
@@ -85,4 +85,4 @@ This confirms that Calico's IPAM has allocated IP blocks to nodes and is assigni
 
 ## Conclusion
 
-You have verified Calico pod networking on Kind by checking component health, node readiness, BGP status, pod IP allocation, and end-to-end connectivity. A clean verification gives you confidence that Calico is fully operational and ready to enforce network policies in your Kind cluster.
+You have verified Calico pod networking on Kind by checking component health, node readiness, BGP status when applicable, pod IP allocation, and end-to-end connectivity. A clean verification gives you confidence that Calico is fully operational and ready to enforce network policies in your Kind cluster.
