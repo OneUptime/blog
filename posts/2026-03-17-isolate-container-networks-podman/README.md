@@ -10,7 +10,7 @@ Description: Learn how to isolate container networks in Podman to prevent unauth
 
 > Network isolation ensures that containers on separate networks cannot reach each other, enforcing security boundaries.
 
-Not every container should be able to talk to every other container. A database should only be reachable from the application tier, not from a public-facing proxy. Podman enforces network isolation by default when containers are placed on different user-defined networks. This guide shows how to set up and verify that isolation.
+Not every container should be able to talk to every other container. A database should only be reachable from the application tier, not from a public-facing proxy. Podman can enforce network isolation when user-defined bridge networks are created with the `isolate` option. This guide shows how to set up and verify that isolation.
 
 ---
 
@@ -19,10 +19,10 @@ Not every container should be able to talk to every other container. A database 
 ```bash
 # Create two separate networks
 
-podman network create frontend-net
-podman network create database-net
+podman network create --opt isolate=1 frontend-net
+podman network create --opt isolate=1 database-net
 
-# These networks are isolated from each other by default
+# These networks are isolated from other networks with isolate enabled
 ```
 
 ## Deploying Containers on Separate Networks
@@ -71,9 +71,9 @@ podman exec frontend ping -c 2 -W 2 db
 # Still fails
 ```
 
-## Disabling Inter-Container Communication
+## Disabling External Access
 
-For even stricter isolation within the same network, you can create a network with the `--internal` flag.
+To prevent containers on a network from reaching external destinations, you can create a network with the `--internal` flag.
 
 ```bash
 # Create an internal network with no outbound access
@@ -86,4 +86,4 @@ podman run --rm --network restricted-net docker.io/library/alpine ping -c 2 -W 2
 
 ## Summary
 
-Podman isolates containers on different networks by default. Place containers on separate networks to enforce security boundaries and use multi-network containers as controlled gateways between tiers. Use `--internal` to further restrict outbound access from a network.
+Podman can isolate containers on different bridge networks when those networks use the `isolate` option. Place containers on separate isolated networks to enforce security boundaries and use multi-network containers as controlled gateways between tiers. Use `--internal` to further restrict outbound access from a network.
