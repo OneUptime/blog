@@ -46,7 +46,7 @@ Before pruning, see which volumes are unused:
 # List volumes not attached to any container
 podman volume list --filter dangling=true
 
-# Check the disk space that would be freed
+# Check volume disk usage details
 podman system df -v | grep -A 999 "Local Volumes"
 ```
 
@@ -75,9 +75,10 @@ podman volume create --label keep=true production-config
 podman volume create temp-cache
 podman volume create test-data
 
-# Prune only unlabeled volumes (custom script needed)
-# The built-in prune removes ALL unused volumes
-# Use a script for selective cleanup:
+# Prune only volumes without the keep=true label
+podman volume prune --filter label!=keep=true --force
+
+# Or use a script if you want to print each decision:
 
 #!/bin/bash
 # selective-prune.sh - Prune only volumes without the 'keep' label
