@@ -14,7 +14,7 @@ Once you have diagnosed a single-stream throughput issue in Cilium, the next ste
 
 This guide assumes you have already identified the bottleneck using diagnostic tools like `iperf3`, `bpftool`, and CPU profiling. Each section below addresses a specific class of performance limiter and provides the exact configuration changes needed to resolve it.
 
-The key insight for single-stream fixes is that you cannot scale horizontally across cores since by definition one TCP flow is handled by one core. Every optimization must reduce the per-packet cost on that single core.
+The key insight for single-stream fixes is that you usually cannot scale horizontally across cores since one TCP flow is typically handled by one receive queue and CPU core. Every optimization must reduce the per-packet cost on that path.
 
 ## Prerequisites
 
@@ -26,16 +26,15 @@ The key insight for single-stream fixes is that you cannot scale horizontally ac
 
 ## Switching to Native Routing Mode
 
-If Cilium is running in tunnel mode (VXLAN or Geneve), the encapsulation overhead reduces single-stream throughput by 10-20%. Switch to native routing:
+If Cilium is running in tunnel mode (VXLAN or Geneve), the encapsulation overhead can reduce single-stream throughput. Switch to native routing:
 
 ```bash
 # Check current mode
 
-cilium config view | grep tunnel
+cilium config view | grep routing-mode
 
 # Upgrade Cilium with native routing via Helm
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set ipam.mode=kubernetes \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
@@ -58,7 +57,7 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 Verify it is active:
 
 ```bash
-cilium status --verbose | grep "Host Routing"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep "Host Routing"
 # Should show: Host Routing: BPF
 ```
 
@@ -69,16 +68,16 @@ Conntrack table pressure causes hash collisions that slow lookups:
 ```bash
 # Increase conntrack table sizes
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=524288 \
-  --set bpf.ctGlobalAnyMax=262144 \
-  --set bpf.natMax=524288
+  --set bpf.ctTcpMax=786432 \
+  --set bpf.ctAnyMax=393216 \
+  --set bpf.natMax=786432
 ```
 
-Also tune the conntrack garbage collection interval:
+If CT tables are filling, also tune the conntrack garbage collection interval:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctTCPTimeoutEstablished=21600
+  --set conntrackGCInterval=5m0s
 ```
 
 ## Kernel-Level Optimizations
@@ -173,13 +172,13 @@ After applying fixes, re-run your benchmark:
 kubectl exec iperf-client-pod -- iperf3 -c $SERVER_IP -t 60 -P 1 -J
 
 # Compare pre and post fix numbers
-# Expect 10-30% improvement depending on which fixes applied
+# Measure the improvement from each fix independently
 
 # Verify BPF host routing is active
-cilium status --verbose | grep "Host Routing"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep "Host Routing"
 
 # Verify native routing
-cilium status --verbose | grep "DatapathMode"
+cilium config view | grep routing-mode
 ```
 
 ## Troubleshooting
