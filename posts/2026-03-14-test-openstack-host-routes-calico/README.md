@@ -19,7 +19,7 @@ Route testing is especially important after changes to BGP configuration, IP poo
 ## Prerequisites
 
 - An OpenStack test environment with Calico networking (3+ compute nodes)
-- `calicoctl` and `openstack` CLI tools configured
+- `calicoctl` and `openstack` CLI tools configured, with OpenStack credentials scoped to the test project
 - SSH access to compute nodes
 - Test VM images with networking diagnostic tools
 - A baseline route table snapshot from a known-good state
@@ -38,7 +38,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BASELINE_DIR="/tmp/route-baseline-${TIMESTAMP}"
 mkdir -p ${BASELINE_DIR}
 
-for node in $(openstack compute service list -f value -c Host | sort -u); do
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
   echo "Capturing routes from ${node}..."
 
   # Capture full route table
@@ -69,14 +69,10 @@ Validate that new VM routes propagate correctly to all compute nodes.
 echo "=== Route Propagation Test ==="
 
 # Create a test VM
-openstack server create --project calico-test \
+openstack server create --wait \
   --flavor m1.small --image ubuntu-22.04 \
   --network test-network \
   route-test-vm
-
-# Wait for VM to become active
-echo "Waiting for VM to become active..."
-openstack server wait route-test-vm
 
 # Get the VM's IP address
 VM_IP=$(openstack server show route-test-vm -f value -c addresses | grep -oP '\d+\.\d+\.\d+\.\d+')
@@ -88,8 +84,8 @@ echo "Checking route propagation..."
 sleep 10  # Allow BGP convergence time
 
 ALL_GOOD=true
-for node in $(openstack compute service list -f value -c Host | sort -u); do
-  route=$(ssh ${node} "ip route show ${VM_IP}")
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
+  route=$(ssh ${node} "ip route show exact ${VM_IP}/32")
   if [ -n "${route}" ]; then
     echo "${node}: FOUND - ${route}"
   else
@@ -137,7 +133,7 @@ VM_IP=$(openstack server show route-test-vm -f value -c addresses | grep -oP '\d
 echo "VM IP to be withdrawn: ${VM_IP}"
 
 # Delete the test VM
-openstack server delete route-test-vm
+openstack server delete --wait route-test-vm
 
 # Wait for route withdrawal
 echo "Waiting for route withdrawal..."
@@ -145,8 +141,8 @@ sleep 15
 
 # Verify route is removed from all nodes
 ALL_CLEAN=true
-for node in $(openstack compute service list -f value -c Host | sort -u); do
-  route=$(ssh ${node} "ip route show ${VM_IP}")
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
+  route=$(ssh ${node} "ip route show exact ${VM_IP}/32")
   if [ -z "${route}" ]; then
     echo "${node}: CLEAN - route removed"
   else
@@ -177,12 +173,10 @@ echo "=== Convergence Time Test ==="
 START=$(date +%s%N)
 
 # Create a test VM
-openstack server create --project calico-test \
+openstack server create --wait \
   --flavor m1.small --image cirros \
   --network test-network \
   convergence-test-vm
-
-openstack server wait convergence-test-vm
 
 VM_IP=$(openstack server show convergence-test-vm -f value -c addresses | grep -oP '\d+\.\d+\.\d+\.\d+')
 
@@ -191,8 +185,8 @@ MAX_WAIT=60
 ELAPSED=0
 while [ ${ELAPSED} -lt ${MAX_WAIT} ]; do
   ALL_FOUND=true
-  for node in $(openstack compute service list -f value -c Host | sort -u); do
-    route=$(ssh ${node} "ip route show ${VM_IP}" 2>/dev/null)
+  for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
+    route=$(ssh ${node} "ip route show exact ${VM_IP}/32" 2>/dev/null)
     if [ -z "${route}" ]; then
       ALL_FOUND=false
       break
@@ -215,7 +209,7 @@ if [ ${ELAPSED} -ge ${MAX_WAIT} ]; then
 fi
 
 # Cleanup
-openstack server delete convergence-test-vm
+openstack server delete --wait convergence-test-vm
 ```
 
 ## Verification
@@ -231,11 +225,11 @@ echo "Host Route Test Report - $(date)"
 echo "==================================="
 echo ""
 echo "Environment:"
-echo "  Compute nodes: $(openstack compute service list -f value -c Host | sort -u | wc -l)"
+echo "  Compute nodes: $(openstack compute service list --service nova-compute -f value -c Host | sort -u | wc -l)"
 echo "  Total VMs: $(openstack server list --all-projects -f value -c ID | wc -l)"
 echo ""
 echo "Route Summary:"
-for node in $(openstack compute service list -f value -c Host | sort -u); do
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
   total=$(ssh ${node} 'ip route show | wc -l')
   bgp=$(ssh ${node} 'ip route show proto bird | wc -l')
   echo "  ${node}: ${total} total, ${bgp} via BGP"
