@@ -75,6 +75,51 @@ Deploy an in-cluster automation that stores graphs to a PVC:
 
 ```yaml
 # hive-graph-collector.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hive-graph-storage
+  namespace: kube-system
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hive-graph-collector
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hive-graph-collector
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hive-graph-collector
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: hive-graph-collector
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hive-graph-collector
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -87,7 +132,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: cilium
+          serviceAccountName: hive-graph-collector
           containers:
           - name: collector
             image: bitnami/kubectl:latest
@@ -135,7 +180,7 @@ jobs:
         run: sudo apt-get install -y graphviz
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure cluster access
         run: echo "${{ secrets.KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
