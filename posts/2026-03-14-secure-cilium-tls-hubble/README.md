@@ -21,7 +21,7 @@ A secure TLS configuration for Hubble involves mutual TLS (mTLS) between all com
 - cert-manager installed (recommended for production)
 - Understanding of TLS and PKI concepts
 
-## Configuring mTLS for All Hubble Components
+## Configuring mTLS for Hubble Agent and Relay
 
 Enable mutual TLS so both the agent and relay authenticate each other:
 
@@ -37,19 +37,17 @@ hubble:
       method: certmanager  # Recommended for production
       certManagerIssuerRef:
         group: cert-manager.io
-        kind: ClusterIssuer
-        name: hubble-ca-issuer
+        kind: Issuer
+        name: hubble-issuer
       certValidityDuration: 365  # 1 year
   relay:
     enabled: true
     tls:
       server:
         enabled: true  # Relay serves TLS to CLI/UI
-      client:
-        # Not a Helm value directly, but relay uses client certs to connect to agents
 ```
 
-First, set up the cert-manager ClusterIssuer:
+First, set up a CA-backed cert-manager Issuer in the same namespace where Cilium is installed:
 
 ```yaml
 # hubble-ca-issuer.yaml
@@ -76,11 +74,12 @@ spec:
     name: hubble-ca-issuer
     kind: ClusterIssuer
 ---
-# Create a CA issuer using the CA certificate
+# Create a namespaced CA issuer using the CA certificate
 apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
+kind: Issuer
 metadata:
   name: hubble-issuer
+  namespace: kube-system
 spec:
   ca:
     secretName: hubble-ca-secret
@@ -128,6 +127,7 @@ rules:
       - hubble-ca-secret
       - hubble-server-certs
       - hubble-relay-client-certs
+      - hubble-relay-server-certs
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -162,7 +162,8 @@ kubectl auth can-i get secrets/hubble-server-certs -n kube-system \
 Certificates should rotate regularly without manual intervention:
 
 ```bash
-# With cert-manager, rotation is automatic
+# With cert-manager, issued Hubble certificate rotation is automatic.
+# If you use your own CA Issuer, plan CA certificate rotation separately.
 # Check certificate renewal status
 kubectl -n kube-system get certificates -o custom-columns=\
 'NAME:.metadata.name,READY:.status.conditions[0].status,EXPIRY:.status.notAfter,RENEWAL:.status.renewalTime'
@@ -209,14 +210,20 @@ Ensure strong cipher suites and protocol versions:
 
 ```bash
 # Verify the TLS version and cipher suite used by the agent
-kubectl -n kube-system exec ds/cilium -- sh -c '
-  echo | openssl s_client -connect localhost:4244 2>/dev/null | grep -E "Protocol|Cipher"
-'
+kubectl -n kube-system port-forward svc/hubble-peer 4244:443 &
+PF_PID=$!
+sleep 2
+echo | openssl s_client -connect localhost:4244 -servername server.default.hubble-grpc.cilium.io 2>/dev/null | \
+  grep -E "Protocol|Cipher"
+kill "$PF_PID"
 
 # Check the relay server TLS configuration
-kubectl -n kube-system exec deploy/hubble-relay -- sh -c '
-  echo | openssl s_client -connect localhost:4245 2>/dev/null | grep -E "Protocol|Cipher"
-'
+kubectl -n kube-system port-forward deploy/hubble-relay 4245:4245 &
+PF_PID=$!
+sleep 2
+echo | openssl s_client -connect localhost:4245 -servername ui.hubble-relay.cilium.io 2>/dev/null | \
+  grep -E "Protocol|Cipher"
+kill "$PF_PID"
 ```
 
 ## Verification
@@ -240,7 +247,7 @@ cilium hubble port-forward &
 hubble status
 
 # 4. Certificate chain is valid
-CA_CERT=$(kubectl -n kube-system get secret hubble-ca-secret -o jsonpath='{.data.ca\.crt}' | base64 -d)
+CA_CERT=$(kubectl -n kube-system get secret hubble-server-certs -o jsonpath='{.data.ca\.crt}' | base64 -d)
 SERVER_CERT=$(kubectl -n kube-system get secret hubble-server-certs -o jsonpath='{.data.tls\.crt}' | base64 -d)
 echo "$CA_CERT" > /tmp/hubble-ca.pem
 echo "$SERVER_CERT" > /tmp/hubble-server.pem
@@ -263,4 +270,4 @@ rm /tmp/hubble-ca.pem /tmp/hubble-server.pem
 
 ## Conclusion
 
-Proper TLS configuration for Hubble requires mTLS between all components, automated certificate rotation, restricted access to certificate secrets, and monitoring for expiration. Use cert-manager for production deployments as it handles the entire certificate lifecycle automatically. Regularly verify that certificates are valid and that the TLS chain is intact to prevent unexpected Hubble outages due to expired or mismatched certificates.
+Proper TLS configuration for Hubble requires mTLS between the agent and relay, automated certificate rotation, restricted access to certificate secrets, and monitoring for expiration. Use cert-manager for production deployments as it handles issuance and renewal of Hubble certificates automatically. Regularly verify that certificates are valid and that the TLS chain is intact to prevent unexpected Hubble outages due to expired or mismatched certificates.
