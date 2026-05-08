@@ -43,9 +43,9 @@ gcloud container node-pools list \
 ```
 
 Supported image types for Cilium on GKE:
-- `COS_CONTAINERD` (Container-Optimized OS) - Recommended, kernel 5.10+
-- `UBUNTU_CONTAINERD` - Supported, kernel 5.15+
-- `COS` (Docker runtime) - Not supported for Cilium
+- `COS_CONTAINERD` (Container-Optimized OS) - Recommended containerd image
+- `UBUNTU_CONTAINERD` - Supported containerd image
+- Docker-based node images such as `COS` and `UBUNTU` - Not supported in GKE 1.24 and later
 
 ## Step 2: Verify Kernel Version on GKE Nodes
 
@@ -58,7 +58,7 @@ kubectl get nodes \
 
 # COS nodes on GKE 1.29+ typically run kernel 6.1+
 # Ubuntu nodes on GKE 1.28+ typically run kernel 5.15+
-# Both exceed Cilium's minimum requirements
+# Cilium's current minimum requirement is Linux kernel 5.10 or equivalent
 ```
 
 ## Step 3: Check GKE Network Policy Mode Compatibility
@@ -85,10 +85,10 @@ gcloud container clusters describe <cluster-name> \
 Update or create node pools with compatible configurations.
 
 ```bash
-# Update existing node pool to use COS_CONTAINERD image type
-gcloud container node-pools update default-pool \
-  --cluster <cluster-name> \
+# Upgrade an existing node pool to use the COS_CONTAINERD image type
+gcloud container clusters upgrade <cluster-name> \
   --zone <zone> \
+  --node-pool default-pool \
   --image-type COS_CONTAINERD
 
 # Or create a new node pool with optimal settings for Cilium
@@ -98,7 +98,7 @@ gcloud container node-pools create cilium-pool \
   --image-type COS_CONTAINERD \
   --machine-type n2-standard-4 \
   --num-nodes 3 \
-  --workload-metadata from-node
+  --workload-metadata GKE_METADATA
 ```
 
 ## Step 5: Enable Required GKE API Features
@@ -106,17 +106,21 @@ gcloud container node-pools create cilium-pool \
 Some Cilium features require specific GKE API capabilities to be enabled.
 
 ```bash
-# Enable GKE network policy if using standard NetworkPolicy
+# Enable GKE network policy if using Calico-based NetworkPolicy
 gcloud container clusters update <cluster-name> \
   --zone <zone> \
   --update-addons=NetworkPolicy=ENABLED
+
+gcloud container clusters update <cluster-name> \
+  --zone <zone> \
+  --enable-network-policy
 
 # Verify the cluster has necessary permissions for Cilium
 kubectl auth can-i create clusterroles --all-namespaces
 kubectl auth can-i create customresourcedefinitions
 
-# Check that kube-dns is running (required for Cilium DNS-based policies)
-kubectl get pods -n kube-system | grep kube-dns
+# For kube-dns based clusters, check that kube-dns is running
+kubectl get pods -n kube-system -l k8s-app=kube-dns
 ```
 
 ## Best Practices
