@@ -10,7 +10,7 @@ Description: Learn how to create a Quadlet .container unit file to run Podman co
 
 > Quadlet container unit files let you define Podman containers as systemd services using a simple INI-style syntax.
 
-Quadlet is Podman's native integration with systemd. Instead of writing complex systemd unit files manually, you write a simple `.container` file and Quadlet generates the full systemd service. This gives you automatic container startup on boot, restart on failure, and standard systemd management.
+Quadlet is Podman's native integration with systemd. Instead of writing complex systemd unit files manually, you write a simple `.container` file and Quadlet generates the full systemd service. This gives you automatic container startup with systemd, restart on failure, and standard systemd management.
 
 ---
 
@@ -53,7 +53,7 @@ Image=docker.io/library/postgres:16-alpine
 Environment=POSTGRES_PASSWORD=secret
 Environment=POSTGRES_DB=myapp
 PublishPort=5432:5432
-Volume=pgdata.volume:/var/lib/postgresql/data
+Volume=pgdata:/var/lib/postgresql/data
 
 [Service]
 Restart=always
@@ -88,7 +88,7 @@ WantedBy=default.target
 # ~/.config/containers/systemd/api.container
 [Container]
 Image=docker.io/library/python:3.12-slim
-Network=app-network.network
+Network=bridge
 PublishPort=5000:5000
 Exec=python -m http.server 5000
 
@@ -157,7 +157,7 @@ systemctl --user is-enabled webapp
 
 ```bash
 # Preview the generated systemd unit without installing
-/usr/lib/podman/quadlet --dryrun --user
+/usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
 
 # Check for errors in the unit file
 systemctl --user status webapp
