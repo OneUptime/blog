@@ -41,7 +41,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=30 | grep -i error
 
 Effective GitHub search strategies:
 - Search for the exact error message string
-- Filter by label: `bug`, `networking`, `ebpf`
+- Filter by Cilium labels such as `kind/bug`, `area/datapath`, or `sig/policy`
 - Filter by milestone for version-specific issues
 - Sort by "Recently updated" to find active discussions
 
@@ -53,7 +53,7 @@ When you can't find an existing issue, file a new one with complete diagnostic i
 # Collect all required information before opening the issue
 echo "=== Environment ===" 
 cilium version
-kubectl version --short
+kubectl version
 uname -r
 cat /etc/os-release | grep PRETTY_NAME
 
@@ -64,7 +64,7 @@ echo "=== Relevant Logs ==="
 kubectl logs -n kube-system -l k8s-app=cilium --tail=100 | grep -i "error\|warn\|fail"
 
 # Generate sysdump for attachment
-cilium sysdump --output-filename github-issue-sysdump-$(date +%Y%m%d).zip
+cilium sysdump --output-filename github-issue-sysdump-$(date +%Y%m%d)
 ```
 
 Good bug report structure on GitHub:
@@ -87,7 +87,7 @@ Follow feature development to plan when capabilities will be available.
 # Click "Subscribe" on the issue sidebar
 
 # Track the Cilium release schedule
-# URL: https://github.com/cilium/cilium/blob/main/Documentation/releases/maintenance_policy.rst
+# URL: https://docs.cilium.io/en/stable/contributing/release/organization/
 ```
 
 ## Step 4: Watch for Security Advisories
