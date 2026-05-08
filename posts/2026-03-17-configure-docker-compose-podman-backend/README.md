@@ -10,7 +10,7 @@ Description: Learn how to configure docker-compose to use Podman as its backend 
 
 > Switching docker-compose to use Podman as its backend lets your team keep existing Compose workflows while dropping the Docker daemon dependency.
 
-Docker Compose can work with any OCI-compatible runtime that exposes a Docker-compatible API. By configuring it to use Podman as the backend, you get rootless containers, no daemon requirement, and full Compose compatibility in a single setup.
+Docker Compose can work with container engines that expose a Docker-compatible API. By configuring it to use Podman's API socket, you get rootless containers, an on-demand Podman service, and Compose support in a single setup.
 
 ---
 
@@ -23,8 +23,8 @@ The simplest approach points Docker Compose at the Podman socket.
 
 systemctl --user enable --now podman.socket
 
-# Set DOCKER_HOST globally
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+# Set DOCKER_HOST for the current shell
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 
 # Test the connection
 docker compose version
@@ -38,7 +38,7 @@ Create a Docker context that points to Podman.
 ```bash
 # Create a new context for Podman
 docker context create podman \
-  --docker "host=unix:///run/user/$(id -u)/podman/podman.sock"
+  --docker "host=unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 
 # Switch to the Podman context
 docker context use podman
@@ -54,13 +54,13 @@ docker compose up -d
 ## Method 3: Docker CLI Configuration File
 
 ```bash
-# Create or edit the Docker CLI config
+# Create the Podman context first if it does not already exist
+docker context create podman \
+  --docker "host=unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+
+# Update the Docker CLI config without overwriting existing settings
 mkdir -p ~/.docker
-cat > ~/.docker/config.json << 'EOF'
-{
-  "currentContext": "podman"
-}
-EOF
+docker context use podman
 ```
 
 ## Verifying the Backend
@@ -70,13 +70,13 @@ EOF
 docker info | grep -i "operating system\|server version"
 
 # The output should reference Podman
-# Server Version: 4.x.x (Podman)
+# Server Version should match your installed Podman version
 ```
 
 ## Running Compose Commands
 
 ```bash
-# All standard docker compose commands work
+# Common docker compose commands work
 docker compose up -d
 docker compose ps
 docker compose logs -f
@@ -86,8 +86,7 @@ docker compose down
 ## Example Compose File
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 services:
   app:
     image: docker.io/library/node:20-alpine
@@ -108,7 +107,7 @@ volumes:
 ```
 
 ```bash
-# Works identically with the Podman backend
+# Runs through the Podman API socket
 docker compose up -d
 docker compose ps
 ```
@@ -132,7 +131,7 @@ docker context use default
 # Add to your shell profile
 cat >> ~/.bashrc << 'EOF'
 # Use Podman as Docker backend
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 EOF
 
 source ~/.bashrc
@@ -140,4 +139,4 @@ source ~/.bashrc
 
 ## Summary
 
-Configure docker-compose to use Podman by setting `DOCKER_HOST` to the Podman socket, creating a Docker context, or editing the Docker CLI config file. All three methods let you run standard Docker Compose commands with Podman as the backend runtime, and you can switch between Docker and Podman contexts as needed.
+Configure docker-compose to use Podman by setting `DOCKER_HOST` to the Podman socket, creating a Docker context, or setting the Docker CLI's current context. These methods let you run common Docker Compose commands with Podman as the backend runtime, and you can switch between Docker and Podman contexts as needed.
