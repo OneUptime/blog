@@ -19,7 +19,7 @@ This guide provides a systematic troubleshooting approach for production Cilium 
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI, `helm`, and `kubectl`
+- `cilium` CLI, `hubble`, `helm`, `kubectl`, `jq`, and `bpftool`
 - `iperf3` and `netperf` for benchmarking
 - Prometheus and Grafana for monitoring
 - Node-level root access
@@ -31,8 +31,11 @@ This guide provides a systematic troubleshooting approach for production Cilium 
 
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
-# Look for OOMKilled or CrashLoopBackOff
-kubectl get events -n kube-system --field-selector reason=OOMKilled
+# Look for OOMKilled or CrashLoopBackOff Cilium containers
+kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
+  jq -r '.items[] | select(any(.status.containerStatuses[]?;
+    .state.waiting.reason=="CrashLoopBackOff" or
+    .lastState.terminated.reason=="OOMKilled")) | .metadata.name'
 
 # Check agent resource usage
 kubectl top pods -n kube-system -l k8s-app=cilium --sort-by=cpu
@@ -44,9 +47,9 @@ kubectl logs -n kube-system ds/cilium --tail=100 | grep -i error
 ## Step 2: BPF Map Utilization
 
 ```bash
-# Check all BPF map sizes
-kubectl exec -n kube-system ds/cilium -- cilium bpf ct list global | wc -l
-kubectl exec -n kube-system ds/cilium -- cilium bpf nat list | wc -l
+# Check CT and NAT BPF map entry counts
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf nat list | wc -l
 
 # Compare against maximums
 cilium config view | grep -E "bpf-ct|bpf-nat|bpf-policy"
@@ -58,20 +61,21 @@ cilium config view | grep -E "bpf-ct|bpf-nat|bpf-policy"
 
 ```bash
 # Count total identities
-cilium identity list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list | wc -l
 
 # Find most common identity labels
-cilium identity list -o json | jq '.[].labels' | sort | uniq -c | sort -rn | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list -o json | \
+  jq '.[].labels' | sort | uniq -c | sort -rn | head -20
 
 # Check identity allocation rate
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep identity
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep identity
 ```
 
 ## Step 4: Policy Computation Performance
 
 ```bash
 # Check policy computation time
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep policy
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -E 'policy|regeneration'
 
 # Count total rules
 kubectl get cnp --all-namespaces --no-headers | wc -l
@@ -92,8 +96,8 @@ for ns in default production staging; do
 done
 
 # Check for drops
-cilium monitor --type drop | head -20
-hubble observe --type drop --last 50
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop | head -20
+hubble observe --verdict DROPPED --last 50
 ```
 
 ```mermaid
@@ -114,7 +118,7 @@ graph TD
 ```bash
 cilium status --verbose
 kubectl top pods -n kube-system -l k8s-app=cilium
-cilium identity list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Troubleshooting
@@ -154,9 +158,9 @@ mkdir -p $DIAG
 
 # Quick data collection (runs in <30 seconds)
 cilium status --verbose > $DIAG/status.txt &
-cilium bpf ct list global | wc -l > $DIAG/ct-count.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list | wc -l > $DIAG/ct-count.txt &
 kubectl top pods -n kube-system -l k8s-app=cilium > $DIAG/agent-resources.txt &
-kubectl exec -n kube-system ds/cilium -- cilium metrics list > $DIAG/metrics.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list > $DIAG/metrics.txt &
 wait
 
 # BPF program stats
