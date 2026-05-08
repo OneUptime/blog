@@ -12,7 +12,7 @@ Description: Configure TLS encryption for Prometheus metric scraping from the Ci
 
 The Cilium Operator exposes Prometheus metrics that include sensitive operational data - policy enforcement statistics, endpoint counts, identity information, and cluster topology details. In environments with strict security requirements, these metrics must be encrypted in transit using TLS to prevent eavesdropping and tampering.
 
-Configuring TLS for the Operator's Prometheus endpoint involves certificate management, Helm value configuration, and Prometheus scraper updates. This guide covers the complete setup process.
+Configuring TLS for the Operator's Prometheus endpoint involves certificate management, Cilium Helm value configuration, and Prometheus scraper updates. This guide covers the complete setup process.
 
 ## Prerequisites
 
@@ -72,12 +72,13 @@ openssl req -new -key operator-metrics.key -out operator-metrics.csr \
 # Sign the certificate
 openssl x509 -req -in operator-metrics.csr -CA ca.crt -CAkey ca.key \
     -CAcreateserial -out operator-metrics.crt -days 365 \
-    -extfile <(echo "subjectAltName=DNS:cilium-operator.kube-system.svc,DNS:cilium-operator.kube-system.svc.cluster.local")
+    -extfile <(printf "subjectAltName=DNS:cilium-operator.kube-system.svc,DNS:cilium-operator.kube-system.svc.cluster.local\nextendedKeyUsage=serverAuth\n")
 
-# Create Kubernetes secret
-kubectl create secret tls cilium-operator-metrics-tls \
-    --cert=operator-metrics.crt \
-    --key=operator-metrics.key \
+# Create Kubernetes secret with the keys Cilium and Prometheus need
+kubectl create secret generic cilium-operator-metrics-tls \
+    --from-file=tls.crt=operator-metrics.crt \
+    --from-file=tls.key=operator-metrics.key \
+    --from-file=ca.crt=ca.crt \
     -n kube-system
 ```
 
@@ -90,17 +91,14 @@ Update the Cilium Helm values to enable TLS on the Operator metrics endpoint:
 operator:
   prometheus:
     enabled: true
+    metricsService: true
     port: 9963
     serviceMonitor:
+      enabled: false
+    tls:
       enabled: true
-  extraVolumes:
-    - name: metrics-tls
-      secret:
-        secretName: cilium-operator-metrics-tls
-  extraVolumeMounts:
-    - name: metrics-tls
-      mountPath: /etc/cilium/metrics-tls
-      readOnly: true
+      server:
+        existingSecret: cilium-operator-metrics-tls
 ```
 
 ```bash
@@ -135,9 +133,13 @@ metadata:
 spec:
   selector:
     matchLabels:
+      io.cilium/app: operator
       name: cilium-operator
+  namespaceSelector:
+    matchNames:
+      - kube-system
   endpoints:
-    - port: operator-prometheus
+    - port: metrics
       interval: 30s
       scheme: https
       tlsConfig:
@@ -147,6 +149,10 @@ spec:
             key: ca.crt
         serverName: cilium-operator.kube-system.svc
         insecureSkipVerify: false
+```
+
+```bash
+kubectl apply -f operator-servicemonitor-tls.yaml
 ```
 
 For standalone Prometheus, update the scrape config:
@@ -168,6 +174,9 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_service_label_name]
         action: keep
         regex: cilium-operator
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
 ```
 
 ## Verifying TLS Configuration
@@ -175,13 +184,21 @@ scrape_configs:
 Test the TLS connection:
 
 ```bash
-# Test TLS connection from within the cluster
-kubectl run tls-test --image=curlimages/curl --rm -it --restart=Never -- \
-    curl -v --cacert /tmp/ca.crt https://cilium-operator.kube-system.svc:9963/metrics
+# Export the CA certificate for local verification
+kubectl get secret -n kube-system cilium-operator-metrics-tls \
+    -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
 
-# Check certificate details
-kubectl exec -n kube-system deploy/cilium-operator -- \
-    openssl s_client -connect localhost:9963 -showcerts 2>/dev/null | \
+# Forward the service locally in another terminal
+kubectl -n kube-system port-forward svc/cilium-operator 9963:9963
+
+# Test TLS connection through the port-forward
+curl -v --noproxy '*' --cacert ca.crt \
+    --resolve cilium-operator.kube-system.svc:9963:127.0.0.1 \
+    https://cilium-operator.kube-system.svc:9963/metrics
+
+# Check certificate details through the port-forward
+openssl s_client -connect 127.0.0.1:9963 \
+    -servername cilium-operator.kube-system.svc -showcerts 2>/dev/null | \
     openssl x509 -noout -text | head -20
 
 # Verify Prometheus is scraping successfully
@@ -200,10 +217,11 @@ kubectl get certificate -n kube-system cilium-operator-metrics-tls -o yaml | gre
 curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job | contains("operator")) | .health'
 
 # Verify metrics are flowing
-curl -s "http://localhost:9090/api/v1/query?query=cilium_operator_process_cpu_seconds_total" | jq '.data.result | length'
+curl -s "http://localhost:9090/api/v1/query?query=up%7Bjob%3D~%22.*cilium-operator.*%22%7D" | jq '.data.result | length'
 
-# Verify TLS is actually being used (not falling back to HTTP)
-kubectl exec -n kube-system deploy/cilium-operator -- netstat -tlnp | grep 9963
+# Verify the operator was configured to serve metrics with TLS
+kubectl get configmap -n kube-system cilium-config \
+    -o jsonpath='{.data.operator-prometheus-enable-tls}'
 ```
 
 ## Troubleshooting
@@ -212,13 +230,13 @@ kubectl exec -n kube-system deploy/cilium-operator -- netstat -tlnp | grep 9963
 Verify the CA certificate in Prometheus matches the issuer that signed the operator certificate. Check certificate expiry dates.
 
 **Problem: Certificate not found by the operator**
-Verify the volume mount path matches where the operator looks for certificates. Check `kubectl describe pod` for volume mount errors.
+Verify `operator.prometheus.tls.server.existingSecret` matches the Secret name and that the Secret contains `tls.crt` and `tls.key`. Check `kubectl describe pod` for Secret projection or volume mount errors.
 
 **Problem: cert-manager fails to issue certificate**
 Check the ClusterIssuer status: `kubectl get clusterissuer -o yaml`. Verify the issuer is ready and has the required CA credentials.
 
 **Problem: Metrics endpoint returns empty response over TLS**
-The operator may need a restart after TLS configuration changes. Delete the operator pod to trigger a restart: `kubectl delete pod -n kube-system -l name=cilium-operator`.
+Verify the operator ConfigMap contains `operator-prometheus-enable-tls: "true"` and that the operator pod has rolled after the Helm upgrade. If it has not restarted, delete the operator pod to trigger a restart: `kubectl delete pod -n kube-system -l name=cilium-operator`.
 
 ## Conclusion
 
