@@ -38,21 +38,20 @@ Supported distributions on ppc64le:
 ### RHEL 9 for ppc64le
 
 ```bash
-sudo dnf install -y podman podman-compose skopeo buildah
+sudo dnf install -y container-tools
 ```
 
 ### RHEL 8 for ppc64le
 
 ```bash
-sudo dnf module enable -y container-tools:rhel8
-sudo dnf install -y podman podman-compose skopeo buildah
+sudo dnf module install -y container-tools
 ```
 
 ### Ubuntu for ppc64le
 
 ```bash
 sudo apt update
-sudo apt install -y podman slirp4netns fuse-overlayfs uidmap
+sudo apt install -y podman skopeo slirp4netns fuse-overlayfs uidmap
 ```
 
 ### SUSE Linux Enterprise Server 15
@@ -75,7 +74,7 @@ podman info --format '{{.Host.Arch}}'
 
 ### Checking ppc64le Support
 
-Many official images include ppc64le builds. Verify support before deploying:
+Many official images include ppc64le builds. With `skopeo` installed, verify support before deploying:
 
 ```bash
 skopeo inspect --raw docker://docker.io/library/python:3.12-slim | \
@@ -99,10 +98,10 @@ These official images typically include ppc64le variants:
 ```bash
 # Verified ppc64le support
 podman pull docker.io/library/ubuntu:24.04
-podman pull docker.io/library/alpine:3.19
+podman pull docker.io/library/alpine:3.23
 podman pull docker.io/library/python:3.12
-podman pull docker.io/library/golang:1.22
-podman pull docker.io/library/node:20
+podman pull docker.io/library/golang:1.25
+podman pull docker.io/library/node:24
 podman pull docker.io/library/postgres:16
 podman pull docker.io/library/redis:7
 podman pull docker.io/library/nginx:alpine
@@ -111,7 +110,7 @@ podman pull docker.io/library/nginx:alpine
 IBM provides Power-optimized images:
 
 ```bash
-podman pull icr.io/ppc64le-oss/nginx-ppc64le:latest
+podman pull icr.io/ppc64le-oss/traefik-ppc64le:v3.3
 ```
 
 ---
@@ -150,10 +149,10 @@ max_parallel_workers = 8
 EOF
 
 podman run -d --name postgres-tuned \
-  -p 5432:5432 \
+  -p 5433:5432 \
   -e POSTGRES_USER=poweruser \
   -e POSTGRES_PASSWORD=secure_password \
-  -v pgdata:/var/lib/postgresql/data:Z \
+  -v pgdata-tuned:/var/lib/postgresql/data:Z \
   -v $(pwd)/postgresql-power.conf:/etc/postgresql/postgresql.conf:ro,Z \
   --memory 8g \
   docker.io/library/postgres:16 \
@@ -190,29 +189,30 @@ nproc
 Assign CPU resources based on thread count:
 
 ```bash
-# On a POWER10 with 8 threads per core, allocate 1 full core (8 threads)
-podman run -d --name compute-heavy \
+# On a POWER10 with 8 threads per core, allow CPU time equivalent to 8 hardware threads
+podman run --rm \
   --cpus 8 \
   docker.io/library/python:3.12-slim \
   python -c "
-import multiprocessing
-print(f'Available CPUs: {multiprocessing.cpu_count()}')
+from pathlib import Path
+cpu_max = Path('/sys/fs/cgroup/cpu.max')
+print(f'CPU quota: {cpu_max.read_text().strip() if cpu_max.exists() else \"cgroup v1 CPU quota\"}')
 "
 ```
 
 ### Large Pages
 
-IBM Power supports large pages (16MB and 2MB) for memory-intensive workloads:
+On ppc64le Linux, HugeTLB pages are typically 16MB. Check the configured huge page size on the host:
 
 ```bash
 # Check huge pages on the host
-cat /proc/meminfo | grep Huge
+cat /proc/meminfo | grep -E 'Huge|Hugepagesize'
 
-# Run a container with huge page access
-podman run -d --name db-hugepages \
-  --memory 8g \
-  --shm-size 2g \
-  docker.io/library/postgres:16
+# If hugetlbfs is mounted at /dev/hugepages, make it visible in the container
+podman run --rm \
+  -v /dev/hugepages:/dev/hugepages:rw \
+  docker.io/library/alpine:3.23 \
+  ls -ld /dev/hugepages
 ```
 
 ### Hardware Random Number Generator
@@ -222,8 +222,8 @@ Power systems include a hardware RNG. Containers can access it:
 ```bash
 podman run --rm \
   --device /dev/hwrng:/dev/hwrng \
-  docker.io/library/alpine:3.19 \
-  dd if=/dev/hwrng bs=32 count=1 2>/dev/null | xxd
+  docker.io/library/alpine:3.23 \
+  dd if=/dev/hwrng bs=32 count=1 2>/dev/null | od -An -tx1
 ```
 
 ---
@@ -236,14 +236,14 @@ Building directly on Power hardware produces optimized ppc64le images:
 
 ```bash
 cat > Dockerfile <<EOF
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.25 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOARCH=ppc64le go build -o /server .
 
-FROM docker.io/library/alpine:3.19
+FROM docker.io/library/alpine:3.23
 COPY --from=builder /server /usr/local/bin/server
 EXPOSE 8080
 CMD ["server"]
@@ -282,10 +282,10 @@ Include ppc64le in your multi-architecture builds:
 ```bash
 # Build natively on each platform, then combine
 podman manifest create myorg/app:latest
-podman manifest add myorg/app:latest docker://myorg/app:amd64
-podman manifest add myorg/app:latest docker://myorg/app:arm64
-podman manifest add myorg/app:latest docker://myorg/app:ppc64le
-podman manifest push myorg/app:latest docker://docker.io/myorg/app:latest
+podman manifest add myorg/app:latest docker://docker.io/myorg/app:amd64
+podman manifest add myorg/app:latest docker://docker.io/myorg/app:arm64
+podman manifest add myorg/app:latest docker://docker.io/myorg/app:ppc64le
+podman manifest push --all myorg/app:latest docker://docker.io/myorg/app:latest
 ```
 
 ---
@@ -296,15 +296,20 @@ IBM Power systems are used for AI inference workloads. Run containerized ML appl
 
 ```bash
 cat > Dockerfile.ml <<EOF
-FROM docker.io/library/python:3.12-slim
+FROM docker.io/library/ubuntu:24.04
 WORKDIR /app
 
-RUN pip install --no-cache-dir numpy pandas scikit-learn
+RUN apt update && apt install -y --no-install-recommends \
+  python3 \
+  python3-numpy \
+  python3-pandas \
+  python3-sklearn && \
+  rm -rf /var/lib/apt/lists/*
 
 COPY model.py .
 COPY data/ ./data/
 EXPOSE 8080
-CMD ["python", "model.py"]
+CMD ["python3", "model.py"]
 EOF
 
 podman build -f Dockerfile.ml -t myorg/ml-inference:ppc64le .
@@ -331,7 +336,7 @@ Description=Enterprise Application on Power
 After=network-online.target
 
 [Container]
-Image=myorg/enterprise-app:ppc64le
+Image=docker.io/myorg/enterprise-app:ppc64le
 PublishPort=8443:8443
 Volume=app-data:/data:Z
 Volume=app-config:/etc/app:ro,Z
@@ -348,7 +353,7 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now enterprise-app
+systemctl --user start enterprise-app.service
 ```
 
 ### Monitoring Resource Usage
@@ -393,7 +398,7 @@ If you see "exec format error," you are running an image built for a different a
 podman inspect myimage:latest --format '{{.Architecture}}'
 
 # Pull the correct platform
-podman pull --platform linux/ppc64le docker.io/library/alpine:3.19
+podman pull --platform linux/ppc64le docker.io/library/alpine:3.23
 ```
 
 ### Performance Issues
