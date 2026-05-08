@@ -10,14 +10,14 @@ Description: Resolve common issues encountered during manual testing of Cilium L
 
 ## Introduction
 
-Manual testing of Cilium L7 parsers frequently encounters issues that block or invalidate test execution. These range from environment setup problems (pods not connecting, policies not applied) to parser-specific issues (unexpected drops, wrong error responses) to tooling problems (Hubble not showing flows, cilium monitor silent).
+Manual testing of Cilium L7 parsers frequently encounters issues that block or invalidate test execution. These range from environment setup problems (pods not connecting, policies not applied) to parser-specific issues (unexpected drops, wrong error responses) to tooling problems (Hubble not showing flows, cilium-dbg monitor silent).
 
 Efficient troubleshooting during manual testing requires a systematic approach: verify the environment first, then the policy configuration, then the proxy operation, and finally the parser behavior. This guide walks through each layer.
 
 ## Prerequisites
 
 - A test Kubernetes cluster with Cilium
-- `kubectl`, `cilium`, and `hubble` CLI tools
+- `kubectl`, `cilium`, `cilium-dbg`, and `hubble` CLI tools
 - Access to Cilium agent logs
 - Protocol-specific test client
 - Basic networking troubleshooting skills
@@ -32,7 +32,8 @@ Start by verifying basic connectivity before L7 policy:
 kubectl get pods -n cilium-parser-test -o wide
 
 # Check Cilium endpoint status
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep cilium-parser-test
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+    cilium-dbg endpoint list | grep cilium-parser-test
 
 # Test basic TCP connectivity (before L7 policy)
 kubectl exec -n cilium-parser-test deploy/test-client -- \
@@ -43,7 +44,7 @@ kubectl exec -n cilium-parser-test deploy/test-client -- \
     nslookup test-server.cilium-parser-test.svc.cluster.local
 
 # Verify Cilium health
-kubectl exec -n kube-system ds/cilium -- cilium status
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status
 ```
 
 Common environment issues:
@@ -54,13 +55,13 @@ kubectl describe pod -n cilium-parser-test <pod-name>
 # Check for: missing image, volume mount errors, resource limits
 
 # Issue: Cilium endpoint not ready
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 # Look for endpoints in "not-ready" state
 # Fix: Wait for endpoint regeneration or restart the Cilium agent
 
 # Issue: Service not resolving
 kubectl get svc -n cilium-parser-test
-kubectl get endpoints -n cilium-parser-test
+kubectl get endpointslices -n cilium-parser-test
 # Fix: Ensure pod labels match service selector
 ```
 
@@ -70,13 +71,14 @@ Verify L7 policy is correctly applied:
 
 ```bash
 # Check policy status
-kubectl exec -n kube-system ds/cilium -- cilium policy get
+kubectl get cnp -n cilium-parser-test
 
 # Verify endpoint has the policy
-kubectl exec -n kube-system ds/cilium -- cilium endpoint get <endpoint-id> | grep -A 10 "policy"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+    cilium-dbg endpoint get <endpoint-id> | grep -A 10 "policy"
 
-# Check for policy import errors
-kubectl exec -n kube-system ds/cilium -- cilium policy get 2>&1 | grep -i "error\|warn"
+# Check for policy status and errors
+kubectl describe cnp -n cilium-parser-test <policy-name>
 
 # Verify label matching
 kubectl get pods -n cilium-parser-test --show-labels
@@ -101,14 +103,16 @@ Verify the L7 proxy is intercepting traffic:
 
 ```bash
 # Check proxy redirects
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+    cilium-dbg status --all-redirects
 
 # Check Envoy proxy is running
 kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
-    curl -s http://localhost:9901/server_info
+    cilium-dbg envoy admin serverinfo
 
 # Monitor proxy events
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type l7
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+    cilium-dbg monitor --type l7
 
 # Check for proxy errors
 kubectl logs -n kube-system ds/cilium -c cilium-agent | grep -i "proxy\|envoy" | tail -20
@@ -120,7 +124,8 @@ Common proxy issues:
 # Issue: "proxy redirect not found"
 # Cause: Policy is not correctly creating a proxy redirect
 # Fix: Verify toPorts section includes l7proto field
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+    cilium-dbg status --all-redirects
 # Should show an entry for port 9000
 
 # Issue: "unknown parser" error
@@ -132,7 +137,7 @@ kubectl logs -n kube-system ds/cilium -c cilium-agent | grep "unknown parser"
 # Cause: Backend service not reachable from proxy
 # Fix: Check service endpoints and network connectivity
 kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
-    curl -s http://localhost:9901/clusters | grep test-server
+    cilium-dbg envoy admin clusters | grep test-server
 ```
 
 ## Layer 4: Parser Behavior
@@ -140,8 +145,9 @@ kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
 When connectivity and policy are correct but parser behavior is unexpected:
 
 ```bash
-# Enable debug logging for the parser
-kubectl exec -n kube-system ds/cilium -- cilium config set debug true
+# Check whether debug logging is enabled for the agent
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+    cilium-dbg config --all | grep -i debug
 
 # Watch parser-specific log output
 kubectl logs -n kube-system ds/cilium -c cilium-agent -f | grep "myprotocol"
@@ -174,11 +180,11 @@ kubectl get svc -n $NS
 
 echo ""
 echo "=== Cilium Endpoints ==="
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list 2>/dev/null | grep $NS
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list 2>/dev/null | grep $NS
 
 echo ""
 echo "=== Proxy Redirects ==="
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list 2>/dev/null
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status --all-redirects 2>/dev/null
 
 echo ""
 echo "=== Policy Status ==="
@@ -186,7 +192,7 @@ kubectl get cnp -n $NS
 
 echo ""
 echo "=== Recent L7 Events ==="
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type l7 2>/dev/null &
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg monitor --type l7 2>/dev/null &
 MONITOR_PID=$!
 sleep 3
 kill $MONITOR_PID 2>/dev/null
@@ -206,7 +212,7 @@ kubectl exec -n cilium-parser-test deploy/test-client -- \
     protocol-client send --command DELETE --key smoketest --target test-server:9000
 
 # Verify Hubble visibility
-hubble observe --namespace cilium-parser-test --type l7 --last 5
+hubble observe --namespace cilium-parser-test --last 5
 ```
 
 ## Troubleshooting
@@ -217,7 +223,7 @@ The parser may be returning MORE indefinitely. Check parser logs for the last On
 **Problem: Policy allows everything (no enforcement)**
 Verify the `l7proto` field matches the parser's registered name exactly (case-sensitive). A mismatch causes Cilium to skip L7 enforcement.
 
-**Problem: cilium monitor shows no events**
+**Problem: cilium-dbg monitor shows no events**
 Ensure monitor is running on the correct node. The Cilium pod must be on the same node as the test pods. Use `kubectl get pods -o wide` to verify.
 
 **Problem: Test results differ between runs**
