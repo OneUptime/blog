@@ -12,7 +12,7 @@ Description: A guide to performance-tuning Calico for production workloads on Op
 
 Tuning Calico for production on OpenShift requires working within OpenShift's constraints. OpenShift uses specific kernel parameters, Security Context Constraints, and may run on RHEL CoreOS nodes where some advanced kernel features - such as certain eBPF program types - require careful compatibility checking before enabling.
 
-Despite these constraints, significant performance improvements are available: correct MTU settings for the overlay network, Felix timer tuning for lower policy convergence latency, and IPAM block optimization for dense clusters. These are safe to apply in any OpenShift environment.
+Despite these constraints, significant performance improvements are available: correct MTU settings for the overlay network, Felix refresh tuning for faster dataplane reconciliation, and IPAM block optimization for dense clusters. These should be validated against your OpenShift and Calico installation mode before being applied in production.
 
 This guide covers production tuning for Calico on OpenShift.
 
@@ -24,13 +24,13 @@ This guide covers production tuning for Calico on OpenShift.
 
 ## Step 1: Optimize MTU for OpenShift's VXLAN
 
-OpenShift with Calico typically uses VXLAN encapsulation. Set the MTU correctly to avoid fragmentation.
+If your OpenShift Calico installation uses VXLAN encapsulation, set the MTU correctly to avoid fragmentation.
 
 ```bash
-# OpenShift node MTU is typically 1500
+# If the underlying network MTU is 1500
 
 # VXLAN overhead is 50 bytes
-kubectl patch installation default --type merge \
+oc patch installation.operator.tigera.io default --type merge \
   --patch '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 ```
 
@@ -42,7 +42,7 @@ oc exec -n calico-system -it <calico-node-pod> -- ip link show vxlan.calico | gr
 
 ## Step 2: Tune Felix for OpenShift Workload Patterns
 
-OpenShift clusters often have frequent pod scheduling during builds and deployments. Tune Felix to handle policy updates quickly.
+OpenShift clusters often have frequent pod scheduling during builds and deployments. Tune Felix refresh intervals when you need faster detection of dataplane drift and have validated the additional CPU cost.
 
 ```bash
 calicoctl patch felixconfiguration default \
@@ -55,22 +55,63 @@ calicoctl patch felixconfiguration default \
 
 ## Step 3: Optimize IPAM for OpenShift
 
-OpenShift uses a per-node pod CIDR allocation. Tune the Calico block size to align with this.
+Calico IPAM allocates addresses in blocks. Tune the block size before installation, or follow Calico's migration procedure for an existing cluster, because the `blockSize` field cannot be edited directly on an existing IPPool.
 
-```bash
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"blockSize":26}}'
+```yaml
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+    - blockSize: 26
+      cidr: 192.168.0.0/16
+      encapsulation: VXLAN
+      natOutgoing: Enabled
+      nodeSelector: all()
 ```
 
 ## Step 4: Enable Prometheus Metrics for OpenShift Monitoring
 
-OpenShift has a built-in Prometheus instance. Configure Calico to expose metrics in a format that OpenShift's monitoring stack can scrape.
+OpenShift has a built-in monitoring stack. Configure Calico to expose metrics and create Kubernetes discovery resources that OpenShift user workload monitoring can scrape.
 
 ```bash
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
-oc apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico-prometheus.yaml
+oc apply -f - <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    app: felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+  - name: metrics
+    port: 9091
+    targetPort: 9091
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: felix-metrics
+  namespace: calico-system
+spec:
+  endpoints:
+  - interval: 30s
+    path: /metrics
+    port: metrics
+    scheme: http
+  selector:
+    matchLabels:
+      app: felix-metrics
+EOF
 ```
 
 ## Step 5: Tune calico-kube-controllers Resources
@@ -86,9 +127,9 @@ oc patch deployment calico-kube-controllers -n calico-system --type=json \
 
 ```bash
 calicoctl get felixconfiguration default -o yaml
-oc get installation default -o yaml | grep mtu
+oc get installation.operator.tigera.io default -o yaml | grep mtu
 ```
 
 ## Conclusion
 
-Tuning Calico for production on OpenShift involves setting the correct VXLAN MTU, adjusting Felix timers for OpenShift's frequent pod scheduling patterns, optimizing IPAM block sizes, and exposing metrics to OpenShift's built-in monitoring stack. These changes improve policy convergence speed and network throughput within OpenShift's security and kernel constraints.
+Tuning Calico for production on OpenShift involves setting the correct VXLAN MTU when VXLAN is in use, adjusting Felix refresh timers after measuring the CPU tradeoff, optimizing IPAM block sizes at install time or through a planned migration, and exposing metrics to OpenShift's built-in monitoring stack. These changes can improve network throughput and operational visibility within OpenShift's security and kernel constraints.
