@@ -159,11 +159,14 @@ CALICO_VERSION="${1:-v3.27.0}"
 # Pull the calicoctl container image
 docker pull calico/ctl:${CALICO_VERSION}
 
-# Create a shell alias for calicoctl
-cat << 'EOF' | sudo tee /usr/local/bin/calicoctl
+# Create a shell wrapper for calicoctl
+cat << EOF | sudo tee /usr/local/bin/calicoctl
 #!/bin/bash
 # calicoctl wrapper using container
-docker run --rm -i --net=host   -v /etc/calico:/etc/calico:ro   -v /root/.kube:/root/.kube:ro   calico/ctl:v3.27.0 "$@"
+docker run --rm -i --net=host \
+  -v /etc/calico:/etc/calico:ro \
+  -v /root/.kube:/root/.kube:ro \
+  calico/ctl:${CALICO_VERSION} "\$@"
 EOF
 
 sudo chmod +x /usr/local/bin/calicoctl
@@ -196,7 +199,7 @@ validate-calico-config:
   stage: validate
   script:
     # Validate Calico resource files
-    - calicoctl apply --dry-run -f calico-policies/
+    - calicoctl validate -f calico-policies/ --recursive
 ```
 
 ## Verification
