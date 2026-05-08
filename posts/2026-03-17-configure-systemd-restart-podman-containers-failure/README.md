@@ -29,7 +29,7 @@ Image=docker.io/myorg/myapp:latest
 PublishPort=3000:3000
 
 [Service]
-# Restart only when the container exits with a non-zero status
+# Restart on non-zero exit, unclean signal, timeout, or watchdog failure
 Restart=on-failure
 # Wait 5 seconds before restarting
 RestartSec=5
@@ -43,9 +43,9 @@ WantedBy=default.target
 | Policy | Restarts on | Use case |
 |--------|------------|----------|
 | `no` | Never | One-shot tasks |
-| `on-failure` | Non-zero exit | Most services |
+| `on-failure` | Non-zero exit, unclean signal, timeout, watchdog | Most services |
 | `on-abnormal` | Signal, timeout, watchdog | Signal-sensitive apps |
-| `on-success` | Clean exit (code 0) | Periodic jobs |
+| `on-success` | Clean exit | Periodic jobs |
 | `always` | Any exit | Critical services |
 
 ## Rate Limiting Restarts
@@ -55,7 +55,7 @@ Prevent infinite restart loops:
 ```ini
 [Unit]
 Description=Application with restart limits
-# Allow 5 restart attempts in 300 seconds
+# Allow 5 start attempts in 300 seconds
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
@@ -68,11 +68,11 @@ Restart=on-failure
 RestartSec=10
 ```
 
-If the service restarts 5 times within 300 seconds, systemd stops trying and marks the service as failed.
+After 5 permitted starts within 300 seconds, systemd refuses the next start attempt and stops trying to restart the service until the interval passes or the failed state is reset.
 
 ## Exponential Backoff with RestartSteps
 
-For newer systemd versions, configure exponential backoff:
+For systemd 254 and newer, configure exponential backoff:
 
 ```ini
 [Service]
@@ -86,14 +86,14 @@ This starts with a 1-second delay and increases up to 60 seconds over 10 steps.
 
 ## Running a Command on Failure
 
-Execute a notification or cleanup command when the service fails:
+Execute a notification or cleanup command after a failed stop or start attempt:
 
 ```ini
 [Service]
 Restart=on-failure
 RestartSec=5
-# Run a script when the service fails permanently
-ExecStopPost=/bin/sh -c 'if [ "$$EXIT_STATUS" != "0" ]; then echo "Service failed" >> /tmp/failures.log; fi'
+# Run a script after each failed service result
+ExecStopPost=/bin/sh -c 'if [ "$$SERVICE_RESULT" != "success" ]; then echo "Service failed: $$SERVICE_RESULT" >> /tmp/failures.log; fi'
 ```
 
 ## Monitoring Restart Behavior
