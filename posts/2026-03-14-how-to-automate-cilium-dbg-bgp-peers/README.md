@@ -19,10 +19,9 @@ This guide covers automating cilium-dbg bgp peers for monitoring and alerting.
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via Cilium BGP resources, such as CiliumBGPClusterConfig and CiliumBGPPeerConfig
 - `kubectl` access to cilium pods
 - `jq` for JSON processing
-- 
 
 ## Automated Peers Collection
 
@@ -47,12 +46,20 @@ while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   echo "Collecting from $node..."
 
-  OUTPUT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp peers 2>/dev/null || echo "FAILED")
+  if ! OUTPUT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
+    cilium-dbg bgp peers -o json 2>/dev/null); then
+    echo "FAILED" > "$OUTPUT_DIR/${node}.txt"
+    UNHEALTHY=$((UNHEALTHY + 1))
+    continue
+  fi
 
-  echo "$OUTPUT" > "$OUTPUT_DIR/${node}.txt"
+  echo "$OUTPUT" | jq . > "$OUTPUT_DIR/${node}.json"
 
-  if [ "$OUTPUT" != "FAILED" ] && [ -n "$OUTPUT" ]; then
+  PEERS=$(echo "$OUTPUT" | jq '[.. | objects | select(has("session-state")) | ."session-state"]')
+  TOTAL=$(echo "$PEERS" | jq 'length')
+  NOT_ESTABLISHED=$(echo "$PEERS" | jq '[.[] | select(. != "established")] | length')
+
+  if [ "$TOTAL" -gt 0 ] && [ "$NOT_ESTABLISHED" -eq 0 ]; then
     HEALTHY=$((HEALTHY + 1))
   else
     UNHEALTHY=$((UNHEALTHY + 1))
@@ -89,9 +96,12 @@ spec:
                 -o jsonpath='{.items[*].metadata.name}')
               FAIL=0
               for pod in $PODS; do
-                OUTPUT=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- \
-                  cilium-dbg bgp peers 2>/dev/null || echo "FAILED")
-                if [ "$OUTPUT" = "FAILED" ]; then
+                STATES=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- \
+                  cilium-dbg bgp peers -o jsonpath='{range [*]}{.session-state}{"\n"}{end}' 2>/dev/null) || {
+                  FAIL=$((FAIL + 1))
+                  continue
+                }
+                if [ -z "$STATES" ] || echo "$STATES" | grep -vq '^established$'; then
                   FAIL=$((FAIL + 1))
                 fi
               done
@@ -110,11 +120,17 @@ PODS=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
   -o jsonpath='{.items[*].metadata.name}')
 
 for pod in $PODS; do
+  NODE=$(kubectl -n "$NAMESPACE" get pod "$pod" -o jsonpath='{.spec.nodeName}')
   OUTPUT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp peers 2>/dev/null || echo "FAILED")
-  if [ "$OUTPUT" = "FAILED" ]; then
-    NODE=$(kubectl -n "$NAMESPACE" get pod "$pod" -o jsonpath='{.spec.nodeName}')
+    cilium-dbg bgp peers -o json 2>/dev/null) || {
     echo "ALERT: bgp peers check failed on $NODE"
+    continue
+  }
+
+  TOTAL=$(echo "$OUTPUT" | jq '[.. | objects | select(has("session-state")) | ."session-state"] | length')
+  NOT_ESTABLISHED=$(echo "$OUTPUT" | jq '[.. | objects | select(has("session-state")) | ."session-state" | select(. != "established")] | length')
+  if [ "$TOTAL" -eq 0 ] || [ "$NOT_ESTABLISHED" -gt 0 ]; then
+    echo "ALERT: bgp peers not established on $NODE"
   fi
 done
 ```
@@ -127,7 +143,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 
 # Verify command works
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp peers 2>/dev/null && echo "Command succeeded"
+  cilium-dbg bgp peers -o json 2>/dev/null | jq .
 
 # Verify automation/parsing
 bash collect-bgp-peers-state.sh
@@ -135,8 +151,8 @@ bash collect-bgp-peers-state.sh
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
+- **"BGP Control Plane is disabled"**: Enable Cilium BGP Control Plane with `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP peering resources may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
 - **Peers not establishing**: Verify network connectivity to peer on TCP/179 and ASN configuration.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
