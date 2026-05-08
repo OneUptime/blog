@@ -28,7 +28,7 @@ This guide covers creating IPAMConfiguration resources for different cluster arc
 Check the current IPAM configuration:
 
 ```bash
-calicoctl get ipamconfiguration -o yaml
+calicoctl ipam show --show-configuration
 ```
 
 If no custom configuration exists, Calico uses default settings with strict affinity disabled.
@@ -41,7 +41,7 @@ calicoctl get ippool -o wide
 
 ## Creating an IPAMConfiguration with Strict Affinity
 
-Strict affinity ensures each IP block is assigned to exactly one node and IPs are not borrowed across nodes. This is required when using cloud provider routing or BGP with full mesh disabled:
+Strict affinity prevents borrowing IPs from blocks assigned to other nodes. This is required for integrations that depend on pod IPs staying within the local node's assigned blocks:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -54,7 +54,7 @@ spec:
 ```
 
 ```bash
-calicoctl apply -f ipam-strict.yaml
+kubectl apply -f ipam-strict.yaml
 ```
 
 ## Creating an IPAMConfiguration with Relaxed Affinity
@@ -74,12 +74,12 @@ spec:
 Setting maxBlocksPerHost to 0 means no limit on blocks per host.
 
 ```bash
-calicoctl apply -f ipam-relaxed.yaml
+kubectl apply -f ipam-relaxed.yaml
 ```
 
 ## Configuring IPAM for VPC Routing Integration
 
-When integrating with cloud VPC routing, strict affinity is required so each node advertises only its own blocks:
+When integrating with cloud VPC routing that installs per-node routes, strict affinity keeps workload IPs within the blocks assigned to their node:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -107,8 +107,8 @@ spec:
 ```
 
 ```bash
-calicoctl apply -f ipam-vpc.yaml
-calicoctl apply -f vpc-ippool.yaml
+kubectl apply -f ipam-vpc.yaml
+kubectl apply -f vpc-ippool.yaml
 ```
 
 ## Limiting Blocks Per Host
@@ -126,17 +126,17 @@ spec:
 ```
 
 ```bash
-calicoctl apply -f ipam-limited-blocks.yaml
+kubectl apply -f ipam-limited-blocks.yaml
 ```
 
-With a /26 block size (64 IPs per block) and maxBlocksPerHost set to 4, each node can host up to 256 pod IPs.
+With a /26 block size (64 IPs per block) and maxBlocksPerHost set to 4, each node has IPAM capacity for up to 256 pod IPs, subject to kubelet and node capacity limits.
 
 ## Verification
 
 Confirm the IPAMConfiguration is applied:
 
 ```bash
-calicoctl get ipamconfiguration default -o yaml
+kubectl get ipamconfigurations default -o yaml
 ```
 
 Check block allocation across nodes:
@@ -175,7 +175,7 @@ calicoctl ipam show --show-blocks
 Verify the IPAMConfiguration name is exactly "default" as Calico only reads this specific name:
 
 ```bash
-calicoctl get ipamconfiguration -o wide
+kubectl get ipamconfigurations
 ```
 
 Check calico-node logs for IPAM errors:
