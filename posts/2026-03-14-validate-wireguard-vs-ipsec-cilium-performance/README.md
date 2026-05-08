@@ -38,10 +38,14 @@ for PROTO in "${PROTOCOLS[@]}"; do
       --set encryption.enabled=true \
       --set encryption.type=wireguard
   else
+    kubectl -n kube-system get secret cilium-ipsec-keys >/dev/null || {
+      echo "Missing cilium-ipsec-keys secret"
+      exit 1
+    }
     helm upgrade cilium cilium/cilium --namespace kube-system \
       --set encryption.enabled=true \
       --set encryption.type=ipsec \
-      --set encryption.ipsec.keyFile=/etc/ipsec/keys
+      --set encryption.ipsec.secretName=cilium-ipsec-keys
   fi
   kubectl rollout status ds/cilium -n kube-system
   sleep 30
@@ -51,7 +55,7 @@ for PROTO in "${PROTOCOLS[@]}"; do
     BPS=$(kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 20 -P 1 -J | \
       jq '.end.sum_sent.bits_per_second / 1000000000')
     RR=$(kubectl exec netperf-client -- \
-      netperf -H $SERVER_IP -t TCP_RR -l 15 2>/dev/null | tail -1 | awk '{print $1}')
+      netperf -H $SERVER_IP -t TCP_RR -l 15 2>/dev/null | tail -1 | awk '{print $NF}')
     echo "$PROTO run $i: $BPS Gbps, $RR trans/s"
     sleep 5
   done
@@ -73,7 +77,7 @@ MAX_CV=10              # Maximum coefficient of variation %
 #!/bin/bash
 set -euo pipefail
 
-CURRENT_PROTO=$(cilium encrypt status | grep -oE "wireguard|ipsec")
+CURRENT_PROTO=$(cilium encryption status | grep -oiE "wireguard|ipsec" | head -1)
 echo "Validating $CURRENT_PROTO encryption..."
 
 RESULTS=()
@@ -99,12 +103,12 @@ echo "PASS"
 
 ```bash
 echo "Review comparison table for protocol decision"
-cilium encrypt status
+cilium encryption status
 ```
 
 ## Troubleshooting
 
-- **IPsec validation fails on setup**: Ensure IPsec key file is deployed to all nodes before enabling.
+- **IPsec validation fails on setup**: Ensure the `cilium-ipsec-keys` Kubernetes secret exists in the Cilium namespace before enabling.
 - **WireGuard validation inconsistent**: Increase test duration and number of iterations.
 - **Both protocols below threshold**: Check for non-encryption-related performance issues first.
 - **CI takes too long switching protocols**: Keep a dedicated test cluster for encryption validation.
@@ -151,23 +155,21 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+SORTED=$(printf "%s\n" "${SAMPLES[@]}" | sort -n)
+P50=$(echo "$SORTED" | awk -v n=${#SAMPLES[@]} 'NR == int((n * 0.5) + 0.999) {print; exit}')
+P95=$(echo "$SORTED" | awk -v n=${#SAMPLES[@]} 'NR == int((n * 0.95) + 0.999) {print; exit}')
+P99=$(echo "$SORTED" | awk -v n=${#SAMPLES[@]} 'NR == int((n * 0.99) + 0.999) {print; exit}')
+
+echo "${SAMPLES[@]}" | tr ' ' '\n' | awk -v p50="$P50" -v p95="$P95" -v p99="$P99" '
 {
   sum += $1
   sumsq += $1 * $1
-  data[NR] = $1
 }
 END {
   mean = sum / NR
   variance = (sumsq / NR) - (mean * mean)
   stddev = sqrt(variance)
   cv = (stddev / mean) * 100
-
-  # Sort for percentiles
-  n = asort(data)
-  p50 = data[int(n * 0.5)]
-  p95 = data[int(n * 0.95)]
-  p99 = data[int(n * 0.99)]
 
   printf "Samples: %d\n", NR
   printf "Mean: %.2f Gbps\n", mean / 1e9
