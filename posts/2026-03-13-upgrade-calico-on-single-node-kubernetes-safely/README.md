@@ -46,13 +46,20 @@ kubectl get networkpolicy --all-namespaces -o yaml > backup-netpol.yaml
 For single-node clusters, the upgrade will briefly interrupt networking. You may want to scale down non-critical workloads:
 
 ```bash
-kubectl scale deployment --all --replicas=0 --all-namespaces
+kubectl get deployment --all-namespaces \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' \
+  > deployment-replicas.txt
+
+while read -r namespace name replicas; do
+  kubectl -n "$namespace" scale deployment "$name" --replicas=0
+done < deployment-replicas.txt
 ```
 
 ## Step 4: Apply the New Calico Manifest
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
 ```
 
 ## Step 5: Monitor the Upgrade
@@ -65,7 +72,9 @@ kubectl rollout status deployment calico-kube-controllers -n kube-system
 ## Step 6: Restore Workloads
 
 ```bash
-kubectl scale deployment --all --replicas=1 --all-namespaces
+while read -r namespace name replicas; do
+  kubectl -n "$namespace" scale deployment "$name" --replicas="$replicas"
+done < deployment-replicas.txt
 ```
 
 ## Step 7: Post-Upgrade Validation
