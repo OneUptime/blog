@@ -14,7 +14,7 @@ Forwarded Traffic Policies on Hosts in Calico provides host-level network securi
 
 Calico's host endpoint functionality extends policy enforcement to the host network namespace, allowing you to protect host processes, control traffic to and from external networks, and implement node-level security controls that complement your pod policies.
 
-This guide covers how to zero trust Forwarded Traffic effectively, with production-ready YAML configurations and operational commands.
+This guide covers how to zero trust Forwarded Traffic effectively, with example YAML configurations and operational commands.
 
 ## Prerequisites
 
@@ -50,6 +50,7 @@ spec:
   preDNAT: false
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -57,6 +58,11 @@ spec:
         ports: [22, 443, 6443]
   egress:
     - action: Allow
+      protocol: TCP
+      destination:
+        nets:
+          - 10.0.0.0/8
+        ports: [443, 6443]
   types:
     - Ingress
     - Egress
@@ -85,11 +91,11 @@ ssh user@node01-ip "echo connected"
 # List all host endpoints
 calicoctl get hostendpoints
 
-# View host-level policy decisions
-sudo iptables -L -n | grep CALICO
+# View host-level policy chains on the iptables dataplane
+sudo iptables-save | grep CALICO
 
 # Check Felix status on node
-kubectl exec -n kube-system calico-node-xxx -- calico-node -felix-live
+kubectl exec -n kube-system calico-node-xxx -- /bin/calico-node -felix-live
 ```
 
 ## Architecture
@@ -107,4 +113,3 @@ flowchart TD
 ## Conclusion
 
 Forwarded Traffic Policies on Hosts with Calico provides a comprehensive security layer that extends beyond pod-to-pod policies to protect the underlying node infrastructure. Configure host endpoints carefully to avoid locking yourself out of the node, always test SSH and management access after applying host policies, and use staged policies to preview impact before enforcement. Host-level policies are powerful but require careful planning and testing.
-
