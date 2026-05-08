@@ -10,7 +10,7 @@ Description: Learn how to configure iptables-based masquerading mode in Cilium n
 
 ## Introduction
 
-Proper configuration of iptables-based masquerading in cilium is essential for a production-ready Cilium deployment. Cilium can use iptables for masquerading instead of eBPF. The iptables mode is the legacy approach that provides broader kernel compatibility but lower performance compared to eBPF masquerading. It works by installing iptables MASQUERADE rules in the POSTROUTING chain for traffic leaving the pod CIDR.
+Proper configuration of iptables-based masquerading in cilium is essential for a production-ready Cilium deployment. Cilium can use iptables for masquerading instead of eBPF. The iptables mode is the legacy approach that provides broader kernel compatibility but lower performance compared to eBPF masquerading. It masquerades traffic leaving on non-Cilium network devices.
 
 Misconfiguration at this level can lead to connectivity failures, performance degradation, or security gaps. This guide provides tested configuration settings with explanations for each option so you can make informed decisions for your environment.
 
@@ -40,14 +40,8 @@ bpf:
 # Masquerading is still enabled, but uses iptables
 enableIPv4Masquerade: true
 
-# Configure the ip-masq-agent for fine-grained control
-ipMasqAgent:
-  enabled: true
-  config:
-    nonMasqueradeCIDRs:
-      - 10.42.0.0/16
-      - 10.43.0.0/16
-    masqLinkLocal: false
+# Optional: limit iptables-based egress masquerading to matching interfaces
+# egressMasqueradeInterfaces: "eth+"
 ```
 
 Apply the configuration:
@@ -56,7 +50,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-iptables-masq-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -68,8 +62,8 @@ kubectl rollout status deployment/cilium-operator -n kube-system --timeout=120s
 Verify the configuration was applied correctly:
 
 ```bash
-# Check the active configuration
-iptables -t nat -L CILIUM_POST_nat -n 2>/dev/null | head -10
+# Check the active masquerading mode
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep Masquerading
 
 # Verify Cilium status after configuration change
 cilium status
@@ -127,7 +121,7 @@ kubectl rollout status deployment/config-test --timeout=60s
 # Test connectivity
 kubectl run test-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/test-client --timeout=30s
-kubectl exec test-client -- wget -qO- --timeout=5 http://config-test-svc
+kubectl exec test-client -- wget -qO- -T 5 http://config-test-svc
 kubectl delete pod test-client
 kubectl delete -f test-deployment.yaml
 ```
@@ -143,8 +137,8 @@ cilium config view
 # Check which features are enabled
 cilium status --verbose | head -40
 
-# Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+# Review the agent datapath status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep Masquerading
 ```
 
 ## Verification
@@ -153,13 +147,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test pod-to-pod --test pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
