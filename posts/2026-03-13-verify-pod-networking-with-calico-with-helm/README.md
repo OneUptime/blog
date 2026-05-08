@@ -44,7 +44,7 @@ kubectl logs -n tigera-operator deployment/tigera-operator --tail=20
 kubectl get tigerastatus
 ```
 
-All components should show `AVAILABLE: True` and `PROGRESSING: False`.
+All components should show `AVAILABLE: True`, `PROGRESSING: False`, and `DEGRADED: False`.
 
 ## Step 4: Verify Calico System Pods
 
@@ -95,7 +95,10 @@ calicoctl ipam show --show-blocks
 ## Step 10: Check calicoctl Integration
 
 ```bash
+# Run on a Kubernetes node that is running calico-node.
 calicoctl node status
+
+# This can be run from any environment where calicoctl is configured.
 calicoctl get ippool -o yaml
 ```
 
