@@ -55,7 +55,7 @@ podman run -d --name web \
 
 podman run -d --name app \
   --network my-bridge \
-  docker.io/library/node:20 tail -f /dev/null
+  docker.io/library/alpine:latest tail -f /dev/null
 
 # Containers can communicate by name
 podman exec app ping -c 3 web
@@ -65,7 +65,7 @@ podman exec app ping -c 3 web
 
 ```bash
 # DNS is enabled by default on custom bridge networks
-podman network create --dns-enabled app-bridge
+podman network create app-bridge
 
 # Containers get automatic DNS resolution
 podman run -d --name svc1 --network app-bridge \
@@ -105,8 +105,9 @@ podman network create \
 # List network interfaces created by Podman
 ip link show type bridge
 
-# View the bridge details
-ip addr show podman0
+# View a bridge's interface name, then inspect the interface
+podman network inspect my-bridge --format '{{ .NetworkInterface }}'
+ip addr show <bridge-interface>
 
 # Check bridge forwarding rules
 sudo iptables -L -n | grep -A5 FORWARD
@@ -115,18 +116,18 @@ sudo iptables -L -n | grep -A5 FORWARD
 ## Multiple Bridge Networks for Isolation
 
 ```bash
-# Create separate networks for different tiers
-podman network create --subnet 10.1.0.0/24 frontend-bridge
-podman network create --subnet 10.2.0.0/24 backend-bridge
+# Create separate isolated networks for different tiers
+podman network create --subnet 10.1.0.0/24 --opt isolate frontend-bridge
+podman network create --subnet 10.2.0.0/24 --opt isolate backend-bridge
 
 # Frontend containers cannot reach backend containers
 podman run -d --name web --network frontend-bridge \
-  docker.io/library/nginx:latest
+  docker.io/library/alpine:latest tail -f /dev/null
 podman run -d --name db --network backend-bridge \
   -e POSTGRES_PASSWORD=secret \
   docker.io/library/postgres:16
 
-# This will fail - different networks are isolated
+# This will fail - the networks are isolated
 podman exec web ping -c 1 db
 # ping: bad address 'db'
 ```
