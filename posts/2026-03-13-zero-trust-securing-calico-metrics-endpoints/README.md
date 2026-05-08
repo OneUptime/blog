@@ -23,6 +23,21 @@ This guide covers zero trust Calico Metrics in Calico with practical configurati
 ## Core Configuration
 
 ```yaml
+# Create one HostEndpoint per node/interface that exposes Felix metrics.
+apiVersion: projectcalico.org/v3
+kind: HostEndpoint
+metadata:
+  name: worker-1-metrics
+  labels:
+    metrics: calico-felix
+spec:
+  node: worker-1
+  interfaceName: eth0
+  expectedIPs:
+    - 10.0.0.10
+  profiles:
+    - projectcalico-default-allow
+---
 # Restrict access to Calico Felix metrics (port 9091)
 
 apiVersion: projectcalico.org/v3
@@ -31,21 +46,19 @@ metadata:
   name: secure-calico-metrics
 spec:
   order: 100
-  selector: k8s-app == 'calico-node'
+  selector: metrics == 'calico-felix'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        namespaceSelector: team == 'observability'
-      destination:
-        ports: [9091]
-    - action: Allow
-      source:
+        namespaceSelector: projectcalico.org/name == 'monitoring'
         selector: app == 'prometheus'
       destination:
         ports: [9091]
     - action: Deny
+      protocol: TCP
       destination:
-        ports: [9091, 9092, 9093]
+        ports: [9091]
   types:
     - Ingress
 ```
@@ -57,22 +70,27 @@ spec:
 calicoctl apply -f secure-calico-metrics.yaml
 
 # Verify only authorized access works
-kubectl exec -n monitoring prometheus-pod -- curl -s http://calico-node-ip:9091/metrics | head -5
+kubectl exec -n monitoring deploy/prometheus-server -- \
+  sh -c 'curl -fsS http://<node-ip>:9091/metrics | head -5'
 echo "Prometheus access (should work): $?"
 
 # Verify unauthorized access is blocked
-kubectl exec -n default test-pod -- curl -s --max-time 5 http://calico-node-ip:9091/metrics
-echo "Unauthorized access (should timeout): $?"
+if kubectl exec -n default test-pod -- \
+  curl -fsS --max-time 5 http://<node-ip>:9091/metrics; then
+  echo "Unauthorized access unexpectedly succeeded"
+else
+  echo "Unauthorized access blocked"
+fi
 ```
 
 ## Verify Metrics Security
 
 ```bash
-# List all IPs that have accessed the metrics endpoint recently
-grep "port=9091" /var/log/calico/flow-logs/*.log | tail -20
+# Check that the host endpoint is present
+calicoctl get hostendpoints -o wide
 
-# Check active policy for calico-node pods
-calicoctl get networkpolicies -n kube-system | grep metrics
+# Check active global policy for metrics host endpoints
+calicoctl get globalnetworkpolicies | grep secure-calico-metrics
 ```
 
 ## Architecture
