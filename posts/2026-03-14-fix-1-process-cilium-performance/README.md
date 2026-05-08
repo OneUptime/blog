@@ -61,7 +61,7 @@ spec:
         memory: "1Gi"
 ```
 
-With static CPU Manager, the pod gets exclusive access to 2 CPUs, preventing contention.
+With static CPU Manager, the pod gets exclusive access to 2 CPUs from other pods. System services can still run on those CPUs unless you also isolate them at the node level, so combine this with IRQ and system CPU placement.
 
 ## IRQ Affinity Steering
 
@@ -128,7 +128,8 @@ spec:
 # Instead of processing packets on the IRQ CPU,
 # steer them to specific CPUs using RPS
 echo "0c" > /sys/class/net/eth0/queues/rx-0/rps_cpus
-# This steers to CPUs 2-3, matching the app's allocated cores
+# This steers to CPUs 2-3; use a mask for non-application CPUs
+# such as "f0" for CPUs 4-7 when isolating the app on CPUs 2-3
 # Adjust based on your CPU manager allocation
 ```
 
@@ -138,6 +139,7 @@ Reduce Cilium's per-packet overhead:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set kubeProxyReplacement=true \
   --set bpf.hostLegacyRouting=false \
   --set socketLB.enabled=true \
