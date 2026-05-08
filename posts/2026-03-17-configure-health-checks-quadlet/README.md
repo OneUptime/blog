@@ -26,10 +26,11 @@ Description=Web application with health check
 
 [Container]
 Image=docker.io/library/nginx:latest
+ContainerName=webapp
 PublishPort=8080:80
 
 # Health check configuration
-HealthCmd=curl -f http://localhost:80/ || exit 1
+HealthCmd=nginx -t || exit 1
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
