@@ -15,6 +15,7 @@ When team members use `calicoctl ipam show` inconsistently or infrequently, IPAM
 ## Prerequisites
 
 - A team managing Calico clusters
+- A `calicoctl` version that matches the Calico cluster version
 - Documented operational procedures
 - Scheduling or automation infrastructure
 
@@ -45,7 +46,7 @@ echo "Operator: $USER"
 echo "Cluster: $(kubectl config current-context)"
 echo "Date: $(date)"
 echo ""
-calicoctl ipam show 
+calicoctl ipam show
 echo ""
 echo "=== Complete ==="
 ```
@@ -77,8 +78,8 @@ spec:
           serviceAccountName: calicoctl
           containers:
           - name: task
-            image: calico/ctl:v3.27.0
-            command: ["/bin/sh", "-c", "calicoctl ipam show "]
+            image: calico/ctl:v3.32.0 # Match this tag to your Calico cluster version.
+            command: ["/bin/sh", "-c", "calicoctl ipam show"]
           restartPolicy: Never
 ```
 
