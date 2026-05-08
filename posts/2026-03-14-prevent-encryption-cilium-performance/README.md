@@ -40,11 +40,12 @@ spec:
         spec:
           containers:
           - name: monitor
-            image: networkstatic/iperf3
+            image: alpine:3.22
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl iperf3 jq
               BPS=$(iperf3 -c iperf-server.monitoring -t 20 -P 1 -J | jq '.end.sum_sent.bits_per_second')
               cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/enc_perf
               cilium_encrypted_bps $BPS
@@ -74,7 +75,7 @@ spec:
 ## Verification
 
 ```bash
-cilium encrypt status
+cilium encryption status
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -82,7 +83,7 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
 ## Troubleshooting
 
 - **Encryption not active**: Verify Cilium helm values include encryption.enabled=true.
-- **Overhead > 40%**: Check for userspace WireGuard or missing AES-NI for IPsec.
+- **Overhead > 40%**: Check for deprecated WireGuard userspace fallback on older Cilium releases or missing AES-NI for IPsec.
 - **Some nodes not encrypted**: Check Cilium agent logs for key exchange errors.
 - **Performance varies by node pair**: Different hardware capabilities across nodes.
 
