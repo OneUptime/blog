@@ -10,9 +10,9 @@ Description: Learn how to verify Calico network policy enforcement on Google Kub
 
 ## Introduction
 
-Google Kubernetes Engine (GKE) offers Calico as a network policy provider when you enable network policy at cluster creation. In this configuration, GKE's built-in data plane (using Alias IP ranges) handles pod IP assignment and routing, while Calico enforces network policies. This is similar to the EKS architecture where the cloud provider CNI handles data plane operations.
+Google Kubernetes Engine (GKE) Standard offers Calico as a network policy provider when you enable network policy on a cluster that doesn't use GKE Dataplane V2. In this configuration, GKE's VPC-native networking model (using Alias IP ranges) handles pod IP assignment and routing, while Calico enforces network policies. This is similar to the EKS architecture where the cloud provider CNI handles data plane operations.
 
-Validating Calico on GKE requires understanding that pod connectivity is handled by GKE's Alias IP CNI - pods receive IPs directly from the VPC subnet range. Calico provides the policy enforcement layer on top. Testing both layers independently ensures comprehensive validation of your GKE cluster networking.
+Validating Calico on GKE requires understanding that pod connectivity is handled by GKE's VPC-native networking model - pods receive IPs from a VPC secondary IP range. Calico provides the policy enforcement layer on top. Testing both layers independently ensures comprehensive validation of your GKE cluster networking.
 
 This guide covers verification of Calico pod networking and policy enforcement on GKE.
 
@@ -32,25 +32,27 @@ Confirm that the GKE cluster has network policy (Calico) enabled.
 
 gcloud container clusters describe <cluster-name> \
   --zone <zone> \
-  --format="value(networkConfig.enableNetworkPolicy)"
+  --format="value(networkPolicy.enabled)"
 
-# Alternatively, check using the GCP console network policy flag
+# Alternatively, check the full network policy configuration
 gcloud container clusters describe <cluster-name> \
   --zone <zone> \
   --format="yaml(networkPolicy)"
 
-# Verify Calico pods are running on all GKE nodes
-kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+# Verify Calico network policy enforcement is enabled on the nodes
+kubectl get nodes -l projectcalico.org/ds-ready=true
 ```
 
 ## Step 2: Test Pod Connectivity (GKE Alias IP Data Plane)
 
-Validate that pod networking via GKE's Alias IP CNI is working.
+Validate that pod networking via GKE's VPC-native Alias IP ranges is working.
 
 ```bash
 # Deploy test pods and verify they receive GKE Alias IPs
 kubectl run pod-a --image=busybox:1.28 --restart=Never -- sleep 3600
 kubectl run pod-b --image=busybox:1.28 --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/pod-a --timeout=60s
+kubectl wait --for=condition=Ready pod/pod-b --timeout=60s
 
 # Verify pod IPs are in the VPC secondary range (Alias IP range)
 kubectl get pods -o wide
@@ -86,13 +88,15 @@ spec:
 kubectl create namespace gke-test
 kubectl run server -n gke-test --image=nginx --labels="app=server" --restart=Never
 kubectl run client -n gke-test --image=busybox:1.28 --labels="app=client" --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/server -n gke-test --timeout=60s
+kubectl wait --for=condition=Ready pod/client -n gke-test --timeout=60s
 
 # Apply the namespace isolation policy
 kubectl apply -f gke-network-policy-test.yaml
 
 # Test intra-namespace connectivity (should work)
 SERVER_IP=$(kubectl get pod server -n gke-test -o jsonpath='{.status.podIP}')
-kubectl exec -n gke-test client -- wget -qO- --timeout=5 http://$SERVER_IP && echo "PASS"
+kubectl exec -n gke-test client -- wget -qO- -T 5 http://$SERVER_IP && echo "PASS"
 ```
 
 ## Step 4: Test Cross-Namespace Policy Enforcement
@@ -103,10 +107,11 @@ Verify that cross-namespace policies work correctly with Calico on GKE.
 # Create a second namespace and deploy a client there
 kubectl create namespace gke-test-external
 kubectl run external-client -n gke-test-external --image=busybox:1.28 --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/external-client -n gke-test-external --timeout=60s
 
-# Test cross-namespace access (should be blocked by the deny-all policy)
+# Test cross-namespace access (should be blocked by the namespace isolation policy)
 kubectl exec -n gke-test-external external-client -- \
-  wget -qO- --timeout=5 http://$SERVER_IP && echo "FAIL: should be blocked" || echo "PASS: blocked"
+  wget -qO- -T 5 http://$SERVER_IP && echo "FAIL: should be blocked" || echo "PASS: blocked"
 
 # Add a NetworkPolicy to allow from the external namespace
 kubectl apply -f - <<EOF
@@ -127,7 +132,7 @@ spec:
 EOF
 
 kubectl exec -n gke-test-external external-client -- \
-  wget -qO- --timeout=5 http://$SERVER_IP && echo "PASS: allowed"
+  wget -qO- -T 5 http://$SERVER_IP && echo "PASS: allowed"
 ```
 
 ## Step 5: Verify Calico Endpoint State on GKE
