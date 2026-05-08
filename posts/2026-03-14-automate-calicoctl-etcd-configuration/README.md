@@ -134,6 +134,14 @@ For teams managing multiple clusters, use Ansible to deploy consistent calicoctl
     owner: root
     group: root
 
+- name: Create etcd certificate directory
+  file:
+    path: /etc/calico/certs
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+
 - name: Copy etcd TLS certificates
   copy:
     src: "{{ item.src }}"
@@ -226,12 +234,10 @@ jobs:
 flowchart TD
     A[Git Push] --> B[CI Pipeline]
     B --> C[Extract etcd Certs from Secrets]
-    C --> D[Generate calicoctl Config]
-    D --> E[Validate Calico Manifests]
-    E --> F[Connect to etcd Cluster]
-    F --> G[Apply Calico Resources]
-    G --> H[Verify Applied Resources]
-    H --> I[Clean Up Certificates]
+    C --> D[Export calicoctl Environment]
+    D --> E[Connect to etcd Cluster]
+    E --> F[Apply Calico Resources]
+    F --> G[Clean Up Certificates]
 ```
 
 ## Verification
@@ -257,7 +263,7 @@ calicoctl get globalnetworkpolicies --config=/etc/calicoctl/calicoctl.cfg
 - **"context deadline exceeded"**: etcd endpoints are unreachable. Verify network connectivity and that the etcd cluster is healthy with `etcdctl endpoint health`.
 - **"certificate signed by unknown authority"**: The CA certificate does not match. Ensure `etcdCACertFile` points to the CA that signed the etcd server certificates.
 - **"permission denied" on cert files**: The user running calicoctl does not have read permissions on the certificate files. Check ownership and permissions with `ls -la /etc/calico/certs/`.
-- **"transport: authentication handshake failed"**: The client certificate is not authorized by etcd. Verify the certificate CN/SANs are in etcd's trusted client list.
+- **"transport: authentication handshake failed"**: The client certificate is not accepted by etcd. Verify that the certificate is signed by the CA configured in etcd's trusted CA file and includes the client authentication extended key usage.
 
 ## Conclusion
 
