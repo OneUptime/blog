@@ -30,7 +30,7 @@ kubectl get pods -n tigera-operator
 kubectl get tigerastatus
 ```
 
-All components should show `Available: True` in the TigeraStatus.
+For operator-managed installations, the TigeraStatus entries should show `Available: True`.
 
 ## Step 2: Confirm Pod IP Assignment
 
@@ -78,25 +78,25 @@ On a node, inspect the routing table to confirm pod routes are present.
 ```bash
 # SSH into a worker node
 
-ip route show | grep 192.168
+ip route show | grep '<pod-cidr-prefix>'
 ```
 
 If using BGP with no encapsulation, pod subnet routes should appear as BGP-learned routes.
 
 ```bash
-calicoctl node status
+sudo calicoctl node status
 ```
 
 ## Step 6: Test Egress (Pod to External)
 
 ```bash
-kubectl exec pod-a -- wget -qO- --timeout=5 http://example.com
+kubectl exec pod-a -- wget -q -O- -T 5 http://example.com
 ```
 
 If this fails, verify that `natOutgoing: true` is set in the IP pool and that MASQUERADE rules exist.
 
 ```bash
-iptables -t nat -L MASQUERADE -n -v
+sudo iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE
 ```
 
 ## Conclusion
