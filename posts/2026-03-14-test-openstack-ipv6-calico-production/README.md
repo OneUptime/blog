@@ -49,14 +49,16 @@ openstack subnet create --project ipv6-test \
   --ipv6-address-mode slaac \
   dual-stack-v6
 
-# Create security group allowing ICMPv6 (essential for IPv6)
+# Create security group allowing ICMPv6 echo and SSH
 openstack security group create --project ipv6-test ipv6-test-sg
 openstack security group rule create --project ipv6-test \
-  --protocol icmpv6 ipv6-test-sg
+  --ethertype IPv6 --protocol ipv6-icmp ipv6-test-sg
 openstack security group rule create --project ipv6-test \
-  --protocol icmp ipv6-test-sg
+  --ethertype IPv4 --protocol icmp ipv6-test-sg
 openstack security group rule create --project ipv6-test \
-  --protocol tcp --dst-port 22 ipv6-test-sg
+  --ethertype IPv4 --protocol tcp --dst-port 22 ipv6-test-sg
+openstack security group rule create --project ipv6-test \
+  --ethertype IPv6 --protocol tcp --dst-port 22 ipv6-test-sg
 ```
 
 Deploy test VMs:
@@ -120,7 +122,7 @@ test_it "VM2 -> VM1 ICMPv6" \
 
 echo ""
 echo "=== IPv6 DNS Resolution ==="
-test_it "IPv6 DNS from VM1" \
+test_it "AAAA DNS lookup from VM1" \
   "ssh ubuntu@${VM1_V4} 'host -t AAAA google.com'"
 
 echo ""
@@ -219,9 +221,9 @@ done
 ## Troubleshooting
 
 - **VMs do not get IPv6 addresses**: Verify the IPv6 subnet uses SLAAC or DHCPv6. Check that router advertisements are being sent on the network.
-- **ICMPv6 ping fails**: ICMPv6 must be explicitly allowed in security groups. Without it, NDP fails and no IPv6 connectivity works.
+- **ICMPv6 ping fails**: ICMPv6 echo traffic must be explicitly allowed in security groups for ping tests. Neutron security groups add basic NDP and MLD sanity rules automatically, but blocking required ICMPv6 types elsewhere in the path can still break neighbor discovery or path MTU discovery.
 - **IPv6 works within a node but not across nodes**: Check that BGP is advertising IPv6 routes. Verify with `ip -6 route show proto bird` on compute nodes.
-- **IPv6 performance significantly worse than IPv4**: Check MTU settings. IPv6 has a larger header (40 bytes vs 20 bytes), and if MTU is already at limit, fragmentation may occur.
+- **IPv6 performance significantly worse than IPv4**: Check MTU settings and ICMPv6 Packet Too Big handling. IPv6 has a larger base header (40 bytes vs 20 bytes), and routers do not fragment IPv6 packets; the source host must adjust to the path MTU or use source fragmentation.
 
 ## Conclusion
 
