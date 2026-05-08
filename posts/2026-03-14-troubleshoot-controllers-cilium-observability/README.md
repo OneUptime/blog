@@ -33,15 +33,15 @@ Start by getting a clear picture of which controllers are in a failure state:
 
 for pod in $(kubectl get pods -n kube-system -l k8s-app=cilium -o name); do
   node=$(kubectl -n kube-system get $pod -o jsonpath='{.spec.nodeName}')
-  count=$(kubectl -n kube-system exec $pod -- cilium status controllers -o json 2>/dev/null | \
-    python3 -c "import json,sys; print(len([c for c in json.load(sys.stdin) if c.get('status',{}).get('consecutive-failure-count',0)>0]))" 2>/dev/null)
+  count=$(kubectl -n kube-system exec $pod -- cilium-dbg status --all-controllers -o json 2>/dev/null | \
+    python3 -c "import json,sys; data=json.load(sys.stdin); print(len([c for c in data.get('controllers', []) if c.get('status',{}).get('consecutive-failure-count',0)>0]))" 2>/dev/null)
   echo "Node: $node - Failing controllers: $count"
 done
 
 # Detailed view of failing controllers on a specific node
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
+data = json.load(sys.stdin).get('controllers', [])
 for c in sorted(data, key=lambda x: x.get('status',{}).get('consecutive-failure-count',0), reverse=True):
     fails = c.get('status',{}).get('consecutive-failure-count',0)
     if fails > 0:
@@ -74,10 +74,10 @@ Each controller failure includes an error message. Here are the most common patt
 ```bash
 # Error: "connection refused" or "i/o timeout"
 # Check API server health
-kubectl get componentstatuses 2>/dev/null || kubectl get --raw /healthz
+kubectl get --raw='/readyz?verbose'
 
 # Check Cilium's API server connectivity
-kubectl -n kube-system exec ds/cilium -- cilium status | grep "KubeProxyReplacement\|KVStore\|Kubernetes"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep "KubeProxyReplacement\|KVStore\|Kubernetes"
 
 # Look for API server errors in logs
 kubectl -n kube-system logs ds/cilium --tail=100 | grep -i "apiserver\|connection refused\|timeout"
@@ -91,11 +91,11 @@ Resource Exhaustion
 kubectl -n kube-system top pod -l k8s-app=cilium
 
 # Check BPF map sizes
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l
-kubectl -n kube-system exec ds/cilium -- cilium bpf nat list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf nat list | wc -l
 
 # Check endpoint count (each endpoint uses controller resources)
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 eps = json.load(sys.stdin)
 print(f'Total endpoints: {len(eps)}')
@@ -114,8 +114,8 @@ for state, count in sorted(states.items()):
 # Error: "not found" for CRDs
 kubectl get crd | grep cilium
 
-# Reinstall CRDs if missing
-helm template cilium cilium/cilium -n kube-system | kubectl apply -f - --dry-run=server 2>&1 | grep crd
+# Validate the CRDs rendered by the installed chart before reinstalling with Helm
+helm template cilium cilium/cilium -n kube-system | kubectl apply -f - --dry-run=server 2>&1 | grep -i customresourcedefinition
 
 # Error: "forbidden" or "permission denied"
 kubectl get clusterrolebinding | grep cilium
@@ -138,13 +138,12 @@ kubectl -n kube-system delete pod $FAILING_POD
 kubectl -n kube-system rollout restart daemonset/cilium
 kubectl -n kube-system rollout status daemonset/cilium --timeout=300s
 
-# Option 3: For endpoint-specific controller failures, regenerate the endpoint
-# First, find the failing endpoint
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep -i "not-ready\|error"
+# Option 3: For endpoint-specific controller failures, recreate the endpoint
+# First, find the failing endpoint and its pod
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -i "not-ready\|error"
 
-# Trigger a regeneration
-ENDPOINT_ID=12345  # Replace with actual endpoint ID
-kubectl -n kube-system exec ds/cilium -- cilium endpoint regenerate $ENDPOINT_ID
+# Trigger a new endpoint by recreating the affected workload pod
+kubectl -n <app-namespace> delete pod <pod-name>
 ```
 
 ## Monitoring Controller Recovery
@@ -153,16 +152,16 @@ After applying a fix, track the recovery:
 
 ```bash
 # Watch the failing controller count decrease
-watch -n 5 'kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json 2>/dev/null | python3 -c "
+watch -n 5 'kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json 2>/dev/null | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
+data = json.load(sys.stdin).get(\"controllers\", [])
 failing = len([c for c in data if c.get(\"status\",{}).get(\"consecutive-failure-count\",0) > 0])
 total = len(data)
 print(f\"Controllers: {total} total, {failing} failing\")
 "'
 
 # Check that the specific controller has recovered
-kubectl -n kube-system exec ds/cilium -- cilium status controllers | grep -A2 "controller-name"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers | grep -A2 "controller-name"
 ```
 
 ## Verification
@@ -171,9 +170,9 @@ Confirm that all controllers are healthy after remediation:
 
 ```bash
 # 1. No controllers should be in consecutive failure state
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
+data = json.load(sys.stdin).get('controllers', [])
 failing = [c['name'] for c in data if c.get('status',{}).get('consecutive-failure-count',0) > 0]
 if failing:
     print(f'Still failing: {failing}')
@@ -182,13 +181,13 @@ else:
 "
 
 # 2. Cilium overall status should be OK
-cilium status --brief
+cilium status
 
 # 3. Prometheus metric should show zero failing
 curl -s 'http://localhost:9090/api/v1/query?query=cilium_controllers_failing' | python3 -m json.tool
 
 # 4. All endpoints should be in ready state
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 eps = json.load(sys.stdin)
 not_ready = [e['id'] for e in eps if e.get('status',{}).get('state') != 'ready']
