@@ -22,7 +22,7 @@ This guide covers the essential operational processes for managing Calico with a
 - Private container registry with admin access
 - CI/CD platform for automation
 - Object storage for registry backups
-- kubectl and crane CLI tools
+- kubectl, calicoctl, helm, and crane CLI tools
 
 ## Automated Image Synchronization Pipeline
 
@@ -59,12 +59,14 @@ jobs:
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
           else
-            VERSION=$(crane ls docker.io/calico/node | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+            VERSION=$(crane ls quay.io/calico/node | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # Check if already mirrored
-          if crane manifest "${{ secrets.REGISTRY }}/calico/node:${VERSION}" > /dev/null 2>&1; then
+          REGISTRY="${{ secrets.REGISTRY }}"
+          REGISTRY="${REGISTRY%/}"
+          if crane manifest "${REGISTRY}/calico/node:${VERSION}" > /dev/null 2>&1; then
             echo "needs_sync=false" >> "$GITHUB_OUTPUT"
           else
             echo "needs_sync=true" >> "$GITHUB_OUTPUT"
@@ -83,16 +85,26 @@ jobs:
           sudo mv crane /usr/local/bin/
 
       - name: Login to private registry
-        run: crane auth login ${{ secrets.REGISTRY }} -u ${{ secrets.REGISTRY_USER }} -p ${{ secrets.REGISTRY_PASS }}
+        run: |
+          REGISTRY="${{ secrets.REGISTRY }}"
+          REGISTRY="${REGISTRY%/}"
+          crane auth login "${REGISTRY}" -u "${{ secrets.REGISTRY_USER }}" -p "${{ secrets.REGISTRY_PASS }}"
 
       - name: Mirror images
         env:
           VERSION: ${{ needs.detect-new-version.outputs.version }}
+          REGISTRY: ${{ secrets.REGISTRY }}
         run: |
-          IMAGES=("node" "cni" "kube-controllers" "typha" "pod2daemon-flexvol" "csi" "node-driver-registrar")
+          REGISTRY="${REGISTRY%/}"
+          IMAGES=(
+            "apiserver" "cni" "key-cert-provisioner" "kube-controllers" "node" "typha"
+            "pod2daemon-flexvol" "csi" "node-driver-registrar" "goldmane"
+            "whisker" "whisker-backend" "envoy-gateway" "envoy-proxy"
+            "envoy-ratelimit" "guardian" "webhooks"
+          )
           for img in "${IMAGES[@]}"; do
             echo "Mirroring calico/${img}:${VERSION}"
-            crane copy "docker.io/calico/${img}:${VERSION}" "${{ secrets.REGISTRY }}/calico/${img}:${VERSION}"
+            crane cp "quay.io/calico/${img}:${VERSION}" "${REGISTRY}/calico/${img}:${VERSION}"
           done
 
       - name: Notify team
@@ -113,12 +125,19 @@ set -euo pipefail
 
 NEW_VERSION="${1:?Usage: $0 <version>}"
 REGISTRY="${REGISTRY:-registry.example.com}"
+REGISTRY="${REGISTRY%/}"
+INSTALLATION_REGISTRY="${REGISTRY}/"
 
 echo "=== Calico Upgrade to ${NEW_VERSION} ==="
 
 # Step 1: Verify images are available
 echo "Step 1: Verifying images in registry..."
-IMAGES=("node" "cni" "kube-controllers" "typha")
+IMAGES=(
+  "apiserver" "cni" "key-cert-provisioner" "kube-controllers" "node" "typha"
+  "pod2daemon-flexvol" "csi" "node-driver-registrar" "goldmane"
+  "whisker" "whisker-backend" "envoy-gateway" "envoy-proxy"
+  "envoy-ratelimit" "guardian" "webhooks"
+)
 for img in "${IMAGES[@]}"; do
   if crane manifest "${REGISTRY}/calico/${img}:${NEW_VERSION}" > /dev/null 2>&1; then
     echo "  OK: ${img}:${NEW_VERSION}"
@@ -135,10 +154,13 @@ mkdir -p "$BACKUP_DIR"
 kubectl get installation default -o yaml > "${BACKUP_DIR}/installation.yaml"
 calicoctl get globalnetworkpolicies -o yaml > "${BACKUP_DIR}/policies.yaml" 2>/dev/null || true
 
-# Step 3: Update the operator
-echo "Step 3: Upgrading Tigera operator..."
+# Step 3: Apply the release CRDs and update the operator-managed installation
+echo "Step 3: Applying Calico CRDs and upgrading Tigera operator..."
+kubectl apply --server-side --force-conflicts \
+  -f "https://raw.githubusercontent.com/projectcalico/calico/${NEW_VERSION}/manifests/v1_crd_projectcalico_org.yaml"
+
 helm upgrade calico projectcalico/tigera-operator \
-  --set installation.registry="${REGISTRY}" \
+  --set installation.registry="${INSTALLATION_REGISTRY}" \
   --set installation.imagePath=calico \
   --version "${NEW_VERSION}" \
   --namespace tigera-operator \
@@ -163,6 +185,7 @@ Prepare for registry failures with fallback procedures:
 set -euo pipefail
 
 BACKUP_REGISTRY="${BACKUP_REGISTRY:-backup-registry.example.com}"
+BACKUP_REGISTRY="${BACKUP_REGISTRY%/}/"
 
 echo "Switching Calico to backup registry: ${BACKUP_REGISTRY}"
 
@@ -213,7 +236,13 @@ Maintain an inventory of mirrored images:
 set -euo pipefail
 
 REGISTRY="${REGISTRY:-registry.example.com}"
-IMAGES=("node" "cni" "kube-controllers" "typha" "csi" "pod2daemon-flexvol" "node-driver-registrar")
+REGISTRY="${REGISTRY%/}"
+IMAGES=(
+  "apiserver" "cni" "key-cert-provisioner" "kube-controllers" "node" "typha"
+  "pod2daemon-flexvol" "csi" "node-driver-registrar" "goldmane"
+  "whisker" "whisker-backend" "envoy-gateway" "envoy-proxy"
+  "envoy-ratelimit" "guardian" "webhooks"
+)
 
 echo "=== Calico Image Inventory - $(date) ==="
 echo "Registry: ${REGISTRY}"
