@@ -47,7 +47,7 @@ kind: ClusterRole
 metadata:
   name: cilium-controller-viewer
 rules:
-  # Allow exec only for read-only cilium commands
+  # Allow exec for controller inspection workflows
   - apiGroups: [""]
     resources: ["pods/exec"]
     verbs: ["create"]
@@ -109,10 +109,10 @@ graph TD
     D --> D1["networkpolicies: get, list, watch"]
 ```
 
-If you are running Cilium without certain features, you can create a custom ClusterRole:
+If you are running Cilium without certain features, start from the Helm-generated ClusterRole for your Cilium version and remove only the rules for features you have disabled. Do not use a generic minimal role as a full replacement without testing it in your environment:
 
 ```yaml
-# cilium-minimal-role.yaml
+# cilium-minimal-role.yaml (partial example only)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -138,25 +138,22 @@ rules:
 
 ## Securing the Metrics Endpoint
 
-Controller metrics exposed on port 9962 can reveal sensitive operational data. Protect this endpoint:
+Cilium agent metrics exposed on port 9962 can reveal sensitive operational data, including controller metrics when controller group metrics are enabled. Because the Cilium agent runs in the host network namespace, protect this endpoint with Cilium host policies or equivalent node-level firewall controls. The example below is a fragment to merge into an audited host policy that also allows the other traffic your nodes require:
 
 ```yaml
-# Network policy to restrict who can access Cilium metrics
+# Host policy fragment to restrict who can access Cilium agent and Hubble metrics
 apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: restrict-cilium-metrics-access
-  namespace: kube-system
 spec:
-  endpointSelector:
-    matchLabels:
-      k8s-app: cilium
+  nodeSelector: {}
   ingress:
     # Only allow Prometheus to scrape metrics
     - fromEndpoints:
         - matchLabels:
-            app.kubernetes.io/name: prometheus
-            io.kubernetes.pod.namespace: monitoring
+            k8s:app.kubernetes.io/name: prometheus
+            k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - port: "9962"
@@ -173,19 +170,27 @@ spec:
 ```
 
 ```bash
+# Merge this fragment into your complete host policy, then apply it after testing in audit mode.
 kubectl apply -f restrict-cilium-metrics-access.yaml
 ```
 
-Additionally, configure Helm to bind metrics only to the pod IP rather than all interfaces:
+Host policies require the Cilium host firewall to be enabled. Configure Cilium metrics and ServiceMonitor discovery through Helm instead of exposing the metrics port with a NodePort or LoadBalancer service:
 
 ```yaml
-# cilium-values.yaml - secure metrics binding
+# cilium-values.yaml - metrics and ServiceMonitor discovery
+hostFirewall:
+  enabled: true
 prometheus:
   enabled: true
-  # Metrics are served on the agent's pod IP by default
-  # Ensure they are not exposed via NodePort or LoadBalancer
+  # Cilium agent metrics default to port 9962.
+  # Do not expose this endpoint through a NodePort or LoadBalancer.
   serviceMonitor:
     enabled: true
+hubble:
+  metrics:
+    # Hubble metrics default to port 9965 when enabled.
+    serviceMonitor:
+      enabled: true
 ```
 
 ## Enabling Audit Logging for Controller Operations
@@ -238,29 +243,31 @@ kubectl auth can-i create pods/exec -n kube-system \
 
 # 2. Verify metrics endpoint is restricted
 # From a non-Prometheus pod, this should fail
+CILIUM_NODE_IP=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].status.hostIP}')
 kubectl run test-access --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s --connect-timeout 5 http://cilium-agent.kube-system:9962/metrics
+  curl -s --connect-timeout 5 http://$CILIUM_NODE_IP:9962/metrics
 # Should timeout or be refused
 
 # 3. Verify Prometheus can still scrape
 kubectl exec -n monitoring $(kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus -o name | head -1) \
-  -c prometheus -- wget -qO- --timeout=5 http://cilium-agent.kube-system:9962/metrics 2>&1 | head -3
+  -c prometheus -- wget -qO- --timeout=5 http://$CILIUM_NODE_IP:9962/metrics 2>&1 | head -3
 
 # 4. Check audit logs for recent Cilium-related events
+# This example applies to kubeadm-style clusters where kube-apiserver runs as a pod.
 kubectl logs -n kube-system $(kubectl get pods -n kube-system -l component=kube-apiserver -o name | head -1) \
   --tail=50 | grep -i "cilium\|exec"
 ```
 
 ## Troubleshooting
 
-- **Prometheus cannot scrape after applying network policy**: Verify the label selectors in the CiliumNetworkPolicy match the actual labels on the Prometheus pods. Use `kubectl get pods -n monitoring --show-labels`.
+- **Prometheus cannot scrape after applying host policy**: Verify the label selectors in the host policy match the actual labels on the Prometheus pods. Use `kubectl get pods -n monitoring --show-labels`.
 
 - **RBAC too restrictive and Cilium is failing**: Check Cilium agent logs for authorization errors. If you tightened the ClusterRole too much, the operator or agent may not be able to reconcile resources.
 
 - **Audit logs are too verbose**: Narrow the audit policy rules to specific resources and verbs rather than capturing all operations.
 
-- **Cannot apply CiliumNetworkPolicy to protect Cilium itself**: Cilium agents are running as a DaemonSet in kube-system. Ensure the policy targets the correct labels and that it does not block Cilium-to-Cilium communication needed for clustering.
+- **Cannot apply endpoint policy to protect Cilium itself**: Cilium agents run in the host network namespace. Use Cilium host policies or equivalent node-level firewall controls, and ensure the policy does not block Cilium-to-Cilium communication needed for clustering.
 
 ## Conclusion
 
-Securing Cilium controllers is about applying defense in depth: RBAC to control who can access controller data, network policies to restrict metrics endpoint access, and audit logging to track operations. These measures protect the integrity of your networking layer without interfering with Cilium's ability to reconcile state. Review these security controls regularly as part of your cluster security posture assessments.
+Securing Cilium controllers is about applying defense in depth: RBAC to control who can access controller data, host or network policies to restrict metrics endpoint access, and audit logging to track operations. These measures protect the integrity of your networking layer without interfering with Cilium's ability to reconcile state. Review these security controls regularly as part of your cluster security posture assessments.
