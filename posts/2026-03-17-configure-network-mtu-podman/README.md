@@ -48,6 +48,9 @@ podman network create --opt mtu=1400 vpn-net
 
 # Run a container on this network
 podman run -d --name vpn-app --network vpn-net docker.io/library/nginx:alpine
+
+# Install diagnostic tools used in the verification steps
+podman exec vpn-app apk add --no-cache iproute2 iputils
 ```
 
 ## Verifying the Container MTU
@@ -66,7 +69,8 @@ podman exec vpn-app ip link show eth0
 ```bash
 # Send a packet at the MTU size to test for fragmentation
 # The -M do flag sets the don't-fragment bit
-podman exec vpn-app ping -c 3 -s 1372 -M do 10.89.0.1
+GATEWAY=$(podman network inspect vpn-net --format "{{range .Subnets}}{{.Gateway}}{{end}}")
+podman exec vpn-app ping -c 3 -s 1372 -M do "$GATEWAY"
 
 # If the MTU is correct, all packets arrive
 # If MTU is too large, you will see "message too long" errors
