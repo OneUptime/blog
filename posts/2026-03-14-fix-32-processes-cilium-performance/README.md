@@ -46,8 +46,8 @@ ethtool -K eth0 gro on
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=1048576 \
-  --set bpf.ctGlobalAnyMax=524288 \
+  --set bpf.ctTcpMax=1048576 \
+  --set bpf.ctAnyMax=524288 \
   --set bpf.natMax=1048576 \
   --set bpf.policyMapMax=65536 \
   --set bpf.mapDynamicSizeRatio=0.0025
@@ -56,11 +56,11 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 ## NUMA Optimization
 
 ```bash
-# Pin Cilium agent to the same NUMA node as the NIC
+# Identify the NUMA node and CPU list local to the NIC
 NIC_NUMA=$(cat /sys/class/net/eth0/device/numa_node)
 NUMA_CPUS=$(cat /sys/devices/system/node/node${NIC_NUMA}/cpulist)
 
-# Update Cilium DaemonSet with NUMA affinity
+# Limit Cilium agent parallelism to the local CPU budget you choose
 kubectl -n kube-system patch ds cilium --type=json -p='[
   {"op": "add", "path": "/spec/template/spec/containers/0/env/-",
    "value": {"name": "GOMAXPROCS", "value": "8"}}
@@ -106,14 +106,14 @@ ethtool -l eth0
 cilium config view | grep bpf-ct
 
 # Check NUMA alignment
-numastat -p $(pgrep cilium-agent)
+numastat -p "$(pgrep -f cilium-agent | head -1)"
 ```
 
 ## Troubleshooting
 
 - **NIC does not support 32 queues**: Use the maximum available and enable RPS for additional distribution.
 - **BPF map resize causes agent restart**: Expect one restart. Monitor with `kubectl get pods -n kube-system -w`.
-- **XDP not supported on NIC driver**: Fall back to `loadBalancer.acceleration=generic`.
+- **XDP not supported on NIC driver**: Fall back to `loadBalancer.acceleration=best-effort` on newer Cilium versions, or `loadBalancer.acceleration=disabled`.
 - **Kernel tuning reverts on reboot**: Deploy via DaemonSet for persistence.
 
 ## Implementing Changes Safely
@@ -180,6 +180,8 @@ After applying any fix, run through this validation checklist to ensure the fix 
 
 echo "=== Post-Fix Validation Checklist ==="
 
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
 # 1. Cilium agent health
 echo "1. Cilium agent health:"
 cilium status | grep -E "OK|error|degraded"
@@ -191,12 +193,15 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg monitor --type drop | head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
