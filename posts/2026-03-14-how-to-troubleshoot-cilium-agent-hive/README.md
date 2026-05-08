@@ -44,7 +44,7 @@ Common error patterns include:
 # "missing dependencies for function X: Y is not provided"
 
 # Failed start: a component's Start hook returned an error
-# "start hook failed for cell X: <error details>"
+# "Start hook failed" function="X" error="<error details>"
 
 # Circular dependency: two components depend on each other
 # "cycle detected in dependency graph involving X and Y"
@@ -63,10 +63,10 @@ flowchart TD
 
 ## Diagnosing Missing Dependencies
 
-Missing dependencies usually mean a feature is enabled that requires a component which is not configured:
+Missing dependencies can mean a feature is enabled that requires a component which is not configured, or that a Cilium version/build combination registered an invoke without its provider:
 
 ```bash
-# Get the full agent configuration
+# Generate the dependency graph in Graphviz DOT format
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-agent hive dot-graph 2>&1 | head -50
 
@@ -82,15 +82,14 @@ kubectl -n kube-system logs "$CILIUM_POD" -c cilium-agent --previous 2>/dev/null
 Common causes and fixes:
 
 ```bash
-# If BGP component fails because KVStore is not configured
-# Fix: Enable kvstore in cilium-config
+# If kvstore-backed functionality fails because etcd configuration is missing
+# Fix: configure the kvstore type and point kvstore-opt at an existing etcd config file
 kubectl -n kube-system patch configmap cilium-config --type merge \
-  -p '{"data":{"kvstore":"etcd","kvstore-opt":"{\"etcd.config\":\"/var/lib/etcd-config/etcd.yaml\"}"}}'
+  -p '{"data":{"kvstore":"etcd","kvstore-opt":"{\"etcd.config\":\"/var/lib/etcd-config/etcd.config\"}"}}'
 
-# If Hubble relay component fails without Hubble enabled
-# Fix: Enable Hubble
-kubectl -n kube-system patch configmap cilium-config --type merge \
-  -p '{"data":{"enable-hubble":"true"}}'
+# If Hubble Relay is installed but Hubble is not enabled
+# Fix: enable Hubble and deploy Relay with the Cilium CLI
+cilium hubble enable
 ```
 
 ## Debugging Start Hook Failures
@@ -100,11 +99,11 @@ When a component is registered but its Start hook fails:
 ```bash
 # Get detailed logs around the startup sequence
 kubectl -n kube-system logs "$CILIUM_POD" -c cilium-agent | \
-  grep -B5 -A10 "start hook failed"
+  grep -i -B5 -A10 "start hook failed"
 
 # Check if the issue is transient (resources not ready yet)
 kubectl -n kube-system logs "$CILIUM_POD" -c cilium-agent | \
-  grep -c "start hook failed"
+  grep -ic "start hook failed"
 # If count is low and pod eventually starts, it may be a timing issue
 
 # Check events for related issues
@@ -120,7 +119,7 @@ kubectl -n kube-system get configmap cilium-config -o yaml | grep ipam
 
 # KVStore component fails: check etcd connectivity
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg kvstore get --recursive / 2>&1 | head -5
+  cilium-dbg troubleshoot kvstore
 
 # Datapath fails: check eBPF filesystem mount
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -182,7 +181,7 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 # Confirm no hive errors in recent logs
 kubectl -n kube-system logs "$CILIUM_POD" -c cilium-agent --since=5m | \
-  grep -iE "hive|cell" | grep -i "error\|fail" || echo "No hive errors found"
+  grep -iE "hive|cell" | grep -iE "error|fail" || echo "No hive errors found"
 ```
 
 ## Troubleshooting
