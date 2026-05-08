@@ -108,7 +108,7 @@ kubectl run pod-a --image=busybox:1.28 \
 
 kubectl run pod-b --image=busybox:1.28 \
   --overrides='{"spec":{"nodeName":"<node-2>"}}' \
-  --restart=Never -- sleep 3600
+  --restart=Never -- sh -c "echo ok > /tmp/index.html && httpd -f -p 80 -h /tmp"
 
 # Get Pod B's IP
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
@@ -131,10 +131,22 @@ SUBNET_ID=$(aws ec2 describe-instances \
   --query 'Reservations[0].Instances[0].SubnetId' \
   --output text)
 
+VPC_ID=$(aws ec2 describe-instances \
+  --instance-ids <node-instance-id> \
+  --query 'Reservations[0].Instances[0].VpcId' \
+  --output text)
+
 ROUTE_TABLE_ID=$(aws ec2 describe-route-tables \
   --filters "Name=association.subnet-id,Values=$SUBNET_ID" \
   --query 'RouteTables[0].RouteTableId' \
   --output text)
+
+if [ "$ROUTE_TABLE_ID" = "None" ]; then
+  ROUTE_TABLE_ID=$(aws ec2 describe-route-tables \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=association.main,Values=true" \
+    --query 'RouteTables[0].RouteTableId' \
+    --output text)
+fi
 
 # View routes in the table - pod CIDRs should be present with node as next hop
 aws ec2 describe-route-tables \
@@ -147,7 +159,7 @@ aws ec2 describe-route-tables \
 - Always disable source/destination check on all Kubernetes nodes in AWS
 - Use VXLAN mode for simplicity in AWS, as IPIP may be blocked by some VPC configurations
 - Create dedicated security groups for Kubernetes nodes with appropriate CNI protocol rules
-- Use VPC CNI in overlay mode to avoid the need to manage VPC route table entries
+- Use Calico overlay mode to avoid the need to manage VPC route table entries
 - Test pod-to-pod connectivity across availability zones, not just within a single AZ
 
 ## Conclusion
