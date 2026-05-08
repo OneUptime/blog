@@ -32,6 +32,7 @@ WantedBy=default.target
 
 ```bash
 # Default name is derived from the file name
+systemctl --user daemon-reload
 systemctl --user start webapp
 podman ps --format "{{.Names}}"
 # Output: systemd-webapp
@@ -63,7 +64,7 @@ podman ps --format "{{.Names}}"
 
 ## Naming for DNS Resolution
 
-When containers are on the same network, they can reach each other by container name.
+When containers are on the same DNS-enabled network, they can reach each other by container name.
 
 ```ini
 # ~/.config/containers/systemd/app-net.network
@@ -72,10 +73,11 @@ Subnet=10.90.0.0/24
 
 # ~/.config/containers/systemd/frontend.container
 [Container]
-Image=docker.io/library/nginx:alpine
+Image=docker.io/library/python:3.12-slim
 ContainerName=frontend
 Network=app-net.network
-PublishPort=8080:80
+PublishPort=8080:8080
+Exec=python -m http.server 8080
 
 [Service]
 Restart=always
@@ -103,7 +105,8 @@ systemctl --user daemon-reload
 systemctl --user start frontend backend
 
 # Frontend can reach backend by name
-podman exec frontend curl http://backend:5000
+podman exec frontend python -c 'import urllib.request; print(urllib.request.urlopen("http://backend:5000").status)'
+# Output: 200
 ```
 
 ## Naming Conventions
