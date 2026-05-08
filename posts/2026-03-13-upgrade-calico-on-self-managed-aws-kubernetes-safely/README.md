@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Upgrade, AWS, Self-Managed
 
-Description: Learn how to safely upgrade Calico on self-managed Kubernetes clusters running on AWS EC2, with AWS-specific validation steps and procedures for a zero-disruption rolling upgrade.
+Description: Learn how to safely upgrade Calico on self-managed Kubernetes clusters running on AWS EC2, with AWS-specific validation steps and procedures for a low-disruption rolling upgrade.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to safely upgrade Calico on self-managed Kubernetes clust
 
 Self-managed Kubernetes clusters on AWS EC2 give you full control over the Calico upgrade process, without the constraints of a managed service. This flexibility comes with the responsibility to manage all aspects of the upgrade, including AWS-specific concerns like VPC routing table consistency, security group configurations, and EC2 instance type compatibility.
 
-Calico on self-managed AWS clusters often uses BGP peering with AWS VPC route tables or VXLAN encapsulation. Both modes have specific upgrade considerations: BGP mode requires that route table entries remain consistent during the upgrade, while VXLAN mode requires that VXLAN tunnel configurations are preserved.
+Calico on self-managed AWS clusters often uses BGP between Calico nodes, route reflectors, or external routers, or it uses overlay encapsulation such as IP-in-IP or VXLAN. These modes have specific upgrade considerations: non-overlay BGP designs can require AWS VPC route table entries to remain consistent during the upgrade, while overlay modes require that encapsulation settings are preserved.
 
 This guide covers safe Calico upgrade procedures for self-managed AWS Kubernetes clusters, including AWS-specific pre-upgrade checks and validation.
 
@@ -21,7 +21,7 @@ This guide covers safe Calico upgrade procedures for self-managed AWS Kubernetes
 - Self-managed Kubernetes cluster on EC2 (kubeadm, kops, or similar)
 - `aws` CLI with EC2 and VPC permissions
 - `kubectl` with cluster-admin access
-- `calicoctl` matching the current Calico version
+- `calicoctl` matching the current Calico version before the upgrade, and the target Calico version after the upgrade
 - SSH access to worker nodes
 
 ## Step 1: Pre-Upgrade Health Checks
@@ -37,8 +37,13 @@ kubectl get nodes -o wide
 kubectl get pods -n calico-system
 kubectl get pods -n tigera-operator
 
-# Check BGP peer status if using BGP mode
-calicoctl node status
+# Check BGP peer status if using BGP mode.
+# This must be run on the node whose BGP status you want to inspect.
+ssh <node-name-or-ip> sudo calicoctl node status
+
+# If upgrading to Calico v3.28.0 from an earlier version, check for
+# OwnerReferences that point to projectcalico.org/v3 resources and update them
+# as described in the Calico upgrade documentation.
 
 # Check VPC route tables for pod CIDR entries
 aws ec2 describe-route-tables \
@@ -74,8 +79,8 @@ echo "Backup complete: $BACKUP_DATE"
 Begin the rolling upgrade by updating the Tigera Operator.
 
 ```bash
-# Apply the new Tigera Operator
-kubectl apply --server-side \
+# Apply the new Tigera Operator and bundled CRDs
+kubectl apply --server-side --force-conflicts \
   -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
 
 # Wait for the operator to be running with the new version
@@ -91,9 +96,9 @@ kubectl get deployment tigera-operator -n tigera-operator \
 The Tigera Operator handles the rolling upgrade of calico-node and other components.
 
 ```bash
-# Apply the new custom resources to trigger the upgrade
-kubectl apply \
-  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+# Do not reapply the default custom-resources.yaml to an existing cluster.
+# The operator reconciles the existing Installation resource after the operator upgrade.
+kubectl get installation default -o yaml
 
 # Monitor the calico-node DaemonSet rolling update
 kubectl rollout status daemonset/calico-node -n calico-system --timeout=10m
@@ -117,7 +122,7 @@ Verify all AWS networking integrations are intact after the upgrade.
 kubectl get clusterinformation default -o yaml | grep calicoVersion
 
 # Check BGP peers are re-established (if using BGP)
-calicoctl node status
+ssh <node-name-or-ip> sudo calicoctl node status
 
 # Verify VPC route table entries are present for all nodes
 aws ec2 describe-route-tables \
@@ -145,4 +150,4 @@ aws ec2 describe-security-groups \
 
 ## Conclusion
 
-Upgrading Calico on self-managed AWS Kubernetes clusters provides full control but requires attention to AWS-specific concerns like VPC route table consistency and BGP peer recovery. By backing up both Calico configuration and AWS route table state, using the Tigera Operator's rolling upgrade, and validating AWS networking integrations post-upgrade, you ensure a safe upgrade with no disruption to production workloads running on EC2.
+Upgrading Calico on self-managed AWS Kubernetes clusters provides full control but requires attention to AWS-specific concerns like VPC route table consistency and BGP peer recovery. By backing up both Calico configuration and AWS route table state, using the Tigera Operator's rolling upgrade, and validating AWS networking integrations post-upgrade, you reduce the risk of disruption to production workloads running on EC2.
