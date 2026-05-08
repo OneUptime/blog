@@ -42,7 +42,7 @@ done
 
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  MASQ=$(ssh $NODE "sudo iptables -t nat -L POSTROUTING -n 2>/dev/null | grep -c MASQUERADE" 2>/dev/null || echo "0")
+  MASQ=$(ssh $NODE "sudo iptables-save -t nat 2>/dev/null | awk '/cali-nat-outgoing/ && /MASQUERADE/ {count++} END {print count+0}'" 2>/dev/null || echo "0")
   [ "$MASQ" -gt "0" ] && echo "PASS: $NODE has $MASQ MASQUERADE rule(s)" || echo "FAIL: $NODE missing MASQUERADE"
 done
 ```
@@ -56,15 +56,18 @@ NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
 
 kubectl exec $NODE_POD -n kube-system -- \
   wget -qO- http://localhost:9091/metrics 2>/dev/null | grep -E "felix_iptables|felix_int_dataplane_failures"
-# Expected: felix_int_dataplane_failures_total = 0 or stable (not increasing)
+# Expected: felix_int_dataplane_failures = 0 or stable (not increasing)
 ```
 
 **Validation Step 4: Test network policy enforcement**
 
 ```bash
-# Create two pods and verify policy is enforced
-kubectl run policy-test-client --image=busybox --restart=Never -- sleep 120
-kubectl run policy-test-server --image=nginx --restart=Never --port=80
+# Create two pods in a clean namespace and verify policy is enforced
+kubectl create namespace calico-policy-test
+kubectl run policy-test-client -n calico-policy-test --image=busybox --restart=Never -- sleep 120
+kubectl run policy-test-server -n calico-policy-test --image=nginx --restart=Never --port=80
+kubectl wait -n calico-policy-test --for=condition=Ready pod/policy-test-client --timeout=60s
+kubectl wait -n calico-policy-test --for=condition=Ready pod/policy-test-server --timeout=60s
 
 # Apply a deny policy and verify it blocks traffic
 cat <<EOF | kubectl apply -f -
@@ -72,6 +75,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: deny-test
+  namespace: calico-policy-test
 spec:
   podSelector:
     matchLabels:
@@ -80,13 +84,12 @@ spec:
   - Ingress
 EOF
 
-SERVER_IP=$(kubectl get pod policy-test-server -o jsonpath='{.status.podIP}')
-kubectl exec policy-test-client -- wget -qO- --timeout=5 http://$SERVER_IP && \
+SERVER_IP=$(kubectl get pod policy-test-server -n calico-policy-test -o jsonpath='{.status.podIP}')
+kubectl exec -n calico-policy-test policy-test-client -- wget -qO- -T 5 http://$SERVER_IP && \
   echo "FAIL: Policy not enforced" || echo "PASS: Policy enforced (connection blocked)"
 
 # Cleanup
-kubectl delete pod policy-test-client policy-test-server
-kubectl delete networkpolicy deny-test
+kubectl delete namespace calico-policy-test
 ```
 
 **Validation Step 5: Verify Felix health endpoint**
@@ -95,7 +98,7 @@ kubectl delete networkpolicy deny-test
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec $NODE_POD -n kube-system -- calico-node -felix-health-check 2>/dev/null && \
+kubectl exec $NODE_POD -n kube-system -- calico-node -felix-ready 2>/dev/null && \
   echo "PASS: Felix health check OK" || echo "FAIL: Felix health check failed"
 ```
 
@@ -119,9 +122,9 @@ flowchart TD
 ## Prevention
 
 - Add iptables chain count to post-maintenance verification checklist
-- Monitor `felix_int_dataplane_failures_total` metric for increases
+- Monitor `felix_int_dataplane_failures` metric for increases
 - Test network policy enforcement after any Calico upgrade or node change
 
 ## Conclusion
 
-Validating iptables rule restoration requires chain count verification, MASQUERADE rule presence on all nodes, Felix dataplane failure metric review, and a live network policy enforcement test. All four checks together confirm Felix is successfully programming rules and enforcing policies on the node.
+Validating iptables rule restoration requires chain count verification, MASQUERADE rule presence on all nodes, Felix dataplane failure metric review, Felix health verification, and a live network policy enforcement test. These checks together confirm Felix is successfully programming rules and enforcing policies on the node.
