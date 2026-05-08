@@ -130,9 +130,8 @@ Pause a container to inspect its state without it changing during inspection.
 # Pause the container to freeze its state
 podman pause my-app
 
-# Inspect processes, files, and network state
+# Inspect process and network state
 podman top my-app
-podman exec my-app cat /tmp/app-state.log 2>/dev/null || echo "No state file"
 podman inspect my-app --format '{{.NetworkSettings.IPAddress}}'
 
 # Resume after inspection
