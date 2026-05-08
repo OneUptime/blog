@@ -8,7 +8,7 @@ Description: Learn how to enable and verify direct communication between Podman 
 
 ---
 
-> Containers on the same Podman network can reach each other by name or IP without any extra configuration.
+> Containers on the same user-defined Podman network can reach each other by name or IP without any extra configuration.
 
 Container-to-container communication is fundamental to multi-service applications. A web server needs to talk to a database, a cache needs to be reachable by an application server, and so on. Podman provides DNS-based service discovery on user-defined networks, making it straightforward to connect containers.
 
