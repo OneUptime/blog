@@ -8,9 +8,9 @@ Description: Learn how to build container images for your services using podman-
 
 ---
 
-> podman-compose build compiles your Containerfiles into images before starting services, keeping your local development workflow fast.
+> podman-compose build builds images from your Containerfiles before starting services, keeping your local development workflow fast.
 
-When your compose file includes services with a `build` section, `podman-compose build` compiles those Containerfiles into local images. This is essential for custom applications where you need to package your code into a container image.
+When your compose file includes services with a `build` section, `podman-compose build` builds local images from those Containerfiles. This is essential for custom applications where you need to package your code into a container image.
 
 ---
 
@@ -19,7 +19,6 @@ When your compose file includes services with a `build` section, `podman-compose
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
 services:
   app:
     build:
@@ -73,7 +72,6 @@ podman-compose build --no-cache
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     build:
@@ -136,4 +134,4 @@ podman-compose up -d --build
 
 ## Summary
 
-Use `podman-compose build` to compile Containerfiles into images for your services. Pass build arguments through the compose file, use `--no-cache` for clean rebuilds, and combine build and start with `podman-compose up -d --build` for a streamlined development workflow.
+Use `podman-compose build` to build images from Containerfiles for your services. Pass build arguments through the compose file, use `--no-cache` for clean rebuilds, and combine build and start with `podman-compose up -d --build` for a streamlined development workflow.
