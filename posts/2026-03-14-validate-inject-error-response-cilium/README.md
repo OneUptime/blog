@@ -21,8 +21,8 @@ This guide covers structured validation approaches for error response injection 
 - Parser with error injection implemented
 - Protocol specification with error response format
 - Multiple client implementations for compatibility testing
-- Go 1.21 or later
-- Test Kubernetes cluster with Cilium
+- Go version required by the Cilium proxy branch you are building
+- Test Kubernetes cluster with a Cilium version that still supports Envoy Go extensions (proxylib); this feature is deprecated in newer releases and removed from Cilium 1.20
 
 ## Validating Response Format Compliance
 
@@ -96,9 +96,9 @@ func TestErrorResponseNoLeakage(t *testing.T) {
     parser := &Parser{
         state: stateRunning,
         connection: &proxylib.Connection{
-            SrcIdentity:  12345,
-            DstIdentity:  67890,
-            OrigEndpoint: "10.0.1.5:43210",
+            SrcId:   12345,
+            DstId:   67890,
+            SrcAddr: "10.0.1.5:43210",
         },
     }
 
