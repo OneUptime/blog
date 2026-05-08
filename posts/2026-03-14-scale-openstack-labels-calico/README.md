@@ -10,7 +10,7 @@ Description: A guide to scaling label-based policy management in OpenStack with 
 
 ## Introduction
 
-Labels in Calico are the primary mechanism for applying network policies to workloads. In an OpenStack environment, labels are applied to VMs through Neutron port metadata and Calico workload endpoints. As the number of VMs, tenants, and policies grows, label management becomes a scaling challenge that affects policy evaluation performance and operational manageability.
+Labels in Calico are the primary mechanism for applying network policies to workloads. In an OpenStack environment, Calico represents VMs as workload endpoints and labels them with OpenStack project, network, security group, and namespace information. As the number of VMs, tenants, and policies grows, label management becomes a scaling challenge that affects policy evaluation performance and operational manageability.
 
 This guide covers designing a label taxonomy that scales, optimizing policy selectors for large label sets, and implementing label management workflows that prevent label sprawl. We address both the technical scaling limits and the organizational challenges of label management in large OpenStack deployments.
 
@@ -128,14 +128,16 @@ spec:
 ```mermaid
 graph TD
     A[Policy Evaluation] --> B{Selector Type}
-    B -->|Simple Equality| C[Fast: O(1) per endpoint]
-    B -->|Label Exists| D[Fast: O(1) per endpoint]
-    B -->|OR with Multiple Labels| E[Slower: O(n) label checks]
-    B -->|Regex/Contains| F[Slowest: String matching]
+    B -->|Simple Equality| C[Optimized: label == 'value']
+    B -->|Label Exists| D[Optimized: has(label)]
+    B -->|AND with an Optimized Term| E[Optimized]
+    B -->|OR / NOT / !=| F[Not Optimized]
+    B -->|Contains / Starts With / Ends With| H[Scans endpoints with the label]
     C --> G[Preferred for Scale]
     D --> G
-    E --> H[Acceptable in Small Numbers]
+    E --> G
     F --> I[Avoid at Scale]
+    H --> I
 ```
 
 ## Managing Labels at Scale
@@ -170,12 +172,21 @@ calicoctl get globalnetworkpolicies -o json |   python3 -c "
 import json, sys, re
 data = json.load(sys.stdin)
 selectors = set()
-for item in data.get('items', []):
-    spec = item.get('spec', {})
-    sel = spec.get('selector', '')
-    if sel:
-        labels = re.findall(r'([\w-]+)\s*==', sel)
-        selectors.update(labels)
+
+def find_selectors(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == 'selector' and isinstance(v, str):
+                yield v
+            else:
+                yield from find_selectors(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from find_selectors(v)
+
+for sel in find_selectors(data.get('items', [])):
+    labels = re.findall(r'([A-Za-z0-9_.\-/]+)\s*==', sel)
+    selectors.update(labels)
 print('  Labels referenced in selectors:', ', '.join(sorted(selectors)))
 "
 ```
@@ -208,7 +219,7 @@ done
 
 ## Troubleshooting
 
-- **Felix slow to compute policies**: Check `felix_calc_graph_update_duration_seconds` metric. Simplify policy selectors or reduce the number of unique label values.
+- **Felix slow to compute policies**: Check the `felix_calc_graph_update_time_seconds` and `felix_label_index_num_active_selectors` metrics. Simplify policy selectors or reduce the number of unique label values.
 - **Labels inconsistent across endpoints**: Implement label validation in your VM provisioning pipeline. Use admission controllers or post-provisioning scripts to enforce the label taxonomy.
 - **Too many policies**: Consolidate policies that share the same selector. Use Calico tiers to organize policies hierarchically.
 - **Label changes not reflected in policy**: Felix re-evaluates policies when endpoint labels change. Check Felix logs for label update events.
