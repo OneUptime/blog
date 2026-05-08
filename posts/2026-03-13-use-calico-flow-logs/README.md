@@ -10,38 +10,37 @@ Description: Use Calico flow logs to investigate network connectivity issues, au
 
 ## Introduction
 
-Calico flow logs provide the connection metadata needed for network security auditing and troubleshooting. Each flow log entry includes source and destination pod information, the namespace, bytes and packets transferred, and the policy decision. This data answers questions that no other Calico diagnostic can: what connections actually occurred, how much data was transferred, and exactly which policy rule allowed or denied each flow.
+Calico flow logs provide aggregated connection metadata for network security auditing and troubleshooting. In Calico Cloud and Calico Enterprise file-based flow logs, each entry can include source and destination endpoint information, namespaces, bytes and packets transferred, and the policy decision. When policy information is included in the flow log configuration, this data helps answer questions about what traffic patterns occurred, how much data was transferred, and which policy rule allowed or denied a flow.
 
 ## Key Commands
 
 ```bash
-# View flow logs directly from a calico-node pod
+# View file-based flow logs directly from a calico-node pod
 
 CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   tail -20 /var/log/calico/flowlogs/flows.log 2>/dev/null
 
 # Filter for denied flows
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   grep "deny\|Deny" /var/log/calico/flowlogs/flows.log | tail -10
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   awk '$NF == "deny"' /var/log/calico/flowlogs/flows.log | tail -10
 
-# Check flow log configuration
-kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
+# Check file-based flow log configuration
+kubectl get felixconfiguration default -o yaml |   grep -i "flowLogsFile"
 ```
 
 ## Flow Log Format
 
 ```plaintext
 # Example flow log entry (abbreviated):
-# StartTime | EndTime | SrcIP | DstIP | Proto | SrcPort | DstPort | 
-# Packets | Bytes | Action | SrcNamespace | SrcPod | DstNamespace | DstSvc
+# startTime endTime srcType srcNamespace srcName srcLabels dstType dstNamespace dstName
+# dstLabels srcIP dstIP proto srcPort dstPort numFlows numFlowsStarted numFlowsCompleted
+# reporter packetsIn packetsOut bytesIn bytesOut action
 
 # Allowed flow example:
-# 2026-03-13T10:00:00 | 192.168.1.5 | 192.168.2.10 | TCP | 54321 | 8080 | 
-# 12 pkts | 1500 bytes | Allow | default | frontend-abc | production | backend
+# 1773396000 1773396300 wep default frontend-abc* - wep production backend* - 192.168.1.5 192.168.2.10 tcp 54321 8080 1 1 0 src 0 12 0 1500 allow
 
 # Denied flow example:
-# 2026-03-13T10:00:05 | 192.168.1.5 | 192.168.3.1 | TCP | 54322 | 5432 |
-# 1 pkt | 60 bytes | Deny | default | frontend-abc | database | postgres
+# 1773396005 1773396305 wep default frontend-abc* - wep database postgres* - 192.168.1.5 192.168.3.1 tcp 54322 5432 1 1 0 src 0 1 0 60 deny
 ```
 
 ## Architecture
@@ -58,4 +57,4 @@ flowchart LR
 
 ## Conclusion
 
-Calico flow logs provide the connection-level detail that no other Calico diagnostic can offer. The most valuable operational use case is denied traffic analysis - flow logs show exactly which connections are being blocked, by which policy, enabling rapid policy debugging. Validate the flow log pipeline periodically by generating known test connections and verifying they appear with the correct attributes in your aggregation system.
+Calico flow logs provide aggregated connection-level detail for network visibility and policy troubleshooting. The most valuable operational use case is denied traffic analysis - flow logs show which traffic patterns are being blocked, and with policy fields enabled they can show which policy rule caused the decision. Validate the flow log pipeline periodically by generating known test connections and verifying they appear with the correct attributes in your aggregation system.
