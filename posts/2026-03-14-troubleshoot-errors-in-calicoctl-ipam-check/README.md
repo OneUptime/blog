@@ -42,10 +42,10 @@ metadata:
   name: calicoctl-ipam-reader
 rules:
 - apiGroups: ["crd.projectcalico.org"]
-  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "nodes"]
+  resources: ["ipamblocks", "ipamhandles", "ippools", "nodes", "workloadendpoints", "clusterinformations", "kubecontrollersconfigurations"]
   verbs: ["get", "list"]
 - apiGroups: [""]
-  resources: ["pods"]
+  resources: ["services"]
   verbs: ["get", "list"]
 ```
 
@@ -62,19 +62,28 @@ calicoctl ipam show --ip=<leaked-ip>
 
 # Release leaked IPs
 calicoctl ipam release --ip=<leaked-ip>
+
+# Or release leaked IPs and handles from a report
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ### Orphaned Blocks
 
 ```bash
-# Identify orphaned blocks
-calicoctl ipam check 2>&1 | grep "orphan"
+# Identify allocations that are not actually in use
+calicoctl ipam check --show-problem-ips
 
 # Check if the node still exists
 calicoctl get nodes
 
-# Release all IPs from an orphaned node
-calicoctl ipam release --node=<old-node-name>
+# Release leaked addresses from a generated report
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ### Block Affinity Issues
@@ -94,12 +103,14 @@ kubectl get blockaffinities.crd.projectcalico.org
 #!/bin/bash
 # fix-ipam-issues.sh
 # Attempts to automatically fix IPAM issues found by check
+set -euo pipefail
 
 echo "Running IPAM check..."
-CHECK=$(calicoctl ipam check 2>&1)
+CHECK=$(calicoctl ipam check --show-problem-ips 2>&1)
 echo "$CHECK"
 
-ISSUES=$(echo "$CHECK" | grep -cE "leaked|orphan" || echo 0)
+ISSUES=$(echo "$CHECK" | awk '/Check complete; found/ {print $4}')
+ISSUES=${ISSUES:-0}
 if [ "$ISSUES" -eq 0 ]; then
   echo "No IPAM issues found."
   exit 0
@@ -108,17 +119,15 @@ fi
 echo ""
 echo "Found $ISSUES issues. Attempting cleanup..."
 
-# Get list of valid nodes
-VALID_NODES=$(calicoctl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+echo "Locking datastore and writing a fresh IPAM report..."
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
+calicoctl ipam check -o report.json
 
-# Check for orphaned node blocks
-calicoctl ipam show --show-blocks 2>/dev/null | while read -r line; do
-  NODE=$(echo "$line" | grep -oP 'node:\s*\K\S+')
-  if [ -n "$NODE" ] && ! echo "$VALID_NODES" | grep -q "^${NODE}$"; then
-    echo "Releasing IPs from orphaned node: $NODE"
-    calicoctl ipam release --node="$NODE" 2>&1
-  fi
-done
+echo "Review report.json, then release leaked addresses from the report."
+calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
+trap - EXIT
 
 echo ""
 echo "Re-running check..."
