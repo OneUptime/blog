@@ -12,7 +12,7 @@ Description: A guide to scaling the Neutron API integration with Calico for larg
 
 As OpenStack deployments grow, the Neutron API becomes a bottleneck when every VM creation, deletion, and security group change must flow through it to reach Calico. Scaling the Neutron-Calico integration requires tuning the API layer, optimizing the database backend, and ensuring the Calico datastore can handle the increased write volume.
 
-This guide covers the practical steps to scale the Neutron API with Calico from hundreds to thousands of concurrent VMs. We address API worker configuration, database connection pooling, Calico datastore performance, and request batching strategies.
+This guide covers the practical steps to scale the Neutron API with Calico from hundreds to thousands of concurrent VMs. We address API worker configuration, database connection pooling, Calico datastore performance, and parallel request strategies.
 
 The most common scaling bottleneck is not Calico itself but the Neutron API and database layer. Calico's data plane scales well, but the control plane path through Neutron needs attention at scale.
 
@@ -30,12 +30,14 @@ Increase API workers to handle more concurrent requests.
 
 ```bash
 # /etc/neutron/neutron.conf
+# If your neutron-server systemd unit uses --config-dir /etc/neutron/neutron.conf.d,
+# place these overrides in a drop-in file. Otherwise merge them into neutron.conf.
 
 # Scale API workers based on CPU cores
+sudo install -d -m 0755 /etc/neutron/neutron.conf.d
 cat << 'EOF' | sudo tee /etc/neutron/neutron.conf.d/scale.conf
 [DEFAULT]
-# Set API workers to 2x CPU cores for Calico workloads
-# Calico plugin is I/O heavy (etcd writes), so more workers help
+# Set API workers based on available CPU and memory
 api_workers = 16
 
 # Increase RPC workers for internal messaging
@@ -97,17 +99,20 @@ If using etcd as the Calico datastore, tune it for the increased write volume.
 
 ```bash
 # etcd performance tuning
-# Increase request size limit for large policy sets
+# If your etcd systemd unit reads environment files from /etc/etcd/etcd.conf.d,
+# place these overrides in a drop-in file. Otherwise add them to the unit's
+# EnvironmentFile or use the equivalent etcd command-line flags.
+sudo install -d -m 0755 /etc/etcd/etcd.conf.d
 cat << 'EOF' | sudo tee /etc/etcd/etcd.conf.d/scale.conf
 # Increase snapshot threshold for write-heavy workloads
 ETCD_SNAPSHOT_COUNT=50000
 
-# Increase backend quota (default is 2GB, increase for large deployments)
+# Increase backend quota for large deployments
 ETCD_QUOTA_BACKEND_BYTES=8589934592
 
 # Auto-compact to reclaim storage
-ETCD_AUTO_COMPACTION_RETENTION=1
 ETCD_AUTO_COMPACTION_MODE=periodic
+ETCD_AUTO_COMPACTION_RETENTION=1h
 EOF
 
 sudo systemctl restart etcd
@@ -147,14 +152,14 @@ graph TD
     F --> G[Compute Nodes]
 ```
 
-## Implementing Request Batching
+## Implementing Parallel Requests
 
-For bulk operations, batch API requests to reduce overhead.
+For bulk operations, submit independent API requests in controlled parallelism to reduce wall-clock time.
 
 ```bash
 #!/bin/bash
 # batch-port-creation.sh
-# Create multiple ports in batch for better performance
+# Create multiple ports with controlled parallelism
 
 NETWORK_ID=$(openstack network show batch-test-net -f value -c id)
 
