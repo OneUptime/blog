@@ -46,6 +46,10 @@ rules:
   - apiGroups: ["projectcalico.org"]
     resources: ["*"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Calico Kubernetes datastore backing resources used by calicoctl
+  - apiGroups: ["crd.projectcalico.org"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Kubernetes resources that calicoctl needs
   - apiGroups: [""]
     resources: ["nodes", "namespaces", "pods"]
@@ -102,6 +106,13 @@ OUTPUT_FILE="${1:-/tmp/calicoctl-kubeconfig}"
 
 # Get the cluster API server
 API_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+
+# Wait for the service account token controller to populate the Secret
+until [ -n "$(kubectl get secret ${SECRET_NAME} -n ${NAMESPACE} -o jsonpath='{.data.ca\.crt}')" ] && \
+      [ -n "$(kubectl get secret ${SECRET_NAME} -n ${NAMESPACE} -o jsonpath='{.data.token}')" ]; do
+  echo "Waiting for service account token secret to be populated..."
+  sleep 2
+done
 
 # Get the CA certificate
 CA_CERT=$(kubectl get secret ${SECRET_NAME} -n ${NAMESPACE} -o jsonpath='{.data.ca\.crt}')
@@ -247,7 +258,7 @@ if [ -f "${CONFIG}" ]; then
   export CALICO_DATASTORE_TYPE=kubernetes
   export CALICO_KUBECONFIG="/etc/calico/clusters/${CLUSTER}/kubeconfig"
   echo "Switched to cluster: ${CLUSTER}"
-  calicoctl get nodes -o name
+  calicoctl get nodes -o name --config "${CONFIG}"
 else
   echo "Unknown cluster: ${CLUSTER}"
   echo "Available: $(ls /etc/calico/clusters/)"
@@ -284,9 +295,9 @@ calicoctl get ippools -o wide 2>&1
 ## Troubleshooting
 
 - **Token expired**: Kubernetes service account tokens created via Secrets do not expire. If using bound tokens (Kubernetes 1.22+), they may expire. Use the Secret-based approach for long-lived tokens.
-- **Permission denied on Calico resources**: Check the ClusterRole rules. Verify the apiGroup is `projectcalico.org` and all needed resource types are listed.
-- **Kubeconfig works with kubectl but not calicoctl**: Verify the calicoctl.cfg points to the correct kubeconfig path. Calicoctl reads its own config file first, not the KUBECONFIG environment variable.
-- **Multi-cluster switching not working**: Ensure environment variables are exported in the current shell. The switching script must be sourced, not executed, for environment changes to persist.
+- **Permission denied on Calico resources**: Check the ClusterRole rules. Verify the apiGroups include `projectcalico.org` and `crd.projectcalico.org`, and that all needed resource types are listed.
+- **Kubeconfig works with kubectl but not calicoctl**: Verify the calicoctl.cfg points to the correct kubeconfig path. By default, calicoctl reads `/etc/calico/calicoctl.cfg`; use `--config` when you want a different config file.
+- **Multi-cluster switching not working**: Ensure the script passes the intended file with `--config`, or source a script that exports environment variables in the current shell when you need the environment changes to persist.
 
 ## Conclusion
 
