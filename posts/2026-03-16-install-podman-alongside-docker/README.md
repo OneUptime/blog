@@ -49,6 +49,7 @@ sudo dnf install -y podman
 
 ```bash
 # Install Podman alongside Docker
+sudo apt update
 sudo apt install -y podman
 ```
 
@@ -91,18 +92,20 @@ podman info --format '{{.Store.GraphRoot}}'
 
 ## Step 5: Avoid Socket Conflicts
 
-Docker and Podman use different sockets by default, but the Podman Docker-compatibility socket can conflict:
+Docker and Podman use different sockets by default, but Docker-compatible tools can be pointed at either socket:
 
 ```bash
 # Docker socket location
 ls -la /var/run/docker.sock
 
-# Do NOT enable the system-level Podman socket if Docker is running
-# The user-level socket is safe to use
+# Prefer the user-level Podman socket for Docker-compatible Podman tools
 systemctl --user enable --now podman.socket
 
 # Verify the user-level socket does not conflict
 ls -la $XDG_RUNTIME_DIR/podman/podman.sock
+
+# Keep DOCKER_HOST unset when you want the real Docker Engine
+unset DOCKER_HOST
 ```
 
 ## Step 6: Use Separate Commands
@@ -119,7 +122,7 @@ podman ps
 podman images
 
 # Do NOT install podman-docker package when Docker is present
-# It creates a 'docker' alias that would shadow the real Docker CLI
+# It installs a Docker-compatible wrapper/replacement for the docker command
 ```
 
 ## Step 7: Share Images Between Docker and Podman
@@ -127,6 +130,9 @@ podman images
 Transfer images between the two runtimes:
 
 ```bash
+# Make sure the image exists in Docker first
+sudo docker pull nginx:latest
+
 # Export an image from Docker
 sudo docker save nginx:latest -o /tmp/nginx-image.tar
 
@@ -143,6 +149,9 @@ rm /tmp/nginx-image.tar
 Or use a local registry:
 
 ```bash
+# Make sure the image exists in Docker first
+sudo docker pull nginx:latest
+
 # Run a local registry with Docker
 sudo docker run -d -p 5000:5000 --name registry registry:2
 
@@ -181,8 +190,7 @@ sudo docker network ls
 # List Podman networks
 podman network ls
 
-# They are completely independent - no conflicts
-# But containers from one cannot communicate with containers from the other
+# They are managed separately and do not share container DNS or network membership by default
 # Use published ports to bridge between them if needed
 ```
 
@@ -273,4 +281,4 @@ df -h
 
 ## Summary
 
-Podman and Docker can run side by side without conflicts as long as you avoid installing the `podman-docker` compatibility package and keep the Podman system socket disabled while Docker is running. Use separate port ranges, maintain independent image stores, and migrate gradually by testing existing workflows with Podman before fully switching.
+Podman and Docker can run side by side without conflicts as long as you avoid installing the `podman-docker` compatibility package when you need the real Docker CLI, and keep Docker-compatible tools pointed at the correct socket. Use separate port ranges, maintain independent image stores, and migrate gradually by testing existing workflows with Podman before fully switching.
