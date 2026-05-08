@@ -14,6 +14,8 @@ When Cilium IPAM fails to correctly publish available IP counts, downstream syst
 
 Publication issues typically stem from agent-operator communication problems, stale CiliumNode resources, or IPAM pool calculation errors.
 
+The `spec.ipam.pool` and `status.ipam.used` checks below apply to CiliumNode-backed pool publication modes such as CRD-backed IPAM and cloud-provider IPAM. Cluster-pool and multi-pool IPAM expose different CiliumNode fields.
+
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed
@@ -36,7 +38,7 @@ kubectl logs -n kube-system -l k8s-app=cilium | \
   grep -i "ipam" | tail -20
 
 # Check operator logs
-kubectl logs -n kube-system -l name=cilium-operator | \
+kubectl logs -n kube-system -l io.cilium/app=operator | \
   grep -i "ipam" | tail -20
 ```
 
@@ -69,20 +71,21 @@ kubectl get ciliumnode <node-name> -o json | jq '.spec.ipam'
 ## Fixing Stale Data
 
 ```bash
-# Compare reported available with actual usage
+# Compare reported used addresses with running pods that have pod IPs
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  REPORTED=$(kubectl get ciliumnode "$node" -o json | \
-    jq '(.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length)')
-  ACTUAL_PODS=$(kubectl get pods --all-namespaces --field-selector spec.nodeName="$node" \
-    --no-headers | wc -l)
-  echo "$node: reported_available=$REPORTED actual_pods=$ACTUAL_PODS"
+  REPORTED_USED=$(kubectl get ciliumnode "$node" -o json | \
+    jq '(.status.ipam.used // {} | length)')
+  PODS_WITH_IP=$(kubectl get pods --all-namespaces \
+    --field-selector spec.nodeName="$node",status.phase=Running -o json | \
+    jq '[.items[] | select((.spec.hostNetwork // false) | not) | select(.status.podIP != null)] | length')
+  echo "$node: reported_used=$REPORTED_USED pods_with_ip=$PODS_WITH_IP"
 done
 ```
 
 ## Verification
 
 ```bash
-cilium status | grep IPAM
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep IPAM
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
   available: ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length))
@@ -92,10 +95,10 @@ kubectl get ciliumnodes -o json | jq '.items[] | {
 ## Troubleshooting
 
 - **Pool data is null**: IPAM may not be initialized. Check agent startup logs.
-- **Used count does not match pod count**: Some IPs are allocated for health checking and router. This is normal.
+- **Used count does not match pods with pod IPs**: Some IPs are allocated for health checking and router. This is normal.
 - **Data updates very slowly**: Check agent-to-API-server connectivity.
 - **Publication stops after upgrade**: Restart agents after Cilium upgrades.
 
 ## Conclusion
 
-IP availability publication issues usually stem from agent or operator communication problems. Verify CiliumNode resources have pool and used data, compare with actual pod counts, and restart agents if data is stale. Accurate publication is critical for autoscaler integration.
+IP availability publication issues usually stem from agent or operator communication problems. Verify CiliumNode resources have pool and used data, compare with pods that have pod IPs, and restart agents if data is stale. Accurate publication is critical for autoscaler integration.
