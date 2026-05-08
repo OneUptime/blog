@@ -10,7 +10,7 @@ Description: How to diagnose label exclusion issues in Cilium that cause identit
 
 ## Introduction
 
-Label exclusion in Cilium allows you to remove specific high-cardinality labels from identity computation while keeping all other labels identity-relevant. This is particularly useful for labels like `pod-template-hash` that are automatically added by Kubernetes controllers and have unique values per ReplicaSet.
+Label exclusion in Cilium allows you to remove specific high-cardinality labels from identity computation while keeping all other labels identity-relevant. Cilium already excludes common Kubernetes-generated labels such as `pod-template-hash` by default, but the same mechanism is useful for additional custom rollout, build, or timestamp labels that have unique values per workload revision.
 
 Diagnosing label exclusion issues involves identifying high-cardinality labels, measuring their impact on identity count, and assessing the performance penalty from the inflated identity space.
 
@@ -32,25 +32,30 @@ Label exclusion is the inverse approach to label inclusion: instead of specifyin
 
 cilium config view | grep "^labels"
 
-# Labels prefixed with '!' or '-' are excluded
-# Example: --set labels="k8s:!pod-template-hash k8s:!controller-revision-hash"
+# Labels prefixed with '!' are excluded
+# Example: --set labels="!rollout-hash !build-id"
 ```
 
 ## Finding Labels to Exclude
 
 ```bash
-# Find high-cardinality labels that inflate identity count
+# Find high-cardinality label values that can inflate identity count
 kubectl get pods --all-namespaces -o json | \
-  jq '[.items[].metadata.labels | to_entries[] | .key] | group_by(.) | map({label: .[0], count: length}) | sort_by(-.count)' | head -20
+  jq '[.items[] | .metadata.labels // {} | to_entries[] | {key, value}] |
+      group_by(.key) |
+      map({label: .[0].key, pods: length, uniqueValues: ([.[].value] | unique | length)}) |
+      sort_by(-.uniqueValues, -.pods) | .[:20]'
 
 # Common high-cardinality labels to exclude:
-# - pod-template-hash (set by Deployments, unique per ReplicaSet)
-# - controller-revision-hash (set by StatefulSets/DaemonSets)
-# - pod-template-generation
-# - rollout-hash
+# - custom rollout-hash labels
+# - custom build-id or version-sha labels
+# - timestamp or deployment-time labels
+#
+# Cilium excludes pod-template-hash, controller-revision-hash,
+# pod-template-generation, and several other Kubernetes-generated labels by default.
 
 # Check how many unique values each label has
-for label in pod-template-hash controller-revision-hash; do
+for label in rollout-hash build-id; do
   VALUES=$(kubectl get pods --all-namespaces -o json | \
     jq --arg l "$label" '[.items[] | .metadata.labels[$l] // empty] | unique | length')
   echo "$label: $VALUES unique values"
@@ -61,14 +66,14 @@ done
 
 ```bash
 # Current identity count
-cilium identity list | wc -l
+kubectl get ciliumidentities --no-headers 2>/dev/null | wc -l
 
 # Estimate reduction from excluding a label
-LABEL="pod-template-hash"
+LABEL="rollout-hash"
 WITH=$(kubectl get pods --all-namespaces -o json | \
-  jq '[.items[].metadata.labels | to_entries | sort_by(.key) | from_entries | tostring] | unique | length')
+  jq '[.items[] | .metadata.labels // {} | to_entries | sort_by(.key) | from_entries | tostring] | unique | length')
 WITHOUT=$(kubectl get pods --all-namespaces -o json | \
-  jq --arg l "$LABEL" '[.items[].metadata.labels | del(.[$l]) | to_entries | sort_by(.key) | from_entries | tostring] | unique | length')
+  jq --arg l "$LABEL" '[.items[] | .metadata.labels // {} | del(.[$l]) | to_entries | sort_by(.key) | from_entries | tostring] | unique | length')
 echo "With $LABEL: $WITH unique combos"
 echo "Without $LABEL: $WITHOUT unique combos"
 echo "Potential reduction: $((WITH - WITHOUT))"
@@ -78,16 +83,16 @@ echo "Potential reduction: $((WITH - WITHOUT))"
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
-cilium identity list -o json | jq '.[0:3] | .[].labels'
+kubectl get ciliumidentities --no-headers 2>/dev/null | wc -l
+kubectl get ciliumidentities -o json | jq '.items[0:3] | .[]["security-labels"]'
 ```
 
 ## Troubleshooting
 
-- **Excluded label needed for policy**: Remove it from the exclusion list and add to include list instead.
+- **Excluded label needed for policy**: Remove it from the exclusion list and make sure it is included in the identity-relevant label set.
 - **Identity count unchanged after exclusion**: Restart Cilium agents and wait for GC.
-- **New Deployment creates identities rapidly**: Its pod-template-hash may not be excluded.
-- **Exclusion syntax wrong**: Use `k8s:!label-name` format with the exclamation mark prefix.
+- **New Deployment creates identities rapidly**: Check for custom rollout, build, timestamp, or revision labels that are not excluded.
+- **Exclusion syntax wrong**: Use `!label-name` format with the exclamation mark prefix.
 
 ## Collecting Diagnostic Data Systematically
 
@@ -105,11 +110,12 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -140,21 +146,22 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+ENDPOINT_ID=$(kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json | jq '.[0].id')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -184,11 +191,11 @@ For deep datapath analysis, use BPF tracing tools:
 bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
-bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
+bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->act] = count(); }'
 ```
 
 These diagnostic tools form a comprehensive toolkit for understanding exactly what happens to packets as they traverse Cilium's eBPF datapath.
 
 ## Conclusion
 
-Diagnosing label exclusion in Cilium addresses one of the most common sources of identity explosion. By excluding automatically-generated high-cardinality labels like pod-template-hash and controller-revision-hash, you can reduce identity count by 50% or more in typical Kubernetes clusters, directly improving policy computation performance and reducing BPF map pressure.
+Diagnosing label exclusion in Cilium addresses one of the most common sources of identity explosion. Cilium already excludes several automatically-generated high-cardinality Kubernetes labels, including pod-template-hash and controller-revision-hash, by default. By finding and excluding additional custom high-cardinality labels, you can reduce identity count, improve policy computation performance, and reduce BPF map pressure.
