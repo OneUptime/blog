@@ -12,21 +12,22 @@ Description: A guide to tuning Calico's nftables mode for production performance
 
 Calico in nftables mode has different performance characteristics than iptables mode. nftables' atomic rule update model means policy changes take effect in a single transaction rather than a series of individual iptables commands. This reduces policy update latency and eliminates the brief inconsistency window that can occur with complex iptables policy updates.
 
-Production tuning for nftables mode focuses on the same Felix parameters as iptables mode - refresh intervals, route table management, and resource allocation - but also includes nftables-specific kernel tuning to handle large policy sets efficiently.
+Production tuning for nftables mode focuses on Felix parameters such as refresh intervals, route table management, and resource allocation, plus standard Linux conntrack capacity tuning for high-throughput clusters.
 
 ## Prerequisites
 
 - Calico running in nftables mode
+- kube-proxy running in nftables mode on Kubernetes 1.31+
 - `kubectl` and `calicoctl` installed
-- Nodes with Linux 5.2+
+- Nodes with Linux 5.13+ and `nft` 1.0.1+
 
 ## Step 1: Tune Felix Refresh Intervals
 
 ```bash
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{
-    "iptablesBackend": "nft",
-    "iptablesRefreshInterval": "90s",
+    "nftablesMode": "Enabled",
+    "nftablesRefreshInterval": "90s",
     "routeRefreshInterval": "60s",
     "reportingInterval": "120s",
     "logSeverityScreen": "Warning"
@@ -48,15 +49,13 @@ EOF
 sysctl -p /etc/sysctl.d/99-calico-nft.conf
 ```
 
-## Step 3: Configure Set Sizes for Large Clusters
+## Step 3: Check nftables Set Usage for Large Clusters
 
-nftables uses sets for IP and port matching. For clusters with many network policies, increase the default set element limits.
+nftables uses sets for efficient IP and port matching. There is no general nftables set-size sysctl to increase; instead, inspect set usage and monitor Felix apply latency as policy count grows.
 
 ```bash
-cat >> /etc/sysctl.d/99-nft-sets.conf << EOF
-net.netfilter.nf_conntrack_expect_max = 4096
-EOF
-sysctl -p /etc/sysctl.d/99-nft-sets.conf
+# Count nftables set definitions on a node
+sudo nft list ruleset | grep -c 'set '
 ```
 
 ## Step 4: Enable Prometheus Metrics
@@ -73,14 +72,14 @@ Monitor `felix_int_dataplane_apply_time_seconds` for nftables apply latency.
 
 ## Step 5: Optimize for Large Policy Counts
 
-For clusters with hundreds of NetworkPolicy objects, verify nftables set lookup performance.
+For clusters with hundreds of NetworkPolicy objects, inspect nftables set usage.
 
 ```bash
 # Check the number of nftables elements on a node
-nft list table ip calico-filter | grep elements | wc -l
+sudo nft list ruleset | grep -c 'elements = {'
 ```
 
-If element counts are very high (>10000), consider consolidating policies using namespace selectors.
+If element counts are growing quickly, consider consolidating policies using namespace selectors and compare Felix dataplane apply latency against your production baseline.
 
 ## Step 6: Verify Production Performance
 
@@ -99,8 +98,8 @@ EOF
 kubectl delete networkpolicy perf-test
 ```
 
-Policy application should complete in under 1 second in nftables mode.
+There is no universal one-second target for every cluster size. Compare the result with your baseline and with the `felix_int_dataplane_apply_time_seconds` metric under normal production load.
 
 ## Conclusion
 
-Tuning Calico in nftables mode for production combines Felix interval tuning (identical to iptables mode) with nftables-specific kernel parameters for connection tracking and set management. nftables' atomic update model provides better baseline performance for policy updates than iptables, and the Prometheus metrics - particularly `felix_int_dataplane_apply_time_seconds` - are the key indicators of nftables performance under production load.
+Tuning Calico in nftables mode for production combines Felix interval tuning with standard Linux connection tracking capacity checks and nftables ruleset inspection. nftables' atomic update model can improve policy update behavior compared with sequences of individual iptables commands, and the Prometheus metrics - particularly `felix_int_dataplane_apply_time_seconds` - are the key indicators of nftables performance under production load.
