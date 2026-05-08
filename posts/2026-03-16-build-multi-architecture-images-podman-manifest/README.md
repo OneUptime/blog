@@ -214,8 +214,8 @@ Replace one architecture in an already-published manifest.
 #!/bin/bash
 IMAGE="registry.example.com/myapp:v1.0"
 
-# Pull the existing manifest
-podman manifest create "${IMAGE}" 2>/dev/null || true
+# Pull the existing manifest entries into a local manifest list
+podman manifest create --all "${IMAGE}" "docker://${IMAGE}"
 
 # Remove the old ARM64 entry
 OLD_DIGEST=$(podman manifest inspect "${IMAGE}" | \
