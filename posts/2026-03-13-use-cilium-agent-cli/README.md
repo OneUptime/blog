@@ -10,9 +10,9 @@ Description: A guide to using the cilium-agent command and its subcommands for c
 
 ## Introduction
 
-`cilium-agent` is the core binary that runs as the Cilium DaemonSet on each Kubernetes node. While it primarily runs as a daemon, it exposes a set of subcommands for configuration inspection, shell access, and dependency graph visualization through the Hive component framework.
+`cilium-agent` is the core binary that runs as the Cilium DaemonSet on each Kubernetes node. While it primarily runs as a daemon, it exposes a set of subcommands for shell access and dependency graph visualization through the Hive component framework.
 
-Understanding these subcommands helps operators inspect agent configuration at runtime and diagnose initialization issues.
+Understanding these subcommands helps operators inspect the running agent and diagnose initialization issues.
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ flowchart TD
 For bash:
 
 ```bash
-# On local machine with cilium CLI
+# On a system where cilium-agent is installed
 
 cilium-agent completion bash > /etc/bash_completion.d/cilium-agent
 
@@ -106,4 +106,4 @@ kubectl exec -n kube-system ds/cilium -- \
 
 ## Conclusion
 
-The `cilium-agent` command provides access to configuration inspection, shell interaction, and the Hive component dependency graph. These tools are valuable for advanced debugging and understanding how Cilium's components interact at runtime.
+The `cilium-agent` command provides access to shell interaction and the Hive component dependency graph. Together with `cilium-dbg` configuration inspection, these tools are valuable for advanced debugging and understanding how Cilium's components interact at runtime.
