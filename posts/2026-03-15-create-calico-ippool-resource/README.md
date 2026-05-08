@@ -10,7 +10,7 @@ Description: Learn how to create and configure Calico IPPool resources to manage
 
 ## Introduction
 
-The IPPool resource in Calico defines ranges of IP addresses from which Calico assigns pod IPs. Each IPPool specifies a CIDR block along with configuration for NAT, encapsulation, and node selection. Without a properly configured IPPool, pods cannot receive IP addresses and will remain in a pending state.
+The IPPool resource in Calico defines ranges of IP addresses from which Calico assigns pod IPs. Each IPPool specifies a CIDR block along with configuration for NAT, encapsulation, and node selection. In clusters using Calico IPAM, without an enabled IPPool that matches the target nodes, pods cannot receive Calico-assigned IP addresses and may fail to start.
 
 When you install Calico, a default IPPool is typically created that covers a broad CIDR range. However, production environments often require multiple pools with different characteristics. You might need separate pools for different node groups, varying encapsulation modes, or distinct NAT behaviors.
 
