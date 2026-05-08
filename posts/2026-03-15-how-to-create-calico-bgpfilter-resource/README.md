@@ -49,7 +49,7 @@ spec:
       cidr: 0.0.0.0/0
 ```
 
-The `matchOperator` field supports `In`, `NotIn`, and `Equal`. Rules are evaluated in order, and the first matching rule determines the action.
+The `matchOperator` field supports `In`, `NotIn`, `Equal`, and `NotEqual`. Rules are evaluated in order, and the first matching rule determines the action. If no explicit rule matches, Calico accepts the route by default.
 
 ## Creating an Export Filter
 
