@@ -30,7 +30,7 @@ This guide provides the specific steps for managing identity-relevant labels con
 # Include in every Cilium installation
 
 helm install cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy"
+  --set labels="app io\\.kubernetes\\.pod\\.namespace io\\.cilium\\.k8s\\.policy"
 ```
 
 ## Label Governance Process
@@ -49,7 +49,7 @@ VALUES=$(kubectl get pods --all-namespaces -o json | \
 echo "Unique values for $NEW_LABEL: $VALUES"
 echo "This would multiply identity count by up to ${VALUES}x"
 
-CURRENT_IDS=$(cilium identity list | wc -l)
+CURRENT_IDS=$(kubectl get ciliumidentities.cilium.io --no-headers 2>/dev/null | wc -l)
 echo "Current identities: $CURRENT_IDS"
 echo "Estimated new identities: $((CURRENT_IDS * VALUES))"
 ```
@@ -67,7 +67,7 @@ spec:
   - name: identity-config
     rules:
     - alert: IdentityCountAboveThreshold
-      expr: cilium_identity_count > 10000
+      expr: max(cilium_identity) > 10000
       for: 30m
       labels:
         severity: warning
@@ -77,7 +77,7 @@ spec:
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
+kubectl get ciliumidentities.cilium.io --no-headers | wc -l
 ```
 
 ## Troubleshooting
@@ -112,7 +112,7 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.14.x"
+      version: "1.19.x"
       sourceRef:
         kind: HelmRepository
         name: cilium
