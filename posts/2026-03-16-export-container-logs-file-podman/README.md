@@ -115,36 +115,35 @@ Export logs in formats suitable for log analysis tools.
 
 ```bash
 # Export as JSON Lines (one JSON object per line)
-podman logs --timestamps my-container 2>&1 | while IFS= read -r line; do
-  printf '{"container":"my-container","timestamp":"%s","message":"%s"}\n' \
-    "$(date -Iseconds)" \
-    "$(echo "$line" | sed 's/"/\\"/g')"
-done > container-logs.jsonl
+podman logs --timestamps my-container 2>&1 | jq -Rc \
+  --arg container "my-container" \
+  '{"container":$container,"message":.}' > container-logs.jsonl
 
 # Export as CSV
 {
   echo "timestamp,container,message"
   podman logs --timestamps my-container 2>&1 | while IFS= read -r line; do
     TS=$(echo "$line" | awk '{print $1}')
-    MSG=$(echo "$line" | cut -d' ' -f2- | sed 's/,/;/g; s/"//g')
-    echo "$TS,my-container,$MSG"
+    MSG=$(echo "$line" | cut -d' ' -f2- | sed 's/"/""/g')
+    printf '"%s","my-container","%s"\n' "$TS" "$MSG"
   done
 } > container-logs.csv
 ```
 
 ## Copy Raw Log Files
 
-Instead of using `podman logs`, copy the raw log files directly.
+Instead of using `podman logs`, copy the raw log files directly when the container uses a file-based log driver.
 
 ```bash
 # Find the log file location
-LOG_PATH=$(podman inspect --format '{{.LogPath}}' my-container)
+LOG_PATH=$(podman inspect --format '{{.HostConfig.LogConfig.Path}}' my-container)
 echo "Log file: $LOG_PATH"
 
 # Copy the raw log file (preserves the original format)
 cp "$LOG_PATH" ./container-raw-logs.txt
 
 # Copy all rotated log files
+mkdir -p ./log-export
 cp "${LOG_PATH}"* ./log-export/
 
 # Check sizes
