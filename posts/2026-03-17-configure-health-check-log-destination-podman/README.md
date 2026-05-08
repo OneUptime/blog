@@ -8,15 +8,15 @@ Description: Learn how to configure the health check log destination in Podman t
 
 ---
 
-> Configuring the health check log destination lets you direct health check output to different storage backends for monitoring and analysis.
+> Configuring the health check log destination lets you direct health check output to Podman's supported log locations for monitoring and analysis.
 
-By default, Podman stores health check logs in the container state. You can configure the log destination to route health check results to different locations, making it easier to integrate with your existing monitoring and logging infrastructure.
+By default, Podman stores health check logs in its local container storage. You can configure the log destination to route health check results to a directory or to the configured events logger, making it easier to integrate with your existing monitoring and logging infrastructure.
 
 ---
 
 ## Default Health Check Logging
 
-By default, health check results are stored in the container state and accessible via `podman inspect`:
+By default, health check results are stored in Podman's local container storage and accessible via `podman inspect`:
 
 ```bash
 # Start a container with a health check
@@ -28,12 +28,12 @@ podman run -d \
   default-logging:latest
 
 # View health check logs from the default location
-podman inspect --format='{{json .State.Health.Log}}' default-logging | python3 -m json.tool
+podman inspect --format='{{json .State.Healthcheck.Log}}' default-logging | python3 -m json.tool
 ```
 
 ## Configuring Log Destination
 
-Use the `--health-log-destination` flag to specify where health check logs are written:
+Use the `--health-log-destination` flag to specify where health check logs are written. Podman supports `local`, a directory path, or `events_logger`:
 
 ```bash
 # Write health check logs to a specific directory
@@ -73,7 +73,7 @@ podman run -d \
 CONTAINER="my-app"
 
 while true; do
-  HEALTH_JSON=$(podman inspect --format='{{json .State.Health}}' "$CONTAINER" 2>/dev/null)
+  HEALTH_JSON=$(podman inspect --format='{{json .State.Healthcheck}}' "$CONTAINER" 2>/dev/null)
   if [ -n "$HEALTH_JSON" ]; then
     # Forward health status to your logging system
     echo "$HEALTH_JSON" | logger -t "podman-health-$CONTAINER"
@@ -85,7 +85,7 @@ done
 ## Combining with Max Log Settings
 
 ```bash
-# Configure log destination with size and count limits
+# Configure log destination with character and count limits
 podman run -d \
   --name managed-logs \
   --health-cmd "curl -f http://localhost:8080/health || exit 1" \
@@ -98,4 +98,4 @@ podman run -d \
 
 ## Summary
 
-Podman allows you to configure health check log destinations to control where health check results are stored. The default stores logs in the container state accessible via `podman inspect`, but you can direct them to files on disk using `--health-log-destination`. Combine this with `--health-max-log-count` and `--health-max-log-size` to manage log retention, and use `podman events` for real-time health status monitoring.
+Podman allows you to configure health check log destinations to control where health check results are stored. The default stores logs in local container storage accessible via `podman inspect`, but you can direct them to files on disk or the configured events logger using `--health-log-destination`. Combine this with `--health-max-log-count` and `--health-max-log-size` to manage log retention and entry length, and use `podman events` for real-time health status monitoring.
