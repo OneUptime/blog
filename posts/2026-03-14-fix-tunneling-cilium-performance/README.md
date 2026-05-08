@@ -12,7 +12,7 @@ Description: How to fix tunneling-related performance issues in Cilium, covering
 
 Tunneling (VXLAN or Geneve) in Cilium adds encapsulation overhead to every cross-node packet. This overhead includes additional headers (50-60 bytes), extra processing for encapsulation/decapsulation, and potential MTU-related fragmentation. Fixing these issues is critical for achieving optimal network performance.
 
-The most impactful fix is switching to native routing mode, which eliminates tunnel overhead entirely. When tunneling is required, MTU optimization and BPF host routing minimize the impact.
+The most impactful fix is switching to native routing mode, which eliminates tunnel overhead entirely. When tunneling is required, MTU optimization minimizes the encapsulation impact; BPF host routing can also reduce host-stack overhead when supported.
 
 This guide provides the specific steps for each aspect of tunnel performance management.
 
@@ -30,6 +30,7 @@ This guide provides the specific steps for each aspect of tunnel performance man
 # The most impactful fix: disable tunneling entirely
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8"
@@ -49,24 +50,28 @@ Ensure your network can route pod CIDRs between nodes. For cloud providers:
 ```bash
 # Use Geneve over VXLAN (better extensibility, similar overhead)
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set tunnelProtocol=geneve
 
 # Optimize MTU for tunnel
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set mtu=1450  # For VXLAN/Geneve on 1500 MTU network
 
 # If jumbo frames are available
 # Physical MTU: 9000
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set mtu=8900  # Accounting for tunnel overhead
 ```
 
-## Enable BPF Host Routing with Tunnel
+## Enable BPF Host Routing
 
 ```bash
-# Even in tunnel mode, BPF host routing helps
+# BPF host routing reduces host-stack overhead when supported
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.hostLegacyRouting=false \
+  --reuse-values \
+  --set bpf.masquerade=true \
   --set kubeProxyReplacement=true
 ```
 
@@ -160,7 +165,9 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+timeout 5 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg monitor --type drop | head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
@@ -192,4 +199,4 @@ Document the fix, its impact, and any follow-up actions needed in your team's ru
 
 ## Conclusion
 
-Fixing tunneling performance in Cilium is essential for optimal cross-node communication. Native routing eliminates tunnel overhead entirely and should be the default choice when the network supports it. When tunneling is required, proper MTU configuration and BPF host routing minimize the performance impact.
+Fixing tunneling performance in Cilium is essential for optimal cross-node communication. Native routing eliminates tunnel overhead entirely and should be the default choice when the network supports it. When tunneling is required, proper MTU configuration minimizes the encapsulation impact, and BPF host routing can reduce host-stack overhead when supported.
