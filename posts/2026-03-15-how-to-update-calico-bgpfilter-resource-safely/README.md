@@ -45,7 +45,7 @@ calicoctl get bgppeer -o yaml | grep -A 5 "filters"
 
 ## Safe Update: Adding a New Allow Rule
 
-Adding a new Accept rule before the catch-all Reject is non-disruptive. It only expands the set of allowed routes:
+Adding a new Accept rule before the catch-all Reject is usually lower risk than removing a rule, but only if the new CIDR is intentional and does not overlap an earlier Reject rule. It expands the set of allowed routes:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -84,7 +84,7 @@ calicoctl apply -f datacenter-filter-updated.yaml
 Removing an Accept rule narrows the set of allowed routes. Verify no active services depend on the routes being removed:
 
 ```bash
-# Check which routes are currently exchanged
+# Check BGP sessions before the change
 
 calicoctl node status
 
@@ -122,7 +122,7 @@ spec:
       cidr: 0.0.0.0/0
 ```
 
-Step 2: After verifying traffic flows correctly with the narrower rule, remove the wider rule:
+Step 2: After verifying expected routes inside the narrower CIDR still work and nothing in the part of the old CIDR that will be removed is required, remove the wider rule:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -152,7 +152,7 @@ If two rules have overlapping CIDRs with different actions, reordering them chan
 
 ## Using the Patch Method for Small Changes
 
-For minor updates, use calicoctl patch to avoid replacing the entire resource:
+For minor updates, use calicoctl patch to avoid replacing the entire resource. When patching list fields such as `exportV4`, include the complete desired list because the list is replaced by the patch:
 
 ```bash
 calicoctl patch bgpfilter datacenter-filter -p '{
@@ -177,8 +177,8 @@ calicoctl get bgpfilter datacenter-filter -o yaml
 # Check BGP sessions remain established
 calicoctl node status
 
-# Verify route exchange
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep -i "route\|filter\|accept\|reject"
+# Check recent Calico logs for BGP or filter-related errors
+kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep -i "bgp\|route\|filter\|error"
 
 # Test connectivity
 kubectl run test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://<service-ip>
