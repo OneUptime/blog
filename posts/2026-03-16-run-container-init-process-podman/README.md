@@ -34,7 +34,7 @@ podman run --rm alpine sh -c "
 
 ## Using the --init Flag
 
-The `--init` flag injects a lightweight init process (catatonit or tini) as PID 1:
+The `--init` flag injects a lightweight init process, typically catatonit, as PID 1:
 
 ```bash
 # Run a container with an init process
@@ -59,14 +59,14 @@ podman run --rm alpine sh -c "
 The init process properly forwards signals to child processes:
 
 ```bash
-# Without init: SIGTERM may not reach the application
+# Without init: SIGTERM is delivered to PID 1, so the application must handle it itself
 podman run -d --name no-init alpine sh -c "
   trap 'echo SIGTERM received; exit 0' TERM
   echo 'Running without init...'
   while true; do sleep 1; done
 "
 
-# With init: SIGTERM is properly forwarded
+# With init: SIGTERM is forwarded by the init process to the application
 podman run -d --name with-init --init alpine sh -c "
   trap 'echo SIGTERM received; exit 0' TERM
   echo 'Running with init...'
@@ -135,8 +135,8 @@ You can specify a custom init binary with `--init-path`:
 # podman run --init --init-path /path/to/custom-init alpine sh
 
 # Check what init binary Podman uses by default
-# The default init binary is catatonit, located at /usr/libexec/podman/catatonit
-# or /usr/bin/catatonit depending on the distribution
+# The default init binary is usually catatonit, and Podman mounts it
+# inside the container at /run/podman-init when --init is used
 ```
 
 ## Init with Shell Scripts
@@ -199,8 +199,8 @@ while True:
 
 # 2. You run shell scripts that spawn child processes
 podman run -d --init --name app2 alpine sh -c "
-  worker_process &
-  another_process &
+  sleep 1000 &
+  sleep 1000 &
   wait
 "
 
@@ -220,8 +220,8 @@ podman rm app1 app2 app3 2>/dev/null
 Some applications handle PID 1 responsibilities themselves:
 
 ```bash
-# Applications with built-in init handling (like nginx or systemd-based images)
-# These handle zombie reaping and signal forwarding internally
+# Applications with built-in process management (like nginx or systemd-based images)
+# These handle their child processes and shutdown signals internally
 podman run -d --name nginx-no-init nginx:latest
 
 # Containers with a single process and no children
