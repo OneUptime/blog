@@ -12,7 +12,7 @@ Description: Best practices for safely updating Calico StagedNetworkPolicy resou
 
 Updating a StagedNetworkPolicy in Calico Enterprise requires careful handling to ensure that the staged changes accurately reflect your intended modifications. Since staged policies are namespace-scoped and use Calico's native policy syntax with ordered rule evaluation, a misplaced rule or incorrect selector can have cascading effects once committed.
 
-Safe update practices include exporting the current state, making targeted modifications, validating the changes with dry-runs, and reviewing the updated policy against flow logs. The staging mechanism provides a buffer, but disciplined updates prevent errors from accumulating in the staged policy set.
+Safe update practices include exporting the current state, making targeted modifications, validating the updated resource, and reviewing the updated policy against flow logs. The staging mechanism provides a buffer, but disciplined updates prevent errors from accumulating in the staged policy set.
 
 This guide covers safe update workflows for StagedNetworkPolicy resources, including rule reordering, selector changes, and multi-rule modifications.
 
