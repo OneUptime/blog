@@ -19,7 +19,7 @@ This guide provides the specific steps for managing identity-relevant labels in 
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI, `helm`, and `kubectl`
+- `cilium` CLI, `helm`, `kubectl`, and access to `cilium-dbg` in the Cilium agent pods
 - `iperf3` and `netperf` for benchmarking
 - Prometheus and Grafana for monitoring
 - Node-level root access
@@ -30,29 +30,34 @@ This guide provides the specific steps for managing identity-relevant labels in 
 # Limit which labels are used for identity
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy"
+  --set-string labels='app$'
 ```
 
-This tells Cilium to only use the `app` label and namespace for identity computation, dramatically reducing identity count.
+This tells Cilium to include the `app` label pattern for identity computation. When at least one inclusive label pattern is configured, Cilium only considers matching labels plus its default inclusive patterns, which include the pod namespace and Cilium policy labels.
 
 ## Step-by-Step Migration
 
 ```bash
 # Step 1: Check current identity count
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list | wc -l
 
 # Step 2: Identify unnecessary labels
-cilium identity list -o json | jq '.[].labels[]' | grep -v -E "app|namespace|policy" | sort | uniq -c | sort -rn
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list -o json | \
+  jq -r '.[].labels[]' | grep -v -E "app|namespace|policy" | sort | uniq -c | sort -rn
 
 # Step 3: Apply label restriction
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace"
+  --set-string labels='app$'
 
-# Step 4: Wait for identity garbage collection
-sleep 120
+# Step 4: Restart agents so existing endpoints get identities from the new label patterns
+kubectl rollout restart -n kube-system ds/cilium
+kubectl rollout status -n kube-system ds/cilium --timeout=5m
+# If the Cilium Operator manages identities, restart it too
+kubectl rollout restart -n kube-system deployment/cilium-operator
+kubectl rollout status -n kube-system deployment/cilium-operator --timeout=5m
 
 # Step 5: Verify identity count reduced
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list | wc -l
 ```
 
 ## Including Custom Labels
@@ -60,21 +65,21 @@ cilium identity list | wc -l
 ```bash
 # If you need specific labels for policy, include them
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:team k8s:environment"
+  --set-string labels='app$ team$ environment$'
 ```
 
 ## Verification
 
 ```bash
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list | wc -l
 cilium config view | grep labels
 ```
 
 ## Troubleshooting
 
-- **Identity count not decreasing after label change**: Wait for garbage collection (up to 15 minutes).
+- **Identity count not decreasing after label change**: Restart Cilium agents so existing endpoints are regenerated, then wait for old identities to be garbage collected.
 - **Policies broken after label restriction**: Add the missing label to the identity-relevant list.
-- **Cannot reduce below certain count**: Namespace-level identities are the minimum.
+- **Cannot reduce below certain count**: Pod namespace and Cilium default inclusive labels remain identity-relevant.
 - **Agent memory still high**: Identity reduction takes effect gradually as endpoints regenerate.
 
 ## Implementing Changes Safely
@@ -152,12 +157,12 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5 kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg monitor --type drop | head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
