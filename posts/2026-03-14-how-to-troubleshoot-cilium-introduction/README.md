@@ -56,17 +56,17 @@ kubectl get nodes -o wide
 # SSH to a node and check kernel version
 uname -r
 
-# Check required kernel modules
-lsmod | grep -E "bpf|xdp|vxlan"
+# Check required kernel configuration options
+grep -E "CONFIG_BPF|CONFIG_BPF_SYSCALL|CONFIG_BPF_JIT|CONFIG_NET_CLS_BPF|CONFIG_NET_CLS_ACT" /boot/config-$(uname -r)
 
 # Check BPF filesystem is mounted
 mount | grep bpf
 ```
 
 Required kernel features:
-- Kernel 4.19+ minimum (5.10+ recommended for full feature support)
+- Kernel 5.10+ minimum, or an equivalent vendor kernel such as 4.18 on RHEL 8.10
 - BPF filesystem mounted at `/sys/fs/bpf`
-- Required modules: `bpf`, `vxlan` (if using tunnel mode)
+- Required BPF-related kernel configuration enabled; `vxlan` support is also required if using tunnel mode
 
 ## Resolving CNI Conflicts
 
@@ -110,8 +110,8 @@ kubectl get pods --all-namespaces | grep -v Running
 
 ## Troubleshooting
 
-- **"BPF filesystem is not mounted"**: Mount it with `mount bpffs /sys/fs/bpf -t bpf` or add to `/etc/fstab`.
-- **"Unable to load BPF program"**: Kernel too old. Upgrade to 4.19+ minimum (5.10+ recommended).
+- **"BPF filesystem is not mounted"**: Mount it with `mount -t bpf bpffs /sys/fs/bpf` or add to `/etc/fstab`.
+- **"Unable to load BPF program"**: Kernel too old or missing required BPF configuration. Use kernel 5.10+ or an equivalent vendor kernel, and verify BPF kernel options are enabled.
 - **Agents running but pods stuck in ContainerCreating**: Check CNI binary and config. Verify `/opt/cni/bin/cilium-cni` exists.
 - **Operator crashlooping**: Check RBAC permissions. The operator needs cluster-wide access for IPAM and CRD management.
 
