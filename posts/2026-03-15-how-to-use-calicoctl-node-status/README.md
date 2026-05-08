@@ -51,30 +51,32 @@ No IPv6 peers found.
 
 ### From a Calico Pod in Kubernetes
 
+The `calicoctl node status` command must run on the node host, because Calico's node subcommands need access to the host filesystem. From a `calico-node` pod, use BIRD's CLI for similar BGP protocol details:
+
 ```bash
 # Find the calico-node pod on a specific node
+# Use kube-system instead of calico-system for manifest-based installs.
 
 NODE_NAME="worker-1"
 POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName="$NODE_NAME" \
   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n calico-system "$POD" -- calico-node -birdcl show protocols
+kubectl exec -n calico-system "$POD" -- birdcl show protocols
 ```
 
 ### Checking All Nodes
 
 ```bash
 #!/bin/bash
-# Check BGP status on all calico-node pods
-PODS=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}')
+# Check BGP status on all nodes where calicoctl is installed
+NODES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 
-while IFS=$'\t' read -r pod node; do
+while read -r node; do
   echo "=== Node: $node ==="
-  kubectl exec -n calico-system "$pod" -- calicoctl node status 2>/dev/null
+  ssh "$node" sudo calicoctl node status
   echo ""
-done <<< "$PODS"
+done <<< "$NODES"
 ```
 
 ## Understanding the Output
@@ -103,14 +105,16 @@ Create a script that alerts on unhealthy BGP sessions:
 #!/bin/bash
 # monitor-bgp.sh - Alert on non-established BGP sessions
 
-NAMESPACE="calico-system"
-PODS=$(kubectl get pods -n "$NAMESPACE" -l k8s-app=calico-node \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}')
+NODES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 
 EXIT_CODE=0
 
-while IFS=$'\t' read -r pod node; do
-  STATUS=$(kubectl exec -n "$NAMESPACE" "$pod" -- calicoctl node status 2>/dev/null)
+while read -r node; do
+  if ! STATUS=$(ssh "$node" sudo calicoctl node status 2>/dev/null); then
+    echo "WARNING: Could not collect BGP status from node $node"
+    EXIT_CODE=1
+    continue
+  fi
 
   # Check for non-established peers
   NON_ESTABLISHED=$(echo "$STATUS" | grep -E "start|down|Active|Connect|OpenSent" | grep -v "^$")
@@ -122,7 +126,7 @@ while IFS=$'\t' read -r pod node; do
   else
     echo "OK: Node $node - all BGP sessions established"
   fi
-done <<< "$PODS"
+done <<< "$NODES"
 
 exit $EXIT_CODE
 ```
@@ -133,10 +137,10 @@ For deeper inspection, query BIRD directly from the calico-node pod:
 
 ```bash
 # Show detailed BGP protocol info
-kubectl exec -n calico-system "$POD" -- calico-node -birdcl show protocols all
+kubectl exec -n calico-system "$POD" -- birdcl show protocols all
 
 # Show learned routes
-kubectl exec -n calico-system "$POD" -- calico-node -birdcl show route
+kubectl exec -n calico-system "$POD" -- birdcl show route
 ```
 
 ## Verification
