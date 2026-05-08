@@ -38,11 +38,12 @@ hubble:
   ui:
     enabled: true
   metrics:
+    enableOpenMetrics: true
     enabled:
       - dns
       - drop
       - tcp
-      - flow
+      - flow:labelsContext=source_namespace,destination_namespace
       - httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload
     serviceMonitor:
       enabled: true
@@ -111,7 +112,7 @@ kubectl get events --field-selector reason=NetworkNotReady --all-namespaces
 kubectl get events --field-selector involvedObject.kind=NetworkPolicy --all-namespaces
 
 # Correlate with Cilium endpoint state
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 eps = json.load(sys.stdin)
 for ep in eps:
@@ -216,7 +217,7 @@ print(f'Hubble metrics series count: {len(results)}')
 
 ## Troubleshooting
 
-- **Hubble flows missing Kubernetes metadata**: Ensure Cilium can reach the Kubernetes API server. Check with `kubectl -n kube-system exec ds/cilium -- cilium status | grep Kubernetes`.
+- **Hubble flows missing Kubernetes metadata**: Ensure Cilium can reach the Kubernetes API server. Check with `kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep Kubernetes`.
 
 - **Hubble UI shows empty service map**: Generate some traffic first. The UI only shows flows observed during the selected time window. Try `kubectl run curl --image=curlimages/curl --rm -it -- curl http://kubernetes.default`.
 
