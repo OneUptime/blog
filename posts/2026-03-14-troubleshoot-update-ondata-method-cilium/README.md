@@ -23,20 +23,20 @@ This guide covers the most common OnData problems, their root causes, and system
 - Go debugging tools (delve)
 - `cilium` CLI installed
 - `kubectl` access to the cluster
-- Familiarity with the proxylib Parser interface
+- Familiarity with the proxylib ReaderParser interface
 
 ## Diagnosing Connection Stalls
 
 Connection stalls happen when the parser requests more data than will ever arrive, creating a deadlock.
 
 ```bash
-# Check for connections stuck in the proxy
+# Check configured Envoy listeners
 
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg envoy admin listeners
 
 # Check Envoy proxy stats for timeouts
 kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
-    curl -s http://localhost:9901/stats | grep timeout
+    cilium-dbg envoy admin metrics --filter timeout
 
 # Look for parser-related warnings in Cilium logs
 kubectl logs -n kube-system ds/cilium -c cilium-agent | grep -i "proxylib\|parser\|OnData"
@@ -47,8 +47,9 @@ Common causes of connection stalls:
 ```go
 // BUG: Requesting more data than the message contains
 func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
-    data, _ := reader.PeekSlice(4)
-    msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+    var header [4]byte
+    reader.PeekFull(header[:])
+    msgLen := int(header[0])<<24 | int(header[1])<<16 | int(header[2])<<8 | int(header[3])
 
     // BUG: Should be 4 + msgLen, not msgLen + msgLen
     return proxylib.MORE, msgLen + msgLen  // WRONG - doubles the required bytes
@@ -60,8 +61,9 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     if dataLen < 4 {
         return proxylib.MORE, 4
     }
-    data, _ := reader.PeekSlice(4)
-    msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+    var header [4]byte
+    reader.PeekFull(header[:])
+    msgLen := int(header[0])<<24 | int(header[1])<<16 | int(header[2])<<8 | int(header[3])
 
     totalLen := 4 + msgLen  // header + body
     if dataLen < totalLen {
@@ -93,11 +95,12 @@ Panics in OnData crash the Envoy proxy process. Diagnose them quickly:
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 kubectl describe pod -n kube-system <cilium-pod> | grep -A5 "Restart Count"
 
-# Check Cilium agent logs for panic traces
-kubectl logs -n kube-system <cilium-pod> -c cilium-agent --previous | grep -A 30 "panic"
+# Check Envoy proxy logs for panic traces
+kubectl logs -n kube-system <cilium-pod> -c cilium-envoy --previous | grep -A 30 "panic"
 
 # Enable debug logging for the proxy
-kubectl exec -n kube-system <cilium-pod> -- cilium config set debug true
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+    cilium-dbg envoy admin logging set global debug
 ```
 
 Common panic scenarios and fixes:
@@ -105,7 +108,8 @@ Common panic scenarios and fixes:
 ```go
 // PANIC: Slice bounds out of range
 func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
-    data, _ := reader.PeekSlice(reader.Length())
+    data := make([]byte, reader.Length())
+    reader.PeekFull(data)
     // PANIC if reader.Length() < 5
     command := data[4]  // No bounds check!
 
@@ -124,38 +128,31 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
 When OnData passes traffic that should be denied, or drops traffic that should pass:
 
 ```bash
-# Inspect the active L7 policy
-kubectl exec -n kube-system ds/cilium -- cilium policy get -o jsonpath='{.spec}'
+# Inspect Cilium policy resources
+kubectl get ciliumnetworkpolicies,ciliumclusterwidenetworkpolicies -A -o yaml
 
-# Check proxy redirect status
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+# Check configured Envoy listeners
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg envoy admin listeners
 
 # Monitor policy verdicts in real time
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg monitor --type policy-verdict
 ```
 
 Debug the policy matching logic:
 
 ```go
 // Add detailed logging to identify policy matching issues
-func (p *Parser) matchesPolicy(command byte) bool {
-    rules := p.connection.Rules
+func (p *Parser) matchesPolicy(req *MyProtocolRequest) bool {
     log.WithFields(log.Fields{
-        "command":    command,
-        "ruleCount":  len(rules),
-        "srcID":      p.connection.SrcIdentity,
-        "dstID":      p.connection.DstIdentity,
+        "command":    req.Command,
+        "policyName": p.connection.PolicyName,
+        "srcID":      p.connection.SrcId,
+        "dstID":      p.connection.DstId,
     }).Debug("Evaluating policy rules")
 
-    for i, rule := range rules {
-        log.WithFields(log.Fields{
-            "ruleIndex": i,
-            "rule":      fmt.Sprintf("%+v", rule),
-        }).Debug("Checking rule")
-    }
-
-    // ... policy matching logic
-    return true
+    allowed := p.connection.Matches(req)
+    log.WithField("allowed", allowed).Debug("Policy evaluation complete")
+    return allowed
 }
 ```
 
@@ -181,8 +178,9 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     if dataLen < 4 {
         return proxylib.MORE, 4
     }
-    data, _ := reader.PeekSlice(4)
-    msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+    var header [4]byte
+    reader.PeekFull(header[:])
+    msgLen := int(header[0])<<24 | int(header[1])<<16 | int(header[2])<<8 | int(header[3])
 
     // BUG: Only passing msgLen bytes, not accounting for the 4-byte header
     return proxylib.PASS, msgLen  // WRONG - leaves header bytes in the buffer
@@ -194,8 +192,9 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     if dataLen < 4 {
         return proxylib.MORE, 4
     }
-    data, _ := reader.PeekSlice(4)
-    msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+    var header [4]byte
+    reader.PeekFull(header[:])
+    msgLen := int(header[0])<<24 | int(header[1])<<16 | int(header[2])<<8 | int(header[3])
 
     totalLen := 4 + msgLen  // Header + body
     if dataLen < totalLen {
@@ -212,7 +211,7 @@ When OnData causes latency spikes:
 ```bash
 # Check Envoy proxy latency metrics
 kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
-    curl -s http://localhost:9901/stats | grep "cx_length\|rq_time"
+    cilium-dbg envoy admin metrics --filter "cx_length|rq_time"
 
 # Profile the parser with Go pprof
 go test ./proxylib/myprotocol/... -bench=BenchmarkOnData -cpuprofile=cpu.prof
@@ -228,15 +227,16 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     // ...
 }
 
-// FAST: Use PeekSlice which returns a view into existing buffer
+// FAST: Peek only the fixed-size header into a stack buffer
 func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
-    data, err := reader.PeekSlice(reader.Length())  // No allocation
+    var header [4]byte
+    n, err := reader.PeekFull(header[:])
     if err != nil {
-        return proxylib.MORE, 1
+        return proxylib.MORE, 4 - n
     }
     // ...
-    _ = data
-    return proxylib.PASS, len(data)
+    _ = header
+    return proxylib.PASS, reader.Length()
 }
 ```
 
@@ -268,7 +268,7 @@ Ensure you have rebuilt the Cilium agent image with your fix and redeployed it. 
 Use the `-race` flag during testing and run load tests with `go test -bench`. Some issues only manifest when OnData is called rapidly or with interleaved request/response data.
 
 **Problem: Logs show no OnData calls at all**
-Verify that the L7 policy is actually applied and traffic is being redirected to the proxy. Check `cilium bpf proxy list` to confirm proxy redirects are active.
+Verify that the L7 policy is actually applied and traffic is being redirected to the proxy. Check `cilium-dbg envoy admin listeners` to confirm the relevant Envoy listeners are active.
 
 **Problem: Different behavior for requests vs responses**
 Remember that the `reply` parameter distinguishes direction. A bug might only affect one direction. Test both request and response parsing independently.
