@@ -108,25 +108,24 @@ podman farm list
 ## Step 5: Build with the Farm
 
 ```bash
+# Log in to your registry
+podman login registry.example.com
+
 # Build a multi-arch image using the farm
 podman farm build --farm my-build-farm -t registry.example.com/myapp:latest .
 
 # This will:
 # 1. Send the build context to each node
 # 2. Build natively on each architecture
-# 3. Create a manifest list combining all results
+# 3. Push each architecture image to the registry
+# 4. Create and push a manifest list combining all results
 ```
 
-## Step 6: Push the Multi-Arch Image
+## Step 6: Verify the Multi-Arch Image
 
 ```bash
-# Log in to your registry
-podman login registry.example.com
-
-# Push the manifest list with all architecture images
-podman manifest push --all \
-    registry.example.com/myapp:latest \
-    docker://registry.example.com/myapp:latest
+# Inspect the manifest list created by podman farm build
+podman manifest inspect registry.example.com/myapp:latest
 ```
 
 ## Testing the Farm
@@ -140,11 +139,11 @@ CMD cat /arch.txt
 EOF
 
 podman farm build --farm my-build-farm \
-    -t test-multiarch:latest \
+    -t registry.example.com/test-multiarch:latest \
     -f /tmp/Containerfile.test /tmp
 
 # Inspect the resulting manifest
-podman manifest inspect test-multiarch:latest
+podman manifest inspect registry.example.com/test-multiarch:latest
 ```
 
 ## Troubleshooting
@@ -163,4 +162,4 @@ ssh user@arm64-node.example.com "systemctl --user status podman.socket"
 
 ## Summary
 
-Setting up a Podman build farm requires SSH access to remote machines with Podman installed, system connections configured locally, and a farm definition grouping those connections. Once configured, `podman farm build` distributes builds natively across architectures, producing faster and more reliable multi-arch images than QEMU emulation.
+Setting up a Podman build farm requires SSH access to remote machines with Podman installed, system connections configured locally, and a farm definition grouping those connections. Once configured, `podman farm build` distributes builds natively across architectures and pushes the resulting multi-arch image to a registry, producing faster and more reliable multi-arch images than QEMU emulation.
