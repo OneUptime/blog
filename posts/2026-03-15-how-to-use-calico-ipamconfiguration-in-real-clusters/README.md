@@ -128,7 +128,7 @@ calicoctl apply -f ipam-large.yaml
 calicoctl apply -f ippool-large.yaml
 ```
 
-With /24 blocks (256 IPs each) and 3 blocks per host, each node supports up to 768 pods.
+With /24 blocks (256 IPs each) and 3 blocks per host, each node has IPAM capacity for up to 768 pod IPs, subject to kubelet pod limits and node capacity.
 
 ## Monitoring IPAM Utilization
 
@@ -150,11 +150,25 @@ Create a monitoring script to alert on high utilization:
 
 ```bash
 #!/bin/bash
-TOTAL=$(calicoctl ipam show 2>/dev/null | grep "IPs in use" | awk '{print $1}')
-CAPACITY=$(calicoctl ipam show 2>/dev/null | grep "total capacity" | awk '{print $1}')
+USAGE_PCT=$(calicoctl ipam show 2>/dev/null | awk -F'|' '
+/ IP Pool / {
+  total=$4
+  used=$5
+  gsub(/[ ,]/, "", total)
+  sub(/\(.*/, "", used)
+  gsub(/[ ,]/, "", used)
+  if (total + 0 > 0) {
+    capacity += total
+    in_use += used
+  }
+}
+END {
+  if (capacity > 0) {
+    printf "%.0f", (in_use * 100) / capacity
+  }
+}')
 
-if [ -n "$TOTAL" ] && [ -n "$CAPACITY" ]; then
-  USAGE_PCT=$((TOTAL * 100 / CAPACITY))
+if [ -n "$USAGE_PCT" ]; then
   if [ "$USAGE_PCT" -gt 80 ]; then
     echo "WARNING: IPAM utilization at ${USAGE_PCT}%"
   fi
@@ -198,7 +212,7 @@ calicoctl ipam show
 For clusters experiencing IP churn, check for leaked IPs from terminated pods:
 
 ```bash
-calicoctl ipam show --show-blocks | grep -v "allocated"
+calicoctl ipam check --show-problem-ips
 ```
 
 Check calico-node IPAM logs for detailed allocation information:
