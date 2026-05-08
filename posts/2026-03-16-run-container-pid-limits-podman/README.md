@@ -23,7 +23,7 @@ Use the `--pids-limit` flag to restrict the number of processes:
 ```bash
 # Limit container to 50 processes
 
-podman run -d --name limited --pids-limit 50 alpine sleep infinity
+podman run -d --name limited --pids-limit 50 alpine sleep 1000000
 
 # Check the current number of processes
 podman exec limited sh -c "ls /proc/*/status 2>/dev/null | wc -l"
@@ -98,10 +98,10 @@ podman run -d --name db --pids-limit 500 \
   postgres:16
 
 # CI/CD build container (may spawn many processes)
-podman run -d --name builder --pids-limit 1000 alpine sleep infinity
+podman run -d --name builder --pids-limit 1000 alpine sleep 1000000
 
 # Minimal single-process container
-podman run -d --name minimal --pids-limit 30 alpine sleep infinity
+podman run -d --name minimal --pids-limit 30 alpine sleep 1000000
 ```
 
 ## Monitoring PID Usage
@@ -111,7 +111,7 @@ podman run -d --name minimal --pids-limit 30 alpine sleep infinity
 podman run -d --name monitor-test --pids-limit 100 alpine sh -c "
   # Start some background processes
   for i in \$(seq 1 10); do sleep 1000 & done
-  sleep infinity
+  sleep 1000000
 "
 
 # View PID usage in stats
@@ -155,7 +155,7 @@ podman stop hardened && podman rm hardened
 
 ```bash
 # Start a container
-podman run -d --name update-test --pids-limit 50 alpine sleep infinity
+podman run -d --name update-test --pids-limit 50 alpine sleep 1000000
 
 # Update the PID limit
 podman update --pids-limit 200 update-test
@@ -173,10 +173,10 @@ podman stop update-test && podman rm update-test
 podman pod create --name pid-pod
 
 podman run -d --pod pid-pod --name pod-web --pids-limit 100 nginx:latest
-podman run -d --pod pid-pod --name pod-worker --pids-limit 50 alpine sleep infinity
+podman run -d --pod pid-pod --name pod-worker --pids-limit 50 alpine sleep 1000000
 
 # Check PID usage for each container in the pod
-podman stats --no-stream --format "table {{.Name}}\t{{.PIDs}}" --filter pod=pid-pod
+podman stats --no-stream --format "table {{.Name}}\t{{.PIDs}}" pod-web pod-worker
 
 podman pod stop pid-pod && podman pod rm pid-pod
 ```
@@ -190,11 +190,11 @@ podman pod stop pid-pod && podman pod rm pid-pod
 # Check if a container has hit its PID limit
 podman run -d --name trouble --pids-limit 20 alpine sh -c "
   for i in \$(seq 1 30); do sleep 100 & done 2>&1
-  sleep infinity
+  sleep 1000000
 "
 
-# Check events for PID limit violations
-podman events --filter container=trouble --since 1m 2>&1 | head -5
+# Check cgroup events for PID limit hits
+podman exec trouble sh -c "cat /sys/fs/cgroup/pids.events.local 2>/dev/null || cat /sys/fs/cgroup/pids.events 2>/dev/null"
 
 # Increase the limit if needed
 podman update --pids-limit 100 trouble
