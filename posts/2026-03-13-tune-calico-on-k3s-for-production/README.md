@@ -12,7 +12,7 @@ Description: Apply production-grade Calico tuning on K3s clusters for edge and I
 
 K3s is increasingly used in production edge deployments where resources are constrained but reliability requirements are high. Tuning Calico for production on K3s requires balancing performance with resource efficiency - setting appropriate MTU values, reducing unnecessary logging overhead, and configuring Felix parameters for the specific hardware and network environment of your edge nodes.
 
-Production K3s deployments often run on ARM-based hardware or low-power x86 systems. Calico's eBPF data plane is particularly well-suited for these environments when the kernel version supports it (5.14+), providing better performance than iptables with lower overhead. However, traditional iptables mode remains the most compatible option for diverse edge hardware.
+Production K3s deployments often run on ARM-based hardware or low-power x86 systems. Calico's eBPF data plane is particularly well-suited for these environments when the kernel version supports it (5.10+ for the base eBPF data plane, with newer kernels required for some features), providing better performance than iptables with lower overhead. However, traditional iptables mode remains the most compatible option for diverse edge hardware.
 
 This guide covers production Calico tuning for K3s, focusing on resource efficiency, MTU, observability, and security settings.
 
@@ -31,7 +31,7 @@ free -h
 nproc
 ```
 
-For eBPF mode, kernel 5.14+ is required.
+For eBPF mode, kernel 5.10+ is required for the base data plane, with newer kernels required for some features.
 
 ## Step 2: Configure MTU for the Edge Network
 
@@ -63,7 +63,7 @@ spec:
   healthEnabled: true
   prometheusMetricsEnabled: false
   ipv6Support: false
-  reportingInterval: 60s
+  usageReportingEnabled: false
   bpfEnabled: false
 EOF
 ```
@@ -73,17 +73,26 @@ EOF
 For low-resource edge nodes:
 
 ```bash
-kubectl patch daemonset calico-node -n kube-system --type=json -p='[
-  {"op":"add","path":"/spec/template/spec/containers/0/resources","value":{
-    "requests":{"cpu":"50m","memory":"64Mi"},
-    "limits":{"cpu":"200m","memory":"256Mi"}
-  }}
-]'
+kubectl patch daemonset calico-node -n kube-system --type=strategic -p='{
+  "spec":{
+    "template":{
+      "spec":{
+        "containers":[{
+          "name":"calico-node",
+          "resources":{
+            "requests":{"cpu":"50m","memory":"64Mi"},
+            "limits":{"cpu":"200m","memory":"256Mi"}
+          }
+        }]
+      }
+    }
+  }
+}'
 ```
 
 ## Step 5: Optimize IP Pool for Edge
 
-Use smaller IP block size for edge nodes that run few pods:
+Use smaller IP block size for edge nodes that run few pods. Set this when creating the pool; for an existing pool, create a replacement pool and migrate workloads because `blockSize` cannot be changed after pool creation.
 
 ```bash
 calicoctl apply -f - <<EOF
