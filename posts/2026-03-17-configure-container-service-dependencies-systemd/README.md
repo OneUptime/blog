@@ -84,6 +84,12 @@ BindsTo=mainapp.service
 ## Complete Multi-Service Example
 
 ```ini
+# appnet.network
+[Network]
+NetworkName=appnet
+```
+
+```ini
 # database.container
 [Unit]
 Description=PostgreSQL database
@@ -164,7 +170,7 @@ systemd-analyze --user dot database.service webapp.service | dot -Tpng -o deps.p
 ## Starting with Dependencies
 
 ```bash
-# Start the webapp - systemd starts database and cache first
+# Start the API - systemd starts database and cache first
 systemctl --user start api.service
 
 # Check all services in the dependency chain
