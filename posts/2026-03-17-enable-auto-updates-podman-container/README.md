@@ -19,7 +19,7 @@ Podman auto-update checks whether a container's image has been updated in the re
 Auto-update works with containers that:
 1. Are managed by systemd (Quadlet or generated unit files)
 2. Use a fully-qualified image name (e.g., `docker.io/library/nginx:latest`)
-3. Have the `io.containers.autoupdate` label set
+3. Have the `io.containers.autoupdate` label set, or use the `AutoUpdate` directive in a Quadlet file
 
 ## Enable Auto-Update with Quadlet
 
@@ -46,7 +46,7 @@ WantedBy=default.target
 
 ## Enable Auto-Update with podman run
 
-When running containers manually, add the label:
+When creating a container manually before generating a systemd unit for it, add the label:
 
 ```bash
 podman run -d \
@@ -55,6 +55,8 @@ podman run -d \
   -p 8080:80 \
   docker.io/myorg/webapp:latest
 ```
+
+The labeled container still needs to be run by a systemd unit that creates a new container on restart, such as a unit generated with `podman generate systemd --new`. A label alone is not enough for auto-update.
 
 ## Start the Auto-Update Timer
 
@@ -100,7 +102,7 @@ journalctl --user -u podman-auto-update.service --since "1 hour ago"
 
 ## Important Notes
 
-- Always use specific tags like `latest` or `stable` that get updated in the registry.
+- Always use mutable tags like `latest` or `stable` that get updated in the registry.
 - Pinned digests (e.g., `nginx@sha256:abc123`) will never trigger an auto-update.
 - The container must be running when auto-update checks occur.
 
