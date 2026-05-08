@@ -18,7 +18,7 @@ This guide takes you through applying, testing, and extending L7 policies using 
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium installed (kernel 4.19.57+)
+- Kubernetes cluster with Cilium installed (kernel 5.10+ or an equivalent distribution-supported kernel)
 - Star Wars demo deployed
 - L3/L4 policy already applied
 - `kubectl` and `cilium` CLI configured
@@ -86,7 +86,7 @@ Verify that the L7 policy blocks disallowed methods and paths.
 kubectl exec tiefighter -- \
   curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 
-# Expected: 403 Access denied or connection hang
+# Expected: Access denied (HTTP 403)
 
 # This should also fail - X-wing blocked at L3/L4 level
 kubectl exec xwing -- \
@@ -116,7 +116,7 @@ In the Hubble output, you should see:
 
 ## Step 5: Extend the Policy with Additional Rules
 
-Add more HTTP rules to build a more complete API access policy.
+Add more HTTP rules to build a more complete API access policy. The `/v1/status` endpoint below is an example; replace it with an endpoint that your demo or application actually exposes.
 
 ```yaml
 # Extended L7 policy with multiple allowed endpoints
@@ -153,7 +153,7 @@ spec:
 # Apply the extended policy
 kubectl apply -f l7-policy-extended.yaml
 
-# Test the newly allowed endpoint
+# Test the newly allowed endpoint if your application exposes it
 kubectl exec tiefighter -- \
   curl -s -XGET deathstar.default.svc.cluster.local/v1/status
 ```
