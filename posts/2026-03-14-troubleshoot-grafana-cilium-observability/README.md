@@ -56,7 +56,7 @@ curl -s -u admin:admin http://localhost:3000/api/org
 kubectl get secret -n monitoring grafana -o jsonpath='{.data.admin-password}' | base64 -d
 
 # Reset admin password
-kubectl exec -n monitoring deploy/grafana -- grafana-cli admin reset-admin-password newpassword
+kubectl exec -n monitoring deploy/grafana -- grafana cli admin reset-admin-password newpassword
 
 # Check for LDAP/OAuth configuration issues
 kubectl logs -n monitoring deploy/grafana | grep -i "auth\|login\|ldap\|oauth"
@@ -82,14 +82,15 @@ When Grafana connects but shows no Cilium data:
 ```bash
 # Check datasource health
 curl -s -u admin:admin http://localhost:3000/api/datasources | jq '.[].name'
-curl -s -u admin:admin http://localhost:3000/api/datasources/1/health | jq '.'
+PROM_DS_UID=$(curl -s -u admin:admin http://localhost:3000/api/datasources | jq -r '.[] | select(.type=="prometheus") | .uid' | head -1)
+curl -s -u admin:admin "http://localhost:3000/api/datasources/uid/$PROM_DS_UID/health" | jq '.'
 
 # Test Prometheus connectivity from Grafana pod
 kubectl exec -n monitoring deploy/grafana -- \
     curl -s http://prometheus-server.monitoring.svc:9090/api/v1/query?query=up | head -100
 
 # Check datasource URL configuration
-curl -s -u admin:admin http://localhost:3000/api/datasources/1 | jq '{name: .name, url: .url, access: .access}'
+curl -s -u admin:admin "http://localhost:3000/api/datasources/uid/$PROM_DS_UID" | jq '{name: .name, url: .url, access: .access}'
 ```
 
 Fix common datasource issues:
@@ -97,9 +98,12 @@ Fix common datasource issues:
 ```bash
 # Issue: Wrong Prometheus URL
 # Symptoms: All dashboards show "No data"
-curl -s -u admin:admin -X PUT http://localhost:3000/api/datasources/1 \
+PROM_DS_UID=$(curl -s -u admin:admin http://localhost:3000/api/datasources | jq -r '.[] | select(.type=="prometheus") | .uid' | head -1)
+curl -s -u admin:admin "http://localhost:3000/api/datasources/uid/$PROM_DS_UID" | \
+    jq '.url="http://prometheus-server.monitoring.svc:9090" | .access="proxy" | .isDefault=true' | \
+    curl -s -u admin:admin -X PUT "http://localhost:3000/api/datasources/uid/$PROM_DS_UID" \
     -H "Content-Type: application/json" \
-    -d '{"name":"Prometheus","type":"prometheus","url":"http://prometheus-server.monitoring.svc:9090","access":"proxy","isDefault":true}'
+    -d @-
 
 # Issue: Datasource not set as default
 curl -s -u admin:admin http://localhost:3000/api/datasources | jq '.[] | {name: .name, isDefault: .isDefault}'
@@ -185,15 +189,17 @@ Verify Grafana is fully operational:
 curl -s -u admin:admin http://localhost:3000/api/health | jq '.'
 
 # Verify all datasources healthy
-curl -s -u admin:admin http://localhost:3000/api/datasources | jq '.[] | {name: .name}' | while read ds; do
-    echo "Checking: $ds"
+curl -s -u admin:admin http://localhost:3000/api/datasources | jq -r '.[] | [.name, .uid] | @tsv' | while IFS=$'\t' read name uid; do
+    echo "Checking: $name"
+    curl -s -u admin:admin "http://localhost:3000/api/datasources/uid/$uid/health" | jq '.status'
 done
 
 # List all dashboards
 curl -s -u admin:admin http://localhost:3000/api/search | jq '.[].title'
 
 # Verify Cilium metrics in Grafana
-curl -s -u admin:admin "http://localhost:3000/api/datasources/proxy/1/api/v1/query?query=cilium_endpoint_state" | jq '.data.result | length'
+PROM_DS_UID=$(curl -s -u admin:admin http://localhost:3000/api/datasources | jq -r '.[] | select(.type=="prometheus") | .uid' | head -1)
+curl -s -u admin:admin "http://localhost:3000/api/datasources/proxy/uid/$PROM_DS_UID/api/v1/query?query=cilium_endpoint_state" | jq '.data.result | length'
 ```
 
 ## Troubleshooting
@@ -205,7 +211,7 @@ Check logs for configuration errors: `kubectl logs -n monitoring deploy/grafana 
 Verify the dashboard JSON is valid and the datasource names match. Use the Grafana UI import (Dashboard > Import) rather than the API for better error messages.
 
 **Problem: Alerts show "Pending" but never fire**
-Check that the alert evaluation interval is shorter than the `for` duration. Also verify the notification channel is configured and tested.
+Check that the alert condition remains true for the full pending period (`for` duration) and that evaluations are succeeding. Also verify the contact point is configured and tested.
 
 **Problem: Grafana is slow to load dashboards**
 Reduce the number of panels per dashboard, increase the query step interval, or add caching. Check Grafana pod resource limits.
