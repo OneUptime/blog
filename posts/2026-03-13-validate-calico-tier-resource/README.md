@@ -14,7 +14,7 @@ Validating Calico Tier configuration requires confirming that tiers exist with t
 
 ## Prerequisites
 
-- Calico Enterprise or Calico Cloud with Tier support
+- Calico with Tier support
 - `calicoctl` with cluster admin access
 - Documented expected tier hierarchy
 
@@ -57,14 +57,19 @@ for p in sorted(data['items'], key=lambda x: (x['spec'].get('tier', 'default'), 
 
 ```bash
 # Deploy test pods and verify security tier deny takes precedence
+kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
 kubectl run blocked-sender --image=busybox -n test \
   -l threat-level=high -- sleep 3600
 kubectl run target --image=nginx -n test
+kubectl expose pod target --port=80 -n test
+kubectl wait --for=condition=Ready pod/blocked-sender -n test --timeout=60s
+kubectl wait --for=condition=Ready pod/target -n test --timeout=60s
 
 # Security tier policy should block traffic from threat-level=high endpoints
-kubectl exec -n test blocked-sender -- wget -T 3 http://target.test
+kubectl exec -n test blocked-sender -- wget -T 3 -O- http://target.test.svc.cluster.local
 # Should timeout (blocked by security tier)
 
+kubectl delete service target -n test
 kubectl delete pod blocked-sender target -n test
 ```
 
@@ -81,26 +86,25 @@ graph LR
 ## Step 4: Verify RBAC Controls Tier Access
 
 ```bash
-# Test that application team cannot create policies in security tier
-kubectl auth can-i create globalnetworkpolicies.projectcalico.org \
-  --as=system:serviceaccount:app-team:developer \
-  --subresource=security.*
-# Should return 'no'
+# kubectl auth can-i cannot validate Calico tiered-policy RBAC.
+# Inspect the bound Role/ClusterRole rules instead.
 
-# Test that security team can
-kubectl auth can-i create globalnetworkpolicies.projectcalico.org \
-  --as=system:serviceaccount:security-team:policy-admin \
-  --subresource=security.*
-# Should return 'yes'
+# Application team roles should not grant security-tier policy writes
+kubectl get clusterrole app-team-policy-writer -o yaml
+# Verify it does not grant resourceNames such as security.* for tier.globalnetworkpolicies
+
+# Security team roles should grant the security tier and its policies
+kubectl get clusterrole security-tier-policy-admin -o yaml
+# Verify it grants get on tiers/security and writes on tier.globalnetworkpolicies/security.*
 ```
 
-## Step 5: Check Felix Programmed All Tier Policies
+## Step 5: Check Felix Programmed Active Policies
 
 ```bash
-# Check Felix metrics for active policies per tier
+# Check Felix metrics for active policies on a node
 NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system $NODE_POD -- \
-  curl -s localhost:9091/metrics | grep felix_active_local_policies
+  curl -s localhost:9091/metrics | grep '^felix_active_local_policies'
 ```
 
 ## Conclusion
