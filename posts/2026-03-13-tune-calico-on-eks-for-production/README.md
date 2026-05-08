@@ -12,7 +12,7 @@ Description: Apply production-grade Calico tuning on Amazon EKS for optimal poli
 
 Tuning Calico on EKS for production focuses on Felix performance since Calico operates in policy-only mode without IPAM or BGP functions. For large EKS clusters with hundreds of nodes and thousands of network policies, Felix's iptables rule management can become a bottleneck if not properly tuned.
 
-EKS production environments also benefit from Calico's eBPF data plane, which provides better performance than iptables for high-throughput workloads. The eBPF mode is supported on EKS nodes running Linux kernel 5.3+ (available with Amazon Linux 2 with kernel 5.10 or Bottlerocket OS).
+EKS production environments can also benefit from Calico's eBPF data plane, which provides better performance than iptables for high-throughput workloads when the cluster is prepared for eBPF mode. The eBPF mode is supported on EKS nodes running a supported Linux distribution with kernel 5.10+ (available with Amazon Linux 2 with kernel 5.10 or Bottlerocket OS).
 
 This guide covers production tuning for Calico on EKS, including Felix iptables settings, eBPF configuration, resource limits, and CloudWatch metrics integration.
 
@@ -38,11 +38,13 @@ Check kernel version on EKS nodes:
 kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kernelVersion}'
 ```
 
-If kernel is 5.3+, enable eBPF:
+If the node kernel and cluster configuration meet the eBPF requirements, enable eBPF:
 
 ```bash
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  --patch '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","hostPorts":null}}}'
+kubectl patch ds -n kube-system kube-proxy \
+  --patch '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
 ```
 
 ## Step 3: Tune Felix for Production EKS
@@ -55,14 +57,11 @@ metadata:
   name: default
 spec:
   logSeverityScreen: Warning
-  iptablesRefreshInterval: 90s
-  routeRefreshInterval: 90s
+  iptablesRefreshInterval: 5m
   healthEnabled: true
   prometheusMetricsEnabled: true
   prometheusMetricsPort: 9091
   reportingInterval: 30s
-  iptablesLockTimeout: 30s
-  iptablesLockProbeInterval: 50ms
 EOF
 ```
 
@@ -71,17 +70,12 @@ EOF
 For `m5.xlarge` (4 vCPU, 16GB RAM):
 
 ```bash
-kubectl patch daemonset calico-node -n calico-system --type=json -p='[
-  {"op":"add","path":"/spec/template/spec/containers/0/resources","value":{
-    "requests":{"cpu":"150m","memory":"128Mi"},
-    "limits":{"cpu":"500m","memory":"512Mi"}
-  }}
-]'
+kubectl patch installation.operator.tigera.io default --type=merge --patch='{"spec":{"calicoNodeDaemonSet":{"spec":{"template":{"spec":{"containers":[{"name":"calico-node","resources":{"requests":{"cpu":"150m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"512Mi"}}}]}}}}}}'
 ```
 
 ## Step 5: Expose Felix Metrics for CloudWatch
 
-Create a ServiceMonitor for Prometheus scraping:
+Create a Service for Prometheus or the CloudWatch agent to scrape:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -93,23 +87,25 @@ metadata:
   labels:
     k8s-app: calico-node
 spec:
+  clusterIP: None
   selector:
     k8s-app: calico-node
   ports:
   - name: metrics
     port: 9091
+    targetPort: 9091
     protocol: TCP
-  type: ClusterIP
 EOF
 ```
 
-## Step 6: Enable Typha for Large Clusters
+## Step 6: Schedule Typha for Large Clusters
 
-Typha reduces kube-apiserver load for clusters with 100+ nodes. It is managed via the Installation CR:
+Typha reduces kube-apiserver load for clusters with 100+ nodes. Operator-based installations include Typha, and you can schedule it to well-known nodes via the Installation CR:
 
 ```bash
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"typhaAffinity":{"nodeAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"preference":{"matchExpressions":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists"}]}}]}}}}'
+kubectl label node <node-name> typha=allowed
+kubectl patch installation.operator.tigera.io default --type merge \
+  --patch '{"spec":{"typhaDeployment":{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"preference":{"matchExpressions":[{"key":"typha","operator":"In","values":["allowed"]}]}}]}}}}}}}}'
 ```
 
 ## Step 7: Verify Production Settings
@@ -122,4 +118,4 @@ kubectl top pods -n calico-system
 
 ## Conclusion
 
-You have applied production-grade Calico tuning on EKS, including eBPF data plane consideration, Felix iptables settings, resource limits, Prometheus metrics, and Typha for large-scale deployments. These settings optimize Calico's policy enforcement performance for production EKS workloads at any scale.
+You have applied production-grade Calico tuning on EKS, including eBPF data plane consideration, Felix iptables settings, resource limits, Prometheus metrics, and Typha scheduling for large-scale deployments. These settings optimize Calico's policy enforcement performance for production EKS workloads at scale.
