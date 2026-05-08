@@ -14,7 +14,7 @@ IPv6 adoption in OpenStack environments is growing as organizations prepare for 
 
 This guide covers configuring and scaling IPv6 in OpenStack with Calico, from initial dual-stack setup through optimization for large deployments. We address IPv6-specific challenges including neighbor discovery protocol (NDP) scaling, extended route tables, and security group considerations for IPv6 traffic.
 
-The key architectural difference with IPv6 in Calico is that neighbor discovery replaces ARP, and the larger address space means more route entries per VM if using full /128 routes rather than aggregated blocks.
+The key architectural difference with IPv6 in Calico is that neighbor discovery replaces ARP, and OpenStack VM routes are typically advertised as /128 host routes, so route distribution and neighbor table sizing matter at scale.
 
 ## Prerequisites
 
@@ -24,48 +24,40 @@ The key architectural difference with IPv6 in Calico is that neighbor discovery 
 - `calicoctl` configured with datastore access
 - Kernel version 4.x or later with full IPv6 support
 
-## Configuring Dual-Stack IP Pools
+## Configuring Dual-Stack Neutron Subnets
 
-Set up IPv6 IP pools alongside existing IPv4 pools for dual-stack operation.
+Set up IPv6 subnets alongside existing IPv4 subnets for dual-stack operation. In Calico for OpenStack, OpenStack controls whether a VM gets IPv4, IPv6, or both addresses; Calico honors the addresses that Neutron assigns.
 
-```yaml
-# ipv6-ippool.yaml
+```bash
+# Create a shared Neutron network for dual-stack VMs
+openstack network create --share dual-stack-vm-net
 
-# IPv6 IP pool for OpenStack VMs
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: openstack-ipv6
-spec:
-  # Use a ULA or GUA range for your VMs
-  cidr: fd00:10:96::/48
-  # Block size for IPv6 (default is /122, 64 addresses per block)
-  blockSize: 122
-  # IPv6 does not use NAT typically
-  natOutgoing: false
-  # Use no encapsulation for IPv6 when possible
-  encapsulation: None
-  nodeSelector: all()
----
-# Ensure IPv4 pool also exists for dual-stack
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: openstack-ipv4
-spec:
-  cidr: 10.0.0.0/16
-  blockSize: 26
-  natOutgoing: true
-  encapsulation: VXLAN
-  nodeSelector: all()
+# IPv4 subnet for the same VM network
+openstack subnet create \
+  --network dual-stack-vm-net \
+  --ip-version 4 \
+  --subnet-range 10.0.0.0/16 \
+  --gateway 10.0.0.1 \
+  --dhcp \
+  openstack-ipv4
+
+# IPv6 subnet for OpenStack VMs
+# Use a routed GUA prefix for externally reachable VMs, or a ULA prefix for private IPv6.
+openstack subnet create \
+  --network dual-stack-vm-net \
+  --ip-version 6 \
+  --subnet-range fd00:10:96::/64 \
+  --gateway fd00:10:96::1 \
+  --ipv6-ra-mode slaac \
+  --ipv6-address-mode slaac \
+  --dhcp \
+  openstack-ipv6
 ```
 
 ```bash
-# Apply the dual-stack IP pools
-calicoctl apply -f ipv6-ippool.yaml
-
-# Verify both pools are active
-calicoctl get ippools -o wide
+# Verify both subnets are active
+openstack subnet list --network dual-stack-vm-net
+openstack subnet show openstack-ipv6
 ```
 
 ## Optimizing IPv6 Neighbor Discovery at Scale
@@ -82,10 +74,11 @@ sudo sysctl -w net.ipv6.neigh.default.gc_thresh1=4096
 sudo sysctl -w net.ipv6.neigh.default.gc_thresh2=8192
 sudo sysctl -w net.ipv6.neigh.default.gc_thresh3=16384
 
-# Increase route table cache for IPv6
-sudo sysctl -w net.ipv6.route.max_size=16384
+# On Linux kernels before 6.3, consider raising net.ipv6.route.max_size
+# if you see route cache pressure. On newer kernels, IPv6 route cache
+# garbage collection is managed without this setting.
 
-# Reduce NDP retransmit timer for faster resolution
+# Set NDP retransmit timer explicitly
 sudo sysctl -w net.ipv6.neigh.default.retrans_time_ms=1000
 
 # Persist settings
@@ -94,7 +87,7 @@ cat << 'EOF' | sudo tee /etc/sysctl.d/99-calico-ipv6.conf
 net.ipv6.neigh.default.gc_thresh1 = 4096
 net.ipv6.neigh.default.gc_thresh2 = 8192
 net.ipv6.neigh.default.gc_thresh3 = 16384
-net.ipv6.route.max_size = 16384
+# Explicit NDP retransmit timer in milliseconds
 net.ipv6.neigh.default.retrans_time_ms = 1000
 EOF
 
@@ -105,10 +98,10 @@ sudo sysctl --system
 graph TD
     A[Dual-Stack VM] --> B[IPv4 10.0.x.x]
     A --> C[IPv6 fd00:10:96::x]
-    B --> D[IPv4 IP Pool]
-    C --> E[IPv6 IP Pool]
-    D --> F[VXLAN Encap]
-    E --> G[No Encap / Native]
+    B --> D[IPv4 Neutron Subnet]
+    C --> E[IPv6 Neutron Subnet]
+    D --> F[Calico Routes]
+    E --> G[Calico Routes]
     F --> H[Compute Fabric]
     G --> H
 ```
@@ -165,7 +158,7 @@ Configure BGP to handle IPv6 route distribution efficiently.
 
 ```yaml
 # bgp-ipv6-config.yaml
-# BGP configuration with IPv6 support
+# BGP configuration for route-reflector or fabric peering
 apiVersion: projectcalico.org/v3
 kind: BGPConfiguration
 metadata:
@@ -173,10 +166,16 @@ metadata:
 spec:
   nodeToNodeMeshEnabled: false
   asNumber: 64512
-  # Enable both IPv4 and IPv6 address families
-  serviceClusterIPs:
-    - cidr: 10.96.0.0/12
-    - cidr: fd00:10:96::/108
+---
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: route-reflector-ipv6
+spec:
+  # Peer every compute node with an IPv6-capable route reflector or fabric router
+  nodeSelector: all()
+  peerIP: 2001:db8:10::1
+  asNumber: 64512
 ```
 
 ## Verification
@@ -188,9 +187,9 @@ Verify dual-stack connectivity and route distribution.
 # verify-ipv6-scale.sh
 # Verify IPv6 scaling configuration
 
-echo "=== IPv6 IP Pool Status ==="
-calicoctl get ippools -o wide | grep -i ipv6
-calicoctl get ippools -o wide | grep fd00
+echo "=== IPv6 Subnet Status ==="
+openstack subnet list --ip-version 6
+openstack subnet show openstack-ipv6 -f value -c cidr -c ipv6_ra_mode -c ipv6_address_mode
 
 echo ""
 echo "=== IPv6 Routes on Compute Nodes ==="
@@ -213,11 +212,11 @@ echo "Create a test VM and verify it gets both IPv4 and IPv6 addresses"
 
 ## Troubleshooting
 
-- **VMs not getting IPv6 addresses**: Verify the IPv6 IP pool exists and has available addresses. Check that the OpenStack subnet is configured for IPv6 with SLAAC or DHCPv6.
+- **VMs not getting IPv6 addresses**: Verify the OpenStack IPv6 subnet exists and has available addresses. Check that the OpenStack subnet is configured for IPv6 with SLAAC or DHCPv6.
 - **IPv6 connectivity fails between VMs**: Check that ICMPv6 is allowed in security groups (required for NDP). Verify IPv6 routes exist on compute nodes with `ip -6 route show proto bird`.
 - **NDP table overflow**: Increase `gc_thresh` values for IPv6 neighbor tables. This manifests as intermittent IPv6 connectivity when the neighbor table is full.
 - **BGP not advertising IPv6 routes**: Verify BIRD is configured for the IPv6 address family. Check BIRD logs for IPv6-specific errors.
 
 ## Conclusion
 
-Scaling IPv6 in OpenStack with Calico requires attention to NDP optimization, dual-stack policy configuration, and BGP tuning for the larger route tables that IPv6 brings. By configuring appropriate IP pools, optimizing kernel parameters, and ensuring security policies cover both address families, you can build a reliable dual-stack OpenStack deployment that scales to thousands of VMs.
+Scaling IPv6 in OpenStack with Calico requires attention to NDP optimization, dual-stack policy configuration, and BGP tuning for the larger route tables that IPv6 brings. By configuring appropriate Neutron subnets, optimizing kernel parameters, and ensuring security policies cover both address families, you can build a reliable dual-stack OpenStack deployment that scales to thousands of VMs.
