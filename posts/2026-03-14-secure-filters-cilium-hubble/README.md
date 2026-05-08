@@ -12,7 +12,7 @@ Description: Learn how to use Hubble filters as a security control to limit data
 
 Hubble filters are not just a convenience feature for debugging -- they serve as a critical security control. Without proper filtering, Hubble exposes detailed information about every network flow in your cluster, including pod communication patterns, DNS queries, HTTP paths, and port usage. This data can reveal application architecture, internal APIs, and potentially sensitive business logic.
 
-Using filters as a security mechanism means applying them at the exporter level to control what data is persisted, at the relay level to restrict what is served to clients, and at the access level to control who can query specific namespaces or workloads.
+Using filters as a security mechanism means applying them at the exporter level to control what data is persisted, and pairing those filters with separate access controls for who can connect to Hubble Relay or read exported logs.
 
 This guide shows you how to apply filters strategically to minimize data exposure while retaining the observability capabilities you need.
 
@@ -64,9 +64,9 @@ hubble:
         - source.pod_name
         - destination.namespace
         - destination.pod_name
-        - destination.port
+        - l4
         - verdict
-        - drop_reason
+        - drop_reason_desc
         - Type
 ```
 
@@ -88,9 +88,9 @@ graph TD
     G --> H[Log Aggregator]
 ```
 
-## Restricting Hubble CLI Access by Namespace
+## Guiding Hubble CLI Access by Namespace
 
-While Hubble CLI does not natively support RBAC-based namespace filtering, you can achieve namespace isolation through tooling:
+Hubble CLI supports namespace filters, but Kubernetes RBAC does not natively authorize Hubble Relay results by namespace. A wrapper can provide a constrained command for trusted environments, but do not treat it as the security boundary unless users cannot bypass it and direct Hubble API access is separately controlled:
 
 ```bash
 # Create a restricted wrapper script for team-specific access
@@ -98,11 +98,11 @@ cat > /usr/local/bin/hubble-team-frontend << 'SCRIPT'
 #!/bin/bash
 # Restricted Hubble access for the frontend team
 # Only allows observing flows in the frontend namespace
-exec hubble observe --namespace frontend "$@"
+exec hubble observe "$@" --namespace frontend
 SCRIPT
 chmod +x /usr/local/bin/hubble-team-frontend
 
-# For Kubernetes-based access, create namespace-scoped RBAC
+# For Kubernetes-based access to pod metadata, create namespace-scoped RBAC
 ```
 
 ```yaml
@@ -142,11 +142,11 @@ hubble:
   # Enable built-in redaction
   redact:
     enabled: true
-    httpURLQuery: true
-    httpUserInfo: true
-    kafkaApiKey: true
+    http:
+      urlQuery: true
+      userInfo: true
 
-  # Only enable L7 metrics for non-sensitive namespaces
+  # Keep HTTP metrics at namespace-level label granularity
   metrics:
     enabled:
       - dns
@@ -167,11 +167,9 @@ hubble:
         - source.pod_name
         - destination.namespace
         - destination.pod_name
-        - destination.port
+        - l4
         - verdict
-        - drop_reason
-        - l4.TCP
-        - l4.UDP
+        - drop_reason_desc
         - Type
         # Deliberately NOT including l7 field
 ```
@@ -270,7 +268,7 @@ for v, count in verdicts.most_common():
 
 - **Sensitive data appearing in export despite deny list**: Check the exact namespace names. The deny list uses prefix matching, so `vault/` matches any pod in the `vault` namespace. Verify namespace names with `kubectl get ns`.
 
-- **Redaction not working**: Ensure `hubble.redact.enabled=true` is set and Cilium pods have been restarted. Redaction only applies to new flows after the restart.
+- **Redaction not working**: Ensure `hubble.redact.enabled=true`, `hubble.redact.http.urlQuery=true`, and `hubble.redact.http.userInfo=true` are set and Cilium pods have been restarted. Redaction only applies to new flows after the restart.
 
 - **Filter changes not taking effect**: Exporter filter changes require a pod restart. Run `kubectl -n kube-system rollout restart ds/cilium`.
 
