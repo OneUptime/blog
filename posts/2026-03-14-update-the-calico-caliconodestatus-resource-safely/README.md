@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: A step-by-step guide to modifying Calico CalicoNodeStatus resources in production without causing downtime or connectivity issues.
+Description: A step-by-step guide to modifying Calico CalicoNodeStatus resources in production without adding unnecessary control-plane load.
 
 ---
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured CalicoNodeStatus can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying CalicoNodeStatus resources in production.
+Updating Calico resources in a running cluster requires care. CalicoNodeStatus is a troubleshooting resource that tells Calico which node status information to collect, including BGP agent, BGP session, and route status. Misconfiguring it will not change Felix or BGP configuration, but collecting status too broadly or too frequently can add load to calico-node and the Kubernetes API server. This guide covers a safe workflow for modifying CalicoNodeStatus resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
-This post provides a repeatable process you can follow every time you need to update a CalicoNodeStatus resource, whether it is a minor tuning change or a significant configuration shift.
+This post provides a repeatable process you can follow every time you need to update a CalicoNodeStatus resource, whether you are changing the target node, the collected status classes, or the update interval.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ calicoctl get caliconodestatus -o yaml > caliconodestatus-backup.yaml
 cp caliconodestatus-backup.yaml caliconodestatus-backup-$(date +%Y%m%d%H%M%S).yaml
 ```
 
-This backup is your rollback point. If the update causes issues, you can immediately reapply this file.
+This backup is your rollback point for the previous status collection settings. If the update causes excess load or collects the wrong information, you can immediately reapply this file.
 
 ## Step 2: Review and Modify the Manifest
 
@@ -49,20 +49,21 @@ diff <(calicoctl get caliconodestatus -o yaml) caliconodestatus.yaml
 
 Review each changed field and consider its impact:
 
-- Will this change affect active connections?
-- Does this change require a Felix or BGP restart?
-- Could this change lock you out of nodes?
+- Does `spec.node` match the Kubernetes node you want to troubleshoot?
+- Are the `spec.classes` limited to the status information you need?
+- Is `spec.updatePeriodSeconds` high enough to avoid unnecessary API server load?
 
 ## Step 3: Apply the Update
 
 Apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
+# Validate, then apply with calicoctl
+calicoctl validate -f caliconodestatus.yaml
 calicoctl apply -f caliconodestatus.yaml
 ```
 
-For critical changes, consider applying during a maintenance window and monitoring immediately after.
+For high-frequency status collection or large clusters, consider applying during a maintenance window and monitoring immediately after.
 
 ## Step 4: Monitor After the Update
 
@@ -72,8 +73,8 @@ Watch for issues in the Calico component logs:
 # Watch calico-node logs for errors
 kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
 
-# Check Felix for configuration reload
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
+# Check for CalicoNodeStatus, BGP, or route collection errors
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=100 | grep -Ei "caliconodestatus|bgp|route|error"
 ```
 
 Run connectivity tests to verify that pods can still communicate:
@@ -105,7 +106,7 @@ Ensure all calico-node pods show `Running` status and have not restarted unexpec
 If the update causes problems, immediately revert to your backup:
 
 ```bash
-# Rollback to the previous configuration
+# Rollback to the previous status collection settings
 calicoctl apply -f caliconodestatus-backup.yaml
 
 # Verify rollback was successful
@@ -115,17 +116,18 @@ calicoctl get caliconodestatus -o yaml
 ## Troubleshooting
 
 **Pods losing connectivity after update:**
-- Immediately apply the backup manifest.
+- A CalicoNodeStatus change does not change routing or policy. If this happens, immediately check for concurrent changes to FelixConfiguration, BGPConfiguration, BGPPeer, IPPool, or Node resources.
+- Apply the backup manifest if the new CalicoNodeStatus is causing excess load.
 - Check if Felix is crashlooping: `kubectl get pods -n calico-system`.
-- Review Felix logs for configuration errors.
+- Review calico-node logs for errors.
 
 **BGP sessions dropping (for BGP-related resources):**
 - Check BGP peering status: `calicoctl node status`.
-- Verify ASN numbers and peer IPs are correct.
+- Verify there were no concurrent changes to BGPConfiguration, BGPPeer, or Node BGP settings. CalicoNodeStatus reports BGP session state but does not configure BGP peers.
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Run `calicoctl validate -f caliconodestatus.yaml` and check the command output for schema or validation errors.
 
 
 ## Additional Considerations
@@ -160,7 +162,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces
+kubectl auth can-i update caliconodestatuses.crd.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
@@ -168,7 +171,7 @@ kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 
 ### Capacity Planning for Large Deployments
 
-For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
+For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. CalicoNodeStatus is intended for a small number of nodes during troubleshooting, not as continuous status collection for every node. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
 
 ```bash
 # Monitor IPAM utilization
@@ -180,4 +183,4 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=memory
 
 ## Conclusion
 
-Updating Calico CalicoNodeStatus resources safely requires a disciplined approach: backup first, review the diff, apply with validation, and monitor immediately. Always keep your rollback manifest accessible and test changes in a non-production environment before applying them to production clusters.
+Updating Calico CalicoNodeStatus resources safely requires a disciplined approach: backup first, review the diff, validate, apply, and monitor immediately. Always keep your rollback manifest accessible and test changes in a non-production environment before applying them to production clusters.
