@@ -10,9 +10,9 @@ Description: Learn how to validate Cilium CNI on k0s Kubernetes clusters, coveri
 
 ## Introduction
 
-k0s is a lightweight, zero-friction Kubernetes distribution designed for simple deployment and operation. It bundles all Kubernetes components into a single binary and supports Cilium as a CNI option through its built-in extension mechanism. Validating Cilium on k0s involves both k0s-specific configuration checks and standard Cilium health validation.
+k0s is a lightweight, zero-friction Kubernetes distribution designed for simple deployment and operation. It bundles all Kubernetes components into a single binary and supports custom CNI providers such as Cilium. Validating Cilium on k0s involves both k0s-specific configuration checks and standard Cilium health validation.
 
-The k0s distribution manages CNI deployment through its `HelmExtension` mechanism, which installs Cilium as a Helm chart. This means configuration is applied through the k0s cluster configuration rather than direct Helm values, requiring familiarity with both k0s configuration and Cilium's Helm chart options.
+k0s can manage Cilium deployment through its `spec.extensions.helm` mechanism, which installs Cilium as a Helm chart. In that setup, configuration is applied through the k0s cluster configuration rather than direct Helm commands, requiring familiarity with both k0s configuration and Cilium's Helm chart options.
 
 This guide covers the validation steps specific to k0s, from checking the k0s cluster configuration to running Cilium connectivity tests.
 
@@ -28,13 +28,15 @@ This guide covers the validation steps specific to k0s, from checking the k0s cl
 Check that Cilium is correctly specified in the k0s cluster configuration.
 
 ```bash
-# View the k0s cluster config to confirm Cilium is the CNI extension
+# Validate and inspect the k0s cluster config to confirm Cilium is the CNI extension
 
-k0s config status
+sudo k0s config validate --config /etc/k0s/k0s.yaml
+sudo sed -n '/^spec:/,$p' /etc/k0s/k0s.yaml
 
 # If you have the config file, check the network and extension sections
 # Typical location: /etc/k0s/k0s.yaml
 # The spec.network.provider should be "custom" when using Cilium
+# Disable kube-proxy in spec.network.kubeProxy if using Cilium's kube-proxy replacement
 # and spec.extensions.helm should list Cilium
 ```
 
@@ -49,6 +51,8 @@ spec:
     provider: custom    # Required for Cilium
     podCIDR: 10.244.0.0/16
     serviceCIDR: 10.96.0.0/12
+    kubeProxy:
+      disabled: true    # Required when using Cilium's kube-proxy replacement
   extensions:
     helm:
       repositories:
@@ -57,7 +61,7 @@ spec:
       charts:
         - name: cilium
           chartname: cilium/cilium
-          version: "1.15.5"
+          version: "1.19.3"
           namespace: kube-system
           values: |
             kubeProxyReplacement: true
@@ -124,16 +128,16 @@ cilium connectivity test
 
 # Clean up k0s test resources after validation
 kubectl delete pod client server --ignore-not-found
-kubectl delete namespace cilium-test --ignore-not-found
+cilium connectivity test --cleanup
 ```
 
 ## Best Practices
 
 - Always use `provider: custom` in k0s network config when using Cilium
-- Set `k8sServiceHost` and `k8sServicePort` in Cilium values to enable kube-proxy replacement
+- Set `spec.network.kubeProxy.disabled: true` in k0s and set `k8sServiceHost` and `k8sServicePort` in Cilium values when running Cilium's kube-proxy replacement
 - Test after every k0s version upgrade as the Helm extension mechanism may change
-- Use k0s `k0s etcd backup` before modifying network configuration
-- Monitor k0s logs for CNI errors: `k0s logs --role=worker`
+- Use `sudo k0s backup --save-path=<directory>` before modifying network configuration
+- Monitor k0s logs for CNI errors: `journalctl -u k0sworker | grep component=kubelet`
 
 ## Conclusion
 
