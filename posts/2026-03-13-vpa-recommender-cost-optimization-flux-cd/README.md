@@ -50,17 +50,25 @@ spec:
 ```
 
 ```yaml
-# infrastructure/vpa/vpa-recommender-config.yaml - recommender tuning
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vpa-recommender-config
-  namespace: kube-system
-data:
-  # Keep 30 days of history for more accurate recommendations
-  recommendation-margin-fraction: "0.15"
-  pod-recommendation-min-cpu-millicores: "25"
-  pod-recommendation-min-memory-mb: "64"
+# infrastructure/vpa/kustomization.yaml - upstream VPA with recommender tuning
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/kubernetes/autoscaler//vertical-pod-autoscaler/deploy?ref=vertical-pod-autoscaler-1.6.0
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: vpa-recommender
+      namespace: kube-system
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args
+        value:
+          - --recommendation-margin-fraction=0.15
+          - --pod-recommendation-min-cpu-millicores=25
+          - --pod-recommendation-min-memory-mb=250
 ```
 
 ## Step 2: Deploy VPA Objects in Off Mode for All Services
@@ -111,14 +119,14 @@ spec:
 
 ## Step 3: Generate a Cost Optimization Report
 
-Identify workloads with the highest potential for resource reduction.
+Review workloads with resource reduction potential.
 
 ```bash
 #!/bin/bash
 # cost-optimization-report.sh - identify over-provisioned workloads
 
 echo "=== Cost Optimization Report ==="
-echo "Comparing current requests vs VPA recommendations"
+echo "Listing VPA recommendations for review"
 echo ""
 
 kubectl get vpa -n production -o json | python3 -c "
