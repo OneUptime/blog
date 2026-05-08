@@ -10,7 +10,7 @@ Description: Resolve errors encountered when running calicoctl cluster diags, in
 
 ## Introduction
 
-When `calicoctl cluster diags` fails, it typically indicates problems with datastore access or RBAC permissions. Since this command reads from the Calico datastore (Kubernetes API or etcd), any connectivity or authorization issue will prevent diagnostic collection.
+When `calicoctl cluster diags` fails, it typically indicates problems with Kubernetes API access, datastore access, or RBAC permissions. Since this command collects Calico resources, Kubernetes resources, and component logs, any connectivity or authorization issue can prevent complete diagnostic collection.
 
 This guide addresses common errors and provides solutions to ensure you can always collect cluster-wide diagnostics when needed.
 
@@ -47,7 +47,7 @@ kubectl cluster-info
 Error: forbidden: User cannot list resource "globalnetworkpolicies"
 ```
 
-Create a comprehensive ClusterRole for diagnostic collection:
+Create a ClusterRole for diagnostic collection, and bind it to the user or ServiceAccount that runs `calicoctl`:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -59,7 +59,32 @@ rules:
   resources: ["*"]
   verbs: ["get", "list"]
 - apiGroups: [""]
-  resources: ["nodes", "pods", "namespaces"]
+  resources:
+  - configmaps
+  - endpoints
+  - events
+  - namespaces
+  - nodes
+  - persistentvolumeclaims
+  - persistentvolumes
+  - pods
+  - pods/log
+  - services
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets", "deployments"]
+  verbs: ["get", "list"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list"]
+- apiGroups: ["operator.tigera.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+- apiGroups: ["events.k8s.io"]
+  resources: ["events"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
