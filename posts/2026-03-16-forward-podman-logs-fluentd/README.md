@@ -16,7 +16,7 @@ Fluentd is a popular open-source log aggregator that can collect, transform, and
 
 ## Approach 1: Fluent Bit Sidecar Tailing Log Files
 
-Run Fluent Bit alongside Podman to tail container log files.
+Run Fluent Bit alongside Podman to tail container log files. This approach requires containers to use Podman's `k8s-file` log driver, because the default on systemd hosts is usually `journald`.
 
 ```bash
 # Step 1: Create a Fluent Bit configuration
@@ -49,12 +49,20 @@ cat > /etc/fluent-bit/fluent-bit.conf << 'EOF'
     Port         24224
 EOF
 
+# For rootless Podman, use $HOME/.local/share/containers/storage instead.
+
 # Step 2: Run Fluent Bit as a container
 podman run -d \
   --name fluent-bit \
   -v /var/lib/containers/storage:/var/lib/containers/storage:ro \
   -v /etc/fluent-bit:/fluent-bit/etc:ro \
   fluent/fluent-bit:latest
+
+# Step 3: Run containers with the k8s-file log driver
+podman run -d \
+  --log-driver k8s-file \
+  --name web \
+  nginx:latest
 ```
 
 ## Approach 2: journald Input with Fluentd
@@ -70,10 +78,12 @@ podman run -d \
   nginx:latest
 
 # Step 2: Create a Fluentd configuration for journald input
+mkdir -p /etc/fluentd /var/log/fluentd
+
 cat > /etc/fluentd/fluentd.conf << 'EOF'
 <source>
   @type systemd
-  tag podman
+  tag podman.journald
   read_from_head false
 
   <storage>
@@ -110,14 +120,31 @@ cat > /etc/fluentd/fluentd.conf << 'EOF'
 </match>
 EOF
 
-# Step 3: Run Fluentd with the journald plugin
+# Step 3: Build a Fluentd image with the journald plugin
+cat > /etc/fluentd/Containerfile << 'EOF'
+FROM fluent/fluentd:v1.19-debian-1
+USER root
+RUN buildDeps="make gcc g++ libc6-dev pkg-config libsystemd-dev" \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends $buildDeps libsystemd0 \
+ && fluent-gem install fluent-plugin-systemd \
+ && apt-get purge -y --auto-remove $buildDeps \
+ && rm -rf /var/lib/apt/lists/*
+USER fluent
+EOF
+
+podman build -t localhost/fluentd-systemd:latest -f /etc/fluentd/Containerfile /etc/fluentd
+
+# Step 4: Run Fluentd with the journald plugin
 podman run -d \
   --name fluentd \
+  --user 0 \
   -v /etc/fluentd:/fluentd/etc:ro \
   -v /var/log/journal:/var/log/journal:ro \
   -v /run/log/journal:/run/log/journal:ro \
   -v /var/log/fluentd:/var/log/fluentd \
-  fluent/fluentd:latest
+  localhost/fluentd-systemd:latest \
+  fluentd -c /fluentd/etc/fluentd.conf
 ```
 
 ## Approach 3: Pipe Logs to Fluentd via TCP
@@ -126,6 +153,8 @@ Forward logs directly to Fluentd's TCP input.
 
 ```bash
 # Step 1: Configure Fluentd with a TCP input
+mkdir -p /etc/fluentd /var/log/fluentd
+
 cat > /etc/fluentd/tcp-input.conf << 'EOF'
 <source>
   @type tcp
@@ -137,10 +166,11 @@ cat > /etc/fluentd/tcp-input.conf << 'EOF'
 </source>
 
 <match podman.**>
-  @type elasticsearch
-  host elasticsearch.example.com
-  port 9200
-  index_name podman-logs
+  @type forward
+  <server>
+    host fluentd-aggregator.example.com
+    port 24224
+  </server>
   <buffer>
     @type file
     path /var/log/fluentd/buffer
@@ -149,12 +179,23 @@ cat > /etc/fluentd/tcp-input.conf << 'EOF'
 </match>
 EOF
 
-# Step 2: Forward container logs as JSON to Fluentd's TCP port
+# Step 2: Run Fluentd with the TCP input configuration
+podman run -d \
+  --name fluentd-tcp \
+  --user 0 \
+  -p 5170:5170 \
+  -v /etc/fluentd:/fluentd/etc:ro \
+  -v /var/log/fluentd:/var/log/fluentd \
+  fluent/fluentd:v1.19-debian-1 \
+  fluentd -c /fluentd/etc/tcp-input.conf
+
+# Step 3: Forward container logs as JSON to Fluentd's TCP port
+# Requires jq for JSON escaping.
 podman logs -f --timestamps my-container 2>&1 | while IFS= read -r line; do
-  TS=$(echo "$line" | awk '{print $1}')
-  MSG=$(echo "$line" | cut -d' ' -f2- | sed 's/"/\\"/g')
-  echo "{\"container\":\"my-container\",\"timestamp\":\"$TS\",\"message\":\"$MSG\"}" | \
-    nc -q0 localhost 5170
+  TS=${line%% *}
+  MSG=${line#* }
+  jq -cn --arg container "my-container" --arg timestamp "$TS" --arg message "$MSG" \
+    '{container:$container,timestamp:$timestamp,message:$message}' > /dev/tcp/localhost/5170
 done &
 ```
 
@@ -220,6 +261,14 @@ cat > /etc/fluent-bit/enrich.conf << 'EOF'
     Name         tail
     Path         /var/lib/containers/storage/overlay-containers/*/userdata/ctr.log
     Tag          podman.*
+    Parser       k8s-file
+
+[PARSER]
+    Name         k8s-file
+    Format       regex
+    Regex        ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+    Time_Key     time
+    Time_Format  %Y-%m-%dT%H:%M:%S.%L%z
 
 [FILTER]
     Name         record_modifier
@@ -255,8 +304,8 @@ podman run -d \
 # Check Fluent Bit output (if using stdout output)
 podman logs fluent-bit | tail -20
 
-# Check if Fluentd received the logs
-podman exec fluentd cat /var/log/fluentd/buffer/* 2>/dev/null | head -5
+# Check Fluentd for plugin activity or errors
+podman logs fluentd | tail -50
 
 # Clean up test container
 podman rm -f fluentd-test
