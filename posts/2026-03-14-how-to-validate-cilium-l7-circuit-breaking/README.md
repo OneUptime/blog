@@ -14,7 +14,7 @@ Validating L7 circuit breaking ensures that your services are protected from cas
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium and Envoy proxy enabled
+- Kubernetes cluster with Cilium L7 proxy and EnvoyConfig support enabled
 - kubectl and Cilium CLI configured
 - A test application to generate load
 
@@ -23,34 +23,33 @@ Validating L7 circuit breaking ensures that your services are protected from cas
 ```bash
 # Confirm Envoy is enabled
 
-cilium status | grep "L7 Proxy"
+cilium status
 
 # Verify Envoy is handling traffic for the target service
 hubble observe --protocol http -n default --to-pod default/backend --last 10
 
 # Check Envoy listeners
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/listeners
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin listeners
 ```
 
 ## Validating Circuit Breaker Configuration
 
 ```bash
 # Check Envoy cluster configuration
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/config_dump | \
-  jq '.configs[] | select(.["@type"] | contains("ClustersConfigDump"))'
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin config clusters | grep -A20 "circuit_breakers"
 
 # Check circuit breaker stats
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/stats | grep "circuit_breakers"
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin metrics | grep -E "upstream_(cx|rq).*overflow"
 ```
 
 ## Load Testing to Validate Triggering
 
 ```bash
 # Generate load to trigger circuit breaking
-kubectl run load-test --image=busybox:1.36 --restart=Never -- sh -c '
+kubectl run load-test --image=busybox:1.36 --restart=Never --command -- sh -c '
   for i in $(seq 1 1000); do
     wget -qO- --timeout=1 http://backend:8080/ &
   done
@@ -58,8 +57,8 @@ kubectl run load-test --image=busybox:1.36 --restart=Never -- sh -c '
 '
 
 # Check if circuit breaker triggered
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/stats | grep "upstream_cx_overflow"
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin metrics | grep -E "upstream_(cx|rq).*overflow"
 ```
 
 ```mermaid
@@ -76,15 +75,15 @@ graph TD
 
 ```bash
 cilium status
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/stats | grep overflow
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin metrics | grep overflow
 kubectl delete pod load-test 2>/dev/null
 ```
 
 ## Troubleshooting
 
-- **Envoy not active**: Enable with `--set l7Proxy=true`.
-- **No circuit breaker stats**: Traffic may not be going through Envoy. Add L7 rules to your policy.
+- **Envoy not active**: Enable L7 proxy support with `--set l7Proxy=true` and EnvoyConfig support with `--set envoyConfig.enabled=true`.
+- **No circuit breaker stats**: Traffic may not be going through Envoy. Add L7 rules or a CiliumEnvoyConfig/CiliumClusterwideEnvoyConfig that selects the service.
 - **Circuit breaker does not trigger under load**: Thresholds may be too high. Reduce them for testing.
 
 ## Conclusion
