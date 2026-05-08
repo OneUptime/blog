@@ -10,7 +10,7 @@ Description: Learn how to configure Cilium native routing mode that uses the und
 
 ## Introduction
 
-Proper configuration of native routing in cilium is essential for a production-ready Cilium deployment. Native routing mode in Cilium disables tunnel encapsulation and instead programs routes directly into the Linux kernel routing table. The underlying network must be capable of routing pod CIDRs between nodes, either through static routes, BGP, or cloud provider routing tables. Native routing provides the best performance because it avoids encapsulation overhead.
+Proper configuration of native routing in cilium is essential for a production-ready Cilium deployment. Native routing mode in Cilium disables tunnel encapsulation and instead uses the Linux kernel routing table. The underlying network must be capable of routing pod CIDRs between nodes, either through static routes, BGP, or cloud provider routing tables. Native routing provides the best performance because it avoids encapsulation overhead.
 
 Misconfiguration at this level can lead to connectivity failures, performance degradation, or security gaps. This guide provides tested configuration settings with explanations for each option so you can make informed decisions for your environment.
 
@@ -33,14 +33,13 @@ Apply the following Helm values to configure native routing in cilium:
 
 # Native routing configuration for Cilium
 
-# Disable tunnel encapsulation
-tunnel: disabled
+# Enable native routing instead of tunnel encapsulation
 routingMode: native
 
 # Specify the pod CIDR that is natively routable
 ipv4NativeRoutingCIDR: "10.42.0.0/16"
 
-# Automatically add routes to other nodes
+# Automatically add routes to other nodes on the same L2 network
 autoDirectNodeRoutes: true
 
 # Enable masquerading for traffic leaving the cluster
@@ -62,7 +61,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-native-routing-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -150,7 +149,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -159,13 +158,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test pod-to-pod --test pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
