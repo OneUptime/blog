@@ -10,7 +10,7 @@ Description: How to prevent label exclusion issues in Cilium that cause identity
 
 ## Introduction
 
-Label exclusion in Cilium allows you to remove specific high-cardinality labels from identity computation while keeping all other labels identity-relevant. This is particularly useful for labels like `pod-template-hash` that are automatically added by Kubernetes controllers and have unique values per ReplicaSet.
+Label exclusion in Cilium allows you to remove specific high-cardinality labels from identity computation while keeping all other labels identity-relevant. Cilium already excludes common Kubernetes controller labels such as `pod-template-hash`, `controller-revision-hash`, and `pod-template-generation` by default, but additional high-cardinality labels may need to be excluded in your environment.
 
 Fixing label exclusion means configuring Cilium to exclude high-cardinality labels that provide no security value but inflate the identity space.
 
@@ -19,17 +19,17 @@ This guide provides the specific steps for managing label exclusion in Cilium.
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI, `helm`, and `kubectl`
+- `cilium` CLI, `helm`, `kubectl`, `jq`, and `bc`
 - Understanding of Cilium identity system
 - Access to Cilium configuration
 
 ## Default Exclusion Configuration
 
 ```bash
-# Include common exclusions in every installation
+# Add custom exclusions in addition to Cilium's default exclusions
 
 helm install cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:!pod-template-hash k8s:!controller-revision-hash k8s:!pod-template-generation k8s:!rollouts-pod-template-hash"
+  --set labels="k8s:!rollouts-pod-template-hash"
 ```
 
 ## Automated Label Cardinality Monitoring
@@ -55,10 +55,8 @@ spec:
             - -c
             - |
               # Find high-cardinality labels
-              kubectl get pods --all-namespaces -o json | \
-                jq -r '[.items[].metadata.labels | to_entries[]] | group_by(.key) | .[] |
-                  select(([.[].value] | unique | length) > 100) |
-                  "HIGH_CARDINALITY: \(.[0].key) = \([.[].value] | unique | length) values"'
+              kubectl get pods --all-namespaces -o go-template='{{range .items}}{{range $k, $v := .metadata.labels}}{{printf "%s=%s\n" $k $v}}{{end}}{{end}}' | \
+                awk -F= '{ seen[$1 FS $2]=1 } END { for (kv in seen) { split(kv, parts, FS); count[parts[1]]++ } for (key in count) if (count[key] > 100) print "HIGH_CARDINALITY: " key " = " count[key] " values" }'
           restartPolicy: OnFailure
 ```
 
@@ -75,14 +73,14 @@ spec:
   - name: label-exclusion
     rules:
     - alert: IdentityCountHigh
-      expr: cilium_identity_count > 5000
+      expr: max(cilium_identity) > 5000
       for: 30m
       labels:
         severity: warning
       annotations:
         summary: "High identity count may indicate missing label exclusions"
     - alert: IdentityGrowthRate
-      expr: rate(cilium_identity_count[1h]) > 50
+      expr: delta(max(cilium_identity)[1h:]) > 50
       for: 15m
       labels:
         severity: warning
@@ -95,9 +93,9 @@ spec:
 ```bash
 cat << 'DOC'
 Label Exclusion Policy:
-- pod-template-hash: Always exclude (Deployment artifact)
-- controller-revision-hash: Always exclude (StatefulSet/DaemonSet artifact)
-- pod-template-generation: Always exclude (DaemonSet artifact)
+- pod-template-hash: Excluded by default (Deployment artifact)
+- controller-revision-hash: Excluded by default (StatefulSet/DaemonSet artifact)
+- pod-template-generation: Excluded by default (DaemonSet artifact)
 - Any label with >100 unique values: Review for exclusion
 - New label exclusions require testing with existing policies
 DOC
@@ -107,16 +105,16 @@ DOC
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
-cilium identity list -o json | jq '.[0:3] | .[].labels'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list -o json | jq '.[0:3] | .[].labels'
 ```
 
 ## Troubleshooting
 
-- **Excluded label needed for policy**: Remove it from the exclusion list and add to include list instead.
+- **Excluded label needed for policy**: Remove it from the exclusion list. Add inclusive label patterns only after testing, because any custom include pattern changes identity relevance to an allow-list model.
 - **Identity count unchanged after exclusion**: Restart Cilium agents and wait for GC.
-- **New Deployment creates identities rapidly**: Its pod-template-hash may not be excluded.
-- **Exclusion syntax wrong**: Use `k8s:!label-name` format with the exclamation mark prefix.
+- **New Deployment creates identities rapidly**: A custom rollout label may not be excluded.
+- **Exclusion syntax wrong**: Use `!label-name` or `k8s:!label-name` format with the exclamation mark prefix.
 
 ## Building a Prevention Framework
 
@@ -195,20 +193,20 @@ Before any cluster change, capture a performance snapshot:
 #!/bin/bash
 # pre-change-snapshot.sh
 SNAPSHOT="/tmp/perf-snapshot-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $SNAPSHOT
+mkdir -p "$SNAPSHOT"
 
 # Throughput
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $SNAPSHOT/throughput.json
+kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > "$SNAPSHOT/throughput.json"
 
 # Latency
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_RR -l 15 > $SNAPSHOT/latency.txt
+kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_RR -l 15 > "$SNAPSHOT/latency.txt"
 
 # Connection rate
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_CRR -l 15 > $SNAPSHOT/connrate.txt
+kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_CRR -l 15 > "$SNAPSHOT/connrate.txt"
 
 # Cilium state
-cilium status --verbose > $SNAPSHOT/cilium-status.txt
-cilium config view > $SNAPSHOT/cilium-config.txt
+cilium status --verbose > "$SNAPSHOT/cilium-status.txt"
+cilium config view > "$SNAPSHOT/cilium-config.txt"
 
 echo "Snapshot saved to $SNAPSHOT"
 echo "Run post-change-compare.sh after the change to detect regressions"
@@ -221,12 +219,12 @@ echo "Run post-change-compare.sh after the change to detect regressions"
 # post-change-compare.sh <pre-change-snapshot-dir>
 PRE=$1
 POST="/tmp/perf-snapshot-post-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $POST
+mkdir -p "$POST"
 
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $POST/throughput.json
+kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > "$POST/throughput.json"
 
-PRE_BPS=$(jq '.end.sum_sent.bits_per_second' $PRE/throughput.json)
-POST_BPS=$(jq '.end.sum_sent.bits_per_second' $POST/throughput.json)
+PRE_BPS=$(jq '.end.sum_sent.bits_per_second' "$PRE/throughput.json")
+POST_BPS=$(jq '.end.sum_sent.bits_per_second' "$POST/throughput.json")
 CHANGE=$(echo "scale=2; ($POST_BPS - $PRE_BPS) / $PRE_BPS * 100" | bc)
 
 echo "Throughput change: ${CHANGE}%"
@@ -241,4 +239,4 @@ Maintain a living runbook that documents all known performance issues and their 
 
 ## Conclusion
 
-Preventing label exclusion in Cilium addresses one of the most common sources of identity explosion. By excluding automatically-generated high-cardinality labels like pod-template-hash and controller-revision-hash, you can reduce identity count by 50% or more in typical Kubernetes clusters, directly improving policy computation performance and reducing BPF map pressure.
+Preventing missing label exclusions in Cilium addresses one of the common sources of identity explosion. By excluding automatically-generated high-cardinality labels that are not already covered by Cilium defaults, you can reduce identity count in affected clusters, directly improving policy computation performance and reducing BPF map pressure.
