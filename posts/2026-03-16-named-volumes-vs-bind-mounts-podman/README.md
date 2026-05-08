@@ -94,7 +94,9 @@ podman run -d --name webapp \
 # Build cache volume
 podman volume create build-cache
 podman run --rm \
-    -v build-cache:/root/.cache \
+    -v build-cache:/root/.cache/go-build \
+    -v $(pwd):/src:Z \
+    -w /src \
     golang:1.21 \
     go build ./...
 ```
@@ -108,7 +110,7 @@ Bind mounts are the better choice for:
 ```bash
 # Source code mounted for live editing
 podman run -d --name dev \
-    -v $(pwd)/src:/app/src:Z \
+    -v $(pwd):/app:Z \
     -p 3000:3000 \
     node:20-alpine \
     sh -c "cd /app && npm run dev"
