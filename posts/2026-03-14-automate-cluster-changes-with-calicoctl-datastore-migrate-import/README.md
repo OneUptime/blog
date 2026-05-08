@@ -16,6 +16,7 @@ While datastore migration is typically a one-time operation, automating the proc
 
 - Source and target datastore access
 - `calicoctl` configured for migration
+- An exported datastore file created with `calicoctl datastore migrate export`
 - A test environment to validate the automation
 
 ## Automated Migration Script
@@ -26,6 +27,13 @@ While datastore migration is typically a one-time operation, automating the proc
 
 set -euo pipefail
 
+MIGRATION_FILE="${1:-}"
+
+if [ -z "$MIGRATION_FILE" ]; then
+  echo "Usage: $0 <exported-datastore-file>"
+  exit 1
+fi
+
 echo "=== Calico Datastore Migration ==="
 echo "Step: datastore migrate import"
 echo "Date: $(date)"
@@ -35,6 +43,12 @@ echo ""
 echo "--- Pre-flight Checks ---"
 calicoctl version || { echo "FAIL: Cannot connect to datastore"; exit 1; }
 echo "Connectivity: OK"
+
+if [ ! -f "$MIGRATION_FILE" ]; then
+  echo "FAIL: Migration file not found: $MIGRATION_FILE"
+  exit 1
+fi
+echo "Migration file: $MIGRATION_FILE"
 
 # Count resources before
 echo ""
@@ -56,8 +70,8 @@ echo "Backup saved to $BACKUP_DIR"
 
 # Execute migration step
 echo ""
-echo "--- Executing: calicoctl datastore migrate import ---"
-calicoctl datastore migrate import
+echo "--- Executing: calicoctl datastore migrate import -f $MIGRATION_FILE ---"
+calicoctl datastore migrate import -f "$MIGRATION_FILE"
 echo "Step complete."
 
 # Post-step verification
@@ -81,19 +95,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup test cluster
         run: |
-          # Create a kind cluster with Calico for testing
+          # Create a kind cluster with Calico configured for datastore migration testing
           kind create cluster
           kubectl apply -f calico-manifests/
 
       - name: Run migration
         run: |
-          ./automated-migration-datastore-migrate-import.sh
+          ./automated-migration-datastore-migrate-import.sh etcd-data
 ```
 
 ## Verification
 
 ```bash
-./automated-migration-datastore-migrate-import.sh
+./automated-migration-datastore-migrate-import.sh etcd-data
 ```
 
 ## Troubleshooting
