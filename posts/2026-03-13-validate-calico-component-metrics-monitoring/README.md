@@ -27,7 +27,7 @@ PROMETHEUS_URL="${1:-http://localhost:9090}"
 FAILURES=0
 
 query() {
-  curl -s "${PROMETHEUS_URL}/api/v1/query?query=${1}" | \
+  curl -sG "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=${1}" | \
     jq -r '.data.result | length'
 }
 
@@ -58,7 +58,7 @@ done
 # 3. Typha metrics
 echo ""
 echo "--- Typha Metrics ---"
-TYPHA_COUNT=$(query "typha_connections_total")
+TYPHA_COUNT=$(query "typha_connections_accepted")
 if [[ "${TYPHA_COUNT}" -gt 0 ]]; then
   echo "OK:   Typha metrics present"
 else
@@ -68,7 +68,7 @@ fi
 # 4. kube-controllers metrics
 echo ""
 echo "--- kube-controllers Metrics ---"
-KC_COUNT=$(query "calico_kube_controllers_reconcile_duration_seconds_count")
+KC_COUNT=$(query "ipam_allocations_in_use")
 if [[ "${KC_COUNT}" -gt 0 ]]; then
   echo "OK:   kube-controllers metrics present"
 else
@@ -124,9 +124,9 @@ kubectl delete prometheusrule calico-alert-test -n monitoring
 | Felix | felix_active_local_policies | = node count |
 | Felix | felix_ipsets_total | = node count |
 | Felix | felix_int_dataplane_apply_time_seconds | = node count |
-| Typha | typha_connections_total | 1 (if deployed) |
-| Typha | typha_ping_latency_seconds | 1 (if deployed) |
-| kube-controllers | calico_kube_controllers_reconcile_duration_seconds | 1+ |
+| Typha | typha_connections_accepted | 1 (if deployed) |
+| Typha | typha_ping_latency | 1 (if deployed) |
+| kube-controllers | ipam_allocations_in_use | 1+ |
 
 ## Conclusion
 
