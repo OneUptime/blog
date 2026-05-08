@@ -39,10 +39,10 @@ User mode networking uses a userspace network stack (gvproxy) instead of a kerne
 
 ```bash
 # On Windows/WSL, create a machine with user mode networking
-podman machine init my-machine --user-mode-networking
+podman machine init --user-mode-networking my-machine
 
 # Check if user mode networking is enabled
-podman machine inspect my-machine | jq '.UserModeNetworking'
+podman machine inspect my-machine | jq '.[0].UserModeNetworking'
 ```
 
 User mode networking is simpler but has some limitations compared to bridge networking. It does not support connecting to the machine from other hosts on your network. It is useful in VPN configurations where the VPN may drop traffic from alternate network interfaces.
