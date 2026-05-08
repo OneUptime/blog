@@ -1,4 +1,4 @@
-# How to Verify Pod Networking with Calico on OpenStack DevStack
+# How to Verify VM Networking with Calico on OpenStack DevStack
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -22,18 +22,15 @@ The main limitation of DevStack verification is that it cannot test multi-node B
 ## Step 1: Check DevStack Services Status
 
 ```bash
-# DevStack runs services with screen; check their status
-
-sudo systemctl status devstack@calico-felix
-sudo systemctl status devstack@calico-etcd
-sudo systemctl status devstack@calico-bird
-```
-
-Or check the screen session:
-
-```bash
+# The networking-calico DevStack plugin runs DevStack services in screen.
 screen -ls
 screen -r stack  # Attach to the DevStack screen session
+```
+
+Check that the Calico-related services and processes are present:
+
+```bash
+ps -ef | grep -E 'calico-felix|calico-dhcp-agent|calico-bird|bird|etcd' | grep -v grep
 ```
 
 ## Step 2: Verify Calico Components Are Running
@@ -51,8 +48,13 @@ source /opt/stack/devstack/openrc admin admin
 openstack network create verify-net
 openstack subnet create --network verify-net \
   --subnet-range 10.65.0.0/24 verify-subnet
+
+openstack security group create verify-sg
+openstack security group rule create --protocol icmp verify-sg
+
 openstack server create --network verify-net \
-  --image cirros --flavor cirros256 verify-vm
+  --security-group verify-sg \
+  --image cirros --flavor cirros256 --wait verify-vm
 openstack server list
 ```
 
@@ -70,7 +72,7 @@ The VM should have a corresponding Calico workload endpoint.
 Access the VM console and test connectivity:
 
 ```bash
-openstack console log verify-vm
+openstack console log show verify-vm
 # Or use VNC console
 openstack console url show verify-vm
 ```
@@ -84,11 +86,8 @@ ping -c3 8.8.8.8  # External connectivity
 ## Step 6: Test Security Group Enforcement
 
 ```bash
-# Create a restrictive security group
-openstack security group create verify-sg
-openstack security group rule create --protocol icmp verify-sg
-
-# Assign to VM and test that TCP is blocked
+# verify-sg was assigned when the VM was created.
+# It allows ICMP ingress but has no ingress TCP rule.
 ```
 
 ## Conclusion
