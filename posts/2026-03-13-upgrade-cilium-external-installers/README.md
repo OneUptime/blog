@@ -54,11 +54,15 @@ kubeadm doesn't manage CNI - Cilium can be upgraded independently.
 # Upgrade via Helm (preferred if originally installed via Helm)
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --reuse-values \
-  --version 1.15.0
+  --version 1.19.3 \
+  -f my-values.yaml
 
-# If installed via manifest, apply the new manifest directly
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v1.15.0/install/kubernetes/quick-install.yaml
+# If installed via manifest, render the updated manifest and apply it
+helm template cilium cilium/cilium \
+  --namespace kube-system \
+  --version 1.19.3 \
+  -f my-values.yaml > cilium.yaml
+kubectl apply -f cilium.yaml
 
 # Monitor the rolling upgrade
 kubectl rollout status daemonset/cilium -n kube-system --timeout=10m
@@ -75,10 +79,10 @@ kops edit cluster <cluster-name>
 # In the cluster spec, update the networking.cilium.version field:
 # networking:
 #   cilium:
-#     version: "v1.15.0"
+#     version: "v1.19.3"
 
 # Preview the kops update
-kops update cluster <cluster-name> --yes --dry-run
+kops update cluster <cluster-name>
 
 # Apply the kops update (updates Cilium manifest in S3)
 kops update cluster <cluster-name> --yes
@@ -97,14 +101,14 @@ kubespray manages Cilium via Ansible playbooks.
 ```bash
 # Update Cilium version in kubespray group_vars
 # Edit: inventory/<cluster-name>/group_vars/k8s_cluster/k8s-net-cilium.yml
-# Set: cilium_version: "v1.15.0"
+# Set: cilium_version: "1.19.3"
 
 # Run the network plugin upgrade playbook
 ansible-playbook \
   -i inventory/<cluster-name>/hosts.yml \
   --become \
-  network_plugin.yml \
-  --tags cilium
+  cluster.yml \
+  --tags network
 
 # Verify Cilium was upgraded
 kubectl get pods -n kube-system -l k8s-app=cilium \
