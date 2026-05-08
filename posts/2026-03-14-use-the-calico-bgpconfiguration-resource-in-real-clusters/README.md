@@ -31,8 +31,8 @@ For clusters with fewer than 50 nodes, a straightforward BGPConfiguration config
 
 calicoctl get bgpconfiguration -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check Calico's BGP configuration for a specific node
+calicoctl get node <node-name> -o yaml
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
@@ -50,7 +50,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your BGPConfiguration manifest's node selectors to apply environment-specific settings.
+Then reference these labels in related Calico resources that support selectors, such as `BGPPeer` or `IPPool`, to apply environment-specific peering or address-pool behavior. For BGPConfiguration itself, use the global `default` resource or `node.<nodename>` resources for the node-specific fields that BGPConfiguration supports.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,9 +65,9 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Avoid frequent churn in BGP resources unless you have measured a need for it
 - Use Typha to reduce the number of direct datastore connections
-- Monitor memory usage of calico-node pods when managing many BGPConfiguration resources
+- Monitor memory usage of calico-node pods when managing large routing tables or many BGP peers
 
 ## Pattern 4: Combining with Other Calico Resources
 
@@ -83,7 +83,7 @@ calicoctl get felixconfiguration -o yaml
 calicoctl get ippools -o yaml
 ```
 
-Always consider the interaction between resources. For example, changes to BGP resources affect how IPPool routes are advertised, and FelixConfiguration changes affect how policies are enforced.
+Always consider the interaction between resources. For example, BGP resources affect how workload and service routes are advertised, IPPool settings such as `disableBGPExport` affect pod CIDR advertisement, and FelixConfiguration changes affect how policies are enforced.
 
 ## Monitoring the Resource in Production
 
@@ -97,7 +97,7 @@ kubectl get bgpconfiguration.projectcalico.org -w
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health checks are enabled:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -110,7 +110,7 @@ curl -s http://<node-ip>:9099/readiness
 After configuring the BGPConfiguration resource for your production use case, run a comprehensive check:
 
 ```bash
-# Verify Calico system health
+# Verify Calico BGP status from a Calico node
 calicoctl node status
 
 # Ensure all calico-node pods are healthy
@@ -124,17 +124,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 
 **Resource configuration not taking effect:**
 - Verify the resource is correctly applied: `calicoctl get bgpconfiguration -o yaml`.
-- Check Felix logs for configuration reload messages.
-- Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
+- Check calico-node logs for BGP configuration or BIRD/confd messages.
+- If Typha is enabled, ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether BGP resource changes are happening too frequently.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
-- Check for node-specific FelixConfiguration overrides.
+- Verify selectors on related resources, such as BGPPeer and IPPool, are matching the intended nodes.
+- Check for node-specific BGPConfiguration resources and Calico Node `spec.bgp` overrides.
 
 
 ## Additional Considerations
@@ -169,15 +169,16 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update bgpconfigurations.projectcalico.org
+kubectl auth can-i update bgppeers.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent Calico namespace events; use Kubernetes audit logs for resource-change auditing
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
 ### Capacity Planning for Large Deployments
 
-For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
+For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use Calico IPAM reporting to track IP address utilization and plan IP pool expansions before reaching capacity limits.
 
 ```bash
 # Monitor IPAM utilization
