@@ -10,7 +10,7 @@ Description: Learn how to use the cilium-agent hive command to inspect and debug
 
 ## Introduction
 
-Cilium uses an internal dependency injection framework called Hive to manage the lifecycle of its components. The `cilium-agent hive` command exposes tools for inspecting how the agent's modules are wired together, their dependencies, and their initialization order.
+Cilium uses an internal dependency injection framework called Hive to manage the lifecycle of its components. The `cilium-agent hive` command exposes tools for inspecting how the agent's modules are wired together, their provider dependencies, and their registered lifecycle hooks.
 
 Understanding Hive is valuable when debugging agent startup failures, developing Cilium extensions, or trying to understand why a particular feature is or is not being initialized. The hive subsystem makes the agent's internal architecture observable.
 
@@ -50,10 +50,10 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 ## Inspecting the Dependency Graph
 
-The hive framework builds a directed acyclic graph (DAG) of all agent components. You can inspect this graph to understand how components relate:
+The hive framework builds a dependency graph of the agent's providers. You can inspect this graph to understand how components relate:
 
 ```bash
-# Print the dependency graph as text
+# Print the dependency graph in Graphviz DOT format
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-agent hive dot-graph
 ```
@@ -69,20 +69,20 @@ flowchart TD
     F --> G[KVStore Client]
 ```
 
-The output shows which components depend on which other components, making it clear what needs to initialize before a given feature can start.
+The DOT output shows which providers depend on which other providers, making it clear what needs to be constructed before a given feature can start. The diagram above is a simplified illustration; real output uses Cilium's cell and provider names.
 
 ## Understanding Component Lifecycle
 
-Each component in the Hive framework goes through lifecycle stages:
+Hive separates dependency construction from runtime lifecycle hooks:
 
 ```bash
-# The hive framework manages these lifecycle hooks:
-# 1. Provide - Register the component and its dependencies
-# 2. Start - Initialize the component after dependencies are ready
-# 3. Stop - Gracefully shut down in reverse dependency order
+# The hive framework manages:
+# 1. Provide - Register constructors and their dependencies
+# 2. Start hooks - Initialize runtime work after dependencies are constructed
+# 3. Stop hooks - Gracefully shut down registered runtime work
 ```
 
-When a component fails to start, Hive reports which dependency was not satisfied. This is visible in the agent logs:
+When a dependency is not satisfied, Hive reports the missing type during construction. When a start hook fails, Hive reports the failing hook. These errors are visible in the agent logs:
 
 ```bash
 # Check agent logs for hive initialization errors
@@ -92,7 +92,7 @@ kubectl -n kube-system logs "$CILIUM_POD" -c cilium-agent | \
 
 ## Debugging Component Registration
 
-To understand what cells (modules) are registered in the agent:
+To get a rough view of what cells and providers are registered in the agent:
 
 ```bash
 # List all registered cells
@@ -101,7 +101,7 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   grep -oP '"[^"]*"' | sort -u | head -30
 ```
 
-Each cell represents a functional unit of the agent. Common cells include:
+Each cell represents a functional unit of the agent. Names in the DOT graph are implementation details and can change between Cilium versions. Common areas represented by cells include:
 
 - **IPAM**: IP Address Management
 - **Datapath**: eBPF program management
@@ -112,7 +112,7 @@ Each cell represents a functional unit of the agent. Common cells include:
 
 ## Using Hive Output for Custom Tooling
 
-You can build monitoring around the hive state:
+You can build lightweight checks around the hive graph, but treat them as version-specific diagnostics rather than a stable health API:
 
 ```bash
 #!/bin/bash
@@ -164,10 +164,10 @@ echo "Dependency graph has $LINES lines"
 ## Troubleshooting
 
 - **"unknown command: hive"**: Your Cilium version may be too old. The hive command is available in v1.14+. Check with `cilium-agent version`.
-- **Empty graph output**: The agent may need to be fully initialized. Wait for the pod to be in Running state.
+- **Empty graph output**: Confirm the command did not fail and that you are using an image version with the hive command. Also make sure the pod is Running before using `kubectl exec`.
 - **Circular dependency errors in logs**: This indicates a bug in component registration. Check Cilium GitHub issues for your version.
 - **Timeout on exec commands**: The agent may be overloaded. Try with `--request-timeout=60s` on kubectl.
 
 ## Conclusion
 
-The `cilium-agent hive` command provides visibility into the internal wiring of the Cilium agent. By understanding the dependency graph and component lifecycle, you can diagnose startup failures, verify that expected features are loaded, and build monitoring that validates agent health at the architectural level. This knowledge is especially valuable for operators managing large Cilium deployments and developers extending the platform.
+The `cilium-agent hive` command provides visibility into the internal wiring of the Cilium agent. By understanding the dependency graph and component lifecycle, you can diagnose startup failures, verify that expected features are wired into the agent, and build diagnostics that check the agent's architecture at a specific Cilium version. This knowledge is especially valuable for operators managing large Cilium deployments and developers extending the platform.
