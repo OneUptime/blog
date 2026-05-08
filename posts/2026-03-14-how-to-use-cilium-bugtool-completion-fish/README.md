@@ -12,7 +12,7 @@ Description: Set up and use fish shell completions for cilium-bugtool to enable 
 
 The fish shell provides a rich completion system with descriptions displayed inline as you type. The `cilium-bugtool completion fish` command generates a fish-compatible completion script that integrates with this system, providing tab completion for all cilium-bugtool subcommands and flags.
 
-Fish shell completions are stored as individual files in a specific directory, making installation straightforward. Once the completion file is in place, fish automatically loads it without requiring any configuration changes.
+Fish shell completions are stored as individual files in a specific directory, making installation straightforward. Once the completion file is in place, fish loads it for new shell sessions without requiring any configuration changes.
 
 This guide covers generating, installing, and using cilium-bugtool completions in the fish shell.
 
@@ -29,17 +29,18 @@ This guide covers generating, installing, and using cilium-bugtool completions i
 
 ### Quick Installation
 
-Fish completions are stored in \`~/.config/fish/completions/\`:
+Fish completions are stored in `~/.config/fish/completions/`:
 
 ```bash
 ## Generate and install fish completions
+mkdir -p ~/.config/fish/completions
 cilium-bugtool completion fish > ~/.config/fish/completions/cilium-bugtool.fish
 
 ## Verify the file was created
 ls -la ~/.config/fish/completions/cilium-bugtool.fish
 ```
 
-Fish automatically picks up new completion files without restarting. Test immediately:
+Start a new fish shell, or load completions into the current session with `cilium-bugtool completion fish | source`. Then test completion:
 
 ```fish
 ## In fish shell, test completion
@@ -58,19 +59,20 @@ cilium-bugtool completion fish > /usr/share/fish/vendor_completions.d/cilium-bug
 ```bash
 CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
+mkdir -p ~/.config/fish/completions
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --   cilium-bugtool completion fish > ~/.config/fish/completions/cilium-bugtool.fish
 ```
 
 ### Understanding Fish Completion Format
 
-The generated file contains \`complete\` commands:
+The generated file contains `complete` commands:
 
 ```fish
 ## Example of generated fish completion entries
-complete -c cilium-bugtool -n '__fish_use_subcommand' -a completion -d 'Generate shell completion'
-complete -c cilium-bugtool -n '__fish_use_subcommand' -a help -d 'Help about any command'
-complete -c cilium-bugtool -l archive-type -d 'Archive type for output'
-complete -c cilium-bugtool -l commands -d 'Specific commands to run'
+complete -c cilium-bugtool -e
+complete -c cilium-bugtool -n '__cilium_bugtool_clear_perform_completion_once_result'
+complete -c cilium-bugtool -n 'not __cilium_bugtool_requires_order_preservation && __cilium_bugtool_prepare_completions' -f -a '$__cilium_bugtool_comp_results'
+complete -k -c cilium-bugtool -n '__cilium_bugtool_requires_order_preservation && __cilium_bugtool_prepare_completions' -f -a '$__cilium_bugtool_comp_results'
 ```
 
 
@@ -99,7 +101,5 @@ wc -l ~/.config/fish/completions/cilium-bugtool.fish
 
 ## Conclusion
 
-Fish shell completions for cilium-bugtool are simple to install and automatically loaded. The descriptive completion display in fish makes navigating cilium-bugtool's options intuitive and efficient.
-
-
+Fish shell completions for cilium-bugtool are simple to install and automatically loaded for new shell sessions. The descriptive completion display in fish makes navigating cilium-bugtool's options intuitive and efficient.
 
