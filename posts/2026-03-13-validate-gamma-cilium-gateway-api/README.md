@@ -16,7 +16,8 @@ GAMMA validation differs from standard ingress validation: instead of testing ex
 
 ## Prerequisites
 
-- Cilium GAMMA and Gateway API enabled
+- Cilium GAMMA and Gateway API enabled with `kubeProxyReplacement=true` and `l7Proxy=true`
+- Gateway API CRDs installed
 - HTTPRoutes deployed with Service parentRefs
 - `kubectl`, `hubble` CLIs
 
@@ -24,21 +25,25 @@ GAMMA validation differs from standard ingress validation: instead of testing ex
 
 ```bash
 kubectl get httproute -A -o json | \
-  jq '.items[] | {name: .metadata.name, ns: .metadata.namespace,
-      accepted: .status.parents[0].conditions[] | select(.type=="Accepted") | .status}'
+  jq '.items[] as $route | $route.status.parents[]? as $parent |
+      {name: $route.metadata.name, ns: $route.metadata.namespace,
+       parent: $parent.parentRef.name,
+       accepted: (($parent.conditions[]? | select(.type=="Accepted") | .status) // "Unknown"),
+       resolvedRefs: (($parent.conditions[]? | select(.type=="ResolvedRefs") | .status) // "Unknown")}'
 ```
 
-All routes should show `"True"` for `Accepted`.
+All route parent entries should show `"True"` for `Accepted` and `ResolvedRefs`.
 
 ## Validate Backend Endpoints
 
 For each backend referenced in HTTPRoutes:
 
 ```bash
-kubectl get endpoints <backend-service> -n <namespace>
+kubectl get endpointslices -n <namespace> \
+  -l kubernetes.io/service-name=<backend-service>
 ```
 
-Verify that pods are ready and addresses are populated.
+Verify that ready endpoints and addresses are populated.
 
 ## Architecture
 
@@ -46,13 +51,13 @@ Verify that pods are ready and addresses are populated.
 sequenceDiagram
     participant Tester
     participant HTTPRoute
-    participant CiliumEBPF
+    participant CiliumEnvoy
     participant Backend
 
     Tester->>HTTPRoute: check status conditions
     HTTPRoute-->>Tester: Accepted=True
-    Tester->>CiliumEBPF: verify program load
-    CiliumEBPF-->>Tester: programs active
+    Tester->>CiliumEnvoy: verify L7 routing path
+    CiliumEnvoy-->>Tester: routes active
     Tester->>Backend: send request matching rule
     Backend-->>Tester: response from expected backend
 ```
@@ -82,8 +87,8 @@ Results should approximate the configured weights.
 ## Validate with Hubble
 
 ```bash
-hubble observe --namespace <namespace> --protocol http \
-  --from-service <client> --to-service <target> --follow
+hubble observe --protocol http --from-namespace <namespace> \
+  --to-service <namespace>/<target> --follow
 ```
 
 Verify flows show `FORWARDED` verdicts and correct destination pods.
