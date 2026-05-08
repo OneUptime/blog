@@ -64,6 +64,7 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
             app.kubernetes.io/name: prometheus
       toPorts:
         - ports:
@@ -100,7 +101,7 @@ kubectl exec -n kube-system ds/cilium -c cilium-agent -- curl -s http://localhos
 kubectl exec -n kube-system ds/cilium -c cilium-agent -- curl -s http://localhost:9965/metrics | grep "^hubble_" | cut -d'{' -f1 | sort -u
 
 # Check if specific metric exists
-kubectl exec -n kube-system ds/cilium -c cilium-agent -- curl -s http://localhost:9962/metrics | grep "cilium_policy_verdict"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- curl -s http://localhost:9962/metrics | grep "cilium_policy_l7_total"
 
 # Query Prometheus for a specific metric
 curl -s "http://localhost:9090/api/v1/query?query=cilium_policy_l7_total" | jq '.data.result | length'
@@ -113,7 +114,7 @@ Verify Hubble metrics are enabled:
 kubectl get configmap -n kube-system cilium-config -o yaml | grep -A5 "hubble-metrics"
 
 # Verify Hubble metrics are configured correctly
-kubectl exec -n kube-system ds/cilium -- cilium config | grep hubble-metrics
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium config | grep hubble-metrics
 ```
 
 ## Resolving Grafana Dashboard Issues
@@ -127,10 +128,11 @@ kubectl port-forward -n monitoring svc/grafana 3000:3000 &
 curl -s -u admin:admin http://localhost:3000/api/datasources | jq '.[].name'
 
 # Test datasource connectivity from Grafana
-curl -s -u admin:admin http://localhost:3000/api/datasources/proxy/1/api/v1/query?query=up | jq '.data.result | length'
+PROMETHEUS_UID=$(curl -s -u admin:admin http://localhost:3000/api/datasources | jq -r '.[] | select(.type == "prometheus") | .uid' | head -1)
+curl -s -u admin:admin "http://localhost:3000/api/datasources/proxy/uid/${PROMETHEUS_UID}/api/v1/query?query=up" | jq '.data.result | length'
 
 # Import Cilium dashboards
-# Dashboard IDs: 16611 (Cilium Metrics), 16612 (Hubble Metrics)
+# Dashboard IDs: 16611 (Cilium Agent Metrics), 16612 (Cilium Operator Metrics), 16613 (Hubble Metrics)
 ```
 
 Fix common Grafana issues:
@@ -185,16 +187,17 @@ curl -s http://localhost:9090/api/v1/targets | jq '[.data.activeTargets[] | sele
 curl -s "http://localhost:9090/api/v1/query?query=up{job=~'.*cilium.*'}" | jq '.data.result[] | {instance: .metric.instance, value: .value[1]}'
 
 # Grafana datasource working
-curl -s -u admin:admin http://localhost:3000/api/datasources/1/health | jq '.status'
+PROMETHEUS_UID=$(curl -s -u admin:admin http://localhost:3000/api/datasources | jq -r '.[] | select(.type == "prometheus") | .uid' | head -1)
+curl -s -u admin:admin "http://localhost:3000/api/datasources/uid/${PROMETHEUS_UID}/health" | jq '.status'
 ```
 
 ## Troubleshooting
 
 **Problem: Prometheus discovers Cilium but scrapes fail intermittently**
-Check resource limits on the Cilium agent. Metrics collection times out if the agent is under heavy load. Increase `--metrics-scrape-timeout` in Prometheus.
+Check resource limits on the Cilium agent. Metrics collection times out if the agent is under heavy load. Increase `scrape_timeout` in the relevant Prometheus `scrape_config`, keeping it less than or equal to the scrape interval.
 
 **Problem: Hubble metrics exist but HTTP metrics are empty**
-HTTP metrics require L7 visibility to be enabled. Apply an L7 network policy or add the `proxy-visibility` annotation to pods.
+HTTP metrics require L7 visibility to be enabled. Apply an L7 Cilium network policy or another supported L7 visibility configuration for the pods.
 
 **Problem: Grafana dashboards show data for some panels but not others**
 Different panels may query different metrics. Check which specific metric is missing in Prometheus and trace it back to the source.
