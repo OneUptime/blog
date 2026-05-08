@@ -53,12 +53,12 @@ EOF
 
 cat > go.mod << 'EOF'
 module myapp
-go 1.22
+go 1.26
 EOF
 
 cat > Containerfile << 'EOF'
 # Stage 1: Build
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.26 AS builder
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app main.go
@@ -75,7 +75,7 @@ podman build -t go-app:latest .
 
 # Compare sizes
 podman images | grep -E "golang|go-app|alpine"
-# golang    1.22    abc123  1.2 GB
+# golang    1.26    abc123  1.2 GB
 # go-app    latest  def456  12 MB
 # alpine    latest  ghi789  7.8 MB
 ```
@@ -87,7 +87,7 @@ Separate the dependency installation and build from the runtime.
 ```bash
 cat > Containerfile << 'EOF'
 # Stage 1: Install dependencies and build
-FROM docker.io/library/node:20 AS builder
+FROM docker.io/library/node:24 AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -95,10 +95,10 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production runtime
-FROM docker.io/library/node:20-slim
+FROM docker.io/library/node:24-slim
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
@@ -111,12 +111,12 @@ podman build -t node-app:latest .
 
 ## Python Multi-Stage Build
 
-Use a builder stage to compile dependencies with system libraries, then copy only the virtual environment.
+Use a builder stage to install dependencies, then copy the virtual environment to the same path in a matching runtime image.
 
 ```bash
 cat > Containerfile << 'EOF'
 # Stage 1: Build dependencies
-FROM docker.io/library/python:3.12 AS builder
+FROM docker.io/library/python:3.14 AS builder
 WORKDIR /app
 COPY requirements.txt .
 RUN python -m venv /opt/venv
@@ -124,7 +124,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime
-FROM docker.io/library/python:3.12-slim
+FROM docker.io/library/python:3.14-slim
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -145,7 +145,7 @@ Rust is another language that benefits greatly from multi-stage builds.
 ```bash
 cat > Containerfile << 'EOF'
 # Stage 1: Build the Rust binary
-FROM docker.io/library/rust:1.77 AS builder
+FROM docker.io/library/rust:1.94 AS builder
 WORKDIR /usr/src/myapp
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
@@ -169,13 +169,13 @@ Use three stages for complex applications: dependencies, build, and runtime.
 ```bash
 cat > Containerfile << 'EOF'
 # Stage 1: Dependencies
-FROM docker.io/library/node:20 AS deps
+FROM docker.io/library/node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
 # Stage 2: Build
-FROM docker.io/library/node:20 AS builder
+FROM docker.io/library/node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -183,11 +183,12 @@ RUN npm run build
 RUN npm run test
 
 # Stage 3: Production runtime
-FROM docker.io/library/node:20-alpine
+FROM docker.io/library/node:24-alpine
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
+RUN npm prune --omit=dev
 
 USER node
 EXPOSE 3000
@@ -224,7 +225,7 @@ Compare single-stage vs multi-stage builds.
 ```bash
 # Single-stage Containerfile
 cat > Containerfile.single << 'EOF'
-FROM docker.io/library/golang:1.22
+FROM docker.io/library/golang:1.26
 WORKDIR /src
 COPY . .
 RUN go build -o /app main.go
@@ -233,7 +234,7 @@ EOF
 
 # Multi-stage Containerfile
 cat > Containerfile.multi << 'EOF'
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.26 AS builder
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app main.go
