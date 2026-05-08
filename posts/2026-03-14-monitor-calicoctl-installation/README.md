@@ -34,7 +34,13 @@ Track calicoctl versions across all managed systems.
 # Monitor calicoctl installations across the fleet
 
 HOSTS_FILE="${1:-/etc/calico/managed-hosts.txt}"
-EXPECTED_VERSION="v3.27.0"
+EXPECTED_VERSION="${EXPECTED_VERSION:-${2:-}}"
+
+if [ -z "${EXPECTED_VERSION}" ]; then
+  echo "Usage: EXPECTED_VERSION=v3.x.y $0 [hosts_file]" >&2
+  echo "Set EXPECTED_VERSION to the Calico version expected for this fleet." >&2
+  exit 2
+fi
 
 echo "=== Calicoctl Fleet Monitor ==="
 echo "Date: $(date)"
@@ -47,7 +53,11 @@ MISSING=0
 WRONG_VERSION=0
 ERRORS=0
 
-while read host; do
+while IFS= read -r host || [ -n "${host}" ]; do
+  case "${host}" in
+    ""|\#*) continue ;;
+  esac
+
   ((TOTAL++))
   echo -n "${host}: "
 
@@ -93,37 +103,45 @@ Create a custom exporter for calicoctl monitoring.
 
 METRICS_DIR="/var/lib/prometheus/node-exporter"
 METRICS_FILE="${METRICS_DIR}/calicoctl.prom"
+METRICS_TMP="${METRICS_FILE}.$$"
 
-mkdir -p ${METRICS_DIR}
+mkdir -p "${METRICS_DIR}"
 
 # Check if calicoctl is installed
-if which calicoctl > /dev/null 2>&1; then
-  echo "calicoctl_installed 1" > ${METRICS_FILE}
+if command -v calicoctl > /dev/null 2>&1; then
+  {
+    echo "calicoctl_installed 1"
 
-  # Get version as a label
-  VERSION=$(calicoctl version 2>/dev/null | grep "Client Version" | awk '{print $NF}')
-  echo "calicoctl_version_info{version="${VERSION}"} 1" >> ${METRICS_FILE}
+    # Get version as a label
+    VERSION=$(calicoctl version 2>/dev/null | grep "Client Version" | awk '{print $NF}')
+    VERSION=${VERSION//\\/\\\\}
+    VERSION=${VERSION//\"/\\\"}
+    printf 'calicoctl_version_info{version="%s"} 1\n' "${VERSION}"
 
-  # Check datastore connectivity
-  if calicoctl get nodes > /dev/null 2>&1; then
-    echo "calicoctl_datastore_connected 1" >> ${METRICS_FILE}
-  else
-    echo "calicoctl_datastore_connected 0" >> ${METRICS_FILE}
-  fi
+    # Check datastore connectivity
+    if calicoctl get nodes > /dev/null 2>&1; then
+      echo "calicoctl_datastore_connected 1"
+    else
+      echo "calicoctl_datastore_connected 0"
+    fi
+  } > "${METRICS_TMP}"
 else
-  echo "calicoctl_installed 0" > ${METRICS_FILE}
-  echo "calicoctl_datastore_connected 0" >> ${METRICS_FILE}
+  {
+    echo "calicoctl_installed 0"
+    echo "calicoctl_datastore_connected 0"
+  } > "${METRICS_TMP}"
 fi
 
 # Add timestamp
-echo "calicoctl_last_check_timestamp $(date +%s)" >> ${METRICS_FILE}
+echo "calicoctl_last_check_timestamp $(date +%s)" >> "${METRICS_TMP}"
+mv "${METRICS_TMP}" "${METRICS_FILE}"
 ```
 
 Set up the cron job:
 
 ```bash
 # Run every 5 minutes
-echo "*/5 * * * * root /usr/local/bin/calicoctl-exporter.sh" |   sudo tee /etc/cron.d/calicoctl-monitor
+echo "*/5 * * * * root /usr/local/bin/calicoctl-exporter.sh" | sudo tee /etc/cron.d/calicoctl-monitor
 ```
 
 ```mermaid
@@ -151,13 +169,18 @@ Monitor for changes in calicoctl configuration.
 # detect-config-drift.sh
 # Detect calicoctl configuration drift
 
-EXPECTED_CONFIG_HASH="abc123"  # Set to hash of known-good config
+EXPECTED_CONFIG_HASH="${EXPECTED_CONFIG_HASH:-}"
 CONFIG_FILE="/etc/calico/calicoctl.cfg"
 
 echo "=== Configuration Drift Check ==="
 
+if [ -z "${EXPECTED_CONFIG_HASH}" ]; then
+  echo "Status: EXPECTED_CONFIG_HASH is not set"
+  exit 2
+fi
+
 if [ -f "${CONFIG_FILE}" ]; then
-  CURRENT_HASH=$(md5sum "${CONFIG_FILE}" | awk '{print $1}')
+  CURRENT_HASH=$(sha256sum "${CONFIG_FILE}" | awk '{print $1}')
   echo "Config file: ${CONFIG_FILE}"
   echo "Current hash: ${CURRENT_HASH}"
   echo "Expected hash: ${EXPECTED_CONFIG_HASH}"
@@ -189,7 +212,7 @@ HEALTH_LOG="/var/log/calicoctl-health.log"
   echo "=== Health Check: $(date) ==="
 
   # Binary health
-  if which calicoctl > /dev/null 2>&1; then
+  if command -v calicoctl > /dev/null 2>&1; then
     echo "binary: ok"
   else
     echo "binary: missing"
@@ -207,10 +230,10 @@ HEALTH_LOG="/var/log/calicoctl-health.log"
   fi
 
   echo "---"
-} >> ${HEALTH_LOG}
+} >> "${HEALTH_LOG}"
 
 # Keep only last 1000 lines
-tail -1000 ${HEALTH_LOG} > ${HEALTH_LOG}.tmp && mv ${HEALTH_LOG}.tmp ${HEALTH_LOG}
+tail -1000 "${HEALTH_LOG}" > "${HEALTH_LOG}.tmp" && mv "${HEALTH_LOG}.tmp" "${HEALTH_LOG}"
 ```
 
 ## Verification
@@ -238,7 +261,7 @@ cat /var/lib/prometheus/node-exporter/calicoctl.prom 2>/dev/null || echo "No met
 
 ## Troubleshooting
 
-- **Monitoring shows incorrect version**: The monitoring script caches results. Check the script's run interval and verify manually with `calicoctl version`.
+- **Monitoring shows incorrect version**: Check the script's run interval and the Prometheus scrape interval, then verify manually with `calicoctl version`.
 - **Prometheus not scraping metrics**: Verify the node exporter textfile collector is configured to read from the metrics directory. Check file permissions.
 - **Fleet monitoring SSH timeouts**: Increase the SSH timeout in the fleet monitoring script. Consider using a push-based monitoring approach instead of SSH polling.
 - **Configuration drift detected unexpectedly**: Check if automated tools (Ansible, Puppet) are modifying the configuration file. Align the expected hash with the latest approved configuration.
