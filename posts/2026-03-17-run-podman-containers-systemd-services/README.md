@@ -10,7 +10,7 @@ Description: Learn how to run Podman containers as systemd services using both Q
 
 > Turn your Podman containers into reliable system services managed by systemd for automatic startup, restart, and centralized logging.
 
-Running containers as systemd services gives you production-grade reliability: automatic startup at boot, restart on failure, dependency management, and integration with the system journal. Podman supports two approaches: Quadlet (recommended) and generated unit files.
+Running containers as systemd services gives you production-grade reliability: automatic startup, restart on failure, dependency management, and integration with the system journal. Podman supports two approaches: Quadlet (recommended) and legacy generated unit files.
 
 ---
 
@@ -30,6 +30,7 @@ Description=My Application Service
 
 [Container]
 Image=docker.io/myorg/myapp:latest
+ContainerName=myapp
 PublishPort=3000:3000
 Environment=NODE_ENV=production
 
@@ -45,18 +46,25 @@ Activate the service:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now myapp.service
+systemctl --user start myapp.service
+```
+
+For a rootless user service to start at boot without an active login session, enable lingering for that user:
+
+```bash
+sudo loginctl enable-linger "$USER"
 ```
 
 ## Method 2: Generated Unit Files
 
-For existing containers, generate a unit file:
+For existing containers, generate a unit file. This command is deprecated in current Podman releases, so use Quadlet for new deployments:
 
 ```bash
 # Start a container
 podman run -d --name myapp -p 3000:3000 docker.io/myorg/myapp:latest
 
 # Generate and save the unit file
+mkdir -p ~/.config/systemd/user/
 podman generate systemd --new --name myapp > ~/.config/systemd/user/container-myapp.service
 
 # Stop and remove the original container
@@ -96,7 +104,7 @@ sudo cp myapp.container /etc/containers/systemd/
 
 # Reload and start with system-level systemctl
 sudo systemctl daemon-reload
-sudo systemctl enable --now myapp.service
+sudo systemctl start myapp.service
 ```
 
 ## Verify the Container Is Running
@@ -115,4 +123,4 @@ podman logs myapp
 
 ## Summary
 
-Running Podman containers as systemd services provides automatic startup, restart policies, dependency management, and journal logging. Use Quadlet for new deployments and `podman generate systemd` for quick conversions of existing containers. Both approaches give you full systemctl management capabilities.
+Running Podman containers as systemd services provides automatic startup, restart policies, dependency management, and journal logging. Use Quadlet for new deployments and `podman generate systemd` only for legacy quick conversions of existing containers. Both approaches give you full systemctl management capabilities.
