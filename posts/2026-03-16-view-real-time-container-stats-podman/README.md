@@ -21,7 +21,7 @@ By default, `podman stats` streams updates continuously:
 ```bash
 # Start test containers
 
-podman run -d --name web nginx:latest
+podman run -d --name web -p 8080:80 nginx:latest
 podman run -d --name app python:3 python -c "
 import time
 while True:
@@ -138,8 +138,8 @@ Watch container behavior under load:
 # Terminal 1: Start real-time monitoring
 podman stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}"
 
-# Terminal 2: Generate load
-podman exec web /bin/bash -c "for i in \$(seq 1 1000); do curl -s localhost > /dev/null; done"
+# Terminal 2: Generate load from the host
+for i in $(seq 1 1000); do curl -s http://localhost:8080 > /dev/null; done
 
 # Watch the stats change in Terminal 1 as load increases
 ```
