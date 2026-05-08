@@ -30,7 +30,7 @@ podman network rm frontend backend staging
 
 ## Handling Networks with Connected Containers
 
-Podman will not remove a network that has containers connected to it:
+Podman will not remove a network that has containers or pods connected or configured to use it:
 
 ```bash
 # This will fail if containers are attached
@@ -38,11 +38,11 @@ podman network rm mynetwork
 # Error: unable to remove network: containers are using network
 
 # First, find connected containers
-podman ps --filter network=mynetwork --format "{{ .Names }}"
+podman ps -a --filter network=mynetwork --format "{{ .Names }}"
 
-# Stop and remove the containers
-podman stop webapp api
-podman rm webapp api
+# Disconnect the containers
+podman network disconnect mynetwork webapp
+podman network disconnect mynetwork api
 
 # Now remove the network
 podman network rm mynetwork
@@ -51,10 +51,10 @@ podman network rm mynetwork
 ## Force Removing a Network
 
 ```bash
-# Force remove disconnects all containers first
+# Force removal stops and removes containers that use the network
 podman network rm --force mynetwork
 
-# This is equivalent to disconnecting each container and then removing
+# This is equivalent to removing the associated containers and then removing the network
 ```
 
 ## Pruning Unused Networks
@@ -79,8 +79,8 @@ podman network prune -f
 podman network ls --filter label=environment=test --format "{{ .Name }}" | \
   xargs podman network rm
 
-# Remove networks created before a certain time
-podman network ls --format "{{ .Name }}" | while read -r net; do
+# Remove networks created more than 24 hours ago
+podman network ls --filter until=24h --format "{{ .Name }}" | while read -r net; do
   if [ "$net" != "podman" ]; then
     podman network rm "$net" 2>/dev/null && echo "Removed: $net"
   fi
