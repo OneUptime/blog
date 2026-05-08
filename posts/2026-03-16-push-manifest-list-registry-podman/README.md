@@ -91,12 +91,12 @@ podman manifest push --all \
 ```bash
 # Log in to ECR
 aws ecr get-login-password --region us-east-1 | \
-  podman login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  podman login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Push to ECR
 podman manifest push --all \
   myapp:latest \
-  docker://123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
+  docker://123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
 ```
 
 ### Google Artifact Registry
@@ -148,8 +148,8 @@ podman manifest push --all \
   --tls-verify=false \
   myapp:latest docker://localhost:5000/myapp:latest
 
-# Push and purge the local manifest after (clean up)
-podman manifest push --all --purge \
+# Push and remove the local manifest after (clean up)
+podman manifest push --all --rm \
   myapp:latest docker://registry.example.com/myapp:latest
 ```
 
