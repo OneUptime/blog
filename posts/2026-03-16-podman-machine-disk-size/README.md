@@ -36,7 +36,7 @@ podman machine ssh -- df -h /
 ## Setting Disk Size During Initialization
 
 ```bash
-# Initialize with a custom disk size (in GB)
+# Initialize with a custom disk size (in GiB)
 podman machine init --disk-size 100
 
 # For image-heavy workloads
@@ -144,18 +144,18 @@ podman rmi docker.io/library/node:latest
 # Remove dangling images (untagged layers)
 podman image prune
 
-# Remove build cache
-podman builder prune -a
+# Remove build containers and dangling build cache
+podman system prune --build
 ```
 
 ### Check and Clean Build Cache
 
 ```bash
-# View build cache usage
-podman builder prune --dry-run 2>/dev/null
+# View overall disk usage before cleaning build cache
+podman system df -v
 
-# Remove all build cache
-podman builder prune -a -f
+# Remove build containers and dangling build cache
+podman system prune --build -f
 ```
 
 ## Disk Size Planning
@@ -246,7 +246,7 @@ echo "Pruning unused resources..."
 podman image prune -a -f
 podman container prune -f
 podman volume prune -f
-podman builder prune -a -f 2>/dev/null
+podman system prune --build -f
 
 echo "Podman disk usage after cleanup:"
 podman system df
@@ -313,8 +313,8 @@ podman ps -a --size
 # Check container logs size (logs can grow large)
 podman machine ssh -- du -sh /var/lib/containers/storage/overlay-containers/*/userdata/
 
-# Restart containers with log size limits
-podman run -d --log-opt max-size=10m --log-opt max-file=3 docker.io/library/nginx:latest
+# Restart containers with a log size limit
+podman run -d --log-opt max-size=10mb docker.io/library/nginx:latest
 ```
 
 If `podman machine set --disk-size` fails:
