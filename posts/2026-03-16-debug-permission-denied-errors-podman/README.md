@@ -32,14 +32,14 @@ podman info --format '{{.Host.Security.Rootless}}'
 
 ## SELinux Volume Mount Issues
 
-On systems with SELinux enabled (RHEL, Fedora, CentOS), volume mounts are blocked by default.
+On systems with SELinux enabled (RHEL, Fedora, CentOS), volume mounts can be blocked unless the mounted content has a label that container processes are allowed to use.
 
 ```bash
 # Check if SELinux is enforcing
 getenforce
 
 # View SELinux denials related to containers
-ausearch -m avc -ts recent | grep container
+sudo ausearch -m avc -ts recent | grep container
 
 # Fix: Add the :Z flag for private volumes (single container)
 podman run -v /host/data:/container/data:Z my-image:latest
@@ -61,7 +61,7 @@ In rootless mode, Podman maps container UIDs to unprivileged host UIDs. This can
 # Check your UID mapping
 podman unshare cat /proc/self/uid_map
 
-# See what host UID maps to container root (UID 0)
+# See that your user appears as root inside the rootless user namespace
 podman unshare id
 
 # Check file ownership as seen inside the container
@@ -86,7 +86,7 @@ Sometimes the files inside the image have restrictive permissions.
 podman run --rm my-image:latest ls -la /app/
 
 # Check what user the container runs as
-podman inspect --format '{{.Config.User}}' my-image:latest
+podman image inspect --format '{{.Config.User}}' my-image:latest
 
 # Fix: Run as root to diagnose, then fix properly
 podman run --rm --user root my-image:latest ls -la /app/
@@ -97,11 +97,11 @@ podman run --user 1000:1000 -v /host/data:/app/data:Z my-image:latest
 
 ## Read-Only Filesystem Errors
 
-Some container images use read-only filesystems or tmpfs mounts.
+Some containers are run with read-only root filesystems or tmpfs mounts.
 
 ```bash
 # Check if the container has a read-only rootfs
-podman inspect --format '{{.HostConfig.ReadonlyRootfs}}' my-container
+podman container inspect --format '{{.HostConfig.ReadonlyRootfs}}' my-container
 
 # Run with a writable tmp directory
 podman run --read-only --tmpfs /tmp:rw,size=100m my-image:latest
@@ -116,16 +116,16 @@ podman run --read-only \
 
 ## Debug Permission Issues with Capabilities
 
-Some operations inside containers require Linux capabilities that are dropped by default.
+Some operations inside containers require Linux capabilities. They can fail if the container uses a restricted capability set or the image drops capabilities it needs.
 
 ```bash
 # Check what capabilities the container has
-podman inspect --format '{{.EffectiveCaps}}' my-container
+podman container inspect --format '{{.EffectiveCaps}}' my-container
 
 # Add specific capabilities if needed
 podman run --cap-add SYS_PTRACE my-image:latest
 
-# Common capabilities that fix permission errors:
+# Common capabilities involved in permission errors:
 # --cap-add NET_BIND_SERVICE  (bind to ports below 1024)
 # --cap-add SYS_PTRACE        (debugging tools like strace)
 # --cap-add DAC_OVERRIDE      (bypass file permission checks)
