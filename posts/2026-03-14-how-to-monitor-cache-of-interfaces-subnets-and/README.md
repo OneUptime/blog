@@ -10,9 +10,9 @@ Description: How to monitor the health and freshness of interface, subnet, and v
 
 ## Introduction
 
-Monitoring the IPAM cache in cloud environments ensures that Cilium maintains an accurate view of network resources. Cache monitoring tracks sync frequency, data freshness, and any errors during cache updates. This is essential for cloud deployments where network topology can change dynamically.
+Monitoring the IPAM cache in cloud environments ensures that Cilium maintains an accurate view of network resources. Cache monitoring tracks sync frequency, allocation state, and any errors during cache updates. This is essential for cloud deployments where network topology can change dynamically.
 
-The key signals to monitor are cache update frequency, API error rates, discrepancies between cached and actual data, and the age of cached entries.
+The key signals to monitor are cache update frequency, external IPAM API error rates, discrepancies between cached and actual data, and current IP availability.
 
 ## Prerequisites
 
@@ -35,13 +35,15 @@ operator:
 ```promql
 # Operator API call rates (cloud provider)
 
-rate(cilium_operator_api_call_duration_seconds_count[5m])
+rate(cilium_operator_ipam_api_duration_seconds_count[5m])
 
 # API errors
-rate(cilium_operator_api_call_duration_seconds_count{status="error"}[5m])
+sum by (operation, response_code) (
+  rate(cilium_operator_ipam_api_duration_seconds_count{response_code!~"2.."}[5m])
+)
 
-# Resync interval
-cilium_operator_ipam_resync_total
+# Resync activity
+increase(cilium_operator_ipam_resync_total[5m])
 ```
 
 ## Custom Cache Monitor
@@ -56,7 +58,7 @@ echo "Timestamp: $(date -u)"
 # Check all nodes have current cache data
 kubectl get ciliumnodes -o json | jq -r '.items[] | {
   node: .metadata.name,
-  interfaces: (.spec.azure.interfaces // .spec.eni.enis // {} | length),
+  interfaces: (.status.azure.interfaces // .status.eni.enis // {} | length),
   used: (.status.ipam.used // {} | length)
 } | "\(.node): \(.interfaces) interfaces, \(.used) IPs used"'
 
@@ -89,8 +91,8 @@ spec:
       rules:
         - alert: CiliumIPAMCacheSyncErrors
           expr: >
-            rate(cilium_operator_api_call_duration_seconds_count{
-              status="error"}[5m]) > 0
+            sum(rate(cilium_operator_ipam_api_duration_seconds_count{
+              response_code!~"2.."}[5m])) > 0
           for: 10m
           labels:
             severity: warning
@@ -115,4 +117,4 @@ cilium status
 
 ## Conclusion
 
-Monitoring the IPAM cache ensures Cilium maintains accurate cloud networking data. Track API call rates, sync errors, and cache freshness to detect issues before they affect pod IP allocation.
+Monitoring the IPAM cache ensures Cilium maintains accurate cloud networking data. Track API call rates, sync errors, resync activity, and IP availability to detect issues before they affect pod IP allocation.
