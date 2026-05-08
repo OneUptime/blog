@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Performance, Tuning, Rancher
 
-Description: Learn how to tune Calico networking on Rancher-managed Kubernetes clusters for production workloads, covering MTU, IPAM, BGP, and eBPF optimizations specific to the Rancher environment.
+Description: Learn how to tune Calico networking on Rancher-managed Kubernetes clusters for production workloads, covering MTU, IPAM, and eBPF optimizations specific to the Rancher environment.
 
 ---
 
@@ -14,24 +14,25 @@ Rancher simplifies Kubernetes cluster management across on-premises and cloud en
 
 Rancher's RKE and RKE2 distributions have specific networking configurations that interact with Calico in unique ways. Understanding these interactions - from how Rancher provisions worker nodes to how it manages CNI configuration - is essential for tuning Calico effectively.
 
-This guide walks through key Calico tuning parameters for Rancher clusters, including MTU optimization, IPAM configuration, BGP peering, and optional eBPF dataplane settings that can dramatically improve network performance.
+This guide walks through key Calico tuning parameters for Rancher clusters, including MTU optimization, IPAM configuration, and optional eBPF dataplane settings that can improve network performance.
 
 ## Prerequisites
 
-- Rancher v2.6+ managing an RKE2 or RKE cluster
+- Rancher managing an RKE2 or RKE cluster with Calico selected as the CNI
 - `kubectl` configured with cluster-admin permissions
 - `calicoctl` v3.x installed
 - Access to Rancher UI or `rancher` CLI
 - Basic understanding of Kubernetes networking
+- For eBPF mode on RKE2, an RKE2 release that supports Calico eBPF dataplane
 
 ## Step 1: Assess Current Calico Configuration
 
 Before tuning, inspect the existing Calico setup to understand the baseline configuration.
 
 ```bash
-# Check current Calico version and installation mode
+# Check current Calico pods and installation namespace
 
-kubectl get pods -n calico-system -o wide
+kubectl get pods -A -l k8s-app=calico-node -o wide
 
 # View the current FelixConfiguration
 calicoctl get felixconfiguration default -o yaml
@@ -44,30 +45,35 @@ calicoctl get ippools -o yaml
 
 Setting the correct MTU prevents fragmentation and maximizes throughput. For Rancher clusters using VXLAN encapsulation, the MTU should be set to the underlying network MTU minus the encapsulation overhead.
 
-```bash
-# Patch FelixConfiguration to set the correct MTU
-# For VXLAN: set mtu to (underlay MTU - 50), typically 1450 for 1500 underlay
-calicoctl patch felixconfiguration default \
-  --patch='{"spec": {"vethMTU": 1450}}'
-```
-
-For VXLAN-based Rancher clusters, also update the calico-config ConfigMap:
+For RKE2 clusters using the bundled Calico chart, configure MTU through the chart's `HelmChartConfig`:
 
 ```yaml
-# Apply updated MTU in the calico-config ConfigMap
-apiVersion: v1
-kind: ConfigMap
+# /var/lib/rancher/rke2/server/manifests/rke2-calico-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
 metadata:
-  name: calico-config
-  namespace: calico-system
-data:
-  # Set veth MTU to account for VXLAN overhead (50 bytes)
-  veth_mtu: "1450"
+  name: rke2-calico
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    installation:
+      calicoNetwork:
+        # For VXLAN: set MTU to underlay MTU - 50, typically 1450 for 1500 underlay
+        mtu: 1450
+```
+
+For manifest-based RKE clusters that use a `calico-config` ConfigMap, update `veth_mtu` and restart `calico-node` so new pods get the updated workload MTU:
+
+```bash
+kubectl patch configmap/calico-config -n kube-system --type merge \
+  -p '{"data":{"veth_mtu": "1450"}}'
+
+kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
 ## Step 3: Tune IPAM and IP Pools
 
-Rancher clusters often span multiple node pools. Configure IPAM to optimize address allocation per node pool.
+Rancher clusters often span multiple node pools. Configure IPAM to optimize address allocation per node pool. If the existing default IP pool already covers the entire pod CIDR, first migrate or disable the overlapping pool before creating new per-node-pool ranges.
 
 ```yaml
 # Configure per-node-pool IP pools using node selectors
@@ -76,10 +82,10 @@ kind: IPPool
 metadata:
   name: rancher-worker-pool
 spec:
-  cidr: 10.244.0.0/16
+  # Use a non-overlapping range from your cluster pod CIDR.
+  cidr: 10.42.128.0/17
   # Block size of 26 provides 64 IPs per node - suitable for dense workloads
   blockSize: 26
-  ipipMode: Never
   vxlanMode: Always
   natOutgoing: true
   nodeSelector: "nodepool == 'worker'"
@@ -90,7 +96,7 @@ spec:
 Tune Felix parameters to handle high connection rates typical of production Rancher clusters.
 
 ```bash
-# Increase iptables refresh interval and conntrack table size
+# Increase Felix route and iptables refresh intervals
 calicoctl patch felixconfiguration default --patch='{
   "spec": {
     "iptablesRefreshInterval": "90s",
@@ -103,16 +109,34 @@ calicoctl patch felixconfiguration default --patch='{
 
 ## Step 5: Enable eBPF Dataplane (Optional)
 
-For Rancher clusters running kernel 5.3+, the eBPF dataplane provides significant performance improvements.
+For supported RKE2 releases, the Calico eBPF dataplane can replace the default iptables dataplane. Enable it through the RKE2 Calico chart configuration and deploy RKE2 with `disable-kube-proxy: true`.
+
+```yaml
+# /var/lib/rancher/rke2/server/manifests/rke2-calico-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-calico
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    installation:
+      calicoNetwork:
+        kubeProxyManagement: Enabled
+        linuxDataplane: BPF
+    kubernetesServiceEndpoint:
+      host: "localhost"
+      port: "6443"
+```
+
+For manifest-based Calico installations, disable `kube-proxy` before enabling BPF mode in `FelixConfiguration`.
 
 ```bash
-# First, disable kube-proxy on all nodes
-kubectl -n kube-system patch ds kube-proxy \
+kubectl -n kube-system patch ds kube-proxy --type merge \
   -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico": "true"}}}}}'
 
-# Enable eBPF mode in FelixConfiguration
 calicoctl patch felixconfiguration default \
-  --patch='{"spec": {"bpfEnabled": true, "bpfKubeProxyIptablesCleanupEnabled": true}}'
+  --patch='{"spec": {"bpfEnabled": true}}'
 ```
 
 ## Best Practices
@@ -120,8 +144,8 @@ calicoctl patch felixconfiguration default \
 - Always test MTU changes in a staging Rancher cluster before applying to production
 - Use node selectors in IPPools to isolate workload traffic by node pool
 - Monitor Felix metrics via Prometheus to identify configuration bottlenecks
-- Set `reportingInterval: 0s` in FelixConfiguration to reduce API server load
-- Regularly review Calico logs with `kubectl logs -n calico-system` for warnings
+- Set `reportingInterval: 0s` in FelixConfiguration only after confirming you do not rely on Felix status reports
+- Regularly review Calico logs with `kubectl logs -A -l k8s-app=calico-node --tail=100` for warnings
 - Pin Calico version in Rancher cluster configuration to avoid surprise upgrades
 
 ## Conclusion
