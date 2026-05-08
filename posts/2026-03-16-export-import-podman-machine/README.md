@@ -21,10 +21,10 @@ A Podman machine consists of several components that need to be captured:
 ```bash
 # View the configuration directory
 
-podman machine inspect my-machine | jq -r '.ConfigDir.Path'
+podman machine inspect my-machine | jq -r '.[0].ConfigDir.Path'
 
 # View the machine's resource settings
-podman machine inspect my-machine | jq '{
+podman machine inspect my-machine | jq '.[0] | {
     name: .Name,
     cpus: .Resources.CPUs,
     memory: .Resources.Memory,
@@ -42,7 +42,7 @@ Save the machine configuration to a file for reference when recreating the machi
 podman machine inspect my-machine > machine-config.json
 
 # Export a simplified recreation script
-podman machine inspect my-machine | jq -r '"podman machine init \(.Name) --cpus \(.Resources.CPUs) --memory \(.Resources.Memory) --disk-size \(.Resources.DiskSize)" + (if .Rootful then " --rootful" else "" end)' > recreate-machine.sh
+podman machine inspect my-machine | jq -r '.[0] | "podman machine init \(.Name) --cpus \(.Resources.CPUs) --memory \(.Resources.Memory) --disk-size \(.Resources.DiskSize)" + (if .Rootful then " --rootful" else "" end)' > recreate-machine.sh
 
 cat recreate-machine.sh
 # Output: podman machine init my-machine --cpus 4 --memory 8192 --disk-size 100
@@ -64,7 +64,7 @@ podman images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | while rea
 done
 
 # Or save multiple images in one archive
-podman save -o all-images.tar $(podman images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | tr '\n' ' ')
+podman save --multi-image-archive -o all-images.tar $(podman images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | tr '\n' ' ')
 ```
 
 ## Exporting Container Data
@@ -156,10 +156,10 @@ echo "=== Restoring Podman Machine ==="
 
 # 1. Recreate the machine from saved configuration
 echo "Creating machine from configuration..."
-cpus=$(jq '.Resources.CPUs' "$BACKUP_DIR/machine-config.json")
-memory=$(jq '.Resources.Memory' "$BACKUP_DIR/machine-config.json")
-disk=$(jq '.Resources.DiskSize' "$BACKUP_DIR/machine-config.json")
-name=$(jq -r '.Name' "$BACKUP_DIR/machine-config.json")
+cpus=$(jq '.[0].Resources.CPUs' "$BACKUP_DIR/machine-config.json")
+memory=$(jq '.[0].Resources.Memory' "$BACKUP_DIR/machine-config.json")
+disk=$(jq '.[0].Resources.DiskSize' "$BACKUP_DIR/machine-config.json")
+name=$(jq -r '.[0].Name' "$BACKUP_DIR/machine-config.json")
 
 podman machine init "$name" --cpus "$cpus" --memory "$memory" --disk-size "$disk"
 podman machine start "$name"
