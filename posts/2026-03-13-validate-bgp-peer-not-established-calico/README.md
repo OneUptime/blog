@@ -26,7 +26,7 @@ Validating BGP peer session restoration requires confirming not just that peers 
 
 ```bash
 calicoctl node status
-ip route show | grep bird | head -10
+ip route show proto bird | head -10
 ```
 
 ## Solution
@@ -34,27 +34,27 @@ ip route show | grep bird | head -10
 **Validation Step 1: All peers show Established**
 
 ```bash
-calicoctl node status | grep -v "Established" | grep -E "Idle|Active|Connect"
+calicoctl node status | grep -v "Established" | grep -E "Idle|Connect|Active|OpenSent|OpenConfirm|Close|Down|Passive"
 # Expected: empty - no non-Established peers
 
 ```
 
-**Validation Step 2: Routes are present for all nodes**
+**Validation Step 2: Routes are present for remote nodes**
 
 ```bash
-# Check routes for each node's pod CIDR
+# Run on each Calico node and check routes for each remote node's pod CIDR
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   POD_CIDR=$(kubectl get node $NODE -o jsonpath='{.spec.podCIDR}')
   echo -n "$NODE ($POD_CIDR): "
-  ip route show | grep "$POD_CIDR" | head -1 || echo "MISSING ROUTE"
+  ip route show proto bird | grep "$POD_CIDR" | head -1 || echo "MISSING ROUTE"
 done
 ```
 
 **Validation Step 3: Cross-node pod connectivity test**
 
 ```bash
-kubectl run bgp-val-src --image=busybox --restart=Never -- sleep 120
-kubectl run bgp-val-dst --image=busybox --restart=Never -- sleep 120
+kubectl run bgp-val-src --image=busybox --restart=Never --labels=app=bgp-val-src --command -- sleep 120
+kubectl run bgp-val-dst --image=busybox --restart=Never --labels=app=bgp-val-dst --overrides='{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchLabels":{"app":"bgp-val-src"}},"topologyKey":"kubernetes.io/hostname"}]}}}}' --command -- sleep 120
 kubectl wait pod/bgp-val-src pod/bgp-val-dst --for=condition=Ready --timeout=60s
 
 DST_IP=$(kubectl get pod bgp-val-dst -o jsonpath='{.status.podIP}')
@@ -75,7 +75,7 @@ kubectl logs -n kube-system job/bgp-validate
 flowchart TD
     A[Fix applied] --> B[All peers Established?]
     B -- No --> C[Wait 60s for convergence, retry]
-    B -- Yes --> D[Routes for all pod CIDRs present?]
+    B -- Yes --> D[Routes for remote pod CIDRs present?]
     D -- No --> E[Wait for BGP convergence 2-5 min]
     E --> F{Routes appear?}
     F -- Yes --> G[Cross-node ping passes?]
@@ -92,4 +92,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating BGP peer restoration requires all peers showing Established, routes for all node pod CIDRs present in the routing table, successful cross-node pod ping, and the BGP check CronJob passing. Allow time for BGP reconvergence after session restoration before declaring validation complete.
+Validating BGP peer restoration requires all peers showing Established, routes for remote node pod CIDRs present in the routing table, successful cross-node pod ping, and the BGP check CronJob passing. Allow time for BGP reconvergence after session restoration before declaring validation complete.
