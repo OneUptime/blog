@@ -92,14 +92,15 @@ Combine log viewing with container metadata for better context.
 # Check the container's log driver before viewing logs
 podman inspect --format '{{.HostConfig.LogConfig.Type}}' my-container
 
-# View the log file path on disk
-podman inspect --format '{{.LogPath}}' my-container
+# View the log file path on disk for file-based log drivers
+log_path=$(podman inspect --format '{{.HostConfig.LogConfig.Path}}' my-container)
+echo "$log_path"
 
 # Check log file size
-podman inspect --format '{{.LogPath}}' my-container | xargs ls -lh
+[ -n "$log_path" ] && ls -lh "$log_path"
 
-# View raw log file directly (JSON format)
-podman inspect --format '{{.LogPath}}' my-container | xargs cat
+# View raw log file directly (format depends on the log driver)
+[ -n "$log_path" ] && cat "$log_path"
 ```
 
 ## Combine Logs with Other Commands
@@ -129,13 +130,13 @@ When working with pods that have init containers, you can inspect each container
 
 ```bash
 # List containers in a pod
-podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} {{end}}'
+podman ps -a --filter pod=my-pod --format '{{.Names}}'
 
 # View logs from a specific container in a pod
 podman logs my-pod-container-name
 
 # View logs from all containers in a pod
-for c in $(podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} {{end}}'); do
+for c in $(podman ps -a --filter pod=my-pod --format '{{.Names}}'); do
   echo "=== $c ==="
   podman logs "$c" 2>&1 | tail -20
 done
