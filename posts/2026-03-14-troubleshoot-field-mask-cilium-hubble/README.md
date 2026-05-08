@@ -104,16 +104,16 @@ Field mask paths must match the Hubble flow protobuf field names exactly:
 # CORRECT: Using the actual field path
 # fieldMask: ["source.pod_name"]
 
-# WRONG: Trying to mask individual TCP flag fields
+# VALID: Masking an individual TCP flag field
 # fieldMask: ["l4.TCP.flags.SYN"]
 
-# CORRECT: Include the entire TCP object
+# VALID: Include the entire TCP object when you need ports and flags
 # fieldMask: ["l4.TCP"]
 
 # Verify field names from the Hubble protobuf definition
 # The primary fields are:
-# time, source, destination, Type, node_name, verdict, drop_reason,
-# l4, l7, reply, event_type, source_service, destination_service,
+# time, source, destination, Type, node_name, verdict, drop_reason_desc,
+# l4, l7, is_reply, event_type, source_service, destination_service,
 # Summary, IP, ethernet, interface, proxy_port, trace_observation_point
 ```
 
@@ -159,11 +159,10 @@ hubble:
         - destination.namespace
         - destination.pod_name
         - destination.identity
-        - destination.port
+        - l4.TCP.destination_port
+        - l4.UDP.destination_port
         - verdict
-        - drop_reason
-        - l4.TCP
-        - l4.UDP
+        - drop_reason_desc
         - Type
         - IP.source       # Add back if parser needs it
         - IP.destination   # Add back if parser needs it
