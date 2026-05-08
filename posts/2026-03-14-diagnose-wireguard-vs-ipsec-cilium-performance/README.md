@@ -10,7 +10,7 @@ Description: How to diagnose performance differences between WireGuard and IPsec
 
 ## Introduction
 
-Cilium supports both WireGuard and IPsec for transparent encryption. WireGuard uses ChaCha20-Poly1305 and operates at the network layer, while IPsec uses AES-GCM with hardware acceleration and operates with ESP tunnels. The performance characteristics differ significantly depending on hardware capabilities and workload patterns.
+Cilium supports both WireGuard and IPsec for transparent encryption. WireGuard uses ChaCha20-Poly1305 and operates as a Layer 3 tunnel, while Cilium IPsec uses Linux XFRM/ESP and can use AES-GCM with AES-NI acceleration when the configured algorithm and hardware support it. The performance characteristics differ significantly depending on hardware capabilities and workload patterns.
 
 Diagnosing which encryption protocol performs better for your specific environment requires systematic benchmarking across multiple dimensions: throughput, latency (TCP_RR), connection rate (TCP_CRR), and CPU overhead. The winner depends on whether your hardware supports AES-NI (which benefits IPsec) or if you are CPU-bound (where WireGuard's simpler code path helps).
 
@@ -44,10 +44,12 @@ kubectl exec netperf-client -- netperf -H $SERVER_IP -t TCP_RR -l 20
 kubectl exec netperf-client -- netperf -H $SERVER_IP -t TCP_CRR -l 20
 
 # Test 2: IPsec
+cilium encryption create-key --auth-algo rfc4106-gcm-aes
+
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
   --set encryption.type=ipsec \
-  --set encryption.ipsec.keyFile=/etc/ipsec/keys
+  --set encryption.ipsec.keyFile=keys
 kubectl rollout status ds/cilium -n kube-system
 sleep 30
 
@@ -125,11 +127,11 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl get ciliumendpoints --all-namespaces -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
