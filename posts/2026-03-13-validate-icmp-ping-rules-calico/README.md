@@ -18,7 +18,7 @@ This guide provides practical techniques for validate ICMP Rules in your Kuberne
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.31+
 - `calicoctl` and `kubectl` installed
 - Basic understanding of Calico network policy concepts
 
@@ -26,7 +26,7 @@ This guide provides practical techniques for validate ICMP Rules in your Kuberne
 
 ```bash
 for f in policies/*.yaml; do
-  calicoctl apply -f "$f" --dry-run && echo "PASS: $f" || echo "FAIL: $f"
+  calicoctl validate -f "$f" && echo "PASS: $f" || echo "FAIL: $f"
 done
 ```
 
@@ -34,7 +34,9 @@ done
 
 ```bash
 python3 << 'EOF'
-import subprocess, yaml, sys
+import re
+import subprocess
+import yaml
 
 # Load policies
 
@@ -42,21 +44,39 @@ with open('policies/production-policies.yaml') as f:
     policies = list(yaml.safe_load_all(f))
 
 errors = []
+warnings = []
 for p in policies:
     if p is None: continue
+    kind = p.get('kind', '')
+    namespace = p.get('metadata', {}).get('namespace', 'default')
     sel = p.get('spec', {}).get('selector', '')
     if sel and sel != 'all()':
-        label_key = sel.split('==')[0].strip().strip("'")
+        match = re.fullmatch(r"\s*([A-Za-z0-9./_-]+)\s*==\s*['\"]([^'\"]+)['\"]\s*", sel)
+        if not match:
+            warnings.append(f"Skipping selector that cannot be converted to a Kubernetes label selector: {sel}")
+            continue
+
+        kubernetes_selector = f"{match.group(1)}={match.group(2)}"
+        command = ['kubectl', 'get', 'pods', '-l', kubernetes_selector, '-o', 'name']
+        if kind == 'NetworkPolicy':
+            command.extend(['-n', namespace])
+        else:
+            command.append('--all-namespaces')
+
         result = subprocess.run(
-            ['kubectl', 'get', 'pods', '--all-namespaces', '-l', label_key],
+            command,
             capture_output=True, text=True
         )
-        if not result.stdout.strip():
+        if result.returncode != 0:
+            errors.append(f"Could not query selector {sel}: {result.stderr.strip()}")
+        elif not result.stdout.strip():
             errors.append(f"No pods match selector: {sel}")
+if warnings:
+    for w in warnings: print(f"WARN: {w}")
 if errors:
     for e in errors: print(f"WARN: {e}")
 else:
-    print("All selectors validated")
+    print("All checked selectors matched at least one pod")
 EOF
 ```
 
@@ -77,11 +97,19 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64 -o calicoctl
+          chmod +x calicoctl
+          sudo mv calicoctl /usr/local/bin/
       - name: Validate
         run: |
           for f in policies/*.yaml; do
             yamllint "$f"
+            calicoctl validate -f "$f"
           done
 ```
 
