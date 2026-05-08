@@ -44,7 +44,7 @@ kubectl get pods -n production
 
 ```mermaid
 graph LR
-    A[Policy selector: app == 'backend'] --> B{calicoctl selector query}
+    A[Policy selector: app == 'backend'] --> B{kubectl label query}
     B --> C[Matched pods]
     C --> D[Policy applied]
     D --> E[Test traffic to confirm]
@@ -58,8 +58,8 @@ kubectl logs -n calico-system ds/calico-node --tail=100 | \
   grep -i "networkpolicy\|allow-frontend"
 
 # Check metrics
-kubectl exec -n calico-system ds/calico-node -- \
-  curl -s localhost:9091/metrics | grep felix_active_local_policies
+kubectl port-forward -n calico-system ds/calico-node 9091:9091
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 ```
 
 ## Step 4: Test Allowed Traffic
