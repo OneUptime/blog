@@ -90,13 +90,13 @@ graph TD
 ```bash
 # Apply the L7 policy
 
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/HEAD/examples/minikube/sw_l3_l4_l7_policy.yaml
+kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/minikube/sw_l3_l4_l7_policy.yaml
 
 # Describe the policy
 kubectl describe CiliumNetworkPolicy rule1
 
-# View in Cilium
-kubectl exec -n kube-system ds/cilium -- cilium policy get
+# Inspect Cilium endpoints and policy enforcement
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 ```
 
 ## Key Policy Concepts
