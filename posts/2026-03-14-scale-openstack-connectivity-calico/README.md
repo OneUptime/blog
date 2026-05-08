@@ -60,7 +60,7 @@ spec:
   # Select route reflector nodes
   peerSelector: route-reflector == 'true'
   # Apply to all non-reflector nodes
-  nodeSelector: "!route-reflector == 'true'"
+  nodeSelector: route-reflector != 'true'
 ```
 
 ```bash
@@ -109,15 +109,15 @@ spec:
   routeRefreshInterval: 90s
   # Use iptables nft backend for better performance on newer kernels
   iptablesBackend: Auto
-  # Increase datastore connection timeout for busy clusters
-  datastoreConnectionTimeout: 30s
-  # Enable BPF dataplane for better performance (requires kernel 5.3+)
+  # Increase netlink timeout for busy compute nodes
+  netlinkTimeout: 30s
+  # Enable BPF dataplane for better performance (requires a supported kernel, typically 5.10+)
   bpfEnabled: false
   # Reduce log verbosity in production
   logSeverityScreen: Warning
-  # Connection tracking tuning
+  # BPF connection tracking tuning (used only when bpfEnabled is true)
   bpfConntrackTimeouts:
-    tcpEstablished: 7200
+    tcpEstablished: 2h
 ```
 
 ## Optimizing Connection Tracking
@@ -155,31 +155,26 @@ sudo sysctl --system
 Deploy monitoring to track Calico scaling metrics.
 
 ```yaml
-# calico-monitoring.yaml
-# Prometheus ServiceMonitor for Calico Felix metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: calico-felix
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      k8s-app: calico-node
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics
+# prometheus.yml
+# Prometheus scrape job for Calico Felix metrics on OpenStack compute nodes
+scrape_configs:
+  - job_name: calico-felix
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - compute-01.example.com:9091
+          - compute-02.example.com:9091
 ```
 
 Key metrics to monitor at scale:
 
 ```bash
 # Check Felix rule programming latency
-curl -s http://localhost:9091/metrics | grep felix_iptables_save_time
+curl -s http://localhost:9091/metrics | grep felix_iptables_save_calls
 
 # Check route programming time
-curl -s http://localhost:9091/metrics | grep felix_route_table_update
+curl -s http://localhost:9091/metrics | grep felix_route_table_list_seconds
 
 # Check BGP session count and status
 calicoctl node status | grep -c "Established"
@@ -203,7 +198,7 @@ calicoctl get bgpconfiguration default -o yaml
 
 echo ""
 echo "=== Route Reflectors ==="
-calicoctl get nodes -l route-reflector=true -o wide
+calicoctl get nodes --output=go-template='{{range .}}{{range .Items}}{{if eq (index .ObjectMeta.Labels "route-reflector") "true"}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}{{end}}'
 
 echo ""
 echo "=== Felix Configuration ==="
@@ -211,8 +206,8 @@ calicoctl get felixconfiguration default -o yaml
 
 echo ""
 echo "=== BGP Sessions Per Node ==="
-for node in $(calicoctl get nodes -o name); do
-  sessions=$(calicoctl node status 2>/dev/null | grep -c "Established")
+for node in $(calicoctl get nodes --output=go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}} {{end}}{{end}}'); do
+  sessions=$(ssh ${node} 'sudo calicoctl node status 2>/dev/null | grep -c "Established"')
   echo "${node}: ${sessions} established sessions"
 done
 
@@ -228,7 +223,7 @@ done
 ## Troubleshooting
 
 - **BGP routes not converging**: Verify route reflectors are healthy and have established sessions. Check `calicoctl node status` on route reflector nodes. Ensure the BGP configuration disables node-to-node mesh.
-- **Felix slow to program rules**: Check Felix metrics for `felix_iptables_save_time`. If rule programming is slow, consider enabling the eBPF dataplane for better performance.
+- **Felix slow to program rules**: Check Felix metrics for `felix_iptables_save_calls` and related iptables metrics. If rule programming is slow, consider enabling the eBPF dataplane for better performance.
 - **Conntrack table full**: Increase `nf_conntrack_max` and ensure the kernel module is loaded. Check for connection leaks from misconfigured applications.
 - **Route table growing too large**: Use IP pool node selectors to limit route distribution scope. Consider using IPAM blocks to aggregate routes.
 
