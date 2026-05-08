@@ -19,7 +19,7 @@ This guide walks through the complete diagnostic workflow for multi-stream Ciliu
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI and `kubectl` access
+- `cilium`, `hubble`, and `kubectl` CLI access, plus `cilium-dbg` access from a Cilium agent pod or node shell
 - `iperf3` container image
 - Node-level access for `perf`, `ethtool`, and `mpstat`
 - Prometheus with Cilium metrics enabled
@@ -32,8 +32,12 @@ Start with a comprehensive multi-stream benchmark:
 # Deploy iperf3 server
 
 kubectl run iperf-server --image=networkstatic/iperf3 \
+  --restart=Never \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"node-1"}}}' \
   -- -s
+
+# Wait for the server pod to be ready
+kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 
 # Get server pod IP
 SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
@@ -42,13 +46,13 @@ SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 for STREAMS in 8 16 32; do
   echo "=== Testing with $STREAMS streams ==="
   kubectl run "iperf-client-$STREAMS" --image=networkstatic/iperf3 \
-    --rm -it --restart=Never \
+    --rm --attach=true --restart=Never \
     --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"node-2"}}}' \
     -- -c $SERVER_IP -t 30 -P $STREAMS -J
 done
 ```
 
-Record aggregate throughput for each stream count. If throughput does not scale linearly with stream count, there is a bottleneck.
+Record aggregate throughput for each stream count. Throughput will not scale perfectly linearly forever, but an early plateau or drop as streams increase usually indicates a bottleneck.
 
 ```mermaid
 graph LR
@@ -80,23 +84,24 @@ ethtool -S eth0 | grep -E "rx_queue_[0-9]+_packets"
 # Check number of queues vs CPUs
 ethtool -l eth0
 
-# If queues < CPUs, increase them
-ethtool -L eth0 combined $(nproc)
+# If the current queue count is below both CPU count and the driver's maximum,
+# raise it up to the supported maximum shown by ethtool -l.
+ethtool -L eth0 combined <supported-queue-count>
 ```
 
 ## Inspecting BPF Program Contention
 
-Cilium's BPF maps are shared across all CPUs. Under multi-stream load, lock contention can appear:
+Cilium uses node-scoped BPF maps for datapath state, including connection tracking and NAT. Under multi-stream load, map pressure or lock contention can appear, especially with non-per-CPU map backends:
 
 ```bash
-# Check BPF map operation counts and timing
+# Check Cilium BPF map types, limits, and current entry counts
 bpftool map show --json | jq '.[] | select(.name | contains("cilium")) | {name, max_entries}'
 
-# Monitor conntrack operations
-cilium bpf ct list global | wc -l
+# Count current conntrack entries from a Cilium agent pod or node shell
+cilium-dbg bpf ct list | wc -l
 
 # Check for BPF program errors
-cilium monitor --type drop -v
+cilium-dbg monitor --type drop -v
 ```
 
 Use `perf` to find contention points:
@@ -138,7 +143,7 @@ cilium hubble port-forward &
 
 # Observe flow distribution
 hubble observe --protocol TCP --last 1000 -o json | \
-  jq -r '.source.namespace + "/" + .source.pod_name + " -> " + .destination.namespace + "/" + .destination.pod_name' | \
+  jq -r '(.flow // .) as $f | ($f.source.namespace // "-") + "/" + ($f.source.pod_name // "-") + " -> " + ($f.destination.namespace // "-") + "/" + ($f.destination.pod_name // "-")' | \
   sort | uniq -c | sort -rn
 ```
 
@@ -166,7 +171,7 @@ kubectl top pods -n kube-system -l k8s-app=cilium
 - **Uneven CPU usage**: Verify RSS (Receive Side Scaling) is enabled and hash function distributes flows evenly.
 - **High softirq time**: Consider enabling Cilium's XDP acceleration for the ingress path.
 - **Memory bandwidth saturation**: Check NUMA affinity and consider pinning pods to specific NUMA nodes.
-- **BPF map contention visible in perf**: Increase per-CPU map usage or reduce policy complexity.
+- **BPF map contention visible in perf**: Consider Cilium's distributed per-CPU LRU map backend for CT/NAT maps, increase BPF map sizing where appropriate, or reduce policy complexity.
 
 ## Conclusion
 
