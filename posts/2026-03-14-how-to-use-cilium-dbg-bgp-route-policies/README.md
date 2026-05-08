@@ -10,7 +10,7 @@ Description: Inspect BGP route policies with cilium-dbg bgp route-policies to un
 
 ## Introduction
 
-Cilium supports BGP for advertising pod and service CIDRs to external network infrastructure. The `cilium-dbg bgp route-policies` command provides visibility into BGP route policy configuration on each Cilium node.
+Cilium supports BGP for advertising Pod CIDRs and service virtual IPs to external network infrastructure. The `cilium-dbg bgp route-policies` command provides visibility into BGP route policy configuration on each Cilium node.
 
 Route policies control which prefixes are advertised to BGP peers and how route attributes are modified. Inspecting these policies helps verify that your routing configuration matches your intent.
 
@@ -19,10 +19,8 @@ This guide covers using cilium-dbg bgp route-policies for inspection and validat
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig and CiliumBGPPeerConfig
 - `kubectl` access to cilium pods
-- 
-- 
 
 ## Inspecting Route-Policies State
 
@@ -62,17 +60,45 @@ done <<< "$PODS"
 ### BGP Configuration Reference
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: bgp-peering
+  name: cilium-bgp
 spec:
-  virtualRouters:
-  - localASN: 65001
-    exportPodCIDR: true
-    neighbors:
-    - peerAddress: "10.0.0.1/32"
+  nodeSelector:
+    matchLabels:
+      bgp: enabled
+  bgpInstances:
+  - name: "instance-65001"
+    localASN: 65001
+    peers:
+    - name: "peer-65000"
       peerASN: 65000
+      peerAddress: 10.0.0.1
+      peerConfigRef:
+        name: cilium-peer
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cilium-peer
+spec:
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: bgp
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: bgp-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "PodCIDR"
 ```
 
 ```mermaid
@@ -97,9 +123,9 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
-- **No policies displayed**: Ensure route policy is defined in the CiliumBGPPeeringPolicy.
+- **"BGP is not enabled"**: Enable BGP with the Helm value `bgpControlPlane.enabled=true` and restart the Cilium DaemonSet.
+- **Empty output**: No BGP configuration may exist. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
+- **No policies displayed**: Ensure the `CiliumBGPPeerConfig` advertisement selector matches a `CiliumBGPAdvertisement`.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
 ## Conclusion
