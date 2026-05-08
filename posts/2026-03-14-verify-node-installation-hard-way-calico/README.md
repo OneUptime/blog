@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Node, Verification, Installation
 
-Description: A detailed guide to verifying that Calico components are correctly installed and functioning on every node in a manually deployed cluster, covering Felix, BIRD, CNI plugin, and interface validation.
+Description: A detailed guide to verifying that Calico components are correctly installed and functioning on every node in a manually deployed cluster, covering Felix, BIRD when BGP is enabled, CNI plugin, and interface validation.
 
 ---
 
 ## Introduction
 
-In a hard-way Calico installation, each node must have multiple components correctly configured: the Felix agent for policy enforcement, the BIRD daemon for route distribution, the CNI plugin binary and configuration, and the appropriate network interfaces. A single misconfigured node can cause intermittent connectivity issues that are difficult to diagnose.
+In a hard-way Calico installation, each node must have multiple components correctly configured: the Felix agent for policy enforcement, the BIRD daemon for route distribution when BGP is enabled, the CNI plugin binary and configuration, and the appropriate network interfaces. A single misconfigured node can cause intermittent connectivity issues that are difficult to diagnose.
 
 This guide provides a node-by-node verification procedure that confirms every Calico component is properly installed and communicating with the rest of the cluster. We check binaries, configuration files, running processes, network interfaces, and route tables on each node.
 
-Verifying at the node level is especially important for hard-way installations because there is no operator or DaemonSet controller automatically reconciling state. What you install is what you get.
+Verifying at the node level is especially important for hard-way installations because there is no operator automatically reconciling the installation. Even when `calico/node` runs as a DaemonSet, manually copied CNI files and backend-specific configuration remain your responsibility.
 
 ## Prerequisites
 
 - A Kubernetes cluster with Calico installed manually
 - SSH access to all cluster nodes
 - Root or sudo access on each node
-- `calicoctl` installed on your workstation
+- `calicoctl` installed on your workstation, and on each node if you want to run `calicoctl node` commands
 - `kubectl` configured with cluster-admin access
 
 ## Verifying Calico Binaries and Configuration
@@ -74,20 +74,28 @@ Check that all Calico processes are running correctly on each node.
 
 echo "=== Calico Process Verification ==="
 
+NODE_NAME=${NODE_NAME:-$(hostname | tr '[:upper:]' '[:lower:]')}
+
 # Check if calico-node container/pod is running
 echo "calico-node pod status:"
 CALICO_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=$(hostname) -o name)
+  --field-selector spec.nodeName="${NODE_NAME}" -o name | head -1)
+
+if [ -z "${CALICO_POD}" ]; then
+  echo "No calico-node pod found on ${NODE_NAME}"
+  exit 1
+fi
 
 # Check Felix process inside calico-node
 echo ""
 echo "Felix process:"
 kubectl exec -n kube-system ${CALICO_POD} -c calico-node -- pgrep -la felix
 
-# Check BIRD process for BGP route distribution
+# Check BIRD process for BGP route distribution, if BGP is enabled
 echo ""
-echo "BIRD process:"
-kubectl exec -n kube-system ${CALICO_POD} -c calico-node -- pgrep -la bird
+echo "BIRD process (BGP-enabled clusters only):"
+kubectl exec -n kube-system ${CALICO_POD} -c calico-node -- pgrep -la bird \
+  || echo "BIRD not running (expected for VXLAN-only or BGP-disabled clusters)"
 
 # Verify Felix readiness
 echo ""
@@ -95,9 +103,9 @@ echo "Felix readiness:"
 kubectl exec -n kube-system ${CALICO_POD} -c calico-node -- calico-node -felix-ready
 echo "Exit code: $?"
 
-# Verify BIRD readiness
+# Verify BIRD readiness, if BGP is enabled
 echo ""
-echo "BIRD readiness:"
+echo "BIRD readiness (BGP-enabled clusters only):"
 kubectl exec -n kube-system ${CALICO_POD} -c calico-node -- calico-node -bird-ready
 echo "Exit code: $?"
 ```
@@ -112,12 +120,12 @@ graph TD
     B --> B2[CNI Config]
     B --> B3[Felix Config]
     C --> C1[Felix Running]
-    C --> C2[BIRD Running]
+    C --> C2[BIRD Running if BGP enabled]
     C --> C3[Health Endpoints]
     D --> D1[tunl0 / vxlan.calico]
     D --> D2[cali* interfaces]
     E --> E1[Pod Routes]
-    E --> E2[BGP Routes]
+    E --> E2[BGP or overlay routes]
 ```
 
 ## Verifying Network Interfaces and Routes
@@ -146,7 +154,7 @@ echo "Calico pod interfaces (cali*):"
 ip link show | grep cali | wc -l
 echo "interfaces found"
 
-# Verify routes to other nodes pod CIDRs
+# Verify routes to other nodes' pod CIDRs
 echo ""
 echo "=== Route Table Verification ==="
 echo "Routes via Calico tunnel:"
@@ -155,7 +163,8 @@ ip route show | grep -E "(tunl0|vxlan.calico)"
 # Show routes to pod subnets on other nodes
 echo ""
 echo "Routes to remote pod subnets:"
-ip route show | grep -E "via .* dev (tunl0|vxlan.calico|eth0)"
+ip route show proto bird 2>/dev/null || true
+ip route show | grep -E "dev (tunl0|vxlan.calico|cali)" || true
 ```
 
 ## Verifying Datastore Connectivity from Each Node
@@ -164,8 +173,9 @@ Ensure each node can communicate with the Calico datastore.
 
 ```bash
 # Verify datastore connectivity from calico-node pod
+NODE_NAME=${NODE_NAME:-$(hostname | tr '[:upper:]' '[:lower:]')}
 CALICO_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=$(hostname) -o name | head -1)
+  --field-selector spec.nodeName="${NODE_NAME}" -o name | head -1)
 
 # Check calico-node logs for datastore connection
 echo "=== Datastore Connectivity ==="
@@ -174,7 +184,7 @@ kubectl logs -n kube-system ${CALICO_POD} -c calico-node --tail=20 | grep -i "da
 # Verify node is registered in Calico datastore
 echo ""
 echo "Node registration in Calico:"
-calicoctl get node $(hostname) -o yaml
+calicoctl get node "${NODE_NAME}" -o yaml
 ```
 
 ## Verification
@@ -207,10 +217,10 @@ for node in $(kubectl get nodes -o name | sed 's|node/||'); do
   kubectl exec -n kube-system ${POD} -c calico-node -- calico-node -felix-ready 2>/dev/null \
     && echo "YES" || echo "NO"
 
-  # BIRD ready check
-  echo -n "BIRD ready: "
+  # BIRD ready check, if BGP is enabled
+  echo -n "BIRD ready (BGP-enabled clusters only): "
   kubectl exec -n kube-system ${POD} -c calico-node -- calico-node -bird-ready 2>/dev/null \
-    && echo "YES" || echo "NO"
+    && echo "YES" || echo "NO/N/A"
 
   # Pod count on this node
   echo -n "Pods on node: "
@@ -219,16 +229,17 @@ done
 
 echo ""
 echo "=== Calico Node Summary ==="
-calicoctl node status
+kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+echo "For BGP-enabled clusters, run 'sudo calicoctl node status' directly on each node to see BGP peering state."
 ```
 
 ## Troubleshooting
 
 - **CNI plugin not found**: Verify that `/opt/cni/bin/calico` and `/opt/cni/bin/calico-ipam` exist and are executable. Re-copy them from the Calico release archive if missing.
 - **Felix not ready**: Check Felix logs for certificate errors or datastore connection failures. Verify that the Felix configuration points to the correct datastore endpoint.
-- **BIRD not ready**: Check BIRD logs inside the calico-node container. Common issue is BGP port 179 being blocked by host firewall. Verify with `ss -tlnp | grep 179`.
+- **BIRD not ready**: For BGP-enabled clusters, check BIRD logs inside the calico-node container. A common issue is BGP port 179 being blocked by host firewall. Verify with `ss -tlnp | grep 179`. For VXLAN-only clusters, BIRD may be disabled because Calico does not use BGP for VXLAN overlays.
 - **Missing tunnel interfaces**: Verify IPPool encapsulation mode matches the expected interface (IPIP uses tunl0, VXLAN uses vxlan.calico).
-- **No routes to remote pods**: Check that BIRD is establishing BGP sessions with other nodes. Use `calicoctl node status` to see BGP peering state.
+- **No routes to remote pods**: In BGP-enabled clusters, check that BIRD is establishing BGP sessions with other nodes. Run `sudo calicoctl node status` directly on a node to see BGP peering state. In VXLAN clusters, verify the `vxlan.calico` interface and that UDP 4789 is allowed between nodes.
 
 ## Conclusion
 
