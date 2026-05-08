@@ -14,12 +14,12 @@ When WireGuard throughput in Cilium falls below expectations, the issues can ran
 
 This guide provides a systematic troubleshooting approach starting from basic connectivity verification through to deep performance analysis of the encryption path.
 
-The most common issues are MTU fragmentation, CPU saturation from ChaCha20 encryption, WireGuard userspace fallback (dramatically slower), and key rotation disruptions.
+The most common issues are MTU fragmentation, CPU saturation from ChaCha20 encryption, deprecated WireGuard userspace fallback on older Cilium releases, and key rotation disruptions.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium v1.14+ and WireGuard enabled
-- `cilium`, `kubectl`, `bpftool`, `tcpdump`
+- `cilium`, `kubectl`, `helm`, `bpftool`, `tcpdump`, `iperf3`, `jq`, `perf`, `mpstat`
 - Node-level access for kernel debugging
 
 ## Step 1: Verify WireGuard Is Active
@@ -27,17 +27,18 @@ The most common issues are MTU fragmentation, CPU saturation from ChaCha20 encry
 ```bash
 # Check Cilium encryption status
 
-cilium encrypt status
+cilium encryption status
 
 # Verify WireGuard interface exists
 kubectl exec -n kube-system ds/cilium -- ip link show cilium_wg0
 
-# Check WireGuard peer list
-kubectl exec -n kube-system ds/cilium -- wg show cilium_wg0
+# Check WireGuard peer details from the Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg debuginfo --output json | jq .encryption
 
-# Verify kernel module (not userspace)
-lsmod | grep wireguard
-# If empty, WireGuard may be using userspace fallback (very slow)
+# Verify kernel WireGuard support. lsmod may be empty if WireGuard is built in.
+grep -w CONFIG_WIREGUARD /boot/config-$(uname -r) 2>/dev/null || modinfo wireguard
+# On Cilium versions that still support userspace fallback, also check whether
+# wireguard.userspaceFallback / --enable-wireguard-userspace-fallback is enabled.
 ```
 
 ## Step 2: MTU Diagnosis
@@ -46,7 +47,7 @@ lsmod | grep wireguard
 # Check MTU chain
 kubectl exec -n kube-system ds/cilium -- ip link show cilium_wg0 | grep mtu
 kubectl exec -n kube-system ds/cilium -- ip link show eth0 | grep mtu
-kubectl exec -n kube-system ds/cilium -- ip link show lxc* | grep mtu
+kubectl exec -n kube-system ds/cilium -- sh -c 'ip -o link show | grep -E "cilium_|lxc|eth0"'
 
 # Test for fragmentation
 kubectl exec test-pod -- ping -M do -s 1350 $REMOTE_POD_IP
@@ -54,6 +55,9 @@ kubectl exec test-pod -- ping -M do -s 1350 $REMOTE_POD_IP
 
 # Check for PMTUD issues
 kubectl exec -n kube-system ds/cilium -- ip route show | grep mtu
+
+# If using CNI chaining, verify Cilium is setting route MTU for chained Pods
+helm get values cilium -n kube-system -a | grep -i enableRouteMTUForCNIChaining
 ```
 
 ## Step 3: CPU Analysis During Encrypted Transfer
@@ -109,15 +113,15 @@ kubectl exec -n kube-system ds/cilium -- ip -s link show cilium_wg0
 kubectl exec -n kube-system ds/cilium -- cat /proc/net/snmp | grep -i udp
 
 # Cilium drops related to encryption
-cilium monitor --type drop | grep -i encrypt
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop | grep -i encrypt
 ```
 
 ## Troubleshooting Decision Tree
 
 ```mermaid
 graph TD
-    A[Low WireGuard Throughput] --> B{WireGuard kernel module loaded?}
-    B -->|No| C[Install wireguard-tools and load module]
+    A[Low WireGuard Throughput] --> B{Kernel WireGuard support available?}
+    B -->|No| C[Install a kernel with WireGuard support or the WireGuard kernel module]
     B -->|Yes| D{MTU test passes at 1350?}
     D -->|No| E[Fix MTU: set to 1420 or lower]
     D -->|Yes| F{CPU saturated during test?}
@@ -131,18 +135,18 @@ graph TD
 
 ```bash
 # After applying fixes, verify
-cilium encrypt status
+cilium encryption status
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 30 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 
-echo "Expected: 70-90% of unencrypted throughput"
+echo "Compare against the unencrypted baseline for the same hardware, MTU, routing mode, and stream count"
 ```
 
 ## Troubleshooting
 
-- **Throughput under 50% of unencrypted**: Almost certainly using userspace WireGuard. Upgrade kernel to 5.6+.
-- **Intermittent throughput drops**: Key rotation may cause brief pauses. Check `wg show cilium_wg0` for recent handshake times.
-- **One node pair slow**: Check if that specific node has different kernel version or missing crypto hardware support.
+- **Throughput under 50% of unencrypted**: Check for CPU saturation, MTU fragmentation, and the deprecated userspace WireGuard fallback on older Cilium versions. Use a kernel with WireGuard support (Linux 5.6+ or an out-of-tree WireGuard module on older kernels).
+- **Intermittent throughput drops**: Key rotation may cause brief pauses. Check `cilium-dbg debuginfo --output json | jq .encryption` for recent handshake times.
+- **One node pair slow**: Check if that specific node has a different kernel version, CPU features, NUMA placement, or IRQ affinity.
 - **WireGuard interface missing**: Verify `encryption.type=wireguard` in Cilium config and check agent logs.
 
 ## Systematic Troubleshooting Approach
@@ -174,10 +178,10 @@ DIAG="/tmp/perf-issue-$(date +%s)"
 mkdir -p $DIAG
 
 # Quick data collection (runs in <30 seconds)
-cilium status --verbose > $DIAG/status.txt &
-cilium bpf ct list global | wc -l > $DIAG/ct-count.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --verbose > $DIAG/status.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list | wc -l > $DIAG/ct-count.txt &
 kubectl top pods -n kube-system -l k8s-app=cilium > $DIAG/agent-resources.txt &
-kubectl exec -n kube-system ds/cilium -- cilium metrics list > $DIAG/metrics.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list > $DIAG/metrics.txt &
 wait
 
 # BPF program stats
@@ -207,4 +211,4 @@ Include the following in any escalation:
 
 ## Conclusion
 
-Troubleshooting WireGuard throughput in Cilium follows a systematic approach: verify WireGuard is active and using the kernel module, check MTU for fragmentation, profile CPU for crypto overhead, and compare against unencrypted baseline. Most issues resolve by ensuring the kernel WireGuard module is loaded (not userspace fallback), fixing MTU to account for WireGuard's 80-byte overhead, and ensuring CPUs have enough capacity for ChaCha20-Poly1305 operations.
+Troubleshooting WireGuard throughput in Cilium follows a systematic approach: verify WireGuard is active and using kernel support, check MTU for fragmentation, profile CPU for crypto overhead, and compare against unencrypted baseline. Most issues resolve by ensuring kernel WireGuard support is available, fixing MTU to account for WireGuard's 60-byte IPv4 or 80-byte IPv6 overhead, and ensuring CPUs have enough capacity for ChaCha20-Poly1305 operations.
