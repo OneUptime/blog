@@ -66,11 +66,11 @@ podman run -d --name my-server nginx:latest
 # Attach with signal proxy disabled
 podman attach --sig-proxy=false my-server
 
-# Now Ctrl+C will detach WITHOUT stopping the container
-# This is because signals are not forwarded to the container process
+# Now Ctrl+C exits the attach session WITHOUT stopping the container
+# This is because SIGINT is not forwarded to the container process
 ```
 
-This is simpler to remember than the detach key sequence, but it also means you cannot send any signals to the container process while attached.
+This is simpler to remember than the detach key sequence, but it also means proxied signals are not forwarded to the container process while attached.
 
 ## Custom Detach Keys
 
@@ -83,7 +83,7 @@ podman attach --detach-keys="ctrl-x" my-server
 # Use Ctrl+A, Ctrl+D as the sequence
 podman attach --detach-keys="ctrl-a,ctrl-d" my-server
 
-# Use a single letter (capital Q)
+# Use Ctrl+Q as the detach key
 podman attach --detach-keys="ctrl-q" my-server
 ```
 
@@ -142,7 +142,7 @@ If the detach sequence does not work, it could be because your terminal is inter
 # (e.g., some terminals use it for "print")
 
 # Try a different detach key
-podman attach --detach-keys="ctrl-]" my-server
+podman attach --detach-keys="ctrl-_" my-server
 
 # Or use --sig-proxy=false and Ctrl+C
 podman attach --sig-proxy=false my-server
