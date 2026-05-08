@@ -119,7 +119,9 @@ wget https://archive.archlinux.org/packages/p/podman/podman-5.1.0-1-x86_64.pkg.t
 sudo pacman -U podman-5.1.0-1-x86_64.pkg.tar.zst
 
 # Prevent Podman from being upgraded
-echo "IgnorePkg = podman" | sudo tee -a /etc/pacman.conf
+# Add podman to IgnorePkg in the [options] section of /etc/pacman.conf:
+# IgnorePkg = podman
+sudoedit /etc/pacman.conf
 ```
 
 Alternatively, use the `downgrade` AUR helper:
@@ -150,25 +152,25 @@ podman --version
 
 ## Downgrade on macOS (Homebrew)
 
-Homebrew does not natively support downgrading, but you can use a specific commit from the formula history:
+Homebrew does not natively support downgrading, but you can extract a previous formula version into your own tap:
 
 ```bash
 # Stop and remove the current machine
 podman machine stop
-podman machine rm
+podman machine rm --force
 
 # Uninstall current version
 brew uninstall podman
 
-# Find the formula commit for the version you want
-# Visit https://github.com/Homebrew/homebrew-core/commits/master/Formula/p/podman.rb
-# Copy the commit hash for the desired version
+# Create a tap for extracted versions if you do not already have one
+brew tap-new "$USER/versions"
 
-# Install from a specific commit (replace COMMIT_HASH)
-brew install https://raw.githubusercontent.com/Homebrew/homebrew-core/COMMIT_HASH/Formula/p/podman.rb
+# Extract and install the version you want
+brew extract --version=5.1.0 podman "$USER/versions"
+brew install "$USER/versions/podman@5.1.0"
 
 # Pin the formula to prevent upgrades
-brew pin podman
+brew pin "$USER/versions/podman@5.1.0"
 
 # Reinitialize the machine
 podman machine init
@@ -180,14 +182,14 @@ podman --version
 
 ## Handle Storage Compatibility
 
-Downgrading can cause storage format incompatibilities:
+Downgrading can cause storage format incompatibilities. `podman system migrate` is intended to migrate existing containers to the current Podman version, so it is useful after upgrades but may not reverse storage changes made by a newer release:
 
 ```bash
-# Run storage migration after downgrading
-podman system migrate
+# Check whether Podman can read the current storage
+podman info
 
-# If migration fails, you may need to reset storage
-# WARNING: This removes all containers, images, and volumes
+# If storage is incompatible, you may need to reset storage
+# WARNING: This removes all pods, containers, images, networks, volumes, and machines
 podman system reset
 
 # Confirm the reset worked
@@ -240,13 +242,14 @@ sudo dnf versionlock delete podman
 sudo apt-mark unhold podman
 
 # Arch Linux
-sudo sed -i '/^IgnorePkg.*podman/d' /etc/pacman.conf
+# Remove podman from the IgnorePkg line in /etc/pacman.conf
+sudoedit /etc/pacman.conf
 
 # openSUSE
 sudo zypper removelock podman
 
 # macOS
-brew unpin podman
+brew unpin "$USER/versions/podman@5.1.0"
 ```
 
 ## Troubleshooting
@@ -258,10 +261,10 @@ If downgrading fails with dependency errors:
 sudo dnf downgrade -y podman containers-common crun
 
 # On Debian/Ubuntu
-sudo apt install -y --allow-downgrades podman containers-common crun
+sudo apt install -y --allow-downgrades podman=4.3.1+ds1-8+b1 containers-common=<version> crun=<version>
 ```
 
-If storage errors persist after migration:
+If storage errors persist after downgrading:
 
 ```bash
 # Completely reset Podman storage
@@ -273,4 +276,4 @@ podman pull docker.io/library/nginx:latest
 
 ## Summary
 
-Downgrading Podman requires installing the specific older version through your package manager and handling potential storage format changes. Always stop containers before downgrading, run `podman system migrate` afterward, and lock the package version to prevent automatic re-upgrading. Remember to export important containers before the process as a safety measure.
+Downgrading Podman requires installing the specific older version through your package manager and handling potential storage format changes. Always stop containers before downgrading, verify storage with `podman info` afterward, and lock the package version to prevent automatic re-upgrading. Remember to export important containers before the process as a safety measure.
