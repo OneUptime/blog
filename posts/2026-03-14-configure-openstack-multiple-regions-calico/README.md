@@ -14,13 +14,13 @@ Running OpenStack across multiple regions with Calico networking requires carefu
 
 This guide covers partitioning IP pools across regions, configuring BGP peering between regions, and managing global network policies that apply consistently across all regions. The goal is a multi-region deployment where each region is independently functional but can communicate with other regions when needed.
 
-Multi-region Calico does not use a single shared datastore. Instead, each region has its own Calico installation, and cross-region connectivity is achieved through BGP peering at the network fabric level or through dedicated inter-region gateways.
+Multi-region Calico does not use a single shared datastore. Instead, each region has its own Calico installation and datastore, and cross-region connectivity is achieved through BGP peering at the network fabric level or through dedicated inter-region gateways.
 
 ## Prerequisites
 
 - Two or more OpenStack regions, each with Calico networking
 - Network connectivity between regions (dedicated links or VPN)
-- `calicoctl` configured for each region
+- `calicoctl` configured for each region's Calico datastore
 - BGP-capable routers or gateways at region boundaries
 - A planned IP addressing scheme that avoids conflicts across regions
 
@@ -39,8 +39,7 @@ metadata:
 spec:
   cidr: 10.10.0.0/16
   blockSize: 26
-  natOutgoing: true
-  encapsulation: VXLAN
+  natOutgoing: false
   nodeSelector: all()
 ```
 
@@ -54,18 +53,19 @@ metadata:
 spec:
   cidr: 10.20.0.0/16
   blockSize: 26
-  natOutgoing: true
-  encapsulation: VXLAN
+  natOutgoing: false
   nodeSelector: all()
 ```
+
+Keep `natOutgoing` disabled for routable cross-region CIDRs so that traffic is not masqueraded before it reaches the other region. If you enable outgoing NAT for internet egress, add disabled IP pools for the remote region CIDRs in each region so Calico recognizes those destinations as internal pools.
 
 ```bash
 # Apply IP pools in their respective regions
 # On Region A
-DATASTORE_TYPE=kubernetes KUBECONFIG=/path/to/region-a/kubeconfig calicoctl apply -f region-a-ippool.yaml
+calicoctl apply --config /path/to/region-a/calicoctl.cfg -f region-a-ippool.yaml
 
 # On Region B
-DATASTORE_TYPE=kubernetes KUBECONFIG=/path/to/region-b/kubeconfig calicoctl apply -f region-b-ippool.yaml
+calicoctl apply --config /path/to/region-b/calicoctl.cfg -f region-b-ippool.yaml
 ```
 
 ```mermaid
@@ -130,9 +130,6 @@ metadata:
 spec:
   nodeToNodeMeshEnabled: false
   asNumber: 64512
-  # Advertise the region's VM CIDR
-  prefixAdvertisements:
-    - cidr: 10.10.0.0/16
 ```
 
 ## Managing Global Network Policies
@@ -153,13 +150,12 @@ spec:
   types:
     - Ingress
   ingress:
-    # Allow from any region's web tier
+    # Allow from the known region CIDRs
     - action: Allow
       source:
         nets:
           - 10.10.0.0/16
           - 10.20.0.0/16
-        selector: role == 'web'
       protocol: TCP
       destination:
         ports:
@@ -174,13 +170,12 @@ spec:
 
 POLICY_DIR="./global-policies"
 
-for region_config in /path/to/region-*/kubeconfig; do
-  region_name=$(basename $(dirname ${region_config}))
+for region_config in /path/to/region-*/calicoctl.cfg; do
+  region_name=$(basename "$(dirname "${region_config}")")
   echo "Applying policies to ${region_name}..."
 
   for policy_file in ${POLICY_DIR}/*.yaml; do
-    DATASTORE_TYPE=kubernetes KUBECONFIG=${region_config} \
-      calicoctl apply -f ${policy_file}
+    calicoctl apply --config "${region_config}" -f "${policy_file}"
   done
 done
 ```
@@ -195,16 +190,16 @@ echo "=== Multi-Region Calico Verification ==="
 for region in region-a region-b; do
   echo ""
   echo "--- ${region} ---"
-  KUBECONFIG="/path/to/${region}/kubeconfig"
+  CALICOCTL_CONFIG="/path/to/${region}/calicoctl.cfg"
 
   echo "IP Pools:"
-  DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} calicoctl get ippools -o wide
+  calicoctl get ippools --config "${CALICOCTL_CONFIG}" -o wide
 
   echo "BGP Peers:"
-  DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} calicoctl get bgppeers -o wide
+  calicoctl get bgppeers --config "${CALICOCTL_CONFIG}" -o wide
 
   echo "Global Policies:"
-  DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} calicoctl get globalnetworkpolicies -o name
+  calicoctl get globalnetworkpolicies --config "${CALICOCTL_CONFIG}" -o name
 done
 ```
 
@@ -213,7 +208,7 @@ done
 - **Cross-region traffic not flowing**: Verify BGP sessions between region gateways are established. Check that route advertisements include the correct CIDRs for each region.
 - **IP address conflicts**: Audit IP pools across all regions. Each region must have a non-overlapping CIDR.
 - **Policies inconsistent across regions**: Use a GitOps approach to manage policy definitions. Store policies in version control and apply them to all regions from a single source.
-- **High latency for cross-region traffic**: Cross-region traffic traverses WAN links. This is expected. Use Calico policies to prefer local traffic where possible.
+- **High latency for cross-region traffic**: Cross-region traffic traverses WAN links. This is expected. Use application routing or service discovery to prefer local endpoints where possible, and use Calico policy to control which cross-region traffic is allowed.
 
 ## Conclusion
 
