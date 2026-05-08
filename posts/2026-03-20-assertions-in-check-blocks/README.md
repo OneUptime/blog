@@ -160,4 +160,4 @@ check "optional_tag_value" {
 
 ## Conclusion
 
-Well-written assertions make your infrastructure self-documenting and failures self-diagnosing. Always include the actual value in error messages using string interpolation, use `can()` for optional attributes, and group related assertions in a single check block. Multiple assertions in one check block run independently - all failures are reported even if the first one fails.
+Well-written assertions make your infrastructure self-documenting and failures self-diagnosing. Always include the actual value in error messages using string interpolation, use `try()` or `can()` for safe optional attribute checks, and group related assertions in a single check block. Multiple assertions in one check block run independently - all failures are reported even if the first one fails.
