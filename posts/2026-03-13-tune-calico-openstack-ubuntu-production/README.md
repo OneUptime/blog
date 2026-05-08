@@ -10,9 +10,9 @@ Description: A guide to performance-tuning Calico for high-density OpenStack dep
 
 ## Introduction
 
-Production tuning for Calico in Ubuntu OpenStack focuses on Felix's performance at high VM density, etcd cluster performance under write-heavy workloads during rapid VM creation, and BGP session stability under frequent routing table changes. Large OpenStack clusters can have thousands of VMs, each generating workload endpoint CRUD operations in etcd that Felix must process in real time.
+Production tuning for Calico in Ubuntu OpenStack focuses on Felix's dataplane reconciliation overhead at high VM density, etcd cluster performance under write-heavy workloads during rapid VM creation, and BGP session stability under frequent routing table changes. Large OpenStack clusters can have thousands of VMs, each generating workload endpoint CRUD operations in etcd that Felix must process in real time.
 
-Key tuning areas: Felix's event processing batch size, etcd compaction and defragmentation scheduling, and BGP timer values that balance convergence speed against stability.
+Key tuning areas: Felix refresh intervals, etcd compaction and defragmentation scheduling, and BGP peering topology that balances convergence speed against stability.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Key tuning areas: Felix's event processing batch size, etcd compaction and defra
 - Root access to controller and compute nodes
 - `calicoctl` installed
 
-## Step 1: Tune Felix Event Processing
+## Step 1: Tune Felix Refresh Intervals
 
 ```ini
 # /etc/calico/felix.cfg
@@ -46,15 +46,16 @@ sudo systemctl restart calico-felix
 
 ```bash
 # Schedule regular etcd compaction
-cat <<EOF > /etc/cron.hourly/etcd-compact
+cat <<'EOF' > /etc/cron.hourly/etcd-compact
 #!/bin/bash
-ETCDCTL_API=3 etcdctl compact $(etcdctl endpoint status --write-out="json" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Status']['header']['revision'])")
-ETCDCTL_API=3 etcdctl defrag
+REVISION=$(ETCDCTL_API=3 etcdctl endpoint status --write-out="json" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Status']['header']['revision'])")
+ETCDCTL_API=3 etcdctl compact "$REVISION"
+ETCDCTL_API=3 etcdctl defrag --cluster
 EOF
 chmod +x /etc/cron.hourly/etcd-compact
 ```
 
-## Step 3: Tune BGP Timers
+## Step 3: Tune BGP Peering
 
 ```bash
 calicoctl patch bgpconfiguration default \
@@ -65,7 +66,20 @@ For large clusters (>200 nodes), disable node-to-node mesh and use route reflect
 
 ```bash
 # Designate route reflectors
-kubectl label node <control-node> calico-route-reflector=true
+calicoctl patch node <route-reflector-node> \
+  --patch '{"spec":{"bgp":{"routeReflectorClusterID":"244.0.0.1"}}}'
+
+calicoctl label node <route-reflector-node> route-reflector=true
+
+cat <<EOF | calicoctl apply -f -
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: peer-with-route-reflectors
+spec:
+  nodeSelector: all()
+  peerSelector: route-reflector == 'true'
+EOF
 
 calicoctl patch bgpconfiguration default \
   --patch '{"spec":{"nodeToNodeMeshEnabled":false}}'
@@ -76,13 +90,23 @@ calicoctl patch bgpconfiguration default \
 For large clusters with many VMs per compute node:
 
 ```bash
-calicoctl patch ippool openstack-tenant-pool \
-  --patch '{"spec":{"blockSize":22}}'
+cat <<EOF | calicoctl apply -f -
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: openstack-tenant-pool-large-blocks
+spec:
+  cidr: <new-non-overlapping-tenant-cidr>
+  blockSize: 22
+  ipipMode: Never
+  vxlanMode: Never
+  natOutgoing: false
+EOF
 ```
 
-A block size of 22 gives 1024 IPs per block, reducing IPAM operations for high-density compute nodes.
+A block size of 22 gives 1024 IPs per block, reducing IPAM operations for high-density compute nodes. Calico block size is set when an IP pool is created; for an existing pool, migrate through a temporary non-overlapping pool, disable and delete the old pool, then recreate it with the desired block size.
 
-## Step 5: Enable iBGP Route Aggregation
+## Step 5: Set BGP Prefix Communities
 
 ```bash
 cat <<EOF | calicoctl apply -f -
@@ -101,4 +125,4 @@ EOF
 
 ## Conclusion
 
-Production tuning for Calico on Ubuntu OpenStack centers on Felix event processing batch sizing, etcd compaction scheduling, BGP route reflector architecture for large clusters, and IP pool block size optimization for high VM density. These settings collectively ensure that Calico can keep up with the high rate of workload endpoint changes that large OpenStack clusters generate during periods of rapid VM creation and deletion.
+Production tuning for Calico on Ubuntu OpenStack centers on Felix refresh interval tuning, etcd compaction scheduling, BGP route reflector architecture for large clusters, and IP pool block size optimization for high VM density. These settings collectively ensure that Calico can keep up with the high rate of workload endpoint changes that large OpenStack clusters generate during periods of rapid VM creation and deletion.
