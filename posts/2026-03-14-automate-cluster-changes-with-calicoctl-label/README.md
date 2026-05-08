@@ -78,8 +78,8 @@ for NODE in $NODES; do
     VALUE=$(kubectl get node "$NODE" -o jsonpath="{.metadata.labels['${LABEL_KEY}']}" 2>/dev/null)
     
     if [ -n "$VALUE" ]; then
-      # Convert k8s label to calico-friendly format
-      CALICO_KEY=$(echo "$LABEL_KEY" | sed 's|/|.|g')
+      # Calico label keys can use the same slash-separated prefix format as Kubernetes labels
+      CALICO_KEY="$LABEL_KEY"
       echo "  Setting $CALICO_KEY=$VALUE"
       calicoctl label nodes "$NODE" "$CALICO_KEY=$VALUE" --overwrite 2>/dev/null
     fi
@@ -110,6 +110,8 @@ on:
 jobs:
   sync-labels:
     runs-on: ubuntu-latest
+    env:
+      DATASTORE_TYPE: kubernetes
     steps:
       - uses: actions/checkout@v4
 
@@ -123,7 +125,6 @@ jobs:
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-          export DATASTORE_TYPE=kubernetes
 
       - name: Apply label definitions
         run: |
@@ -160,7 +161,7 @@ for DESIRED_FILE in "$LABEL_DIR"/*.yaml; do
   
   # Get current labels from cluster
   CURRENT_LABELS=$(calicoctl get node "$NODE_NAME" -o json 2>/dev/null | \
-    python3 -c "import sys,json; labels=json.load(sys.stdin).get('metadata',{}).get('labels',{}); [print(f'{k}={v}') for k,v in sorted(labels.items())]" 2>/dev/null)
+    python3 -c "import sys,json; doc=json.load(sys.stdin); item=doc[0] if isinstance(doc,list) and doc else doc; labels=item.get('metadata',{}).get('labels',{}); [print(f'{k}={v}') for k,v in sorted(labels.items())]" 2>/dev/null)
   
   # Get desired labels from file
   DESIRED_LABELS=$(python3 -c "
@@ -215,7 +216,7 @@ spec:
             - -c
             - |
               echo "Starting label sync..."
-              for node in $(calicoctl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+              for node in $(calicoctl get nodes -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}'); do
                 calicoctl label nodes "$node" managed-by=automation --overwrite
                 echo "Labeled $node"
               done
@@ -239,7 +240,7 @@ calicoctl get globalnetworkpolicies -o yaml | grep "selector"
 ## Troubleshooting
 
 - **CronJob fails with permission errors**: Ensure the service account has the correct RBAC to update Calico node resources.
-- **Labels not syncing from Kubernetes**: Check that the label key format is valid for Calico (slashes in Kubernetes labels may need conversion).
+- **Labels not syncing from Kubernetes**: Check that the label key format is valid for Calico and that your automation and policies use the same label keys.
 - **Drift detection shows false positives**: System-applied labels like `beta.kubernetes.io` may differ. Exclude system labels from comparison.
 - **CI/CD pipeline times out**: Add timeouts and retry logic for large clusters with many nodes.
 
