@@ -15,6 +15,7 @@ Dual-Stack IPv6 with Calico enables important networking capabilities in Calico 
 ## Prerequisites
 
 - Calico v3.20+ installed
+- Kubernetes dual-stack pod and service CIDRs configured
 - kubectl and calicoctl access
 - Cluster-admin access
 
@@ -23,6 +24,7 @@ Dual-Stack IPv6 with Calico enables important networking capabilities in Calico 
 ```bash
 calicoctl get ippools -o yaml
 calicoctl get bgpconfiguration -o yaml
+kubectl get nodes -o wide
 ```
 
 ## Example Configuration
@@ -31,25 +33,35 @@ calicoctl get bgpconfiguration -o yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: example-pool
+  name: example-ipv4-pool
 spec:
   cidr: 10.48.0.0/16
+  natOutgoing: true
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: example-ipv6-pool
+spec:
+  cidr: fd00:10:48::/64
   natOutgoing: true
 ```
 
 ## Verify
 
 ```bash
-kubectl get svc -A
-calicoctl ipam check
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{.status.podIPs}{"\n"}{end}'
+kubectl get svc -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{.spec.ipFamilies}{" "}{.spec.clusterIPs}{"\n"}{end}'
+calicoctl ipam show --show-blocks
 ```
 
 ## Architecture
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> SERVICE[Service IP]
-    SERVICE --> POD[Pod]
+    V4POOL[IPv4 IP Pool] --> POD[Pod IPv4]
+    V6POOL[IPv6 IP Pool] --> POD[Pod IPv6]
+    SERVICE[Dual-stack Service] --> POD
 ```
 
 ## Conclusion
