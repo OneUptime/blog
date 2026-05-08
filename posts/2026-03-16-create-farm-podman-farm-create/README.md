@@ -16,7 +16,7 @@ Podman farms let you orchestrate builds across multiple machines from a single c
 
 ## Prerequisites
 
-Before creating a farm, you need at least one system connection:
+Before creating a farm for builds, you need at least one system connection:
 
 ```bash
 # List existing system connections
@@ -26,11 +26,13 @@ podman system connection list
 # If you have no connections, add them first
 podman system connection add amd64-builder \
     --identity ~/.ssh/podman_farm \
-    ssh://user@amd64.example.com/run/user/1000/podman/podman.sock
+    --socket-path /run/user/1000/podman/podman.sock \
+    user@amd64.example.com
 
 podman system connection add arm64-builder \
     --identity ~/.ssh/podman_farm \
-    ssh://user@arm64.example.com/run/user/1000/podman/podman.sock
+    --socket-path /run/user/1000/podman/podman.sock \
+    user@arm64.example.com
 ```
 
 ## Basic Farm Creation
@@ -47,8 +49,8 @@ podman farm list
 Expected output:
 
 ```text
-Name       Connections
-my-farm    amd64-builder,arm64-builder
+Name       Connections                    Default     ReadWrite
+my-farm    [amd64-builder arm64-builder]  false       true
 ```
 
 ## Creating a Farm with a Single Node
@@ -168,16 +170,18 @@ fi
 
 ## Where Farm Configuration is Stored
 
-Farm definitions are stored in the Podman configuration directory:
+Farm definitions created with Podman commands are stored in the Podman connections configuration file:
 
 ```bash
 # View the farm configuration
 cat ~/.config/containers/podman-connections.json
 
-# Or check the containers config
-cat ~/.config/containers/containers.conf
+# Or set a custom path for the connections configuration
+echo "$PODMAN_CONNECTIONS_CONF"
 ```
+
+Podman manages this file directly. To configure farms manually, use the `[farm]` section in `containers.conf`.
 
 ## Summary
 
-The `podman farm create` command takes a farm name and one or more system connection names to define a build farm. You can create multiple farms for different environments or architecture targets. Always verify that the underlying system connections are working before using the farm for builds.
+The `podman farm create` command takes a farm name and optional system connection names to define a build farm. You can create multiple farms for different environments or architecture targets. Always verify that the underlying system connections are working before using the farm for builds.
