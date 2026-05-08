@@ -29,31 +29,39 @@ Define a standard base image specification:
 # golden-image-spec.yaml
 
 os_requirements:
-  minimum_kernel: "5.4.0"
+  minimum_kernel: "5.10.0"
   distributions:
     - Ubuntu 22.04 LTS
-    - Rocky Linux 9
+    - RHEL 8 or later
   
 kernel_modules:
   persistent:
     - ip_tables
-    - iptable_filter
-    - iptable_nat
-    - iptable_mangle
+    - ip6_tables
     - ip_set
-    - xt_set
+    - ipt_ipvs
+    - ipt_REJECT
+    - ipt_rpfilter
+    - ipt_set
+    - nf_conntrack_netlink
+    - vfio-pci
+    - xt_addrtype
+    - xt_bpf
+    - xt_conntrack
+    - xt_icmp
+    - xt_icmp6
     - xt_mark
     - xt_multiport
-    - xt_conntrack
-    - nf_conntrack
+    - xt_rpfilter
+    - xt_set
+    - xt_u32
+  mode_specific:
     - vxlan
     - ipip
 
 sysctl_parameters:
   net.ipv4.ip_forward: "1"
   net.ipv6.conf.all.forwarding: "1"
-  net.ipv4.conf.all.rp_filter: "1"
-  net.ipv4.conf.default.rp_filter: "1"
 
 packages:
   required:
@@ -77,11 +85,15 @@ ERRORS=0
 
 # Check kernel version
 KERNEL=$(uname -r | cut -d- -f1)
-MIN_KERNEL="5.4.0"
+MIN_KERNEL="5.10.0"
 echo "Kernel: $KERNEL (minimum: $MIN_KERNEL)"
+if [ "$(printf '%s\n' "$MIN_KERNEL" "$KERNEL" | sort -V | head -n1)" != "$MIN_KERNEL" ]; then
+  echo "  FAIL: kernel version is below $MIN_KERNEL"
+  ERRORS=$((ERRORS + 1))
+fi
 
 # Check modules can be loaded
-MODULES="ip_tables iptable_filter iptable_nat ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack vxlan ipip"
+MODULES="ip_tables ip6_tables ip_set ipt_ipvs ipt_REJECT ipt_rpfilter ipt_set nf_conntrack_netlink vfio-pci xt_addrtype xt_bpf xt_conntrack xt_icmp xt_icmp6 xt_mark xt_multiport xt_rpfilter xt_set xt_u32 vxlan ipip"
 for MOD in $MODULES; do
   if modprobe "$MOD" 2>/dev/null; then
     echo "  OK: $MOD"
@@ -93,9 +105,13 @@ done
 
 # Run calicoctl checksystem
 echo ""
-calicoctl node checksystem
-
-CHECKSYSTEM_ERRORS=$(calicoctl node checksystem 2>&1 | grep -c "ERROR")
+CHECKSYSTEM_OUTPUT=$(calicoctl node checksystem 2>&1)
+CHECKSYSTEM_STATUS=$?
+echo "$CHECKSYSTEM_OUTPUT"
+CHECKSYSTEM_ERRORS=$(echo "$CHECKSYSTEM_OUTPUT" | grep -c "FAIL")
+if [ "$CHECKSYSTEM_STATUS" -ne 0 ] && [ "$CHECKSYSTEM_ERRORS" -eq 0 ]; then
+  CHECKSYSTEM_ERRORS=1
+fi
 ERRORS=$((ERRORS + CHECKSYSTEM_ERRORS))
 
 echo ""
@@ -118,11 +134,12 @@ echo "Running admission checks for $NODE_NAME..."
 
 # Run checksystem
 RESULT=$(ssh "$NODE_NAME" "sudo calicoctl node checksystem 2>&1")
-ERRORS=$(echo "$RESULT" | grep -c "ERROR")
+STATUS=$?
+ERRORS=$(echo "$RESULT" | grep -c "FAIL")
 
-if [ "$ERRORS" -gt 0 ]; then
+if [ "$STATUS" -ne 0 ] || [ "$ERRORS" -gt 0 ]; then
   echo "REJECTED: Node $NODE_NAME has $ERRORS system requirement errors"
-  echo "$RESULT" | grep "ERROR"
+  echo "$RESULT" | grep "FAIL" || echo "$RESULT"
   echo ""
   echo "Fix these issues before joining the node to the cluster."
   exit 1
@@ -152,22 +169,19 @@ REPORT_FILE="/tmp/system-compliance-$(date +%Y%m%d).txt"
   
   for NODE in $NODES; do
     TOTAL=$((TOTAL + 1))
-    POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
-      --field-selector spec.nodeName="$NODE" \
-      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     
     echo "Node: $NODE"
     
-    if [ -n "$POD" ]; then
-      ERRORS=$(kubectl exec -n calico-system "$POD" -- calicoctl node checksystem 2>&1 | grep -c "ERROR" || echo 0)
-      if [ "$ERRORS" -eq 0 ]; then
-        echo "  Status: COMPLIANT"
-        COMPLIANT=$((COMPLIANT + 1))
-      else
-        echo "  Status: NON-COMPLIANT ($ERRORS errors)"
-      fi
+    RESULT=$(ssh "$NODE" "sudo calicoctl node checksystem 2>&1")
+    STATUS=$?
+    ERRORS=$(echo "$RESULT" | grep -c "FAIL")
+    if [ "$STATUS" -eq 0 ] && [ "$ERRORS" -eq 0 ]; then
+      echo "  Status: COMPLIANT"
+      COMPLIANT=$((COMPLIANT + 1))
+    elif [ "$ERRORS" -gt 0 ]; then
+      echo "  Status: NON-COMPLIANT ($ERRORS failures)"
     else
-      echo "  Status: UNKNOWN (no calico-node pod)"
+      echo "  Status: UNKNOWN (checksystem command failed)"
     fi
   done
   
