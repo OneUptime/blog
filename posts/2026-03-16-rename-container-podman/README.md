@@ -10,7 +10,7 @@ Description: Learn how to rename containers in Podman to improve organization, f
 
 > Renaming containers helps you maintain clear, descriptive names as your container environment evolves.
 
-Container names serve as human-readable identifiers that make management easier than using container IDs. The `podman rename` command lets you change a container's name without stopping or recreating it. This guide covers how to rename containers and best practices for container naming.
+Container names serve as human-readable identifiers that make management easier than using container IDs. The `podman rename` command lets you change a container's name without stopping or recreating it, though running containers may not fully reflect the new name until they are restarted. This guide covers how to rename containers and best practices for container naming.
 
 ---
 
@@ -160,7 +160,7 @@ Follow consistent naming patterns for easier management.
 # Convention: <project>-<service>-<instance>
 podman run -d --name myapp-web-1 docker.io/library/nginx:latest
 podman run -d --name myapp-web-2 docker.io/library/nginx:latest
-podman run -d --name myapp-db-1 docker.io/library/postgres:16
+podman run -d --name myapp-db-1 -e POSTGRES_PASSWORD=example docker.io/library/postgres:16
 
 # Convention: <environment>-<service>
 podman run -d --name dev-api docker.io/library/alpine:latest sleep 300
@@ -183,4 +183,4 @@ podman ps -a --filter name=old-name --format "{{.Names}}" | grep -q old-name && 
 
 ## Summary
 
-The `podman rename` command lets you change container names without affecting the container's state or configuration. Use it to fix naming mistakes, standardize naming conventions, and organize your container environment. Names must be unique across all containers, and renaming works on both running and stopped containers.
+The `podman rename` command lets you change container names without stopping or recreating the container. Use it to fix naming mistakes, standardize naming conventions, and organize your container environment. Names must be unique across all containers, and renaming works on both running and stopped containers.
