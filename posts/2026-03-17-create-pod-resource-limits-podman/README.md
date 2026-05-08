@@ -10,7 +10,7 @@ Description: Learn how to set CPU and memory resource limits for containers with
 
 > Resource limits prevent containers in a pod from consuming more CPU and memory than allocated, protecting host stability.
 
-Without resource limits, a misbehaving container can starve other workloads of CPU or exhaust system memory. In Podman, resource limits are set on individual containers within a pod. This guide shows how to configure CPU, memory, and other resource constraints.
+Without resource limits, a misbehaving container can starve other workloads of CPU or exhaust system memory. In Podman, you can set resource limits on individual containers within a pod. This guide shows how to configure CPU, memory, and other resource constraints.
 
 ---
 
@@ -100,8 +100,8 @@ podman update --cpus 2.0 worker
 # Attempt to allocate more memory than the limit
 podman run --rm --pod limited-pod --name stress \
   --memory 64m \
-  docker.io/library/alpine \
-  sh -c "dd if=/dev/zero of=/dev/null bs=1M count=128"
+  docker.io/library/python:3.12-alpine \
+  python -c "a = bytearray(128 * 1024 * 1024); import time; time.sleep(10)"
 
 # The container will be OOM-killed if it exceeds the limit
 ```
