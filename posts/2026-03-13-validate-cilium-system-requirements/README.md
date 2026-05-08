@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF
 
-Description: A comprehensive checklist for validating that all system-level requirements are met before deploying Cilium, covering kernel features, system limits, and hardware capabilities.
+Description: A comprehensive checklist for validating that all system-level requirements are met before deploying Cilium, covering kernel features, system limits, and supported architectures.
 
 ---
 
@@ -12,13 +12,13 @@ Description: A comprehensive checklist for validating that all system-level requ
 
 Cilium's power comes from eBPF, a Linux kernel technology that enables high-performance in-kernel networking programs. This dependency means Cilium has specific system-level requirements that go beyond standard Kubernetes prerequisites. Before deploying Cilium, validating that every node meets these requirements prevents deployment failures and ensures all Cilium features you intend to use are available.
 
-System requirements span multiple layers: the Linux kernel version and compiled features, filesystem mounts, system call limits, network configuration, and hardware capabilities. Missing any of these requirements can cause Cilium agents to fail to start, eBPF programs to refuse to load, or features to silently degrade to compatibility modes.
+System requirements span multiple layers: the Linux kernel version and compiled features, filesystem mounts, system limits, network configuration, and supported architectures. Missing any of these requirements can cause Cilium agents to fail to start, eBPF programs to refuse to load, or features to silently degrade to compatibility modes.
 
 This guide provides a systematic approach to validating all system requirements before a Cilium deployment.
 
 ## Prerequisites
 
-- Linux nodes (Ubuntu 20.04+, Debian 11+, RHEL 8+, or compatible)
+- Linux nodes (Ubuntu 20.04+, Debian 10+, RHEL 8.6+, or compatible)
 - Root or sudo access to the nodes
 - Basic familiarity with Linux system administration
 
@@ -29,42 +29,46 @@ This guide provides a systematic approach to validating all system requirements 
 
 uname -r
 
-# Minimum requirements by feature:
-# Core Cilium:             4.19.57
-# BPF NodePort:            5.4
-# kube-proxy replacement:  5.10 (full), 4.19 (partial)
-# WireGuard encryption:    5.6
-# Bandwidth Manager:       5.1
-# L7 LB/TPROXY:           5.7
+# Minimum requirements:
+# Core Cilium:             5.10 or equivalent (for example, 4.18 on RHEL 8.10)
+# Supported architectures: AMD64 or AArch64
+# Native host process:     clang+LLVM 18.1+
+# Without Kubernetes:      etcd 3.1.0+
+#
+# Advanced feature examples:
+# IPv6 BIG TCP:            5.19
+# IPv4 BIG TCP:            6.3
+# Multicast beta:          5.10 on AMD64, 6.0 on AArch64
+# WireGuard encryption:    in-kernel WireGuard support, or an out-of-tree module
+# Bandwidth Manager BBR:   5.18+ recommended for reliable Pod BBR
 
 # Check kernel configuration for required features
-zcat /proc/config.gz 2>/dev/null | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL="
+zcat /proc/config.gz 2>/dev/null | grep -E "CONFIG_BPF=|CONFIG_BPF_EVENTS=|CONFIG_BPF_SYSCALL=|CONFIG_NET_CLS_BPF=|CONFIG_BPF_JIT=|CONFIG_NET_CLS_ACT=|CONFIG_NET_SCH_INGRESS=|CONFIG_CRYPTO_SHA1=|CONFIG_CRYPTO_USER_API_HASH=|CONFIG_CGROUPS=|CONFIG_CGROUP_BPF=|CONFIG_PERF_EVENTS=|CONFIG_SCHEDSTATS="
 # Or:
-grep -E "CONFIG_BPF|CONFIG_BPF_SYSCALL|CONFIG_BPF_JIT" /boot/config-$(uname -r) 2>/dev/null
+grep -E "CONFIG_BPF=|CONFIG_BPF_EVENTS=|CONFIG_BPF_SYSCALL=|CONFIG_NET_CLS_BPF=|CONFIG_BPF_JIT=|CONFIG_NET_CLS_ACT=|CONFIG_NET_SCH_INGRESS=|CONFIG_CRYPTO_SHA1=|CONFIG_CRYPTO_USER_API_HASH=|CONFIG_CGROUPS=|CONFIG_CGROUP_BPF=|CONFIG_PERF_EVENTS=|CONFIG_SCHEDSTATS=" /boot/config-$(uname -r) 2>/dev/null
 ```
 
 ## Step 2: Verify eBPF Filesystem
 
 ```bash
 # Check if eBPF filesystem is mounted
-mount | grep -E "bpf|debugfs"
+findmnt -t bpf /sys/fs/bpf
 
-# If not mounted, mount it
-mount -t bpf bpf /sys/fs/bpf
-mount -t debugfs debugfs /sys/kernel/debug
+# If not mounted, Cilium can automatically mount it. To pre-mount it:
+mount bpffs /sys/fs/bpf -t bpf
 
 # Make mounts persistent - add to /etc/fstab
-grep -q "bpf" /etc/fstab || echo "WARNING: BPF FS not in /etc/fstab"
+grep -qE "^[[:space:]]*[^#[:space:]]+[[:space:]]+/sys/fs/bpf[[:space:]]+bpf[[:space:]]" /etc/fstab || echo "WARNING: BPF FS not in /etc/fstab"
 ```
 
 ## Step 3: Check System Limits
 
 ```bash
-# Verify inotify limits - Cilium uses file watchers extensively
+# Verify inotify limits if your node baseline sets unusually low defaults
 sysctl fs.inotify.max_user_instances
 sysctl fs.inotify.max_user_watches
 
-# Recommended values:
+# Common baseline values:
 # max_user_instances: 512+
 # max_user_watches: 262144+
 # If too low, set them:
@@ -79,31 +83,30 @@ ulimit -n
 ## Step 4: Validate Network Configuration
 
 ```bash
-# Confirm IP forwarding is enabled
+# Confirm IP forwarding is enabled if your routing mode depends on Linux forwarding
 sysctl net.ipv4.ip_forward
-# Expected: net.ipv4.ip_forward = 1
+# Expected for forwarding: net.ipv4.ip_forward = 1
 
 # Check that IPv6 forwarding is enabled if using dual-stack
 sysctl net.ipv6.conf.all.forwarding
-# Expected: net.ipv6.conf.all.forwarding = 1
+# Expected for IPv6 forwarding: net.ipv6.conf.all.forwarding = 1
 
-# Verify conntrack max is sufficient
+# Verify conntrack max if your deployment still depends on netfilter conntrack
 sysctl net.netfilter.nf_conntrack_max
-# Recommended: at least 1048576 for production clusters
 ```
 
 ## Step 5: Check for Conflicting Software
 
 ```bash
-# Check for competing network management tools
+# Check for tools that may manage interfaces or firewall policy
 systemctl status NetworkManager 2>/dev/null | grep Active
 systemctl status firewalld 2>/dev/null | grep Active
 
 # Check for existing CNI configuration files that may conflict
 ls -la /etc/cni/net.d/
-# Should be empty or only contain Cilium's config after deployment
+# Cilium writes 05-cilium.conflist and removes other CNI config files by default
 
-# Verify no other eBPF-based tools are loaded that may conflict
+# Inventory other eBPF-based tools that are loaded
 bpftool prog list 2>/dev/null | grep -v cilium | head -10
 ```
 
@@ -111,10 +114,10 @@ bpftool prog list 2>/dev/null | grep -v cilium | head -10
 
 ```mermaid
 flowchart TD
-    A[Node System\nRequirements Check] --> B[Kernel >= 4.19?]
+    A[Node System\nRequirements Check] --> B[Kernel >= 5.10\nor equivalent?]
     B -- No --> C[Upgrade kernel]
     B -- Yes --> D[BPF FS mounted?]
-    D -- No --> E[Mount BPF and\ndebugfs]
+    D -- No --> E[Mount BPF\nfilesystem]
     D -- Yes --> F[System limits\nacceptable?]
     F -- No --> G[Increase inotify\nand file limits]
     F -- Yes --> H[IP forwarding\nenabled?]
