@@ -29,12 +29,19 @@ Download new binaries on a staging location before touching production nodes.
 
 ```bash
 CALICO_VERSION=v3.27.0
-curl -L https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calico-node-amd64 \
-  -o /tmp/calico-node-new
-curl -L https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calico-cni-amd64 \
-  -o /tmp/calico-cni-new
-curl -L https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calico-ipam-amd64 \
-  -o /tmp/calico-ipam-new
+
+docker pull docker.io/calico/node:${CALICO_VERSION}
+docker pull docker.io/calico/cni:${CALICO_VERSION}
+
+docker create --name calico-node-extract docker.io/calico/node:${CALICO_VERSION}
+docker cp calico-node-extract:/bin/calico-node /tmp/calico-node-new
+docker rm calico-node-extract
+
+docker create --name calico-cni-extract docker.io/calico/cni:${CALICO_VERSION}
+docker cp calico-cni-extract:/opt/cni/bin/calico /tmp/calico-cni-new
+docker cp calico-cni-extract:/opt/cni/bin/calico-ipam /tmp/calico-ipam-new
+docker rm calico-cni-extract
+
 chmod +x /tmp/calico-node-new /tmp/calico-cni-new /tmp/calico-ipam-new
 ```
 
@@ -68,7 +75,7 @@ sudo systemctl start calico-node
 
 ```bash
 sudo systemctl status calico-node
-calicoctl node status
+sudo calicoctl node status
 kubectl uncordon <node-name>
 ```
 
