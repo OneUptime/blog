@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Bugtool, PowerShell, Automation, Window
+Tags: Cilium, Bugtool, PowerShell, Automation, Windows
 
 Description: Automate the generation and deployment of cilium-bugtool PowerShell completions across Windows workstations and CI environments.
 
@@ -23,7 +23,7 @@ This guide covers automated deployment of cilium-bugtool PowerShell completions.
 
 - PowerShell 5.1+ (Windows) or PowerShell 7+ (cross-platform)
 - `cilium-bugtool` binary available
-- `kubectl` access to a Cilium cluster
+- `kubectl` access to a Cilium cluster only if you need to retrieve or run `cilium-bugtool` from a Cilium pod
 
 ## Automated Installation
 
@@ -33,49 +33,51 @@ This guide covers automated deployment of cilium-bugtool PowerShell completions.
 
 # Automated installer for cilium-bugtool PowerShell completions
 
-\$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 # Generate completion script
-\$completionScript = cilium-bugtool completion powershell
+$completionScript = cilium-bugtool completion powershell
 
 # Save to a dedicated directory
-\$completionDir = Join-Path \$HOME ".cilium-completions"
-if (!(Test-Path \$completionDir)) {
-    New-Item -ItemType Directory -Path \$completionDir -Force | Out-Null
+$completionDir = Join-Path $HOME ".cilium-completions"
+if (!(Test-Path $completionDir)) {
+    New-Item -ItemType Directory -Path $completionDir -Force | Out-Null
 }
 
-\$completionFile = Join-Path \$completionDir "cilium-bugtool.ps1"
-\$completionScript | Out-File -FilePath \$completionFile -Encoding utf8
+$completionFile = Join-Path $completionDir "cilium-bugtool.ps1"
+$completionScript | Out-File -FilePath $completionFile -Encoding utf8
 
 # Add to profile if not already present
-\$profileContent = ""
-if (Test-Path \$PROFILE) {
-    \$profileContent = Get-Content \$PROFILE -Raw
+$profileContent = ""
+if (!(Test-Path $PROFILE)) {
+    New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+} else {
+    $profileContent = Get-Content $PROFILE -Raw
 }
 
-\$sourceCommand = ". `"\$completionFile`""
-if (\$profileContent -notlike "*cilium-bugtool*") {
-    Add-Content -Path \$PROFILE -Value "`n# Cilium bugtool completion`n\$sourceCommand"
+$sourceCommand = ". `"$completionFile`""
+if ($profileContent -notlike "*cilium-bugtool*") {
+    Add-Content -Path $PROFILE -Value "`n# Cilium bugtool completion`n$sourceCommand"
     Write-Host "Added completion to PowerShell profile"
 } else {
     Write-Host "Completion already in profile"
 }
 
-Write-Host "Installation complete. Restart PowerShell or run: \$sourceCommand"
+Write-Host "Installation complete. Restart PowerShell or run: $sourceCommand"
 ```
 
 ### Group Policy Distribution
 
 ```powershell
 # For enterprise deployment via GPO startup script
-\$networkShare = "\\\\server\\share\\cilium-completions"
-\$localPath = "\$env:ProgramData\\cilium-completions"
+$networkShare = "\\server\share\cilium-completions"
+$localPath = Join-Path $env:ProgramData "cilium-completions"
 
-if (!(Test-Path \$localPath)) {
-    New-Item -ItemType Directory -Path \$localPath -Force | Out-Null
+if (!(Test-Path $localPath)) {
+    New-Item -ItemType Directory -Path $localPath -Force | Out-Null
 }
 
-Copy-Item "\$networkShare\\cilium-bugtool.ps1" -Destination \$localPath -Force
+Copy-Item (Join-Path $networkShare "cilium-bugtool.ps1") -Destination $localPath -Force
 ```
 
 
@@ -85,7 +87,7 @@ Copy-Item "\$networkShare\\cilium-bugtool.ps1" -Destination \$localPath -Force
 ```powershell
 # Verify completions are registered
 cilium-bugtool completion powershell | Out-String | Invoke-Expression
-cilium-bugtool <TAB>
+# Type "cilium-bugtool " and press Tab to verify available completions.
 Write-Host "Completions working"
 ```
 
@@ -100,5 +102,4 @@ Write-Host "Completions working"
 
 
 Automated PowerShell completion deployment ensures consistent tooling across Windows workstations and CI environments. Profile integration and group policy distribution scale the setup from individual developers to enterprise teams.
-
 
