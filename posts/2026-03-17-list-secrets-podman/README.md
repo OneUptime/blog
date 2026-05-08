@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Secret, Management
 
-Description: Learn how to list and view secrets stored in Podman for inventory and management purposes.
+Description: Learn how to list and view secret metadata stored in Podman for inventory and management purposes.
 
 ---
 
@@ -37,8 +37,8 @@ podman secret ls --format "{{.Name}}"
 # Show names and creation dates
 podman secret ls --format "table {{.Name}}\t{{.CreatedAt}}"
 
-# JSON output for scripting
-podman secret ls --format json
+# JSON-style output for scripting
+podman secret ls --format '{{printf "{\"ID\":%q,\"Name\":%q,\"Driver\":%q}" .ID .Name .Driver}}'
 
 # Show names and IDs
 podman secret ls --format "table {{.ID}}\t{{.Name}}\t{{.Driver}}"
@@ -80,7 +80,7 @@ echo "Total secrets: $SECRET_COUNT"
 # List all secrets with their update timestamps
 podman secret ls --format "table {{.Name}}\t{{.CreatedAt}}\t{{.UpdatedAt}}"
 
-# Find secrets that were created more than 30 days ago
+# Print secret names and creation timestamps for review
 podman secret ls --format "{{.Name}} {{.CreatedAt}}" | while read -r name created; do
   echo "Secret: $name, Created: $created"
 done
@@ -103,4 +103,4 @@ done
 
 ## Summary
 
-Use `podman secret ls` to list all secrets in your Podman environment. The command supports custom output formats with `--format` for scripting, filtering with `--filter`, and JSON output for programmatic processing. Regularly listing and auditing your secrets helps maintain good security hygiene and ensures you know what sensitive data is stored in your system.
+Use `podman secret ls` to list all secrets in your Podman environment. The command supports custom output formats with `--format` for scripting, filtering with `--filter`, and JSON-style output for programmatic processing. Regularly listing and auditing your secrets helps maintain good security hygiene and ensures you know what sensitive data is stored in your system.
