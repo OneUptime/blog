@@ -29,36 +29,43 @@ Replace default admin credentials with enterprise authentication:
 ```yaml
 # grafana-auth-values.yaml
 
-grafana:
-  grafana.ini:
-    server:
-      root_url: https://grafana.example.com
-    auth:
-      disable_login_form: false
-      disable_signout_menu: false
-    auth.generic_oauth:
-      enabled: true
-      name: "SSO"
-      allow_sign_up: true
-      client_id: grafana-client-id
-      client_secret: ${OAUTH_CLIENT_SECRET}
-      scopes: openid profile email
-      auth_url: https://sso.example.com/authorize
-      token_url: https://sso.example.com/token
-      api_url: https://sso.example.com/userinfo
-      role_attribute_path: "contains(groups[*], 'platform-admin') && 'Admin' || contains(groups[*], 'platform-viewer') && 'Viewer'"
-    security:
-      admin_password: ${GRAFANA_ADMIN_PASSWORD}
-      cookie_secure: true
-      cookie_samesite: strict
-      strict_transport_security: true
-      content_security_policy: true
+admin:
+  existingSecret: grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+envFromSecret: grafana-oauth
+grafana.ini:
+  server:
+    root_url: https://grafana.example.com
+  auth:
+    disable_login_form: false
+    disable_signout_menu: false
+  auth.generic_oauth:
+    enabled: true
+    name: "SSO"
+    allow_sign_up: true
+    client_id: grafana-client-id
+    client_secret: ${OAUTH_CLIENT_SECRET}
+    scopes: openid profile email
+    auth_url: https://sso.example.com/authorize
+    token_url: https://sso.example.com/token
+    api_url: https://sso.example.com/userinfo
+    role_attribute_path: "contains(groups[*], 'platform-admin') && 'Admin' || contains(groups[*], 'platform-viewer') && 'Viewer' || 'Viewer'"
+  security:
+    cookie_secure: true
+    cookie_samesite: strict
+    strict_transport_security: true
+    content_security_policy: true
 ```
 
 ```bash
-# Create secret for OAuth credentials
+# Create secrets for OAuth credentials and the initial Grafana admin account
 kubectl create secret generic grafana-oauth -n monitoring \
-    --from-literal=client-secret=your-oauth-secret
+    --from-literal=OAUTH_CLIENT_SECRET=your-oauth-secret
+
+kubectl create secret generic grafana-admin -n monitoring \
+    --from-literal=admin-user=admin \
+    --from-literal=admin-password='change-this-password'
 
 # Apply authentication configuration
 helm upgrade grafana grafana/grafana \
@@ -72,35 +79,41 @@ Define Grafana organizations and roles:
 
 ```bash
 # Create a read-only organization for general users
-curl -s -u admin:admin -X POST http://localhost:3000/api/orgs \
+ORG_ID=$(curl -s -u admin:${GRAFANA_ADMIN_PASSWORD} -X POST http://localhost:3000/api/orgs \
     -H "Content-Type: application/json" \
-    -d '{"name": "Cilium Monitoring"}'
+    -d '{"name": "Cilium Monitoring"}' | jq -r '.orgId')
 
 # Create teams with specific dashboard access
-curl -s -u admin:admin -X POST http://localhost:3000/api/teams \
+NETWORK_SECURITY_TEAM_ID=$(curl -s -u admin:${GRAFANA_ADMIN_PASSWORD} -X POST http://localhost:3000/api/teams \
     -H "Content-Type: application/json" \
-    -d '{"name": "Network Security Team"}'
+    -H "X-Grafana-Org-Id: ${ORG_ID}" \
+    -d '{"name": "Network Security Team"}' | jq -r '.teamId')
 
-curl -s -u admin:admin -X POST http://localhost:3000/api/teams \
+PLATFORM_TEAM_ID=$(curl -s -u admin:${GRAFANA_ADMIN_PASSWORD} -X POST http://localhost:3000/api/teams \
     -H "Content-Type: application/json" \
-    -d '{"name": "Platform Team"}'
+    -H "X-Grafana-Org-Id: ${ORG_ID}" \
+    -d '{"name": "Platform Team"}' | jq -r '.teamId')
 ```
 
 Configure dashboard-level permissions:
 
 ```bash
 # Get dashboard UID
-DASH_UID=$(curl -s -u admin:admin http://localhost:3000/api/search?query=Cilium | jq -r '.[0].uid')
+DASH_UID=$(curl -s -u admin:${GRAFANA_ADMIN_PASSWORD} \
+    -H "X-Grafana-Org-Id: ${ORG_ID}" \
+    "http://localhost:3000/api/search?query=Cilium" | jq -r '.[0].uid')
 
 # Set permissions: Network Security Team = Editor, Platform Team = Viewer
-curl -s -u admin:admin -X POST "http://localhost:3000/api/dashboards/uid/$DASH_UID/permissions" \
+curl -s -u admin:${GRAFANA_ADMIN_PASSWORD} -X POST "http://localhost:3000/api/dashboards/uid/$DASH_UID/permissions" \
     -H "Content-Type: application/json" \
-    -d '{
-        "items": [
-            {"teamId": 1, "permission": 2},
-            {"teamId": 2, "permission": 1}
-        ]
-    }'
+    -H "X-Grafana-Org-Id: ${ORG_ID}" \
+    -d "$(jq -n \
+        --argjson networkSecurityTeamId "$NETWORK_SECURITY_TEAM_ID" \
+        --argjson platformTeamId "$PLATFORM_TEAM_ID" \
+        '{items: [
+            {teamId: $networkSecurityTeamId, permission: 2},
+            {teamId: $platformTeamId, permission: 1}
+        ]}')"
 ```
 
 ```mermaid
@@ -142,15 +155,14 @@ spec:
 
 ```yaml
 # Grafana Helm values for TLS
-grafana:
-  ingress:
-    enabled: true
-    hosts:
-      - grafana.example.com
-    tls:
-      - secretName: grafana-tls
-        hosts:
-          - grafana.example.com
+ingress:
+  enabled: true
+  hosts:
+    - grafana.example.com
+  tls:
+    - secretName: grafana-tls
+      hosts:
+        - grafana.example.com
 ```
 
 ## Restricting Network Access
@@ -172,6 +184,7 @@ spec:
     # Allow ingress controller access
     - fromEndpoints:
         - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": ingress-nginx
             app.kubernetes.io/name: ingress-nginx
       toPorts:
         - ports:
@@ -196,11 +209,15 @@ spec:
     # Allow DNS
     - toEndpoints:
         - matchLabels:
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ```bash
@@ -209,30 +226,32 @@ kubectl apply -f grafana-network-policy.yaml
 
 ## Enabling Audit Logging
 
-Track who accesses what in Grafana:
+Track who accesses what in Grafana Enterprise or Grafana Cloud:
 
 ```yaml
 # Grafana audit logging configuration
-grafana:
-  grafana.ini:
-    log:
-      mode: console
-      level: info
-    log.console:
-      format: json
-    analytics:
-      reporting_enabled: false
-      check_for_updates: false
+grafana.ini:
+  log:
+    mode: console
+    level: debug
+  log.console:
+    format: json
+  auditing:
+    enabled: true
+    loggers: logger
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
 ```
 
 Monitor access patterns:
 
 ```bash
-# View Grafana access logs
-kubectl logs -n monitoring deploy/grafana | jq 'select(.logger == "context") | {timestamp: .t, user: .uname, action: .msg, path: .path}'
+# View Grafana audit logs
+kubectl logs -n monitoring deploy/grafana | jq 'select(.logger == "auditing.console" or .kind == "auditing")'
 
 # Look for suspicious activity
-kubectl logs -n monitoring deploy/grafana | jq 'select(.msg | contains("failed")) | {timestamp: .t, user: .uname, msg: .msg}'
+kubectl logs -n monitoring deploy/grafana | jq 'select((.logger == "auditing.console" or .kind == "auditing") and ((.result.statusType? == "failure") or (.action? == "login-failed")))'
 ```
 
 ## Verification
@@ -244,8 +263,8 @@ Verify the security configuration:
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/dashboards/home
 # Expected: 401 (Unauthorized)
 
-# Test SSO login works
-curl -s -o /dev/null -w "%{http_code}" -u admin:admin http://localhost:3000/api/org
+# Test admin API authentication works with the replaced admin password
+curl -s -o /dev/null -w "%{http_code}" -u admin:${GRAFANA_ADMIN_PASSWORD} http://localhost:3000/api/org
 # Expected: 200
 
 # Test TLS
@@ -258,7 +277,7 @@ kubectl run policy-test --image=curlimages/curl --rm -it --restart=Never -- \
 # Expected: Timeout (blocked by network policy unless from ingress)
 
 # Verify RBAC
-curl -s -u viewer:viewerpass http://localhost:3000/api/datasources
+curl -s -u viewer:viewerpass http://localhost:3000/api/admin/stats
 # Expected: 403 (Forbidden for non-admin users)
 ```
 
@@ -274,7 +293,7 @@ Check team assignments and dashboard permissions. Users without team membership 
 Grafana needs DNS resolution and connectivity to Prometheus during startup. Ensure egress rules allow both before applying the policy.
 
 **Problem: Audit logs are too verbose**
-Set `level: warn` instead of `info` for production. Or filter the logs to capture only authentication and authorization events.
+Use the file or Loki audit log exporter for production, or filter the audit logs to capture only authentication and authorization events.
 
 ## Conclusion
 
