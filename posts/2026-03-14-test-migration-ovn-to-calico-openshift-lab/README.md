@@ -65,7 +65,7 @@ oc create namespace test-frontend
 oc create namespace test-backend
 oc create namespace test-database
 
-# Deploy a multi-tier application for connectivity testing
+# Deploy a multi-tier application and a test client for connectivity testing
 oc apply -f - << 'EOF'
 apiVersion: apps/v1
 kind: Deployment
@@ -83,10 +83,10 @@ spec:
         app: web-server
     spec:
       containers:
-        - name: nginx
-          image: nginx:1.25
+        - name: httpd
+          image: registry.access.redhat.com/ubi9/httpd-24:latest
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           # Resource limits for realistic scheduling
           resources:
             requests:
@@ -102,8 +102,65 @@ spec:
   selector:
     app: web-server
   ports:
-    - port: 80
-      targetPort: 80
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: test-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+        - name: httpd
+          image: registry.access.redhat.com/ubi9/httpd-24:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server
+  namespace: test-backend
+spec:
+  selector:
+    app: api-server
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: network-test
+  namespace: test-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: network-test
+  template:
+    metadata:
+      labels:
+        app: network-test
+    spec:
+      containers:
+        - name: curl
+          image: curlimages/curl:8.6.0
+          command: ["sleep", "3600"]
 EOF
 ```
 
@@ -135,30 +192,46 @@ spec:
           port: 8080
 ```
 
-Install the Calico operator and trigger the CNI switch:
+Install the Calico manifests for OpenShift and trigger the CNI switch:
 
 ```bash
-# Install the Tigera operator for Calico
-oc apply -f https://docs.projectcalico.org/archive/v3.27/manifests/tigera-operator.yaml
+# Pause Machine Config Pool updates during the CNI migration
+oc patch MachineConfigPool master --type='merge' --patch '{ "spec": { "paused": true } }'
+oc patch MachineConfigPool worker --type='merge' --patch '{ "spec":{ "paused": true } }'
 
-# Apply Calico installation CR to switch from OVN
-oc apply -f - << 'EOF'
-apiVersion: operator.tigera.io/v1
-kind: Installation
-metadata:
-  name: default
-spec:
-  variant: Calico
-  calicoNetwork:
-    ipPools:
-      - cidr: 10.128.0.0/14
-        encapsulation: VXLAN
-        natOutgoing: Enabled
-        nodeSelector: all()
-EOF
+# Ensure no other network migration is in progress, then enable migration to Calico
+oc get Network.operator.openshift.io cluster -o jsonpath='{.spec.migration}'
+oc patch Network.operator.openshift.io cluster --type='merge' --patch '{ "spec": { "migration": null } }'
+oc patch Network.operator.openshift.io cluster --type='merge' --patch '{ "spec": { "migration": { "networkType": "Calico" } } }'
 
-# Monitor the migration progress
-oc get pods -n calico-system -w
+# Download and apply the Calico OpenShift manifests
+mkdir calico
+wget -qO- https://github.com/projectcalico/calico/releases/download/v3.32.0/ocp.tgz | tar xvz --strip-components=1 -C calico
+cd calico
+
+for file in $(ls *.yaml | grep -Ev 'cr-(.*?)\.yaml'); do
+  echo "Applying $file"
+  oc create -f "$file"
+done
+
+oc rollout status -w --timeout=2m -n tigera-operator deployment/tigera-operator
+
+# Use kube-proxy with the standard Calico dataplane. If you choose Calico eBPF, follow the eBPF-specific Calico documentation instead.
+oc patch networks.operator.openshift.io cluster --type merge -p '{"spec":{"deployKubeProxy": true}}'
+
+# Create the Calico custom resources and wait for Calico components
+oc create -f *cr*.yaml
+oc wait --for=condition=Available tigerastatus --all
+
+# Mark Calico as the active network type and restart Multus
+oc patch Network.config.openshift.io cluster --type='merge' --patch '{ "spec": { "networkType": "Calico" } }'
+oc -n openshift-multus rollout restart daemonset/multus
+oc -n openshift-multus -w --timeout=2m rollout status daemonset/multus
+
+# Finalize the migration and unpause Machine Config Pool updates
+oc patch Network.operator.openshift.io cluster --type='merge' --patch '{ "spec": { "migration": null } }'
+oc patch MachineConfigPool master --type='merge' --patch '{ "spec": { "paused": false } }'
+oc patch MachineConfigPool worker --type='merge' --patch '{ "spec":{ "paused": false } }'
 ```
 
 ```mermaid
@@ -168,8 +241,7 @@ sequenceDiagram
     participant Op as Calico Operator
     participant Cal as Calico
     Lab->>OVN: Running with OVN CNI
-    Lab->>Op: Install Tigera Operator
-    Op->>OVN: Drain OVN components
+    Lab->>Op: Apply Calico OpenShift manifests
     Op->>Cal: Deploy Calico components
     Cal->>Lab: CNI switched to Calico
     Lab->>Lab: Run validation tests
@@ -195,28 +267,28 @@ run_test() {
   echo -n "Testing: ${name}... "
   if eval "$cmd" > /dev/null 2>&1; then
     echo "PASS"
-    ((PASS++))
+    ((PASS+=1))
   else
     echo "FAIL"
-    ((FAIL++))
+    ((FAIL+=1))
   fi
 }
 
 # Test 1: Pod-to-pod connectivity within the same namespace
 run_test "intra-namespace connectivity" \
-  "oc exec -n test-frontend deploy/web-server -- wget -qO- --timeout=5 http://web-server.test-frontend.svc.cluster.local"
+  "oc exec -n test-frontend deploy/network-test -- curl -fsS --connect-timeout 5 http://web-server.test-frontend.svc.cluster.local:8080"
 
 # Test 2: Cross-namespace connectivity (frontend to backend)
 run_test "cross-namespace connectivity" \
-  "oc exec -n test-frontend deploy/web-server -- wget -qO- --timeout=5 http://api-server.test-backend.svc.cluster.local:8080"
+  "oc exec -n test-frontend deploy/network-test -- curl -fsS --connect-timeout 5 http://api-server.test-backend.svc.cluster.local:8080"
 
 # Test 3: DNS resolution
 run_test "DNS resolution" \
-  "oc exec -n test-frontend deploy/web-server -- nslookup kubernetes.default.svc.cluster.local"
+  "oc exec -n test-frontend deploy/network-test -- curl -ksS --connect-timeout 5 https://kubernetes.default.svc"
 
 # Test 4: External egress connectivity
 run_test "external egress" \
-  "oc exec -n test-frontend deploy/web-server -- wget -qO- --timeout=5 http://httpbin.org/get"
+  "oc exec -n test-frontend deploy/network-test -- curl -fsS --connect-timeout 5 https://httpbin.org/get"
 
 # Test 5: Calico node health
 run_test "calico-node pods healthy" \
@@ -243,7 +315,8 @@ oc get pods --all-namespaces --field-selector=status.phase!=Running,status.phase
 
 # Run a bandwidth test between pods on different nodes
 oc run iperf-server --image=networkstatic/iperf3 --restart=Never -- iperf3 -s
-oc run iperf-client --image=networkstatic/iperf3 --restart=Never -- iperf3 -c iperf-server -t 30
+oc expose pod/iperf-server --port=5201
+oc run iperf-client --image=networkstatic/iperf3 --restart=Never -- iperf3 -c iperf-server.default.svc.cluster.local -t 30
 oc logs iperf-client
 ```
 
