@@ -10,7 +10,7 @@ Description: Systematically validate that the benefits of using Cilium encapsula
 
 ## Introduction
 
-Validating advantages of the encapsulation model in cilium ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. The encapsulation model in Cilium provides several advantages: it works on any network infrastructure without special routing requirements, it isolates pod IPs from the underlying network so there are no IP conflicts, it simplifies multi-cloud and hybrid deployments, and it supports features like transparent encryption at the tunnel level. The overlay abstracts away network topology complexity.
+Validating advantages of the encapsulation model in cilium ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. The encapsulation model in Cilium provides several advantages: it works on any network infrastructure with node-to-node IP connectivity and the required tunnel UDP ports open, it keeps the underlying network from needing to route PodCIDRs, it simplifies multi-cloud and hybrid deployments, and it can be used together with features like transparent encryption. The overlay abstracts away network topology complexity.
 
 Validation goes beyond checking pod status. It requires testing actual traffic flows, verifying configuration values, and confirming that the feature behaves as documented. A validation failure caught early prevents production incidents caused by misconfigured networking.
 
@@ -50,7 +50,7 @@ cilium connectivity test
 # Run specific test categories
 cilium connectivity test --test pod-to-pod
 cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+cilium connectivity test --test dns-only
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -136,13 +136,13 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl get ciliumendpoints --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{.status.state}{"\n"}{end}' | grep -v "ready"
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+# Compare endpoint count with running pod count
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints --all-namespaces --no-headers | wc -l)
 POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
 echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
 ```
@@ -153,13 +153,13 @@ Confirm metrics are being collected for advantages of the encapsulation model in
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "forward"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -i "forward"
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -190,7 +190,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
