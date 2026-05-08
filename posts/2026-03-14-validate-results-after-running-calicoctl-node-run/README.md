@@ -46,7 +46,7 @@ calicoctl get node $(hostname) -o yaml
 Validate:
 - The node exists in the datastore
 - The `spec.bgp.ipv4Address` matches the expected IP
-- The `status` section shows the node as running
+- The node name matches the hostname or the name passed to `calicoctl node run --name`
 
 ```bash
 # Quick check of all registered nodes
@@ -77,8 +77,8 @@ No IPv6 peers found.
 ```
 
 Key checks:
-- "Calico process is running" confirms Felix and BIRD are active
-- All expected peers show STATE as "up" and INFO as "Established"
+- "Calico process is running" confirms the local `calico/node` instance is running
+- In BGP deployments, all expected peers show STATE as "up" and INFO as "Established"
 
 ## Step 4: Validate Felix Operation
 
@@ -87,13 +87,13 @@ Key checks:
 docker logs calico-node 2>&1 | grep -i "felix" | grep -i "error" | tail -10
 
 # Check Felix is programming rules
-docker logs calico-node 2>&1 | grep "felix" | grep -i "ready" | tail -5
+docker exec calico-node /bin/calico-node -felix-ready
 
 # Verify iptables rules are created
 sudo iptables -L -n | grep -c "cali-"
 ```
 
-A healthy Felix instance creates numerous iptables chains prefixed with `cali-`. If the count is zero, Felix is not programming rules correctly.
+With the default Linux iptables data plane, a healthy Felix instance creates numerous iptables chains prefixed with `cali-`. If the count is zero, Felix is not programming rules correctly. In eBPF or nftables data plane deployments, use the data-plane-specific checks instead of iptables chain counts.
 
 ## Step 5: Verify BGP Route Exchange
 
@@ -114,7 +114,7 @@ docker exec calico-node birdcl show route | head -20
 # Check IP pools
 calicoctl get ippools -o wide
 
-# Verify the node can allocate IPs from the pool
+# Inspect whether a specific IP is assigned
 calicoctl ipam show --ip=192.168.0.1
 ```
 
@@ -127,6 +127,7 @@ calicoctl ipam show --ip=192.168.0.1
 
 CHECKS_PASSED=0
 CHECKS_FAILED=0
+EXPECTED_BGP_PEERS=${EXPECTED_BGP_PEERS:-0}
 
 pass() { echo "PASS: $1"; CHECKS_PASSED=$((CHECKS_PASSED + 1)); }
 fail() { echo "FAIL: $1"; CHECKS_FAILED=$((CHECKS_FAILED + 1)); }
@@ -157,12 +158,14 @@ else
   fail "Calico process is not running"
 fi
 
-# 4. BGP peers established
+# 4. BGP peers established, if expected
 PEER_COUNT=$(sudo calicoctl node status 2>&1 | grep "Established" | wc -l)
-if [ "$PEER_COUNT" -gt 0 ]; then
+if [ "$EXPECTED_BGP_PEERS" -eq 0 ]; then
+  pass "BGP peer check skipped (EXPECTED_BGP_PEERS=0)"
+elif [ "$PEER_COUNT" -ge "$EXPECTED_BGP_PEERS" ]; then
   pass "BGP peers established: $PEER_COUNT"
 else
-  fail "No BGP peers established"
+  fail "BGP peers established: $PEER_COUNT, expected at least $EXPECTED_BGP_PEERS"
 fi
 
 # 5. iptables rules present
@@ -194,7 +197,7 @@ Run the validation script and confirm all checks pass:
 
 ```bash
 chmod +x validate-calico-node.sh
-sudo ./validate-calico-node.sh
+sudo EXPECTED_BGP_PEERS=2 ./validate-calico-node.sh
 ```
 
 Expected output:
@@ -221,7 +224,7 @@ Failed: 0
 - **Container running but no BGP peers**: Check firewall rules on port 179 between nodes. Verify the BGP configuration with `calicoctl get bgpconfigurations`.
 - **Felix errors about iptables**: Ensure kernel modules `ip_tables`, `iptable_filter`, and `iptable_nat` are loaded with `lsmod`.
 - **Node registered but with wrong IP**: Delete and re-register the node with the correct IP using `calicoctl delete node <name>` followed by a fresh `calicoctl node run`.
-- **Routes not appearing**: Check that IPIP or VXLAN encapsulation mode matches between nodes. Mismatched encapsulation prevents route exchange.
+- **Routes not appearing**: Check that IPIP or VXLAN encapsulation mode matches the intended IP pool configuration. VXLAN does not use BGP, while IPIP and non-overlay BGP deployments should show expected BGP-learned routes.
 
 ## Conclusion
 
