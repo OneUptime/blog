@@ -41,21 +41,24 @@ spec:
         spec:
           containers:
           - name: tester
-            image: networkstatic/iperf3
+            image: alpine:3.19
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl iperf3 jq
               SERVER="iperf-server.monitoring"
+              METRICS_FILE=/tmp/cilium_multistream.prom
+              : > "$METRICS_FILE"
               for STREAMS in 1 8 32; do
                 BPS=$(iperf3 -c $SERVER -t 30 -P $STREAMS -J | \
                   jq '.end.sum_sent.bits_per_second')
-                # Push to Pushgateway
-                cat <<METRIC | curl --data-binary @- \
-                  http://pushgateway.monitoring:9091/metrics/job/cilium_multistream
-                cilium_multi_stream_throughput_bps{streams="$STREAMS"} $BPS
-                METRIC
+                printf 'cilium_multi_stream_throughput_bps{streams="%s"} %s\n' \
+                  "$STREAMS" "$BPS" >> "$METRICS_FILE"
               done
+              # Push all stream samples in one Pushgateway group update.
+              curl --data-binary @"$METRICS_FILE" \
+                http://pushgateway.monitoring:9091/metrics/job/cilium_multistream
           restartPolicy: OnFailure
 ```
 
@@ -81,27 +84,31 @@ spec:
       hostNetwork: true
       containers:
       - name: validator
-        image: busybox:1.36
+        image: alpine:3.19
+        env:
+        - name: INTERFACE
+          value: eth0
         securityContext:
           privileged: true
         command:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache ethtool
           while true; do
             # Check NIC queues
-            QUEUES=$(ethtool -l eth0 2>/dev/null | grep "Combined" | tail -1 | awk '{print $2}')
+            QUEUES=$(ethtool -l "$INTERFACE" 2>/dev/null | grep "Combined" | tail -1 | awk '{print $2}')
             CPUS=$(nproc)
             if [ "$QUEUES" != "$CPUS" ]; then
               echo "WARNING: NIC queues ($QUEUES) != CPUs ($CPUS)"
-              ethtool -L eth0 combined $CPUS 2>/dev/null
+              ethtool -L "$INTERFACE" combined $CPUS 2>/dev/null
             fi
 
             # Check ring buffer sizes
-            RX_RING=$(ethtool -g eth0 2>/dev/null | grep -A4 "Current" | grep "RX:" | awk '{print $2}')
+            RX_RING=$(ethtool -g "$INTERFACE" 2>/dev/null | grep -A4 "Current" | grep "RX:" | awk '{print $2}')
             if [ "$RX_RING" -lt 4096 ] 2>/dev/null; then
               echo "WARNING: RX ring buffer too small ($RX_RING)"
-              ethtool -G eth0 rx 4096 2>/dev/null
+              ethtool -G "$INTERFACE" rx 4096 2>/dev/null
             fi
 
             sleep 3600
