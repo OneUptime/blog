@@ -29,18 +29,20 @@ This guide covers the diagnostic steps to identify duplicate IPv4 assignments, d
 Common symptoms that indicate duplicate IP addresses:
 
 ```bash
-# Check for duplicate IPs across all pods
-
-kubectl get pods --all-namespaces -o wide --no-headers | \
-  awk '{print $7}' | sort | uniq -d
+# Check for duplicate assigned IPs across all pods
+kubectl get pods --all-namespaces \
+  -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}' | \
+  awk '/^[0-9]+\./' | \
+  sort | uniq -d
 
 # If duplicates are found, identify which pods share the IP
 DUPLICATE_IP="<detected-duplicate-ip>"
 kubectl get pods --all-namespaces -o wide | grep "$DUPLICATE_IP"
 
-# Check Calico workload endpoints for duplicates
-calicoctl get workloadEndpoint --all-namespaces -o wide | \
-  awk '{print $5}' | sort | uniq -d
+# Check Calico workload endpoints for duplicate IP networks
+calicoctl get workloadEndpoint --all-namespaces -o yaml | \
+  awk '/ipNetworks:/ {in_ips=1; next} in_ips && /- / {gsub(/.*- /,""); gsub(/\/32$/,""); print} in_ips && /^[^ ]/ {in_ips=0}' | \
+  sort | uniq -d
 ```
 
 ## Examining Calico IPAM Allocations
@@ -56,23 +58,25 @@ calicoctl ipam show
 calicoctl ipam show --show-blocks
 
 # Look for blocks assigned to nodes that no longer exist
-calicoctl get ipamBlock -o yaml | grep -B5 "affinity"
+kubectl get blockaffinities.crd.projectcalico.org \
+  -o custom-columns=NAME:.metadata.name,CIDR:.spec.cidr,NODE:.spec.node,STATE:.spec.state
 ```
 
 ## Checking Node and Block Affinity
 
-Calico assigns IP blocks to specific nodes. Affinity conflicts cause duplicates.
+Calico assigns IP blocks to specific nodes. Stale or conflicting affinities can indicate IPAM state that needs investigation.
 
 ```bash
 # List all IPAM blocks and their node affinities
-calicoctl get ipamBlock -o custom-columns=NAME,CIDR,AFFINITY
+kubectl get blockaffinities.crd.projectcalico.org \
+  -o custom-columns=NAME:.metadata.name,CIDR:.spec.cidr,NODE:.spec.node,STATE:.spec.state
 
 # Compare with actual nodes
 kubectl get nodes -o name
 
 # Look for blocks assigned to non-existent nodes
-calicoctl get ipamBlock -o yaml | grep "affinity:" | sort | while read line; do
-  node=$(echo $line | sed 's/affinity: host://')
+kubectl get blockaffinities.crd.projectcalico.org \
+  -o jsonpath='{range .items[*]}{.spec.node}{"\n"}{end}' | sort -u | while read node; do
   if ! kubectl get node "$node" > /dev/null 2>&1; then
     echo "ORPHANED BLOCK: affinity to deleted node $node"
   fi
@@ -90,8 +94,8 @@ kubectl get ipamblocks.crd.projectcalico.org -o yaml | \
 calicoctl get workloadEndpoint --all-namespaces -o yaml | \
   grep -B10 "$DUPLICATE_IP"
 
-# Check if any handles reference deleted pods
-calicoctl ipam show --show-blocks | grep -i "leaked\|orphan"
+# Check for leaked or inconsistent IPAM allocations
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Checking for Race Conditions
@@ -122,7 +126,7 @@ for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name); 
     grep -i "duplicate\|conflict\|already\|error.*ipam\|reassign"
 done
 
-# Check calico-node logs for BIRD route conflicts (BIRD runs inside the calico-node container)
+# Check calico-node logs for BIRD route conflicts when using the Linux dataplane with BGP
 for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name); do
   echo "=== $pod BIRD ==="
   kubectl logs -n calico-system $pod -c calico-node --tail=50 | \
@@ -142,35 +146,33 @@ calicoctl ipam release --ip=$DUPLICATE_IP
 # Kubernetes will reschedule it with a new IP
 kubectl delete pod <conflicting-pod> -n <namespace>
 
-# Clean up orphaned IPAM blocks from deleted nodes
-calicoctl ipam release --from-report=<garbage-collection-report>
+# Clean up leaked IPAM allocations from an IPAM check report
+calicoctl ipam release --from-report=<report-file>
 ```
 
 ## Cleaning Up After Deleted Nodes
 
 ```bash
 # Remove IPAM data for nodes that no longer exist
-# First, identify orphaned blocks
-ORPHANED_NODES=$(calicoctl get ipamBlock -o yaml | grep "affinity: host:" | \
-  sed 's/.*affinity: host://' | sort -u | while read node; do
+# First, identify orphaned block affinities
+ORPHANED_NODES=$(kubectl get blockaffinities.crd.projectcalico.org \
+  -o jsonpath='{range .items[*]}{.spec.node}{"\n"}{end}' | sort -u | while read node; do
   kubectl get node "$node" > /dev/null 2>&1 || echo "$node"
 done)
+echo "$ORPHANED_NODES"
 
-# Release allocations for each orphaned node
-for node in $ORPHANED_NODES; do
-  echo "Cleaning up IPAM for deleted node: $node"
-  calicoctl ipam release --from-report=$(calicoctl ipam check | grep "$node")
-done
-
-# Run IPAM garbage collection check
-calicoctl ipam check
+# Generate an IPAM consistency report and release leaked allocations from it
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Running IPAM Garbage Collection
 
 ```bash
 # Check for leaked IPs and handles
-calicoctl ipam check
+calicoctl ipam check --show-problem-ips
 
 # The output shows:
 # - Allocated IPs with no matching workload endpoint
@@ -178,15 +180,20 @@ calicoctl ipam check
 # - Handles referencing deleted workloads
 
 # Release leaked allocations based on the check report
-calicoctl ipam release --from-report=<report-file>
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Verification
 
 ```bash
 # Verify no duplicate IPs remain
-kubectl get pods --all-namespaces -o wide --no-headers | \
-  awk '{print $7}' | sort | uniq -d
+kubectl get pods --all-namespaces \
+  -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}' | \
+  awk '/^[0-9]+\./' | \
+  sort | uniq -d
 # Expected: no output (no duplicates)
 
 # Verify IPAM is clean
