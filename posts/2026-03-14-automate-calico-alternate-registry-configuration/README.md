@@ -37,17 +37,21 @@ Create a script to mirror all required Calico images:
 set -euo pipefail
 
 CALICO_VERSION="${CALICO_VERSION:-v3.27.0}"
+TIGERA_OPERATOR_VERSION="${TIGERA_OPERATOR_VERSION:-v1.32.3}"
 PRIVATE_REGISTRY="${PRIVATE_REGISTRY:-registry.example.com/calico}"
 
-# List of all Calico images to mirror
+# List of Calico images to mirror for an operator-managed v3.27 installation
 IMAGES=(
-  "docker.io/calico/node:${CALICO_VERSION}"
-  "docker.io/calico/cni:${CALICO_VERSION}"
-  "docker.io/calico/kube-controllers:${CALICO_VERSION}"
-  "docker.io/calico/typha:${CALICO_VERSION}"
-  "docker.io/calico/pod2daemon-flexvol:${CALICO_VERSION}"
-  "docker.io/calico/csi:${CALICO_VERSION}"
-  "docker.io/calico/node-driver-registrar:${CALICO_VERSION}"
+  "quay.io/tigera/operator:${TIGERA_OPERATOR_VERSION}"
+  "quay.io/calico/node:${CALICO_VERSION}"
+  "quay.io/calico/cni:${CALICO_VERSION}"
+  "quay.io/calico/apiserver:${CALICO_VERSION}"
+  "quay.io/calico/kube-controllers:${CALICO_VERSION}"
+  "quay.io/calico/typha:${CALICO_VERSION}"
+  "quay.io/calico/pod2daemon-flexvol:${CALICO_VERSION}"
+  "quay.io/calico/key-cert-provisioner:${CALICO_VERSION}"
+  "quay.io/calico/csi:${CALICO_VERSION}"
+  "quay.io/calico/node-driver-registrar:${CALICO_VERSION}"
   "docker.io/calico/ctl:${CALICO_VERSION}"
 )
 
@@ -77,7 +81,7 @@ metadata:
   name: default
 spec:
   # Configure the private registry for all Calico components
-  registry: registry.example.com
+  registry: registry.example.com/
   imagePath: calico
   variant: Calico
   calicoNetwork:
@@ -106,18 +110,25 @@ If installing Calico via Helm, configure the registry in values:
 # calico-helm-values.yaml
 installation:
   enabled: true
-  registry: registry.example.com
+  registry: registry.example.com/
   imagePath: calico
+  # For image pull secrets (if registry requires authentication)
+  imagePullSecrets:
+    - name: calico-registry-secret
 
-# For image pull secrets (if registry requires authentication)
-imagePullSecrets:
-  - name: calico-registry-secret
+tigeraOperator:
+  registry: registry.example.com/calico
+  image: operator
+  version: v1.32.3
 ```
 
 ```bash
+# Ensure the namespace exists before creating the pull secret
+kubectl create namespace tigera-operator --dry-run=client -o yaml | kubectl apply -f -
+
 # Create the image pull secret
 kubectl create secret docker-registry calico-registry-secret \
-  -n calico-system \
+  -n tigera-operator \
   --docker-server=registry.example.com \
   --docker-username=calico-pull \
   --docker-password="${REGISTRY_PASSWORD}"
@@ -164,6 +175,7 @@ jobs:
       - name: Mirror Calico images
         env:
           CALICO_VERSION: ${{ github.event.inputs.calico_version || 'v3.27.0' }}
+          TIGERA_OPERATOR_VERSION: v1.32.3
           PRIVATE_REGISTRY: registry.example.com/calico
         run: bash mirror-calico-images.sh
 
