@@ -31,7 +31,7 @@ This outputs a JSON document with the pod's complete configuration.
 
 ```bash
 # Get the pod ID
-podman pod inspect my-pod --format '{{.Id}}'
+podman pod inspect my-pod --format '{{.ID}}'
 
 # Get the pod name
 podman pod inspect my-pod --format '{{.Name}}'
@@ -57,7 +57,7 @@ podman pod inspect my-pod --format '{{.InfraConfig.Networks}}'
 
 ```bash
 # Get all container IDs in the pod
-podman pod inspect my-pod --format '{{.Containers}}'
+podman pod inspect my-pod --format '{{range .Containers}}{{.Id}}{{"\n"}}{{end}}'
 
 # List container names and IDs
 podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} ({{.Id}}){{"\n"}}{{end}}'
@@ -67,7 +67,7 @@ podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} ({{.Id}}){{"\
 
 ```bash
 # Get the infra container ID
-INFRA_ID=$(podman pod inspect my-pod --format '{{.InfraContainerId}}')
+INFRA_ID=$(podman pod inspect my-pod --format '{{.InfraContainerID}}')
 
 # Inspect the infra container directly
 podman inspect "$INFRA_ID" --format '{{.NetworkSettings.IPAddress}}'
