@@ -10,7 +10,7 @@ Description: Learn how to export Podman pods as Kubernetes YAML and deploy them 
 
 > Podman bridges local development and production by generating Kubernetes-ready YAML from running pods.
 
-Podman lets you develop and test pods locally, then export them as standard Kubernetes YAML for deployment to a real cluster. The `podman generate kube` command produces manifests that work with `kubectl apply`, making the transition from local development to production seamless.
+Podman lets you develop and test pods locally, then export them as standard Kubernetes YAML for deployment to a real cluster. The `podman kube generate` command produces manifests that work with `kubectl apply`, making the transition from local development to production seamless.
 
 ---
 
@@ -35,13 +35,13 @@ podman pod ps
 
 ```bash
 # Export the running pod as Kubernetes YAML
-podman generate kube webapp > webapp-k8s.yaml
+podman kube generate webapp > webapp-k8s.yaml
 
 # View the generated YAML
 cat webapp-k8s.yaml
 ```
 
-The generated YAML includes the Pod spec with all containers, ports, and volume mounts.
+The generated YAML includes the Pod spec with all containers, published ports, and any volume mounts.
 
 ## Pushing Images to a Registry
 
@@ -75,32 +75,7 @@ For production, you typically want a Deployment rather than a bare Pod.
 
 ```bash
 # Generate the YAML
-podman generate kube webapp > base-pod.yaml
-
-# Wrap it in a Deployment manually or use this pattern:
-cat > webapp-deployment.yaml << 'EOF'
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: webapp
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: webapp
-  template:
-    metadata:
-      labels:
-        app: webapp
-    spec:
-      containers:
-        - name: frontend
-          image: registry.example.com/frontend:v1.0
-          ports:
-            - containerPort: 80
-        - name: cache
-          image: docker.io/library/redis:7-alpine
-EOF
+podman kube generate --type deployment --replicas 3 webapp > webapp-deployment.yaml
 
 kubectl apply -f webapp-deployment.yaml
 ```
@@ -137,7 +112,7 @@ podman run -d --pod myapp --name web docker.io/library/nginx:alpine
 curl http://localhost:8080
 
 # 3. Generate Kubernetes YAML
-podman generate kube myapp > myapp-k8s.yaml
+podman kube generate myapp > myapp-k8s.yaml
 
 # 4. Push images and deploy
 kubectl apply -f myapp-k8s.yaml
@@ -146,4 +121,4 @@ kubectl get pods
 
 ## Summary
 
-Use `podman generate kube` to export locally developed pods as Kubernetes YAML. Push custom images to a registry, update image references in the YAML, and deploy with `kubectl apply`. This workflow lets you develop with Podman and deploy to any Kubernetes cluster.
+Use `podman kube generate` to export locally developed pods as Kubernetes YAML. Push custom images to a registry, update image references in the YAML, and deploy with `kubectl apply`. This workflow lets you develop with Podman and deploy to any Kubernetes cluster.
