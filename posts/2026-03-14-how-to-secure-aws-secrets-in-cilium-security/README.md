@@ -10,13 +10,13 @@ Description: How to secure AWS secrets used by Cilium for cloud-integrated netwo
 
 ## Introduction
 
-When Cilium runs on AWS with ENI IPAM mode, it needs AWS credentials to manage network interfaces and IP addresses. These credentials must be stored securely, rotated regularly, and granted only the minimum permissions required. A compromised Cilium credential could allow an attacker to manipulate your VPC networking.
+When Cilium runs on AWS with ENI IPAM mode, the Cilium operator needs AWS credentials to manage network interfaces and IP addresses. These credentials must be stored securely, rotated regularly, and granted only the minimum permissions required. A compromised Cilium credential could allow an attacker to manipulate your VPC networking.
 
 This guide covers the security best practices for managing AWS secrets in Cilium deployments, including using IAM roles for service accounts (IRSA), limiting credential scope, and monitoring credential usage.
 
 ## Prerequisites
 
-- EKS cluster or self-managed Kubernetes on AWS with Cilium
+- EKS cluster for IRSA, or self-managed Kubernetes on AWS with an equivalent pod identity mechanism
 - AWS CLI configured
 - kubectl and Helm configured
 - IAM permissions to create roles and policies
@@ -30,27 +30,24 @@ The most secure approach avoids static credentials entirely:
 
 eksctl utils associate-iam-oidc-provider --cluster my-cluster --approve
 
-# Create an IAM role for Cilium
+# Create an IAM role for the Cilium operator after creating the policy below
 eksctl create iamserviceaccount \
-  --name cilium \
+  --name cilium-operator \
   --namespace kube-system \
   --cluster my-cluster \
-  --attach-policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy \
-  --approve \
-  --override-existing-serviceaccounts
+  --attach-policy-arn arn:aws:iam::123456789012:policy/CiliumMinimalPolicy \
+  --role-name cilium-operator \
+  --role-only \
+  --approve
 ```
 
 Configure Cilium to use the service account:
 
 ```yaml
 # cilium-aws-irsa.yaml
-serviceAccount:
-  name: cilium
-  annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/cilium-role"
-
 eni:
   enabled: true
+  iamRole: "arn:aws:iam::123456789012:role/cilium-operator"
 
 ipam:
   mode: eni
@@ -65,7 +62,7 @@ helm upgrade cilium cilium/cilium \
 
 ```mermaid
 graph TD
-    A[Cilium Pod] --> B[Service Account]
+    A[Cilium Operator Pod] --> B[Service Account]
     B --> C[IRSA Annotation]
     C --> D[AWS STS]
     D --> E[Temporary Credentials]
@@ -87,23 +84,15 @@ graph TD
         "ec2:DescribeNetworkInterfaces",
         "ec2:DescribeSubnets",
         "ec2:DescribeVpcs",
+        "ec2:DescribeRouteTables",
         "ec2:DescribeSecurityGroups",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes",
         "ec2:AssignPrivateIpAddresses",
         "ec2:UnassignPrivateIpAddresses",
-        "ec2:ModifyNetworkInterfaceAttribute"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "ec2:Vpc": "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-abc123"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstances",
-        "ec2:DescribeInstanceTypes"
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:CreateTags"
       ],
       "Resource": "*"
     }
@@ -123,9 +112,10 @@ If you must use static credentials:
 
 ```bash
 # Create the secret with strict permissions
-kubectl create secret generic aws-creds -n kube-system \
+kubectl create secret generic cilium-aws -n kube-system \
   --from-literal=AWS_ACCESS_KEY_ID=AKIA... \
-  --from-literal=AWS_SECRET_ACCESS_KEY=...
+  --from-literal=AWS_SECRET_ACCESS_KEY=... \
+  --from-literal=AWS_DEFAULT_REGION=us-east-1
 
 # Restrict access with RBAC
 cat <<EOF | kubectl apply -f -
@@ -137,8 +127,22 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    resourceNames: ["aws-creds"]
+    resourceNames: ["cilium-aws"]
     verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cilium-secrets-reader
+  namespace: kube-system
+subjects:
+  - kind: ServiceAccount
+    name: cilium-operator
+    namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cilium-secrets-reader
 EOF
 ```
 
@@ -146,14 +150,19 @@ EOF
 
 ```bash
 # Verify IRSA is working
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws sts get-caller-identity
+kubectl describe serviceaccount cilium-operator -n kube-system | \
+  grep eks.amazonaws.com/role-arn
+
+kubectl run aws-irsa-check -n kube-system --rm -it \
+  --restart=Never \
+  --serviceaccount=cilium-operator \
+  --image=amazon/aws-cli:2 -- sts get-caller-identity
 
 # Verify Cilium can manage ENIs
 cilium status | grep IPAM
 
 # Check for credential errors
-kubectl logs -n kube-system -l k8s-app=cilium | \
+kubectl logs -n kube-system deployment/cilium-operator | \
   grep -iE "auth|credential|forbidden" | tail -10
 ```
 
