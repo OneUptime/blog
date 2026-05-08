@@ -28,8 +28,8 @@ metadata:
     action: block
 spec:
   nets:
-    - 185.220.100.0/22  # Known Tor exit nodes
-    - 198.199.0.0/16    # Known scanner ranges
+    - 192.0.2.55/32     # Example feed entry
+    - 203.0.113.0/24    # Example feed entry
     # Updated daily by automation pipeline
 ```
 
@@ -46,11 +46,11 @@ spec:
   ingress:
     - action: Deny
       source:
-        selector: "type == 'threat-intel' && action == 'block'"
+        selector: "type == 'threat-intel' && action == 'block' && !has(projectcalico.org/namespace)"
   egress:
     - action: Deny
       destination:
-        selector: "type == 'threat-intel' && action == 'block'"
+        selector: "type == 'threat-intel' && action == 'block' && !has(projectcalico.org/namespace)"
 ```
 
 Update automation:
@@ -62,11 +62,26 @@ Update automation:
 FEED_URL="https://threat-intel.example.com/iplist.txt"
 
 # Download current threat feed
-NEW_IPS=$(curl -sf "$FEED_URL" | grep -E "^[0-9]" | sed 's/$/\/32/' | head -500)
+NEW_IPS=$(curl -sf "$FEED_URL" | python3 -c 'import ipaddress, sys
+nets = []
+for line in sys.stdin:
+    value = line.strip().split("#", 1)[0].strip()
+    if not value:
+        continue
+    try:
+        network = ipaddress.ip_network(value if "/" in value else f"{value}/32", strict=False)
+    except ValueError:
+        continue
+    nets.append(str(network))
+    if len(nets) >= 500:
+        break
+print("\n".join(nets))')
+
+PATCH=$(echo "$NEW_IPS" | python3 -c 'import json, sys; print(json.dumps({"spec": {"nets": sys.stdin.read().split()}}))')
 
 # Update NetworkSet
 calicoctl patch globalnetworkset threat-intel-blocklist \
-  --patch="{\"spec\":{\"nets\":[$(echo "$NEW_IPS" | python3 -c 'import sys; ips=sys.stdin.read().split(); print(",".join(f"\"{ip}\"" for ip in ips))' )]}}"
+  --patch="$PATCH"
 ```
 
 ## Usage Pattern 2: Cloud Provider IP Ranges
@@ -77,11 +92,11 @@ Allow access to specific cloud services only:
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkSet
 metadata:
-  name: aws-s3-us-east
+  name: aws-s3-us-east-1
   labels:
     service: s3
     cloud: aws
-    region: us-east
+    region: us-east-1
 spec:
   nets:
     - 52.216.0.0/15
@@ -108,12 +123,9 @@ metadata:
     geo: allowed
 spec:
   nets:
-    # United States major blocks (simplified)
-    - 3.0.0.0/8
-    - 4.0.0.0/8
-    # UK
-    - 51.0.0.0/8
-    - 81.128.0.0/11
+    # Example CIDRs from your GeoIP data source
+    - 192.0.2.0/25
+    - 198.51.100.0/25
 ```
 
 ## Usage Pattern 4: Partner API Allowlist
