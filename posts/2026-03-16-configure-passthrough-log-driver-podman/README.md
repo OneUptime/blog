@@ -10,7 +10,7 @@ Description: Learn how to use Podman's passthrough log driver to bypass log stor
 
 > The passthrough log driver tells Podman to skip log capture entirely, letting output flow directly to the parent process with zero storage overhead.
 
-The passthrough log driver in Podman is a specialized option that does not store logs at all. Instead, container stdout and stderr pass directly through to the terminal or parent process. This is useful for interactive containers, CI/CD pipelines, or situations where an external system handles logging.
+The passthrough log driver in Podman is a specialized option that does not store logs at all. Instead, container stdout and stderr pass directly through to the terminal or parent process. This is useful for foreground containers, CI/CD pipelines, or situations where an external system handles logging. For TTY-based interactive containers, use `passthrough-tty`.
 
 ---
 
@@ -37,8 +37,8 @@ podman logs my-app
 The passthrough driver is appropriate in specific scenarios.
 
 ```bash
-# Scenario 1: Interactive containers where you see output directly
-podman run -it --log-driver passthrough alpine sh
+# Scenario 1: Interactive TTY containers where you see output directly
+podman run -it --log-driver passthrough-tty alpine sh
 
 # Scenario 2: CI/CD pipelines where output goes to the build log
 podman run --log-driver passthrough my-test-image:latest npm test
@@ -72,10 +72,10 @@ podman run --log-driver none alpine echo "You see this but it is not stored"
 # Output: You see this but it is not stored
 
 # Verify the difference:
-# passthrough - output reaches the terminal
+# passthrough - stdio is passed directly to the container
 podman run --rm --log-driver passthrough alpine echo "passthrough test"
 
-# none - output is visible but not stored for later retrieval
+# none - output is visible in foreground mode but not stored for later retrieval
 podman run --rm --log-driver none alpine echo "none test"
 
 # Both fail with podman logs:
@@ -112,6 +112,8 @@ When running Podman containers as systemd services, passthrough output goes to j
 
 ```bash
 # Create a systemd service file
+mkdir -p ~/.config/systemd/user
+
 cat > ~/.config/systemd/user/my-container.service << 'EOF'
 [Unit]
 Description=My Container
@@ -144,7 +146,7 @@ journalctl --user -u my-container -f
 ```yaml
 # podman-compose.yml
 services:
-  # Interactive or self-logging service
+  # Foreground or self-logging service
   data-processor:
     image: my-processor:latest
     logging:
@@ -155,7 +157,7 @@ services:
   # Service that needs logs (uses default driver)
   web:
     image: nginx:latest
-    # Uses default log driver (k8s-file)
+    # Uses the configured default log driver
 ```
 
 ## Performance Considerations
@@ -164,7 +166,7 @@ services:
 # Measure the difference between log drivers
 # Test with a high-output container
 
-# With default log driver (k8s-file)
+# With the k8s-file log driver
 time podman run --rm --log-driver k8s-file \
   alpine sh -c 'for i in $(seq 1 10000); do echo "line $i"; done' > /dev/null 2>&1
 
@@ -172,7 +174,7 @@ time podman run --rm --log-driver k8s-file \
 time podman run --rm --log-driver passthrough \
   alpine sh -c 'for i in $(seq 1 10000); do echo "line $i"; done' > /dev/null 2>&1
 
-# With none (output discarded)
+# With none (no log storage)
 time podman run --rm --log-driver none \
   alpine sh -c 'for i in $(seq 1 10000); do echo "line $i"; done' > /dev/null 2>&1
 
@@ -196,4 +198,4 @@ podman run -d --log-driver k8s-file --name needs-logs my-image:latest
 
 ## Summary
 
-The passthrough log driver bypasses Podman's log storage, sending output directly to the parent process. Use it for interactive containers, CI/CD pipelines, applications that manage their own logging, or high-throughput scenarios where log processing overhead matters. Remember that `podman logs` will not work with passthrough, so ensure you have an alternative log capture mechanism in place. When running as systemd services, passthrough output flows naturally through systemd to journald.
+The passthrough log driver bypasses Podman's log storage, sending output directly to the parent process. Use it for foreground containers, CI/CD pipelines, applications that manage their own logging, or high-throughput scenarios where log processing overhead matters. Use `passthrough-tty` when you need the same behavior with a TTY. Remember that `podman logs` will not work with passthrough, so ensure you have an alternative log capture mechanism in place. When running as systemd services, passthrough output flows naturally through systemd to journald.
