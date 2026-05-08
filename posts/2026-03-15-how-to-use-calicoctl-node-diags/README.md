@@ -10,7 +10,7 @@ Description: Learn how to use calicoctl node diags to collect diagnostic data fr
 
 ## Introduction
 
-The `calicoctl node diags` command collects a comprehensive set of diagnostic information from a Calico node. This includes logs, configuration files, routing tables, iptables rules, BIRD status, and system information. The output is packaged into a tarball that can be shared with support teams or used for offline analysis.
+The `calicoctl node diags` command collects a comprehensive set of diagnostic information from a Calico node. This includes logs, routing tables, interface addresses, nftables and iptables rules, ipsets, socket information, and basic host information. The output is packaged into a tarball that can be shared with support teams or used for offline analysis.
 
 When you encounter a networking issue that cannot be resolved with basic inspection commands, `calicoctl node diags` gathers everything needed for a thorough investigation in one step. This is much faster than manually collecting individual pieces of diagnostic data.
 
@@ -21,7 +21,7 @@ This guide covers how to use `calicoctl node diags` effectively, what data it co
 - Kubernetes cluster with Calico installed
 - `calicoctl` CLI installed
 - Root or sudo access on the node (for direct execution)
-- `kubectl` access for pod-based execution
+- `kubectl` access for identifying the target node
 
 ## Running calicoctl node diags
 
@@ -31,21 +31,22 @@ This guide covers how to use `calicoctl node diags` effectively, what data it co
 sudo calicoctl node diags
 ```
 
-This creates a diagnostics tarball in the current directory:
+This creates a diagnostics tarball under a temporary directory in `/tmp`:
 
 ```text
 Collecting diagnostics
-Using log dir: /var/log/calico
+Using temp dir: /tmp/calico676127473
 Dumping netstat
 Dumping routes (IPv4)
 Dumping routes (IPv6)
+Dumping interface info (IPv4)
+Dumping interface info (IPv6)
+Dumping nftables
 Dumping iptables (IPv4)
 Dumping iptables (IPv6)
 Dumping ipsets
-Dumping BIRD protocols
-Dumping BIRD routes
 ...
-Diags saved to /tmp/calico-diags-20260315_143022.tar.gz
+Diags saved to /tmp/calico676127473/diags-20260315_143022.tar.gz
 ```
 
 ### Specifying a Custom Log Directory
@@ -54,39 +55,37 @@ Diags saved to /tmp/calico-diags-20260315_143022.tar.gz
 sudo calicoctl node diags --log-dir=/var/log/calico
 ```
 
-### From a Calico Pod in Kubernetes
+### Identifying the Node from Kubernetes
 
 ```bash
-# Find the calico-node pod on the problematic node
-
 NODE_NAME="worker-1"
-POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName="$NODE_NAME" \
-  -o jsonpath='{.items[0].metadata.name}')
+  -o wide
 
-# Run diags inside the pod
-kubectl exec -n calico-system "$POD" -- calico-node -diags
+# SSH to that node and run:
+sudo calicoctl node diags
 ```
 
 ### Copying the Diagnostics Tarball
 
 ```bash
-# Copy the diags file from the pod
-kubectl cp calico-system/"$POD":/tmp/calico-diags-*.tar.gz ./calico-diags-worker1.tar.gz
+# Copy the diags file from the node after the command prints its path
+ssh worker-1 'sudo cat /tmp/calico676127473/diags-20260315_143022.tar.gz' \
+  > ./calico-diags-worker1.tar.gz
 ```
 
 ## What Data is Collected
 
 The diagnostics tarball contains:
 
-- **System info**: hostname, OS version, kernel version, uptime
-- **Network config**: IP addresses, routing tables (IPv4 and IPv6), ARP cache
-- **iptables rules**: Full iptables and ip6tables dumps including all chains
+- **System info**: date and hostname
+- **Network config**: IP addresses and routing tables (IPv4 and IPv6)
+- **nftables and iptables rules**: nftables ruleset plus iptables and ip6tables dumps including counters
 - **ipsets**: All ipset lists used by Calico
-- **BIRD status**: BGP protocol status, route tables, BIRD configuration
-- **Calico logs**: Felix logs, BIRD logs, confd logs
+- **Calico logs**: Files from the configured Calico log directory, plus container logs when available
 - **Network interfaces**: Interface configuration and statistics
-- **Netstat output**: Active connections and listening ports
+- **Netstat or ss output**: Active connections and listening ports
 
 ## Extracting and Analyzing Diagnostics
 
@@ -94,38 +93,37 @@ The diagnostics tarball contains:
 
 ```bash
 mkdir calico-diags && cd calico-diags
-tar xzf ../calico-diags-20260315_143022.tar.gz
+tar xzf ../diags-20260315_143022.tar.gz
 ls -la
 ```
 
 ### Check Routing Tables
 
 ```bash
-cat route
-cat route6
+cat diagnostics/ipv4_route
+cat diagnostics/ipv6_route
 ```
 
 ### Review iptables Rules
 
 ```bash
 # Check filter table rules
-cat iptables
+cat diagnostics/ipv4_tables
 
 # Look for Calico-specific chains
-grep "cali-" iptables
+grep "cali-" diagnostics/ipv4_tables
 ```
 
-### Inspect BIRD Status
+### Inspect the Calico Node Journal
 
 ```bash
-cat bird_protocols
-cat bird_routes
+cat diagnostics/journalctl_calico_node
 ```
 
 ### Check Felix Logs for Errors
 
 ```bash
-grep -i error calico-felix.log | tail -20
+grep -Ri error diagnostics/logs | tail -20
 ```
 
 ## Collecting Diags from All Nodes
@@ -133,27 +131,22 @@ grep -i error calico-felix.log | tail -20
 ```bash
 #!/bin/bash
 # collect-all-diags.sh
-NAMESPACE="calico-system"
 OUTPUT_DIR="cluster-diags-$(date +%Y%m%d)"
 mkdir -p "$OUTPUT_DIR"
 
-PODS=$(kubectl get pods -n "$NAMESPACE" -l k8s-app=calico-node \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}')
+NODES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 
-while IFS=$'\t' read -r pod node; do
-  echo "Collecting diags from node: $node (pod: $pod)"
-  kubectl exec -n "$NAMESPACE" "$pod" -- calico-node -diags 2>/dev/null
+while read -r node; do
+  echo "Collecting diags from node: $node"
+  DIAGS_PATH=$(ssh "$node" 'sudo calicoctl node diags' | awk '/Diags saved to/ {print $4}')
 
-  # Find the generated diags file
-  DIAGS_FILE=$(kubectl exec -n "$NAMESPACE" "$pod" -- ls /tmp/ | grep calico-diags | tail -1)
-
-  if [ -n "$DIAGS_FILE" ]; then
-    kubectl cp "$NAMESPACE/$pod:/tmp/$DIAGS_FILE" "$OUTPUT_DIR/${node}-diags.tar.gz"
+  if [ -n "$DIAGS_PATH" ]; then
+    ssh "$node" "sudo cat '$DIAGS_PATH'" > "$OUTPUT_DIR/${node}-diags.tar.gz"
     echo "  Saved to $OUTPUT_DIR/${node}-diags.tar.gz"
   else
     echo "  WARNING: No diags file found for $node"
   fi
-done <<< "$PODS"
+done <<< "$NODES"
 
 echo "All diagnostics saved to $OUTPUT_DIR/"
 ```
@@ -164,12 +157,12 @@ When troubleshooting connectivity between two specific nodes, collect diags from
 
 ```bash
 # Compare routing tables
-diff <(tar xzf node1-diags.tar.gz -O route 2>/dev/null) \
-     <(tar xzf node2-diags.tar.gz -O route 2>/dev/null)
+diff <(tar xzf node1-diags.tar.gz -O diagnostics/ipv4_route 2>/dev/null) \
+     <(tar xzf node2-diags.tar.gz -O diagnostics/ipv4_route 2>/dev/null)
 
 # Compare iptables rules
-diff <(tar xzf node1-diags.tar.gz -O iptables 2>/dev/null) \
-     <(tar xzf node2-diags.tar.gz -O iptables 2>/dev/null)
+diff <(tar xzf node1-diags.tar.gz -O diagnostics/ipv4_tables 2>/dev/null) \
+     <(tar xzf node2-diags.tar.gz -O diagnostics/ipv4_tables 2>/dev/null)
 ```
 
 ## Verification
@@ -178,22 +171,22 @@ Verify the diagnostics collection was successful:
 
 ```bash
 # Check the tarball contents
-tar tzf calico-diags-*.tar.gz
+tar tzf diags-*.tar.gz
 
 # Verify key files are present
-tar tzf calico-diags-*.tar.gz | grep -E "route|iptables|bird"
+tar tzf diags-*.tar.gz | grep -E "ipv4_route|ipv4_tables|journalctl"
 
 # Check file sizes (empty files may indicate collection issues)
-tar tzvf calico-diags-*.tar.gz
+tar tzvf diags-*.tar.gz
 ```
 
 ## Troubleshooting
 
-- **Empty diagnostics files**: The calico-node process may not have access to the host network namespace. Ensure the pod has the correct security context and host networking enabled.
-- **Permission denied**: Run with `sudo` or ensure the pod has the necessary capabilities.
+- **Empty diagnostics files**: Ensure `calicoctl node diags` is running on the specific node you are diagnosing and has access to host networking commands.
+- **Permission denied**: Run with `sudo` or ensure your SSH user can run the required commands with elevated privileges.
 - **Tarball not created**: Check available disk space in `/tmp`. The diagnostics can be several megabytes depending on log volume.
-- **Cannot copy from pod**: Ensure the pod name is correct and the file path matches. Use `kubectl exec` to list files in `/tmp` first.
-- **Missing BIRD data**: If Calico is running in VXLAN-only mode, BIRD may not be running and those sections will be empty.
+- **Cannot copy from node**: Ensure the node name is resolvable over SSH and the file path matches the path printed by `calicoctl`.
+- **Missing BIRD data**: `calicoctl node diags` does not dump BIRD protocol tables directly in current Calico releases. Use `calicoctl node status` on the node if you need BGP peer status.
 
 ## Conclusion
 
