@@ -28,12 +28,13 @@ Datastore migration affects the entire Calico deployment and should follow stric
 - [ ] Verify backup procedures
 - [ ] Test migration in staging environment
 - [ ] Prepare rollback plan
+- [ ] Prepare the exported migration file, for example `etcd-data`
 - [ ] Confirm team availability during migration
 
 ### Migration Day
 - [ ] Take final backup of all Calico resources
 - [ ] Verify source datastore health
-- [ ] Execute: calicoctl datastore migrate import
+- [ ] Execute: calicoctl datastore migrate import -f etcd-data
 - [ ] Validate resource counts match pre-migration state
 - [ ] Test pod connectivity
 - [ ] Monitor for 30 minutes
@@ -60,7 +61,7 @@ Datastore migration affects the entire Calico deployment and should follow stric
 - [ ] All clear - [Status]
 
 ### Impact
-- Expected: Brief networking disruption during migration
+- Expected: New Calico resource changes and new pod starts may be delayed during migration
 - Actual: [To be filled during migration]
 ```
 
@@ -74,6 +75,8 @@ echo "=== Team Migration: datastore migrate import ==="
 echo "Operator: $USER"
 echo "Date: $(date)"
 
+MIGRATION_FILE="${1:-etcd-data}"
+
 # Confirm readiness
 
 read -p "Have you completed the pre-migration checklist? (yes/no): " READY
@@ -84,7 +87,7 @@ fi
 
 # Execute
 echo "Executing migration step..."
-calicoctl datastore migrate import
+calicoctl datastore migrate import -f "$MIGRATION_FILE"
 
 # Validate
 echo "Running validation..."
@@ -100,6 +103,8 @@ echo "Step complete. Update the team communication channel."
 ```bash
 # Run the team migration script
 ./team-migration-datastore-migrate-import.sh
+# Or specify a different exported migration file
+./team-migration-datastore-migrate-import.sh etcd-data
 ```
 
 ## Troubleshooting
