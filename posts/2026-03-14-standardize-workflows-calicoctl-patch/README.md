@@ -22,13 +22,14 @@ This guide covers the practical steps to build standardized team workflows aroun
 - calicoctl v3.27 or later
 - A Git repository for storing patch definitions
 - CI/CD platform for automated patch application
+- Python 3 with PyYAML installed for the wrapper and validation scripts
 - Basic understanding of GitOps principles
 
 ## Establishing a Patch Request Process
 
 Create a structured patch request workflow using Git:
 
-```bash
+```text
 # Recommended repository structure for patch requests
 
 calico-patches/
@@ -57,7 +58,7 @@ resourceName: ""          # Name of the resource to patch
 reason: ""                # Why this patch is needed
 rollbackPlan: ""          # How to rollback if something goes wrong
 
-# The patch to apply (JSON merge patch format)
+# The patch to apply (JSON-formatted strategic merge patch)
 patch: {}
 
 # Expected result after patching
@@ -119,6 +120,7 @@ shift || true
 BACKUP_DIR="/var/backups/calico-patches"
 LOG_FILE="/var/log/calico-patches.log"
 mkdir -p "$BACKUP_DIR"
+touch "$LOG_FILE"
 
 log() {
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [$(whoami)] $*" >> "$LOG_FILE"
@@ -151,7 +153,7 @@ case "$COMMAND" in
     RESOURCE_NAME="${2:?}"
 
     # Find the latest backup
-    BACKUP_FILE=$(ls -t "${BACKUP_DIR}/${RESOURCE_KIND}-${RESOURCE_NAME}-"*.yaml 2>/dev/null | head -1)
+    BACKUP_FILE=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "${RESOURCE_KIND}-${RESOURCE_NAME}-*.yaml" -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2- || true)
     if [ -z "$BACKUP_FILE" ]; then
       echo "No backup found for ${RESOURCE_KIND}/${RESOURCE_NAME}"
       exit 1
@@ -193,6 +195,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        run: python3 -m pip install pyyaml
 
       - name: Validate patch request format
         run: |
