@@ -10,7 +10,7 @@ Description: Validate that calico-node has recovered after eviction with pod hea
 
 ## Introduction
 
-Validating calico-node eviction recovery requires confirming the pod is running, the node pressure has cleared, the system-node-critical priority class is applied, and networking is functioning correctly. The priority class verification is the most critical post-incident validation - without it, the pod will be evicted again on the next pressure event.
+Validating calico-node eviction recovery requires confirming the pod is running, the node pressure has cleared, the system-node-critical priority class is applied, and networking is functioning correctly. The priority class verification is a critical post-incident validation because Kubernetes uses pod priority when deciding node-pressure eviction order.
 
 ## Symptoms
 
@@ -65,7 +65,7 @@ ssh <node> "df -h / | tail -1"
 **Validation Step 5: BGP routes restored**
 
 ```bash
-calicoctl node status
+ssh <node> "sudo calicoctl node status"
 # Expected: all BGP peers Established
 ```
 
@@ -100,4 +100,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating calico-node eviction recovery requires confirming the pod is running, node pressure has cleared, disk usage is safe, the system-node-critical priority class is applied, and BGP routes are restored. The priority class check is the most critical validation step for preventing recurrence.
+Validating calico-node eviction recovery requires confirming the pod is running, node pressure has cleared, disk usage is safe, the system-node-critical priority class is applied, and BGP routes are restored. The priority class check is an important validation step for reducing recurrence risk.
