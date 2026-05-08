@@ -65,8 +65,13 @@ fi
 **Validation Step 3: No Calico RBAC**
 
 ```bash
-kubectl get clusterrole | grep calico | wc -l | \
-  xargs -I{} sh -c '[ {} -eq 0 ] && echo "PASS: No Calico ClusterRoles" || echo "FAIL: Calico ClusterRoles remain"'
+CALICO_RBAC=$(kubectl get clusterrole,clusterrolebinding | grep -c calico || true)
+if [ "$CALICO_RBAC" -eq 0 ]; then
+  echo "PASS: No Calico ClusterRoles or ClusterRoleBindings"
+else
+  echo "FAIL: $CALICO_RBAC Calico RBAC resources remain"
+  kubectl get clusterrole,clusterrolebinding | grep calico
+fi
 ```
 
 **Validation Step 4: Node-level CNI config absent**
@@ -74,7 +79,7 @@ kubectl get clusterrole | grep calico | wc -l | \
 ```bash
 NODES_WITH_CALICO_CNI=0
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  HAS_CALICO=$(ssh $NODE "ls /etc/cni/net.d/ | grep calico | wc -l" 2>/dev/null)
+  HAS_CALICO=$(ssh "$NODE" "find /etc/cni/net.d -maxdepth 1 -iname '*calico*' | wc -l" 2>/dev/null || echo "0")
   if [ "${HAS_CALICO:-0}" -gt 0 ]; then
     echo "FAIL: $NODE still has Calico CNI config"
     NODES_WITH_CALICO_CNI=$((NODES_WITH_CALICO_CNI+1))
@@ -88,7 +93,7 @@ done
 ```bash
 NODES_WITH_CALI_CHAINS=0
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  CHAINS=$(ssh $NODE "sudo iptables -L | grep -c cali-" 2>/dev/null || echo "0")
+  CHAINS=$(ssh "$NODE" "sudo iptables-save 2>/dev/null | grep -cE '(^:cali-|^-A cali-)'; true" 2>/dev/null)
   if [ "${CHAINS:-0}" -gt 0 ]; then
     echo "FAIL: $NODE still has $CHAINS cali-* iptables chains"
     NODES_WITH_CALI_CHAINS=$((NODES_WITH_CALI_CHAINS+1))
@@ -101,7 +106,7 @@ done
 
 ```bash
 # If installing a new CNI, verify it is working
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed | head -10
+kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.phase!=Succeeded
 ```
 
 ```mermaid
