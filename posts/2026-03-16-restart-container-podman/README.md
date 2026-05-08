@@ -66,7 +66,7 @@ podman ps --format "{{.Names}}\t{{.Status}}"
 
 ```bash
 # Restart every running container
-podman restart --all
+podman restart --running
 
 # Alternative: restart only specific containers
 podman ps -q | xargs -r podman restart
@@ -74,7 +74,7 @@ podman ps -q | xargs -r podman restart
 
 ## Restart vs Stop + Start
 
-The `podman restart` command is equivalent to running `podman stop` followed by `podman start`, but in a single operation.
+For a running container, the `podman restart` command is equivalent to running `podman stop` followed by `podman start`, but in a single operation.
 
 ```bash
 # These two approaches are equivalent:
@@ -86,14 +86,14 @@ podman restart my-nginx
 podman stop my-nginx && podman start my-nginx
 ```
 
-The key difference is that `restart` is atomic and slightly faster since it is a single command.
+The key difference is that `restart` is shorter to run and also starts stopped containers, while `podman stop my-nginx && podman start my-nginx` only reaches `start` if the stop command succeeds.
 
 ## Automatic Restart Policies
 
 Configure containers to restart automatically when they exit or when the system reboots.
 
 ```bash
-# Always restart unless explicitly stopped
+# Always restart when the container exits
 podman run -d \
   --name always-up \
   --restart always \
@@ -153,6 +153,9 @@ EOF
 
 # Reload systemd to pick up the new unit
 systemctl --user daemon-reload
+
+# Allow the user service manager to start at boot without an active login session
+loginctl enable-linger "$USER"
 
 # Enable and start the service
 systemctl --user enable --now my-nginx.service
