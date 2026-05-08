@@ -30,10 +30,10 @@ Rootless Podman relies on Linux user namespaces to remap UIDs and GIDs inside co
 
 ```bash
 # View your current subuid allocation
-grep "$USER" /etc/subuid
+grep "^$(id -un):" /etc/subuid
 
 # View your current subgid allocation
-grep "$USER" /etc/subgid
+grep "^$(id -un):" /etc/subgid
 
 # If no output, your user has no allocations and needs configuration
 ```
@@ -123,15 +123,15 @@ podman run --rm alpine:latest ls -la /etc/passwd
 ```bash
 # Error: cannot set up uid map
 # This usually means subuid is not configured
-grep "$USER" /etc/subuid
+grep "^$(id -un):" /etc/subuid
 
 # Error: range overlaps with existing allocation
 # Check for duplicate entries
 cat /etc/subuid | sort
 
 # Error: insufficient range
-# Increase the subuid/subgid range
-sudo usermod --add-subuids 100000-231535 --add-subgids 100000-231535 $USER
+# Add a non-overlapping extension to the existing subuid/subgid range
+sudo usermod --add-subuids 165536-231535 --add-subgids 165536-231535 $USER
 podman system migrate
 ```
 
