@@ -33,6 +33,7 @@ Deploy test VMs in each region for connectivity testing.
 # setup-multi-region-test.sh
 
 # Deploy test VMs in each region
+# Use credentials scoped to the multi-region-test project before running.
 
 REGIONS=("region-a" "region-b")
 
@@ -40,16 +41,16 @@ for region in "${REGIONS[@]}"; do
   echo "Setting up test VMs in ${region}..."
   export OS_REGION_NAME=${region}
 
-  # Create test VM
-  openstack server create --project multi-region-test \
-    --flavor m1.small --image ubuntu-22.04 \
-    --network test-network \
-    --security-group default \
-    ${region}-test-vm-1
+  # Create test VMs
+  for vm in 1 2; do
+    openstack server create --wait \
+      --flavor m1.small --image ubuntu-22.04 \
+      --network test-network \
+      --security-group default \
+      ${region}-test-vm-${vm}
 
-  # Wait for VM to be active
-  openstack server wait ${region}-test-vm-1
-  echo "${region}: $(openstack server show ${region}-test-vm-1 -f value -c addresses)"
+    echo "${region} VM ${vm}: $(openstack server show ${region}-test-vm-${vm} -f value -c addresses)"
+  done
 done
 ```
 
@@ -72,6 +73,11 @@ for region in "${REGIONS[@]}"; do
   echo "--- ${region} ---"
 
   VM1_IP=$(openstack server show ${region}-test-vm-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+  VM2_IP=$(openstack server show ${region}-test-vm-2 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+
+  # Test VM-to-VM connectivity within the region
+  echo -n "  VM-to-VM: "
+  ssh ubuntu@${VM1_IP} "ping -c 5 -W 10 ${VM2_IP}" > /dev/null 2>&1 && echo "PASS" || echo "FAIL"
 
   # Test DNS resolution
   echo -n "  DNS: "
@@ -118,7 +124,7 @@ ssh ubuntu@${REGION_B_IP} "ping -c 5 -W 10 ${REGION_A_IP}" > /dev/null 2>&1 && e
 
 # Test TCP connectivity cross-region
 echo -n "Region A -> Region B TCP: "
-ssh ubuntu@${REGION_B_IP} "nc -l -p 8080 &"
+ssh ubuntu@${REGION_B_IP} "nc -l 8080 > /tmp/calico-cross-region-nc.out &"
 sleep 2
 ssh ubuntu@${REGION_A_IP} "echo test | nc -w 5 ${REGION_B_IP} 8080" > /dev/null 2>&1 && echo "PASS" || echo "FAIL"
 ```
@@ -146,18 +152,24 @@ Verify that the same policies produce the same behavior in all regions.
 
 echo "=== Policy Consistency Tests ==="
 
-# Compare policy counts
-declare -A POLICY_COUNTS
+# OpenStack regions are represented as Calico namespaces in one datastore.
+# Compare region-scoped network policy definitions and report shared global policy state.
+CALICOCTL_CONFIG=/etc/calico/calicoctl.cfg
+
+GLOBAL_POLICY_HASH=$(calicoctl get globalnetworkpolicy \
+  --config="${CALICOCTL_CONFIG}" -o yaml 2>/dev/null | sha256sum)
+echo "Global policy hash: ${GLOBAL_POLICY_HASH}"
+
+declare -A POLICY_HASHES
 for region in region-a region-b; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
-  count=$(DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
-    calicoctl get globalnetworkpolicies -o name 2>/dev/null | sort | md5sum)
-  POLICY_COUNTS[${region}]=${count}
-  echo "${region} policy hash: ${count}"
+  hash=$(calicoctl get networkpolicy --namespace "${region}" \
+    --config="${CALICOCTL_CONFIG}" -o yaml 2>/dev/null | sha256sum)
+  POLICY_HASHES[${region}]=${hash}
+  echo "${region} network policy hash: ${hash}"
 done
 
 # Check if all regions have the same policies
-if [ "${POLICY_COUNTS[region-a]}" = "${POLICY_COUNTS[region-b]}" ]; then
+if [ "${POLICY_HASHES[region-a]}" = "${POLICY_HASHES[region-b]}" ]; then
   echo "Policy consistency: PASS"
 else
   echo "Policy consistency: FAIL (policies differ between regions)"
@@ -173,6 +185,13 @@ Simulate a region failure and verify traffic handles it correctly.
 # test-region-failover.sh
 echo "=== Region Failover Test ==="
 
+export OS_REGION_NAME=region-a
+REGION_A_IP=$(openstack server show region-a-test-vm-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+REGION_A_VM2_IP=$(openstack server show region-a-test-vm-2 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+
+export OS_REGION_NAME=region-b
+REGION_B_IP=$(openstack server show region-b-test-vm-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+
 # Record baseline cross-region connectivity
 echo "Baseline connectivity:"
 ssh ubuntu@${REGION_A_IP} "ping -c 3 ${REGION_B_IP}" 2>&1 | tail -1
@@ -180,7 +199,7 @@ ssh ubuntu@${REGION_A_IP} "ping -c 3 ${REGION_B_IP}" 2>&1 | tail -1
 # Simulate route reflector failure in Region A
 echo ""
 echo "Simulating RR failure in Region A..."
-ssh region-a-rr-01 "sudo systemctl stop calico-node" 2>/dev/null
+ssh region-a-rr-01 "sudo systemctl stop bird" 2>/dev/null
 
 # Wait for BGP reconvergence
 sleep 30
@@ -190,7 +209,7 @@ echo -n "Region A intra-region after RR failure: "
 ssh ubuntu@${REGION_A_IP} "ping -c 3 -W 10 ${REGION_A_VM2_IP}" > /dev/null 2>&1 && echo "PASS" || echo "FAIL"
 
 # Restore the route reflector
-ssh region-a-rr-01 "sudo systemctl start calico-node" 2>/dev/null
+ssh region-a-rr-01 "sudo systemctl start bird" 2>/dev/null
 sleep 15
 echo "Route reflector restored"
 ```
@@ -206,8 +225,8 @@ echo ""
 for region in region-a region-b; do
   export OS_REGION_NAME=${region}
   echo "${region}:"
-  echo "  VMs: $(openstack server list --project multi-region-test -f value | wc -l)"
-  echo "  Calico nodes: $(DATASTORE_TYPE=kubernetes KUBECONFIG=/etc/calico/regions/${region}/kubeconfig calicoctl get nodes -o name 2>/dev/null | wc -l)"
+  echo "  VMs: $(openstack server list -f value | wc -l)"
+  echo "  Calico nodes: $(calicoctl get node --config=/etc/calico/calicoctl.cfg 2>/dev/null | tail -n +2 | wc -l)"
 done
 ```
 
