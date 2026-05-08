@@ -55,13 +55,13 @@ done
 
 # Calculate mean, stddev, CV
 MEAN=$(echo "${RESULTS[@]}" | tr ' ' '\n' | awk '{s+=$1} END {printf "%.0f", s/NR}')
-STDDEV=$(echo "${RESULTS[@]}" | tr ' ' '\n' | awk -v m=$MEAN '{s+=($1-m)^2} END {printf "%.0f", sqrt(s/NR)}')
+STDDEV=$(echo "${RESULTS[@]}" | tr ' ' '\n' | awk -v m=$MEAN '{s+=($1-m)^2} END {printf "%.0f", sqrt(s/(NR-1))}')
 CV=$(echo "scale=2; $STDDEV * 100 / $MEAN" | bc)
 
 echo "Mean: $(echo "scale=2; $MEAN/1000000000" | bc) Gbps"
 echo "StdDev: $(echo "scale=2; $STDDEV/1000000000" | bc) Gbps"
 echo "CV: ${CV}%"
-echo "Minimum runs for <5% CV: at least 10"
+echo "Start with at least 10 runs; increase runs or test duration if CV remains >= 5%"
 ```
 
 ## Warm-Up and Cool-Down
@@ -132,7 +132,7 @@ echo "If CV > 5%, increase test duration or check for interference"
 - **High variance between runs**: Increase test duration, add warm-up period, check for background load.
 - **First run always different**: Add --omit flag to iperf3 or run a warm-up test before measuring.
 - **Results differ between testers**: Standardize the benchmark script and server configuration.
-- **iperf3 JSON parsing fails**: Check iperf3 version compatibility (3.9+ recommended).
+- **iperf3 JSON parsing fails**: Confirm the installed iperf3 supports `-J` and inspect the JSON schema for your version.
 
 ## Systematic Tuning Methodology
 
