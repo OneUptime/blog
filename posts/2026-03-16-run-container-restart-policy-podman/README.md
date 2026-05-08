@@ -12,20 +12,20 @@ Description: Learn how to configure restart policies for Podman containers so th
 
 In production, containers can stop for various reasons: application crashes, resource exhaustion, host reboots, or manual intervention. Restart policies tell Podman what to do when a container stops, letting you automate recovery without external supervision.
 
-This guide covers all available restart policies in Podman and how to use them effectively.
+This guide covers the commonly used restart policies in Podman and how to use them effectively.
 
 ---
 
 ## Available Restart Policies
 
-Podman supports four restart policies:
+Podman supports these restart policy values:
 
 | Policy | Behavior |
 |--------|----------|
-| `no` | Never restart (default) |
+| `no` / `never` | Never restart (`no` is the default; `never` is a synonym) |
 | `on-failure[:max]` | Restart only if the container exits with a non-zero code |
 | `always` | Always restart regardless of exit code |
-| `unless-stopped` | Like `always`, but not if the container was manually stopped |
+| `unless-stopped` | Restart when the container exits, but do not restart after a reboot if the container was explicitly stopped by the user |
 
 ## Using the "no" Policy (Default)
 
@@ -90,7 +90,7 @@ podman inspect forever --format 'RestartCount: {{.RestartCount}}'
 
 ## Using the "unless-stopped" Policy
 
-Like `always`, but respects manual stops:
+Like `always`, but it preserves explicit user stops across reboots when Podman's `podman-restart.service` handles boot-time restarts:
 
 ```bash
 # Start with unless-stopped policy
@@ -110,7 +110,7 @@ podman start my-service
 
 ## Restart Policies with systemd Integration
 
-For containers that should survive host reboots, use Quadlet unit files (the recommended approach since Podman 4.7; `podman generate systemd` is deprecated):
+For containers that should survive host reboots, use Quadlet unit files (the current recommended approach; `podman generate systemd` is deprecated):
 
 ```bash
 # Create a Quadlet container unit file
@@ -131,8 +131,8 @@ EOF
 # Reload systemd to pick up the new unit
 systemctl --user daemon-reload
 
-# Enable and start the service
-systemctl --user enable --now production-web.service
+# The [Install] section handles boot startup; start the service now
+systemctl --user start production-web.service
 
 # Enable user lingering so services run without login
 loginctl enable-linger $(whoami)
@@ -229,7 +229,7 @@ podman events --filter container=flaky-app --filter event=restart
 
 Restart policies keep your containers running without manual intervention:
 
-- `no`: Default, no automatic restarts
+- `no` / `never`: Default, no automatic restarts
 - `on-failure[:max]`: Restart only on errors, with optional retry limit
 - `always`: Always restart regardless of exit code
 - `unless-stopped`: Like `always` but respects manual stops
