@@ -109,7 +109,7 @@ helm upgrade cilium cilium/cilium -n kube-system \
   --values cilium-tls-values.yaml
 
 # Verify TLS is enabled
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -i tls
+kubectl get configmap -n kube-system cilium-config -o yaml | grep hubble-disable-tls
 ```
 
 If using cert-manager for TLS automation:
@@ -130,7 +130,7 @@ hubble:
 
 ```mermaid
 graph LR
-    A[Hubble CLI] -->|mTLS| B[Hubble Relay]
+    A[Hubble CLI] -->|TLS| B[Hubble Relay]
     B -->|mTLS| C[Cilium Agent 1]
     B -->|mTLS| D[Cilium Agent 2]
     B -->|mTLS| E[Cilium Agent N]
@@ -169,7 +169,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app.kubernetes.io/name: prometheus
-            io.kubernetes.pod.namespace: monitoring
+            k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - port: "9966"
@@ -199,7 +199,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app.kubernetes.io/name: ingress-nginx
-            io.kubernetes.pod.namespace: ingress-nginx
+            k8s:io.kubernetes.pod.namespace: ingress-nginx
       toPorts:
         - ports:
             - port: "8081"
@@ -229,18 +229,22 @@ hubble:
   enabled: true
   redact:
     enabled: true
-    httpURLQuery: true   # Redact URL query parameters
-    httpUserInfo: true   # Redact user info from URLs
-    kafkaApiKey: true    # Redact Kafka API keys
+    http:
+      urlQuery: true   # Redact URL query parameters
+      userInfo: true   # Redact user info from URLs
+      headers:
+        deny:
+          - Authorization
+          - Proxy-Authorization
 ```
 
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
   --set hubble.redact.enabled=true \
-  --set hubble.redact.httpURLQuery=true \
-  --set hubble.redact.httpUserInfo=true \
-  --set hubble.redact.kafkaApiKey=true
+  --set hubble.redact.http.urlQuery=true \
+  --set hubble.redact.http.userInfo=true \
+  --set hubble.redact.http.headers.deny='{Authorization,Proxy-Authorization}'
 ```
 
 ## Verification
@@ -249,15 +253,16 @@ Confirm security measures are effective:
 
 ```bash
 # 1. Verify TLS is active on Hubble relay
-kubectl -n kube-system exec deploy/hubble-relay -- \
-  ls /var/lib/hubble-relay/tls/
+kubectl get configmap -n kube-system cilium-config -o yaml | grep hubble-disable-tls
+kubectl -n kube-system get secret \
+  hubble-server-certs hubble-relay-client-certs hubble-relay-server-certs
 
 # 2. Verify network policies are applied
 kubectl get cnp -n kube-system | grep hubble
 
 # 3. Test that unauthorized access is blocked
 kubectl run test-unauthorized --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s --connect-timeout 5 http://hubble-relay.kube-system:4245 2>&1
+  curl -s --connect-timeout 5 http://hubble-relay.kube-system.svc.cluster.local:80 2>&1
 # Should fail/timeout
 
 # 4. Verify redaction is working
@@ -281,11 +286,11 @@ kubectl auth can-i create pods/portforward -n kube-system \
 
 ## Troubleshooting
 
-- **Hubble CLI fails after enabling TLS**: You need to pass TLS certificates to the Hubble CLI or use `--tls-allow-server-name` flag. With `cilium hubble port-forward`, TLS is handled automatically.
+- **Hubble CLI fails after enabling TLS**: You need to pass TLS certificates to the Hubble CLI and set the expected server name with `--tls-server-name`. If you are using the Hubble Relay API, follow the TLS access options documented for your Hubble CLI version.
 
 - **Network policy blocks legitimate Hubble traffic**: Check the label selectors carefully. Use `kubectl get pods -n kube-system --show-labels` to verify the actual labels on Hubble components.
 
-- **Redaction not working for HTTP flows**: Redaction requires Cilium 1.15+. Verify your version with `cilium version`. Also ensure L7 visibility is enabled for the relevant endpoints.
+- **Redaction not working for HTTP flows**: Verify that your Cilium version supports the redaction settings you configured. Also ensure L7 visibility is enabled for the relevant endpoints.
 
 - **cert-manager not issuing certificates**: Check the ClusterIssuer status with `kubectl get clusterissuer ca-issuer -o yaml` and cert-manager logs with `kubectl logs -n cert-manager deploy/cert-manager`.
 
