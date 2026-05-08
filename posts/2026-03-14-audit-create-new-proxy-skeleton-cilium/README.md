@@ -18,8 +18,8 @@ This guide provides a structured audit checklist and tooling for reviewing a new
 
 ## Prerequisites
 
-- Access to the Cilium source code with the new proxy skeleton
-- Go 1.21 or later with `golangci-lint` installed
+- Access to the `cilium/proxy` source code with the new proxy skeleton
+- The Go version required by the `cilium/proxy` `go.mod`, with `golangci-lint` installed if you use it
 - Familiarity with Cilium's proxylib Parser and ParserFactory interfaces
 - `staticcheck` and `go vet` tools available
 - Understanding of common Go security pitfalls
@@ -29,7 +29,7 @@ This guide provides a structured audit checklist and tooling for reviewing a new
 Start with automated analysis to catch low-hanging issues:
 
 ```bash
-cd cilium
+cd proxy
 
 # Run go vet on the new parser package
 
@@ -38,7 +38,7 @@ go vet ./proxylib/myprotocol/...
 # Run staticcheck for deeper analysis
 staticcheck ./proxylib/myprotocol/...
 
-# Run golangci-lint with Cilium's configuration
+# Run golangci-lint if it is part of your local review workflow
 golangci-lint run ./proxylib/myprotocol/...
 
 # Check for potential security issues with gosec
@@ -148,6 +148,8 @@ package myprotocol
 
 import (
     "testing"
+
+    "github.com/cilium/proxy/proxylib/proxylib"
 )
 
 func TestParserRejectsOversizedInput(t *testing.T) {
@@ -161,18 +163,25 @@ func TestParserRejectsOversizedInput(t *testing.T) {
 }
 
 func TestParserStateTransitions(t *testing.T) {
-    p := &Parser{state: stateInit}
-
-    // Error state should be terminal
-    p.state = stateError
-    if p.state != stateError {
-        t.Fatal("Error state must be terminal")
+    terminalStates := []struct {
+        name string
+        set  func(*Parser)
+    }{
+        {"error", func(p *Parser) { p.state = stateError }},
+        {"closed", func(p *Parser) { p.state = stateClosed }},
     }
 
-    // Closed state should be terminal
-    p.state = stateClosed
-    if p.state != stateClosed {
-        t.Fatal("Closed state must be terminal")
+    for _, terminalState := range terminalStates {
+        p := &Parser{state: stateInit}
+        terminalState.set(p)
+        before := p.state
+        op, _ := p.OnData(false, false, [][]byte{[]byte("PING\r\n")})
+        if op != proxylib.ERROR && op != proxylib.DROP && op != proxylib.NOP {
+            t.Fatalf("terminal state %s returned non-terminal operation %v", terminalState.name, op)
+        }
+        if p.state != before {
+            t.Fatalf("terminal state %s transitioned to %v", terminalState.name, p.state)
+        }
     }
 }
 
@@ -228,7 +237,7 @@ Some linters may not recognize proxylib's dynamic interface pattern. Add specifi
 If multiple goroutines access the parser state, you need synchronization. However, in Cilium's proxylib model, parsers are called sequentially per connection, so this typically indicates a test issue rather than a production bug.
 
 **Problem: Audit finds no maximum size constant**
-This is a critical finding. Every parser must define and enforce maximum message sizes to prevent memory exhaustion attacks. Add constants before proceeding with further development.
+This is a critical finding for any parser that buffers data, scans for delimiters, or trusts a protocol length field. Define and enforce bounds before proceeding with further development.
 
 **Problem: Factory registration conflicts with existing parser**
 Parser names must be globally unique. Check all `RegisterParserFactory` calls across the codebase and choose a name that does not conflict.
