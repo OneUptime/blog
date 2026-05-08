@@ -10,7 +10,7 @@ Description: Step-by-step diagnostic procedures for identifying the root cause o
 
 ## Introduction
 
-ClusterIP reachability issues occur when pods cannot reach Kubernetes services via their ClusterIP addresses. This typically happens due to kube-proxy misconfiguration, iptables/IPVS rule issues, or Calico interfering with service traffic.
+ClusterIP reachability issues occur when pods cannot reach Kubernetes services via their ClusterIP addresses. This typically happens due to kube-proxy misconfiguration, iptables/IPVS rule issues, Calico eBPF service handling issues, or network policy blocking traffic to the selected service backend pods.
 
 This guide provides a systematic approach to diagnosing ClusterIP Reachability errors. Rather than guessing at solutions, you will methodically narrow down the root cause using Calico and Kubernetes diagnostic commands.
 
@@ -70,7 +70,7 @@ kubectl get nodes -o wide
 # Test connectivity from a debug pod
 kubectl run debug-net --image=busybox --rm -it --restart=Never -- ping -c 3 <target-ip>
 
-# Check calico-node status per node
+# Run on the affected node to check calico-node BGP status
 calicoctl node status
 ```
 
@@ -79,8 +79,8 @@ calicoctl node status
 For complex issues, collect a full diagnostic bundle:
 
 ```bash
-# Collect Calico diagnostic information
-calicoctl node diag
+# Collect Calico diagnostic information on the affected node
+calicoctl node diags
 
 # Collect cluster-wide Calico state
 calicoctl get nodes -o yaml > calico-nodes.yaml
@@ -104,7 +104,7 @@ calicoctl node status
 ## Troubleshooting
 
 **Cannot access calico-node pods for diagnostics:**
-- Use `kubectl debug node/<name>` to get a shell on the node directly.
+- Use `kubectl debug node/<name> -it --image=busybox` to get a shell on the node directly.
 - Check if the calico-system namespace exists: `kubectl get ns calico-system`.
 
 **calicoctl commands failing:**
@@ -147,8 +147,9 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current credentials can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces
+kubectl auth can-i update globalnetworkpolicies.crd.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
