@@ -83,6 +83,8 @@ Combine rootfs with volume mounts for additional flexibility.
 
 ```bash
 # Run with a volume mount
+mkdir -p /tmp/shared-data
+
 podman run --rm \
   --rootfs /tmp/my-rootfs \
   -v /tmp/shared-data:/data:z \
