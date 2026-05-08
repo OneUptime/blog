@@ -16,30 +16,30 @@ Monitoring host network mode traffic gives visibility into traffic entering and 
 
 - Kubernetes cluster with Cilium and host firewall enabled
 - Prometheus and Grafana deployed
-- Hubble enabled
+- Hubble enabled with the Hubble CLI and Hubble metrics configured with `sourceContext=reserved-identity` and `destinationContext=reserved-identity`
 
 ## Monitoring Host Traffic with Hubble
 
 ```bash
 # Monitor host-originated traffic
 
-hubble observe --from-identity reserved:host --last 50
+hubble observe --from-label reserved:host --last 50
 
 # Monitor traffic to host
-hubble observe --to-identity reserved:host --last 50
+hubble observe --to-label reserved:host --last 50
 
 # Watch for drops on host traffic
-hubble observe --from-identity reserved:host --verdict DROPPED --last 20
+hubble observe --from-label reserved:host --verdict DROPPED --last 20
 ```
 
 ## Host Firewall Metrics
 
 ```promql
-# Host endpoint drops
-rate(cilium_drop_count_total{direction="INGRESS"}[5m])
+# Host-originated drops
+rate(hubble_drop_total{source="reserved:host"}[5m])
 
-# Host endpoint forward rate
-rate(cilium_forward_count_total[5m])
+# Host-originated forwarded flows
+rate(hubble_flows_processed_total{source="reserved:host",verdict="FORWARDED"}[5m])
 ```
 
 ```mermaid
@@ -64,7 +64,7 @@ spec:
     - name: host-network
       rules:
         - alert: HostNetworkHighDropRate
-          expr: rate(cilium_drop_count_total{direction="INGRESS"}[5m]) > 50
+          expr: rate(hubble_drop_total{source="reserved:host"}[5m]) > 50
           for: 5m
           labels:
             severity: warning
@@ -75,14 +75,14 @@ spec:
 ## Verification
 
 ```bash
-hubble observe --from-identity reserved:host --last 5
-cilium endpoint list | grep host
+hubble observe --from-label reserved:host --last 5
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep reserved:host
 ```
 
 ## Troubleshooting
 
 - **No host traffic in Hubble**: Ensure host firewall is enabled.
-- **Metrics not showing host traffic**: Check Cilium agent metrics are enabled.
+- **Metrics not showing host traffic**: Check Hubble metrics are enabled with reserved identity context labels.
 - **Too many drops**: Review host firewall policies for missing allow rules.
 
 ## Conclusion
