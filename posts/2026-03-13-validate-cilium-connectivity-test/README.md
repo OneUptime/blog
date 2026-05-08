@@ -28,7 +28,7 @@ This guide explains how to run the connectivity test suite, interpret results, d
 Execute the complete test suite against your cluster.
 
 ```bash
-# Run all connectivity tests (creates a 'cilium-test' namespace)
+# Run all connectivity tests (creates a test namespace such as 'cilium-test-1')
 
 # This takes 5-15 minutes depending on cluster size
 cilium connectivity test
@@ -52,10 +52,10 @@ cilium connectivity test --test '/pod-to-pod'
 cilium connectivity test --test '/pod-to-service'
 
 # Test DNS resolution
-cilium connectivity test --test '/dns-only'
+cilium connectivity test --test 'dns-only'
 
-# Test network policy enforcement
-cilium connectivity test --test '/network-policy'
+# Test network policy enforcement with representative policy tests
+cilium connectivity test --test 'allow-all-except-world'
 
 # Run multiple specific tests
 cilium connectivity test \
@@ -69,8 +69,8 @@ cilium connectivity test \
 Understand the output format and what failures indicate.
 
 ```bash
-# Successful output example shows all tests with [=] PASS markers
-# Failed tests show [!] FAIL with diagnostic information
+# Successful output shows each [=] Test entry completing without failed actions
+# Failed actions are reported with diagnostic information
 
 # If tests fail, collect detailed diagnostics
 cilium connectivity test --verbose 2>&1 | tee connectivity-test-results.txt
@@ -101,8 +101,10 @@ Generate machine-readable output for pipeline integration.
 # Export results in JUnit XML format for CI system consumption
 cilium connectivity test --junit-file connectivity-results.xml
 
-# Export to JSON for custom reporting
-cilium connectivity test --json-summary connectivity-results.json
+# Add metadata to the generated JUnit report
+cilium connectivity test \
+  --junit-file connectivity-results.xml \
+  --junit-property environment=staging
 
 # Example: fail the pipeline if tests fail (non-zero exit code)
 cilium connectivity test || { echo "Connectivity tests FAILED"; exit 1; }
@@ -112,10 +114,10 @@ cilium connectivity test || { echo "Connectivity tests FAILED"; exit 1; }
 
 ```bash
 # Clean up test resources after validation
-kubectl delete namespace cilium-test
+kubectl delete namespace cilium-test-1
 
-# Or use the built-in cleanup flag
-cilium connectivity test --cleanup-on-success
+# Or use the built-in cleanup command to remove connectivity test artifacts
+cilium connectivity test --cleanup
 ```
 
 ## Best Practices
