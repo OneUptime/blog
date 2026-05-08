@@ -25,10 +25,10 @@ After modifying IPAM configuration with `calicoctl ipam configure`, you must ver
 ```bash
 # Check the current configuration
 
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # Expected output after enabling strict affinity:
-# StrictAffinity: true
+# | StrictAffinity     | true  |
 ```
 
 ### Step 2: Verify IP Allocation Still Works
@@ -39,7 +39,7 @@ NODES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{e
 IDX=0
 for NODE in $NODES; do
   IDX=$((IDX + 1))
-  kubectl run "ipam-test-$IDX" --image=busybox --restart=Never \
+  kubectl run "ipam-test-$IDX" --image=busybox --restart=Never --labels=app=ipam-test \
     --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" -- sleep 60
 done
 
@@ -47,13 +47,13 @@ done
 sleep 10
 
 # Check they got IPs
-kubectl get pods -l run -o wide
+kubectl get pods -l app=ipam-test -o wide
 
 # Verify IPs are from the correct pool
 calicoctl ipam show
 
 # Clean up
-kubectl delete pods -l run --grace-period=0
+kubectl delete pods -l app=ipam-test
 ```
 
 ### Step 3: Verify Block Affinity
@@ -62,23 +62,30 @@ kubectl delete pods -l run --grace-period=0
 # Check block assignments with strict affinity
 calicoctl ipam show --show-blocks
 
-# With strict affinity enabled, each block should be assigned to exactly one node
-# With strict affinity disabled, blocks may show borrowing from other nodes
+# Check for borrowed addresses
+calicoctl ipam show --show-borrowed
+
+# With strict affinity enabled, IP borrowing is not allowed
+# With strict affinity disabled, this may show borrowed addresses
 ```
 
 ### Step 4: Cross-Node Connectivity
 
 ```bash
 # Verify pods on different nodes can communicate
-kubectl run sender --image=busybox --restart=Never -- sleep 300
-kubectl run receiver --image=busybox --restart=Never -- sleep 300
+NODE_A=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+NODE_B=$(kubectl get nodes -o jsonpath='{.items[1].metadata.name}')
+kubectl run sender --image=busybox --restart=Never \
+  --overrides="{\"spec\":{\"nodeName\":\"$NODE_A\"}}" -- sleep 300
+kubectl run receiver --image=busybox --restart=Never \
+  --overrides="{\"spec\":{\"nodeName\":\"$NODE_B\"}}" -- sleep 300
 
 sleep 10
 
 RECEIVER_IP=$(kubectl get pod receiver -o jsonpath='{.status.podIP}')
 kubectl exec sender -- ping -c 3 "$RECEIVER_IP"
 
-kubectl delete pod sender receiver --grace-period=0
+kubectl delete pod sender receiver
 ```
 
 ## Comprehensive Validation Script
@@ -93,7 +100,7 @@ ERRORS=0
 echo "=== IPAM Configuration Validation ==="
 
 # Check configuration
-ACTUAL=$(calicoctl ipam configure show | grep StrictAffinity | awk '{print $2}')
+ACTUAL=$(calicoctl ipam show --show-configuration | awk -F'|' '/StrictAffinity/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3}')
 if [ "$ACTUAL" = "$EXPECTED_STRICT_AFFINITY" ]; then
   echo "PASS: StrictAffinity is $ACTUAL"
 else
@@ -111,7 +118,7 @@ else
   echo "FAIL: Pod did not receive an IP"
   ERRORS=$((ERRORS + 1))
 fi
-kubectl delete pod ipam-validate --grace-period=0 2>/dev/null
+kubectl delete pod ipam-validate 2>/dev/null
 
 echo ""
 echo "Validation complete. Errors: $ERRORS"
