@@ -10,9 +10,9 @@ Description: Apply production-grade Calico tuning on IBM Kubernetes Service for 
 
 ## Introduction
 
-IBM Kubernetes Service includes Calico as its full CNI and network policy solution, giving IKS administrators access to the full Calico tuning API. Unlike managed providers that use Calico in policy-only mode, IKS requires tuning across all Calico components - IPAM, BGP, Felix, and Typha - for production performance.
+IBM Kubernetes Service includes Calico as its CNI and network policy solution. Unlike self-managed Calico clusters, IKS manages the Calico plug-in and its default components for you, so production tuning should use IBM-supported settings such as MTU changes, CNI portmap configuration, monitoring, and Calico network policies.
 
-IKS clusters often run in IBM Cloud data centers with high-speed networking, making encapsulation mode selection important. IBM Cloud supports both IPIP and VXLAN encapsulation. For IKS clusters running on bare-metal workers, disabling encapsulation entirely can improve performance significantly.
+IKS clusters often run in IBM Cloud data centers with high-speed networking, making MTU validation important. IBM Cloud supports Calico MTU changes for Kubernetes 1.29 and later clusters. Avoid directly modifying Calico daemon sets, deployments, default IPPools, or Calico nodes unless IBM Support directs you to do so.
 
 ## Prerequisites
 
@@ -20,6 +20,7 @@ IKS clusters often run in IBM Cloud data centers with high-speed networking, mak
 - calicoctl configured for IKS
 - kubectl with cluster-admin access
 - IBM Cloud CLI
+- IBM Cloud Monitoring agent, if you want cluster metrics in IBM Cloud Monitoring
 
 ## Step 1: Check IKS Worker Node Network Configuration
 
@@ -28,96 +29,79 @@ ibmcloud ks worker ls --cluster my-iks-cluster
 kubectl get nodes -o wide
 ```
 
-Identify whether workers are on a shared or dedicated network. Bare-metal workers can use direct routing without encapsulation.
+Identify whether the cluster is classic or VPC, and note whether the workers use virtual server or bare-metal flavors. For MTU planning, also identify the private network interface names on the worker nodes.
 
-## Step 2: Optimize IP Pool for IKS
+## Step 2: Review Calico Configuration for IKS
 
-For IKS bare-metal workers (no cross-subnet routing needed):
-
-```bash
-calicoctl patch ippool default-ipv4-ippool \
-  -p '{"spec":{"ipipMode":"Never","vxlanMode":"Never","natOutgoing":true}}'
-```
-
-For IKS virtual server workers (cross-subnet routing):
+Configure `calicoctl` to use the Kubernetes datastore and review the current Calico objects:
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool \
-  -p '{"spec":{"ipipMode":"CrossSubnet","natOutgoing":true}}'
+ibmcloud ks cluster config --cluster my-iks-cluster
+export DATASTORE_TYPE=kubernetes
+calicoctl get nodes
+calicoctl get ippools -o yaml
 ```
 
-## Step 3: Configure Felix for Production
+Do not patch the default IPPool on IKS. IBM does not support modifying default Calico IPPool resources or other default Calico settings directly.
+
+## Step 3: Configure Supported MTU Tuning
+
+For Kubernetes 1.29 and later clusters, IBM supports changing Calico MTU through the Tigera operator Installation resource. Test the node MTU first from a worker node debug shell:
 
 ```bash
-calicoctl apply -f - <<EOF
-apiVersion: projectcalico.org/v3
-kind: FelixConfiguration
-metadata:
-  name: default
-spec:
-  logSeverityScreen: Warning
-  iptablesRefreshInterval: 90s
-  routeRefreshInterval: 90s
-  healthEnabled: true
-  prometheusMetricsEnabled: true
-  prometheusMetricsPort: 9091
-  reportingInterval: 30s
-  ipv6Support: false
-EOF
+kubectl debug --image=us.icr.io/armada-master/network-alpine -it node/<NODE_NAME> -- sh
+ping -c1 -Mdo -s 8972 <OTHER_NODE_PRIVATE_IP>
 ```
+
+If your worker nodes and network path support jumbo frames, update the host MTU first, then set the Calico MTU. For non-Satellite clusters, set Calico MTU 20 bytes lower than the node MTU:
+
+```bash
+kubectl patch installation.operator.tigera.io default \
+  --type='merge' \
+  -p '{"spec":{"calicoNetwork":{"mtu":8980}}}'
+```
+
+Apply the change during a maintenance window and roll workers one at a time, following the same drain and reboot process you use for production worker maintenance.
 
 ## Step 4: Configure Typha for Large IKS Clusters
 
-For clusters with 100+ worker nodes, enable Typha to reduce etcd/apiserver load:
+Typha reduces Kubernetes API server load for large Calico clusters. On IKS 1.29 and later, Calico runs in `calico-system`; on 1.28 and earlier, it runs in `kube-system`.
 
 ```bash
-kubectl get deployment calico-typha -n kube-system 2>/dev/null || \
-  echo "Typha not present - may need to apply via Operator"
+kubectl get pods -A | grep calico-typha
 ```
 
-Configure Typha replicas:
+In Kubernetes 1.29 and later clusters, the Calico operator determines the number of `calico-typha` pods based on the number of workers. Do not patch the `calico-typha` deployment directly. For high availability, make sure enough untainted workers exist so at least two Typha pods can run.
+
+## Step 5: Review Calico Resource Requests
 
 ```bash
-kubectl patch deployment calico-typha -n kube-system \
-  --type json -p='[{"op":"replace","path":"/spec/replicas","value":3}]'
+kubectl get daemonset calico-node -n calico-system -o yaml 2>/dev/null || \
+  kubectl get daemonset calico-node -n kube-system -o yaml
+kubectl top pods -A | grep calico
 ```
 
-## Step 5: Set Resource Limits
-
-```bash
-kubectl patch daemonset calico-node -n kube-system --type=json -p='[
-  {"op":"add","path":"/spec/template/spec/containers/0/resources","value":{
-    "requests":{"cpu":"150m","memory":"128Mi"},
-    "limits":{"cpu":"500m","memory":"512Mi"}
-  }}
-]'
-```
+Do not patch Calico component daemon sets or deployments on IKS. If Calico resource usage is consistently constrained, open an IBM Support case with the cluster ID, Calico pod metrics, node metrics, and workload impact.
 
 ## Step 6: Enable IBM Cloud Monitoring Integration
 
-Expose Felix metrics for IBM Cloud Monitoring:
+Use the IBM Cloud Monitoring agent to collect Kubernetes and host metrics. After you install the agent, verify that it is running:
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Service
-metadata:
-  name: felix-metrics
-  namespace: kube-system
-spec:
-  selector:
-    k8s-app: calico-node
-  ports:
-  - name: metrics
-    port: 9091
-    targetPort: 9091
-  type: ClusterIP
-EOF
+kubectl get pods -n ibm-observe
+```
+
+For Calico-specific troubleshooting, collect Calico pod status and logs from the namespace used by your cluster version:
+
+```bash
+kubectl get pods -A | grep calico
+kubectl logs -n calico-system <calico-node-pod> 2>/dev/null || \
+  kubectl logs -n kube-system <calico-node-pod>
 ```
 
 ## Step 7: Configure BGP for IKS Multi-Zone Deployments
 
-For multi-zone IKS clusters, ensure BGP is configured correctly:
+For multi-zone IKS clusters, review BGP configuration only when your cluster's Calico deployment uses BGP:
 
 ```bash
 calicoctl get bgpconfiguration default -o yaml
@@ -130,15 +114,17 @@ Verify that BGP sessions are established between all zones:
 calicoctl node status
 ```
 
+Do not create or patch BGP peers on IKS unless you have confirmed the design with IBM Support.
+
 ## Step 8: Verify Production Settings
 
 ```bash
-kubectl rollout restart daemonset calico-node -n kube-system
-kubectl rollout status daemonset calico-node -n kube-system
-calicoctl get felixconfiguration default -o yaml
+kubectl get pods -A | grep calico
+kubectl get installation.operator.tigera.io default -o yaml
 calicoctl get ippool -o yaml
+calicoctl get globalnetworkpolicy -o wide
 ```
 
 ## Conclusion
 
-You have applied production-grade Calico tuning on IKS, optimizing the IP pool encapsulation mode for your worker node type, tuning Felix for production scale, configuring Typha for large clusters, and enabling monitoring integration. IKS's full Calico integration gives you more tuning control than policy-only managed providers, enabling truly optimized networking for production IBM Cloud workloads.
+You have applied production-grade, IBM-supported Calico tuning on IKS: validating worker networking, reviewing Calico state, changing MTU through the supported operator path when needed, confirming operator-managed Typha health, and enabling monitoring integration. IKS's managed Calico integration gives you useful network policy and operational controls, but default Calico components and IPPools should remain managed by IBM.
