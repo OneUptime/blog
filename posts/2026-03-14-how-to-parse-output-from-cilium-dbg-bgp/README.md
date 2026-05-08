@@ -4,24 +4,23 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, BGP, Parsing, Scripting, Networking
 
-Description: Extract and analyze BGP state data from cilium-dbg bgp command output for monitoring dashboards and automated route validation.
+Description: Extract and analyze BGP peer state data from cilium-dbg bgp peers command output for monitoring dashboards and automated route validation.
 
 ---
 
 ## Introduction
 
-Cilium supports BGP for advertising pod and service CIDRs to external network infrastructure. The `cilium-dbg bgp` command provides visibility into overall BGP state on each Cilium node.
+Cilium supports BGP for advertising pod CIDRs and service VIPs to external network infrastructure. The `cilium-dbg bgp peers` command provides visibility into BGP peer state on each Cilium node.
 
 
 
-This guide covers parsing output from cilium-dbg bgp for structured data extraction and analysis.
+This guide covers parsing output from cilium-dbg bgp peers for structured data extraction and analysis.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig and CiliumBGPPeerConfig
 - `kubectl` access to cilium pods
-- `jq` for JSON processing
 - Python 3.x for structured parsing
 
 ## Capturing the Output
@@ -31,7 +30,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp > /tmp/bgp-output.txt 2>/dev/null
+  cilium-dbg bgp peers > /tmp/bgp-output.txt 2>/dev/null
 ```
 
 ## Shell-Based Parsing
@@ -59,33 +58,47 @@ awk 'NR>1 {print $1}' "$INPUT" | sort -u
 
 ```python
 #!/usr/bin/env python3
-"""Parse cilium-dbg bgp output into structured JSON."""
+"""Parse cilium-dbg bgp peers output into structured JSON."""
 
-import re
 import json
 import sys
 
 def parse_table(filepath):
     with open(filepath) as f:
-        lines = [l.strip() for l in f.readlines() if l.strip()]
+        lines = [l.rstrip('\n') for l in f.readlines() if l.strip()]
     
     if not lines:
         return {'error': 'empty output', 'entries': []}
     
-    # Parse header
-    header = lines[0].split()
-    header = [h.lower().replace(' ', '_') for h in header]
+    # Parse the fixed-width peer table headers used by Cilium.
+    possible_headers = [
+        'Node', 'VRouter', 'Local AS', 'Peer AS', 'Peer Address',
+        'Session State', 'Uptime', 'Family', 'Received', 'Advertised'
+    ]
+    header_line = lines[0]
+    columns = []
+    search_from = 0
+    for name in possible_headers:
+        pos = header_line.find(name, search_from)
+        if pos >= 0:
+            columns.append((name.lower().replace(' ', '_'), pos))
+            search_from = pos + len(name)
+    
+    if not columns:
+        return {'error': 'missing header', 'entries': []}
     
     entries = []
+    previous = {}
     for line in lines[1:]:
         if line.startswith('-'):
             continue
-        fields = line.split()
         entry = {}
-        for i, field in enumerate(fields):
-            key = header[i] if i < len(header) else f'field_{i}'
-            entry[key] = field
+        for i, (key, start) in enumerate(columns):
+            end = columns[i + 1][1] if i + 1 < len(columns) else None
+            value = line[start:end].strip()
+            entry[key] = value or previous.get(key, '')
         entries.append(entry)
+        previous = entry
     
     return {'total': len(entries), 'entries': entries}
 
@@ -106,7 +119,7 @@ CILIUM_POD=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 NODE=$(kubectl -n "$NAMESPACE" get pod "$CILIUM_POD" -o jsonpath='{.spec.nodeName}')
 
 COUNT=$(kubectl -n "$NAMESPACE" exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+  cilium-dbg bgp peers 2>/dev/null | tail -n +2 | grep -c . || echo 0)
 
 cat << METRICS
 # HELP cilium_bgp_total Total bgp entries
@@ -130,9 +143,9 @@ PODS=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   COUNT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+    cilium-dbg bgp peers 2>/dev/null | tail -n +2 | grep -c . || echo 0)
   [ "$FIRST" = true ] && FIRST=false || echo ","
-  echo "  {"node": \"$node\", "entries": $COUNT}"
+  echo "  {\"node\": \"$node\", \"entries\": $COUNT}"
 done <<< "$PODS"
 
 echo ']}'
@@ -146,7 +159,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 
 # Verify command works
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp 2>/dev/null && echo "Command succeeded"
+  cilium-dbg bgp peers 2>/dev/null && echo "Command succeeded"
 
 # Verify automation/parsing
 python3 parse_bgp.py /tmp/bgp-output.txt | head -10
@@ -154,11 +167,11 @@ python3 parse_bgp.py /tmp/bgp-output.txt | head -10
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
+- **"BGP is not enabled"**: Enable the BGP control plane with the Helm value `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP cluster configuration or peers may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs`.
 - **Command fails**: Check agent health with cilium-dbg status.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
 ## Conclusion
 
-Parsing `cilium-dbg bgp` extracts structured data from BGP state on Cilium nodes. This enables monitoring dashboards, compliance reporting, and automated validation.
+Parsing `cilium-dbg bgp peers` extracts structured data from BGP peer state on Cilium nodes. This enables monitoring dashboards, compliance reporting, and automated validation.
