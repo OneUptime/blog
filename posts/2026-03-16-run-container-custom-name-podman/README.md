@@ -8,7 +8,7 @@ Description: Learn how to assign custom names to Podman containers for easier ma
 
 ---
 
-> Custom container names replace random IDs with meaningful labels, making container management straightforward and predictable.
+> Custom container names replace random generated names with meaningful labels, making container management straightforward and predictable.
 
 By default, Podman assigns random names to containers. While functional, these names like `fervent_archimedes` or `laughing_galileo` are not helpful when managing multiple services. Custom names let you identify containers at a glance and reference them in scripts. This guide covers naming conventions and best practices.
 
