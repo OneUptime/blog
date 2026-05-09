@@ -27,11 +27,11 @@ This guide covers the most common selector troubleshooting scenarios, including 
 **Diagnosis:**
 
 ```bash
-# Check how many endpoints the selector matches
+# Check how many endpoints have the matching Kubernetes label
 
-calicoctl get hostendpoints --selector="node-role == 'worker'" -o wide
+kubectl get hostendpoints.crd.projectcalico.org -l node-role=worker -o wide
 
-# If no output, the selector matches nothing
+# If no output, a Calico selector such as node-role == 'worker' matches nothing
 ```
 
 **Common causes:**
@@ -58,8 +58,8 @@ calicoctl patch hostendpoint worker-1-eth0 \
 
 ```mermaid
 graph TD
-    A[Policy: node-role == 'worker'] -->|Expected| B[Worker Nodes Only]
-    A -->|Actual due to label typo| C[All Nodes]
+    A[Policy: has(node-role)] -->|Expected| B[Worker Nodes Only]
+    A -->|Actual due to overly broad labels| C[All Nodes]
     C --> D[Unintended control plane restriction]
 ```
 
@@ -70,7 +70,8 @@ graph TD
 calicoctl get hostendpoints -o yaml | python3 -c "
 import sys, yaml
 docs = list(yaml.safe_load_all(sys.stdin))
-for item in docs[0].get('items', []):
+items = docs[0].get('items', []) if isinstance(docs[0], dict) else docs[0]
+for item in items:
     print(item['metadata']['name'], item['metadata'].get('labels', {}))
 "
 ```
@@ -86,8 +87,8 @@ Check that labels are unique to the intended node group before applying policies
 **Common mistakes:**
 
 ```yaml
-# Wrong: using == with multiple values
-selector: "node-role == 'worker' or node-role == 'storage'"
+# Valid, but verbose: using multiple equality checks
+selector: "node-role == 'worker' || node-role == 'storage'"
 
 # Correct: use 'in' for multiple values
 selector: "node-role in {'worker', 'storage'}"
@@ -113,7 +114,7 @@ calicoctl get hostendpoint worker-1-auto -o yaml | grep -A10 labels
 
 **Resolution:**
 
-For Calico v3.23+, automatic host endpoints inherit node labels. For older versions, use a DaemonSet or operator to sync labels:
+In current Calico releases, automatic host endpoints inherit and periodically sync Kubernetes node labels. If you use manually created HostEndpoint resources, or if automatic host endpoint label sync is not available in your deployment, use a DaemonSet or operator to sync labels:
 
 ```bash
 # Manually sync labels
