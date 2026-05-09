@@ -10,13 +10,15 @@ Description: Diagnose and fix issues with Cilium Gateway API support including G
 
 ## Introduction
 
-Cilium's Gateway API support introduces several components that can fail independently: the GatewayClass controller in the operator, the Gateway's load balancer service, and the eBPF programs that route traffic to backends. Failures at any layer result in traffic not reaching your services.
+Cilium's Gateway API support introduces several components that can fail independently: the GatewayClass controller in the operator, the Gateway's load balancer service, and the Envoy configuration that routes traffic to backends. Failures at any layer result in traffic not reaching your services.
 
-Effective troubleshooting requires understanding the chain of events from Gateway creation to traffic routing. The Cilium operator reconciles Gateway objects and creates load balancer Services. The agent loads eBPF programs based on route configurations. Problems in either component produce distinct symptoms.
+Effective troubleshooting requires understanding the chain of events from Gateway creation to traffic routing. The Cilium operator reconciles Gateway objects and creates load balancer Services. The agent picks up Cilium Envoy Configuration resources and supplies configuration to the built-in Envoy or the Envoy DaemonSet. Problems in either component produce distinct symptoms.
 
 ## Prerequisites
 
 - Cilium with Gateway API enabled
+- Gateway API CRDs installed
+- Cilium configured with kube-proxy replacement and the L7 proxy enabled
 - `kubectl` and Cilium operator logs access
 
 ## Check GatewayClass Acceptance
@@ -49,7 +51,7 @@ Look for `Programmed: False` conditions. Common causes:
 ## Check Load Balancer Service
 
 ```bash
-kubectl get svc -n <namespace> -l cilium.io/gateway-name=<gateway-name>
+kubectl get svc -n <namespace> -l gateway.networking.k8s.io/gateway-name=<gateway-name>
 ```
 
 If the Service has no `EXTERNAL-IP`, check cloud provider events:
@@ -67,7 +69,7 @@ flowchart TD
     B -->|Yes| D[Operator creates LB Service]
     D --> E{IP assigned?}
     E -->|No| F[Check cloud LB / MetalLB]
-    E -->|Yes| G[eBPF programs loaded]
+    E -->|Yes| G[Envoy configuration applied]
     G --> H{HTTPRoute bound?}
     H -->|No| I[Check route parentRef and hostname]
     H -->|Yes| J[Traffic routing works]
@@ -80,7 +82,7 @@ kubectl get httproute <name> -n <namespace> \
   -o jsonpath='{.status.parents[0].conditions}'
 ```
 
-If `Accepted: False` with reason `NoMatchingParent`, the Gateway name or namespace in parentRef is wrong.
+If `Accepted: False` has a reason or message indicating the Gateway in `parentRefs` was not found, such as Cilium's `InvalidHTTPRoute` reason, the Gateway name or namespace in `parentRef` is wrong.
 
 ## Check Certificate for HTTPS Gateways
 
