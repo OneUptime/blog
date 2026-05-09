@@ -10,31 +10,34 @@ Description: Diagnose and resolve issues with Cilium GAMMA support including rou
 
 ## Introduction
 
-Cilium's GAMMA implementation extends Gateway API to mesh (east-west) traffic, but misconfiguration can result in routes that appear accepted but do not affect actual traffic. Understanding the failure modes specific to GAMMA helps resolve issues quickly.
+Cilium's GAMMA implementation extends Gateway API to mesh (east-west) traffic, but misconfiguration can result in routes that appear accepted but do not redirect traffic through the expected L7 route. Understanding the failure modes specific to GAMMA helps resolve issues quickly.
 
-Unlike ingress routes, GAMMA HTTPRoutes use a Service as the parentRef rather than a Gateway. This means route attachment and status conditions behave differently. A route may show `Accepted: True` while traffic bypasses the eBPF datapath entirely.
+Unlike ingress routes, GAMMA HTTPRoutes use a Service as the parentRef rather than a Gateway. This means route attachment and status conditions behave differently. In Cilium, producer HTTPRoutes must be in the same namespace as the Service they bind to. A route may show `Accepted: True` while traffic is not redirected through the expected Envoy L7 route.
 
 This guide covers diagnosing GAMMA route attachment problems, eBPF policy mismatches, and status condition interpretation.
 
 ## Prerequisites
 
-- Cilium with GAMMA and Gateway API enabled
-- Gateway API CRDs v1.1+ with experimental support installed
+- Cilium with Gateway API enabled
+- `kubeProxyReplacement=true` and `l7Proxy=true` in Cilium
+- Gateway API CRDs supported by your Cilium version installed
 - `kubectl`, `cilium`, and `hubble` CLIs
 
-## Check GAMMA Feature Flag
+## Check Gateway API Feature Flag
 
-Ensure GAMMA is enabled:
+Ensure Gateway API support is enabled:
 
 ```bash
-kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.enable-gateway-api-gamma}'
+kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.enable-gateway-api}'
 ```
 
 If empty or false, enable it:
 
 ```bash
 helm upgrade cilium cilium/cilium --reuse-values \
-  --set gatewayAPI.enableGamma=true
+  --namespace kube-system \
+  --set kubeProxyReplacement=true \
+  --set gatewayAPI.enabled=true
 ```
 
 ## Inspect HTTPRoute Status
@@ -71,7 +74,7 @@ flowchart TD
     B -->|Service not found| D[ResolvedRefs: False]
     C --> E{Route Match}
     E -->|Match| F[Redirect to Backend]
-    E -->|No Match| G[Default passthrough]
+    E -->|No Match| G[Request rejected]
     D --> H[Traffic bypasses route]
 ```
 
@@ -98,7 +101,7 @@ hubble observe --namespace <namespace> --follow \
   --from-service <source-service> --to-service <target-service>
 ```
 
-Look for `FORWARDED` or `DROPPED` verdicts. Dropped flows often indicate policy or route mismatch.
+Look for `FORWARDED` or `DROPPED` verdicts. Dropped flows often indicate policy or datapath issues; route mismatches usually appear as rejected HTTP responses or missing flows to the expected backend.
 
 ## Conclusion
 
