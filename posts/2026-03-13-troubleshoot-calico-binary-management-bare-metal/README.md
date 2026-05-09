@@ -52,7 +52,7 @@ ansible failing-nodes -i inventory.ini -m shell \
 
 Common errors:
 - `failed to read kubeconfig` - kubeconfig path in service unit is wrong
-- `failed to connect to datastore` - network connectivity to API server
+- `failed to connect to datastore` - network connectivity to the Kubernetes API server or etcd datastore
 - `address already in use` - port conflict with another process
 
 ## Step 4: Verify Templated Configuration
@@ -73,7 +73,7 @@ Verify that binaries were not corrupted during download.
 
 ```bash
 ansible all -i inventory.ini -m shell \
-  -a "file /usr/local/bin/calico-node && /usr/local/bin/calico-node --version 2>&1 || echo FAILED"
+  -a "file /usr/local/bin/calico-node && /usr/local/bin/calico-node -v 2>&1 || echo FAILED"
 ```
 
 ## Step 6: Re-apply Configuration on Failing Nodes
