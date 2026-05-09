@@ -16,12 +16,12 @@ Typha TLS failures are the most common cause of Felix-to-Typha connectivity issu
 
 ```plaintext
 Felix cannot connect to Typha
-  ├─ Is Typha pod running? → kubectl get pods -n calico-system -l k8s-app=calico-typha
-  ├─ Is the Typha service endpoint populated? → kubectl get endpoints calico-typha -n calico-system
+  ├─ Is Typha pod running? → kubectl get pods -n kube-system -l k8s-app=calico-typha
+  ├─ Is the Typha service endpoint populated? → kubectl get endpoints calico-typha -n kube-system
   └─ TLS investigation:
        ├─ Are certificates expired?
-       ├─ Do CA certs match on both sides?
-       ├─ Is the server CN/SAN valid for the service hostname?
+       ├─ Are both certificates signed by the CA in calico-typha-ca?
+       ├─ Does the server CN match FELIX_TYPHACN?
        └─ Is the client CN matching TYPHA_CLIENTCN?
 ```
 
@@ -32,11 +32,11 @@ Felix cannot connect to Typha
 ```bash
 # Check expiry
 
-for secret in calico-typha-tls calico-felix-typha-tls; do
-  echo "=== $secret ==="
-  kubectl get secret $secret -n calico-system \
-    -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -enddate -noout
-done
+kubectl get secret calico-typha-certs -n kube-system \
+  -o jsonpath='{.data.typha\.crt}' | base64 -d | openssl x509 -enddate -noout
+
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d | openssl x509 -enddate -noout
 ```
 
 **Resolution:**
@@ -49,13 +49,12 @@ openssl x509 -req -in /etc/calico/pki/typha-server-new.csr \
   -CA /etc/calico/pki/typha-ca.crt -CAkey /etc/calico/pki/typha-ca.key \
   -CAcreateserial -out /etc/calico/pki/typha-server-new.crt -days 365
 
-kubectl create secret generic calico-typha-tls \
-  --from-file=ca.crt=/etc/calico/pki/typha-ca.crt \
-  --from-file=tls.crt=/etc/calico/pki/typha-server-new.crt \
-  --from-file=tls.key=/etc/calico/pki/typha-server-new.key \
-  -n calico-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic calico-typha-certs -n kube-system \
+  --from-file=typha.crt=/etc/calico/pki/typha-server-new.crt \
+  --from-file=typha.key=/etc/calico/pki/typha-server-new.key \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl rollout restart deployment/calico-typha -n calico-system
+kubectl rollout restart deployment/calico-typha -n kube-system
 ```
 
 ## Issue 2: CA Certificate Mismatch
@@ -63,68 +62,82 @@ kubectl rollout restart deployment/calico-typha -n calico-system
 **Symptom:** `certificate signed by unknown authority` in Typha or Felix logs.
 
 ```bash
-TYPHA_CA=$(kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
-FELIX_CA=$(kubectl get secret calico-felix-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
-[ "$TYPHA_CA" = "$FELIX_CA" ] && echo "MATCH" || echo "MISMATCH - update Felix CA to match Typha CA"
+kubectl get configmap calico-typha-ca -n kube-system \
+  -o jsonpath='{.data.typhaca\.crt}' > /tmp/typhaca.crt
+
+kubectl get secret calico-typha-certs -n kube-system \
+  -o jsonpath='{.data.typha\.crt}' | base64 -d > /tmp/typha.crt
+
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d > /tmp/calico-node.crt
+
+openssl verify -CAfile /tmp/typhaca.crt /tmp/typha.crt /tmp/calico-node.crt
 ```
 
-**Resolution:** Copy the CA cert from the Typha Secret to the Felix Secret.
+**Resolution:** Update the shared CA ConfigMap and regenerate any Typha or `calico/node` certificate that was not signed by that CA.
 
 ```bash
-CA_DATA=$(kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
-kubectl patch secret calico-felix-typha-tls -n calico-system \
-  --patch "{\"data\":{\"ca.crt\":\"$CA_DATA\"}}"
-kubectl rollout restart daemonset/calico-node -n calico-system
+kubectl create configmap calico-typha-ca -n kube-system \
+  --from-file=typhaca.crt=/etc/calico/pki/typha-ca.crt \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl rollout restart deployment/calico-typha -n kube-system
+kubectl rollout restart daemonset/calico-node -n kube-system
 ```
 
-## Issue 3: Server Certificate CN/SAN Mismatch
+## Issue 3: Server Certificate CN Mismatch
 
-**Symptom:** Felix connects to Typha via the Service DNS name but the server certificate does not include that DNS name.
+**Symptom:** Felix connects to Typha but rejects the server certificate because its Common Name does not match `FELIX_TYPHACN`.
 
 ```bash
-# Check SANs in Typha server cert
-kubectl get secret calico-typha-tls -n calico-system \
-  -o jsonpath='{.data.tls\.crt}' | base64 -d | \
-  openssl x509 -noout -text | grep -A3 "Subject Alternative"
+# Check the CN in the Typha server cert
+kubectl get secret calico-typha-certs -n kube-system \
+  -o jsonpath='{.data.typha\.crt}' | base64 -d | openssl x509 -noout -subject
+
+# Check the CN Felix requires
+kubectl get daemonset calico-node -n kube-system -o yaml | grep FELIX_TYPHACN
 ```
 
-Expected SANs: `calico-typha.calico-system.svc`, `calico-typha.calico-system.svc.cluster.local`
+Expected CN in the hard way installation: `calico-typha`
 
-**Resolution:** Regenerate the server certificate with the correct SANs.
+**Resolution:** Regenerate the server certificate with the correct CN, or update `FELIX_TYPHACN` to match the current certificate CN.
 
 ## Issue 4: Client CN Not Matching TYPHA_CLIENTCN
 
-**Symptom:** Typha log shows `client CN 'X' does not match required CN 'calico-felix'`.
+**Symptom:** Typha log shows the client CN does not match the configured `TYPHA_CLIENTCN`.
 
 ```bash
-# Check what CN is in the Felix client certificate
-kubectl get secret calico-felix-typha-tls -n calico-system \
-  -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject
+# Check what CN is in the calico/node client certificate
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d | openssl x509 -noout -subject
 
 # Check what CN Typha requires
-kubectl get deployment calico-typha -n calico-system -o yaml | grep TYPHA_CLIENTCN
+kubectl get deployment calico-typha -n kube-system -o yaml | grep TYPHA_CLIENTCN
 ```
 
-**Resolution:** Either regenerate the Felix certificate with the matching CN, or update `TYPHA_CLIENTCN` to match the current certificate CN.
+Expected CN in the hard way installation: `calico-node`
+
+**Resolution:** Either regenerate the `calico/node` certificate with the matching CN, or update `TYPHA_CLIENTCN` to match the current certificate CN.
 
 ## Issue 5: Secret Not Mounted in Typha Pod
 
-**Symptom:** Typha starts but logs show it is using a self-generated certificate.
+**Symptom:** Typha cannot load the certificate or key configured by `TYPHA_SERVERCERTFILE` and `TYPHA_SERVERKEYFILE`.
 
 ```bash
-kubectl describe pod -n calico-system -l k8s-app=calico-typha | grep -A10 "Volumes:"
+kubectl describe pod -n kube-system -l k8s-app=calico-typha | grep -A10 "Volumes:"
 ```
 
-If `calico-typha-tls` is not listed in volumes, update the Deployment to mount the Secret.
+If `calico-typha-certs` is not listed in volumes, update the Deployment to mount the Secret.
 
 ## Issue 6: Felix Configuration Points to Wrong Typha Service
 
 ```bash
-calicoctl get felixconfiguration default -o yaml | grep -i typha
+calicoctl get felixconfig default -o yaml | grep -i typha
+kubectl get daemonset calico-node -n kube-system -o yaml | grep FELIX_TYPHAK8S
 ```
 
-Verify `typhak8sServiceName` and `typhak8sNamespace` match the actual Service name and namespace.
+Verify `TyphaK8sServiceName` or `FELIX_TYPHAK8SSERVICENAME`, and `TyphaK8sNamespace` or `FELIX_TYPHAK8SNAMESPACE`, match the actual Service name and namespace.
 
 ## Conclusion
 
-Troubleshooting Typha TLS follows a systematic path from certificate content (expiry, CA match, SAN coverage) through runtime behavior (CN verification, Secret mounting, Felix configuration). The most frequent issues are CA certificate mismatches between the Typha and Felix Secrets, and missing SANs in the Typha server certificate. Resolving these requires regenerating the affected certificates and updating the corresponding Kubernetes Secrets.
+Troubleshooting Typha TLS follows a systematic path from certificate content (expiry, CA trust, CN verification) through runtime behavior (Secret mounting and Felix configuration). The most frequent issues are CA certificate mismatches between the shared CA and the Typha or `calico/node` certificates, and CN mismatches in the Typha or `calico/node` certificates. Resolving these requires regenerating the affected certificates and updating the corresponding Kubernetes Secret or ConfigMap.
