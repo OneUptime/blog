@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico etcd RBAC issues including permi
 
 ## Introduction
 
-Calico etcd RBAC misconfigurations cause Calico components to fail in ways that can be difficult to diagnose. Felix may silently stop programming policies, the CNI plugin may fail to allocate IPs for new pods, or the API server may become unresponsive. The error messages from etcd are often generic "permission denied" messages that don't immediately tell you which component is failing or which path it was trying to access.
+Calico etcd RBAC misconfigurations cause Calico components to fail in ways that can be difficult to diagnose. Felix may silently stop programming policies, the CNI plugin may fail to allocate IPs for new pods, or Calico API queries may fail. The error messages from etcd are often generic "permission denied" messages that don't immediately tell you which component is failing or which path it was trying to access.
 
 This guide covers the most common etcd RBAC failure modes and provides step-by-step diagnosis and resolution procedures.
 
@@ -36,17 +36,17 @@ kubectl logs -n kube-system ds/calico-node --tail=100 | grep -i "permission\|den
 kubectl logs -n kube-system ds/calico-node | grep "watch.*failed"
 ```
 
-**Common cause**: Felix role missing read permission on `/calico/v1/policy/`.
+**Common cause**: Felix role missing read permission on Calico resource keys under `/calico/resources/v3/projectcalico.org/`.
 
 ```bash
 # Check current permissions
-etcdctl ... role get calico-felix | grep policy
+etcdctl ... role get calico-felix | grep projectcalico.org
 ```
 
 **Resolution:**
 
 ```bash
-etcdctl ... role grant-permission calico-felix --prefix=true read /calico/v1/policy/
+etcdctl ... role grant-permission calico-felix --prefix=true read /calico/resources/v3/projectcalico.org/
 # Restart Felix to reconnect
 kubectl rollout restart ds/calico-node -n kube-system
 ```
@@ -73,7 +73,7 @@ graph TD
 **Resolution:**
 
 ```bash
-etcdctl ... role grant-permission calico-cni --prefix=true readwrite /calico/v1/ipam/
+etcdctl ... role grant-permission calico-cni --prefix=true readwrite /calico/ipam/v2/
 ```
 
 ## Issue 3: Authentication Failure
@@ -88,7 +88,7 @@ etcdctl --endpoints=https://etcd:2379 \
   --cacert=/etc/etcd/ca.crt \
   --cert=/etc/calico/etcd/felix.crt \
   --key=/etc/calico/etcd/felix.key \
-  get /calico/v1/config/ --prefix
+  get /calico/resources/v3/projectcalico.org/ --prefix
 ```
 
 **Common causes:**
