@@ -10,9 +10,9 @@ Description: Diagnose and fix intermittent DNS resolution failures in Kubernetes
 
 ## Introduction
 
-Intermittent DNS failures in Cilium-managed clusters are notoriously difficult to debug because they often occur under specific timing conditions. The Cilium DNS proxy intercepts all DNS traffic, and failures in the proxy-even brief ones during policy updates-cause resolution timeouts for pods.
+Intermittent DNS failures in Cilium-managed clusters are notoriously difficult to debug because they often occur under specific timing conditions. When Layer 7 DNS policy is configured, the Cilium DNS proxy intercepts matching egress DNS traffic, and failures in the proxy-even brief ones during policy updates-cause resolution timeouts for pods.
 
-Common causes include: race conditions between policy updates and DNS proxy startup, FQDN cache entries expiring before traffic is allowed, UDP timeout misconfiguration, and conflicts between CoreDNS and Cilium's DNS proxy.
+Common causes include: race conditions between policy updates and DNS proxy startup, short DNS TTLs expiring before new connections are made, missing DNS allow rules, and CoreDNS errors or policy blocking the DNS target server.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ kubectl exec -it <pod-name> -- \
   sh -c 'for i in $(seq 5); do nslookup api.example.com; sleep 1; done'
 ```
 
-Intermittent failures show as occasional `NXDOMAIN` or `SERVFAIL` responses.
+Intermittent failures show as occasional timeouts, `REFUSED`, `NXDOMAIN`, or `SERVFAIL` responses, depending on whether the failure is a policy deny, proxy error, or upstream resolver issue.
 
 ## Step 2: Check Cilium DNS Proxy Logs
 
@@ -38,7 +38,7 @@ kubectl logs -n kube-system ds/cilium --since=5m | grep -i "dns\|proxy\|fqdn"
 
 ```mermaid
 flowchart TD
-    A[Pod DNS query] --> B[Cilium DNS Proxy port 53]
+    A[Pod DNS query] --> B[Cilium DNS Proxy redirect]
     B --> C{Policy allows FQDN?}
     C -->|Allow *| D[Forward to CoreDNS]
     D --> E[Response with IPs]
@@ -58,15 +58,15 @@ kubectl exec -n kube-system ds/cilium -- \
 
 If entries are missing or have low TTLs, pods may experience failures when cache expires.
 
-## Step 4: Increase DNS Proxy Timeout
+## Step 4: Increase the Minimum FQDN TTL
 
-For slow upstream resolvers, increase the timeout:
+If upstream DNS records have very short TTLs and pods reuse resolved IPs after those TTLs expire, set a minimum TTL for `toFQDNs` policy data:
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set dnsPolicy.resolutionCellularThrottlingLimit=1000
+  --set dnsProxy.minTtl=3600
 ```
 
 ## Step 5: Check for UDP Port 53 Policy Issues
