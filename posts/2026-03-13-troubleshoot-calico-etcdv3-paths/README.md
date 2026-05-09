@@ -29,7 +29,7 @@ Troubleshooting etcdv3 paths requires the ability to inspect raw etcd data, comp
 ```bash
 # Check if the policy exists in etcd
 
-etcdctl get /calico/v1/policy/ --prefix --keys-only | grep "my-policy-name"
+etcdctl get /calico/resources/v3/projectcalico.org/globalnetworkpolicies/ --prefix --keys-only | grep "my-policy-name"
 
 # If missing, the policy may not have been written to etcd
 # Verify calicoctl can see it
@@ -43,7 +43,7 @@ calicoctl get globalnetworkpolicies my-policy-name -o yaml
 calicoctl apply -f my-policy.yaml
 
 # Verify it now exists in etcd
-etcdctl get /calico/v1/policy/ --prefix --keys-only
+etcdctl get /calico/resources/v3/projectcalico.org/globalnetworkpolicies/ --prefix --keys-only
 ```
 
 ## Issue 2: IPAM Allocation Leaks
@@ -75,8 +75,9 @@ calicoctl ipam check
 # Release leaked allocations
 calicoctl ipam release --ip=10.0.1.50
 
-# Or run the IPAM GC
-calicoctl ipam gc
+# Or generate a report and release leaked allocations from it
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
 ```
 
 ## Issue 3: Stale Host Entries
@@ -87,8 +88,8 @@ calicoctl ipam gc
 
 ```bash
 # Find stale host entries in etcd
-etcdctl get /calico/v1/host/ --prefix --keys-only | \
-  awk -F'/' '{print $5}' | sort -u | while read host; do
+etcdctl get /calico/resources/v3/projectcalico.org/nodes/ --prefix --keys-only | \
+  awk -F'/' '{print $7}' | sort -u | while read host; do
     kubectl get node "$host" &>/dev/null || echo "STALE: $host"
   done
 ```
@@ -106,26 +107,27 @@ calicoctl delete node old-worker-3
 
 ```bash
 # Try to read the raw value
-etcdctl get /calico/v1/policy/tier/default/policy/corrupt-policy
+etcdctl get /calico/resources/v3/projectcalico.org/globalnetworkpolicies/default.corrupt-policy
 
-# If the value is malformed JSON/YAML, delete and recreate
-etcdctl del /calico/v1/policy/tier/default/policy/corrupt-policy
+# If the value is malformed JSON, delete and recreate
+etcdctl del /calico/resources/v3/projectcalico.org/globalnetworkpolicies/default.corrupt-policy
 calicoctl apply -f policy-backup.yaml
 ```
 
-## Issue 5: Wrong etcd Prefix
+## Issue 5: Wrong Datastore Configuration
 
 **Symptom**: calicoctl reports no data but etcd contains Calico keys.
 
 ```bash
-# Check what prefix Calico is using
-kubectl get felixconfiguration default -o yaml | grep etcd
+# Check what datastore calicoctl is configured to use
+grep -E 'datastoreType|etcdEndpoints' /etc/calico/calicoctl.cfg
+env | grep -E '^(CALICO_)?(DATASTORE_TYPE|ETCD_ENDPOINTS)='
 
 # List what prefixes exist in etcd
-etcdctl get / --prefix --keys-only | grep calico | head -20
+etcdctl get /calico/ --prefix --keys-only | head -20
 ```
 
-If data is under `/calico/` but Calico is configured to use `/custom-calico/`, update the configuration.
+If data is under `/calico/resources/v3/` but `calicoctl` is configured to use the Kubernetes datastore, update the `calicoctl` configuration so `datastoreType` is `etcdv3` and the etcd endpoints and credentials point at the Calico datastore.
 
 ## Conclusion
 
