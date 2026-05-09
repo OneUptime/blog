@@ -66,8 +66,8 @@ AS number mismatches prevent sessions from establishing:
 # Check local AS number
 calicoctl get bgpconfiguration default -o yaml | grep asNumber
 
-# Check what the node is advertising
-kubectl exec -n calico-system ${NODE_POD} -- birdcl show protocols all BGP_<peer_ip>
+# Check peer session details using the protocol name from "show protocols"
+kubectl exec -n calico-system ${NODE_POD} -- birdcl show protocols all <protocol-name>
 ```
 
 ## Check Calico Node Logs
@@ -82,7 +82,7 @@ kubectl logs -n calico-system ${NODE_POD} -c calico-node | grep -i "peer\|sessio
 Increase log verbosity temporarily:
 
 ```bash
-calicoctl patch bgpconfiguration default --type merge \
+calicoctl patch bgpconfiguration default \
   --patch '{"spec":{"logSeverityScreen":"Debug"}}'
 ```
 
@@ -92,7 +92,7 @@ If sessions are up but routes are missing, check BGP route filters:
 
 ```bash
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route
-kubectl exec -n calico-system ${NODE_POD} -- birdcl show route protocol BGP_<peer_ip>
+kubectl exec -n calico-system ${NODE_POD} -- birdcl show route protocol <protocol-name>
 ```
 
 Also verify the kernel routing table includes the expected pod CIDRs:
