@@ -38,7 +38,7 @@ Verify packets are allowed through the FORWARD chain:
 iptables -L FORWARD -n -v
 ```
 
-Look for Calico's `cali-FORWARD` chain and ensure it has a default ACCEPT rule for pod traffic:
+Look for Calico's `cali-FORWARD` chain and ensure the policy rules for the pod traffic are allowing packets:
 
 ```bash
 iptables -L cali-FORWARD -n
@@ -46,20 +46,25 @@ iptables -L cali-FORWARD -n
 
 ## Check RPF (Reverse Path Filtering)
 
-RPF can drop return packets from pods that arrive on unexpected interfaces:
+RPF can drop packets when the best reverse path to the source address uses a different interface:
 
 ```bash
-cat /proc/sys/net/ipv4/conf/all/rp_filter
+for iface in all default eth0; do
+  printf "%s=" "$iface"
+  cat /proc/sys/net/ipv4/conf/$iface/rp_filter
+done
 # 0 = off, 1 = strict, 2 = loose
 
 ```
 
-For Calico BGP with asymmetric routing, set to loose:
+For Calico BGP with asymmetric routing, set to loose. Linux uses the maximum value from `conf/all` and the receiving interface when validating packets, so setting `all` to `2` enables loose mode for current interfaces:
 
 ```bash
 sysctl -w net.ipv4.conf.all.rp_filter=2
+sysctl -w net.ipv4.conf.default.rp_filter=2
 # Make permanent
 echo "net.ipv4.conf.all.rp_filter = 2" >> /etc/sysctl.conf
+echo "net.ipv4.conf.default.rp_filter = 2" >> /etc/sysctl.conf
 ```
 
 ## Verify Pod CIDR Route on Node
@@ -80,9 +85,11 @@ ip route get <pod-ip>
 Verify the Calico veth interface for the pod exists:
 
 ```bash
-# Get pod interface
-POD_UID=$(kubectl get pod <pod-name> -o jsonpath='{.metadata.uid}')
-ip link | grep cali
+# Use the interface name from ip route get, then verify it exists
+ip link show dev cali<interface>
+
+# Or list all host-side Calico interfaces
+ip -o link show | grep 'cali'
 ```
 
 ## Packet Capture at Multiple Points
