@@ -12,7 +12,7 @@ Description: A guide to diagnosing and resolving networking issues when running 
 
 Self-managed Kubernetes on GCE with Calico provides full control over your networking stack on Google Cloud. Unlike GKE's managed environment, self-managed clusters give you freedom to configure Calico however you need, but also require you to manage GCE-specific networking requirements.
 
-GCE networking differs from AWS and Azure in important ways: GCE uses software-defined networking with no concept of source/destination checks, but firewall rules must explicitly allow Calico's protocols, and GCE's network routes can be used to enable native pod routing without overlays.
+GCE networking differs from AWS and Azure in important ways: GCE uses software-defined networking, but VM instances that forward traffic for other sources need IP forwarding enabled, firewall rules must explicitly allow Calico's protocols, and GCE's network routes can be used to enable native pod routing without overlays.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Create firewall rules to allow Calico's required protocols between nodes.
 
 gcloud compute firewall-rules create allow-calico-ipip \
   --network <network-name> \
-  --allow tcp:179,udp:4789,udp:5473,protocol:4 \
+  --allow tcp:179,tcp:5473,udp:4789,ipip \
   --source-tags kubernetes-node \
   --target-tags kubernetes-node \
   --description "Allow Calico BGP, VXLAN, Typha, and IPIP between nodes"
@@ -64,10 +64,10 @@ GCE supports custom routes that can be used for overlay-free pod routing.
 ```bash
 # For BGP mode with no overlay, add GCE routes for pod CIDRs
 # This allows pods to communicate natively without IPIP or VXLAN
+# Ensure the GCE instances used as route next hops were created or updated with IP forwarding enabled.
 
 # Get pod CIDR for a specific node
 NODE_POD_CIDR=$(kubectl get node <node-name> -o jsonpath='{.spec.podCIDR}')
-NODE_NETWORK=$(kubectl get node <node-name> -o jsonpath='{.status.addresses[0].address}')
 
 # Create a GCE route for this node's pod CIDR
 gcloud compute routes create pod-route-<node-name> \
@@ -92,8 +92,8 @@ spec:
   # Disable both IPIP and VXLAN - rely on GCE routes
   ipipMode: Never
   vxlanMode: Never
-  # Disable NAT since routes handle routing
-  natOutgoing: false
+  # Keep NAT for egress outside Calico IP pools unless those networks route back to pod CIDRs
+  natOutgoing: true
 ```
 
 ```bash
