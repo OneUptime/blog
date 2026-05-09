@@ -33,12 +33,20 @@ kubectl exec -n kube-system cilium-xxxxx -- cat /etc/cni/net.d/10-azure.conflist
 # Check Cilium logs for CNI errors
 kubectl logs -n kube-system cilium-xxxxx | grep -i "cni\|azure"
 
-# Fix: Use Azure CNI chaining mode instead of standalone
+# Fix: Use Azure CNI legacy chaining mode instead of standalone
+# This assumes you have created the cni-configuration ConfigMap from the
+# Cilium Azure CNI chaining documentation.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set cni.chainingMode=azure-cni-powered-by-cilium \
-  --set azure.enabled=true
+  --set cni.chainingMode=generic-veth \
+  --set cni.customConf=true \
+  --set cni.exclusive=false \
+  --set nodeinit.enabled=true \
+  --set cni.configMap=cni-configuration \
+  --set routingMode=native \
+  --set enableIPv4Masquerade=false \
+  --set endpointRoutes.enabled=true
 ```
 
 ## Issue 2: Kernel Version Too Old
@@ -49,18 +57,18 @@ helm upgrade cilium cilium/cilium \
 # Check kernel version
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
-# AKS Ubuntu 18.04: kernel 5.4 (limited eBPF support)
-# AKS Ubuntu 22.04: kernel 5.15 (full eBPF support)
+# Cilium requires Linux kernel 5.10 or newer, or an equivalent vendor kernel.
+# AKS Ubuntu 22.04 is the default for Kubernetes 1.25-1.34.
+# AKS Ubuntu 24.04 is the default for Kubernetes 1.35 and newer.
 
-# Fix: Upgrade node pool to Ubuntu 22.04
+# Fix: migrate the node pool to a supported Ubuntu OS SKU for your Kubernetes version
 az aks nodepool update \
   --cluster-name myAKSCluster \
   --resource-group myRG \
   --name nodepool1 \
-  --os-sku Ubuntu \
-  --node-os-upgrade-channel NodeImage
+  --os-sku Ubuntu
 
-# Or create a new node pool with Ubuntu 22.04
+# Or create a new node pool with the default supported Ubuntu image
 az aks nodepool add \
   --cluster-name myAKSCluster \
   --resource-group myRG \
@@ -91,6 +99,8 @@ az network nsg rule create \
   --resource-group $NODE_RESOURCE_GROUP \
   --name AllowCiliumVXLAN \
   --protocol Udp \
+  --direction Inbound \
+  --source-address-prefixes VirtualNetwork \
   --destination-port-range 8472 \
   --priority 200 \
   --access Allow
@@ -104,20 +114,21 @@ cilium connectivity test --test pod-to-pod
 **Symptom**: `cilium status` shows BPF host routing not enabled despite Linux 5.10+.
 
 ```bash
-# Check if BPF host routing is enabled
-kubectl exec -n kube-system ds/cilium -- cilium status | grep "BPF Host Routing"
+# Check if eBPF host routing is enabled
+kubectl exec -n kube-system ds/cilium -- cilium status | grep "Host Routing"
 
-# Check kernel version (requires 5.10+)
-uname -r
+# Check node kernel versions
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
-# Enable BPF host routing explicitly
+# Enable the required features for eBPF host routing
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set bpf.hostRouting=true
+  --set bpf.masquerade=true \
+  --set kubeProxyReplacement=true
 
 # Verify after upgrade
-kubectl exec -n kube-system ds/cilium -- cilium status | grep "BPF Host Routing"
+kubectl exec -n kube-system ds/cilium -- cilium status | grep "Host Routing"
 ```
 
 ## Issue 5: IP Exhaustion with Azure CNI
@@ -125,17 +136,25 @@ kubectl exec -n kube-system ds/cilium -- cilium status | grep "BPF Host Routing"
 **Symptom**: Pods stuck in Pending state with "insufficient IPs" message.
 
 ```bash
-# Check IP allocation on nodes
-kubectl get CiliumNode -o yaml | grep -A 10 "ipam:"
-
-# Check available IPs per node
+# Check the AKS network profile
 az aks show --name myAKSCluster --resource-group myRG \
-  --query "networkProfile" -o json | jq '.podCidr'
+  --query "networkProfile" -o json
 
-# Fix: Increase pre-allocated IP slots
-az aks update \
-  --name myAKSCluster \
+# Check node pool subnet and max-pods settings
+az aks show --name myAKSCluster --resource-group myRG \
+  --query "agentPoolProfiles[].{name:name,maxPods:maxPods,vnetSubnetId:vnetSubnetId,podSubnetId:podSubnetId}" -o table
+
+# Fix: add a node pool that uses a larger node or pod subnet
+NODE_SUBNET_ID="/subscriptions/.../subnets/node-subnet"
+POD_SUBNET_ID="/subscriptions/.../subnets/larger-pod-subnet"
+
+az aks nodepool add \
+  --cluster-name myAKSCluster \
   --resource-group myRG \
+  --name newpool \
+  --node-count 3 \
+  --vnet-subnet-id $NODE_SUBNET_ID \
+  --pod-subnet-id $POD_SUBNET_ID \
   --max-pods 250
 ```
 
