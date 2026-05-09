@@ -52,10 +52,11 @@ Identity allocation failures can cause cluster-wide policy enforcement problems.
 kubectl get ciliumidentities
 
 # Look for identity allocation errors in Cilium operator logs
-kubectl logs -n kube-system -l name=cilium-operator | grep -E "ERROR|identity"
+kubectl logs -n kube-system -l io.cilium/app=operator | grep -E "ERROR|identity"
 
-# Verify KVStore connectivity (used for identity distribution)
-kubectl exec -n kube-system <cilium-pod> -- cilium debuginfo | grep kvstore
+# Verify identity allocation mode and KVStore status if KVStore is enabled
+kubectl exec -n kube-system <cilium-pod> -- cilium-dbg config | grep identity-allocation-mode
+kubectl exec -n kube-system <cilium-pod> -- cilium-dbg debuginfo | grep -i kvstore
 ```
 
 ## Step 3: Check MTU Configuration Across Nodes
@@ -70,8 +71,8 @@ kubectl get configmap cilium-config -n kube-system -o yaml | grep mtu
 kubectl debug node/<node-name> -it --image=ubuntu -- ip link show eth0
 
 # Confirm Azure CNI MTU settings match Cilium configuration
-# Azure VNet has a maximum MTU of 1500; Azure CNI typically uses 1500
-# Cilium should be set to match or lower to avoid fragmentation
+# Azure's default MTU is 1500; larger MTUs are supported only for specific NICs and paths
+# Cilium's configured MTU should match the node network path or be lower to avoid fragmentation
 ```
 
 ## Step 4: Diagnose Cluster-Wide Network Policy Issues
@@ -87,7 +88,7 @@ kubectl get ccnp -o yaml | grep -A5 "action: Deny"
 
 # Verify no policy is accidentally blocking DNS (port 53)
 kubectl exec -n kube-system <cilium-pod> -- \
-  cilium monitor --type drop | grep -i dns
+  cilium-dbg monitor --type drop | grep -i dns
 ```
 
 ## Step 5: Validate Azure VNet and Cilium Route Consistency
@@ -96,7 +97,7 @@ Ensure Azure VNet routes and Cilium routes are consistent.
 
 ```bash
 # Check Cilium's view of node routes
-kubectl exec -n kube-system <cilium-pod> -- cilium bpf ipcache list
+kubectl exec -n kube-system <cilium-pod> -- cilium-dbg bpf ipcache list
 
 # Compare with Azure VNet effective routes on the node
 # (Requires Azure CLI access to the node's network interface)
