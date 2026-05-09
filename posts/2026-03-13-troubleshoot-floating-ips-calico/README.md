@@ -4,45 +4,48 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Floating IP, Networking
 
-Description: Diagnose floating IP routing failures in Calico including stale routes and ARP cache issues.
+Description: Diagnose floating IP configuration issues in Calico, including missing CNI feature flags and IPPool mismatches.
 
 ---
 
 ## Introduction
 
-Floating IPs with Calico provides important IP address management capabilities in Calico. This feature allows for fine-grained control over how IP addresses are assigned to pods in your Kubernetes cluster.
+Floating IPs with Calico provide additional IP addresses that can front a Kubernetes pod. The host uses NAT to deliver traffic from the floating IP to the pod's real IP, and the floating IP must be inside a configured Calico IPPool so it can be advertised correctly.
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico CNI plugin installed with floating IP support enabled
 - kubectl and calicoctl access
-- IP pools configured
+- IP pools configured to include the floating IPs
 
 ## Configuration
 
 ```bash
+kubectl get configmap calico-config -n kube-system -o yaml
 calicoctl get ippools -o yaml
-calicoctl ipam show --show-blocks
 ```
 
 ## Example
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
+apiVersion: v1
+kind: Pod
 metadata:
-  name: example-pool
+  name: floating-ip-demo
+  annotations:
+    cni.projectcalico.org/floatingIPs: '["10.48.0.10"]'
 spec:
-  cidr: 10.48.0.0/16
-  blockSize: 26
-  natOutgoing: true
+  containers:
+    - name: nginx
+      image: nginx:stable
 ```
 
 ## Verification
 
 ```bash
-calicoctl ipam check -o ipam-report.json
 kubectl get pods -A -o wide
+kubectl get pod floating-ip-demo -o jsonpath='{.metadata.annotations.cni\.projectcalico\.org/floatingIPs}{"\n"}'
+calicoctl ipam show --ip=10.48.0.10
 ```
 
 ## Architecture
@@ -50,9 +53,10 @@ kubectl get pods -A -o wide
 ```mermaid
 graph LR
     POOL[IP Pool] --> ALLOC[IPAM]
-    ALLOC --> POD[Pod IP]
+    ALLOC --> FLOAT[Floating IP]
+    FLOAT --> POD[Pod]
 ```
 
 ## Conclusion
 
-How to Troubleshoot Floating IPs with Calico helps ensure your Calico deployment handles IP addressing correctly for your specific workload requirements.
+How to Troubleshoot Floating IPs with Calico helps ensure your Calico deployment advertises the floating address and maps it to the intended pod correctly for your specific workload requirements.
