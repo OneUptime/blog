@@ -89,12 +89,22 @@ calicoctl get globalnetworkpolicy wrong-tier-policy -o yaml | \
 ## Issue 3: Tier Pass Action Bypassing Security
 
 ```bash
-# A tier with 'Pass' on all unmatched traffic passes to next tier
-# If security tier has no policy for certain traffic, it implicitly passes to default
-# Verify all tiers have appropriate catch-all policies
+# A matching 'Pass' rule, or a tier with defaultAction: Pass, passes evaluation to the next tier
+# If a tier applies to an endpoint but takes no action on the packet, the default tier action is Deny
+# Verify all tiers have appropriate catch-all policies or an intentional defaultAction: Pass
 
-calicoctl get globalnetworkpolicies -o wide | grep "tier.*order" | sort -k4 -n
-# Look for gaps in coverage - traffic types not covered by any tier policy
+calicoctl get globalnetworkpolicies -o json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for p in data['items']:
+    rules = p['spec'].get('ingress', []) + p['spec'].get('egress', [])
+    if any(r.get('action') == 'Pass' for r in rules):
+        name = p['metadata']['name']
+        tier = p['spec'].get('tier', 'default')
+        order = p['spec'].get('order', 'none')
+        print(f'{tier}/{name}: order={order}')
+"
+# Look for Pass rules that intentionally continue evaluation to a lower-priority tier
 ```
 
 ## Issue 4: RBAC Allowing Wrong Team to Modify Security Tier
@@ -106,7 +116,7 @@ import json, sys
 data = json.load(sys.stdin)
 for crb in data['items']:
     name = crb['metadata']['name']
-    if 'calico\|security\|network' in name.lower():
+    if any(token in name.lower() for token in ('calico', 'security', 'network')):
         subjects = crb.get('subjects', [])
         for s in subjects:
             print(f'{name}: {s[\"kind\"]} {s[\"name\"]}')
@@ -118,7 +128,7 @@ for crb in data['items']:
 ```bash
 # Felix needs to pick up new tier configuration
 # Check Felix logs for tier programming
-kubectl logs -n calico-system ds/calico-node | grep "tier\|Tier" | tail -20
+kubectl logs -n calico-system ds/calico-node | grep -Ei "tier" | tail -20
 
 # Verify tier is visible in datastore
 calicoctl get tier security -o yaml
