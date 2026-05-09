@@ -32,7 +32,8 @@ diff /tmp/k8s-nodes.txt /tmp/calico-nodes.txt
 
 # Check calico-node pod status on the missing node
 kubectl get pods -n calico-system -l k8s-app=calico-node -o wide | grep <node-name>
-kubectl logs -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=<node-name>
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=<node-name> -o name)
+kubectl logs -n calico-system "$NODE_POD"
 ```
 
 **Fix**: If calico-node pod is crashing, resolve the pod startup issue (often a datastore connectivity problem or incorrect environment variables).
@@ -55,18 +56,25 @@ kubectl debug node/<node-name> -it --image=busybox -- ip addr
 graph TD
     A[BGP sessions failing] --> B{Check Node ipv4Address}
     B -->|Wrong interface IP| C{Check IP_AUTODETECTION_METHOD}
-    C -->|Not set| D[calico-node uses first non-loopback interface]
+    C -->|Not set| D[calico-node uses first valid IP on the first valid interface]
     C -->|Set incorrectly| E[Update DaemonSet env var]
     D --> F[Set IP_AUTODETECTION_METHOD=interface=eth0]
     E --> F
     B -->|Correct IP| G[Check network reachability between nodes]
 ```
 
-**Fix**: Set the `IP_AUTODETECTION_METHOD` environment variable in the calico-node DaemonSet:
+**Fix**: For operator-based installs, set `nodeAddressAutodetectionV4` on the default Installation resource:
+
+```bash
+kubectl patch installation default --type=merge \
+  -p '{"spec":{"calicoNetwork":{"nodeAddressAutodetectionV4":{"interface":"eth.*"}}}}'
+```
+
+For manifest-based installs, set the `IP_AUTODETECTION_METHOD` environment variable in the calico-node DaemonSet:
 
 ```bash
 kubectl set env daemonset/calico-node -n calico-system \
-  IP_AUTODETECTION_METHOD=interface=eth0
+  IP_AUTODETECTION_METHOD=interface=eth.*
 ```
 
 ## Issue 3: Tunnel IP Conflict
@@ -90,13 +98,13 @@ for n in data['items']:
 "
 ```
 
-**Fix**: Delete the Node resource for the affected node and let calico-node recreate it with a fresh tunnel IP assignment.
+**Fix**: Do not edit `ipv4VXLANTunnelAddr` manually. If the duplicate address belongs to a stale node that is no longer in the Kubernetes cluster, delete that stale Node resource. If the node is still active, drain or otherwise move workloads first because deleting a Calico Node resource can remove node-associated workload endpoint, host endpoint, and IP address data.
 
 ## Issue 4: BGP Sessions Not Established
 
 ```bash
 # Check BIRD status on the node
-NODE_POD=$(kubectl get pod -n calico-system -o name -l k8s-app=calico-node | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -o name -l k8s-app=calico-node --field-selector spec.nodeName=<node-name>)
 kubectl exec -n calico-system $NODE_POD -- birdcl show protocols all | grep -A5 BGP
 
 # Check Felix logs for BGP-related errors
