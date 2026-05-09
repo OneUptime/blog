@@ -21,8 +21,8 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- bpftool version
 # Error: bpftool: command not found
 
 # Solution: Use a debug pod on the same node that has bpftool
-NODE=$(kubectl get pod -n calico-system ds/calico-node \
-  -o jsonpath='{.spec.nodeName}' 2>/dev/null | head -1)
+NODE=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].spec.nodeName}' 2>/dev/null)
 
 # Create a privileged debug pod on that node with bpftool
 kubectl run bpf-debug \
@@ -54,10 +54,10 @@ kubectl run bpf-debug \
 kubectl exec bpf-debug -- bpftool prog list | grep calico
 ```
 
-## Issue 2: Felix -bpf-* Commands Not Working
+## Issue 2: Felix -bpf Commands Not Working
 
 ```bash
-# The -bpf-* flags require the calico-node binary directly
+# The -bpf subcommands require the calico-node binary directly
 # If they don't work in the container, check binary path
 
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
@@ -66,10 +66,11 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- \
 
 # Try with full path
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  /usr/local/bin/calico-node -bpf-nat-dump 2>&1 | head -20
+  /usr/local/bin/calico-node -bpf nat dump 2>&1 | head -20
 
-# Alternative: use calicoctl for some BPF operations
-calicoctl version
+# Show the built-in BPF command help
+kubectl exec -n calico-system ds/calico-node -c calico-node -- \
+  /usr/local/bin/calico-node -bpf help
 ```
 
 ## Issue 3: BPF Map Inspection Fails Due to Permissions
@@ -83,9 +84,9 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- \
 
 # If not root, or BPF access denied:
 kubectl debug node/<node-name> -it \
-  --image=ubuntu:22.04 -- bash
+  --image=ubuntu:22.04 --profile=sysadmin -- bash
 # Inside debug pod:
-apt-get install -y linux-tools-$(uname -r) -qq
+apt-get update -qq && apt-get install -y bpftool -qq
 bpftool prog list
 ```
 
@@ -118,9 +119,9 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- \
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
   tc filter show dev eth0 ingress 2>/dev/null
 
-# Alternative: use ip command to see BPF-attached queueing disciplines
+# Check egress filters on the same interface
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  ip link show 2>/dev/null | grep -A2 "eth0"
+  tc filter show dev eth0 egress 2>/dev/null
 ```
 
 ## Troubleshooting Flow for Tool Issues
@@ -134,9 +135,9 @@ flowchart TD
     D --> F[Access BPF maps/programs]
     G{Felix -bpf commands work?}
     G -->|No| H[Check calico-node binary path]
-    H --> I[Try /usr/local/bin/calico-node -bpf-*]
+    H --> I[Try /usr/local/bin/calico-node -bpf help]
 ```
 
 ## Conclusion
 
-Troubleshooting tool failures in restricted or misconfigured environments require workarounds: privileged debug pods for BPF access, installing bpftool via the node's package manager in a debug pod, and understanding the full path to the `calico-node` binary for running built-in diagnostic commands. Always have a fallback approach for each tool in your toolkit so that a missing binary doesn't block your incident response entirely. The debug pod approach is particularly versatile as it can be deployed to any node in the cluster without modifying the node directly.
+Troubleshooting tool failures in restricted or misconfigured environments require workarounds: privileged debug pods for BPF access, installing bpftool in a debug pod, and understanding the full path to the `calico-node` binary for running built-in diagnostic commands. Always have a fallback approach for each tool in your toolkit so that a missing binary doesn't block your incident response entirely. The debug pod approach is particularly versatile as it can be deployed to any node in the cluster without modifying the node directly.
