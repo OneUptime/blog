@@ -30,11 +30,38 @@ Determine whether you need full Calico CNI or policy-only mode.
 
 kubectl get pods -n kube-system | grep aws-node
 
-# For EKS with AWS VPC CNI, install Calico in policy-only mode
-# Full CNI mode replaces AWS VPC CNI - use only if intentional
+# For EKS with AWS VPC CNI, install Calico in Amazon VPC mode
+# Full Calico CNI mode replaces AWS VPC CNI - use only if intentional
 
-# Apply Calico for EKS (policy-only mode)
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico-vxlan.yaml
+# Do not enable the AWS VPC CNI network policy feature when Calico enforces policy
+cat <<EOF > append.yaml
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - patch
+EOF
+
+kubectl apply -f <(cat <(kubectl get clusterrole aws-node -o yaml) append.yaml)
+kubectl set env -n kube-system daemonset/aws-node ANNOTATE_POD_IP=true
+
+# Install the Tigera operator and Calico for EKS with Amazon VPC CNI
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+
+kubectl create -f - <<EOF
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  kubernetesProvider: EKS
+  cni:
+    type: AmazonVPC
+  calicoNetwork:
+    bgp: Disabled
+EOF
 ```
 
 ## Step 2: Diagnose Calico Pod Failures on EKS
@@ -58,15 +85,19 @@ kubectl logs -n kube-system <failing-calico-pod> --previous
 
 ## Step 3: Resolve AWS Security Group Issues
 
-EKS nodes use security groups that may block Calico's required ports.
+EKS nodes use security groups that may block node-to-node or control-plane traffic. In the standard EKS policy-only installation with AWS VPC CNI, Calico does not use BGP or VXLAN. Those ports are only relevant if you intentionally install Calico for full networking or enable those features.
 
 ```bash
-# Check what ports Calico needs (BGP: 179, VXLAN: 4789, Typha: 5473)
-# Verify security group rules allow these ports between nodes
+# For policy-only mode, verify node security groups allow expected
+# cluster traffic, including node-to-node traffic if you restrict
+# the default EKS cluster security group.
+
+# If you intentionally use full Calico networking, check the ports
+# for the enabled mode, such as BGP: 179, VXLAN: 4789, or Typha: 5473.
 
 # List security groups for EKS nodes
 aws ec2 describe-security-groups \
-  --filters "Name=tag:kubernetes.io/cluster/<cluster-name>,Values=owned" \
+  --filters "Name=tag:kubernetes.io/cluster/<cluster-name>,Values=owned,shared" \
   --query 'SecurityGroups[*].[GroupId,GroupName]'
 
 # Check inbound rules for the worker node security group
@@ -79,16 +110,14 @@ aws ec2 describe-security-group-rules \
 Apply EKS-specific Calico configuration to avoid common issues.
 
 ```yaml
-# felix-config-eks.yaml - Felix configuration optimized for EKS
+# felix-config-eks.yaml - Felix configuration for AWS VPC CNI interfaces
 apiVersion: projectcalico.org/v3
 kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  # Use AWS interface naming for EKS nodes
+  # Use AWS VPC CNI workload interface naming when using manifest-based installs
   interfacePrefix: eni
-  # Adjust for AWS VPC CNI chaining
-  chainInsertMode: Append
 ```
 
 ```bash
@@ -130,7 +159,7 @@ kubectl run -n eks-policy-test client --rm -it --image=busybox -- \
 
 - Verify EKS and Calico version compatibility before upgrading either component
 - Always install Calico in policy-only mode on EKS unless you intentionally want to replace AWS VPC CNI
-- Add required Calico ports to EKS worker node security groups before installation
+- Add Calico networking ports to EKS worker node security groups only when you intentionally enable BGP, VXLAN, or Typha traffic between nodes
 - Test network policy enforcement in a non-production cluster before enabling in production
 - Monitor Calico DaemonSet for pod restarts as an early indicator of configuration issues
 
