@@ -10,14 +10,14 @@ Description: Benchmark Calico eBPF native routing performance with live workload
 
 ## Introduction
 
-Calico's eBPF dataplane provides native routing that bypasses much of the Linux kernel's traditional networking stack, resulting in significantly lower latency and higher throughput compared to the iptables-based dataplane. eBPF programs are loaded into the kernel and intercept network packets at the earliest possible point, performing routing decisions and policy enforcement without the overhead of traversing multiple kernel layers.
+Calico's eBPF dataplane replaces the iptables-based service and policy datapath with eBPF programs in the Linux kernel, resulting in lower latency and higher throughput in supported environments. eBPF programs are loaded into the kernel and attach to low-level networking hooks, performing service load balancing, routing decisions, and policy enforcement without traversing large iptables rule chains.
 
-Native routing in eBPF mode eliminates the need for VXLAN or IP-in-IP encapsulation in many scenarios, as eBPF can directly program routes and perform NAT at packet arrival time. This makes it particularly valuable for latency-sensitive workloads and high-throughput microservices.
+Native routing avoids VXLAN or IP-in-IP encapsulation when the underlying network can route workload IPs directly, for example with BGP peering or suitable cloud-provider routing. This makes it particularly valuable for latency-sensitive workloads and high-throughput microservices.
 
 ## Prerequisites
 
-- Linux kernel 5.3+ (5.8+ recommended for full feature support)
-- Calico v3.13+ with eBPF support
+- Linux kernel 5.10+ for current Calico releases, or Red Hat Enterprise Linux 8.4 with kernel 4.18.0-305 or later
+- A current Calico release with eBPF support
 - kube-proxy disabled or replaced by Calico eBPF
 - kubectl and calicoctl access
 
@@ -29,17 +29,18 @@ Native routing in eBPF mode eliminates the need for VXLAN or IP-in-IP encapsulat
 kubectl patch ds -n kube-system kube-proxy -p   '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
 
 # Enable eBPF mode
-calicoctl patch felixconfiguration default --type merge   --patch '{"spec":{"bpfEnabled":true,"bpfDisableUnprivileged":true}}'
+calicoctl patch felixconfiguration default --patch='{"spec": {"bpfEnabled": true}}'
 ```
 
 ## Verify eBPF Mode
 
 ```bash
 # Check eBPF programs loaded on a node
-kubectl exec -n calico-system ds/calico-node -- bpftool prog list | grep calico
+CALICO_NODE=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system ${CALICO_NODE} -- bpftool prog list | grep calico
 
-# Verify kube-proxy replacement
-kubectl exec -n calico-system ds/calico-node -- calico-node -bpf-log-level Debug
+# Verify kube-proxy replacement by inspecting the BPF NAT table
+kubectl exec -n calico-system ${CALICO_NODE} -- calico-node -bpf nat dump
 
 # Test connectivity
 kubectl run test1 --image=busybox -- sleep 3600
@@ -62,7 +63,7 @@ kubectl run iperf-client --image=networkstatic/iperf3 -- iperf3 -c ${SRV} -t 30
 ```mermaid
 graph LR
     subgraph eBPF Mode
-        NIC[NIC] -->|XDP/TC hook| EBPF[eBPF Program]
+        NIC[NIC] -->|Kernel hook| EBPF[eBPF Program]
         EBPF -->|Direct routing| POD[Pod]
         EBPF -->|Service DNAT| BACKEND[Backend Pod]
     end
