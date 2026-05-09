@@ -34,7 +34,7 @@ kubectl get prometheus -n monitoring -o yaml | \
 # Verify ServiceMonitor label matches Prometheus selector
 # Prometheus typically selects ServiceMonitors with specific labels
 kubectl get prometheus -n monitoring \
-  -o jsonpath='{.items[0].spec.serviceMonitorSelector}' | jq .
+  -o json | jq '.items[0].spec.serviceMonitorSelector'
 ```
 
 ## Symptom 2: Targets Exist But Show "UP" = 0
@@ -88,10 +88,12 @@ EOF
 curl -s 'http://localhost:9090/api/v1/query?query=felix_active_local_policies' | \
   jq '.data.result[] | .metric'
 
-# Should see labels like:
-# instance, job, node, pod
+# Common scrape labels include:
+# instance, job, namespace, service, pod
+# A node label requires ServiceMonitor relabeling or attachMetadata configuration.
 
-# If metrics don't have node label, check the Service spec
+# If metrics don't have the labels you expect, check the ServiceMonitor and Service specs
+kubectl get servicemonitor -n monitoring | grep calico
 kubectl get svc calico-felix-metrics -n calico-system -o yaml | \
   grep -A10 "spec:"
 ```
@@ -122,7 +124,7 @@ kubectl patch installation default --type=merge \
   -p '{"spec":{"typhaMetricsPort":9093}}'
 
 # Verify kube-controllers metrics
-kubectl get kubeconfigurationcontrollers default \
+kubectl get kubecontrollersconfiguration default \
   -o jsonpath='{.spec.prometheusMetricsPort}' 2>/dev/null || \
   calicoctl get kubecontrollersconfiguration -o yaml | grep prometheus
 ```
