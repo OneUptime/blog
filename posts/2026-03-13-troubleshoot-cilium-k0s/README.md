@@ -38,10 +38,10 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 # Run Cilium status check
 cilium status --wait
 
-# Check k0s-specific CNI configuration
+# Check k0s configuration
 ls -la /etc/k0s/
 
-# Verify CNI config in k0s data directory
+# Check k0s-bundled networking utilities and iptables mode
 ls -la /var/lib/k0s/bin/
 ```
 
@@ -68,7 +68,7 @@ spec:
 k0s install controller --config k0s-cilium-config.yaml
 
 # Deploy Cilium after cluster is up
-cilium install --version 1.15.0
+cilium install --version 1.19.3
 ```
 
 ## Step 3: Diagnose CNI Configuration Issues
@@ -78,15 +78,15 @@ Check the CNI configuration files and directories.
 ```bash
 # k0s uses a specific CNI directory - verify it exists and is correct
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /etc/cni/net.d/
+  ls -la /host/etc/cni/net.d/
 
 # Check the active CNI configuration
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conflist
+  cat /host/etc/cni/net.d/05-cilium.conflist
 
 # Verify Cilium binaries are in the CNI binary directory
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /opt/cni/bin/ | grep cilium
+  sh -c "ls -la /host/opt/cni/bin/ | grep cilium"
 ```
 
 ## Step 4: Debug k0s-Specific Connectivity Issues
@@ -100,7 +100,7 @@ k0s kubectl get nodes
 # Verify containerd socket path is correct for k0s
 # k0s uses /run/k0s/containerd.sock by default
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /run/k0s/
+  ls -la /host/run/k0s/
 
 # Check Cilium agent logs for k0s-specific errors
 CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
@@ -121,6 +121,8 @@ cilium connectivity test
 kubectl create namespace k0s-test
 kubectl run -n k0s-test server --image=nginx
 kubectl run -n k0s-test client --image=busybox -- sleep 3600
+kubectl expose -n k0s-test pod server --port=80
+kubectl wait -n k0s-test --for=condition=Ready pod/server pod/client --timeout=120s
 
 # Verify connectivity before policy
 kubectl exec -n k0s-test client -- wget -qO- http://server.k0s-test.svc.cluster.local
