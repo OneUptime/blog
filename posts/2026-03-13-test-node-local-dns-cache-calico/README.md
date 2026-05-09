@@ -10,7 +10,7 @@ Description: Test NodeLocal DNSCache behavior with live Calico workloads, measur
 
 ## Introduction
 
-NodeLocal DNSCache is a critical performance enhancement for Calico clusters with high DNS query volumes. The per-node caching layer reduces latency for cached entries from milliseconds to microseconds, and reduces load on CoreDNS by serving cached responses locally.
+NodeLocal DNSCache is a critical performance enhancement for Calico clusters with high DNS query volumes. The per-node caching layer can reduce latency for cached entries, and reduces load on CoreDNS by serving cached responses locally.
 
 Managing NodeLocal DNSCache requires understanding its interaction with Calico's network policy engine, iptables chain management, and the link-local IP addressing it uses. Proper configuration of both components ensures DNS performs optimally without compromising security or reliability.
 
@@ -36,10 +36,13 @@ Key configuration options:
 ## Verify DNS Cache Hit Rate
 
 ```bash
-NODE_DNS=$(kubectl get pod -n kube-system -l k8s-app=node-local-dns -o name | head -1)
-kubectl exec -n kube-system ${NODE_DNS} -- \
-  wget -qO- http://localhost:9253/metrics | \
-  awk '/cache_hits/{hits=$2} /cache_misses/{misses=$2} END{print "Hit rate:", hits/(hits+misses)*100 "%"}'
+NODE_DNS=$(kubectl get pod -n kube-system -l k8s-app=node-local-dns -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-system "pod/${NODE_DNS}" 9253:9253 >/tmp/node-local-dns-port-forward.log 2>&1 &
+PF_PID=$!
+trap 'kill ${PF_PID}' EXIT
+sleep 2
+curl -fsS http://127.0.0.1:9253/metrics | \
+  awk '/^coredns_cache_hits_total/{hits+=$NF} /^coredns_cache_requests_total/{requests+=$NF} END{if (requests > 0) printf "Hit rate: %.2f%%\n", hits/requests*100; else print "No cache requests observed"}'
 ```
 
 ## Apply Network Policy for DNS Security
@@ -99,4 +102,4 @@ graph LR
 
 ## Conclusion
 
-Managing NodeLocal DNSCache with Calico requires proper network policies allowing traffic to the link-local DNS IP, monitoring of cache hit rates to validate effectiveness, and alerts on cache pod failures that would cause fallback to higher-latency CoreDNS. Regular validation of cache performance ensures the investment in the caching layer is delivering the expected latency improvements.
+Managing NodeLocal DNSCache with Calico requires proper network policies allowing traffic to the link-local DNS IP, monitoring of cache hit rates to validate effectiveness, and alerts on cache pod failures that can interrupt DNS or force queries through CoreDNS depending on the deployment path. Regular validation of cache performance ensures the investment in the caching layer is delivering the expected latency improvements.
