@@ -89,7 +89,7 @@ If empty, inspect the cilium-ipsec-keys secret format:
 kubectl get secret -n kube-system cilium-ipsec-keys -o jsonpath='{.data.keys}' | base64 -d
 ```
 
-Expected format: `<SPI> rfc4106(gcm(aes)) <hex-key> 128`
+Expected format: `<key-id>+ rfc4106(gcm(aes)) <hex-key> 128`
 
 ## Verify Traffic is Actually Encrypted
 
@@ -103,7 +103,7 @@ sudo tcpdump -i <node-interface> -n udp port 51871
 sudo tcpdump -i <node-interface> -n esp
 ```
 
-If you see plaintext HTTP/TCP traffic instead, encryption is not working.
+If you see plaintext HTTP/TCP traffic without the corresponding WireGuard UDP or IPsec ESP traffic on the inter-node path, encryption is not working. With IPsec, seeing decrypted pod traffic on the same interface can be normal after packets are decrypted and recirculated, so use an `esp` filter to confirm the encrypted packets.
 
 ## Check for XFRM State Staling (IPsec)
 
@@ -112,10 +112,13 @@ kubectl exec -n kube-system ds/cilium -- \
   cilium-dbg monitor --type drop | grep -i ipsec
 ```
 
-If xfrm states are stale after a key rotation, restart the Cilium DaemonSet:
+If xfrm states are stale after a key rotation, perform a new IPsec key rotation so Cilium installs fresh, consistent XFRM states:
 
 ```bash
-kubectl rollout restart ds/cilium -n kube-system
+KEYID=$(kubectl get secret -n kube-system cilium-ipsec-keys -o go-template --template={{.data.keys}} | base64 -d | grep -oP "^\d+")
+if [[ $KEYID -ge 15 ]]; then KEYID=0; fi
+data=$(echo "{\"stringData\":{\"keys\":\"$((($KEYID+1)))+ "rfc4106\(gcm\(aes\)\)" $(dd if=/dev/urandom count=20 bs=1 2> /dev/null | xxd -p -c 64) 128\"}}")
+kubectl patch secret -n kube-system cilium-ipsec-keys -p="${data}" -v=1
 ```
 
 ## Conclusion
