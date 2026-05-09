@@ -45,22 +45,21 @@ Look for errors containing `Failed`, `permission denied`, or `BIRD`.
 
 ## Step 3: Fix IP Conflict Issues
 
-If Calico's default CIDR `192.168.0.0/16` conflicts with your host network:
+Check the active Calico IP pools:
 
 ```bash
-kubectl set env daemonset/calico-node -n kube-system \
-  CALICO_IPV4POOL_CIDR=10.244.0.0/16
-kubectl rollout restart daemonset calico-node -n kube-system
+calicoctl get ippool -o wide
 ```
+
+If the active pool conflicts with your host network, recreate the Minikube cluster with a non-overlapping pod CIDR and install Calico with an IP pool that matches that CIDR. Calico's `CALICO_IPV4POOL_CIDR` setting only controls the default pool that is created at install time; changing it on an already-running `calico-node` DaemonSet does not change an existing IPPool.
 
 ## Step 4: Fix Minikube Driver Encapsulation Issues
 
-For the Docker driver, IPIP may be blocked. Switch to VXLAN:
+If IPIP traffic is blocked in your environment, switch the active Calico IPPool to VXLAN:
 
 ```bash
-kubectl set env daemonset/calico-node -n kube-system \
-  CALICO_IPV4POOL_IPIP=Never \
-  CALICO_IPV4POOL_VXLAN=Always
+calicoctl patch ippool default-ipv4-ippool \
+  -p '{"spec":{"ipipMode":"Never","vxlanMode":"Always"}}'
 kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
