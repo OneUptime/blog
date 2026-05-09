@@ -10,7 +10,7 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-Self-managed Kubernetes on Google Compute Engine (GCE) runs Calico as a full CNI with access to all Calico features - unlike GKE where Calico operates in policy-only mode. GCE's networking infrastructure is VPC-based, and Calico can use IPIP encapsulation across GCE instances in different subnets, or route traffic directly using GCE routes for pod CIDRs.
+Self-managed Kubernetes on Google Compute Engine (GCE) can run Calico as a full CNI with access to all Calico features, unlike managed GKE configurations where network policy enforcement is provided by the selected GKE dataplane. GCE's networking infrastructure is VPC-based, and Calico can use IPIP encapsulation across GCE instances in different subnets, or route traffic directly using GCE routes for pod CIDRs.
 
 Testing network policies on self-managed GCE Kubernetes validates the complete Calico policy stack. GCE's firewall rules and VPC networking coexist with Calico's iptables rules, providing defense-in-depth security. Testing confirms that Calico policies are enforced independently of GCE firewall rules, preventing lateral movement between pods even within the same VPC.
 
@@ -160,6 +160,23 @@ Create pods in different GCE zones and verify cross-zone policy enforcement:
 ```bash
 ZONE_A_NODE=$(kubectl get nodes -l topology.kubernetes.io/zone=us-central1-a -o name | head -1 | cut -d/ -f2)
 ZONE_B_NODE=$(kubectl get nodes -l topology.kubernetes.io/zone=us-central1-b -o name | head -1 | cut -d/ -f2)
+
+kubectl run gce-client-zone-a --image=busybox -n gce-policy-test \
+  --labels=app=client \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"'"$ZONE_A_NODE"'"}}}' \
+  -- sleep 3600
+
+kubectl run gce-server-zone-b --image=nginx -n gce-policy-test \
+  --labels=app=server --port=80 \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"'"$ZONE_B_NODE"'"}}}'
+
+kubectl wait --for=condition=Ready pod/gce-client-zone-a -n gce-policy-test --timeout=60s
+kubectl wait --for=condition=Ready pod/gce-server-zone-b -n gce-policy-test --timeout=60s
+
+ZONE_B_SERVER_IP=$(kubectl get pod gce-server-zone-b -n gce-policy-test -o jsonpath='{.status.podIP}')
+
+kubectl exec -n gce-policy-test gce-client-zone-a -- \
+  wget --timeout=5 -qO- "http://${ZONE_B_SERVER_IP}"
 ```
 
 ## Conclusion
