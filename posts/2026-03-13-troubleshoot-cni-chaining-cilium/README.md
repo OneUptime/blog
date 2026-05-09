@@ -34,8 +34,8 @@ Inspect the CNI conflist on a node:
 
 ls -la /etc/cni/net.d/
 
-# Read the active conflist (Cilium creates 05-cilium.conflist or similar)
-cat /etc/cni/net.d/05-cilium.conflist
+# Read the active conflist (AWS VPC CNI commonly uses 10-aws.conflist)
+cat /etc/cni/net.d/10-aws.conflist
 
 # For AWS VPC CNI chaining, the conflist should include both aws-cni and cilium
 # Example of a correct chain entry order: aws-cni first, then cilium
@@ -46,7 +46,7 @@ A correct AWS VPC CNI + Cilium chain conflist looks like this:
 ```json
 {
   "name": "aws-cni-chain",
-  "cniVersion": "0.4.0",
+  "cniVersion": "1.0.0",
   "plugins": [
     {
       "name": "aws-cni",
@@ -54,7 +54,6 @@ A correct AWS VPC CNI + Cilium chain conflist looks like this:
       "vethPrefix": "eni"
     },
     {
-      "name": "cilium-cni",
       "type": "cilium-cni"
     }
   ]
@@ -69,7 +68,7 @@ Verify the Cilium ConfigMap for chaining settings:
 
 ```bash
 # Inspect the Cilium configuration for the chaining mode setting
-kubectl -n kube-system get configmap cilium-config -o yaml | grep -E "(cni-chaining|tunnel)"
+kubectl -n kube-system get configmap cilium-config -o yaml | grep -E "(cni-chaining|routing-mode|tunnel)"
 
 # For AWS VPC CNI, the chaining-mode should be "aws-cni"
 # For generic chaining, it should be "generic-veth"
@@ -84,7 +83,9 @@ helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set cni.chainingMode=aws-cni \
-  --set tunnel=disabled
+  --set cni.exclusive=false \
+  --set enableIPv4Masquerade=false \
+  --set routingMode=native
 ```
 
 ## Step 3: Diagnose Pod Startup Failures in Chained Mode
@@ -115,18 +116,18 @@ Test connectivity and policy enforcement:
 cilium connectivity test
 
 # Verify that Cilium endpoints are being created for new pods
-kubectl -n kube-system exec -it ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg endpoint list
 
 # Confirm that Cilium is in chaining mode (not managing IPs)
-kubectl -n kube-system exec -it ds/cilium -- cilium status | grep -i "ipam"
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg status | grep -i "ipam"
 ```
 
 ## Best Practices
 
-- Use `cni-chaining-mode: aws-cni` and `tunnel: disabled` for EKS to avoid encapsulation overhead
+- Use `cni-chaining-mode: aws-cni`, `routing-mode: native`, `cni-exclusive: "false"`, and `enable-ipv4-masquerade: "false"` for EKS to avoid encapsulation overhead and preserve the AWS VPC CNI configuration
 - Ensure the CNI conflist file has a consistent name prefix to guarantee correct loading order
 - When upgrading either CNI in a chain, upgrade one at a time and test connectivity between upgrades
-- Use `cilium monitor` to trace packet drops in chained mode - they appear as policy drops even if the primary CNI is the root cause
+- Use `cilium-dbg monitor --type drop` to trace packet drops in chained mode - they appear as policy drops even if the primary CNI is the root cause
 - Avoid chaining more than two CNI plugins; complexity increases disproportionately with each addition
 
 ## Conclusion
