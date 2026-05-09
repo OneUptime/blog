@@ -12,7 +12,7 @@ Description: Diagnose and resolve common Calico eBPF mode issues including kerne
 
 Calico eBPF mode troubleshooting requires familiarity with BPF tools and concepts that most Kubernetes operators haven't encountered before. When something goes wrong with eBPF mode, the failure modes are different from iptables-based networking: instead of checking iptables chains, you inspect BPF maps and programs, and the error messages from Felix are specific to BPF operations.
 
-The most common eBPF failures are: kernel version too old (silently falls back to iptables), kube-proxy conflict (double NAT causing connectivity issues), service routing failures (missing BPF maps or incorrect API server configuration), and BPF program load failures (usually kernel configuration missing).
+The most common eBPF failures are: kernel version too old (Felix logs an error and disables BPF mode), kube-proxy conflict (service handling conflicts causing connectivity issues), service routing failures (missing BPF maps or incorrect API server configuration), and BPF program load failures (usually kernel support or verifier compatibility issues).
 
 ## Prerequisites
 
@@ -29,27 +29,26 @@ kubectl logs -n calico-system ds/calico-node -c calico-node | \
   grep -E "BPF|eBPF|dataplane"
 
 # Expected output when eBPF is active:
-# "BPF enabled: true"
-# "Started BPF endpoint manager"
+# "BPF enabled, starting BPF endpoint manager and map manager."
 
 # Check Felix configuration
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-list-progs 2>/dev/null || echo "Not available"
+  calico-node -bpf help 2>/dev/null || echo "Not available"
 ```
 
 ## Symptom 1: eBPF Mode Not Activating (Falling Back to iptables)
 
 ```bash
-# Check if Felix silently fell back to iptables
+# Check if Felix disabled BPF mode because it is not supported
 kubectl logs -n calico-system ds/calico-node -c calico-node | \
-  grep -i "fallback\|bpf.*error\|kernel.*bpf"
+  grep -i "bpf.*not supported\|bpf.*error\|kernel.*bpf"
 
 # Check Installation for eBPF setting
 kubectl get installation default -o jsonpath='{.spec.calicoNetwork.linuxDataplane}'
 
 # Verify BPF filesystem is mounted
-kubectl debug node/<node> --image=ubuntu:22.04 -it -- \
-  mount | grep bpf
+kubectl debug node/<node> --image=ubuntu:22.04 --profile=sysadmin -it -- \
+  nsenter --mount=/host/proc/1/ns/mnt -- mount | grep bpf
 # If not mounted, BPF programs can't be loaded
 ```
 
@@ -57,8 +56,8 @@ Fix BPF filesystem mount:
 
 ```bash
 # Mount BPF filesystem on the node
-kubectl debug node/<node> -it --image=ubuntu:22.04 -- \
-  bash -c 'mount -t bpf bpffs /sys/fs/bpf && echo "Mounted"'
+kubectl debug node/<node> -it --image=ubuntu:22.04 --profile=sysadmin -- \
+  nsenter --mount=/host/proc/1/ns/mnt -- mount -t bpf bpffs /sys/fs/bpf
 ```
 
 ## Symptom 2: Service Connectivity Broken After eBPF Enablement
@@ -75,7 +74,7 @@ kubectl get ds kube-proxy -n kube-system \
 
 # Check for double NAT in BPF maps
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-nat-dump 2>/dev/null | head -20
+  calico-node -bpf nat dump 2>/dev/null | head -20
 
 # Test service connectivity directly
 kubectl run test-svc --image=busybox --restart=Never -- \
@@ -90,15 +89,15 @@ When kube-proxy is disabled, Calico eBPF handles service routing. If services ar
 # Check the kubernetes-services-endpoint ConfigMap
 kubectl get configmap kubernetes-services-endpoint -n tigera-operator -o yaml
 
-# Verify the IP is actually the API server, not the ClusterIP
+# Verify the configured host is a stable direct API server address, not the ClusterIP
 API_CLUSTER_IP=$(kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}')
 API_ENDPOINT=$(kubectl get endpoints kubernetes -n default \
   -o jsonpath='{.subsets[0].addresses[0].ip}')
 
 echo "Cluster service IP: ${API_CLUSTER_IP}"
-echo "Real endpoint IP: ${API_ENDPOINT}"
+echo "One current endpoint IP: ${API_ENDPOINT}"
 
-# The ConfigMap should have the real endpoint IP, NOT the cluster service IP!
+# The ConfigMap should use a stable API server host or load balancer, NOT the cluster service IP!
 kubectl get configmap kubernetes-services-endpoint -n tigera-operator \
   -o jsonpath='{.data.KUBERNETES_SERVICE_HOST}'
 ```
@@ -111,8 +110,8 @@ kubectl logs -n calico-system ds/calico-node -c calico-node | \
   grep -i "bpf.*fail\|bpf.*error\|load.*program"
 
 # Check kernel BPF configuration
-kubectl debug node/<node> --image=ubuntu:22.04 -it -- \
-  grep -E "CONFIG_BPF|CONFIG_CGROUP_BPF" /boot/config-$(uname -r) 2>/dev/null
+kubectl debug node/<node> --image=ubuntu:22.04 --profile=sysadmin -it -- \
+  grep -E "CONFIG_BPF|CONFIG_NET_CLS_BPF|CONFIG_NET_ACT_BPF|CONFIG_CGROUP_BPF" /host/boot/config-$(uname -r) 2>/dev/null
 
 # Required kernel config for Calico eBPF:
 # CONFIG_BPF=y
@@ -128,7 +127,7 @@ kubectl debug node/<node> --image=ubuntu:22.04 -it -- \
 ```mermaid
 flowchart TD
     A[eBPF Issue] --> B{BPF mode active?}
-    B -->|No - fallback to iptables| C[Check kernel version >=5.3]
+    B -->|No - BPF disabled| C[Check kernel version >=5.10]
     B -->|Yes but broken| D{Service routing OK?}
     C --> C2[Check BPF fs mounted]
     D -->|No| E[Check kube-proxy disabled]
@@ -142,4 +141,4 @@ flowchart TD
 
 ## Conclusion
 
-Troubleshooting Calico eBPF mode requires a different diagnostic toolkit than traditional iptables troubleshooting. The key tools are: Felix logs (for BPF enablement status), `bpftool prog list` (for BPF program loading), the `kubernetes-services-endpoint` ConfigMap (for API server routing), and kube-proxy DaemonSet status (for conflict detection). When eBPF mode silently falls back to iptables, it's almost always due to kernel version incompatibility or BPF filesystem not being mounted. Service routing failures after kube-proxy disablement almost always trace back to the API server ConfigMap having the wrong IP.
+Troubleshooting Calico eBPF mode requires a different diagnostic toolkit than traditional iptables troubleshooting. The key tools are: Felix logs (for BPF enablement status), `bpftool prog list` (for BPF program loading), the `kubernetes-services-endpoint` ConfigMap (for API server routing), and kube-proxy DaemonSet status (for conflict detection). When eBPF mode is disabled by Felix, it's often due to kernel version incompatibility or BPF filesystem not being mounted. Service routing failures after kube-proxy disablement often trace back to the API server ConfigMap having the wrong host or port.
