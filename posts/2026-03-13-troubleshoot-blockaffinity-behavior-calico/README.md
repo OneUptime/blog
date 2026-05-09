@@ -52,7 +52,9 @@ calicoctl get blockaffinity -o yaml | grep "node:"
 
 # Find BlockAffinity entries for nodes that no longer exist
 # Any node in calicoctl but not in kubectl get nodes is stale
-calicoctl get node | grep -v $(kubectl get nodes -o name | sed 's|node/||' | tr '\n' '|' | sed 's/|$//')
+comm -23 \
+  <(calicoctl get node | awk 'NR>1 {print $1}' | sort) \
+  <(kubectl get nodes -o name | sed 's|node/||' | sort)
 ```
 
 ## Step 3: Clean Up Stale Block Affiliations
@@ -79,9 +81,9 @@ Investigate situations where nodes are allocating IPs from non-affine blocks.
 
 ```bash
 # Check if any nodes are using IPs from non-affine blocks
-calicoctl ipam show --show-blocks
+calicoctl ipam show --show-borrowed
 
-# A pod on node-A having an IP from a block with affinity to node-B indicates borrowing
+# A pod on node-A using an IP from a block owned by node-B indicates borrowing
 # Check current pod IPs against their hosting nodes
 kubectl get pods --all-namespaces -o wide | awk '{print $8, $7}' | sort
 
@@ -100,9 +102,10 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep blockSize
 # Calculate if block size is sufficient for max pods per node
 # Default /26 = 64 IPs. For 110 pods per node, use /25 = 128 IPs
 
-# Update block size if needed (requires IPAM draining first)
-calicoctl patch ippool default-ipv4-ippool --type merge \
-  --patch '{"spec":{"blockSize": 25}}'
+# If the pool already exists, blockSize cannot be patched in place.
+# Drain/move workloads, delete the old pool, then recreate it with the new block size.
+calicoctl delete ippool default-ipv4-ippool
+calicoctl apply -f updated-pool.yaml
 ```
 
 ## Best Practices
