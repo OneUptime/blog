@@ -10,16 +10,16 @@ Description: Test and validate Kubernetes network policies with Calico on a sing
 
 ## Introduction
 
-Single-node Kubernetes clusters are excellent environments for testing network policy logic because the simplified topology makes it easy to isolate policy behavior. All pods run on the same node, so any connectivity failures are definitively caused by network policies rather than routing issues.
+Single-node Kubernetes clusters are excellent environments for testing network policy logic because the simplified topology makes it easier to isolate policy behavior. All pods run on the same node, so connectivity failures are less likely to involve cross-node routing issues, but you should still confirm pod readiness, Services, and DNS when troubleshooting.
 
-Testing network policies on a single-node cluster is a common practice before deploying policies to multi-node production clusters. The policies are identical - Calico enforces them using the same iptables rules regardless of cluster topology. This makes single-node clusters reliable testbeds for network security configurations.
+Testing network policies on a single-node cluster is a common practice before deploying policies to multi-node production clusters. The Kubernetes NetworkPolicy objects and policy semantics are the same, and Calico enforces them through its configured Linux dataplane. This makes single-node clusters useful testbeds for network security configurations before validating them in production-like multi-node clusters.
 
-This guide walks through testing a comprehensive set of network policies on a single-node Kubernetes cluster with Calico, covering ingress control, egress restrictions, and Calico-specific global policies.
+This guide walks through testing a representative set of network policies on a single-node Kubernetes cluster with Calico, covering ingress control and egress restrictions.
 
 ## Prerequisites
 
 - Single-node Kubernetes with Calico installed
-- kubectl and calicoctl configured
+- kubectl configured
 
 ## Step 1: Set Up Test Environment
 
@@ -31,6 +31,9 @@ kubectl run client-allowed --image=busybox -n policy-demo \
   --labels=role=client -- sleep 3600
 kubectl run client-blocked --image=busybox -n policy-demo \
   --labels=role=other -- sleep 3600
+kubectl wait --for=condition=Ready pod/server -n policy-demo --timeout=60s
+kubectl wait --for=condition=Ready pod/client-allowed -n policy-demo --timeout=60s
+kubectl wait --for=condition=Ready pod/client-blocked -n policy-demo --timeout=60s
 ```
 
 ## Step 2: Verify Pre-Policy Connectivity
@@ -132,4 +135,4 @@ Should now be blocked even though ingress was allowed.
 
 ## Conclusion
 
-You have tested a full set of Calico network policies on a single-node Kubernetes cluster, verifying default deny, selective allow, and egress control. The single-node environment provided clear, unambiguous policy testing results that can be directly applied to production multi-node clusters.
+You have tested a representative set of Kubernetes network policies with Calico on a single-node Kubernetes cluster, verifying default deny, selective allow, and egress control. The single-node environment provided focused policy testing results that can be used as a starting point before validating the same policies in production multi-node clusters.
