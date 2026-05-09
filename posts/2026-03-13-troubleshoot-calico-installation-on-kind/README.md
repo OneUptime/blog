@@ -51,17 +51,17 @@ If kindnet pods are present, the cluster must be recreated with `disableDefaultC
 
 ## Step 3: Fix IPIP Encapsulation Issues
 
-Kind may block IPIP traffic by default. Check if the `ipip` kernel module is loaded inside Kind nodes:
+Calico with IPIP requires IP-in-IP support from the host kernel and network path. Check whether the `ipip` kernel module is loaded inside Kind nodes, and load it if needed:
 
 ```bash
-docker exec -it calico-cluster-control-plane modprobe ipip
+docker exec -it calico-cluster-control-plane sh -c 'lsmod | grep "^ipip" || modprobe ipip'
 ```
 
-Alternatively, switch Calico to VXLAN mode which works better with Docker:
+Alternatively, switch the Calico IP pool to VXLAN mode, which avoids IP-in-IP:
 
 ```bash
-kubectl set env daemonset/calico-node -n kube-system CALICO_IPV4POOL_IPIP=Never
-kubectl set env daemonset/calico-node -n kube-system CALICO_IPV4POOL_VXLAN=Always
+calicoctl get ippool -o wide
+calicoctl patch ippool default-ipv4-ippool -p '{"spec":{"ipipMode":"Never","vxlanMode":"Always"}}'
 ```
 
 ## Step 4: Resolve Pod CIDR Mismatch
@@ -70,7 +70,7 @@ Ensure the Calico IP pool CIDR matches the Kind cluster's `podSubnet`:
 
 ```bash
 calicoctl get ippool -o yaml | grep cidr
-kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
 ```
 
 If they do not match, delete and recreate the IP pool with the correct CIDR.
@@ -78,9 +78,11 @@ If they do not match, delete and recreate the IP pool with the correct CIDR.
 ## Step 5: Check Felix and BIRD Health
 
 ```bash
-kubectl exec -n kube-system -it $(kubectl get pod -n kube-system -l k8s-app=calico-node -o name | head -1) -- calico-node -felix-live
-kubectl exec -n kube-system -it $(kubectl get pod -n kube-system -l k8s-app=calico-node -o name | head -1) -- calico-node -bird-live
+kubectl exec -n kube-system -it $(kubectl get pod -n kube-system -l k8s-app=calico-node -o name | head -1) -- /bin/calico-node -felix-live
+kubectl exec -n kube-system -it $(kubectl get pod -n kube-system -l k8s-app=calico-node -o name | head -1) -- /bin/calico-node -bird-live
 ```
+
+Run the BIRD check only when BGP/BIRD is enabled; VXLAN-only Calico deployments may disable BIRD.
 
 ## Step 6: Verify iptables Rules
 
