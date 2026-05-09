@@ -10,9 +10,9 @@ Description: A guide to diagnosing and resolving common issues when installing C
 
 ## Introduction
 
-Installing Calico on AKS enables advanced network policy capabilities beyond what Azure's built-in network policies provide. However, AKS's managed environment introduces constraints and requirements that can cause Calico installations to fail or behave unexpectedly.
+Installing Calico on AKS enables Kubernetes network policy enforcement through AKS-managed Calico, or advanced Calico capabilities when you choose a self-managed Calico installation. However, AKS's managed environment introduces constraints and requirements that can cause Calico installations to fail or behave unexpectedly.
 
-Common issues include conflicts with Azure CNI's IP address management, incorrect Calico manifest configuration for AKS, and permission issues in the AKS managed control plane. Understanding the AKS-specific requirements for Calico is essential for a successful installation.
+Common issues include conflicts with Azure CNI's IP address management, using generic Calico manifests instead of an AKS-supported installation path, and permission issues in the AKS managed control plane. Understanding the AKS-specific requirements for Calico is essential for a successful installation.
 
 This guide covers the most frequent installation failures on AKS and how to resolve them.
 
@@ -21,7 +21,6 @@ This guide covers the most frequent installation failures on AKS and how to reso
 - AKS cluster with Azure CNI networking
 - `az` CLI configured with cluster access
 - `kubectl` with cluster admin access
-- `calicoctl` installed
 
 ## Step 1: Verify AKS Network Plugin Compatibility
 
@@ -43,11 +42,12 @@ az aks show --resource-group <rg-name> --name <cluster-name> \
 
 ## Step 2: Install Calico Network Policy on AKS
 
-Apply the Calico manifests appropriate for AKS.
+Enable the AKS-managed Calico network policy engine. On an existing cluster, this update reimages node pools, so plan for the same kind of disruption you would expect from a node image upgrade.
 
 ```bash
-# Apply Calico network policy manifests for Azure CNI
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico-policy-only.yaml
+# Enable Calico network policy on an existing AKS cluster
+az aks update --resource-group <rg-name> --name <cluster-name> \
+  --network-policy calico
 
 # Check that Calico pods are starting
 kubectl get pods -n kube-system -l k8s-app=calico-node -w
@@ -87,8 +87,9 @@ kubectl get clusterrolebinding | grep calico
 # Check for permission denied errors in Calico logs
 kubectl logs -n kube-system <calico-node-pod> | grep -i "forbidden\|permission\|rbac"
 
-# If RBAC resources are missing, reapply the Calico manifest
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico-policy-only.yaml
+# If AKS-managed Calico resources are missing, rerun the AKS update
+az aks update --resource-group <rg-name> --name <cluster-name> \
+  --network-policy calico
 ```
 
 ## Step 5: Validate Network Policy Enforcement
@@ -99,7 +100,9 @@ Test that Calico is enforcing network policies correctly after installation.
 # Create a test namespace and deploy two pods
 kubectl create namespace policy-test
 kubectl run client --image=busybox -n policy-test -- sleep 3600
-kubectl run server --image=nginx -n policy-test
+kubectl run server --image=nginx --port=80 -n policy-test
+kubectl expose pod server --port=80 -n policy-test
+kubectl wait --for=condition=Ready pod/client pod/server -n policy-test --timeout=60s
 
 # Verify connectivity before applying a policy (should succeed)
 kubectl exec -n policy-test client -- wget -qO- http://server.policy-test.svc.cluster.local
@@ -118,16 +121,16 @@ spec:
 EOF
 
 # Verify connectivity is now blocked (should time out)
-kubectl exec -n policy-test client -- wget -qO- --timeout=5 http://server.policy-test.svc.cluster.local
+kubectl exec -n policy-test client -- wget -qO- -T 5 http://server.policy-test.svc.cluster.local
 ```
 
 ## Best Practices
 
 - Always check AKS version compatibility before installing a specific Calico version
-- Use the AKS-specific Calico manifests rather than generic Kubernetes manifests
+- Use the AKS network policy option or Tigera's AKS-specific self-managed Calico installation guide rather than generic Kubernetes manifests
 - Monitor Calico node pod restarts after installation as an indicator of configuration issues
 - Test network policy enforcement immediately after installation before adding workloads
-- Review AKS release notes when upgrading-Calico compatibility can change
+- Review AKS release notes when upgrading because Calico compatibility can change
 
 ## Conclusion
 
