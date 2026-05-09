@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Troubleshooting
 
-Description: Diagnose issues with producer, consumer, and mixed GAMMA configuration types in Cilium including ReferenceGrant failures and route ownership conflicts.
+Description: Diagnose issues with producer, consumer, and mixed GAMMA configuration types in Cilium including unsupported consumer routes, ReferenceGrant failures for backend references, and route ownership conflicts.
 
 ---
 
 ## Introduction
 
-Different GAMMA configuration types introduce distinct failure modes. Producer routes may fail when the Service selector does not match any backing pods. Consumer routes in cross-namespace configurations often fail due to missing or misconfigured ReferenceGrant resources. Mixed configurations can produce unexpected routing when both producer and consumer routes apply to the same traffic.
+Different GAMMA configuration types introduce distinct failure modes. Producer routes may fail to send traffic when the Service selector does not match any ready backing pods. Consumer routes are part of the GAMMA model, but Cilium currently supports only producer routes, so HTTPRoutes must be in the same namespace as the Service they bind to. Mixed configurations can produce unexpected routing when multiple producer routes apply to the same traffic.
 
 Diagnosing these issues requires inspecting route conditions at each stage of the Cilium reconciliation pipeline.
 
@@ -22,47 +22,48 @@ Diagnosing these issues requires inspecting route conditions at each stage of th
 
 ## Troubleshoot Producer Route Failures
 
-Check that the Service in the producer namespace has healthy endpoints:
+Check that the Service in the producer namespace has healthy EndpointSlices:
 
 ```bash
-kubectl get endpoints <service-name> -n <producer-ns>
+kubectl get endpointslice -n <producer-ns> \
+  -l kubernetes.io/service-name=<service-name>
 ```
 
-Check the route's `ResolvedRefs` condition:
+Check the route's `Accepted` and `ResolvedRefs` conditions for route attachment and backend reference errors:
 
 ```bash
-kubectl describe httproute <name> -n <producer-ns> | grep -A5 "ResolvedRefs"
+kubectl describe httproute <name> -n <producer-ns> | grep -A8 -E "Accepted|ResolvedRefs"
 ```
 
 ## Troubleshoot Consumer Cross-Namespace Routes
 
-Verify ReferenceGrant exists in the target namespace:
+Cilium currently does not support consumer HTTPRoutes, so a route whose Service `parentRefs` points to a different namespace will not work as a Cilium GAMMA route. Confirm the parent reference namespace:
 
 ```bash
-kubectl get referencegrant -n <target-ns>
+kubectl get httproute <name> -n <consumer-ns> -o yaml | grep -A6 "parentRefs:"
 ```
 
-If missing, consumer routes will show `RefNotPermitted`:
+Move the HTTPRoute to the same namespace as the parent Service, or use a Gateway API mesh implementation that supports consumer routes. `ReferenceGrant` is still required for cross-namespace backend references, but it does not enable Cilium consumer route support:
 
 ```bash
-kubectl describe httproute <name> -n <consumer-ns> | grep "RefNotPermitted"
+kubectl get referencegrant -n <backend-ns>
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A[Consumer HTTPRoute] --> B{ReferenceGrant check}
-    B -->|Not found| C[RefNotPermitted error]
-    B -->|Found| D[Backend resolution]
-    D --> E{Endpoints exist?}
-    E -->|No| F[ResolvedRefs: False]
-    E -->|Yes| G[eBPF rule loaded]
+    A[HTTPRoute] --> B{Parent Service in same namespace?}
+    B -->|No| C[Consumer route unsupported by Cilium]
+    B -->|Yes| D[Backend reference resolution]
+    D --> E{Ready EndpointSlices exist?}
+    E -->|No| F[No ready endpoints]
+    E -->|Yes| G[Envoy config applied]
 ```
 
 ## Troubleshoot Route Priority Conflicts
 
-When both producer and consumer routes apply to the same Service, check rule specificity. More specific matches (path, header) take priority:
+When multiple producer routes apply to the same Service, check rule specificity. More specific matches (path, header) take priority:
 
 ```bash
 kubectl get httproute -A -o yaml | grep -A5 "parentRef"
@@ -71,13 +72,13 @@ kubectl get httproute -A -o yaml | grep -A5 "parentRef"
 ## Inspect Cilium Operator Logs
 
 ```bash
-kubectl logs -n kube-system -l app.kubernetes.io/name=cilium-operator \
+kubectl logs -n kube-system deployments/cilium-operator \
   --since=5m | grep -i "referencegrant\|httproute"
 ```
 
 ## Fix Missing Endpoints
 
-If endpoints are empty, check the Service selector matches pod labels:
+If EndpointSlices are empty, check the Service selector matches pod labels:
 
 ```bash
 kubectl get pods -n <ns> --show-labels | grep <selector-key>
@@ -86,4 +87,4 @@ kubectl describe svc <service-name> -n <ns> | grep Selector
 
 ## Conclusion
 
-Troubleshooting GAMMA configuration types requires checking ReferenceGrant permissions for cross-namespace routes, endpoint availability for backend resolution, and route specificity for conflict resolution. The Cilium operator logs provide detailed reconciliation errors for each failure mode.
+Troubleshooting GAMMA configuration types in Cilium requires checking that routes bind to Services in the same namespace, ReferenceGrant permissions for cross-namespace backend references, endpoint availability for traffic forwarding, and route specificity for conflict resolution. The Cilium operator logs provide detailed reconciliation errors for each failure mode.
