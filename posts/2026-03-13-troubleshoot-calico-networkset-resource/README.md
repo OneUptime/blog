@@ -37,16 +37,18 @@ calicoctl get globalnetworkset blocked-ips -o yaml | grep "nets:" -A20
 
 ```bash
 # SSH to node
-ipset list | grep "cali-s:blocked-ips"
-ipset list cali-s:blocked-ips | grep "198.199.1.1"
+# Felix uses generated internal names for Calico ipsets; find the set containing the IP.
+for set in $(ipset list -name | grep '^cali.*s:'); do
+  ipset list "$set" | grep -q "198.199.1.1" && echo "$set"
+done
 ```
 
 ## Issue 2: Policy Not Matching NetworkSet
 
 ```mermaid
 graph TD
-    A[Policy selector references NetworkSet] --> B{Labels match?}
-    B -->|No match| C[Check NetworkSet labels vs policy selector]
+    A[Policy rule selector references NetworkSet] --> B{Labels match?}
+    B -->|No match| C[Check NetworkSet labels vs rule selector]
     B -->|Match| D{Is IP set programmed?}
     D -->|Not programmed| E[Check Felix logs]
     D -->|Programmed| F{Traffic test}
@@ -54,15 +56,15 @@ graph TD
 ```
 
 ```bash
-# Policy selector: "threat == 'blocked'"
+# Policy rule source/destination selector: "threat == 'blocked'"
 # NetworkSet label: "threat: blocked"
 # These must match
 
 calicoctl get globalnetworkset blocked-ips -o yaml | grep -A5 "labels:"
 # Must show: threat: blocked
 
-calicoctl get globalnetworkpolicy block-threat-ips -o yaml | grep "selector:"
-# Must reference: selector: "threat == 'blocked'"
+calicoctl get globalnetworkpolicy block-threat-ips -o yaml | grep -A4 -E "source:|destination:|selector:"
+# A rule source or destination must reference: selector: "threat == 'blocked'"
 ```
 
 ## Issue 3: IP Set Not Programmed After Update
@@ -95,10 +97,9 @@ for net in data['spec']['nets']:
 ## Issue 5: Namespace Scoping Confusion
 
 ```bash
-# NetworkSet in payments namespace cannot be used in a GlobalNetworkPolicy
-# Check: namespace-scoped set used with namespaced policy only
+# Check that a namespace-scoped set is used with policy in the intended namespace
 calicoctl get networkset trusted-ips -n payments -o yaml
-# Namespace: payments - can only be referenced from NetworkPolicy in payments namespace
+# Namespace: payments - commonly referenced from NetworkPolicy in payments namespace
 
 # For cluster-wide use, create a GlobalNetworkSet
 calicoctl get globalnetworksets
