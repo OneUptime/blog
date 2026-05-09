@@ -31,7 +31,7 @@ Set up a Flux notification provider to send deployment events to your communicat
 ```yaml
 # infrastructure/notifications/slack-provider.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-cost-channel
@@ -65,7 +65,7 @@ Configure Flux Alert resources to fire when HelmReleases or Kustomizations are a
 
 ```yaml
 # infrastructure/notifications/deployment-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-events
@@ -77,14 +77,17 @@ spec:
   eventSources:
     # Alert on all HelmRelease deployments
     - kind: HelmRelease
+      name: "*"
       namespace: "*"
     # Alert on all Kustomization reconciliations
     - kind: Kustomization
+      name: "*"
       namespace: flux-system
   # Include resource metadata in the alert message
   inclusionList:
     - ".*"
-  summary: "Deployment completed - check cost impact in Kubecost"
+  eventMetadata:
+    summary: "Deployment completed - check cost impact in Kubecost"
 ```
 
 ## Step 3: Annotate Workloads with Cost Baseline
@@ -156,7 +159,7 @@ spec:
                 - |
                   # Query OpenCost API for current namespace costs
                   TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-                  COSTS=$(curl -s "http://opencost.opencost.svc.cluster.local:9090/allocation/compute?window=1h&aggregate=namespace&accumulate=true")
+                  COSTS=$(curl -s "http://opencost.opencost.svc.cluster.local:9003/allocation/compute?window=1h&aggregate=namespace&accumulate=true")
 
                   # Log to stdout (captured by your log aggregation system)
                   echo "{\"timestamp\": \"$TIMESTAMP\", \"costs\": $COSTS}"
@@ -171,7 +174,7 @@ spec:
 
 ## Step 5: Create Cost Regression Alerts in Prometheus
 
-Define Prometheus alerting rules that fire when namespace costs spike after deployments.
+Define Prometheus alerting rules that fire when namespace resource requests spike after deployments.
 
 ```yaml
 # infrastructure/monitoring/cost-alerts.yaml
@@ -229,11 +232,11 @@ Use Flux event annotations in your runbook to guide engineers investigating cost
 # Find recent Flux reconciliations
 kubectl get events -n flux-system --sort-by='.lastTimestamp' | grep -E "HelmRelease|Kustomization"
 
-# Check what changed in a specific HelmRelease
-flux get helmrelease -n backend --all-namespaces
+# Check HelmRelease status
+flux get helmreleases -n backend
 
-# View the last applied revision
-kubectl get helmrelease api-server -n backend -o jsonpath='{.status.lastAppliedRevision}'
+# View the last attempted source revision
+kubectl get helmrelease api-server -n backend -o jsonpath='{.status.lastAttemptedRevision}'
 
 # Compare current vs baseline resource requests
 kubectl get pods -n backend -o json | jq '.items[].spec.containers[].resources'
