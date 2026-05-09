@@ -18,9 +18,9 @@ This guide walks through testing a layered network policy setup on MicroK8s, inc
 
 ## Prerequisites
 
-- MicroK8s with Calico enabled
+- MicroK8s with Calico enabled and DNS enabled (`microk8s enable dns`)
 - kubectl (via microk8s kubectl or alias)
-- calicoctl installed
+- calicoctl installed and configured for the MicroK8s cluster
 
 ## Step 1: Create Test Resources
 
@@ -42,7 +42,7 @@ microk8s kubectl label namespace db-tier name=db-tier
 ## Step 2: Confirm Pre-Policy Connectivity
 
 ```bash
-microk8s kubectl exec -n web-tier web -- wget --timeout=5 -qO- http://db-svc.db-tier.svc.cluster.local
+microk8s kubectl exec -n web-tier web -- wget -T 5 -qO- http://db-svc.db-tier.svc.cluster.local
 ```
 
 Should succeed before any policies are applied.
@@ -66,7 +66,7 @@ EOF
 ## Step 4: Verify the Deny is Enforced
 
 ```bash
-microk8s kubectl exec -n web-tier web -- wget --timeout=5 -qO- http://db-svc.db-tier.svc.cluster.local
+microk8s kubectl exec -n web-tier web -- wget -T 5 -qO- http://db-svc.db-tier.svc.cluster.local
 ```
 
 Should time out.
