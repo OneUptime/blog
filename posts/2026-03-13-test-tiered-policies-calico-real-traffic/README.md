@@ -16,7 +16,7 @@ Calico's `projectcalico.org/v3` policy tiers allow you to organize policies by s
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+ (Enterprise for tiered policies)
+- Kubernetes cluster with Calico policy tier support (Calico Open Source v3.29+ or Calico Enterprise/Cloud)
 - `calicoctl` and `kubectl` installed
 - Tiers configured
 
@@ -29,6 +29,7 @@ metadata:
   name: security
 spec:
   order: 100
+  defaultAction: Pass
 ---
 apiVersion: projectcalico.org/v3
 kind: Tier
