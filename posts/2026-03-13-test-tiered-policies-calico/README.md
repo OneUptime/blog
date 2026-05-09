@@ -25,8 +25,10 @@ This guide provides practical techniques for test Tiered Policies in your Kubern
 ## Step 1: Set Up Test Environment
 
 ```bash
-kubectl run test-source -n test --image=busybox --restart=Never -- sleep 3600
-kubectl run test-dest -n test --image=nginx --restart=Never
+kubectl create namespace test
+kubectl run test-source -n test --image=busybox --labels=app=test-source --restart=Never --command -- sleep 3600
+kubectl run test-dest -n test --image=nginx --labels=app=test-dest --restart=Never
+kubectl wait --for=condition=Ready pod/test-source pod/test-dest -n test --timeout=60s
 ```
 
 ## Step 2: Establish Baseline
@@ -35,31 +37,67 @@ Test traffic before applying the policy to confirm connectivity:
 
 ```bash
 DEST_IP=$(kubectl get pod test-dest -n test -o jsonpath='{.status.podIP}')
-kubectl exec -n test test-source -- wget -qO- --timeout=5 http://$DEST_IP
+kubectl exec -n test test-source -- wget -qO- -T 5 http://$DEST_IP
 ```
 
 ## Step 3: Apply Policy and Test Blocking
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: security
+spec:
+  order: 300
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: test-tiered-policies
   namespace: test
 spec:
+  tier: security
   order: 100
-  selector: all()
+  selector: app == 'test-dest'
   ingress:
     - action: Deny
   types:
     - Ingress
 ```
 
+```bash
+calicoctl apply -f deny-rule.yaml
+kubectl exec -n test test-source -- wget -qO- -T 5 http://$DEST_IP
+echo "Should fail: $?"
+```
+
 ## Step 4: Add Allow Rule and Retest
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-test-source
+  namespace: test
+spec:
+  tier: security
+  order: 50
+  selector: app == 'test-dest'
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        selector: app == 'test-source'
+      destination:
+        ports:
+          - 80
+  types:
+    - Ingress
+```
 
 ```bash
 calicoctl apply -f allow-rule.yaml
-kubectl exec -n test test-source -- wget -qO- --timeout=5 http://$DEST_IP
+kubectl exec -n test test-source -- wget -qO- -T 5 http://$DEST_IP
 echo "Should succeed: $?"
 ```
 
