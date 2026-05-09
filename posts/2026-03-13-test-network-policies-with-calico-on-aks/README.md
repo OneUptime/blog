@@ -10,9 +10,9 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-AKS with Calico network policies provides enterprise-grade network segmentation for Azure workloads. Testing network policies on AKS verifies that Calico's Felix agent correctly enforces NetworkPolicy resources within the Azure networking model. Since AKS uses Azure CNI for routing, network policies are enforced entirely at the Linux iptables level by Felix.
+AKS with Calico network policies provides enterprise-grade network segmentation for Azure workloads. Testing network policies on AKS verifies that Calico's Felix agent correctly enforces NetworkPolicy resources within the Azure networking model. In AKS clusters that use Azure CNI with Calico, Azure CNI handles pod networking while Calico is used for network policy enforcement.
 
-Testing on AKS should cover the same scenarios as other platforms: default deny, selective allow by pod selector, namespace-scoped policies, and ingress/egress control. AKS-specific testing should also verify that Azure Load Balancer traffic and Azure Private Link traffic behaves correctly with Calico policies applied.
+Testing on AKS should cover the same scenarios as other platforms: default deny, selective allow by pod selector, namespace-scoped policies, and ingress/egress control. AKS-specific testing should also verify that Azure Load Balancer traffic reaches only the pods and ports that policies allow.
 
 This guide demonstrates comprehensive network policy testing on AKS with Calico.
 
@@ -33,14 +33,15 @@ kubectl run backend --image=nginx -n aks-policy-test \
   --labels=tier=backend --port=80
 kubectl expose pod backend --port=80 -n aks-policy-test --name=backend-svc
 kubectl run db-sim --image=nginx -n aks-policy-test \
-  --labels=tier=database --port=5432
+  --labels=tier=database --port=80
+kubectl expose pod db-sim --port=80 -n aks-policy-test --name=db-sim
 ```
 
 ## Step 2: Confirm Pre-Policy Connectivity
 
 ```bash
 kubectl exec -n aks-policy-test frontend -- \
-  wget --timeout=5 -qO- http://backend-svc
+  wget -T 5 -qO- http://backend-svc
 ```
 
 Should succeed.
@@ -147,7 +148,7 @@ kubectl exec -n aks-policy-test frontend -- \
 
 # Should fail (no policy allows db-sim access)
 kubectl exec -n aks-policy-test frontend -- \
-  wget --timeout=3 http://db-sim.aks-policy-test.svc.cluster.local:5432
+  wget -T 3 -O- http://db-sim.aks-policy-test.svc.cluster.local
 ```
 
 ## Step 7: Test Azure Load Balancer Ingress
@@ -158,8 +159,8 @@ kubectl expose pod backend --port=80 --type=LoadBalancer \
 kubectl get svc backend-lb -n aks-policy-test -w
 ```
 
-Once the external IP is assigned, test that the load balancer traffic is also subject to Calico policies.
+Once the external IP is assigned, test that the load balancer traffic reaches the backend only when the backend ingress policy allows it. Source IP handling for external Service traffic can vary depending on the service configuration and cloud networking path.
 
 ## Conclusion
 
-You have tested Calico network policies on AKS, validating default deny, selective allow by tier, and DNS egress policies. Calico's Felix enforces these policies on AKS at the iptables level, providing the same security guarantees as on self-managed Kubernetes while Azure CNI handles the underlying routing and Azure Load Balancer provides external access.
+You have tested Calico network policies on AKS, validating default deny, selective allow by tier, and DNS egress policies. In Azure CNI clusters, Calico enforces network policies while Azure CNI handles the underlying pod networking and Azure Load Balancer provides external access.
