@@ -27,16 +27,37 @@ metadata:
   namespace: production
 spec:
   order: 100
+  tier: default
   selector: all()
   ingress:
-    - action: Allow
+    - action: Log
       source:
         selector: app == 'authorized'
+      destination:
+        ports: [8080]
+    - action: Allow
+      protocol: TCP
+      source:
+        selector: app == 'authorized'
+      destination:
+        ports: [8080]
   egress:
+    - action: Log
+      protocol: UDP
+      destination:
+        ports: [53]
     - action: Allow
       protocol: UDP
       destination:
         ports: [53]
+    - action: Log
+      protocol: TCP
+      destination:
+        ports: [8080]
+    - action: Allow
+      protocol: TCP
+      destination:
+        ports: [8080]
   types:
     - Ingress
     - Egress
@@ -47,8 +68,9 @@ spec:
 ```bash
 calicoctl apply -f test-policy.yaml
 calicoctl get networkpolicies -n production -o wide
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
+kubectl exec -n production authorized-test-pod -- curl -s --max-time 5 http://target:8080
 echo "Result: $?"
+sudo journalctl -k | grep calico-packet
 ```
 
 ## Architecture
