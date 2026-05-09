@@ -18,7 +18,7 @@ This guide covers the most common failure modes in Azure CNI + Cilium AKS deploy
 
 ## Prerequisites
 
-- AKS cluster with Azure CNI and Cilium network policy enabled
+- AKS cluster with Azure CNI powered by Cilium enabled
 - `kubectl` with cluster admin access
 - `cilium` CLI installed
 - Azure CLI (`az`) configured with cluster access
@@ -37,7 +37,8 @@ cilium status --wait
 
 # Verify Cilium version matches the expected AKS-managed version
 cilium version
-kubectl get configmap cilium-config -n kube-system -o yaml | grep cilium-image
+kubectl get daemonset cilium -n kube-system \
+  -o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
 ```
 
 ## Step 2: Diagnose Pod Connectivity Issues
@@ -50,11 +51,11 @@ CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
 # List endpoints and their policy enforcement status
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium endpoint list
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg endpoint list
 
-# Monitor traffic for a specific pod
+# Monitor dropped traffic from a specific Cilium endpoint ID
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium monitor -t drop --from <pod-ip>
+  cilium-dbg monitor -t drop --from <endpoint-id>
 ```
 
 ## Step 3: Check Azure CNI IP Address Allocation
@@ -71,7 +72,7 @@ kubectl describe node <node-name> | grep -E "Allocatable|Capacity"
 
 # Check Azure CNI configuration on the node
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/10-azure.conflist
+  cat /host/etc/cni/net.d/10-azure.conflist
 ```
 
 ## Step 4: Debug Cilium Network Policy Issues
@@ -84,11 +85,11 @@ kubectl get cnp,ccnp --all-namespaces
 
 # Check policy enforcement on a specific endpoint
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium policy get
+  cilium-dbg policy get
 
-# Trace a specific connection to see if it's allowed or dropped
+# Collect policy-related debug information
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium debuginfo | grep -i policy
+  cilium-dbg debuginfo | grep -i policy
 ```
 
 ## Step 5: Validate Hubble Observability
@@ -96,8 +97,8 @@ kubectl exec -n kube-system ${CILIUM_POD} -- \
 Use Hubble to trace and diagnose traffic issues.
 
 ```bash
-# Enable Hubble if not already enabled
-cilium hubble enable
+# Verify Hubble relay is enabled through AKS Advanced Container Networking Services
+kubectl get pods -n kube-system -l k8s-app=hubble-relay
 
 # Port-forward Hubble relay for local access
 cilium hubble port-forward &
