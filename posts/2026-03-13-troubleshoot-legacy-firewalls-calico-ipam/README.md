@@ -56,7 +56,7 @@ kind: IPPool
 metadata:
   name: legacy-firewall-compatible-pool
 spec:
-  # Use a CIDR range that your legacy firewall allows outbound from
+  # Use a CIDR range within the cluster pod CIDR that your legacy firewall allows outbound from
   cidr: 10.200.0.0/16
   ipipMode: Never
   vxlanMode: CrossSubnet
@@ -89,15 +89,20 @@ calicoctl get ippool -o yaml | grep natOutgoing
 calicoctl patch ippool <pool-name> --patch '{"spec":{"natOutgoing":true}}'
 
 # Verify that outbound pod traffic is now NATted to the node IP
-# From outside the cluster, connections from pods should appear as node IPs
-tcpdump -i <external-interface> -n "src net 10.200.0.0/16" -c 5
+# On the node's external interface, connections from pods should appear with the node IP as the source
+tcpdump -i <external-interface> -n "src host <node-ip> and host <external-service-ip>" -c 5
 ```
 
 ## Step 4: Automate Firewall Rule Updates for Dynamic Pod IPs
 
-For firewalls that cannot use CIDR-based rules, automate the process of updating firewall rules when pod IPs change.
+For firewalls that cannot use CIDR-based rules, automate the process of updating firewall rules when pod IPs change. Export current pod IPs from Kubernetes and feed them into your firewall management API:
 
-Use Calico's network sets to group pod IPs for firewall management:
+```bash
+# Export current pod IPs as one /32 per line for firewall allow-list automation
+kubectl get pods -A -o=jsonpath='{range .items[*]}{.status.podIP}{"/32\n"}{end}' | grep -v '^/32$'
+```
+
+Use Calico's network sets to mirror firewall-approved external IPs in Calico network policy:
 
 ```yaml
 # external-network-set.yaml - Calico GlobalNetworkSet for firewall-approved external IPs
@@ -118,8 +123,8 @@ spec:
 # Apply the NetworkSet for use in Calico network policies
 calicoctl apply -f external-network-set.yaml
 
-# Reference the NetworkSet in a GlobalNetworkPolicy to control egress
-calicoctl get globalnetworkpolicy -o yaml | grep -A10 "GlobalNetworkSet"
+# Reference the GlobalNetworkSet label in a GlobalNetworkPolicy selector to control egress
+calicoctl get globalnetworkpolicy -o yaml | grep -A10 "role == 'legacy-approved'"
 ```
 
 ## Best Practices
@@ -132,4 +137,4 @@ calicoctl get globalnetworkpolicy -o yaml | grep -A10 "GlobalNetworkSet"
 
 ## Conclusion
 
-Legacy firewall compatibility with Calico IPAM is best achieved by aligning IP pool CIDRs with pre-approved firewall ranges, enabling NAT for outbound traffic, and using GlobalNetworkSets for structured firewall rule management. When troubleshooting suspected firewall blocks, first confirm the drop is at the external firewall level (not a Calico policy drop) before making infrastructure changes.
+Legacy firewall compatibility with Calico IPAM is best achieved by aligning IP pool CIDRs with pre-approved firewall ranges, enabling NAT for outbound traffic, and using GlobalNetworkSets for structured Calico policy management around firewall-approved external CIDRs. When troubleshooting suspected firewall blocks, first confirm the drop is at the external firewall level (not a Calico policy drop) before making infrastructure changes.
