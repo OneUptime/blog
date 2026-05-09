@@ -10,32 +10,34 @@ Description: A guide to diagnosing and fixing issues with pods that were running
 
 ## Introduction
 
-After installing Cilium on an existing Kubernetes cluster, some pods may become "unmanaged" - they are running but Cilium has not assigned them a security identity or taken over their network interface. This situation arises when pods were created before Cilium was installed, when Cilium was upgraded and pods were not restarted, or when Cilium's pod CIDR configuration does not match the existing cluster networking.
+After installing Cilium on an existing Kubernetes cluster, some pods may become "unmanaged" - they are running but Cilium has not assigned them a security identity or taken over their network interface. This situation arises when pods were created before Cilium was installed, when pods use host networking, or when pods start before the Cilium agent is ready on a node.
 
-Unmanaged pods are a significant security concern because they are not subject to Cilium's network policies. From a policy perspective, they are invisible to Cilium - traffic to and from unmanaged pods bypasses all `CiliumNetworkPolicy` enforcement. Identifying and resolving unmanaged pods is a critical post-installation step.
+Unmanaged pods are a significant security concern because they are not subject to Cilium's network policies. From a policy perspective, they are invisible to Cilium - ingress and egress rules selecting those pods are not applied. Identifying and resolving unmanaged pods is a critical post-installation step.
 
 ## Prerequisites
 
 - Cilium installed on Kubernetes
 - `kubectl` access
 - Cilium CLI installed
+- `jq` installed
 
 ## Step 1: Identify Unmanaged Pods
 
 ```bash
 # List all endpoints managed by Cilium
 
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Compare with running pods
 kubectl get pods --all-namespaces --field-selector=status.phase=Running
 
 # Find pods NOT in Cilium's endpoint list
-# Method: compare pod IPs
-CILIUM_IPS=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | \
-  jq -r '.[].networking.addressing[].ipv4' | sort)
+# Method: compare pod IPs, excluding host-network pods
+CILIUM_IPS=$(kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o json | \
+  jq -r '.[].status.networking.addressing[]?.ipv4 // empty' | sort)
 
-ALL_POD_IPS=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}' | sort)
+ALL_POD_IPS=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running -o json | \
+  jq -r '.items[] | select(.spec.hostNetwork != true and .status.podIP != null) | .status.podIP' | sort)
 
 # Show pods not managed by Cilium
 comm -23 <(echo "$ALL_POD_IPS") <(echo "$CILIUM_IPS")
@@ -48,7 +50,7 @@ comm -23 <(echo "$ALL_POD_IPS") <(echo "$CILIUM_IPS")
 kubectl logs -n kube-system ds/cilium | grep -i "unmanaged\|restore\|endpoint"
 
 # Check if pod's network namespace is visible to Cilium
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep "restoring"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep "restoring"
 
 # Check CNI configuration
 kubectl exec -n kube-system ds/cilium -- cat /etc/cni/net.d/05-cilium.conflist
@@ -69,22 +71,20 @@ kubectl rollout restart deployment/my-app -n my-namespace
 kubectl rollout restart daemonset/my-ds -n my-namespace
 
 # Verify pods are now managed by Cilium
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep "my-namespace"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep "my-namespace"
 ```
 
 ## Step 4: Handle Critical System Pods
 
 ```bash
 # For kube-system pods (be careful with critical components)
-# Check which system pods are unmanaged
-kubectl get pods -n kube-system -o wide | while read line; do
-  POD=$(echo $line | awk '{print $1}')
-  IP=$(echo $line | awk '{print $6}')
-  if [ "$IP" != "<none>" ] && [ "$IP" != "STATUS" ]; then
-    if ! kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -q "$IP"; then
+# Check which non-host-network system pods are unmanaged
+kubectl get pods -n kube-system -o json | \
+  jq -r '.items[] | select(.status.phase=="Running" and .spec.hostNetwork != true and .status.podIP != null) | "\(.metadata.name) \(.status.podIP)"' | \
+  while read POD IP; do
+    if ! kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -Fq "$IP"; then
       echo "Unmanaged: $POD ($IP)"
     fi
-  fi
 done
 ```
 
@@ -92,24 +92,27 @@ done
 
 ```bash
 # After pods are restarted, verify Cilium is managing them
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Run connectivity test to verify networking works
-cilium connectivity test --test pod-to-pod
+cilium connectivity test
 
 # Check no drops for legitimate traffic
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop
 ```
 
 ## Step 6: Prevent Future Unmanaged Pods
 
 ```bash
-# Use node labels to control which nodes Cilium manages
-# Pods on nodes without Cilium will be unmanaged by design
+# Use the node.cilium.io/agent-not-ready taint during install or node pool bootstrap
+# to prevent pods from starting before Cilium is ready
 
 # Check all nodes have Cilium running
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 # Every node should have a Cilium pod
+
+# Check whether the Cilium agent-not-ready taint is present or being removed as expected
+kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 
 # Check DaemonSet tolerations
 kubectl get ds -n kube-system cilium -o yaml | grep -A 20 "tolerations:"
@@ -117,4 +120,4 @@ kubectl get ds -n kube-system cilium -o yaml | grep -A 20 "tolerations:"
 
 ## Conclusion
 
-Unmanaged pods represent a security gap in your Cilium deployment because they are invisible to network policy enforcement. Identifying them via IP address comparison, understanding why they occurred (pre-existing pods, CNI installation order), and resolving them by restarting the affected pods is the standard remediation path. Preventing future occurrences requires ensuring all nodes run a Cilium agent before pods are scheduled on them.
+Unmanaged pods represent a security gap in your Cilium deployment because they are invisible to network policy enforcement. Identifying them via IP address comparison, understanding why they occurred (pre-existing pods, host networking, CNI installation order), and resolving non-host-network pods by restarting the affected pods is the standard remediation path. Preventing future occurrences requires ensuring all nodes run a Cilium agent before pods are scheduled on them.
