@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Typha, Kubernetes, Networking, High Availability, Testing, Hard Way
 
-Description: Validate Typha HA by deliberately killing pods, draining nodes, and simulating zone failures - confirming that Felix agents maintain policy enforcement continuity through each disruption in a...
+Description: Validate Typha HA by deliberately killing pods, draining nodes, running rolling restarts, and testing connection rebalancing - confirming that Felix agents maintain policy enforcement continuity through each disruption in a...
 
 ---
 
 ## Introduction
 
-Declaring a Typha deployment "highly available" requires evidence, not assumptions. The only way to know whether HA configurations actually work is to exercise the failure scenarios they are designed to handle: pod crashes, node drains, and zone-level outages. These tests must be run against the actual production configuration - not just reviewed in manifests.
+Declaring a Typha deployment "highly available" requires evidence, not assumptions. The only way to know whether HA configurations actually work is to exercise the failure scenarios they are designed to handle: pod crashes, node drains, rolling restarts, and connection rebalancing. These tests must be run against the actual production configuration - not just reviewed in manifests.
 
 This post provides a set of destructive but safe HA tests for Typha, with clear pass/fail criteria for each.
 
@@ -20,6 +20,7 @@ This post provides a set of destructive but safe HA tests for Typha, with clear 
 
 - Typha deployed with 3 replicas, one per availability zone
 - PodDisruptionBudget configured (`minAvailable: 2`)
+- Typha Prometheus metrics enabled (`9091` by default, or `9093` if you configured `TYPHA_PROMETHEUSMETRICSPORT`/`typhaMetricsPort` that way)
 - `kubectl` and `calicoctl` access
 - A test network policy for validating enforcement continuity
 - An understanding of the customization and setup posts in this series
@@ -71,10 +72,11 @@ EOF
 
 # Record the current connection distribution
 echo "=== Pre-crash connection counts ==="
+TYPHA_METRICS_PORT="${TYPHA_METRICS_PORT:-9091}"
 for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
   echo "$pod:"
   kubectl exec -n kube-system $pod -- wget -qO- \
-    http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active
+    "http://localhost:${TYPHA_METRICS_PORT}/metrics" 2>/dev/null | grep typha_connections_active
 done
 
 # Delete one Typha pod to simulate a crash
@@ -82,7 +84,7 @@ VICTIM=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | head 
 echo "Deleting: $VICTIM"
 kubectl delete $VICTIM -n kube-system
 
-# Immediately verify Felix can still read policies (should not error)
+# Immediately verify the Calico API/datastore can still return policies (should not error)
 sleep 5
 calicoctl get globalnetworkpolicy ha-test-policy
 echo "Policy still accessible: $?"
@@ -94,13 +96,13 @@ kubectl rollout status deployment/calico-typha -n kube-system
 calicoctl delete globalnetworkpolicy ha-test-policy
 ```
 
-Pass criteria: The policy remains accessible throughout the pod crash and recovery. No `Error` events in pod or Felix logs related to policy enforcement failure.
+Pass criteria: The policy remains accessible throughout the pod crash and recovery, and Felix logs show that nodes reconnect to a remaining Typha without policy sync errors. No `Error` events in pod or Felix logs related to policy enforcement failure.
 
 ---
 
 ## Step 3: Test - Node Drain with PDB Enforcement
 
-Drain the node hosting a Typha pod and confirm the PDB prevents the drain from evicting more than one pod:
+Drain the node hosting a Typha pod and confirm the drain uses eviction semantics that respect the PDB:
 
 ```bash
 # Find which node hosts a Typha pod
@@ -108,13 +110,14 @@ TYPHA_NODE=$(kubectl get pods -n kube-system -l k8s-app=calico-typha \
   -o jsonpath='{.items[0].spec.nodeName}')
 echo "Draining node: $TYPHA_NODE"
 
-# Attempt to drain the node (this should only evict 1 Typha pod, respecting the PDB)
+# Attempt to drain the node. With one Typha pod on the node and minAvailable=2,
+# the eviction should be allowed while still respecting the PDB.
 kubectl drain "$TYPHA_NODE" \
   --ignore-daemonsets \
   --delete-emptydir-data \
   --timeout=120s
 
-# After drain, confirm only 2 Typha pods remain (3rd is replaced on another node)
+# After drain, confirm at least 2 Typha pods stayed Ready while the replacement starts
 kubectl get pods -n kube-system -l k8s-app=calico-typha
 
 # Verify the replacement pod scheduled on a different node
@@ -127,7 +130,7 @@ kubectl uncordon "$TYPHA_NODE"
 kubectl rollout status deployment/calico-typha -n kube-system
 ```
 
-Pass criteria: The drain completes without timing out. At all times during the drain, at least 2 Typha pods are `Ready`. Felix agents connected to the evacuated pod reconnect to remaining replicas automatically.
+Pass criteria: The drain completes without timing out when the drained node hosts only one Typha pod. At all times during the drain, at least 2 Typha pods are `Ready`. Felix agents connected to the evacuated pod reconnect to remaining replicas automatically. If the node hosts enough matching Typha pods that evicting them would reduce availability below `minAvailable`, `kubectl drain` should retry and eventually time out instead of bypassing the PDB.
 
 ---
 
@@ -171,9 +174,10 @@ Add a Typha replica and confirm connections redistribute:
 ```bash
 # Record pre-scale connection counts
 echo "=== Connection counts before scale ==="
+TYPHA_METRICS_PORT="${TYPHA_METRICS_PORT:-9091}"
 for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
   kubectl exec -n kube-system $pod -- wget -qO- \
-    http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active
+    "http://localhost:${TYPHA_METRICS_PORT}/metrics" 2>/dev/null | grep typha_connections_active
 done
 
 # Scale up by one replica
@@ -185,7 +189,7 @@ sleep 30
 echo "=== Connection counts after scale ==="
 for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
   kubectl exec -n kube-system $pod -- wget -qO- \
-    http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active
+    "http://localhost:${TYPHA_METRICS_PORT}/metrics" 2>/dev/null | grep typha_connections_active
 done
 
 # Scale back to 3
@@ -206,7 +210,7 @@ kubectl scale deployment calico-typha -n kube-system --replicas=3
 
 ## Conclusion
 
-Testing Typha HA is not optional for production clusters. The tests in this post - pod crash, node drain with PDB enforcement, rolling restart, and connection rebalancing - exercise every HA mechanism you have configured. Passing all of them gives you evidence-based confidence that your Typha deployment is genuinely highly available.
+Testing Typha HA is not optional for production clusters. The tests in this post - pod crash, node drain with PDB enforcement, rolling restart, and connection rebalancing - exercise the main HA mechanisms you have configured. Passing all of them gives you evidence-based confidence that your Typha deployment is genuinely highly available.
 
 ---
 
