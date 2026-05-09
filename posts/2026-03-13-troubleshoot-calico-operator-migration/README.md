@@ -48,24 +48,25 @@ kubectl get pods -n kube-system | grep calico
 # If stuck in Terminating:
 kubectl describe pod <stuck-pod> -n kube-system | grep -A5 "Events:"
 
-# Force delete if necessary (pods will be re-created by the new operator-managed DS)
-kubectl delete pod <pod-name> -n kube-system --force --grace-period=0
+# Do not manually delete kube-system Calico pods while the supported
+# operator migration is running; check operator logs and TigeraStatus first.
 
 # Check for finalizers blocking deletion
 kubectl get ds calico-node -n kube-system -o jsonpath='{.metadata.finalizers}'
 
-# Remove finalizers if needed
+# Only remove finalizers if you have abandoned the migration or are restoring
+# from backup; doing this during migration can interfere with operator takeover.
 kubectl patch ds calico-node -n kube-system \
   --type=json -p='[{"op":"remove","path":"/metadata/finalizers"}]'
 ```
 
-## Symptom 3: TigeraStatus Shows "NodeNetworkUnavailable"
+## Symptom 3: Nodes Show "NetworkUnavailable"
 
 ```bash
 # This indicates calico-node failed to configure networking on some nodes
 kubectl get nodes -o custom-columns=\
 'NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,\
-NETWORK:.status.conditions[?(@.type=="NetworkReady")].status'
+NETWORK_UNAVAILABLE:.status.conditions[?(@.type=="NetworkUnavailable")].status'
 
 # Check the affected node's calico-node log
 NODE="<node-name>"
@@ -116,17 +117,17 @@ flowchart TD
     I -->|Node draining| L[Check node drain progress]
 ```
 
-## Symptom 5: Migration Rolledback by Operator
+## Symptom 5: Migration Stopped by Operator
 
 ```bash
-# If the operator detected an incompatible configuration and rolled back:
+# If the operator detected an incompatible configuration and stopped progressing:
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 
-# Check for specific rollback events
+# Check for specific Installation events
 kubectl describe installation default | grep -A20 "Events:"
 
 # Review what the operator couldn't reconcile
-kubectl logs -n tigera-operator deploy/tigera-operator | grep -i "rollback\|revert\|undo"
+kubectl logs -n tigera-operator deploy/tigera-operator | grep -i "error\|unsupported\|incompatible"
 ```
 
 ## Recovering from a Partial Migration
@@ -143,12 +144,14 @@ echo "=== Manifest-managed nodes (kube-system) ==="
 kubectl get pods -n kube-system -l k8s-app=calico-node \
   -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort
 
-# 2. Complete the migration by forcing operator to take over remaining nodes
-# This is usually done by deleting the kube-system calico-node pods
-# so the operator's DaemonSet can schedule new ones
-kubectl delete pods -n kube-system -l k8s-app=calico-node
+# 2. Do not manually delete kube-system Calico pods during migration.
+# The supported migration process has the operator clean up kube-system
+# resources after it has taken ownership. Use TigeraStatus and operator logs
+# to find the blocking condition before taking manual recovery actions.
+kubectl describe tigerastatus calico
+kubectl logs -n tigera-operator deploy/tigera-operator | tail -100
 ```
 
 ## Conclusion
 
-Calico operator migration failures most commonly manifest as stuck terminating pods, TigeraStatus degraded conditions, or IP pool configuration mismatches. The key to fast resolution is checking TigeraStatus conditions first, then operator logs, then individual pod states. Always have a backup of your pre-migration Calico resources so you can compare the expected vs actual configuration when diagnosing mismatches. In the worst case, the operator's rollback mechanisms and your backup files allow you to restore the original manifest-based installation.
+Calico operator migration failures most commonly manifest as stuck terminating pods, TigeraStatus degraded conditions, or IP pool configuration mismatches. The key to fast resolution is checking TigeraStatus conditions first, then operator logs, then individual pod states. Always have a backup of your pre-migration Calico resources so you can compare the expected vs actual configuration when diagnosing mismatches. In the worst case, your backup files allow you to restore the original manifest-based installation after you have deliberately abandoned the migration.
