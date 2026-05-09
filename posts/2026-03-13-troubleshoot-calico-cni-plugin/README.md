@@ -34,7 +34,7 @@ kubectl describe pod failing-pod
 
 # Check CNI logs on the node where the pod is scheduled
 NODE=$(kubectl get pod failing-pod -o jsonpath='{.spec.nodeName}')
-kubectl debug node/$NODE -it --image=ubuntu -- cat /host/var/log/calico/cni/cni.log | tail -50
+kubectl debug node/$NODE -it --image=ubuntu -- tail -50 /host/var/log/calico/cni/cni.log
 ```
 
 **Common causes:**
@@ -45,7 +45,7 @@ calicoctl ipam show
 # If usage near 100%: add more IPs to the pool
 
 # 2. CNI config missing
-kubectl exec -n calico-system ds/calico-node -- ls /host/etc/cni/net.d/
+kubectl debug node/$NODE -it --image=ubuntu -- ls /host/etc/cni/net.d/
 # If 10-calico.conflist missing: restart calico-node DaemonSet
 
 # 3. calico-node pod not running on that node
@@ -62,10 +62,11 @@ kubectl get pods -n calico-system -o wide | grep $NODE
 calicoctl get ippools -o wide
 
 # Check which pool is being used for this namespace
-calicoctl get ippool -o yaml | grep -A5 "namespaceselector"
+calicoctl get ippool -o yaml | grep -A5 "namespaceSelector"
 
 # Check WorkloadEndpoint for the pod's IP allocation
-calicoctl get wep -n default failing-pod-eth0 -o yaml | grep ipNets
+calicoctl get wep -n default -o wide | grep failing-pod
+calicoctl get wep -n default <workload-endpoint-name> -o yaml | grep ipNetworks
 ```
 
 ## Issue 3: IPAM Allocation Errors
@@ -104,7 +105,7 @@ kubectl exec -n calico-system ds/calico-node -- /host/opt/cni/bin/calico --versi
 
 ```bash
 # Check if WEP exists
-calicoctl get wep -n <namespace> <pod-name>-<interface>
+calicoctl get wep -n <namespace> -o wide | grep <pod-name>
 
 # Check calico-node logs for WEP creation errors
 kubectl logs -n calico-system ds/calico-node | grep -i "workloadendpoint\|wep"
@@ -113,15 +114,21 @@ kubectl logs -n calico-system ds/calico-node | grep -i "workloadendpoint\|wep"
 ## Issue 6: Slow Pod Start Times
 
 ```bash
-# CNI timeout configuration
-# Check if CNI is timing out when contacting the API server
-kubectl exec -n calico-system ds/calico-node -- \
-  cat /etc/cni/net.d/10-calico.conflist | grep timeout
+# CNI policy setup timeout configuration
+# Check if CNI is waiting for policy programming before starting containers
+NODE=$(kubectl get pod slow-pod -o jsonpath='{.spec.nodeName}')
+kubectl debug node/$NODE -it --image=ubuntu -- \
+  grep policy_setup_timeout_seconds /host/etc/cni/net.d/10-calico.conflist
 
-# Increase timeout if API server is slow
-# In calico-config ConfigMap
-kubectl edit configmap calico-config -n calico-system
-# Find and increase cni_network_config timeout settings
+# Increase timeout if policy programming is slow
+# For operator-managed installs:
+kubectl edit installation default
+# Set spec.calicoNetwork.linuxPolicySetupTimeoutSeconds
+
+# For manifest-based installs:
+kubectl exec -n calico-system ds/calico-node -- \
+  printenv CNI_NETWORK_CONFIG | grep policy_setup_timeout_seconds
+# Update cni_network_config and set policy_setup_timeout_seconds
 ```
 
 ## Conclusion
