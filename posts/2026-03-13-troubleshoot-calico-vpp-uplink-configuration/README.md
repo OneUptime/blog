@@ -31,20 +31,22 @@ dpdk-devbind.py --status-dev net
 # If still showing Linux driver (e.g., ixgbe), binding failed
 
 # Check VPP manager logs for binding error
-kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp-manager | \
+kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp | \
   grep -i "bind\|dpdk\|pci\|error"
 ```
 
 **Common causes:**
 
 ```bash
-# 1. IOMMU not enabled (required for vfio-pci)
+# 1. IOMMU not enabled (required for the default secure vfio-pci mode)
 dmesg | grep -i iommu
-# If no IOMMU output, enable in BIOS and add intel_iommu=on to kernel args
+# If no IOMMU output, enable it in BIOS and add intel_iommu=on
+# for Intel hosts or amd_iommu=on for AMD hosts
 
-# 2. Wrong PCI address in ConfigMap
-lspci -D | grep -i "network"
-# Compare with ConfigMap's pci address setting
+# 2. Wrong interface name in ConfigMap
+ip -br link
+ethtool -i eth1 | grep bus-info
+# Compare the Linux interface with CALICOVPP_INTERFACES.uplinkInterfaces[].interfaceName
 
 # 3. vfio-pci module not loaded
 lsmod | grep vfio
@@ -83,17 +85,18 @@ ip addr show
 **Recovery** (via out-of-band console):
 
 ```bash
-# Stop VPP
-systemctl stop vpp
+# Stop the Calico VPP pod on the affected node
+kubectl delete pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node \
+  --field-selector spec.nodeName=affected-node
 
-# Re-bind NIC to original Linux driver
+# Re-bind NIC to original Linux driver if VPP did not restore it
 dpdk-devbind.py -b ixgbe 0000:00:0a.0
 
 # Fix the ConfigMap to reference correct interface
 kubectl edit configmap calico-vpp-config -n calico-vpp-dataplane
 
 # Restart VPP
-kubectl delete pod -n calico-vpp-dataplane -l app=calico-vpp-node \
+kubectl delete pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node \
   --field-selector spec.nodeName=affected-node
 ```
 
@@ -129,4 +132,4 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 ## Conclusion
 
-VPP uplink troubleshooting requires out-of-band console access as the first prerequisite. The most common issues are DPDK binding failures due to missing IOMMU or kernel modules, incorrect PCI addresses in the ConfigMap, and accidentally configuring VPP to take over the management NIC. Always identify and verify the correct data plane NIC before applying VPP configuration, and test in a single-node staging environment before rolling out to production.
+VPP uplink troubleshooting requires out-of-band console access as the first prerequisite. The most common issues are DPDK binding failures due to missing IOMMU or kernel modules, incorrect interface names in the ConfigMap, and accidentally configuring VPP to take over the management NIC. Always identify and verify the correct data plane NIC before applying VPP configuration, and test in a single-node staging environment before rolling out to production.
