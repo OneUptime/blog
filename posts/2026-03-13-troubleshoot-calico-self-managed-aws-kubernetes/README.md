@@ -95,23 +95,19 @@ kubectl debug node/<node-name> -it --image=ubuntu -- ip tunnel show
 
 ## Step 4: Resolve AWS-Specific Calico Node Configuration
 
-Configure Calico to use the correct interface for AWS nodes.
-
-```yaml
-# felix-config-aws.yaml - Felix configuration optimized for AWS
-apiVersion: projectcalico.org/v3
-kind: FelixConfiguration
-metadata:
-  name: default
-spec:
-  # Use eth0 as the interface on standard AWS EC2 instances
-  interfacePrefix: eth
-  # Enable IPIP for cross-AZ routing (or VXLAN to avoid protocol 4 issues)
-  ipipEnabled: true
-```
+Configure Calico to use the correct node IP for AWS nodes and the desired encapsulation mode.
 
 ```bash
-calicoctl apply -f felix-config-aws.yaml
+# For manifest-based installs, autodetect the node address from the AWS primary interface
+kubectl set env daemonset/calico-node -n kube-system \
+  IP_AUTODETECTION_METHOD=interface=eth0
+
+# Find the active Calico IP pool name
+calicoctl get ippool
+
+# Enable IPIP cross-subnet routing on the active Calico IP pool
+calicoctl patch ippool <ippool-name> \
+  --patch='{"spec":{"ipipMode":"CrossSubnet","vxlanMode":"Never","natOutgoing":true}}'
 ```
 
 ## Step 5: Test Cross-AZ Pod Connectivity
@@ -123,7 +119,7 @@ Validate that pod traffic works correctly across AWS Availability Zones.
 kubectl run cross-az-test --rm -it --image=busybox -- \
   traceroute <pod-ip-in-different-az>
 
-# Check the encapsulation path (should go through IPIP tunnel)
+# Check the encapsulation path when using IPIP mode
 kubectl debug node/<node-name> -it --image=ubuntu -- \
   tcpdump -i eth0 -n 'proto 4' -c 10
 ```
