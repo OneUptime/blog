@@ -10,7 +10,7 @@ Description: Test Calico service-based network policies test with real traffic t
 
 ## Introduction
 
-Testing service-based Calico policies requires verifying that traffic to and from Kubernetes Services is correctly permitted or denied based on your policy rules. Because service-based policies reference the Service object, you need to test through the service ClusterIP, not directly to pod IPs.
+Testing service-based Calico policies requires verifying that traffic to and from Kubernetes Services is correctly permitted or denied based on your policy rules. Because service-based policies reference the Service object, test through the service ClusterIP when you want to validate service-based access, rather than relying only on direct pod IP tests.
 
 Calico's `projectcalico.org/v3` service-based policies use the `services` field in egress destination rules to reference Kubernetes Service objects. This creates a stable, maintainable policy that survives pod restarts, scaling events, and deployments without requiring policy updates.
 
@@ -19,6 +19,7 @@ This guide covers practical techniques for test service-based Calico policies ef
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
+- Calico configured with the Kubernetes datastore driver
 - `calicoctl` and `kubectl` installed
 - Service-based policies configured or ready to configure
 
@@ -48,10 +49,10 @@ spec:
 ## Core Technique
 
 ```bash
-# Verify service exists and has endpoints
+# Verify service exists and has EndpointSlices
 
 kubectl get service backend-api -n production
-kubectl get endpoints backend-api -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api
 
 # Test traffic through the service
 SVC_IP=$(kubectl get service backend-api -n production -o jsonpath='{.spec.clusterIP}')
@@ -63,7 +64,7 @@ echo "Result: $?"
 
 ```bash
 # Check if service has backing pods
-kubectl get endpoints backend-api -n production -o yaml | grep -A 10 subsets
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api -o yaml | grep -A 10 endpoints:
 
 # Verify policy is targeting the correct service
 calicoctl get networkpolicy allow-frontend-to-backend -n production -o yaml | grep -A 5 services
@@ -79,7 +80,7 @@ flowchart TD
     A[frontend pods] -->|Egress allow to backend-api Service| B[backend-api Service]
     B --> C[backend pod 1]
     B --> D[backend pod 2]
-    E[unauthorized pod] -.-x|Denied| B
+    E[unauthorized pod] --x|Denied| B
     F[Policy Update] -->|Service scales| B
     B --> G[backend pod 3 - auto included]
 ```
