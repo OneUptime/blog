@@ -12,7 +12,7 @@ Description: Test and validate Kubernetes network policies with Calico installed
 
 Calico installed via Helm with the Tigera Operator supports the full set of Kubernetes NetworkPolicy and Calico GlobalNetworkPolicy resources. Network policy testing after a Helm-based installation follows the same approach as other installation methods, with the added benefit that the Tigera Operator provides health status monitoring for the policy enforcement layer.
 
-Testing network policies after a Helm installation also provides an opportunity to validate that the Tigera Operator correctly reconciles policy-affecting configuration changes. When you modify the Installation CR to change encapsulation or CIDR, the Operator should update the underlying Calico components and maintain policy enforcement throughout the transition.
+Testing network policies after a Helm installation also provides an opportunity to validate that the Tigera Operator keeps the policy enforcement layer healthy while Calico resources are reconciled.
 
 This guide demonstrates network policy testing on a Calico Helm installation, covering standard NetworkPolicy and Calico GlobalNetworkPolicy scenarios.
 
@@ -48,7 +48,7 @@ Should succeed before policies are applied.
 
 ## Step 3: Apply Default Deny Using GlobalNetworkPolicy
 
-Using Calico's Helm-installed API:
+Using the Calico API:
 
 ```bash
 calicoctl apply -f - <<EOF
@@ -57,15 +57,9 @@ kind: GlobalNetworkPolicy
 metadata:
   name: default-deny
 spec:
-  selector: "projectcalico.org/namespace not in {'kube-system', 'calico-system', 'tigera-operator'}"
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   types:
   - Ingress
-  - Egress
-  egress:
-  - action: Allow
-    protocol: UDP
-    destination:
-      ports: [53]
 EOF
 ```
 
