@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico networking problems on IBM Cloud
 
 ## Introduction
 
-Calico troubleshooting on IBM Cloud has unique aspects compared to other platforms. On IKS, IBM manages a set of Calico GlobalNetworkPolicies that must not be removed or overridden - doing so can break cluster networking in subtle ways. On self-managed clusters on IBM Cloud VPC, the troubleshooting process is similar to other cloud providers but requires IBM Cloud-specific tools for VPC inspection.
+Calico troubleshooting on IBM Cloud has unique aspects compared to other platforms. On classic IKS clusters, IBM manages a set of default Calico policies that must not be removed - they are recreated during master refreshes or updates, and overriding them without understanding the policy order can break cluster networking in subtle ways. On self-managed clusters on IBM Cloud VPC, the troubleshooting process is similar to other cloud providers but requires IBM Cloud-specific tools for VPC inspection.
 
 This guide covers the most common Calico networking failures on IBM Cloud and their resolutions.
 
@@ -31,23 +31,24 @@ This guide covers the most common Calico networking failures on IBM Cloud and th
 
 calicoctl get globalnetworkpolicies -o wide | sort
 
-# IBM policies typically have names starting with "ibm-"
-# Check if your policy has a lower order number than IBM's policies
+# Check whether your policy's selector and order conflict with default host policies
 ```
 
-IBM managed policies typically use:
-- Order 1000: `allow-ibm-ports` - allows required IBM infrastructure traffic
-- Order 2000: `allow-all-outbound` - allows all egress
+Default Calico host policies include:
+- `allow-all-outbound` - allows outbound traffic on the public network
+- `allow-all-private-default` - allows inbound and outbound traffic on the private network
+- `allow-node-port-dnat` - allows NLB, ALB, and NodePort service traffic
+- `allow-sys-mgmt` - allows required IBM infrastructure management traffic
 
 ```bash
 # Check conflicting policy orders
-calicoctl get globalnetworkpolicy allow-ibm-ports -o yaml | grep order
+calicoctl get globalnetworkpolicy allow-all-private-default -o yaml | grep order
 calicoctl get globalnetworkpolicy your-policy -o yaml | grep order
 ```
 
 **Resolution:**
 
-Use order numbers above 3000 for custom policies to avoid conflicting with IBM policies:
+Calico applies policies with lower order numbers first. For custom policies that further restrict traffic, choose an order lower than the default allow policy that you intend to override, target the correct IBM host endpoint label, and test that IBM management, NodePort, LoadBalancer, and Ingress traffic still works:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -55,8 +56,8 @@ kind: GlobalNetworkPolicy
 metadata:
   name: custom-security-policy
 spec:
-  order: 5000  # Higher than IBM's policies
-  selector: "all()"
+  order: 900  # Lower order values are evaluated first
+  selector: "ibm.role == 'worker_private'"
 ```
 
 ## Issue 2: VPC Security Group Blocking VXLAN
@@ -86,11 +87,11 @@ ibmcloud is security-group-rule-add <sg-id> inbound udp \
 **Symptom**: After IKS cluster upgrade, custom Calico policies stop working.
 
 ```bash
-# Check if IBM overwrite custom policies during upgrade
+# Check if IBM updated default policies during the upgrade
 kubectl get events -n kube-system | grep calico
 
 # Review what changed
-calicoctl get globalnetworkpolicies -o yaml | diff - pre-upgrade-backup.yaml
+diff -u pre-upgrade-backup.yaml <(calicoctl get globalnetworkpolicies -o yaml)
 ```
 
 **Prevention:**
@@ -109,9 +110,8 @@ For IBM Classic Infrastructure clusters:
 # Check Felix logs for encapsulation errors
 kubectl logs -n kube-system ds/calico-node --tail=100 | grep -i "ipip\|tunnel"
 
-# Verify IP pool uses IP-in-IP for Classic
+# Verify the IP pool encapsulation mode
 calicoctl get ippool default-ipv4-ippool -o yaml | grep ipipMode
-# Should be: ipipMode: Always
 ```
 
 ## Issue 5: IPAM Exhaustion on IKS
@@ -122,6 +122,7 @@ calicoctl ipam show
 # If pool is > 80% full:
 
 # Option 1: Add additional IP pool
+# Use only a reserved, non-overlapping pod CIDR that is valid for your cluster.
 calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: IPPool
@@ -129,7 +130,6 @@ metadata:
   name: additional-pool
 spec:
   cidr: 172.31.0.0/16
-  ipipMode: Never
   vxlanMode: Always
   natOutgoing: true
 EOF
@@ -137,17 +137,18 @@ EOF
 
 ## Issue 6: calicoctl Commands Fail with Auth Error
 
-For IKS, calicoctl needs the cluster's Calico credentials:
+For IKS, run `calicoctl` against the Kubernetes datastore with the cluster kubeconfig:
 
 ```bash
-# Regenerate calicoctl config
-ibmcloud ks cluster config --cluster my-cluster --admin --network
+# Regenerate kubeconfig
+ibmcloud ks cluster config --cluster my-cluster
 
-# The above generates ~/.bluemix/plugins/kubernetes-service/clusters/*/calicoctl.cfg
-export KUBECONFIG=~/.bluemix/plugins/...
+# The above generates ~/.bluemix/plugins/container-service/clusters/<cluster_name>-<hash>/kube-config.yaml
+export KUBECONFIG=~/.bluemix/plugins/container-service/clusters/<cluster_name>-<hash>/kube-config.yaml
+export DATASTORE_TYPE=kubernetes
 calicoctl get nodes
 ```
 
 ## Conclusion
 
-Troubleshooting Calico on IBM Cloud requires awareness of IBM's managed policy structure on IKS - custom policies must use order numbers that don't conflict with IBM's managed policies. For self-managed clusters on IBM Cloud VPC, VPC security group rules are the first thing to check for cross-zone failures. Always back up Calico configuration before IKS upgrades to enable quick recovery if IBM's upgrade process modifies policy configuration.
+Troubleshooting Calico on IBM Cloud requires awareness of IBM's managed policy structure on classic IKS - custom policies must use selectors and order numbers that don't conflict with IBM's default policies. For self-managed clusters on IBM Cloud VPC, VPC security group rules are the first thing to check for cross-zone failures. Always back up Calico configuration before IKS upgrades to enable quick recovery if IBM's upgrade process modifies policy configuration.
