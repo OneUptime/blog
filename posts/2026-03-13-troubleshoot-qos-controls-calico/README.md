@@ -10,13 +10,13 @@ Description: Diagnose QoS configuration failures in Calico where bandwidth limit
 
 ## Introduction
 
-Quality of Service (QoS) controls in Calico allow you to limit and prioritize pod network bandwidth to prevent noisy neighbors from consuming all available bandwidth and to ensure critical workloads receive the resources they need. Calico implements QoS using Linux traffic control (tc) to apply bandwidth limits to pod veth interfaces.
+Quality of Service (QoS) controls in Calico allow you to limit pod network bandwidth to prevent noisy neighbors from consuming all available bandwidth and to ensure critical workloads receive the resources they need. Calico implements bandwidth QoS using Linux traffic control (tc).
 
-Pod bandwidth annotations provide a straightforward way to specify limits: annotate pods with the desired ingress and egress bandwidth limits, and Calico applies the corresponding tc rules when the pod interface is created. This integration with standard Kubernetes bandwidth annotations makes QoS configuration accessible without deep networking knowledge.
+Pod bandwidth annotations provide a straightforward way to specify limits: annotate pods with the desired ingress and egress bandwidth limits, and Calico applies the corresponding limits. Calico-specific QoS annotations take effect immediately. Standard Kubernetes bandwidth annotations are also honored when the Calico-specific annotations are not present, which makes QoS configuration accessible without deep networking knowledge.
 
 ## Prerequisites
 
-- Calico v3.20+ with bandwidth plugin enabled
+- Calico with QoS controls enabled, or the Kubernetes CNI bandwidth plugin configured for older installations
 - kubectl access
 - iperf3 for testing (optional)
 
@@ -30,25 +30,34 @@ kind: Pod
 metadata:
   name: bandwidth-limited-pod
   annotations:
-    kubernetes.io/ingress-bandwidth: "10M"
-    kubernetes.io/egress-bandwidth: "10M"
+    qos.projectcalico.org/ingressBandwidth: "10M"
+    qos.projectcalico.org/egressBandwidth: "10M"
 spec:
   containers:
   - name: app
-    image: nginx
+    image: networkstatic/iperf3
+    command: ["sleep", "infinity"]
 ```
+
+If you are using the Kubernetes CNI bandwidth plugin annotations instead of Calico-specific QoS annotations, use `kubernetes.io/ingress-bandwidth` and `kubernetes.io/egress-bandwidth`.
 
 ## Verify QoS Rules are Applied
 
 ```bash
 # Find the pod's veth interface on the node
 
-NODE=
-POD_UID=
+POD=bandwidth-limited-pod
+NAMESPACE=default
+NODE=$(kubectl get pod "${POD}" -n "${NAMESPACE}" -o jsonpath='{.spec.nodeName}')
+POD_IP=$(kubectl get pod "${POD}" -n "${NAMESPACE}" -o jsonpath='{.status.podIP}')
 
-# List tc qdiscs on the calico interface
-tc qdisc show dev cali<iface>
-tc class show dev cali<iface>
+# On the node, find the Calico workload interface for the pod IP
+ip route get "${POD_IP}"
+
+# List tc qdiscs and classes on that interface
+IFACE=cali...
+tc qdisc show dev "${IFACE}"
+tc class show dev "${IFACE}"
 ```
 
 ## Test Bandwidth Limiting with iperf3
@@ -71,12 +80,12 @@ graph TD
         APP[Application] --> ETH0[eth0]
     end
     subgraph Node
-        VETH[cali interface] -->|tc tbf\négress limit| NETWORK[Network]
-        NETWORK -->|tc ingress\npolicing| VETH
+        VETH[cali interface] -->|tc shaping\negress limit| NETWORK[Network]
+        NETWORK -->|tc shaping\ningress limit| VETH
     end
     ETH0 <-->|veth pair| VETH
 ```
 
 ## Conclusion
 
-Calico QoS controls using pod bandwidth annotations provide a simple, declarative way to limit network bandwidth per pod. The limits are enforced using Linux tc token bucket filters on the pod's veth interface. Test QoS limits with iperf3 to verify enforcement, and monitor tc statistics to track bandwidth utilization and drops caused by the limiting.
+Calico QoS controls using pod bandwidth annotations provide a simple, declarative way to limit network bandwidth per pod. The limits are enforced using Linux tc-based shaping. Test QoS limits with iperf3 to verify enforcement, and monitor tc statistics to track bandwidth utilization and drops caused by the limiting.
