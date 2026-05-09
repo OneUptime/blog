@@ -10,15 +10,14 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-GKE with Calico provides Kubernetes NetworkPolicy enforcement at the node level through Calico's Felix agent. GKE's native network policy controller is disabled when Calico is enabled, making Calico the exclusive policy enforcement engine. Testing on GKE validates that network policies are correctly enforced across Google Cloud's VPC networking infrastructure.
+GKE Standard clusters that do not use GKE Dataplane V2 can use Calico for Kubernetes NetworkPolicy enforcement. Testing on GKE validates that network policies are correctly enforced across Google Cloud's VPC networking infrastructure.
 
-GKE clusters are VPC-native, meaning pods receive IPs from VPC alias IP ranges. Network policies enforced by Calico work at the pod IP level using iptables on each GKE node. Cross-node traffic is routed through Google Cloud's VPC before being filtered by Calico on the destination node.
+In VPC-native GKE clusters, pods receive IPs from VPC alias IP ranges. Network policies enforced by Calico work at the pod IP level using iptables on GKE nodes. Cross-node traffic is routed through Google Cloud's VPC, with Calico applying egress policy on the source node and ingress policy on the destination node.
 
 ## Prerequisites
 
-- GKE cluster with `--enable-network-policy` enabled
+- GKE Standard cluster with `--enable-network-policy` enabled and not using GKE Dataplane V2
 - kubectl configured for GKE
-- calicoctl installed
 
 ## Step 1: Create Test Resources
 
@@ -26,8 +25,8 @@ GKE clusters are VPC-native, meaning pods receive IPs from VPC alias IP ranges. 
 kubectl create namespace gke-policy-test
 
 kubectl run api-server --image=nginx -n gke-policy-test \
-  --labels=role=api --port=8080
-kubectl expose pod api-server --port=8080 -n gke-policy-test --name=api-svc
+  --labels=role=api --port=80
+kubectl expose pod api-server --port=80 -n gke-policy-test --name=api-svc
 
 kubectl run allowed-client --image=busybox -n gke-policy-test \
   --labels=role=frontend -- sleep 3600
@@ -39,9 +38,9 @@ kubectl run denied-client --image=busybox -n gke-policy-test \
 
 ```bash
 kubectl exec -n gke-policy-test allowed-client -- \
-  wget --timeout=5 -qO- http://api-svc:8080
+  wget -T 5 -qO- http://api-svc:80
 kubectl exec -n gke-policy-test denied-client -- \
-  wget --timeout=5 -qO- http://api-svc:8080
+  wget -T 5 -qO- http://api-svc:80
 ```
 
 Both should succeed before policies are applied.
@@ -80,6 +79,8 @@ spec:
   - ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
 EOF
 ```
 
@@ -87,10 +88,12 @@ EOF
 
 ```bash
 kubectl exec -n gke-policy-test allowed-client -- \
-  wget --timeout=5 -qO- http://api-svc:8080
+  wget -T 5 -qO- http://api-svc:80
+kubectl exec -n gke-policy-test denied-client -- \
+  wget -T 5 -qO- http://api-svc:80
 ```
 
-Should time out.
+Both should time out.
 
 ## Step 6: Allow Frontend Role Access
 
@@ -112,7 +115,7 @@ spec:
           role: frontend
     ports:
     - protocol: TCP
-      port: 8080
+      port: 80
 EOF
 ```
 
@@ -138,9 +141,11 @@ spec:
           role: api
     ports:
     - protocol: TCP
-      port: 8080
+      port: 80
   - ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
 EOF
 ```
@@ -151,24 +156,25 @@ EOF
 # allowed-client (role=frontend) should succeed
 
 kubectl exec -n gke-policy-test allowed-client -- \
-  wget -qO- http://api-svc:8080
+  wget -qO- http://api-svc:80
 
 # denied-client (role=other) should still be blocked
 kubectl exec -n gke-policy-test denied-client -- \
-  wget --timeout=5 -qO- http://api-svc:8080
+  wget -T 5 -qO- http://api-svc:80
 ```
 
 ## Step 8: Test Cross-Node Policy (Multi-Zone GKE)
 
-For multi-zone GKE clusters, create pods in different zones and verify cross-zone policy enforcement:
+For multi-zone GKE clusters, set `ZONE` to a zone where your cluster has nodes, create pods in different zones, and verify cross-zone policy enforcement:
 
 ```bash
+ZONE=us-central1-b
 kubectl run zone-client --image=busybox -n gke-policy-test \
   --labels=role=frontend \
-  --overrides='{"spec":{"nodeSelector":{"topology.kubernetes.io/zone":"us-central1-b"}}}' \
+  --overrides="{\"spec\":{\"nodeSelector\":{\"topology.kubernetes.io/zone\":\"${ZONE}\"}}}" \
   -- sleep 3600
 ```
 
 ## Conclusion
 
-You have tested Calico network policy enforcement on GKE, validating default deny, DNS allow, selective ingress, and selective egress policies. GKE's VPC-native networking cooperates with Calico's Felix agent to enforce policies on all pod traffic, including cross-node and cross-zone traffic within the VPC.
+You have tested Calico network policy enforcement on GKE, validating default deny, DNS allow, selective ingress, and selective egress policies. In VPC-native clusters, GKE networking cooperates with Calico's Felix agent to enforce policies on pod traffic, including cross-node and cross-zone traffic within the VPC.
