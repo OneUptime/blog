@@ -33,6 +33,11 @@ for ns in production staging monitoring; do
   kubectl run test-server -n $ns --image=nginx --restart=Never \
     --labels="app=test-server"
 done
+
+for ns in production staging monitoring; do
+  kubectl wait --for=condition=Ready pod/test-pod -n $ns --timeout=60s
+  kubectl wait --for=condition=Ready pod/test-server -n $ns --timeout=60s
+done
 ```
 
 ## Step 2: Get Pod IPs
@@ -55,20 +60,20 @@ kubectl exec -n production test-pod -- wget -qO- --timeout=5 http://$PROD_IP && 
 # Test 2: Staging -> Production (should fail)
 kubectl exec -n staging test-pod -- wget -qO- --timeout=5 http://$PROD_IP && echo "FAIL: Staging->Prod ALLOWED" || echo "PASS: Staging->Prod blocked"
 
-# Test 3: Monitoring -> Production (should pass for metrics port)
-kubectl exec -n monitoring test-pod -- wget -qO- --timeout=5 http://$PROD_IP:9090 && echo "PASS: Monitoring->Prod" || echo "CHECK: Monitoring->Prod"
+# Test 3: Monitoring -> Production (should pass if policy allows monitoring access)
+kubectl exec -n monitoring test-pod -- wget -qO- --timeout=5 http://$PROD_IP && echo "PASS: Monitoring->Prod" || echo "CHECK: Monitoring->Prod"
 ```
 
 ## Step 4: Test Label Mutation
 
 ```bash
-# Remove the production environment label and verify staging can't access
-kubectl label namespace staging environment-  # Remove staging label
-# Re-test - behavior should remain blocked
-kubectl exec -n staging test-pod -- wget -qO- --timeout=5 http://$PROD_IP && echo "FAIL: Still accessible" || echo "PASS: Still blocked"
+# Remove the monitoring environment label and verify monitoring no longer matches allow policies
+kubectl label namespace monitoring environment-
+# Re-test - behavior should change to blocked if the allow rule depends on this label
+kubectl exec -n monitoring test-pod -- wget -qO- --timeout=5 http://$PROD_IP && echo "FAIL: Still accessible" || echo "PASS: Monitoring blocked after label removal"
 
 # Re-add label
-kubectl label namespace staging environment=staging
+kubectl label namespace monitoring environment=monitoring
 ```
 
 ## Test Matrix
@@ -81,7 +86,7 @@ server]
     S[staging
 pod] -->|Test 2: BLOCK| PS
     M[monitoring
-pod] -->|Test 3: PASS metrics| PS
+pod] -->|Test 3: PASS HTTP| PS
     D[dev
 pod] -->|Test 4: BLOCK| PS
 ```
