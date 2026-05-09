@@ -24,15 +24,15 @@ The key diagnostic tool for nftables mode is the `nft` command - using it to ins
 
 ```bash
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=20 | grep -i "iptables\|nft"
-calicoctl get felixconfiguration default -o yaml | grep iptablesBackend
+kubectl get installation.operator.tigera.io default -o yaml | grep linuxDataplane
 ```
 
 If Felix is not in nftables mode, patch the configuration:
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"iptablesBackend":"nft"}}'
-kubectl rollout restart daemonset/calico-node -n calico-system
+kubectl patch installation.operator.tigera.io default --type=merge \
+  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"Nftables"}}}'
+kubectl rollout status daemonset/calico-node -n calico-system
 ```
 
 ## Step 2: Check nftables Module Availability
@@ -81,7 +81,7 @@ If tables are missing, Felix is not running or not in nftables mode on this node
 
 ```bash
 nft --version
-# Felix requires nft 0.9.1 or later
+# Calico nftables mode requires Linux kernel 5.13 or later with nft 1.0.1 or later
 ```
 
 Update if needed:
@@ -99,10 +99,10 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep -iE "nft|n
 ```
 
 Common errors:
-- `nftables backend not supported` - kernel version too old
+- `nftables backend not supported` - kernel version too old or unsupported nftables userspace
 - `failed to create table` - permission issue
-- `nft: command not found` - nftables not installed on node
+- `nft: command not found` - nftables userspace tools not installed on node
 
 ## Conclusion
 
-Troubleshooting Calico in nftables mode centers on verifying that the nftables kernel module is loaded, Felix is configured for the `nft` backend, legacy iptables rules from kube-proxy are not conflicting, and the `nft` binary version is compatible with Felix's expected table structure. The `nft list tables` command is the fastest way to confirm whether Felix has successfully programmed nftables on a given node.
+Troubleshooting Calico in nftables mode centers on verifying that the nftables kernel module is loaded, the Calico installation is configured for the `Nftables` Linux dataplane, legacy iptables rules from kube-proxy are not conflicting, and the kernel and `nft` binary versions are compatible with Felix's expected table structure. The `nft list tables` command is the fastest way to confirm whether Felix has successfully programmed nftables on a given node.
