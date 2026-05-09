@@ -10,9 +10,9 @@ Description: Learn how to validate and troubleshoot Cilium installation requirem
 
 ## Introduction
 
-Rancher Kubernetes Engine (RKE and RKE2) ships with Canal (Flannel + Calico) or Cilium as selectable CNI options. When migrating an existing RKE cluster from Canal to Cilium, or when troubleshooting a fresh Cilium deployment on RKE, several RKE-specific configuration points require attention.
+Rancher Kubernetes Engine differs between RKE1 and RKE2: RKE1 ships Canal (Flannel + Calico), Flannel, Calico, and Weave as built-in CNI add-ons, while RKE2 ships Canal, Cilium, Calico, and Flannel as selectable CNI options. When preparing an RKE1 cluster for a custom Cilium installation, or when troubleshooting a fresh Cilium deployment on RKE2, several RKE-specific configuration points require attention.
 
-RKE uses a Docker-based or containerd-based node model where CNI configuration is managed through the `cluster.yml` configuration file rather than direct node access. This means CNI changes must go through RKE's cluster reconciliation process, which has its own ordering and validation logic.
+RKE1 uses a Docker-based node model where the built-in CNI add-on is managed through the `cluster.yml` configuration file rather than direct node access. RKE2 uses containerd and installs bundled CNIs through its Helm chart add-on system. This means CNI changes must go through the appropriate RKE reconciliation process, which has its own ordering and validation logic.
 
 RKE2 differs from RKE1 in how it handles CNI installation and containerd integration, requiring separate validation steps. This guide covers both.
 
@@ -34,59 +34,58 @@ Check kernel versions across all RKE nodes:
 
 kubectl get nodes -o custom-columns="NAME:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion,OS:.status.nodeInfo.osImage"
 
-# For RKE2, check node status in the rke2 server logs
-journalctl -u rke2-server -n 100 | grep "kernel"
+# On each node, confirm the running kernel directly
+uname -r
 ```
 
-Minimum requirements: kernel 4.9.17+ for basic operation, 5.8+ for Cilium's WireGuard encryption, 5.10+ for full eBPF feature support.
+Current Cilium releases recommend Linux kernel 5.10+ or a distribution equivalent such as RHEL 8.10's 4.18 kernel. RKE2's Cilium guidance also notes that nodes must have at least kernel 4.9.17 and must meet Cilium's system requirements. For kube-proxy replacement, RKE2 recommends kernel 5.8 or newer; for WireGuard encryption, use Linux 5.6 or newer with in-kernel WireGuard support, or install the WireGuard module on older kernels.
 
 ## Step 2: Configure Cilium as CNI in RKE cluster.yml
 
-For RKE1, Cilium is configured in the cluster configuration file. Incorrect settings here are the most common cause of failed deployments.
+For RKE1, Cilium is not configured as a built-in network plug-in. Configure RKE1 with no built-in CNI and then install Cilium separately with Helm or the Cilium CLI. Incorrect settings here are the most common cause of failed deployments.
 
-Set the CNI plugin to `cilium` in your RKE cluster configuration:
+Set the RKE1 network plugin to `none` in your cluster configuration:
 
 ```yaml
-# cluster.yml - RKE1 cluster configuration with Cilium CNI
+# cluster.yml - RKE1 cluster configuration prepared for a custom Cilium CNI
 network:
-  plugin: cilium
-  cilium_network_provider:
-    # Set to true to enable Cilium's kube-proxy replacement
-    kube_proxy_replacement: "strict"
+  plugin: none
 
 # For RKE2, configure in /etc/rancher/rke2/config.yaml on the server node
 # cni: cilium
-# disable: rke2-kube-proxy  # required for kube-proxy replacement
+# disable-kube-proxy: true  # required only when enabling Cilium kube-proxy replacement
 ```
 
-After modifying `cluster.yml`, apply the change with RKE:
+After modifying `cluster.yml`, apply the change with RKE and then install Cilium separately:
 
 ```bash
 # Apply the updated cluster configuration
 rke up --config cluster.yml
 
-# Verify the Cilium DaemonSet was created
+# Install Cilium after the cluster is created without a built-in CNI
+cilium install
+
+# Verify the Cilium DaemonSet was created after Cilium installation
 kubectl -n kube-system get daemonset cilium
 ```
 
 ## Step 3: Remove Residual Canal Components
 
-When migrating from Canal to Cilium on an existing RKE cluster, Canal's components must be fully removed to prevent CNI conflicts.
+When preparing a cluster for Cilium, avoid leaving multiple CNIs active at the same time. RKE1 does not support changing the built-in network provider after cluster creation; if an RKE1 cluster was created with Canal, rebuild or recreate the cluster with `network.plugin: none` before installing Cilium. For RKE2, select `cni: cilium` or `cni: none` before startup, or follow the RKE2 migration procedure for your version.
 
-Clean up Canal resources after the RKE cluster update:
+Check for residual Canal resources after the intended CNI configuration is applied:
 
 ```bash
-# Delete Canal DaemonSet and related resources
-kubectl -n kube-system delete daemonset canal
-kubectl -n kube-system delete configmap canal-config
+# RKE1 Canal resources, if the cluster was created with Canal
+kubectl -n kube-system get daemonset canal
+kubectl -n kube-system get configmap canal-config
 
-# Remove Canal CNI binaries from nodes (run on each node)
-sudo rm -f /opt/cni/bin/flannel
-sudo rm -f /opt/cni/bin/calico
-sudo rm -f /etc/cni/net.d/10-canal.conflist
+# RKE2 Canal resources, if Canal is still deployed
+kubectl -n kube-system get daemonset rke2-canal
+kubectl -n kube-system get helmchart rke2-canal
 
-# Restart kubelet on each node to pick up the new CNI
-sudo systemctl restart kubelet
+# On each node, inspect the active CNI configuration
+sudo ls -l /etc/cni/net.d/
 ```
 
 ## Step 4: Validate Cilium Health on RKE
@@ -99,8 +98,8 @@ Run the Cilium status and connectivity checks:
 # Check Cilium agent status - all nodes should show "OK"
 cilium status --wait
 
-# View Cilium endpoint list to confirm pods are managed
-cilium endpoint list
+# View CiliumEndpoint resources to confirm pods are managed
+kubectl get ciliumendpoints.cilium.io -A
 
 # Run the full connectivity test suite
 cilium connectivity test
@@ -116,4 +115,4 @@ cilium connectivity test
 
 ## Conclusion
 
-Cilium on RKE requires careful configuration in `cluster.yml` (RKE1) or `config.yaml` (RKE2), complete removal of previous CNI components, and kernel version validation. Following these steps in order ensures a clean transition from Canal to Cilium and a stable networking foundation for your Rancher-managed cluster.
+Cilium on RKE requires careful configuration in `cluster.yml` (RKE1) or `config.yaml` (RKE2), avoiding conflicting CNI components, and kernel version validation. Following these steps in order ensures a clean Cilium deployment path and a stable networking foundation for your Rancher-managed cluster.
