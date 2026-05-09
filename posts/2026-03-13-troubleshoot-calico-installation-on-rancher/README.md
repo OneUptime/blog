@@ -47,11 +47,15 @@ kubectl logs -n kube-system -l k8s-app=calico-node -c calico-node --tail=100
 
 ## Step 3: Check RKE Cluster Logs
 
-For RKE1 clusters, check the RKE log:
+For RKE1 clusters, check the network plugin deploy job and RKE-managed component logs. RKE1 reached end of life on July 31, 2025, and Rancher 2.12.0 and later no longer support provisioning or managing downstream RKE1 clusters:
 
 ```bash
-cat cluster.rkestate | python3 -m json.tool | grep -i error
-rke logs --config cluster.yml
+kubectl -n kube-system get pods -l job-name=rke-network-plugin-deploy-job \
+  --no-headers -o custom-columns=NAME:.metadata.name | \
+  xargs -L1 kubectl -n kube-system logs
+
+docker logs kubelet
+docker logs kube-proxy
 ```
 
 ## Step 4: Resolve CIDR Conflicts
@@ -67,25 +71,36 @@ If conflicting, update via Rancher cluster edit:
 1. Go to **Edit Cluster** in Rancher UI
 2. Under **Advanced Options**, change the **Pod CIDR**
 
-Note: CIDR changes require cluster rebuild. For live fixes:
+Note: Pod CIDR changes require cluster rebuild. To migrate Calico IP allocations, create a new non-overlapping IPPool, disable the old pool so it stops receiving new allocations, then restart affected pods after verifying the new pool:
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool \
-  -p '{"spec":{"cidr":"10.244.0.0/16"}}'
+calicoctl create -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: new-ipv4-ippool
+spec:
+  cidr: 10.244.0.0/16
+  ipipMode: Always
+  natOutgoing: true
+EOF
+
+calicoctl patch ippool default-ipv4-ippool -p '{"spec":{"disabled":true}}'
+kubectl delete pod -A --all
 ```
 
 ## Step 5: Fix Cloud Provider Network Issues
 
-For Rancher clusters on AWS, Azure, or GCP, security groups may block IPIP:
+For Rancher clusters on AWS or GCP, security groups or firewall rules may block IPIP. On Azure, IPIP packets are blocked by the Azure network fabric:
 
 ```bash
 # Check if IPIP protocol (protocol 4) is allowed between nodes
 
 # AWS: Check Security Groups allow protocol 4
-# Azure: Check NSG rules allow IP-in-IP
+# GCP: Check firewall rules allow protocol 4
 ```
 
-Switch to VXLAN to use standard UDP traffic:
+Switch to VXLAN to use UDP 4789 traffic:
 
 ```bash
 calicoctl patch ippool default-ipv4-ippool \
@@ -98,7 +113,7 @@ kubectl rollout restart daemonset calico-node -n kube-system
 ```bash
 # From node 1, test connectivity to node 2
 kubectl debug node/<node1> -it --image=ubuntu -- bash
-apt-get install -y iputils-ping
+apt-get update && apt-get install -y iputils-ping
 ping <node2-ip>
 ```
 
