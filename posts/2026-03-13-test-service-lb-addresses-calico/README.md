@@ -14,7 +14,7 @@ Service Load Balancer Addresses with Calico enables important networking capabil
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico v3.21+ installed
 - kubectl and calicoctl access
 - Cluster-admin access
 
@@ -22,7 +22,8 @@ Service Load Balancer Addresses with Calico enables important networking capabil
 
 ```bash
 calicoctl get ippools -o yaml
-calicoctl get bgpconfiguration -o yaml
+calicoctl get bgpconfig default -o yaml
+kubectl get kubecontrollersconfiguration default -o yaml
 ```
 
 ## Example Configuration
@@ -34,7 +35,20 @@ metadata:
   name: example-pool
 spec:
   cidr: 10.48.0.0/16
+  blockSize: 24
   natOutgoing: true
+  disabled: false
+  assignmentMode: Automatic
+  allowedUses:
+    - LoadBalancer
+---
+apiVersion: projectcalico.org/v3
+kind: BGPConfiguration
+metadata:
+  name: default
+spec:
+  serviceLoadBalancerIPs:
+    - cidr: 10.48.0.0/16
 ```
 
 ## Verify
