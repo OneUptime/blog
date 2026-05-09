@@ -10,7 +10,7 @@ Description: Validate your Kubernetes node CIDR planning in combination with Cal
 
 ## Introduction
 
-Node CIDR planning is the process of allocating IP address ranges for Kubernetes node-level networking - the IPs assigned to the nodes themselves - in coordination with the pod CIDR used by Calico IPAM for pod IP assignment. Poor CIDR planning leads to unexpected IP exhaustion, routing conflicts between node IPs and pod IPs, or insufficient capacity when the cluster scales.
+Node CIDR planning is the process of allocating the pod address ranges that Kubernetes can assign to individual nodes as PodCIDRs, in coordination with the node IP ranges used by the hosts themselves and the pod CIDR used by Calico IPAM for pod IP assignment. Poor CIDR planning leads to unexpected IP exhaustion, routing conflicts between node IPs and pod IPs, or insufficient capacity when the cluster scales.
 
 The Kubernetes `--cluster-cidr` flag and Calico's IP pool CIDR must be coordinated carefully. The cluster CIDR (used by kube-controller-manager to assign per-node pod CIDRs in some configurations) must be distinct from node IP ranges and service CIDRs. When Calico manages IPAM directly (as it does in most deployments), the coordination is between Calico IP pool CIDRs and the rest of your network addressing.
 
@@ -44,7 +44,7 @@ service_count = 500
 block_prefix = 26  # /26 = 64 IPs per block
 
 # Calculate pod address requirements
-ips_per_block = 2 ** (32 - block_prefix) - 2
+ips_per_block = 2 ** (32 - block_prefix)
 blocks_per_node = math.ceil(max_pods_per_node / ips_per_block)
 total_pod_ips_needed = blocks_per_node * max_nodes_3year * ips_per_block
 # Add 30% buffer for overhead, rescheduling, and burst
@@ -136,7 +136,7 @@ spec:
 # Apply the IP pool
 calicoctl apply -f ippool-production-sizing.yaml
 
-# Deploy test workloads to use ~50% of planned capacity
+# Deploy test workloads to create sample IPAM allocations
 kubectl create deployment cidr-scale-test \
   --image=nginx:1.25 \
   --replicas=500
@@ -165,11 +165,11 @@ print(f'Pod count at 95% utilization: {critical_threshold}')
 print(f'Current utilization: {current_pods/pool_size*100:.1f}%')
 "
 
-# Deploy up to 80% utilization to test allocation behavior at scale
-# (adjust replicas based on your cluster size)
+# Increase load to test allocation behavior at a higher pod count
+# (adjust replicas based on your cluster size and maxPods settings)
 kubectl scale deployment cidr-scale-test --replicas=800
 
-# Verify IPAM still functions correctly near threshold
+# Verify IPAM still functions correctly under the test load
 calicoctl ipam check
 calicoctl ipam show --show-blocks
 
@@ -184,7 +184,7 @@ kubectl delete deployment cidr-scale-test
 - Reserve separate, non-overlapping CIDRs for pods, services, and nodes with clear documentation of each range's purpose
 - Verify CIDR plans with network architects who have visibility into existing on-premises routing tables and planned network expansions
 - Set up Prometheus alerts for pod CIDR utilization at 70% and 85% thresholds to give adequate warning before exhaustion
-- Test CIDR calculations with actual Calico block size settings - the usable IPs per block is slightly less than the theoretical maximum
+- Test CIDR calculations with actual Calico block size settings and account for whole blocks allocated per host
 
 ## Conclusion
 
