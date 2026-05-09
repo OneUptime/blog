@@ -22,8 +22,8 @@ Understanding the service traffic path is essential for effective troubleshootin
 ## Check BGP Configuration for Service CIDRs
 
 ```bash
-calicoctl get bgpconfiguration default -o yaml | grep -A10 serviceClusterIPs
-calicoctl get bgpconfiguration default -o yaml | grep -A10 serviceLoadBalancerIPs
+calicoctl get bgpconfig default -o yaml | grep -A10 serviceClusterIPs
+calicoctl get bgpconfig default -o yaml | grep -A10 serviceLoadBalancerIPs
 ```
 
 If service CIDRs are missing from the configuration, they won't be advertised:
@@ -31,17 +31,17 @@ If service CIDRs are missing from the configuration, they won't be advertised:
 ```bash
 # Add missing service CIDR
 
-calicoctl patch bgpconfiguration default --type merge \
+calicoctl patch bgpconfig default --type merge \
   --patch '{"spec":{"serviceClusterIPs":[{"cidr":"10.96.0.0/12"}]}}'
 ```
 
-## Verify Calico kube-controllers is Running
+## Verify Calico Node BGP Components are Running
 
-Service advertisement is handled by calico-kube-controllers, not Felix:
+Service advertisement is handled by the BGP components in `calico-node`, with `confd` rendering BIRD configuration from Calico datastore updates:
 
 ```bash
-kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers
-kubectl logs -n calico-system deployment/calico-kube-controllers | grep -i service
+kubectl get pods -n calico-system -l k8s-app=calico-node
+kubectl logs -n calico-system daemonset/calico-node -c calico-node | grep -Ei "bird|confd|bgp|service"
 ```
 
 ## Check Route Advertisement from Nodes
@@ -51,10 +51,11 @@ NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | hea
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route | grep -E "10.96|192.168.100"
 ```
 
-If the service CIDR is not appearing in BIRD routes, check the Felix configuration:
+If the service CIDR is not appearing in BIRD routes, recheck the BGP configuration and `calico-node` logs:
 
 ```bash
-kubectl exec -n calico-system ${NODE_POD} -- cat /etc/calico/felix.cfg
+calicoctl get bgpconfig default -o yaml
+kubectl logs -n calico-system daemonset/calico-node -c calico-node | grep -Ei "bird|confd|bgp|service"
 ```
 
 ## Troubleshoot kube-proxy DNAT
@@ -66,7 +67,7 @@ SVC_IP=$(kubectl get svc my-service -o jsonpath='{.spec.clusterIP}')
 iptables -t nat -L KUBE-SERVICES -n | grep ${SVC_IP}
 
 # Check KUBE-SVC chain
-CHAIN=$(iptables -t nat -L KUBE-SERVICES -n | grep ${SVC_IP} | awk '{print $3}')
+CHAIN=$(iptables -t nat -S KUBE-SERVICES | grep ${SVC_IP} | sed -n 's/.*-j \(KUBE-SVC-[A-Z0-9]*\).*/\1/p' | head -1)
 iptables -t nat -L ${CHAIN} -n
 ```
 
@@ -75,11 +76,11 @@ iptables -t nat -L ${CHAIN} -n
 Service advertisement is only useful if backends are healthy:
 
 ```bash
-kubectl get endpoints my-service
-kubectl describe endpoints my-service
+kubectl get endpointslice -l kubernetes.io/service-name=my-service
+kubectl describe endpointslice -l kubernetes.io/service-name=my-service
 ```
 
-If no endpoints exist, the service has no healthy backends to forward to.
+If no ready endpoints exist in the EndpointSlices, the service has no healthy backends to forward to.
 
 ## Troubleshooting Flow
 
@@ -87,7 +88,7 @@ If no endpoints exist, the service has no healthy backends to forward to.
 flowchart TD
     A[Service Unreachable Externally] --> B{BGP route\nadvertised?}
     B -- No --> C[Check bgpconfiguration\nserviceClusterIPs field]
-    C --> D[Restart kube-controllers\nif config just changed]
+    C --> D[Check calico-node\nconfd/BIRD logs]
     B -- Yes --> E{Route on\nexternal router?}
     E -- No --> F[Check BGP filter\nfor service CIDR]
     E -- Yes --> G{kube-proxy DNAT\nrules exist?}
@@ -99,4 +100,4 @@ flowchart TD
 
 ## Conclusion
 
-Troubleshooting Calico service IP advertisement requires checking the BGP configuration for service CIDR entries, verifying calico-kube-controllers is running and programming routes into BIRD, confirming kube-proxy has DNAT rules for the service, and ensuring healthy backends exist. Work through these layers systematically to find where the service forwarding chain is broken.
+Troubleshooting Calico service IP advertisement requires checking the BGP configuration for service CIDR entries, verifying `calico-node` is running and programming routes into BIRD, confirming kube-proxy has DNAT rules for the service, and ensuring healthy backends exist. Work through these layers systematically to find where the service forwarding chain is broken.
