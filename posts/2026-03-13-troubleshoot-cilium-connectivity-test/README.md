@@ -51,26 +51,27 @@ grep -E "FAIL|ERROR|timeout" /tmp/connectivity-test.log
 
 ```bash
 # Check if test pods are running
-kubectl get pods -n cilium-test
+kubectl get pods -n cilium-test-1
 
 # If pods are pending, check scheduling issues
-kubectl describe pod -n cilium-test echo-same-node | grep -A 20 "Events:"
+ECHO_POD=$(kubectl get pods -n cilium-test-1 -o name | grep '^pod/echo-same-node-' | head -n1)
+kubectl describe -n cilium-test-1 "$ECHO_POD" | grep -A 20 "Events:"
 
 # Delete stale test namespace if tests didn't clean up
-kubectl delete namespace cilium-test
+kubectl delete namespace cilium-test-1
 ```
 
 ## Step 4: Diagnose Policy Failures
 
 ```bash
 # Monitor drops while tests run
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop &
 
 # Re-run connectivity test
 cilium connectivity test --test no-policies
 
-# Check policy enforcement mode
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep "policy-enforcement"
+# Check per-endpoint policy enforcement state
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o jsonpath='{range [*]}{@.id}{"="}{@.status.policy.spec.policy-enabled}{"\n"}{end}'
 ```
 
 ## Step 5: DNS Troubleshooting
@@ -83,19 +84,19 @@ kubectl run dns-test --image=busybox --restart=Never -it --rm -- nslookup kubern
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
 # Check if Cilium DNS proxy is causing issues
-kubectl exec -n kube-system ds/cilium -- cilium status | grep DNS
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --verbose | grep -i dns
 ```
 
 ## Step 6: MTU Issues
 
 ```bash
 # Check configured MTU
-kubectl exec -n kube-system ds/cilium -- cilium status | grep -i mtu
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --verbose | grep -i mtu
 
 # Check actual interface MTU
 kubectl exec -n kube-system ds/cilium -- ip link show | grep mtu
 
-# Node MTU
+# On each Kubernetes node, check the node interface MTU
 ip link show eth0 | grep mtu
 ```
 
@@ -122,4 +123,4 @@ cilium sysdump --output-filename connectivity-test-failure-$(date +%Y%m%d)
 
 ## Conclusion
 
-Troubleshooting `cilium connectivity test` failures is a structured process of isolating the failure type, collecting targeted diagnostics, and addressing the root cause. The test suite is comprehensive enough that failures point directly to real networking issues rather than false positives. Resolving connectivity test failures builds confidence that your Cilium installation is correctly configured and ready for production workloads.
+Troubleshooting `cilium connectivity test` failures is a structured process of isolating the failure type, collecting targeted diagnostics, and addressing the root cause. The test suite is comprehensive enough that failures often point to real networking or environment issues rather than false positives. Resolving connectivity test failures builds confidence that your Cilium installation is correctly configured and ready for production workloads.
