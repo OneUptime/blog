@@ -18,8 +18,9 @@ This guide covers the most common failure modes: address fields being ignored, I
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium 1.14+ installed
-- Cilium configured as the Gateway API implementation
+- Kubernetes cluster with Cilium installed
+- Cilium configured as the Gateway API implementation with Gateway API enabled
+- Cilium LB IPAM configured for Gateway `spec.addresses` support
 - `kubectl` and `cilium` CLI tools available
 - Gateway API CRDs installed (`gateway.networking.k8s.io`)
 
@@ -46,7 +47,7 @@ Check the address status on the Gateway object:
 kubectl describe gateway <gateway-name> -n <namespace>
 ```
 
-Look for the `Status.Addresses` field and any conditions such as `Programmed` or `Accepted`. If `Programmed` is false, the address was not applied:
+Look for the `Status.Addresses` field and any conditions such as `Programmed` or `Accepted`. If `Programmed` is false, inspect the condition message and reason to determine whether address assignment or listener programming failed:
 
 ```bash
 kubectl get gateway <gateway-name> -n <namespace> -o jsonpath='{.status.conditions}'
@@ -54,10 +55,10 @@ kubectl get gateway <gateway-name> -n <namespace> -o jsonpath='{.status.conditio
 
 ## Check the Underlying Load Balancer Service
 
-Cilium creates a corresponding Service for each Gateway. Locate it:
+Cilium creates a corresponding Service for each Gateway in the default LoadBalancer Service mode. Locate it:
 
 ```bash
-kubectl get svc -n <namespace> -l cilium.io/gateway-name=<gateway-name>
+kubectl get svc -n <namespace> -l gateway.networking.k8s.io/gateway-name=<gateway-name>
 ```
 
 If the Service exists but has no external IP, check cloud provider load balancer events:
@@ -81,13 +82,12 @@ kubectl get ciliumloadbalancerippool <pool-name> -o jsonpath='{.status}'
 flowchart TD
     A[Gateway Resource] --> B[Cilium Operator]
     B --> C[Reconcile Address Spec]
-    C --> D{Address Type}
-    D -->|IPAddress| E[Request Static IP from Pool]
-    D -->|Hostname| F[DNS Resolution]
-    E --> G[Create/Update LB Service]
-    G --> H[Cloud Provider / MetalLB]
-    H --> I[Assign IP to Service]
-    I --> J[Update Gateway Status.Addresses]
+    C --> D{IPAddress Address Type}
+    D --> E[Request IP from Cilium LB IPAM Pool]
+    E --> F[Create/Update LB Service]
+    F --> G[Load Balancer Implementation]
+    G --> H[Expose Service IP]
+    H --> I[Update Gateway Status.Addresses]
 ```
 
 ## Validate TLS and Listener Bindings
