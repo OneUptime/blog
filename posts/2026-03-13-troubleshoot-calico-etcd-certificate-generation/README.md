@@ -36,7 +36,7 @@ for cert in calico-felix calico-cni calico-admin etcd-server; do
 done
 
 # Check the secret in Kubernetes
-kubectl get secret calico-etcd-certs -n kube-system -o jsonpath='{.data.etcd-cert}' | \
+kubectl get secret calico-etcd-secrets -n kube-system -o jsonpath='{.data.etcd-cert}' | \
   base64 -d | openssl x509 -noout -enddate
 ```
 
@@ -50,7 +50,7 @@ openssl x509 -req -in calico-felix.csr \
   -CAcreateserial -out calico-felix.crt \
   -days 365 -sha256
 
-kubectl create secret generic calico-etcd-certs \
+kubectl create secret generic calico-etcd-secrets \
   -n kube-system \
   --from-file=etcd-cert=calico-felix.crt \
   --from-file=etcd-key=calico-felix.key \
@@ -87,6 +87,12 @@ cat > etcd-san.conf <<EOF
 [v3_req]
 subjectAltName = DNS:etcd,DNS:etcd.kube-system.svc,DNS:etcd.kube-system.svc.cluster.local,IP:127.0.0.1,IP:10.0.0.10
 EOF
+
+openssl x509 -req -in etcd-server.csr \
+  -CA calico-etcd-ca.crt -CAkey calico-etcd-ca.key \
+  -CAcreateserial -out etcd-server.crt \
+  -days 365 -sha256 \
+  -extfile etcd-san.conf -extensions v3_req
 ```
 
 ## Issue 3: Wrong CA Certificate
@@ -102,7 +108,7 @@ grep "trusted-ca-file" /etc/etcd/etcd.conf
 openssl x509 -in /etc/etcd/ca.crt -noout -subject
 ```
 
-The issuer of the client cert must match the subject of the CA that etcd trusts.
+The issuer of the client cert must chain to a CA certificate that etcd trusts.
 
 ## Issue 4: Certificate/Key Mismatch
 
@@ -110,8 +116,9 @@ The issuer of the client cert must match the subject of the CA that etcd trusts.
 
 ```bash
 # Quick mismatch check
-openssl x509 -in calico-felix.crt -modulus -noout | openssl md5
-openssl rsa -in calico-felix.key -modulus -noout | openssl md5
+openssl x509 -in calico-felix.crt -pubkey -noout | \
+  openssl pkey -pubin -outform DER | openssl sha256
+openssl pkey -in calico-felix.key -pubout -outform DER | openssl sha256
 # These must be identical
 ```
 
@@ -125,8 +132,7 @@ kubectl describe certificate calico-felix-etcd-cert -n kube-system
 kubectl logs -n cert-manager deploy/cert-manager | grep -i "calico\|error"
 
 # Force renewal
-kubectl annotate certificate calico-felix-etcd-cert -n kube-system \
-  cert-manager.io/issuer-name="" --overwrite
+cmctl renew calico-felix-etcd-cert -n kube-system
 ```
 
 ## Conclusion
