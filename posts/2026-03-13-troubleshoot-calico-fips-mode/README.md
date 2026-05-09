@@ -10,13 +10,14 @@ Description: Diagnose and resolve common Calico FIPS mode issues including TLS h
 
 ## Introduction
 
-Troubleshooting Calico in FIPS mode requires understanding both Calico's internal communication patterns and the FIPS restrictions imposed by the operating system. When FIPS mode is active, the OS kernel rejects any cryptographic operation that uses non-approved algorithms, which can cause unexpected failures in Calico components that weren't designed with FIPS constraints in mind.
+Troubleshooting Calico in FIPS mode requires understanding both Calico's internal communication patterns and the FIPS restrictions imposed by the operating system and cryptographic libraries. In current Calico releases, FIPS mode is deprecated and may be removed in a future release; when it is enabled, Calico uses FIPS-approved algorithms and validated cryptographic modules, and non-approved algorithms can fail depending on where the cryptographic operation is performed.
 
 The most common FIPS-related failures manifest as TLS handshake errors between Calico components, certificate validation failures, or outright crashes of components that use non-FIPS algorithms. Understanding which Calico components communicate with each other and which cipher suites they use is essential for diagnosing these issues.
 
 ## Prerequisites
 
 - Calico installed with FIPS mode attempted
+- A Kubernetes distribution and Linux x86_64 hosts running in FIPS mode
 - `kubectl` with cluster-admin access
 - Access to node-level debugging tools
 
@@ -49,31 +50,40 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- \
 kubectl logs -n calico-system deploy/calico-typha | grep -i "tls\|handshake\|cipher"
 
 # Verify Felix-Typha TLS configuration
-kubectl get felixconfiguration default -o jsonpath='{.spec.typhaCaFile}'
-kubectl get installation default -o jsonpath='{.spec.typhaAffinity}'
+kubectl get installation default -o jsonpath='{.spec.fipsMode}{"\n"}'
+kubectl get installation default -o jsonpath='{.spec.certificateManagement}{"\n"}'
+kubectl get installation default -o jsonpath='{.spec.typhaDeployment}{"\n"}'
 ```
 
 If you see TLS handshake failures between Felix and Typha, the certificates may have been generated with non-FIPS algorithms:
 
 ```bash
-# Check certificate algorithm
-kubectl get secret -n calico-system calico-typha-tls -o jsonpath='{.data.tls\.crt}' | \
+# Check issued Calico certificate algorithms when certificateManagement is enabled
+kubectl get csr | grep 'calico-system'
+kubectl get csr <csr-name> -o jsonpath='{.status.certificate}' | \
   base64 -d | openssl x509 -noout -text | grep "Signature Algorithm"
 
-# FIPS-approved: ecdsa-with-SHA256, sha256WithRSAEncryption (RSA 2048+)
-# Non-FIPS (will fail): md5WithRSAEncryption, sha1WithRSAEncryption
+# Supported Calico certificate choices include:
+# keyAlgorithm: RSAWithSize2048, RSAWithSize4096, RSAWithSize8192,
+#               ECDSAWithCurve256, ECDSAWithCurve384, ECDSAWithCurve521
+# signatureAlgorithm: SHA256WithRSA, SHA384WithRSA, SHA512WithRSA,
+#                     SHA256WithECDSA, SHA384WithECDSA, SHA512WithECDSA
+# Avoid MD5 and SHA-1 certificate signatures in FIPS environments.
 ```
 
-## Symptom 3: Non-FIPS Image Running in FIPS Mode
+## Symptom 3: Calico Not Running with FIPS Mode Enabled
 
 ```bash
-# Check if Calico images are FIPS-enabled variants
+# Check that the operator is configured to use FIPS mode
+kubectl get installation default -o jsonpath='{.spec.fipsMode}{"\n"}'
+
+# Check the images currently running
 kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}'
 
-# Inspect the image for FIPS build tag
+# Inspect image metadata if you need to confirm the exact image version
 docker inspect calico/node:v3.27.0 | jq '.[0].Config.Labels'
-# FIPS images should have a label like:
-# "org.opencontainers.image.description": "Calico node (FIPS)"
+# Do not rely on a generic "FIPS" image label; use Installation.spec.fipsMode
+# and your release's documented image set as the source of truth.
 ```
 
 ## Troubleshooting Flow
@@ -83,8 +93,8 @@ flowchart TD
     A[Calico FIPS Failure] --> B{Pod starting at all?}
     B -->|No - CrashLoop| C[Check pod logs for crypto errors]
     B -->|Yes - degraded| D[Check component-to-component TLS]
-    C --> E{Non-FIPS image?}
-    E -->|Yes| F[Switch to FIPS-enabled images]
+    C --> E{fipsMode disabled?}
+    E -->|Yes| F[Enable fipsMode in Installation]
     E -->|No| G{OS FIPS enabled?}
     G -->|No| H[Enable FIPS on all nodes]
     G -->|Yes| I[Check certificate algorithms]
@@ -99,9 +109,9 @@ flowchart TD
 # Check kube-controllers logs
 kubectl logs -n calico-system deploy/calico-kube-controllers
 
-# Common issue: etcd TLS certificates using MD5 or SHA1
+# Common issue: etcd TLS certificates using MD5 or SHA1 signatures
 kubectl get secret -n calico-system calico-etcd-secrets -o yaml 2>/dev/null | \
-  grep -A2 "tls"
+  grep -E "etcd-ca|etcd-cert|etcd-key"
 
 # For etcd-backed Calico, verify etcd uses FIPS-approved TLS
 etcdctl --cert=/etc/etcd/tls/client.crt \
@@ -113,17 +123,22 @@ etcdctl --cert=/etc/etcd/tls/client.crt \
 ## Regenerating Certificates for FIPS Compliance
 
 ```bash
-# Regenerate Calico certificates with FIPS-approved algorithms
-# Delete existing certificate secrets to force regeneration
-kubectl delete secret -n calico-system calico-typha-tls calico-node-tls
+# Configure Calico certificate management with FIPS-appropriate algorithms
+kubectl patch installation default --type=merge -p '{
+  "spec": {
+    "certificateManagement": {
+      "caCert": "<Your CA Cert in PEM format>",
+      "signerName": "<your-domain>/<signer-name>",
+      "keyAlgorithm": "RSAWithSize4096",
+      "signatureAlgorithm": "SHA512WithRSA"
+    }
+  }
+}'
 
-# The operator will regenerate them with FIPS-approved algorithms
-# when fipsMode: Enabled is set in Installation
-
-# Monitor regeneration
-kubectl get secrets -n calico-system -w | grep tls
+# Monitor the certificate signing requests created by Calico pods
+kubectl get csr -w
 ```
 
 ## Conclusion
 
-Troubleshooting Calico in FIPS mode requires checking the full cryptographic chain: OS FIPS enforcement, certificate algorithms, TLS cipher suites, and image FIPS support. The most common issues are non-FIPS certificates (often pre-existing certs generated before FIPS was enabled) and non-FIPS images. When enabling FIPS on an existing cluster, always regenerate all Calico TLS certificates and replace images with FIPS-enabled variants. Use the troubleshooting flow diagram to systematically work through failures.
+Troubleshooting Calico in FIPS mode requires checking the full cryptographic chain: OS FIPS enforcement, certificate algorithms, TLS cipher suites, and Calico FIPS configuration. The most common issues are non-FIPS certificates (often pre-existing certs generated before FIPS was enabled) and installations where `fipsMode: Enabled` was not applied consistently. When enabling FIPS on an existing cluster, review all Calico TLS certificates and the documented image set for your Calico release. Use the troubleshooting flow diagram to systematically work through failures.
