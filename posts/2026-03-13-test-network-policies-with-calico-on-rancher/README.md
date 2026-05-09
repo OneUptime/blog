@@ -29,7 +29,7 @@ In Rancher UI:
 1. Create two projects: **Project-A** and **Project-B**
 2. Within each project, create a namespace: `ns-a` and `ns-b`
 
-Or via kubectl:
+If you create the namespaces via kubectl, label them for the NetworkPolicy `namespaceSelector` examples below. This does not create Rancher projects; assign the namespaces to projects in Rancher when testing Rancher's project features.
 
 ```bash
 kubectl create namespace ns-a
@@ -123,13 +123,14 @@ calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: rancher-deny-node-exporter
+  name: rancher-deny-tcp-9100
 spec:
   selector: all()
   types:
   - Ingress
   ingress:
   - action: Deny
+    protocol: TCP
     destination:
       ports: [9100]
 EOF
