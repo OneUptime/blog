@@ -12,13 +12,14 @@ Description: Identify and fix GAMMA configuration problems in the Cilium Gateway
 
 GAMMA routes in the Cilium Gateway API can fail for a variety of reasons beyond simple misconfiguration. Common issues include Service parentRef resolution failures, port mismatches, namespace isolation problems, and conflicts between GAMMA routes and Cilium network policies.
 
-Understanding the sequence from route creation to eBPF program loading helps pinpoint where the breakdown occurs. Cilium must successfully parse the HTTPRoute, resolve all referenced backends, and load the corresponding eBPF policy for traffic to be affected.
+Understanding the sequence from route creation to proxy and datapath programming helps pinpoint where the breakdown occurs. Cilium must successfully parse the HTTPRoute, resolve the Service parentRef and backendRefs, and update the corresponding Envoy and datapath configuration for traffic to be affected.
 
 This guide provides diagnostic steps for the most frequent GAMMA-specific failures.
 
 ## Prerequisites
 
 - Cilium with GAMMA enabled
+- Cilium configured with kube-proxy replacement and the L7 proxy enabled
 - `kubectl`, `cilium-dbg`, `hubble` CLIs
 - Access to Cilium agent logs
 
@@ -54,7 +55,7 @@ flowchart TD
     C -->|Service not found| D[ResolvedRefs: False]
     C -->|Service found| E{Backend refs}
     E -->|Backend not found| F[ResolvedRefs: False on backend]
-    E -->|All resolved| G[eBPF Program Loaded]
+    E -->|All resolved| G[Envoy and datapath config updated]
     G --> H{Traffic Match}
     H -->|Route matches| I[Route applied]
     H -->|No match| J[Default forwarding]
@@ -62,19 +63,19 @@ flowchart TD
 
 ## Step 3: Check for Namespace Conflicts
 
-GAMMA does not support cross-namespace parentRefs without `ReferenceGrant`:
+Cilium currently supports GAMMA producer routes, so the HTTPRoute and the Service used as its parentRef must be in the same namespace. A `ReferenceGrant` can allow cross-namespace backendRefs, but it does not enable Cilium consumer routes with cross-namespace Service parentRefs.
 
 ```bash
 kubectl get referencegrant -n <target-namespace>
 ```
 
-If the route and service are in different namespaces, create a ReferenceGrant:
+If a backendRef points to a Service in a different namespace, create a ReferenceGrant in the backend Service namespace:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
-  name: allow-gamma-route
+  name: allow-gamma-backend
   namespace: target-ns
 spec:
   from:
@@ -94,7 +95,7 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=cilium-operator \
   --tail=200 | grep -i "gamma\|httproute"
 ```
 
-## Step 5: Check eBPF Policy
+## Step 5: Check Cilium Policy
 
 ```bash
 kubectl exec -n kube-system ds/cilium -- cilium-dbg policy get 2>/dev/null | head -50
@@ -102,4 +103,4 @@ kubectl exec -n kube-system ds/cilium -- cilium-dbg policy get 2>/dev/null | hea
 
 ## Conclusion
 
-Troubleshooting GAMMA in the Cilium Gateway API requires checking route status conditions, Service resolution, namespace grants, and eBPF policy loading. Working through these steps systematically isolates whether the problem is at the Kubernetes API layer or the eBPF datapath.
+Troubleshooting GAMMA in the Cilium Gateway API requires checking route status conditions, Service resolution, namespace grants for cross-namespace backends, and Cilium policy or datapath state. Working through these steps systematically isolates whether the problem is at the Kubernetes API layer, the proxy configuration, or the datapath.
