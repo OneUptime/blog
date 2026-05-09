@@ -59,11 +59,15 @@ sudo journalctl -u devstack@calico-felix -f &
 From one VM's console, try to connect to the other:
 
 ```bash
+# From the restricted-vm console, start a simple HTTP server:
+mkdir -p /tmp/www && echo ok > /tmp/www/index.html
+sudo busybox httpd -f -p 80 -h /tmp/www &
+
 # From the allowed-vm console:
-# ICMP should work from restricted-vm
+# ICMP should work to restricted-vm
 ping -c3 <restricted-vm-ip>
 # HTTP should fail to restricted-vm (no HTTP rule)
-curl --max-time 5 http://<restricted-vm-ip> || echo "Blocked"
+timeout 5 wget -qO- http://<restricted-vm-ip> || echo "Blocked"
 ```
 
 ## Step 5: Observe Felix Debug Logs
@@ -82,6 +86,7 @@ openstack security group rule create --protocol tcp --dst-port 80 restrict-sg
 # Wait for Felix to update iptables
 sleep 3
 # HTTP should now succeed
+timeout 5 wget -qO- http://<restricted-vm-ip>
 ```
 
 ## Conclusion
