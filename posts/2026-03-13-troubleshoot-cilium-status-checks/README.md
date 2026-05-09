@@ -29,18 +29,18 @@ The `cilium status` command is the primary diagnostic entry point. Each componen
 Run and parse the Cilium status output:
 
 ```bash
-# Get a comprehensive status summary across all Cilium agents
+# Get a cluster status summary from the Kubernetes-facing Cilium CLI
 
-cilium status --all-addresses --all-controllers --all-nodes --all-redirects
+cilium status --verbose
 
 # Check status for a specific Cilium pod directly via exec
-kubectl -n kube-system exec -it ds/cilium -- cilium status --verbose
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg status --verbose
 ```
 
 Key fields to check:
 - `KV-Store`: Should show `Ok` - failures here mean etcd/CRD connectivity issues
 - `Kubernetes`: Should show `Ok` - failures indicate API server connectivity problems
-- `BPF Maps`: Should show `Ok` - failures indicate filesystem or memory issues
+- `Cilium`: Should show `Ok` - failures can include datapath initialization errors such as BPF filesystem or map issues
 - `Controller Status`: Shows count of failing controllers (should be 0)
 
 ## Step 2: Diagnose Controller Failures
@@ -51,13 +51,13 @@ Identify and investigate failing controllers:
 
 ```bash
 # List all controllers and their status
-kubectl -n kube-system exec -it ds/cilium -- cilium status --all-controllers 2>&1 | grep -E "(FAIL|fail)"
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg status --all-controllers 2>&1 | grep -E "(FAIL|fail)"
 
 # Get detailed controller status including failure counts and last error
-kubectl -n kube-system exec -it ds/cilium -- cilium debuginfo | grep -A5 "controller"
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg debuginfo | grep -A5 "controller"
 
 # Watch controller status in real time to spot transient failures
-watch -n 2 "kubectl -n kube-system exec ds/cilium -- cilium status 2>&1 | grep -i controller"
+watch -n 2 "kubectl -n kube-system exec ds/cilium -- cilium-dbg status 2>&1 | grep -i controller"
 ```
 
 ## Step 3: Check Endpoint Synchronization
@@ -67,14 +67,14 @@ Cilium endpoints represent individual pod network interfaces. Endpoints stuck in
 Inspect endpoint health across the cluster:
 
 ```bash
-# List all endpoints and their state - look for endpoints not in "ready" state
-kubectl -n kube-system exec -it ds/cilium -- cilium endpoint list
+# List all CiliumEndpoint resources and their state across the cluster
+kubectl get ciliumendpoints --all-namespaces
 
-# Get detailed state for a specific endpoint (replace <endpoint-id> with actual ID)
-kubectl -n kube-system exec -it ds/cilium -- cilium endpoint get <endpoint-id>
+# Get detailed state for a specific local endpoint on a Cilium agent
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg endpoint get <endpoint-id>
 
-# Check for endpoints with policy errors
-kubectl -n kube-system exec -it ds/cilium -- cilium endpoint list | grep -v ready
+# Check for CiliumEndpoint resources that are not ready
+kubectl get ciliumendpoints --all-namespaces | grep -v ready
 ```
 
 ## Step 4: Review Cilium Agent Logs for Error Patterns
@@ -98,9 +98,9 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=200 | grep -i "identity"
 
 - Set up alerts on `cilium_controllers_failing` Prometheus metric to catch controller failures early
 - Run `cilium status --wait` after every Cilium upgrade before allowing new workloads to schedule
-- Use `cilium debuginfo` and attach the output when filing Cilium GitHub issues
+- Use `cilium sysdump` and attach the output when filing Cilium GitHub issues
 - Monitor the `cilium_endpoint_state` metric to track endpoint health trends over time
-- Check the `cilium_k8s_client_api_calls_total` metric for API server throttling indicators
+- Check the `cilium_k8s_client_rate_limiter_duration_seconds` metric for Kubernetes client-side throttling indicators
 
 ## Conclusion
 
