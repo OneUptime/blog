@@ -14,7 +14,7 @@ Service Load Balancer Addresses with Calico enables important networking capabil
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico v3.21+ installed
 - kubectl and calicoctl access
 - Cluster-admin access
 
@@ -35,13 +35,17 @@ metadata:
 spec:
   cidr: 10.48.0.0/16
   natOutgoing: true
+  disabled: false
+  assignmentMode: Automatic
+  allowedUses:
+    - LoadBalancer
 ```
 
 ## Verify
 
 ```bash
 kubectl get svc -A
-calicoctl ipam check
+calicoctl ipam show
 ```
 
 ## Architecture
