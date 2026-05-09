@@ -12,7 +12,7 @@ Description: Diagnose and fix common Calico installation issues on K3s clusters 
 
 Calico installation issues on K3s commonly stem from K3s-specific behaviors such as the embedded CNI system, Flannel remnants if K3s was not started with `--flannel-backend=none`, or CIDR mismatches between K3s's `--cluster-cidr` and Calico's IP pool configuration. Identifying the root cause requires checking both K3s-specific logs and standard Calico diagnostic output.
 
-K3s writes logs through the system journal rather than to files, which means you need to use `journalctl` to access K3s logs. The K3s agent logs are particularly relevant for CNI issues because the CNI plugin is initialized by the agent, not the server process.
+K3s writes logs through the system journal rather than to files, which means you need to use `journalctl` to access K3s logs. The node-side K3s agent component is particularly relevant for CNI issues because it runs kubelet, containerd, and CNI. On server nodes this component runs inside the `k3s` service, while agent-only nodes use the `k3s-agent` service.
 
 This guide provides a structured troubleshooting process for Calico on K3s, organized by symptom with specific remediation steps.
 
@@ -29,9 +29,10 @@ kubectl get nodes
 kubectl describe node <node-name> | grep -A10 Conditions
 ```
 
-## Step 2: View K3s Agent Logs
+## Step 2: View K3s Logs
 
 ```bash
+sudo journalctl -u k3s -n 100 --no-pager | grep -i cni
 sudo journalctl -u k3s-agent -n 100 --no-pager | grep -i cni
 sudo journalctl -u k3s -n 100 --no-pager | grep -i calico
 ```
@@ -49,26 +50,24 @@ kubectl logs -n kube-system -l k8s-app=calico-node -c calico-node --tail=50
 Check the K3s installation arguments:
 
 ```bash
-cat /etc/systemd/system/k3s.service | grep flannel
+grep -R "flannel" /etc/rancher/k3s/config.yaml /etc/systemd/system/k3s.service /etc/systemd/system/k3s-agent.service 2>/dev/null
 ps aux | grep k3s | grep flannel
 ```
 
 If Flannel arguments are missing `--flannel-backend=none`, reinstall K3s:
 
 ```bash
-/usr/local/bin/k3s-uninstall.sh
-curl -sfL https://get.k3s.io | sh -s - \
-  --flannel-backend=none \
-  --disable-network-policy \
-  --cluster-cidr=192.168.0.0/16
+sudo /usr/local/bin/k3s-uninstall.sh
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy --cluster-cidr=192.168.0.0/16" sh -
 ```
 
 ## Step 5: Fix CIDR Mismatch
 
-Ensure Calico's IP pool matches K3s's cluster CIDR:
+Ensure Calico's IP pool matches K3s's cluster CIDR. Do not compare the Calico pool to `.spec.podCIDR` on a node; that value is a per-node allocation carved from the cluster CIDR.
 
 ```bash
-kubectl get node -o jsonpath='{.items[0].spec.podCIDR}'
+grep -R "cluster-cidr" /etc/rancher/k3s/config.yaml /etc/systemd/system/k3s.service 2>/dev/null
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.podCIDR}{"\n"}{end}'
 calicoctl get ippool -o yaml | grep cidr
 ```
 
