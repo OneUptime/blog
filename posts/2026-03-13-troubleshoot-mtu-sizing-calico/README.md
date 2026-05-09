@@ -33,13 +33,22 @@ Classic symptoms of MTU issues:
 # Check for large numbers of fragmented packets
 
 netstat -s | grep -i fragment
-cat /proc/net/snmp | awk '/IpFragCreates/{print "Fragments created:", $2}'
+awk '
+  /^Ip: / && !seen++ {
+    for (i = 1; i <= NF; i++) field[$i] = i
+    next
+  }
+  /^Ip: / { print "Fragments created:", $field["FragCreates"] }
+' /proc/net/snmp
 ```
 
 ## Find the Actual MTU in Use
 
 ```bash
-# Check what Calico thinks the MTU should be
+# Check the configured Calico MTU for Operator installations
+kubectl get installation.operator.tigera.io default -o yaml | grep mtu
+
+# Check the configured Calico MTU for manifest-based installations
 kubectl get configmap -n kube-system calico-config -o yaml | grep mtu
 
 # Check the actual pod interface MTU
@@ -67,21 +76,32 @@ done
 
 ## Fix MTU Configuration
 
-After identifying the correct MTU, update Calico:
+After identifying the correct MTU, update Calico. For Operator installations, set the workload MTU on the Installation resource:
 
 ```bash
 # For direct BGP routing (no encap)
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"mtu":1500}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1500}}}'
 
 # For VXLAN (subtract 50 bytes for VXLAN header)
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"vxlanMTU":1450}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 ```
 
-Restart pods to pick up the new MTU:
+For manifest-based installations, update the `calico-config` ConfigMap instead:
 
 ```bash
+kubectl patch configmap/calico-config -n kube-system --type merge \
+  -p '{"data":{"veth_mtu":"1450"}}'
+```
+
+For manifest-based installations, restart Calico node pods so the new ConfigMap is loaded. Because the updated MTU applies to new workloads, restart workload pods after changing either install type:
+
+```bash
+# Manifest-based installations only
+kubectl rollout restart daemonset calico-node -n kube-system
+
+# Restart affected workloads
 kubectl rollout restart deployment -n <namespace>
 ```
 
@@ -94,12 +114,12 @@ flowchart TD
     C -- Yes --> D[Find MTU ceiling\nwith ping -M do]
     D --> E[Compare against\nCalico MTU config]
     E --> F{Config matches\ncorrect MTU?}
-    F -- No --> G[Update FelixConfiguration\nmtu field]
-    G --> H[Restart affected pods]
+    F -- No --> G[Update Calico\nMTU configuration]
+    G --> H[Restart required\npods]
     F -- Yes --> I[Check host\nphysical interface MTU]
     C -- No --> J[Investigate\nother causes]
 ```
 
 ## Conclusion
 
-MTU troubleshooting in Calico starts with identifying fragmentation counter spikes, then using binary search with DF-bit ping to find the actual MTU limit in the path. Once the correct MTU is identified, update the FelixConfiguration and restart pods to apply the new MTU value to pod interfaces. Document the correct MTU for your environment to prevent regressions after future changes.
+MTU troubleshooting in Calico starts with identifying fragmentation counter spikes, then using progressively larger DF-bit ping payloads to find the actual MTU limit in the path. Once the correct MTU is identified, update the Calico MTU configuration and restart pods to apply the new MTU value to pod interfaces. Document the correct MTU for your environment to prevent regressions after future changes.
