@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, IP Reservation, Networking, Troubleshooting
 
-Description: A guide to diagnosing and resolving issues with IP address reservation in Calico IPAM, covering reserved IP ranges, annotation-based reservations, and conflicts with reserved addresses.
+Description: A guide to diagnosing and resolving issues with IP address reservation in Calico IPAM, covering reserved IP ranges, specific IP requests, and conflicts with reserved addresses.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A guide to diagnosing and resolving issues with IP address reservat
 
 Calico's IPAM system allows specific IP addresses to be reserved so they are never assigned to pods. This is useful for reserving IPs for infrastructure services (like load balancers), avoiding conflicts with existing network equipment, or maintaining consistent IPs for specific workloads that external systems depend on.
 
-When IP reservation is misconfigured or IP conflicts occur, symptoms range from pods receiving unexpected IP addresses to pod startup failures if all available IPs are either reserved or allocated. Reserved IPs that overlap with active pod assignments cause routing issues that are difficult to diagnose without understanding Calico's reservation model.
+When IP reservation is misconfigured or IP conflicts occur, symptoms range from pods receiving unexpected IP addresses to pod startup failures if all available IPs are either reserved or allocated. Reserved IPs that overlap with active pod assignments or external infrastructure can cause conflicts that are difficult to diagnose without understanding Calico's reservation model.
 
 This guide covers how to configure, inspect, and troubleshoot IP reservations in Calico.
 
@@ -20,11 +20,11 @@ This guide covers how to configure, inspect, and troubleshoot IP reservations in
 
 - `calicoctl` CLI installed
 - `kubectl` access to the cluster
-- Calico 3.x or later
+- Calico 3.21 or later with Calico IPAM
 
 ## Step 1: Check Current IP Reservations
 
-Calico supports IP reservations through the `IPReservation` resource (Calico 3.21+) or through annotations on the IP pool. Start by listing all active reservations.
+Calico supports IP reservations through the `IPReservation` resource (Calico 3.21+). Start by listing all active reservations.
 
 List current IP reservations:
 
@@ -33,10 +33,10 @@ List current IP reservations:
 
 calicoctl get ipreservation -o yaml
 
-# Check for IP pool annotations that mark reserved ranges
-calicoctl get ippool -o yaml | grep -i "reserved\|annotation"
+# Confirm the IP pools that Calico IPAM is allocating from
+calicoctl get ippool -o yaml
 
-# Show the full IPAM allocation to see which IPs are in use vs reserved
+# Show the full IPAM allocation to see which IPs are in use
 calicoctl ipam show --show-blocks
 ```
 
@@ -54,13 +54,10 @@ metadata:
   name: infrastructure-ips
 spec:
   reservedCIDRs:
-    # Reserve the first 10 IPs in the pool for infrastructure use
+    # Reserve the first 8 IPs in the pool for infrastructure use
     - "10.244.0.0/29"
     # Reserve a specific IP used by a load balancer
     - "10.244.100.50/32"
-    # Reserve the broadcast and gateway addresses of each /26 block
-    - "10.244.0.0/32"
-    - "10.244.0.63/32"
 ```
 
 ```bash
@@ -79,9 +76,13 @@ Identify and resolve IP conflicts:
 
 ```bash
 # Check which pods currently hold IPs that are in the reserved range
-kubectl get pods -A -o json | jq '.items[] | select(.status.podIP != null) | {name: .metadata.name, namespace: .metadata.namespace, ip: .status.podIP}' | grep -E "10\.244\.(0\.)"
+kubectl get pods -A -o json | jq -r '.items[] | select(.status.podIP != null) | select(.status.podIP | test("^10\\.244\\.0\\.[0-7]$|^10\\.244\\.100\\.50$")) | "\(.metadata.namespace)/\(.metadata.name) \(.status.podIP)"'
 
 # Check IPAM allocation for specific IPs that should be reserved
+calicoctl ipam show --ip=10.244.0.5
+calicoctl ipam show --ip=10.244.100.50
+
+# Check IPAM datastore consistency against Kubernetes
 calicoctl ipam check
 
 # For a conflicting pod, delete and let it restart with a new IP
@@ -116,8 +117,8 @@ kubectl delete pod reservation-test
 ## Best Practices
 
 - Create IP reservations before deploying workloads that depend on specific IPs to avoid conflict cleanup
-- Reserve at least the first and last IP in each IP pool block to avoid edge cases in allocation
-- Use `IPReservation` resources (Calico 3.21+) rather than IP pool annotations for easier management
+- Keep reservations small; reserving a significant portion of an IP pool can make Calico slower when searching for free IPAM blocks
+- Use `IPReservation` resources (Calico 3.21+) rather than relying on manual cleanup or out-of-band tracking
 - Document all IP reservations and their purpose in your network infrastructure runbook
 - Monitor IPAM utilization closely after adding reservations to ensure sufficient IPs remain available
 
