@@ -10,14 +10,14 @@ Description: Diagnose ingress gateway failures in Calico including routing misco
 
 ## Introduction
 
-Calico's ingress gateway capabilities (available in Calico Enterprise and via integration with standard Kubernetes Ingress controllers) provide a controlled entry point for external traffic into the cluster. The ingress gateway sits at the boundary between external networks and the Kubernetes pod network, performing routing decisions, TLS termination, and traffic policy enforcement.
+Calico Enterprise Ingress Gateway provides a controlled entry point for external traffic into the cluster. An ingress gateway sits at the boundary between external networks and the Kubernetes pod network, performing routing decisions, TLS termination, and traffic policy enforcement.
 
-For open-source Calico, ingress gateway functionality is typically implemented via an Envoy-based ingress controller or NGINX, with Calico providing the underlying network policy enforcement. Calico Enterprise adds additional features including a dedicated gateway implementation with advanced traffic management capabilities.
+For open-source Calico, ingress traffic is typically handled by a standard Kubernetes Ingress controller such as NGINX or an Envoy-based controller, with Calico providing the underlying network policy enforcement. Calico Enterprise Ingress Gateway is based on Envoy Gateway and the Kubernetes Gateway API.
 
 ## Prerequisites
 
 - Calico installed
-- An ingress controller (NGINX, Envoy-based, or Calico Enterprise gateway)
+- An ingress controller such as NGINX or an Envoy-based controller for the Ingress example, or Calico Enterprise Ingress Gateway for Gateway API deployments
 - kubectl access
 - DNS for external access
 
@@ -28,6 +28,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: app-ingress
+  namespace: production
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
@@ -60,10 +61,11 @@ spec:
   ingress:
   - action: Allow
     source:
-      selector: app == 'ingress-nginx'
+      namespaceSelector: projectcalico.org/name == 'ingress-nginx'
+      selector: app.kubernetes.io/name == 'ingress-nginx' && app.kubernetes.io/component == 'controller'
     destination:
       ports:
-      - 8080
+      - 80
 ```
 
 ## Verify Gateway Functionality
@@ -77,7 +79,7 @@ kubectl get pods -n ingress-nginx
 curl -H "Host: app.example.com" http://$(kubectl get svc -n ingress-nginx ingress-nginx-controller   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')/
 
 # Check ingress status
-kubectl describe ingress app-ingress
+kubectl describe ingress app-ingress -n production
 ```
 
 ## Ingress Architecture
@@ -94,4 +96,4 @@ graph LR
 
 ## Conclusion
 
-The Calico ingress gateway combines Kubernetes ingress routing with Calico's network policy enforcement to provide secure, controlled external access to cluster services. Configure ingress resources for routing rules, create Calico network policies to restrict which pods the ingress controller can reach, and monitor ingress metrics to ensure reliable external access.
+Calico can combine Kubernetes ingress routing with Calico's network policy enforcement to provide secure, controlled external access to cluster services. Configure ingress resources for routing rules, create Calico network policies to restrict which pods the ingress controller can reach, and monitor ingress metrics to ensure reliable external access.
