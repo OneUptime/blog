@@ -10,7 +10,7 @@ Description: Diagnose service connectivity issues in Calico eBPF mode including 
 
 ## Introduction
 
-Calico eBPF mode handles all Kubernetes service types - ClusterIP, NodePort, LoadBalancer, and ExternalName - using BPF programs and maps that are loaded directly into the kernel. This provides lower latency service routing compared to iptables-based approaches and scales better with the number of services and endpoints.
+Calico eBPF mode handles Kubernetes service traffic for ClusterIP, NodePort, and LoadBalancer services using BPF programs and maps that are loaded directly into the kernel. ExternalName services remain DNS CNAME aliases in Kubernetes and do not use proxying or BPF service routing. This provides lower latency service routing compared to iptables-based approaches and scales better with the number of services and endpoints.
 
 Understanding how eBPF handles each service type is important for troubleshooting and optimization. ClusterIP services are handled via BPF NAT maps, NodePort services add host networking DNAT, and LoadBalancer services optionally use DSR to eliminate the load balancer hop from return traffic.
 
@@ -26,7 +26,7 @@ Understanding how eBPF handles each service type is important for troubleshootin
 # Check BPF NAT map contents
 
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-nat-dump | head -50
+  calico-node -bpf nat dump | head -50
 
 # Test ClusterIP service
 SVC_IP=$(kubectl get svc my-service -o jsonpath='{.spec.clusterIP}')
@@ -46,7 +46,7 @@ kubectl patch svc my-service -p '{"spec":{"sessionAffinity":"ClientIP"}}'
 
 # Verify eBPF affinity map is populated
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-affinity-dump
+  calico-node -bpf nat aff
 ```
 
 ## eBPF Service Types Architecture
@@ -56,7 +56,7 @@ graph LR
     subgraph Service Types
         CIP[ClusterIP\nBPF NAT map\nDNAT to backend]
         NP[NodePort\nHost DNAT\n+ ClusterIP handling]
-        LB[LoadBalancer\nExternal IP +\nNodePort + ClusterIP]
+        LB[LoadBalancer\nExternal IP +\noptional NodePort + ClusterIP]
         DSR[DSR Mode\nReturn bypasses LB node]
     end
 ```
