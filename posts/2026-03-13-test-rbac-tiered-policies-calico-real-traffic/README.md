@@ -10,9 +10,9 @@ Description: Validate RBAC for Tiered Policies in Calico using real traffic scen
 
 ## Introduction
 
-RBAC for Tiered Policies is an advanced Calico feature that provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to test RBAC Tiered Policies effectively in your Kubernetes cluster.
+RBAC for Tiered Policies is an advanced Calico feature that provides fine-grained access control for tiered network policies using the `projectcalico.org/v3` API. This guide covers how to test RBAC Tiered Policies effectively in your Kubernetes cluster.
 
-Calico's `projectcalico.org/v3` API provides rich support for RBAC Tiered Policies through its `GlobalNetworkPolicy`, `NetworkPolicy`, and related resources. Proper configuration of RBAC Tiered Policies is essential for maintaining a secure, well-controlled network fabric.
+Calico's `projectcalico.org/v3` API provides rich support for Tiered Policies through its `Tier`, `GlobalNetworkPolicy`, `NetworkPolicy`, and related resources, while Kubernetes RBAC controls who can view or modify those resources. Proper configuration of RBAC Tiered Policies is essential for maintaining a secure, well-controlled network fabric.
 
 This guide provides production-tested patterns for test RBAC Tiered Policies, including YAML examples, CLI commands, and troubleshooting techniques.
 
@@ -29,11 +29,20 @@ The following YAML demonstrates the key pattern for RBAC Tiered Policies:
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: security
+spec:
+  order: 300
+  defaultAction: Pass
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: test-rbac-tiered-policies
   namespace: production
 spec:
+  tier: security
   order: 100
   selector: all()
   ingress:
@@ -69,8 +78,8 @@ calicoctl get networkpolicies -n production -o wide
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
 echo "Exit code: $?"
 
-# 4. Check policy hit counters (if Felix metrics enabled)
-curl -s http://localhost:9091/metrics | grep felix_denied
+# 4. Check Felix metrics (if Felix metrics enabled and exposed)
+curl -s http://localhost:9091/metrics | grep '^felix_'
 ```
 
 ## Operational Commands
@@ -101,7 +110,7 @@ flowchart TD
 
 ## Common Issues
 
-1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
+1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl validate -f test-rbac-tiered-policies.yaml` first
 2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
 3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
 4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress
