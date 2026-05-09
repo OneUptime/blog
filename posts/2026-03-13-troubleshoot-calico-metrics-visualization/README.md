@@ -50,11 +50,12 @@ curl -s 'http://localhost:9090/api/v1/query?query=felix_active_local_policies' |
 felix_int_dataplane_apply_time_seconds_sum / felix_int_dataplane_apply_time_seconds_count
 # This is average seconds per operation
 
-# WRONG - thinking value is in milliseconds:
-# "0.02" means 20ms? No - it means 0.02 seconds = 20ms (actually correct)
-# But if panel unit is set to "ms", the value will be multiplied by 1000
+# WRONG - setting the panel unit to milliseconds while the query returns seconds:
+# "0.02" means 0.02 seconds = 20ms, but Grafana's unit setting does not
+# change the query value; it only changes display formatting.
 
-# CORRECT - set panel unit to "seconds (s)" for latency metrics
+# CORRECT - set panel unit to "seconds (s)" for latency metrics, or multiply
+# the query by 1000 and set the unit to milliseconds.
 ```
 
 ## Symptom 3: Dashboard Only Shows One Node
@@ -63,11 +64,12 @@ felix_int_dataplane_apply_time_seconds_sum / felix_int_dataplane_apply_time_seco
 # WRONG query - missing "by" clause shows single aggregate
 sum(felix_active_local_policies)
 
-# CORRECT for per-node view
-sum(felix_active_local_policies) by (node)
+# CORRECT for per-target view
+sum(felix_active_local_policies) by (instance)
 
 # Check the panel's "Legend format" setting
-# Should be: {{ node }} to show per-node breakdown
+# Should be: {{ instance }} to show per-target breakdown
+# If your scrape config relabels the Kubernetes node name, use that label instead.
 ```
 
 ## Symptom 4: Grafana Dashboard Not Auto-Imported
