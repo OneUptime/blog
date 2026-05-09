@@ -25,8 +25,10 @@ This guide provides practical techniques for test Policy Logging in your Kuberne
 ## Step 1: Set Up Test Environment
 
 ```bash
-kubectl run test-source -n test --image=busybox --restart=Never -- sleep 3600
+kubectl create namespace test
+kubectl run test-source -n test --image=busybox --restart=Never --command -- sleep 3600
 kubectl run test-dest -n test --image=nginx --restart=Never
+kubectl wait --for=condition=Ready pod/test-source pod/test-dest -n test --timeout=60s
 ```
 
 ## Step 2: Establish Baseline
@@ -35,12 +37,13 @@ Test traffic before applying the policy to confirm connectivity:
 
 ```bash
 DEST_IP=$(kubectl get pod test-dest -n test -o jsonpath='{.status.podIP}')
-kubectl exec -n test test-source -- wget -qO- --timeout=5 http://$DEST_IP
+kubectl exec -n test test-source -- wget -qO- -T 5 http://$DEST_IP
 ```
 
 ## Step 3: Apply Policy and Test Blocking
 
-```yaml
+```bash
+cat > deny-with-log.yaml <<'EOF'
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -50,16 +53,38 @@ spec:
   order: 100
   selector: all()
   ingress:
+    - action: Log
     - action: Deny
   types:
     - Ingress
+EOF
+
+calicoctl apply -f deny-with-log.yaml
+kubectl exec -n test test-source -- wget -qO- -T 5 http://$DEST_IP
+echo "Should fail: $?"
 ```
 
 ## Step 4: Add Allow Rule and Retest
 
 ```bash
+cat > allow-rule.yaml <<'EOF'
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: test-policy-logging
+  namespace: test
+spec:
+  order: 100
+  selector: all()
+  ingress:
+    - action: Log
+    - action: Allow
+  types:
+    - Ingress
+EOF
+
 calicoctl apply -f allow-rule.yaml
-kubectl exec -n test test-source -- wget -qO- --timeout=5 http://$DEST_IP
+kubectl exec -n test test-source -- wget -qO- -T 5 http://$DEST_IP
 echo "Should succeed: $?"
 ```
 
