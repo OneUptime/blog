@@ -23,7 +23,7 @@ Understanding the diagnostic flow - from checking resource state to inspecting k
 
 ## Common Issue 1: Node Becomes Unreachable After Applying Host Endpoint
 
-This is the most dangerous scenario. When a HostEndpoint is created without sufficient allow policies, Felix may begin dropping all traffic to the node.
+This is the most dangerous scenario. When a HostEndpoint is created without sufficient allow policies, Felix may begin dropping traffic to the node except for traffic allowed by failsafe rules.
 
 **Diagnosis:**
 
@@ -52,7 +52,7 @@ Then add the required allow policy before re-applying the HostEndpoint.
 graph TD
     A[API Server] -->|port 10250| B[kubelet]
     B --> C{HostEndpoint Policy}
-    C -->|Port 10250 not allowed| D[Connection Refused]
+    C -->|Port 10250 not allowed| D[Connection Blocked]
     C -->|Port 10250 allowed| E[Health Check Passes]
 ```
 
@@ -75,7 +75,7 @@ ingress:
   - action: Allow
     protocol: TCP
     destination:
-      ports: [10250, 10255]
+      ports: [10250]
     source:
       selector: "role == 'control-plane'"
 ```
@@ -120,7 +120,7 @@ calicoctl get hostendpoint node1-eth0 -o yaml | grep -A5 labels
 Calico has built-in failsafe ports. If your policy conflicts with them, traffic may be unexpectedly allowed:
 
 ```bash
-# View current failsafe inbound ports
+# View configured failsafe inbound port overrides
 kubectl get felixconfiguration default -o jsonpath='{.spec.failsafeInboundHostPorts}'
 ```
 
