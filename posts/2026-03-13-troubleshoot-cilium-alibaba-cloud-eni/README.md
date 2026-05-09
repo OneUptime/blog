@@ -12,7 +12,7 @@ Description: A guide to diagnosing and resolving issues when running Cilium with
 
 Cilium supports Alibaba Cloud Elastic Network Interfaces (ENIs) for pod IP address management, enabling pods to receive IPs directly from Alibaba Cloud VPC subnets. This provides native VPC routing without overlay encapsulation, delivering better network performance on Alibaba Cloud infrastructure.
 
-Issues with Cilium ENI mode on Alibaba Cloud often involve ENI attachment limits, IP quota restrictions, RAM role permissions for the Cilium operator, and ENI lifecycle management. Diagnosing these problems requires familiarity with both Cilium's IPAM model and Alibaba Cloud's networking API.
+Issues with Cilium ENI mode on Alibaba Cloud often involve ENI attachment limits, IP quota restrictions, RAM permissions for the Cilium operator credentials, and ENI lifecycle management. Diagnosing these problems requires familiarity with both Cilium's IPAM model and Alibaba Cloud's networking API.
 
 This guide covers the most common issues and provides diagnostic procedures for Cilium ENI mode on Alibaba Cloud.
 
@@ -48,7 +48,7 @@ Investigate cases where ENIs fail to attach to ECS instances.
 
 ```bash
 # Check Cilium node status for ENI attachment info
-kubectl get ciliumnode <node-name> -o yaml | grep -A20 "eni:"
+kubectl get ciliumnode <node-name> -o yaml | grep -A20 "alibaba-cloud:"
 
 # Look for ENI errors in the Cilium operator logs
 kubectl logs -n kube-system -l name=cilium-operator | \
@@ -80,23 +80,36 @@ kubectl get ciliumnode <node-name> -o yaml | \
 kubectl get node <node-name> -o jsonpath='{.status.capacity.pods}'
 ```
 
-## Step 4: Verify RAM Role Permissions
+## Step 4: Verify RAM Credential Permissions
 
-Ensure the ECS instances have the required RAM role permissions for ENI operations.
+Ensure the Alibaba Cloud credentials used by Cilium have the required RAM permissions for ENI operations.
 
 ```bash
-# Check if the ECS instance has a RAM role attached
-aliyun ecs DescribeInstanceAttribute \
-  --InstanceId <ecs-instance-id> \
-  --RegionId <region-id> | jq '.RamRoleName'
+# Check that the Cilium AlibabaCloud credentials secret exists
+kubectl get secret cilium-alibabacloud -n kube-system
 
-# The RAM role needs the following permissions:
+# If you use an ECS instance RAM role, check that the role is attached
+aliyun ecs DescribeInstanceRamRole \
+  --RegionId <region-id> \
+  --InstanceIds '["<ecs-instance-id>"]' | \
+  jq '.InstanceRamRoleSets.InstanceRamRoleSet[]?.RamRoleName'
+
+# The credentials need the following permissions:
 # - ecs:CreateNetworkInterface
 # - ecs:AttachNetworkInterface
+# - ecs:DetachNetworkInterface
 # - ecs:DescribeNetworkInterfaces
+# - ecs:DescribeInstanceAttribute
+# - ecs:DescribeInstanceTypes
+# - ecs:DescribeInstances
+# - ecs:DescribeSecurityGroups
 # - ecs:AssignPrivateIpAddresses
 # - ecs:UnassignPrivateIpAddresses
 # - ecs:DeleteNetworkInterface
+# - ecs:ListTagResources
+# - vpc:DescribeVSwitches
+# - vpc:DescribeVpcs
+# - vpc:ListTagResources
 
 # Check for permission errors in Cilium operator logs
 kubectl logs -n kube-system -l name=cilium-operator | grep -i "permission\|forbidden\|auth"
@@ -127,9 +140,9 @@ cilium connectivity test
 - Choose ECS instance types with sufficient ENI and IP limits for your pod density
 - Monitor ENI utilization and set alerts before reaching instance type limits
 - Use Cilium's pre-allocation settings to warm up ENI IPs before pod scheduling
-- Ensure RAM role policies are correct before deploying Cilium-ENI operations fail silently without permissions
+- Ensure RAM policies are correct before deploying Cilium; ENI operations can fail with authorization errors without permissions
 - Test ENI behavior during scale-out events to validate automatic ENI attachment
 
 ## Conclusion
 
-Cilium's ENI IPAM mode on Alibaba Cloud provides native VPC networking for pods, but requires careful attention to instance type limits, RAM role permissions, and ENI lifecycle management. By systematically checking ENI attachment, IP quota, and permission configuration, you can resolve most issues and maintain reliable pod networking on Alibaba Cloud.
+Cilium's ENI IPAM mode on Alibaba Cloud provides native VPC networking for pods, but requires careful attention to instance type limits, RAM permissions, and ENI lifecycle management. By systematically checking ENI attachment, IP quota, and permission configuration, you can resolve most issues and maintain reliable pod networking on Alibaba Cloud.
