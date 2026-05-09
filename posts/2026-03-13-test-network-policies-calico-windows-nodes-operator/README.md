@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Window, Operator, Networking, Network Policies
+Tags: Calico, Kubernetes, Windows, Operator, Networking, Network Policies
 
 Description: A guide to testing network policy enforcement on Windows nodes managed by the Tigera Operator in a mixed Linux/Windows Kubernetes cluster.
 
@@ -19,6 +19,7 @@ Testing still requires explicit connectivity checks because the translation from
 - Calico running on Windows and Linux nodes via the Tigera Operator
 - `kubectl` with cluster admin access
 - Both Windows and Linux pods deployable in the cluster
+- A Windows container image tag that matches the Windows node build
 
 ## Step 1: Create Test Namespaces and Workloads
 
@@ -38,8 +39,11 @@ metadata:
     app: win-server
     os: windows
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
+    node.kubernetes.io/windows-build: "10.0.17763"
   containers:
   - name: iis
     image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2019
@@ -47,9 +51,11 @@ spec:
     - containerPort: 80
 ```
 
+If your Windows nodes are Windows Server 2022, use an `ltsc2022` IIS image tag and the `node.kubernetes.io/windows-build: "10.0.20348"` selector instead.
+
 ```bash
 kubectl apply -f win-server.yaml
-kubectl run linux-client --image=busybox --labels="app=linux-client" -n win-policy-test -- sleep 3600
+kubectl run linux-client --image=busybox --labels="app=linux-client" -n win-policy-test --overrides='{"spec":{"nodeSelector":{"kubernetes.io/os":"linux"}}}' -- sleep 3600
 kubectl expose pod win-server --port=80 -n win-policy-test
 ```
 
@@ -57,7 +63,7 @@ kubectl expose pod win-server --port=80 -n win-policy-test
 
 ```bash
 WIN_IP=$(kubectl get pod win-server -n win-policy-test -o jsonpath='{.status.podIP}')
-kubectl exec -n win-policy-test linux-client -- wget -qO- --timeout=10 http://$WIN_IP
+kubectl exec -n win-policy-test linux-client -- wget -qO- -T 10 http://$WIN_IP
 ```
 
 ## Step 3: Apply Default Deny and Selective Allow
@@ -100,18 +106,19 @@ kubectl apply -f policies.yaml
 ```bash
 # Should succeed
 
-kubectl exec -n win-policy-test linux-client -- wget -qO- --timeout=10 http://$WIN_IP
+kubectl exec -n win-policy-test linux-client -- wget -qO- -T 10 http://$WIN_IP
 
 # Deploy a denied client and test
-kubectl run denied-client --image=busybox --labels="app=denied" -n win-policy-test -- sleep 3600
-kubectl exec -n win-policy-test denied-client -- wget -qO- --timeout=5 http://$WIN_IP || echo "Blocked"
+kubectl run denied-client --image=busybox --labels="app=denied" -n win-policy-test --overrides='{"spec":{"nodeSelector":{"kubernetes.io/os":"linux"}}}' -- sleep 3600
+kubectl exec -n win-policy-test denied-client -- wget -qO- -T 5 http://$WIN_IP || echo "Blocked"
 ```
 
 ## Step 5: Verify HNS ACLs on Windows Node
 
 ```powershell
 # On the Windows node hosting win-server
-Get-HnsPolicyList | ConvertTo-Json | Select-String "ACL"
+Import-Module -DisableNameChecking C:\CalicoWindows\libs\hns\hns.psm1
+Get-HNSEndpoint | ConvertTo-Json -Depth 20 | Select-String "ACL"
 ```
 
 ## Step 6: Clean Up
