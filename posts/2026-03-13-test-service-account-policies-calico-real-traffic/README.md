@@ -12,17 +12,30 @@ Description: Validate Calico service account-based network policies using real t
 
 Testing service account-based policies requires verifying that traffic is permitted or denied based on the service account identity of the source pod, not just its labels. This means testing with pods that have different service accounts and confirming that only the authorized service account can reach the target.
 
-Calico's `serviceAccountSelector` in `projectcalico.org/v3` policies is evaluated against the service account name of the source pod. If a pod is running as a different service account than expected, traffic will be denied even if the pod has all the right labels.
+Calico's `source.serviceAccounts` match in `projectcalico.org/v3` policies is evaluated against the service account of the source pod. If a pod is running as a different service account than expected, traffic will be denied even if the pod has all the right labels.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
-- Service account-based policies configured
+- Service accounts configured for test workloads
+- A target `db-pod` in the `test` namespace with the label `app=db` and an application listening on port `5432`
 - `kubectl` with access to test namespaces
 
 ## Step 1: Deploy Pods With Specific Service Accounts
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-sa
+  namespace: test
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-sa
+  namespace: test
+---
 apiVersion: v1
 kind: Pod
 metadata:
@@ -61,8 +74,11 @@ spec:
   selector: app == 'db'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        serviceAccountSelector: name == 'backend-sa'
+        serviceAccounts:
+          names:
+            - backend-sa
       destination:
         ports: [5432]
     - action: Deny
@@ -93,6 +109,7 @@ kubectl delete pod authorized-pod -n test
 # Create with wrong SA
 kubectl run authorized-pod -n test --image=busybox --restart=Never \
   --overrides='{"spec":{"serviceAccountName":"frontend-sa"}}' -- sleep 3600
+kubectl wait -n test --for=condition=Ready pod/authorized-pod --timeout=60s
 kubectl exec -n test authorized-pod -- nc -zv $DB_IP 5432
 echo "Test 3 (SA changed to frontend - should fail): $?"
 ```
@@ -103,7 +120,7 @@ echo "Test 3 (SA changed to frontend - should fail): $?"
 flowchart TD
     A[backend-sa Pod] -->|Test 1: PASS :5432| D[(DB)]
     B[frontend-sa Pod] -->|Test 2: BLOCK| D
-    C[default SA Pod] -->|Test 3: BLOCK| D
+    C[frontend-sa Pod] -->|Test 3: BLOCK| D
 ```
 
 ## Conclusion
