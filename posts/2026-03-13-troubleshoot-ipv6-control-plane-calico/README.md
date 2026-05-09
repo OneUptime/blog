@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IPv6, Kubernetes, Control Plane, Networking, Troubleshooting
 
-Description: A guide to diagnosing and resolving IPv6 control plane issues in Calico, covering BGP IPv6 peering, etcd IPv6 connectivity, and Kubernetes API server IPv6 communication.
+Description: A guide to diagnosing and resolving IPv6 control plane issues in Calico, covering BGP IPv6 peering, Typha connectivity, and Kubernetes API server IPv6 communication.
 
 ---
 
@@ -34,14 +34,15 @@ Test API server IPv6 connectivity:
 
 kubectl -n calico-system logs -l k8s-app=calico-node -c calico-node | grep "api-server\|apiserver"
 
-# From a node, test connectivity to the API server IPv6 address
+# Get the Kubernetes API Service IPv6 address
 APISERVER_IP=$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')
 echo "API Server IP: $APISERVER_IP"
 
-# Test reachability from a calico-node pod
-NODE_POD=$(kubectl -n calico-system get pods -l k8s-app=calico-node -o name | head -1)
-kubectl -n calico-system exec -it $NODE_POD -- \
-  curl -k -6 https://[$APISERVER_IP]:6443/healthz
+# Test reachability from a temporary pod. The default kubernetes Service listens on 443.
+kubectl run api-ipv6-test --image=curlimages/curl --restart=Never -- sleep 300
+kubectl wait --for=condition=Ready pod/api-ipv6-test --timeout=60s
+kubectl exec api-ipv6-test -- curl -k -6 https://[$APISERVER_IP]:443/readyz
+kubectl delete pod api-ipv6-test
 ```
 
 ## Step 2: Check BGP IPv6 Session Status
@@ -51,9 +52,12 @@ Calico uses BIRD for BGP. For IPv6 routing, BIRD6 handles the IPv6 address famil
 Inspect BGP IPv6 session state:
 
 ```bash
-# Check BIRD6 protocol status for IPv6 BGP sessions
+# Run calicoctl node status directly on each host running calico-node
+sudo calicoctl node status
+
+# Check the calico-node BIRD6 readiness endpoint from a calico-node pod
 NODE_POD=$(kubectl -n calico-system get pods -l k8s-app=calico-node -o name | head -1)
-kubectl -n calico-system exec -it $NODE_POD -- birdcl6 show protocols
+kubectl -n calico-system exec -it $NODE_POD -- /bin/calico-node -bird6-ready
 
 # List IPv6 BGP peers configured in Calico
 calicoctl get bgppeer -o yaml | grep -A5 "peerIP" | grep ":"
@@ -75,26 +79,26 @@ kubectl -n calico-system get pods -l k8s-app=calico-typha -o wide
 # Check Felix logs for connection errors to Typha
 kubectl -n calico-system logs -l k8s-app=calico-node -c calico-node | grep -i "typha\|connection"
 
-# Verify Typha service IPv6 endpoint
-kubectl -n calico-system get endpoints calico-typha -o yaml
+# Verify Typha service IPv6 endpoints
+kubectl -n calico-system get endpointslices \
+  -l kubernetes.io/service-name=calico-typha -o yaml
 ```
 
 Update Calico configuration to use IPv6 for Typha connections:
 
 ```yaml
-# calico-config-ipv6.yaml - Configure Calico to use IPv6 for Typha and Felix communication
-# Apply using: kubectl apply -f calico-config-ipv6.yaml
-apiVersion: v1
-kind: ConfigMap
+# felix-ipv6.yaml - Enable Felix IPv6 support for Typha and workload communication
+# Apply using: calicoctl apply -f felix-ipv6.yaml
+apiVersion: projectcalico.org/v3
+kind: FelixConfiguration
 metadata:
-  name: calico-config
-  namespace: calico-system
-data:
-  # Set the Typha service name for Felix to use for IPv6 communication
-  typha_service_name: "calico-typha"
-  # Configure Felix to prefer IPv6 for Typha connections
-  felix_ipv6_support: "true"
+  name: default
+spec:
+  # Same Felix setting as the FELIX_IPV6SUPPORT=true environment variable.
+  ipv6Support: true
 ```
+
+For manifest-based installs that explicitly configure Typha in the calico-node DaemonSet, verify that `FELIX_TYPHAK8SSERVICENAME` points to the Typha Service name and that the Service has an IPv6 ClusterIP or IPv6 EndpointSlices.
 
 ## Step 4: Validate IPv6 Route Distribution via BGP
 
@@ -106,8 +110,9 @@ Check IPv6 route propagation:
 # View the IPv6 routing table on a node
 kubectl -n calico-system exec -it $NODE_POD -- ip -6 route show
 
-# Verify that other nodes' pod subnets appear in the IPv6 route table
-kubectl -n calico-system exec -it $NODE_POD -- birdcl6 show route | head -30
+# Verify that other nodes' pod subnets appear in the IPv6 BIRD routing table
+kubectl -n calico-system exec -it $NODE_POD -- \
+  birdcl -s /var/run/calico/bird6.ctl show route | head -30
 
 # Test IPv6 pod-to-pod connectivity across nodes
 kubectl run ipv6-test --image=nicolaka/netshoot --restart=Never -- sleep 300
@@ -117,7 +122,7 @@ kubectl delete pod ipv6-test
 
 ## Best Practices
 
-- Enable `felix_ipv6_support` in the Calico ConfigMap when operating in IPv6-only mode
+- Enable Felix IPv6 support with `FELIX_IPV6SUPPORT=true` or `FelixConfiguration.spec.ipv6Support: true` when operating in IPv6-only mode
 - Ensure all nodes have their IPv6 addresses configured before starting the calico-node DaemonSet
 - Use Link-Local Addresses (LLAs) for BGP peering on point-to-point links to simplify routing
 - Configure `BGPPeer` resources with explicit IPv6 addresses rather than relying on autodetection in complex topologies
