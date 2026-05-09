@@ -23,15 +23,14 @@ oc describe pod <calico-node-pod> -n calico-system | grep -A10 "Events:"
 # "unable to validate against any security context constraint"
 # "Error creating: pods 'calico-node-xxx' is forbidden: unable to validate against any SCC"
 
-# List available SCCs and check calico-node's binding
-oc get scc | grep calico
-oc get scc calico-node -o yaml | grep -E "users|groups|serviceAccounts"
+# Check the SCC that calico-node needs on OpenShift
+oc get scc privileged -o yaml | grep -E "users|groups|serviceAccounts"
 
 # Check if calico-node service account has the right SCC
-oc adm policy who-can use scc calico-node | grep calico
+oc adm policy who-can use scc privileged | grep calico-node
 
 # Fix: grant SCC to service account
-oc adm policy add-scc-to-user calico-node -z calico-node -n calico-system
+oc adm policy add-scc-to-user privileged -z calico-node -n calico-system
 ```
 
 ## Symptom 2: OCP Network Operator Conflicts with Calico
@@ -41,7 +40,7 @@ oc adm policy add-scc-to-user calico-node -z calico-node -n calico-system
 oc get co network
 oc describe co network | grep -A5 "Conditions:"
 
-# Check if OCP tried to change the CNI after upgrade
+# Verify the cluster network configuration still points at Calico
 oc get network.operator.openshift.io cluster -o yaml | \
   grep -A10 "defaultNetwork"
 
@@ -71,13 +70,13 @@ watch oc get mcp
 
 ```bash
 # For Calico Enterprise on OCP with OLM management
-oc get csv -n calico-system | grep tigera
+oc get csv -n tigera-operator | grep tigera
 
 # Check for operator version conflicts
-oc get subscription -n calico-system -o yaml | grep -A5 "channel\|startingCSV"
+oc get subscription -n tigera-operator -o yaml | grep -A5 "channel\|startingCSV"
 
 # Check operator group
-oc get operatorgroup -n calico-system
+oc get operatorgroup -n tigera-operator
 ```
 
 ## OpenShift Upgrade Troubleshooting Flow
