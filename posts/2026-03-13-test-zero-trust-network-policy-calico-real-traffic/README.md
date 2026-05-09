@@ -10,9 +10,9 @@ Description: Test zero trust network policies in Calico to enforce the principle
 
 ## Introduction
 
-Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. Every connection is evaluated against explicit policy rules, and nothing is permitted by default. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
+Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. After default-deny policies are applied, every selected connection is evaluated against explicit policy rules, and nothing is permitted unless an allow rule matches. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
 
-Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and comprehensive logging of every traffic decision.
+Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and optional log rules for traffic decisions that need audit visibility.
 
 This guide covers test zero trust network policies in Calico, including the full policy stack from global defaults to workload-specific microsegmentation.
 
@@ -58,6 +58,7 @@ spec:
         ports: [53]
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets: ["10.0.0.0/8"]
       destination:
@@ -70,26 +71,44 @@ spec:
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
-  name: zt-allow-frontend-to-api
+  name: zt-allow-frontend-to-api-ingress
   namespace: production
 spec:
   order: 100
   selector: tier == 'api'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'frontend'
       destination:
         ports: [8080]
   types:
     - Ingress
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: zt-allow-frontend-to-api-egress
+  namespace: production
+spec:
+  order: 100
+  selector: tier == 'frontend'
+  egress:
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: tier == 'api'
+        ports: [8080]
+  types:
+    - Egress
 ```
 
 ## Zero Trust Verification
 
 ```bash
 # Verify default deny is active
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://random-ip:8080
+kubectl exec -n production test-pod -- curl -s --max-time 5 http://$UNAUTHORIZED_POD_IP:8080
 echo "Should timeout (default deny): $?"
 
 # Verify explicit allows work
@@ -105,12 +124,13 @@ echo "Should timeout (no frontend->DB allow): $?"
 
 ```mermaid
 flowchart TD
-    ALL[All Traffic] --> GD{GlobalNetworkPolicy\nDefault Deny\norder=10000}
-    GD -->|DNS Traffic| DNS[Allow DNS :53]
-    GD -->|Kubelet| KUB[Allow Kubelet :10250]
-    GD -->|App Traffic| APP{Application\nNetworkPolicy}
+    ALL[All Traffic] --> SYS{GlobalNetworkPolicy\nSystem Allows\norder=1}
+    SYS -->|DNS Traffic| DNS[Allow DNS :53]
+    SYS -->|Kubelet| KUB[Allow Kubelet :10250]
+    SYS -->|App Traffic| APP{Application\nNetworkPolicy\norder=100}
     APP -->|Explicit Allow| PERMIT[Traffic Permitted]
-    APP -->|No Match| DENY[DENIED - Zero Trust]
+    APP -->|No Match| GD{GlobalNetworkPolicy\nDefault Deny\norder=10000}
+    GD --> DENY[DENIED - Zero Trust]
 ```
 
 ## Conclusion
