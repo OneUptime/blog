@@ -27,8 +27,8 @@ etcd is the foundation of Calico in OpenStack mode.
 ```bash
 # On the controller node
 
-etcdctl endpoint health
-etcdctl cluster-health
+ETCDCTL_API=3 etcdctl endpoint health --cluster
+ETCDCTL_API=3 etcdctl endpoint status --cluster --write-out=table
 ```
 
 If etcd is unhealthy, fix it before troubleshooting anything else.
@@ -56,7 +56,7 @@ sudo tail -100 /var/log/calico/felix.log | grep -iE "error|fatal"
 
 ```bash
 # On a compute node
-etcdctl --endpoints http://<controller-ip>:2379 ls /calico
+ETCDCTL_API=3 etcdctl --endpoints=http://<controller-ip>:2379 get --prefix /calico/ --keys-only
 ```
 
 If this fails, check firewall rules for port 2379 between compute and controller nodes.
@@ -75,10 +75,10 @@ After a VM is created in OpenStack, check if Calico creates a workload endpoint.
 
 ```bash
 calicoctl get workloadendpoints -A
-openstack port list | grep <vm-id>
+openstack port list --server <vm-id>
 ```
 
-If the port appears in Neutron but not in Calico, the Neutron-to-Calico synchronization has a bug. Check the neutron-server logs again.
+If the port appears in Neutron but not in Calico, the Neutron driver has not written the endpoint into Calico. Check the neutron-server logs and etcd connectivity again.
 
 ## Conclusion
 
