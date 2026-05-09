@@ -28,10 +28,12 @@ This guide covers the most common installation issues and how to resolve them on
 Start by reviewing the state of all Calico pods.
 
 ```bash
-kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
+kubectl get pods -n calico-system -l k8s-app=calico-node
+kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers
 kubectl get pods -n tigera-operator
 ```
+
+For manifest-based installs, use `kube-system` instead of `calico-system`.
 
 Look for pods in `CrashLoopBackOff`, `Error`, or `Pending` states.
 
@@ -40,8 +42,10 @@ Look for pods in `CrashLoopBackOff`, `Error`, or `Pending` states.
 The `calico-node` DaemonSet logs contain the most actionable error messages.
 
 ```bash
-kubectl logs -n kube-system -l k8s-app=calico-node --tail=50
+kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 ```
+
+For manifest-based installs, use `kube-system` instead of `calico-system`.
 
 Common errors include:
 - `Failed to auto-detect IP address` - Calico picked the wrong interface
@@ -50,14 +54,21 @@ Common errors include:
 
 ## Step 3: Fix IP Auto-Detection
 
-On DigitalOcean Droplets with multiple network interfaces (public, private, anchor), Calico may select the wrong one. Patch the `calico-node` DaemonSet to force the correct interface.
+On DigitalOcean Droplets with multiple network interfaces (public, private, anchor), Calico may select the wrong one. For an operator-based install, patch the default `Installation` resource to force the correct interface.
+
+```bash
+kubectl patch installation default --type=merge \
+  -p '{"spec":{"calicoNetwork":{"nodeAddressAutodetectionV4":{"interface":"eth1"}}}}'
+```
+
+For manifest-based installs, patch the `calico-node` DaemonSet directly.
 
 ```bash
 kubectl set env daemonset/calico-node -n kube-system \
   IP_AUTODETECTION_METHOD=interface=eth1
 ```
 
-Replace `eth1` with your private network interface name. Verify it with `ip link` on the Droplet.
+Replace `eth1` with your private network interface name. On traditional DigitalOcean Droplets the private interface is usually `eth1`; on Private Droplets it is `eth0`. Verify it with `ip link` on the Droplet.
 
 ## Step 4: Verify IPAM Configuration
 
@@ -96,10 +107,18 @@ cat /etc/cni/net.d/10-calico.conflist
 
 ## Step 6: Re-apply the Calico Manifest
 
-If configuration drift caused the issue, re-apply the operator or manifest.
+If configuration drift caused the issue, re-apply the same installation resources you used originally. For operator-based installs, re-apply the operator and your custom resources.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+kubectl apply -f custom-resources.yaml
+```
+
+For manifest-based installs, re-apply the Calico manifest.
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 ```
 
 ## Conclusion
