@@ -20,17 +20,17 @@ RHCOS's immutable OS model means you cannot make ad-hoc OS changes to fix issues
 - `oc` CLI with cluster admin access
 - `oc debug` access to worker nodes
 
-## Step 1: Check VPP Manager Pod Status
+## Step 1: Check VPP Node Pod Status
 
 ```bash
 oc get pods -n calico-vpp-dataplane
-oc describe pod <vpp-manager-pod> -n calico-vpp-dataplane | tail -20
-oc logs <vpp-manager-pod> -n calico-vpp-dataplane --tail=60
+oc describe pod <calico-vpp-node-pod> -n calico-vpp-dataplane | tail -20
+oc logs <calico-vpp-node-pod> -n calico-vpp-dataplane -c vpp --tail=60
 ```
 
 ## Step 2: Check MCO Node Readiness
 
-If hugepages are not configured, VPP will fail to start.
+If you installed a hugepage-enabled VPP manifest or configured a VPP driver that requires hugepages, VPP can fail to start until the node configuration has rolled out.
 
 ```bash
 oc get machineconfigpool worker
@@ -50,26 +50,26 @@ oc debug node/<worker-node> -- chroot /host cat /proc/meminfo | grep Huge
 If hugepages are not configured, check the MCO MachineConfig:
 
 ```bash
-oc get machineconfig 99-worker-hugepages
+oc get machineconfig | grep -i huge
 ```
 
 ## Step 4: Check SCC Violations
 
 ```bash
-oc describe pod <vpp-manager-pod> -n calico-vpp-dataplane | grep -i "forbidden\|scc"
+oc describe pod <calico-vpp-node-pod> -n calico-vpp-dataplane | grep -i "forbidden\|scc"
 ```
 
 If SCC violations are present:
 
 ```bash
 oc adm policy add-scc-to-user privileged \
-  -z calico-vpp-node -n calico-vpp-dataplane
+  -z calico-vpp-node-sa -n calico-vpp-dataplane
 ```
 
-## Step 5: Verify VPP Log on Node
+## Step 5: Verify VPP Container Log
 
 ```bash
-oc debug node/<worker-node> -- chroot /host cat /var/log/vpp/vpp.log 2>/dev/null | tail -30
+oc logs <calico-vpp-node-pod> -n calico-vpp-dataplane -c vpp --tail=60
 ```
 
 ## Step 6: Check NIC Interface Name
@@ -80,11 +80,12 @@ RHCOS worker nodes may have different interface names than expected.
 oc debug node/<worker-node> -- chroot /host ip link show
 ```
 
-Compare against the interface configured in `CALICOVPP_INTERFACE`. If different, update the ConfigMap.
+Compare against the uplink interface configured in `CALICOVPP_INTERFACES`. If different, update the ConfigMap.
 
 ```bash
 oc patch configmap calico-vpp-config -n calico-vpp-dataplane \
-  --patch '{"data":{"CALICOVPP_INTERFACE":"<correct-interface-name>"}}'
+  --type=merge \
+  --patch '{"data":{"CALICOVPP_INTERFACES":"{\n  \"maxPodIfSpec\": {\"rx\": 10, \"tx\": 10, \"rxqsz\": 1024, \"txqsz\": 1024},\n  \"defaultPodIfSpec\": {\"rx\": 1, \"tx\": 1, \"isl3\": true},\n  \"vppHostTapSpec\": {\"rx\": 1, \"tx\": 1, \"rxqsz\": 1024, \"txqsz\": 1024, \"isl3\": false},\n  \"uplinkInterfaces\": [\n    {\"interfaceName\": \"<correct-interface-name>\", \"vppDriver\": \"af_packet\"}\n  ]\n}"}}'
 ```
 
 ## Conclusion
