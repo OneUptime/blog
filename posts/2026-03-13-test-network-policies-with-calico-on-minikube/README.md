@@ -20,6 +20,7 @@ This guide walks through a practical network policy testing scenario with a mult
 
 - Minikube running with Calico installed
 - kubectl configured for Minikube
+- calicoctl installed and configured for the Minikube cluster
 - Basic understanding of Kubernetes labels and selectors
 
 ## Step 1: Create Test Namespaces and Pods
@@ -99,6 +100,13 @@ The frontend client should now reach the backend server successfully.
 ## Step 7: Test a Calico GlobalNetworkPolicy
 
 ```bash
+kubectl run restricted-client --image=busybox -n frontend --labels=role=restricted -- sleep 3600
+kubectl exec -n frontend restricted-client -- wget --timeout=5 -qO- http://server-svc.backend.svc.cluster.local
+```
+
+This should succeed before the GlobalNetworkPolicy is applied because the pod is in the `frontend` namespace.
+
+```bash
 calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -111,6 +119,12 @@ spec:
   egress: []
 EOF
 ```
+
+```bash
+kubectl exec -n frontend restricted-client -- wget --timeout=5 -qO- http://server-svc.backend.svc.cluster.local
+```
+
+The request should time out because the GlobalNetworkPolicy selects pods with `role=restricted` and allows no egress traffic.
 
 ## Conclusion
 
