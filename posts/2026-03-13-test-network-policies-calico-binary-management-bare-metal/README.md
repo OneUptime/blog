@@ -78,11 +78,11 @@ kubectl apply -f allow-client.yaml
 ```bash
 # Should succeed
 
-kubectl exec -n bm-binary-test client-ok -- wget -qO- --timeout=5 http://server
+kubectl exec -n bm-binary-test client-ok -- wget -qO- -T 5 http://server
 echo "Allowed client result: $?"
 
 # Should fail
-kubectl exec -n bm-binary-test client-bad -- wget -qO- --timeout=5 http://server || echo "Denied as expected"
+kubectl exec -n bm-binary-test client-bad -- wget -qO- -T 5 http://server || echo "Denied as expected"
 ```
 
 ## Step 5: Encode Tests in Ansible
@@ -95,13 +95,13 @@ kubectl exec -n bm-binary-test client-bad -- wget -qO- --timeout=5 http://server
   tasks:
     - name: Test allowed client
       shell: |
-        kubectl exec -n bm-binary-test client-ok -- wget -qO- --timeout=5 http://server
+        kubectl exec -n bm-binary-test client-ok -- wget -qO- -T 5 http://server
       register: allowed_result
       failed_when: allowed_result.rc != 0
 
     - name: Test denied client
       shell: |
-        kubectl exec -n bm-binary-test client-bad -- wget -qO- --timeout=5 http://server
+        kubectl exec -n bm-binary-test client-bad -- wget -qO- -T 5 http://server
       register: denied_result
       failed_when: denied_result.rc == 0
 
@@ -116,7 +116,7 @@ ansible-playbook test-policies.yml
 
 ## Step 6: Verify Felix Has Programmed the Rules
 
-On a worker node hosting the server pod:
+On a worker node hosting the server pod, if Calico is using the standard iptables dataplane:
 
 ```bash
 iptables -L | grep cali-
