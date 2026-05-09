@@ -29,20 +29,20 @@ kubectl logs -n calico-vpp-dataplane <vpp-node-pod> -c vpp | head -50
 
 # Check hugepages on node
 kubectl debug node/<node> --image=alpine -it -- \
-  cat /proc/meminfo | grep Huge
+  cat /host/proc/meminfo | grep Huge
 # HugePages_Total should be > 0
 ```
 
 ## Symptom 2: Pods Can't Communicate Through VPP
 
 ```bash
-VPP_POD=$(kubectl get pod -n calico-vpp-dataplane -l app=calico-vpp-node \
+VPP_POD=$(kubectl get pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node \
   --field-selector=spec.nodeName=<problem-node> \
   -o jsonpath='{.items[0].metadata.name}')
 
 # 1. Verify pod interfaces exist in VPP
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
-  vppctl show interface | grep tap
+  vppctl show interface | grep tun
 
 # 2. Check for error counters on the interface
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
@@ -61,17 +61,17 @@ kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
 # "acl-plugin-out-ip4-fa" indicates policy drop
 ```
 
-## Symptom 3: Service Routing Broken (NAT Issue)
+## Symptom 3: Service Routing Broken (CNAT Issue)
 
 ```bash
-# Check VPP NAT table for service entries
+# Check VPP CNAT translations for service entries
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
-  vppctl show nat44 sessions | grep <service-ip>
+  vppctl show cnat translation <service-ip>
 
-# If service IP not in NAT table:
-# calico-vpp-manager may not have programmed the service
-kubectl logs -n calico-vpp-dataplane "${VPP_POD}" -c calico-vpp-manager | \
-  grep -i "service\|nat\|error" | tail -20
+# If service IP not in the CNAT translations:
+# calico-vpp-agent may not have programmed the service
+kubectl logs -n calico-vpp-dataplane "${VPP_POD}" -c agent | \
+  grep -i "service\|cnat\|nat\|error" | tail -20
 ```
 
 ## VPP Troubleshooting Flow
@@ -81,7 +81,7 @@ flowchart TD
     A[Pod connectivity issue with VPP] --> B{VPP process responding?}
     B -->|No| C[Check hugepages, DPDK binding]
     B -->|Yes| D{Pod interfaces in VPP?}
-    D -->|No| E[Check calico-vpp-manager logs]
+    D -->|No| E[Check calico-vpp-agent logs]
     D -->|Yes| F{Trace shows drops?}
     F -->|ip4-drop| G[Check VPP FIB routing table]
     F -->|acl-plugin drop| H[Check Calico network policy]
