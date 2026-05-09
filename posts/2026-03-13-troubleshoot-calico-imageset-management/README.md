@@ -12,7 +12,7 @@ Description: Diagnose and resolve common Calico ImageSet management issues inclu
 
 Calico ImageSet management introduces a new category of failure modes that don't exist in default public-registry deployments. When something goes wrong, pods fail to start with `ImagePullBackOff` or `ErrImagePull` errors, but the root cause might be a digest mismatch, missing image tag, wrong registry URL, or authentication failure. Understanding how the Tigera Operator processes ImageSets is essential for fast diagnosis.
 
-The operator reads the `ImageSet` resource, validates all digests, constructs pull references, and injects them into the managed DaemonSets and Deployments. If any step in this chain fails, the operator may silently skip the ImageSet or surface a condition in the `Installation` status. Knowing where to look is half the battle.
+The operator reads the `ImageSet` resource, validates that the listed images are known and that digests use an allowed format, constructs pull references, and injects them into the managed DaemonSets and Deployments. If any step in this chain fails, the `Installation` `status.imageSet` field may remain unset until Calico is fully deployed, and rollout failures often show up in `TigeraStatus` or pod events rather than as a direct digest error in `Installation` status. Knowing where to look is half the battle.
 
 This guide covers the most common ImageSet troubleshooting scenarios with concrete diagnostic commands and resolution steps.
 
@@ -44,8 +44,11 @@ wget -qO- https://registry.internal.example.com/v2/
 # Check imagePullSecrets are configured
 kubectl get installation default -o jsonpath='{.spec.imagePullSecrets}'
 
-# Verify the secret exists in calico-system namespace
+# Verify the secret exists where the failing pod is running
 kubectl get secret -n calico-system | grep registry
+
+# If the operator image itself is in a private registry, verify the operator namespace too
+kubectl get secret -n tigera-operator | grep registry
 ```
 
 ## Symptom 2: Operator Not Applying ImageSet
@@ -66,10 +69,10 @@ If the operator shows no errors but the wrong images are running:
 ```bash
 # Check which ImageSet the operator selected
 kubectl get imageset -o yaml
-kubectl get installation default -o yaml | grep -A5 "imageSet"
+kubectl get installation default -o jsonpath='{.status.imageSet}{"\n"}'
 
 # Ensure the ImageSet name matches the naming convention
-# The operator selects the ImageSet matching: calico-<version>
+# For Calico Open Source, the operator selects the ImageSet matching: calico-<version>
 kubectl get imageset calico-v3.27.0
 ```
 
@@ -89,9 +92,8 @@ kubectl get imageset calico-v3.27.0 -o jsonpath='{.spec.images[?(@.image=="calic
 Fix digest mismatch:
 
 ```bash
-# Update the ImageSet with the correct digest
-kubectl patch imageset calico-v3.27.0 --type=json \
-  -p='[{"op":"replace","path":"/spec/images/0/digest","value":"sha256:newdigest..."}]'
+# Update the digest for the matching image entry
+kubectl edit imageset calico-v3.27.0
 ```
 
 ## Symptom 4: Wrong Registry Being Used
@@ -99,13 +101,15 @@ kubectl patch imageset calico-v3.27.0 --type=json \
 ```bash
 # Check what registry is configured in Installation
 kubectl get installation default -o jsonpath='{.spec.registry}'
+kubectl get installation default -o jsonpath='{.spec.imagePath}'
 
 # Check what images pods are actually pulling
 kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}'
 
 # If the registry is wrong, patch the Installation
+# Use imagePath for a registry subpath such as /calico
 kubectl patch installation default --type=merge \
-  -p='{"spec":{"registry":"registry.correct.example.com/calico"}}'
+  -p='{"spec":{"registry":"registry.correct.example.com/","imagePath":"calico"}}'
 ```
 
 ## Troubleshooting Decision Tree
@@ -119,7 +123,7 @@ flowchart TD
     D -->|Yes| F{Correct digest in ImageSet?}
     F -->|No| G[Recalculate and update digest]
     F -->|Yes| H{Correct registry in Installation?}
-    H -->|No| I[Patch Installation spec.registry]
+    H -->|No| I[Patch Installation spec.registry and spec.imagePath]
     H -->|Yes| J[Check operator logs for other errors]
 ```
 
@@ -129,12 +133,12 @@ flowchart TD
 # List all ImageSets
 kubectl get imageset
 
-# The operator looks for ImageSet named: calico-<version>
-# Check the version the operator expects
-kubectl logs -n tigera-operator deploy/tigera-operator | grep "Looking for ImageSet"
+# For Calico Open Source, the operator looks for ImageSet named: calico-<version>
+# Check the current deployed version, if available
+kubectl get installation default -o jsonpath='{.status.calicoVersion}{"\n"}'
 
-# Create the missing ImageSet with the correct name
-kubectl get installation default -o jsonpath='{.status.calicoVersion}'
+# For a new install or upgrade, get the version from the operator image
+docker run quay.io/tigera/operator:v1.42.0 --version
 ```
 
 ## Conclusion
