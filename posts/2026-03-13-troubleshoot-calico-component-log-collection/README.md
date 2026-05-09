@@ -22,7 +22,8 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=5
 # If empty: check the log level setting
 kubectl get felixconfiguration default \
   -o jsonpath='{.spec.logSeverityScreen}'
-# If unset or "Fatal": change to "Info"
+# If set to "Fatal": change to "Info"
+# If unset, Felix uses its default "Info" level
 
 # Check that the container name is correct
 kubectl get pod -n calico-system -l k8s-app=calico-node \
@@ -41,7 +42,7 @@ kubectl get felixconfiguration default \
 kubectl patch felixconfiguration default \
   --type=merge -p '{"spec":{"logSeverityScreen":"Info"}}'
 
-# Check log bytes per calico-node pod per hour
+# Check CPU and memory usage for calico-node containers
 kubectl top pods -n calico-system --containers | grep calico-node
 # High CPU on calico-node + log pipeline saturation = Debug level left on
 ```
@@ -56,7 +57,7 @@ kubectl get pods -n logging -l app=fluent-bit
 kubectl logs -n logging -l app=fluent-bit | grep -i "calico\|error" | tail -20
 
 # Verify Fluent Bit has permission to read pod logs
-kubectl auth can-i get pods/log -n calico-system \
+kubectl auth can-i get pods --subresource=log -n calico-system \
   --as=system:serviceaccount:logging:fluent-bit
 ```
 
@@ -78,7 +79,7 @@ kubectl logs -n logging <fluent-bit-pod> | grep -i "error\|fail" | tail -20
 flowchart TD
     A[Logs missing or problem] --> B{kubectl logs shows output?}
     B -->|No| C[Check log level in FelixConfiguration]
-    C --> D[Set to Info if Fatal/unset]
+    C --> D[Set to Info if Fatal]
     B -->|Yes| E{Logs in aggregation?}
     E -->|No| F[Check Fluent Bit health]
     F --> G[Check Fluent Bit RBAC]
@@ -91,14 +92,17 @@ flowchart TD
 ## Verify Log Collection End-to-End
 
 ```bash
-# Generate a known log entry
-kubectl annotate felixconfiguration default \
-  test-annotation="log-collection-test-$(date +%s)" --overwrite
+TEST_ID="log-collection-test-$(date +%s)"
+
+# Generate a known log entry in the calico-system namespace
+kubectl run -n calico-system log-collection-test \
+  --image=busybox:1.36 --restart=Never --rm -i -- \
+  sh -c "echo ${TEST_ID}"
 
 # Wait 30 seconds, then search in Elasticsearch/Loki
-# Search for: kubernetes.namespace_name:"calico-system" AND "FelixConfiguration"
+# Search for: kubernetes.namespace_name:"calico-system" AND "${TEST_ID}"
 ```
 
 ## Conclusion
 
-Most Calico log collection issues are caused by three things: an incorrect Felix log level (Fatal suppresses all logs), Fluent Bit RBAC not permitting access to calico-system pod logs, or Debug logging left enabled that saturates the log pipeline. Fix the log level first (it's the most common cause), then verify Fluent Bit permissions, then inspect the output plugin configuration. The end-to-end verification test with a known annotation provides a reliable way to confirm the full collection pipeline is working.
+Most Calico log collection issues are caused by three things: an incorrect Felix log level (Fatal emits only fatal-level logs), Fluent Bit RBAC not permitting access to calico-system pod logs, or Debug logging left enabled that saturates the log pipeline. Fix the log level first (it's the most common cause), then verify Fluent Bit permissions, then inspect the output plugin configuration. The end-to-end verification test with a known log line provides a reliable way to confirm the full collection pipeline is working.
