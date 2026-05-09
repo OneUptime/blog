@@ -28,13 +28,15 @@ calicoctl ipam show
 calicoctl ipam show --show-blocks | grep <node-name>
 
 # Quick fix: add a new IPPool
+# Use a disjoint CIDR inside your Kubernetes pod CIDR and match the
+# encapsulation mode used by your existing pools.
 kubectl apply -f - << 'YAML'
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: new-pool
 spec:
-  cidr: 10.240.0.0/16
+  cidr: <unused-pod-cidr>
   ipipMode: Always
   natOutgoing: true
 YAML
@@ -60,18 +62,18 @@ calicoctl ipam release --ip=<ip-address>
 ## Symptom 3: Orphaned Blocks from Deleted Nodes
 
 ```bash
-# Check for blocks assigned to non-existent nodes
-calicoctl ipam show --show-blocks | awk '{print $2}' | while read block; do
-  NODE=$(calicoctl get ipamblock "${block}" \
-    -o jsonpath='{.spec.affinity}' 2>/dev/null | cut -d: -f2)
-  if [ -n "${NODE}" ]; then
-    kubectl get node "${NODE}" > /dev/null 2>&1 || \
-      echo "Orphaned block ${block} for deleted node ${NODE}"
+# Check for block affinities assigned to non-existent nodes
+calicoctl get blockaffinity \
+  -o go-template='{{range .}}{{range .Items}}{{.Spec.Node}}{{"\t"}}{{.Spec.CIDR}}{{"\n"}}{{end}}{{end}}' |
+while read node cidr; do
+  if [ -n "${node}" ]; then
+    kubectl get node "${node}" > /dev/null 2>&1 || \
+      echo "Orphaned block ${cidr} for deleted node ${node}"
   fi
 done
 
-# Release orphaned block affinity
-# (blocks will be reclaimed by IPAM automatically after node deletion)
+# Calico IPAM manages BlockAffinity resources and normally reclaims
+# blocks automatically after node deletion.
 ```
 
 ## IPAM Troubleshooting Flow
