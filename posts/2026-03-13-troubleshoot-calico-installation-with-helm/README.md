@@ -20,7 +20,7 @@ This guide covers systematic troubleshooting for Calico Helm installations, orga
 
 - Calico Helm installation with issues
 - kubectl and Helm v3 installed
-- calicoctl configured
+- kubeconfig configured for the affected cluster
 
 ## Step 1: Check Helm Release Status
 
@@ -62,12 +62,14 @@ kubectl get crd | grep calico
 kubectl get crd | grep tigera
 ```
 
-Remove conflicting CRDs from an old installation:
+Remove only confirmed obsolete CRDs from an old installation, then reinstall the CRDs and Operator:
 
 ```bash
-kubectl delete crd $(kubectl get crd -o name | grep calico.org)
-helm install calico projectcalico/tigera-operator \
-  --version v3.27.0 \
+kubectl delete crd <obsolete-crd-name>
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 \
+  --version v3.32.0 | kubectl apply --server-side -f -
+helm upgrade --install calico projectcalico/tigera-operator \
+  --version v3.32.0 \
   --namespace tigera-operator
 ```
 
@@ -83,8 +85,10 @@ Reinstall to recreate RBAC:
 
 ```bash
 helm uninstall calico -n tigera-operator
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 \
+  --version v3.32.0 | kubectl apply --server-side -f -
 helm install calico projectcalico/tigera-operator \
-  --version v3.27.0 \
+  --version v3.32.0 \
   --namespace tigera-operator
 ```
 
@@ -97,13 +101,16 @@ kubectl describe installation default
 kubectl get installation default -o yaml | grep -A10 status
 ```
 
-Delete and recreate the Installation CR:
+Patch the bad field or reapply the Helm values that render the Installation CR:
 
 ```bash
-kubectl delete installation default
+helm upgrade calico projectcalico/tigera-operator \
+  --version v3.32.0 \
+  --namespace tigera-operator \
+  --values corrected-values.yaml
 ```
 
-The Operator should recreate it automatically.
+For Helm-based installs, avoid deleting the Installation CR unless you plan to recreate it through Helm.
 
 ## Step 7: Check Helm Values
 
@@ -117,7 +124,7 @@ Apply corrected values:
 
 ```bash
 helm upgrade calico projectcalico/tigera-operator \
-  --version v3.27.0 \
+  --version v3.32.0 \
   --namespace tigera-operator \
   --values corrected-values.yaml
 ```
