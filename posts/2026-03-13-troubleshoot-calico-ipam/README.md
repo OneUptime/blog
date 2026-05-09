@@ -31,7 +31,7 @@ calicoctl ipam show --show-blocks
 calicoctl ipam show --show-configuration
 
 # View node block assignments
-kubectl get ipamhandles -A
+kubectl get blockaffinities.crd.projectcalico.org
 
 # Check for leaked allocations
 calicoctl ipam check
@@ -71,14 +71,14 @@ graph TB
 ## Verify IPAM Health
 
 ```bash
-# Run IPAM consistency check
+# Run IPAM consistency check and write a report
 calicoctl ipam check -o ipam-report.json
 
 # List all allocated IPs
 calicoctl ipam check --show-all-ips
 
 # Check for orphaned allocations
-calicoctl ipam check --show-all-ips
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Conclusion
