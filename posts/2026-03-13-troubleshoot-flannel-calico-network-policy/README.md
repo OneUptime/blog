@@ -25,13 +25,14 @@ kubectl describe pod <pod-name> | grep -A5 "Events:"
 Look for `failed to set up network` errors. Check Canal pod logs.
 
 ```bash
-kubectl logs -n kube-system -l k8s-app=canal -c canal --tail=50
+kubectl logs -n kube-system -l k8s-app=canal -c kube-flannel --tail=50
+kubectl logs -n kube-system -l k8s-app=canal -c calico-node --tail=50
 ```
 
 If Flannel can't allocate a subnet, check node annotations.
 
 ```bash
-kubectl get node <node-name> -o jsonpath='{.metadata.annotations}' | python3 -m json.tool | grep flannel
+kubectl get node <node-name> -o go-template='{{range $k, $v := .metadata.annotations}}{{printf "%s=%s\n" $k $v}}{{end}}' | grep flannel
 ```
 
 ### Issue 2: Cross-Node Pod Connectivity Failure
@@ -51,7 +52,7 @@ ss -ulnp | grep 8472
 If `flannel.1` is missing, the Flannel component in the Canal pod is not running.
 
 ```bash
-kubectl logs -n kube-system <canal-pod> -c flannel
+kubectl logs -n kube-system <canal-pod> -c kube-flannel
 ```
 
 ### Issue 3: NetworkPolicy Not Being Enforced
@@ -59,14 +60,14 @@ kubectl logs -n kube-system <canal-pod> -c flannel
 First confirm Felix is running and healthy.
 
 ```bash
-kubectl exec -n kube-system <canal-pod> -c calico-node -- calico-node -version
+kubectl exec -n kube-system <canal-pod> -c calico-node -- /bin/calico-node -felix-ready
 kubectl logs -n kube-system <canal-pod> -c calico-node | grep -i "error\|warn\|policy"
 ```
 
-Check that the workload endpoint for the target pod exists.
+Check that the workload endpoint for the target pod exists from a host where `calicoctl` is configured.
 
 ```bash
-kubectl exec -n kube-system deploy/calicoctl -- calicoctl get workloadendpoint -A | grep <pod-name>
+calicoctl get workloadendpoint -A | grep <pod-name>
 ```
 
 If the workload endpoint is missing, Felix has not registered the pod. Restart the Canal DaemonSet pod on that node.
@@ -90,10 +91,10 @@ kubectl get networkpolicy <policy-name> -o yaml | grep -A5 podSelector
 kubectl logs -n kube-system -l k8s-app=canal -c calico-node | grep -i "error" | tail -20
 ```
 
-Check Felix configuration.
+Check Felix configuration from a host where `calicoctl` is configured.
 
 ```bash
-kubectl exec -n kube-system deploy/calicoctl -- calicoctl get felixconfiguration -o yaml
+calicoctl get felixconfiguration -o yaml
 ```
 
 ### Issue 6: Verify iptables Rules Are Present
@@ -101,7 +102,7 @@ kubectl exec -n kube-system deploy/calicoctl -- calicoctl get felixconfiguration
 On the affected node:
 
 ```bash
-kubectl debug node/<node-name> -it --image=busybox -- /bin/sh
+kubectl debug --profile=sysadmin node/<node-name> -it --image=busybox -- /bin/sh
 chroot /host iptables -L cali-INPUT | head -20
 ```
 
