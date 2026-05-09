@@ -10,25 +10,29 @@ Description: Diagnose service routing failures when Calico eBPF replaces kube-pr
 
 ## Introduction
 
-Calico eBPF mode can completely replace kube-proxy for service routing, eliminating the iptables KUBE-* chains that grow with the number of services and endpoints. In large clusters with thousands of services, kube-proxy's iptables rules add measurable latency for each connection setup. Calico eBPF uses kernel-level hash tables for O(1) service lookups regardless of cluster size.
+Calico eBPF mode can replace kube-proxy for service routing, and Felix can clean up the iptables KUBE-* chains that grow with the number of services and endpoints. In large clusters with thousands of services, kube-proxy's iptables rules add measurable latency for each connection setup. Calico eBPF uses kernel BPF maps for service lookups so service lookup cost does not grow with the number of iptables rules.
 
-The replacement also enables Direct Server Return (DSR) for LoadBalancer services, where return traffic goes directly from the backend pod to the client without traversing the load balancer node again. This reduces latency and eliminates asymmetric routing.
+The replacement also enables Direct Server Return (DSR) for external service traffic, where return traffic goes directly from the backend pod's node to the client without traversing the ingress node again. This can reduce latency, but it requires an underlying network that allows one node to respond on behalf of another.
 
 ## Prerequisites
 
-- Linux kernel 5.3+ (5.8+ for full features)
-- Calico v3.15+
-- kube-proxy can be safely disabled
+- Linux kernel 5.10+ for current Calico eBPF releases (or a supported distribution kernel with required eBPF backports)
+- A Calico release and installation method that supports the eBPF data plane
+- A cluster where kube-proxy can be disabled, or where Calico is configured not to fight kube-proxy's iptables rules
 
 ## Configure kube-proxy Replacement
 
 ```bash
-# Step 1: Disable kube-proxy
+# Step 1: Disable DaemonSet-managed kube-proxy
 
 kubectl patch ds -n kube-system kube-proxy \
   -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
 
-# Step 2: Enable Calico eBPF
+# Step 2: Enable Calico eBPF for an operator-managed install
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
+
+# For a manifest-based install, enable the Felix BPF dataplane instead:
 calicoctl patch felixconfiguration default --type merge \
   --patch '{"spec":{"bpfEnabled":true}}'
 
@@ -41,15 +45,16 @@ iptables -t nat -L | grep KUBE | wc -l
 
 ```bash
 # Check Calico BPF service map
-kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-nat-dump
+kubectl get pod -n calico-system -l k8s-app=calico-node
+kubectl exec -n calico-system <calico-node-pod> -- \
+  calico-node -bpf nat dump
 
 # Verify service IP routes
 kubectl exec test-pod -- nslookup kubernetes.default.svc.cluster.local
 kubectl exec test-pod -- wget -O- http://kubernetes.default.svc
 ```
 
-## Enable DSR for LoadBalancer Services
+## Enable DSR for External Services
 
 ```bash
 calicoctl patch felixconfiguration default --type merge \
@@ -61,7 +66,7 @@ calicoctl patch felixconfiguration default --type merge \
 ```mermaid
 graph LR
     subgraph eBPF Mode
-        PKT1[Incoming Packet] --> EBPF[eBPF Map Lookup\nO1 - constant time]
+        PKT1[Incoming Packet] --> EBPF[eBPF Map Lookup\nO(1) - constant time]
         EBPF --> BACKEND1[Backend Pod]
     end
     subgraph iptables Mode
@@ -74,4 +79,4 @@ graph LR
 
 ## Conclusion
 
-Replacing kube-proxy with Calico eBPF provides O(1) service routing performance that scales with cluster size, eliminates iptables chain traversal overhead, and enables DSR for lower-latency load balancing. The migration requires disabling kube-proxy and enabling Calico eBPF, which can be done without rebooting nodes but does require restarting pods in some configurations.
+Replacing kube-proxy with Calico eBPF provides map-based service routing performance that scales with cluster size, eliminates kube-proxy iptables chain traversal overhead, and enables DSR for lower-latency external service routing on compatible networks. The migration requires disabling kube-proxy or avoiding kube-proxy cleanup conflicts and enabling Calico eBPF, which can be done without rebooting nodes but does require careful rollout because nodes may transition to eBPF mode at different times.
