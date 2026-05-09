@@ -28,11 +28,11 @@ Different Cilium features require different minimum kernel versions. This table 
 
 | Feature | Minimum Kernel |
 |---|---|
-| Basic CNI | 4.9.17 |
-| Host Firewall | 5.3 |
-| WireGuard Encryption | 5.6 |
-| BandwidthManager | 5.1 |
-| kube-proxy replacement | 5.10 (recommended) |
+| Cilium agent baseline | 5.10 or equivalent, such as 4.18 on RHEL 8.10 |
+| Multicast Support in Cilium (Beta) on AMD64 | 5.10 |
+| IPv6 BIG TCP support | 5.19 |
+| Multicast Support in Cilium (Beta) on AArch64 | 6.0 |
+| IPv4 BIG TCP support | 6.3 |
 
 Run a kernel version check on all nodes:
 
@@ -59,11 +59,11 @@ if [ ! -f "$KERNEL_CONFIG" ]; then
 fi
 
 # Check for critical eBPF and networking options
-for option in CONFIG_BPF CONFIG_BPF_SYSCALL CONFIG_NET_CLS_BPF CONFIG_NET_ACT_BPF \
-              CONFIG_BPF_JIT CONFIG_HAVE_EBPF_JIT CONFIG_NET_SCH_INGRESS \
-              CONFIG_NETFILTER_XT_MATCH_MARK CONFIG_NETFILTER_XT_MARK; do
-  if zcat "$KERNEL_CONFIG" 2>/dev/null | grep -q "^${option}=y" || \
-     grep -q "^${option}=y" "$KERNEL_CONFIG" 2>/dev/null; then
+for option in CONFIG_BPF CONFIG_BPF_EVENTS CONFIG_BPF_SYSCALL CONFIG_NET_CLS_BPF \
+              CONFIG_BPF_JIT CONFIG_NET_CLS_ACT CONFIG_NET_SCH_INGRESS \
+              CONFIG_CRYPTO_SHA1 CONFIG_CRYPTO_USER_API_HASH CONFIG_CGROUPS \
+              CONFIG_CGROUP_BPF CONFIG_PERF_EVENTS CONFIG_SCHEDSTATS; do
+  if zcat -f "$KERNEL_CONFIG" 2>/dev/null | grep -Eq "^${option}=(y|m)"; then
     echo "${option}: ENABLED"
   else
     echo "${option}: MISSING"
@@ -84,15 +84,21 @@ ulimit -l
 # Check system-wide locked memory usage
 cat /proc/meminfo | grep Mlocked
 
-# For systems with low limits, increase the memlock limit for the cilium process
-# Add to /etc/security/limits.conf:
-echo "* soft memlock unlimited" >> /etc/security/limits.conf
-echo "* hard memlock unlimited" >> /etc/security/limits.conf
+# For native systemd deployments with low limits, increase the memlock limit
+# for the cilium-agent service:
+sudo mkdir -p /etc/systemd/system/cilium-agent.service.d
+cat << 'EOF' | sudo tee /etc/systemd/system/cilium-agent.service.d/override.conf
+[Service]
+LimitMEMLOCK=infinity
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart cilium-agent
 ```
 
 ## Step 4: Confirm Filesystem and Mount Requirements
 
-Cilium requires the BPF filesystem and debugfs to be mounted correctly. These are often missing on minimal server installations.
+Cilium requires the BPF filesystem to be mounted correctly. debugfs is also useful for some low-level BPF diagnostic commands. These are often missing on minimal server installations.
 
 Validate and fix filesystem mounts:
 
@@ -100,7 +106,7 @@ Validate and fix filesystem mounts:
 # Check that BPF filesystem is mounted
 mount | grep bpf || echo "BPF filesystem NOT mounted"
 
-# Check for debugfs (required for some Cilium diagnostic features)
+# Check for debugfs (useful for some low-level diagnostic features)
 mount | grep debugfs || echo "debugfs NOT mounted"
 
 # Persistently mount the BPF filesystem via systemd
@@ -130,7 +136,7 @@ systemctl enable --now sys-fs-bpf.mount
 - Prefer distribution kernels over custom-compiled kernels for Cilium deployments
 - Allocate at least 2 GiB of RAM per node for Cilium's BPF maps on clusters with many endpoints
 - Document the exact kernel version and configuration for each node type in your runbook
-- Run `cilium-dbg` (Cilium's debug tool) during initial setup to capture the full system state
+- Run `cilium sysdump` during initial setup to capture the full system state
 
 ## Conclusion
 
