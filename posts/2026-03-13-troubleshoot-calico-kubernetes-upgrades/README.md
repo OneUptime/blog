@@ -34,14 +34,16 @@ kubectl logs -n tigera-operator deploy/tigera-operator | \
 
 Common causes:
 ```bash
-# Cause 1: Node is cordoned (DaemonSet pod can't schedule)
-kubectl get nodes | grep SchedulingDisabled
+# Cause 1: Node has custom taints the calico-node DaemonSet does not tolerate
+kubectl describe node <node-name> | grep -i "Taints:"
 
 # Cause 2: Insufficient resources on node
 kubectl describe node <node-name> | grep -A5 "Conditions:"
 
-# Cause 3: PodDisruptionBudget blocking pod termination
-kubectl get pdb -A | grep calico
+# Cause 3: DaemonSet update strategy is waiting on unavailable pods
+kubectl get ds calico-node -n calico-system \
+  -o jsonpath='{.spec.updateStrategy.rollingUpdate.maxUnavailable}{"\n"}'
+kubectl describe ds calico-node -n calico-system | tail -20
 ```
 
 ## Symptom 2: Mixed Version Cluster (Some Nodes on Old Version)
@@ -103,16 +105,22 @@ flowchart TD
 
 ```bash
 # If upgrade causes critical issues, rollback to previous version
-# Note: this requires the previous ImageSet to still exist
+# Note: if you use ImageSets for digest pinning, the previous ImageSet
+# must exist before applying the previous operator manifests.
 
 PREVIOUS_VERSION="v3.27.0"
 
-# Check previous ImageSet exists
-kubectl get imageset "calico-${PREVIOUS_VERSION}"
+# Check previous ImageSet exists if your installation uses ImageSets
+kubectl get imageset "calico-${PREVIOUS_VERSION}" || true
 
-# Rollback Installation to previous version
-kubectl patch installation default --type=merge \
-  -p "{\"spec\":{\"version\":\"${PREVIOUS_VERSION}\"}}"
+# Re-apply the previous Calico CRDs and Tigera Operator manifest
+curl -L -o v1_crd_projectcalico_org.yaml \
+  "https://raw.githubusercontent.com/projectcalico/calico/${PREVIOUS_VERSION}/manifests/v1_crd_projectcalico_org.yaml"
+curl -L -o tigera-operator.yaml \
+  "https://raw.githubusercontent.com/projectcalico/calico/${PREVIOUS_VERSION}/manifests/tigera-operator.yaml"
+
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 
 # Monitor rollback
 kubectl rollout status ds/calico-node -n calico-system --timeout=300s
@@ -121,4 +129,4 @@ echo "Rollback complete. Running version: $(kubectl get installation default -o 
 
 ## Conclusion
 
-Calico upgrade failures most commonly present as stuck rolling updates due to node resource constraints, cordoned nodes, or PodDisruptionBudgets. Post-upgrade connectivity issues typically indicate mixed-version states or IP pool configuration incompatibilities between versions. The emergency rollback procedure using the previous ImageSet provides fast recovery when needed. Always ensure the previous version's ImageSet still exists before starting an upgrade so rollback is available.
+Calico upgrade failures most commonly present as stuck rolling updates due to node resource constraints, custom taints, or unavailable DaemonSet pods. Post-upgrade connectivity issues typically indicate mixed-version states or IP pool configuration incompatibilities between versions. The emergency rollback procedure using the previous operator manifests provides fast recovery when needed. If you use ImageSets for digest pinning, always ensure the previous version's ImageSet still exists before starting an upgrade so rollback is available.
