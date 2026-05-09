@@ -41,7 +41,7 @@ spec:
 ## Verification
 
 ```bash
-calicoctl ipam check -o ipam-report.json
+calicoctl ipam show --ip=<requested-ip>
 kubectl get pods -A -o wide
 ```
 
