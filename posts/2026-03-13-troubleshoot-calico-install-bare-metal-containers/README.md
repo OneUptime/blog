@@ -53,8 +53,8 @@ ip link show
 ip addr show
 
 # Fix the interface selection
-kubectl set env ds/calico-node -n calico-system \
-  IP_AUTODETECTION_METHOD=interface=bond0
+kubectl patch installation default --type merge \
+  -p '{"spec":{"calicoNetwork":{"nodeAddressAutodetectionV4":{"interface":"bond0"}}}}'
 ```
 
 ## Step 4: Check Kernel Modules
@@ -71,7 +71,7 @@ modprobe vxlan
 lsmod | grep vxlan
 
 # For eBPF
-uname -r  # Must be 5.3+
+uname -r  # Must be 5.10+
 ```
 
 Add modules to load at boot:
@@ -101,7 +101,7 @@ If BGP is not working, check that iptables is not blocking port 179.
 ```bash
 iptables -L INPUT -n -v | grep 179
 iptables -A INPUT -p tcp --dport 179 -j ACCEPT
-iptables -A OUTPUT -p tcp --sport 179 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 179 -j ACCEPT
 ```
 
 ## Conclusion
