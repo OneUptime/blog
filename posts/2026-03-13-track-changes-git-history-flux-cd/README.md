@@ -10,7 +10,7 @@ Description: Use Git commit history and pull request metadata to track every cha
 
 ## Introduction
 
-One of GitOps's most powerful compliance properties is that Git history is an immutable, chronological record of every change to your infrastructure. Every commit has an author, a timestamp, a description of the change, and the exact diff of what was modified. Every merge commit records who approved a PR. This makes GitOps repositories natural audit artifacts.
+One of GitOps's most powerful compliance properties is that a protected Git history can serve as a chronological record of every change to your infrastructure. Every commit has an author, a timestamp, a description of the change, and the exact diff of what was modified. Merge commits record when PRs were merged and can be correlated with PR review metadata to identify approvers. This makes GitOps repositories natural audit artifacts.
 
 In practice, getting the most value from Git history for compliance tracking requires consistent commit conventions, well-structured repository layout, and tooling to query and report on the history effectively. This guide shows how to set up commit conventions, query Git history for specific change types, correlate changes to compliance evidence, and generate change reports from your Flux CD repository.
 
@@ -81,7 +81,6 @@ jobs:
 ```
 
 ```json
-// .commitlintrc.json
 {
   "extends": ["@commitlint/config-conventional"],
   "rules": {
@@ -112,8 +111,8 @@ git log --oneline --grep="^rollback:" --all
 git log --oneline --grep="^security:" --all \
   -- clusters/ apps/
 
-# All changes to a specific application
-git log --oneline --follow -- apps/production/my-app/
+# All changes to a specific application directory
+git log --oneline -- apps/production/my-app/
 
 # Who changed a specific file last
 git log --oneline -10 -- apps/production/my-app/helmrelease.yaml
@@ -143,9 +142,11 @@ echo "PR Number | Merged At | Merged By | Approvers | Title"
 
 gh pr list \
   --state merged \
+  --search "merged:$START_DATE..$END_DATE" \
+  --limit 1000 \
   --json number,mergedAt,mergedBy,reviews,title \
-  --jq '.[] | select(.mergedAt >= "'$START_DATE'" and .mergedAt <= "'$END_DATE'") |
-    "\(.number) | \(.mergedAt) | \(.mergedBy.login) | \([.reviews[] | select(.state=="APPROVED") | .author.login] | join(",")) | \(.title)"' \
+  --jq '.[] |
+    "\(.number) | \(.mergedAt) | \(.mergedBy.login) | \([.reviews[] | select(.state=="APPROVED") | .author.login] | unique | join(",")) | \(.title)"' \
   | sort
 ```
 
@@ -206,8 +207,8 @@ git blame apps/production/my-app/helmrelease.yaml
 # a3f9c12 (Alice Smith 2026-03-10)   chart:
 # b7c2d45 (Bob Jones  2026-03-08)     version: "2.5.0"
 
-# For a directory, use git log --follow to track renames
-git log --follow --oneline apps/production/my-app/
+# For a renamed file, use git log --follow to track history across renames
+git log --follow --oneline -- apps/production/my-app/helmrelease.yaml
 
 # Annotated log with diff stats
 git log --stat --since="90 days ago" -- apps/production/ | head -100
@@ -222,24 +223,39 @@ Export data for a GitOps change management dashboard:
 # scripts/export-for-dashboard.sh
 # Export JSON suitable for a compliance dashboard
 
-git log \
+mkdir -p reports
+
+COUNT=$(git log \
   --merges \
   --since="1 year ago" \
-  --pretty=format:'{
-    "sha": "%H",
-    "short_sha": "%h",
-    "author_name": "%an",
-    "author_email": "%ae",
-    "date": "%aI",
-    "message": "%s"
-  },' \
+  --pretty=format:'%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e' \
   -- apps/ clusters/ \
-  | head -c -1 \
-  | sed '1s/^/[/' \
-  | sed '$s/$/]/' \
-  > reports/deployment-history.json
+  | python3 -c '
+import json
+import sys
 
-echo "Exported $(cat reports/deployment-history.json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))') events"
+records = []
+for entry in sys.stdin.read().split("\x1e"):
+    entry = entry.strip("\n")
+    if not entry:
+        continue
+    sha, short_sha, author_name, author_email, date, message = entry.split("\x1f", 5)
+    records.append({
+        "sha": sha,
+        "short_sha": short_sha,
+        "author_name": author_name,
+        "author_email": author_email,
+        "date": date,
+        "message": message
+    })
+
+with open("reports/deployment-history.json", "w", encoding="utf-8") as report:
+    json.dump(records, report, indent=2)
+
+print(len(records))
+')
+
+echo "Exported $COUNT events"
 ```
 
 ## Best Practices
