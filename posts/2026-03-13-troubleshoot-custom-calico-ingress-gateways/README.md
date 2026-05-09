@@ -23,6 +23,18 @@ Building custom gateways with Calico requires understanding how to properly conf
 ## Deploy Custom Gateway
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    gateway-accessible: "true"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -55,9 +67,11 @@ spec:
   selector:
     app: custom-gateway
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
-  - port: 443
+  - name: https
+    port: 443
     targetPort: 443
 ```
 
@@ -98,9 +112,9 @@ spec:
 ## Verify Custom Gateway Routing
 
 ```bash
-GW_IP=$(kubectl get svc -n gateway-system custom-gateway   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -v http://${GW_IP}/health
-curl -H "Host: backend.example.com" http://${GW_IP}/api/
+GW_ADDR=$(kubectl get svc -n gateway-system custom-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -v http://${GW_ADDR}/health
+curl -H "Host: backend.example.com" http://${GW_ADDR}/api/
 ```
 
 ## Custom Gateway Architecture
