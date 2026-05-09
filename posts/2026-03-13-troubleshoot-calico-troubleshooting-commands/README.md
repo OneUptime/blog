@@ -49,10 +49,10 @@ kubectl logs -n tigera-operator -l k8s-app=tigera-operator | tail -30
 ## Symptom 3: calicoctl Commands Return Empty Output
 
 ```bash
-# Check RBAC - calicoctl uses the current kubeconfig ServiceAccount
-kubectl auth can-i list felixconfigurations
-kubectl auth can-i list bgppeers
-kubectl auth can-i list globalnetworkpolicies
+# Check RBAC - calicoctl uses the current kubeconfig identity
+kubectl auth can-i list felixconfigurations.crd.projectcalico.org
+kubectl auth can-i list bgppeers.crd.projectcalico.org
+kubectl auth can-i list globalnetworkpolicies.crd.projectcalico.org
 
 # If "no": your user lacks Calico CRD read permissions
 # Request cluster-admin or a custom role with Calico CRD access
@@ -61,13 +61,13 @@ kubectl auth can-i list globalnetworkpolicies
 ## Symptom 4: calicoctl node status Times Out
 
 ```bash
-# calicoctl node status requires exec into a calico-node pod
-# If calico-node pods are crash-looping, the command will fail
+# calicoctl node status must run directly on a node running calico-node
+# If you run it from a workstation or inside a container, the command will fail
 
 kubectl get pods -n calico-system -l k8s-app=calico-node
 # Check for CrashLoopBackOff or Error
 
-# Alternative: use the Felix metrics port to check BGP state
+# Alternative: exec into calico-node and query BIRD directly
 CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
