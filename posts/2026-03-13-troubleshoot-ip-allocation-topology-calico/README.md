@@ -19,6 +19,7 @@ This guide provides practical steps to manage IP Address Allocation by Topology 
 - Calico v3.20+ with IPAM configured
 - kubectl and calicoctl access
 - IP pools configured in the cluster
+- Nodes labeled with the topology key used by each pool selector
 
 ## Configuration Steps
 
@@ -31,7 +32,7 @@ calicoctl ipam show --show-blocks
 calicoctl get ippools -o yaml
 
 # Check IPAM allocations
-calicoctl ipam check
+calicoctl ipam show --show-blocks
 ```
 
 ## Example Configuration
@@ -40,27 +41,27 @@ calicoctl ipam check
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: pool-example
+  name: pool-zone-a
 spec:
   cidr: 10.48.0.0/16
   blockSize: 26
   ipipMode: Never
-  vxlanMode: VXLAN
+  vxlanMode: Always
   natOutgoing: true
-  nodeSelector: all()
+  nodeSelector: "topology.kubernetes.io/zone == 'zone-a'"
 ```
 
 ## Verification
 
 ```bash
 # Verify allocations
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u | head -20
+kubectl get pods -A -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}' | sort -u | head -20
 
 # Check pool utilization
 calicoctl ipam show --show-configuration
 
 # Validate consistency
-calicoctl ipam check -o ipam-report.json
+calicoctl ipam show --show-blocks
 ```
 
 ## Architecture
