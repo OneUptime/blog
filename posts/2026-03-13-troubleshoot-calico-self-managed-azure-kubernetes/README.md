@@ -83,7 +83,7 @@ Azure often blocks IPIP (protocol 4); switch to VXLAN as a workaround.
 calicoctl get ippool -o yaml | grep -E "ipipMode:|vxlanMode:"
 
 # Switch to VXLAN mode (Azure-friendly)
-calicoctl patch ippool default-ipv4-ippool --type merge \
+calicoctl patch ippool default-ipv4-ippool \
   --patch '{"spec":{"ipipMode":"Never","vxlanMode":"Always"}}'
 
 # Restart Calico DaemonSet to apply the change
@@ -102,7 +102,7 @@ Investigate cross-node pod connectivity issues.
 CALICO_POD=$(kubectl get pod -n kube-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
-# Check Calico BGP/VXLAN peer status
+# Check Calico node status and BGP peers if BGP is enabled
 calicoctl node status
 
 # Check if VXLAN tunnels are established
@@ -125,12 +125,12 @@ ROUTE_TABLE=$(az network vnet subnet show \
   --name <subnet-name> \
   --query routeTable.id -o tsv)
 
-# Add routes for pod CIDRs to the Azure route table (for BGP mode)
+# Add one route per node Pod CIDR to the Azure route table (for non-overlay routing)
 az network route-table route create \
   --resource-group <rg-name> \
   --route-table-name <route-table-name> \
-  --name pod-cidr-route \
-  --address-prefix 10.244.0.0/16 \
+  --name pod-cidr-<node-name> \
+  --address-prefix <node-pod-cidr> \
   --next-hop-type VirtualAppliance \
   --next-hop-ip-address <kubernetes-node-ip>
 ```
