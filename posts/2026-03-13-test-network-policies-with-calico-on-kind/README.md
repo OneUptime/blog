@@ -35,7 +35,7 @@ kubectl expose pod backend --port=80 -n policy-test --name=backend-svc
 
 ## Step 2: Confirm Connectivity Without Policy
 
-Before applying any policy, both pods should be able to reach the backend:
+Before applying any policy, the frontend pod should be able to reach the backend:
 
 ```bash
 kubectl exec -n policy-test frontend -- wget -qO- http://backend-svc
@@ -45,7 +45,7 @@ Verify this returns the nginx welcome page.
 
 ## Step 3: Apply a Default Deny Policy
 
-Block all ingress to the backend namespace:
+Block all ingress to pods in the `policy-test` namespace:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -66,7 +66,7 @@ EOF
 Test that the frontend can no longer reach the backend:
 
 ```bash
-kubectl exec -n policy-test frontend -- wget --timeout=5 -qO- http://backend-svc
+kubectl exec -n policy-test frontend -- wget -T 5 -qO- http://backend-svc
 ```
 
 The connection should time out, confirming the deny policy is enforced.
