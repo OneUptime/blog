@@ -12,7 +12,7 @@ Description: A guide to testing Calico-enforced OpenStack Security Group policie
 
 Testing network policies (OpenStack Security Groups) on RHEL-based Calico deployments requires confirming that Felix's iptables rules correctly implement Security Group rules. On RHEL, the iptables backend (legacy vs nft) affects how these rules are stored and queried. Testing must account for whichever backend is configured.
 
-RHEL's SELinux can silently block Security Group changes if Felix doesn't have the right permissions to modify iptables. A Security Group policy that appears to be applied in OpenStack but has no effect is often due to a SELinux denial blocking Felix's iptables write operations.
+RHEL's SELinux can block Felix's dataplane updates if Felix doesn't have the right permissions to modify iptables. A Security Group policy that appears to be applied in OpenStack but has no effect can be caused by a SELinux denial blocking Felix's iptables write operations.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ RHEL's SELinux can silently block Security Group changes if Felix doesn't have t
 ## Step 1: Check SELinux Before Testing
 
 ```bash
-sudo ausearch -m AVC -ts recent -x python3 2>/dev/null
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent -i 2>/dev/null
 ```
 
 If Felix has SELinux denials, fix them before policy testing.
@@ -72,12 +72,15 @@ Identify which compute node is running the server VM and check its iptables rule
 
 ```bash
 # Using iptables-legacy
-sudo iptables -L | grep -E "calico|ACCEPT.*tcp.*dpt:80"
+sudo iptables-legacy -n -L | grep -E "cali|ACCEPT.*tcp.*dpt:80"
 
-# Using iptables-nft backend
-sudo nft list ruleset | grep -E "80|calico"
+# Using the iptables-nft backend
+sudo iptables-nft -n -L | grep -E "cali|ACCEPT.*tcp.*dpt:80"
+
+# Using Calico's nftables dataplane
+sudo nft -n list ruleset | grep -E "80|cali"
 ```
 
 ## Conclusion
 
-Testing Security Group policies with Calico on RHEL OpenStack requires checking SELinux before testing (to ensure Felix can write iptables rules), verifying both allowed and blocked connectivity, and inspecting the iptables ruleset (with attention to the legacy vs nft backend) to confirm Felix programmed the correct rules. RHEL's SELinux enforcement is the most common source of discrepancies between expected and actual policy behavior.
+Testing Security Group policies with Calico on RHEL OpenStack requires checking SELinux before testing (to ensure Felix can write iptables rules), verifying both allowed and blocked connectivity, and inspecting the ruleset (with attention to the configured iptables backend or nftables dataplane) to confirm Felix programmed the correct rules. RHEL's SELinux enforcement is one possible source of discrepancies between expected and actual policy behavior.
