@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico networking failures on Azure, in
 
 ## Introduction
 
-Calico networking failures on Azure have a distinct set of root causes compared to other cloud providers. Azure's platform network virtualization enforces strict source IP validation by default, and NSGs block all unlisted traffic. These platform constraints are often the cause of pod networking failures that appear to be Calico misconfigurations but are actually Azure infrastructure issues.
+Calico networking failures on Azure have a distinct set of root causes compared to other cloud providers. Azure's platform network virtualization enforces source and destination IP validation unless IP forwarding is enabled, and custom NSG rules can override Azure's default VirtualNetwork allow rules. These platform constraints are often the cause of pod networking failures that appear to be Calico misconfigurations but are actually Azure infrastructure issues.
 
 This guide covers the most common failure scenarios for Calico on Azure and provides step-by-step diagnosis and resolution for each.
 
@@ -79,7 +79,7 @@ az network nsg rule create \
 
 ## Issue 3: Native Routing Mode - Missing Route Table Entry
 
-**Symptom**: All modes except VXLAN configured, cross-node traffic fails.
+**Symptom**: VXLAN is disabled and Azure UDR/native routing is configured, but cross-node traffic fails.
 
 ```bash
 # Check if pod CIDR routes exist
@@ -88,8 +88,8 @@ az network route-table route list \
   --route-table-name k8s-routes \
   --output table
 
-# Find the node's pod CIDR
-calicoctl ipam show --show-blocks | grep worker-2
+# Find the Calico IPAM blocks assigned to the node
+kubectl get blockaffinities.crd.projectcalico.org -o custom-columns=NODE:.spec.node,CIDR:.spec.cidr,STATE:.spec.state | grep worker-2
 ```
 
 If the pod CIDR for a node is missing from the route table, add it:
@@ -111,8 +111,8 @@ kubectl logs -n calico-system ds/calico-node --previous | tail -50
 ```
 
 Common Azure-specific Felix failures:
-- Cannot determine node IP (use `IP=autodetect` or specify `IP_AUTODETECTION_METHOD=interface=eth0`)
-- Azure IMDS interference (block 169.254.169.254 from pods but allow from nodes)
+- Cannot determine the correct node IP (use `IP=autodetect` or specify `IP_AUTODETECTION_METHOD=interface=eth0`)
+- Autodetection selects an address that is not routable on the Azure VNet
 
 ```yaml
 # Fix node IP autodetection
@@ -129,7 +129,7 @@ kubectl run test --image=busybox --rm -it -- nslookup kubernetes.default
 kubectl get pods -n kube-system | grep coredns
 ```
 
-Ensure NSG allows UDP 53 within the VNet.
+If CoreDNS runs on another node, treat this as a cross-node pod/service traffic issue first. Also check network policies or node firewall rules that might block UDP/TCP 53.
 
 ## Conclusion
 
