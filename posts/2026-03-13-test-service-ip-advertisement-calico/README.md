@@ -17,7 +17,7 @@ Real-world testing should cover traffic distribution (are requests spread across
 ## Prerequisites
 
 - Service IP advertisement configured and validated
-- External test client with BGP routes
+- External test client that can reach the advertised service IPs
 - Test application with multiple replicas
 
 ## Deploy Multi-Replica Test Application
@@ -33,9 +33,11 @@ kubectl get svc test-service
 ```bash
 LB_IP=$(kubectl get svc test-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 for i in $(seq 1 20); do
-  curl -s http://${LB_IP}/ -o /dev/null -w "%{remote_ip}\n"
+  curl -s http://${LB_IP}/ -o /dev/null -w "%{http_code}\n"
 done
 ```
+
+Verify node-level distribution with your upstream router's ECMP counters or per-node packet counters for the advertised service IP. Curl's `remote_ip` value shows the remote IP address used for the connection, not which Kubernetes node handled the service traffic.
 
 ## Test ExternalTrafficPolicy: Local Behavior
 
