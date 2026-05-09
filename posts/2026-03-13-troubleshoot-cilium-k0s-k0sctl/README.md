@@ -47,7 +47,7 @@ spec:
       keyPath: ~/.ssh/id_rsa
     role: worker
   k0s:
-    version: 1.29.0+k0s.0
+    version: v1.34.5+k0s.0
     config:
       apiVersion: k0s.k0sproject.io/v1beta1
       kind: ClusterConfig
@@ -60,8 +60,8 @@ spec:
 ```
 
 ```bash
-# Apply the k0sctl configuration
-k0sctl apply --config k0sctl.yaml
+# Apply the k0sctl configuration without waiting for CNI-dependent node readiness
+k0sctl apply --config k0sctl.yaml --no-wait
 ```
 
 ## Step 2: Install Cilium After k0sctl Provisioning
@@ -70,7 +70,7 @@ Deploy Cilium after k0sctl has provisioned the cluster.
 
 ```bash
 # Export the kubeconfig from the k0sctl-provisioned cluster
-k0sctl kubeconfig > ~/.kube/k0s-kubeconfig
+k0sctl kubeconfig --config k0sctl.yaml > ~/.kube/k0s-kubeconfig
 export KUBECONFIG=~/.kube/k0s-kubeconfig
 
 # Verify the cluster is running (nodes will be NotReady without CNI)
@@ -78,7 +78,7 @@ kubectl get nodes
 
 # Install Cilium using the cilium CLI
 cilium install \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --set ipam.mode=kubernetes \
   --set kubeProxyReplacement=false
 
@@ -92,7 +92,7 @@ Investigate failures that occur during k0sctl provisioning.
 
 ```bash
 # Check k0sctl provisioning logs
-k0sctl apply --config k0sctl.yaml --debug 2>&1 | tee k0sctl-provisioning.log
+k0sctl apply --config k0sctl.yaml --no-wait --debug 2>&1 | tee k0sctl-provisioning.log
 
 # Common errors:
 # - SSH connection failures: check SSH key permissions and host accessibility
