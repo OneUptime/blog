@@ -10,7 +10,7 @@ Description: Diagnose and resolve common issues with Calico VPP host networking,
 
 ## Introduction
 
-Calico VPP troubleshooting is more complex than standard Calico because the VPP dataplane runs as a separate process and may fail in ways that are not immediately visible from Kubernetes. VPP takes ownership of the primary network interface, so startup failures can make the node temporarily unreachable. Understanding VPP's initialization sequence and having out-of-band access are prerequisites for safe VPP operation.
+Calico VPP troubleshooting is more complex than standard Calico because the VPP dataplane runs as a separate process and may fail in ways that are not immediately visible from Kubernetes. Depending on the uplink driver, VPP may take ownership of the primary network interface, so startup failures can make the node temporarily unreachable. Understanding VPP's initialization sequence and having out-of-band access are prerequisites for safe VPP operation.
 
 This guide covers the most common VPP failure modes and the diagnostic tools needed to identify and resolve them.
 
@@ -28,12 +28,11 @@ This guide covers the most common VPP failure modes and the diagnostic tools nee
 **Diagnosis:**
 
 ```bash
-kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp-manager --previous
+kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp --previous
 # Look for VPP initialization errors
 
-# On the node (if accessible)
-
-journalctl -u vpp --since "10 minutes ago" | tail -50
+# Check pod events for scheduling, hugepage, and startup errors
+kubectl describe -n calico-vpp-dataplane ds/calico-vpp-node
 ```
 
 **Common causes:**
@@ -43,9 +42,10 @@ journalctl -u vpp --since "10 minutes ago" | tail -50
 grep HugePages_Free /proc/meminfo
 # If HugePages_Free is 0: increase hugepages
 
-# 2. Wrong PCI address for DPDK
+# 2. Wrong uplink interface or driver for DPDK
+ip link show
 lspci | grep -i network
-# Verify the PCI address in ConfigMap matches the actual NIC
+# Verify CALICOVPP_INTERFACES uses the correct interfaceName and vppDriver
 
 # 3. Missing DPDK modules
 modprobe vfio-pci
@@ -57,7 +57,7 @@ modprobe uio_pci_generic
 ```mermaid
 graph TD
     A[VPP starts] --> B{Interface init}
-    B -->|DPDK driver bind fails| C[Check PCI address and driver]
+    B -->|DPDK driver bind fails| C[Check interface and driver]
     B -->|af_packet fails| D[Check interface name in ConfigMap]
     B -->|Success| E[Interface up]
     C --> F[Fix ConfigMap and restart]
@@ -97,9 +97,9 @@ data:
 **Diagnosis:**
 
 ```bash
-# Check pod tap interface exists in VPP
+# Check pod tun interface exists in VPP
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show interface | grep tap
+  vppctl show interface | grep tun
 
 # Check IP routes in VPP FIB
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
@@ -122,11 +122,17 @@ kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c agent --tail=100
 ```bash
 # Check VPP memory usage
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show memory | grep hugepages
+  vppctl show memory verbose
+
+# Check VPP packet buffers
+kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+  vppctl show buffers
 
 # If VPP is running out of memory
 # Increase hugepages on the node
 echo 2048 > /proc/sys/vm/nr_hugepages
+# Restart kubelet so Kubernetes reports dynamically allocated hugepages
+systemctl restart kubelet
 
 # Update the pod resource limits
 kubectl patch ds calico-vpp-node -n calico-vpp-dataplane \
@@ -139,7 +145,7 @@ kubectl patch ds calico-vpp-node -n calico-vpp-dataplane \
 ```bash
 # Check VPP is using DPDK (not af_packet)
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk
+  vppctl show dpdk version
 
 # Check VPP worker thread count
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
@@ -149,4 +155,4 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 ## Conclusion
 
-Calico VPP troubleshooting requires VPP-native diagnostic tools and out-of-band node access. The most critical precaution is maintaining console access to nodes before deploying VPP, since VPP startup failures can leave nodes with no network connectivity. The most common issues are hugepage configuration errors, wrong interface names or PCI addresses, and missing DPDK kernel modules. Resolve each category in order, starting with the lowest-level infrastructure requirements.
+Calico VPP troubleshooting requires VPP-native diagnostic tools and out-of-band node access. The most critical precaution is maintaining console access to nodes before deploying VPP, since VPP startup failures can leave nodes with no network connectivity. The most common issues are hugepage configuration errors, wrong interface names or uplink driver settings, and missing DPDK kernel modules. Resolve each category in order, starting with the lowest-level infrastructure requirements.
