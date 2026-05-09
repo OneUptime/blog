@@ -64,11 +64,11 @@ kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes
 cat /etc/cni/net.d/10-calico.conflist | python3 -m json.tool
 ```
 
-Invalid JSON causes every pod creation to fail silently with a CNI error.
+Invalid JSON causes pod sandbox creation to fail with CNI errors visible in pod events, kubelet logs, or the container runtime logs.
 
 ## Step 5: Inspect CNI Execution Logs
 
-The CNI plugin writes to a log file when it executes.
+By default, the CNI plugin writes to a log file when it executes.
 
 ```bash
 ls /var/log/calico/cni/
@@ -77,14 +77,14 @@ tail -50 /var/log/calico/cni/cni.log
 
 ## Step 6: Check Datastore Connectivity
 
-If calico-node cannot write to the Kubernetes datastore, IPAM fails.
+If Calico components cannot access the Kubernetes datastore, node state and IPAM checks fail.
 
 ```bash
-KUBECONFIG=/etc/kubernetes/admin.conf calicoctl get nodes
-KUBECONFIG=/etc/kubernetes/admin.conf calicoctl ipam show
+DATASTORE_TYPE=kubernetes KUBECONFIG=/etc/kubernetes/admin.conf calicoctl get nodes
+DATASTORE_TYPE=kubernetes KUBECONFIG=/etc/kubernetes/admin.conf calicoctl ipam show
 ```
 
-If these fail, the issue is Kubernetes API authentication or RBAC permissions for the calico-node service account.
+If these fail, check the datastore type, kubeconfig path, Kubernetes API authentication, and RBAC permissions used by the Calico components.
 
 ## Conclusion
 
