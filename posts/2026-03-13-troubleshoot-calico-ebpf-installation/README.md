@@ -10,7 +10,7 @@ Description: Diagnose and resolve installation failures specific to Calico eBPF,
 
 ## Introduction
 
-Installation failures for Calico eBPF are typically one of three types: prerequisites not met (kernel version, BPF filesystem), configuration errors (wrong API server IP, hostPorts enabled), or operator initialization failures. Unlike post-migration eBPF issues, fresh installation failures manifest early and clearly in the operator and calico-node logs.
+Installation failures for Calico eBPF are typically one of three types: prerequisites not met (kernel version, BPF filesystem), configuration errors (wrong API server endpoint), or operator initialization failures. Unlike post-migration eBPF issues, fresh installation failures manifest early and clearly in the operator and calico-node logs.
 
 ## Prerequisites
 
@@ -107,18 +107,23 @@ kubectl logs -n calico-system ds/calico-node -c calico-node | \
 ## Symptom 4: Services Not Reachable After Installation
 
 ```bash
-# This usually means the API server ConfigMap has wrong IP
+# This usually means the API server ConfigMap has the wrong host or port
 kubectl get configmap kubernetes-services-endpoint -n tigera-operator -o yaml
 
-# Verify the KUBERNETES_SERVICE_HOST matches the real control plane IP
-# NOT the virtual service IP (10.96.0.1)
+# Verify KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT match a stable
+# real API server endpoint, not the virtual service IP (10.96.0.1).
+# In HA clusters, use the API server load balancer address instead of one
+# individual control plane endpoint IP.
 kubectl get endpoints kubernetes -n default
 
-# If wrong, update the ConfigMap
-REAL_API_IP=$(kubectl get endpoints kubernetes -n default \
+# For a single-control-plane cluster, you can derive the endpoint like this.
+API_SERVER_HOST=$(kubectl get endpoints kubernetes -n default \
   -o jsonpath='{.subsets[0].addresses[0].ip}')
+API_SERVER_PORT=$(kubectl get endpoints kubernetes -n default \
+  -o jsonpath='{.subsets[0].ports[0].port}')
 kubectl patch configmap kubernetes-services-endpoint -n tigera-operator \
-  --type=merge -p "{\"data\":{\"KUBERNETES_SERVICE_HOST\":\"${REAL_API_IP}\"}}"
+  --type=merge \
+  -p "{\"data\":{\"KUBERNETES_SERVICE_HOST\":\"${API_SERVER_HOST}\",\"KUBERNETES_SERVICE_PORT\":\"${API_SERVER_PORT}\"}}"
 
 # Restart calico-node to pick up the change
 kubectl rollout restart ds/calico-node -n calico-system
@@ -142,4 +147,4 @@ flowchart TD
 
 ## Conclusion
 
-Calico eBPF installation failures follow predictable patterns: missing prerequisites (BPF filesystem, kernel version), misconfigured Installation resources, or wrong API server endpoint in the ConfigMap. The diagnostic script in this guide quickly identifies which layer has the problem. Always run it immediately after installation before investing time in less likely causes. The most common fix is updating the `kubernetes-services-endpoint` ConfigMap with the correct control plane IP when services are unreachable after installation.
+Calico eBPF installation failures follow predictable patterns: missing prerequisites (BPF filesystem, kernel version), misconfigured Installation resources, or wrong API server endpoint in the ConfigMap. The diagnostic script in this guide quickly identifies which layer has the problem. Always run it immediately after installation before investing time in less likely causes. A common fix is updating the `kubernetes-services-endpoint` ConfigMap with the correct stable control plane host and port when services are unreachable after installation.
