@@ -28,7 +28,7 @@ Before testing restores, ensure backups are complete.
 ```bash
 # List recent backups and check their status
 
-velero backup get --selector schedule=production-apps-hourly
+velero backup get --selector velero.io/schedule-name=production-apps-hourly
 
 # Check that the backup contains the expected resources
 velero backup describe production-apps-hourly-20260313140000 --details \
@@ -57,7 +57,7 @@ metadata:
   name: test-app
   namespace: velero-restore-test
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: test-app
@@ -92,6 +92,11 @@ spec:
       storage: 1Gi
 EOF
 
+# Wait for the test app to be ready before writing data
+kubectl rollout status deployment/test-app \
+  -n velero-restore-test \
+  --timeout=5m
+
 # Write test data to the PV
 kubectl exec -n velero-restore-test \
   deployment/test-app \
@@ -114,11 +119,16 @@ velero backup create velero-restore-test-backup \
   --volume-snapshot-locations primary \
   --wait
 
+# Label the backup so automated tests can find it later
+kubectl -n velero label backups.velero.io velero-restore-test-backup \
+  backup-type=test \
+  --overwrite
+
 # Verify backup completed successfully
 velero backup describe velero-restore-test-backup
 
 # Check backup status
-BACKUP_STATUS=$(velero backup get velero-restore-test-backup \
+BACKUP_STATUS=$(kubectl -n velero get backups.velero.io velero-restore-test-backup \
   -o jsonpath='{.status.phase}')
 echo "Backup status: ${BACKUP_STATUS}"
 
@@ -141,7 +151,7 @@ kubectl get namespace velero-restore-test
 
 # Also verify the PVC is gone
 kubectl get pvc -n velero-restore-test 2>&1
-# Expected: No resources found
+# Expected: Error from server (NotFound)
 ```
 
 ## Step 5: Restore from Backup
@@ -154,7 +164,7 @@ velero restore create velero-restore-test-restore \
   --wait
 
 # Check restore status
-RESTORE_STATUS=$(velero restore get velero-restore-test-restore \
+RESTORE_STATUS=$(kubectl -n velero get restores.velero.io velero-restore-test-restore \
   -o jsonpath='{.status.phase}')
 echo "Restore status: ${RESTORE_STATUS}"
 
@@ -172,9 +182,8 @@ fi
 # Verify the namespace exists
 kubectl get namespace velero-restore-test
 
-# Check that all pods are running
-kubectl wait --for=condition=Ready pod \
-  -l app=test-app \
+# Check that the deployment is available
+kubectl rollout status deployment/test-app \
   -n velero-restore-test \
   --timeout=5m
 
@@ -218,25 +227,44 @@ spec:
             - name: restore-tester
               image: bitnami/kubectl:latest
               command:
-                - /bin/bash
+                - /bin/sh
                 - -c
                 - |
                   set -e
 
                   # Get the latest backup for the test namespace
-                  LATEST_BACKUP=$(velero backup get \
-                    --selector backup-type=test \
-                    -o jsonpath='{.items[0].metadata.name}')
+                  LATEST_BACKUP=$(kubectl -n velero get backups.velero.io \
+                    -l backup-type=test \
+                    --sort-by=.metadata.creationTimestamp \
+                    -o jsonpath='{.items[-1].metadata.name}')
+
+                  RESTORE_NAME="weekly-restore-test-$(date +%Y%m%d%H%M%S)"
+
+                  # Ensure the restore target namespace is empty
+                  kubectl delete namespace velero-restore-test \
+                    --ignore-not-found=true \
+                    --wait=true
 
                   # Create restore
-                  velero restore create "weekly-restore-test-$(date +%Y%m%d)" \
-                    --from-backup "${LATEST_BACKUP}" \
-                    --include-namespaces velero-restore-test \
-                    --wait
+                  cat << EOF | kubectl create -f -
+                  apiVersion: velero.io/v1
+                  kind: Restore
+                  metadata:
+                    name: ${RESTORE_NAME}
+                    namespace: velero
+                  spec:
+                    backupName: ${LATEST_BACKUP}
+                    includedNamespaces:
+                      - velero-restore-test
+                  EOF
+
+                  # Wait for restore completion
+                  kubectl -n velero wait restores.velero.io/${RESTORE_NAME} \
+                    --for=jsonpath='{.status.phase}'=Completed \
+                    --timeout=30m
 
                   # Validate
-                  kubectl wait --for=condition=Ready pod \
-                    -l app=test-app \
+                  kubectl rollout status deployment/test-app \
                     -n velero-restore-test \
                     --timeout=5m
 
@@ -251,7 +279,7 @@ spec:
 
 ```yaml
 # infrastructure/velero/alerts/backup-health-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: velero-backup-failure
