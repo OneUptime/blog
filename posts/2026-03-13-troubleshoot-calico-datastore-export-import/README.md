@@ -4,48 +4,53 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Diagnose and resolve failures in calicoctl datastore migrate export and import operations including connection errors, permission failures, and import conflicts with existing resources.
+Description: Diagnose and resolve failures in calicoctl datastore migrate export and import operations when migrating from an etcdv3 datastore to the Kubernetes datastore, including connection errors, permission failures, and import conflicts with existing resources.
 
 ---
 
 ## Introduction
 
-Datastore export and import failures typically occur due to connection issues (etcd TLS certificates, kubeconfig misconfiguration), RBAC permissions (missing access to Calico CRDs), or import conflicts (resource already exists in the destination datastore). The error messages from calicoctl are generally descriptive enough to identify the cause.
+Datastore export and import failures typically occur during etcdv3-to-Kubernetes datastore migration due to connection issues (etcd TLS certificates, kubeconfig misconfiguration), RBAC permissions (missing access to Calico CRDs), or import conflicts (resource already exists in the destination datastore). The error messages from calicoctl are generally descriptive enough to identify the cause.
 
 ## Key Commands
 
 ```bash
-# Export Calico datastore (backup or migration)
-
-calicoctl datastore migrate export > calico-backup-$(date +%Y%m%d).yaml
-
-# Verify export content
-echo "Resources in backup: $(grep -c '^kind:' calico-backup.yaml)"
-grep "^kind:" calico-backup.yaml | sort | uniq -c
-
-# Lock source datastore (migration only, not backup)
+# Lock source datastore for migration
 calicoctl datastore migrate lock
 
+# Export the etcdv3 Calico datastore for migration
+
+export_file="calico-migration-$(date +%Y%m%d).yaml"
+calicoctl datastore migrate export > "$export_file"
+
+# Verify export content
+echo "Resources in export: $(grep -c '^kind:' "$export_file")"
+grep "^kind:" "$export_file" | sort | uniq -c
+
 # Import to destination datastore
-calicoctl datastore migrate import -f calico-backup.yaml
+calicoctl datastore migrate import -f "$export_file"
 
 # Verify import
 calicoctl get felixconfiguration
 calicoctl get globalnetworkpolicy | wc -l
+
+# Unlock after migration verification
+calicoctl datastore migrate unlock
 ```
 
 ## Operation Flow
 
 ```mermaid
 flowchart TD
-    A[Export: calicoctl datastore migrate export] --> B[Backup YAML file]
-    B --> C[Encrypt and store]
-    D[Restore needed] --> E[Retrieve backup from storage]
-    E --> F[Import: calicoctl datastore migrate import]
-    F --> G[Verify resource counts match]
-    G --> H{Match?}
-    H -->|Yes| I[Restore complete]
-    H -->|No| J[Investigate partial import]
+    A[Lock: calicoctl datastore migrate lock] --> B[Export: calicoctl datastore migrate export]
+    B --> C[Migration YAML file]
+    C --> D[Encrypt and store]
+    E[Migration import needed] --> F[Retrieve export from storage]
+    F --> G[Import: calicoctl datastore migrate import]
+    G --> H[Verify resource counts match]
+    H --> I{Match?}
+    I -->|Yes| J[Unlock: calicoctl datastore migrate unlock]
+    I -->|No| K[Investigate partial import]
 ```
 
 ## Operational Checklist
@@ -66,4 +71,4 @@ After import:
 
 ## Conclusion
 
-Calico datastore export and import operations require careful verification at both ends: confirm resource counts before and after, verify connectivity and policy enforcement after import, and store exports encrypted in access-controlled storage. Regular automated exports with monthly restore testing ensure that disaster recovery is not just theoretically possible but practically verified.
+Calico datastore export and import operations require careful verification at both ends: confirm resource counts before and after, verify connectivity and policy enforcement after import, and store migration exports encrypted in access-controlled storage. Regular test migrations ensure that disaster recovery procedures are not just theoretically possible but practically verified.
