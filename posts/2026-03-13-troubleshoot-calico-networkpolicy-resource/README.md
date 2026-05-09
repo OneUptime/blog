@@ -27,10 +27,10 @@ NetworkPolicy troubleshooting in Calico requires understanding the policy evalua
 # Check all policies that apply to the destination pod
 
 kubectl get pod backend -n production --show-labels
-calicoctl get networkpolicies -n production | grep "app == 'backend'"
+calicoctl get networkpolicies -n production -o wide | grep "app == 'backend'"
 
 # Check policy order - is there a lower-order Allow that fires first?
-calicoctl get networkpolicies -n production -o wide | sort -k3 -n
+calicoctl get networkpolicies -n production -o wide | sort -k2,2n
 ```
 
 ```mermaid
@@ -43,13 +43,13 @@ graph TD
     F -->|Not programmed| G[Restart Felix on affected node]
 ```
 
-**Common fix**: Add a more specific allow policy with lower order than the catch-all allow.
+**Common fix**: Add a more specific deny policy or rule with lower order than the catch-all allow.
 
 ## Issue 2: Policy Selector Not Matching
 
 ```bash
 # Test selector matching
-calicoctl get pods -n production -l "app == 'backend'"
+kubectl get pods -n production -l app=backend --show-labels
 
 # If no pods returned, labels may be wrong
 kubectl get pods -n production --show-labels | grep backend
@@ -95,7 +95,7 @@ kubectl exec -n production frontend -- nc -zv backend 8080   # TCP test
 ```bash
 # Check if another tier's policy is passing traffic before your tier
 calicoctl get tiers
-calicoctl get globalnetworkpolicies -o wide | sort -k4 -n
+calicoctl get globalnetworkpolicies -o wide | sort -k2,2n
 # Look for lower-order policies in higher-priority tiers that might allow traffic first
 ```
 
@@ -107,7 +107,7 @@ Note: Calico policy changes do not immediately affect established TCP connection
 # If a denial policy is applied but traffic still flows:
 # Existing TCP connections may continue until they timeout or are closed
 # Force new connections to test the policy
-kubectl exec frontend -- wget http://backend:8080  # New connection
+kubectl exec -n production frontend -- wget http://backend:8080  # New connection
 ```
 
 ## Conclusion
