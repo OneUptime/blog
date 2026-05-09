@@ -24,7 +24,7 @@ The operator adds its own layer of potential failures: incorrect Installation CR
 
 ```bash
 kubectl get tigerastatus
-kubectl describe tigerastatus calico
+kubectl describe tigerastatus calico-windows
 ```
 
 Look for specific error messages in the status conditions.
@@ -49,7 +49,10 @@ kubectl describe pod -n calico-system <calico-node-windows-pod>
 ## Step 4: Read Windows Pod Logs
 
 ```bash
-kubectl logs -n calico-system <calico-node-windows-pod> --tail=50
+kubectl logs -n calico-system <calico-node-windows-pod> -c node --tail=50
+kubectl logs -n calico-system <calico-node-windows-pod> -c felix --tail=50
+kubectl logs -n calico-system <calico-node-windows-pod> -c confd --tail=50
+kubectl logs -n calico-system <calico-node-windows-pod> -c install-cni --tail=50
 ```
 
 ## Step 5: Diagnose HNS Issues on Windows
@@ -57,26 +60,29 @@ kubectl logs -n calico-system <calico-node-windows-pod> --tail=50
 If the pod logs indicate HNS errors:
 
 ```powershell
+Import-Module -DisableNameChecking C:\CalicoWindows\libs\hns\hns.psm1
+
 # Check HNS service status
 
 Get-Service HNS
 Restart-Service HNS -Force
 
-# Check for conflicting HNS networks
+# Check for existing HNS networks
 Get-HnsNetwork
-# Remove any networks with conflicting CIDRs
-Get-HnsNetwork | Where-Object { $_.Name -like "*flannel*" } | Remove-HnsNetwork
+# After draining the node, remove a stale Calico HNS network if it has conflicting settings
+Get-HnsNetwork | Where-Object { $_.Name -eq "Calico" } | Remove-HnsNetwork
 ```
 
-## Step 6: Verify Windows Node Annotations
+## Step 6: Verify Windows Operator Configuration
 
-The operator annotates Windows nodes with their Calico configuration. Check for missing annotations.
+The operator uses the Installation resource and the API server endpoint ConfigMap for Windows node configuration. Check for missing Windows settings.
 
 ```bash
-kubectl get node <windows-node> -o yaml | grep -A10 "annotations"
+kubectl get installation default -o yaml | grep -A20 "windowsDataplane"
+kubectl get configmap -n tigera-operator kubernetes-services-endpoint -o yaml
 ```
 
-If operator annotations are missing, the operator may not have successfully reconciled the Windows node.
+If `windowsDataplane: HNS`, `serviceCIDRs`, or the API server endpoint values are missing, the operator may not have successfully reconciled the Windows configuration.
 
 ## Step 7: Check Windows Firewall
 
