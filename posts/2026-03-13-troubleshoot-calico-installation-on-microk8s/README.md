@@ -10,9 +10,9 @@ Description: A guide to diagnosing and resolving common Calico installation and 
 
 ## Introduction
 
-Calico installation issues on MicroK8s can arise from snap package conflicts, networking configuration problems, or hardware-specific limitations. The MicroK8s add-on system abstracts much of the Calico installation process, but issues can still occur especially on machines with custom network configurations or restricted internet access.
+Calico installation issues on MicroK8s can arise from snap package conflicts, networking configuration problems, or hardware-specific limitations. MicroK8s installs Calico as its default CNI, but issues can still occur especially on machines with custom network configurations or restricted internet access.
 
-Common symptoms include the `microk8s enable calico` command hanging, Calico pods failing to start after enabling the add-on, or nodes remaining in `NotReady` state. The MicroK8s-specific log locations and diagnostic tools differ slightly from standard Kubernetes, requiring knowledge of MicroK8s's architecture.
+Common symptoms include Calico pods failing to start after MicroK8s installation or restart, networking failing after CNI changes, or nodes remaining in `NotReady` state. The MicroK8s-specific log locations and diagnostic tools differ slightly from standard Kubernetes, requiring knowledge of MicroK8s's architecture.
 
 This guide covers the most common Calico issues on MicroK8s and provides step-by-step diagnostic and remediation procedures.
 
@@ -50,18 +50,13 @@ sudo journalctl -u snap.microk8s.daemon-containerd --since "1 hour ago" | tail -
 
 If MicroK8s's default Calico CIDR `10.1.0.0/16` conflicts with existing network ranges:
 
+Edit `/var/snap/microk8s/current/args/cni-network/cni.yaml` and change `CALICO_IPV4POOL_CIDR` to the desired pod CIDR. Also edit `/var/snap/microk8s/current/args/kube-proxy` and set `--cluster-cidr` to the same range. Then re-apply Calico and restart MicroK8s:
+
 ```bash
-calicoctl delete ippool default-ipv4-ippool
-calicoctl apply -f - <<EOF
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: default-ipv4-ippool
-spec:
-  cidr: 172.16.0.0/16
-  ipipMode: Always
-  natOutgoing: true
-EOF
+microk8s kubectl apply -f /var/snap/microk8s/current/args/cni-network/cni.yaml
+sudo snap restart microk8s
+microk8s kubectl delete ippools default-ipv4-ippool --ignore-not-found
+microk8s kubectl rollout restart daemonset/calico-node -n kube-system
 ```
 
 ## Step 5: Resolve DNS Issues
@@ -73,18 +68,18 @@ microk8s kubectl rollout restart deployment coredns -n kube-system
 microk8s kubectl logs -n kube-system -l k8s-app=kube-dns --tail=20
 ```
 
-## Step 6: Re-enable Calico Add-On
+## Step 6: Re-apply the Calico Manifest
 
-If the add-on is in a broken state:
+If the CNI manifest is in a broken state, restore or edit the MicroK8s Calico manifest and re-apply it:
 
 ```bash
-microk8s disable calico
-microk8s enable calico
+microk8s kubectl apply -f /var/snap/microk8s/current/args/cni-network/cni.yaml
+microk8s kubectl rollout restart daemonset/calico-node -n kube-system
 ```
 
 ## Step 7: Check System Requirements
 
-Ensure the host kernel supports required modules:
+Ensure the host kernel supports the module required for the configured Calico encapsulation mode. MicroK8s uses VXLAN by default; IPIP is only needed if you have configured Calico to use IP-in-IP:
 
 ```bash
 lsmod | grep ipip
@@ -97,8 +92,8 @@ sudo modprobe vxlan
 
 ```bash
 sudo snap remove microk8s
-sudo snap install microk8s --classic --channel=1.28/stable
-microk8s enable calico
+sudo snap install microk8s --classic
+microk8s status --wait-ready
 ```
 
 ## Conclusion
