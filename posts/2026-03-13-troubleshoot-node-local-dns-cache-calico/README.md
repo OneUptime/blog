@@ -10,9 +10,9 @@ Description: Diagnose and fix NodeLocal DNSCache issues in Calico clusters, incl
 
 ## Introduction
 
-NodeLocal DNSCache failures cause DNS resolution failures for all pods on the affected node, which manifests as application-level connection failures and timeout errors. Because DNS is used for almost every network connection in Kubernetes, a failed DNS cache pod can effectively take down all application pods on a node.
+NodeLocal DNSCache failures can cause DNS resolution failures for pods on the affected node, which manifests as application-level connection failures and timeout errors. Because DNS is used for almost every network connection in Kubernetes, a failed DNS cache pod can effectively take down application pods that depend on it on a node.
 
-Common failure modes include: network policy blocking traffic to 169.254.20.10, the cache pod crashing due to iptables conflicts with Calico, or the cache falling back to CoreDNS due to connectivity issues. Troubleshooting requires checking both the DNS cache pod health and the Calico network policy configuration.
+Common failure modes include: network policy blocking traffic to 169.254.20.10, the cache pod crashing due to iptables conflicts with Calico, or the cache failing to forward queries to CoreDNS due to connectivity issues. Troubleshooting requires checking both the DNS cache pod health and the Calico network policy configuration.
 
 ## Prerequisites
 
@@ -45,8 +45,10 @@ kubectl exec dns-debug -- nslookup google.com
 
 ```bash
 kubectl exec dns-debug -- cat /etc/resolv.conf
-# Should show: nameserver 169.254.20.10
-# If it shows kube-dns ClusterIP, NodeLocal DNS is not active
+# In IPVS mode, or when kubelet --cluster-dns is set to the local address:
+# nameserver 169.254.20.10
+# In iptables mode, the kube-dns ClusterIP can still be valid because
+# NodeLocal DNSCache listens on both the kube-dns service IP and 169.254.20.10.
 ```
 
 ## Diagnose Calico Policy Blocking DNS
@@ -55,8 +57,8 @@ kubectl exec dns-debug -- cat /etc/resolv.conf
 # Check for denied traffic to 169.254.20.10
 kubectl logs -n calico-system ds/calico-node | grep "169.254.20.10"
 
-# Try pinging the DNS cache IP from pod
-kubectl exec dns-debug -- ping -c 3 169.254.20.10
+# Test DNS directly against the node-local address
+kubectl exec dns-debug -- nslookup kubernetes.default.svc.cluster.local 169.254.20.10
 
 # Check iptables for any REJECT rules
 iptables -L OUTPUT -n | grep "169.254"
