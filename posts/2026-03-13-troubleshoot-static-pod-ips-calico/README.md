@@ -31,12 +31,26 @@ Configure a pod or StatefulSet with a static IP:
 ```yaml
 # static-ip-statefulset.yaml - StatefulSet with static IP via Calico IPAM annotation
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: production
+spec:
+  clusterIP: None
+  selector:
+    app: database
+  ports:
+    - name: postgres
+      port: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: database
   namespace: production
 spec:
+  serviceName: database
   replicas: 1
   selector:
     matchLabels:
@@ -58,11 +72,14 @@ spec:
 ```
 
 ```bash
+# Create the namespace if it does not already exist
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
+
 # Apply the StatefulSet
 kubectl apply -f static-ip-statefulset.yaml
 
 # Verify the pod received the static IP
-kubectl get pod database-0 -o wide
+kubectl get pod database-0 -n production -o wide
 ```
 
 ## Step 2: Reserve the Static IP to Prevent Dynamic Allocation
@@ -102,7 +119,7 @@ Investigate IP assignment failures:
 
 ```bash
 # Check pod events for IPAM conflict messages
-kubectl describe pod database-0 | grep -A10 "Events:"
+kubectl describe pod database-0 -n production | grep -A10 "Events:"
 
 # Determine which pod currently holds the requested IP
 STATIC_IP="10.244.10.50"
@@ -124,21 +141,21 @@ Test IP persistence:
 
 ```bash
 # Record the current IP
-kubectl get pod database-0 -o wide
+kubectl get pod database-0 -n production -o wide
 
 # Delete the pod (StatefulSet will recreate it)
-kubectl delete pod database-0
+kubectl delete pod database-0 -n production
 
 # Wait for the pod to restart
-kubectl wait --for=condition=ready pod/database-0 --timeout=120s
+kubectl wait --for=condition=ready pod/database-0 -n production --timeout=120s
 
 # Verify the pod received the same static IP
-kubectl get pod database-0 -o wide
+kubectl get pod database-0 -n production -o wide
 
 # Test connectivity to the pod via its static IP (should work after restart)
-kubectl run ip-test --image=nicolaka/netshoot --restart=Never -- sleep 300
-kubectl exec ip-test -- ping -c 3 10.244.10.50
-kubectl delete pod ip-test
+kubectl run ip-test -n production --image=nicolaka/netshoot --restart=Never -- sleep 300
+kubectl exec ip-test -n production -- ping -c 3 10.244.10.50
+kubectl delete pod ip-test -n production
 ```
 
 ## Best Practices
