@@ -28,7 +28,7 @@ The key principle for troubleshooting a new installation is to start from the bo
 kubectl get pods -n kube-system -l k8s-app=cilium
 
 # Check operator
-kubectl get pods -n kube-system -l name=cilium-operator
+kubectl get deployment -n kube-system cilium-operator
 
 # Describe any failing pod
 kubectl describe pod -n kube-system cilium-xxxxx | tail -30
@@ -61,7 +61,7 @@ kubectl exec -n kube-system cilium-xxxxx -- mount | grep bpf
 kubectl get pods --all-namespaces -o wide | grep "<none>"
 
 # Check IPAM allocation
-kubectl exec -n kube-system ds/cilium -- cilium ip list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg ip list
 
 # Check CiliumNode resources
 kubectl get CiliumNode
@@ -77,29 +77,29 @@ kubectl logs -n kube-system deploy/cilium-operator | grep -i "ipam\|cidr"
 cilium connectivity test
 
 # Check if kube-proxy replacement is configured correctly
-kubectl exec -n kube-system ds/cilium -- cilium status | grep -i "kube-proxy"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep -i "kube-proxy"
 
 # Test pod-to-service connectivity
 kubectl run test-pod --image=busybox --restart=Never -it --rm -- \
   wget -qO- http://kubernetes.default.svc.cluster.local
 
 # Check MTU
-kubectl exec -n kube-system ds/cilium -- cilium status | grep -i mtu
-ip link show | grep mtu
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep -i mtu
+kubectl exec -n kube-system ds/cilium -- ip link show | grep mtu
 ```
 
 ## Step 5: CNI Configuration Issues
 
 ```bash
 # Check CNI configuration
-ls -la /etc/cni/net.d/
-cat /etc/cni/net.d/05-cilium.conflist
+kubectl exec -n kube-system ds/cilium -- ls -la /host/etc/cni/net.d/
+kubectl exec -n kube-system ds/cilium -- cat /host/etc/cni/net.d/05-cilium.conflist
 
 # Check for conflicting CNI configurations
-ls -la /etc/cni/net.d/
+kubectl exec -n kube-system ds/cilium -- ls -la /host/etc/cni/net.d/
 
-# If multiple CNI configs exist, ensure Cilium's is selected
-# CNI configs are selected by alphabetical order - lower numbers win
+# By default, Cilium removes or backs up non-Cilium CNI configs when cni.exclusive=true
+# If you disabled that behavior, ensure the active CNI config is intentional
 ```
 
 ## Step 6: Collect Diagnostics and Get Help
@@ -110,7 +110,7 @@ cilium sysdump --output-filename new-install-debug
 
 # Check Cilium version compatibility with Kubernetes
 cilium version
-kubectl version --short
+kubectl version
 
 # Review installation parameters
 helm get values cilium -n kube-system 2>/dev/null || \
