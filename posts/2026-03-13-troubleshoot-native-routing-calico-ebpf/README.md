@@ -10,14 +10,14 @@ Description: Diagnose native routing failures in Calico eBPF mode including map 
 
 ## Introduction
 
-Calico's eBPF dataplane provides native routing that bypasses much of the Linux kernel's traditional networking stack, resulting in significantly lower latency and higher throughput compared to the iptables-based dataplane. eBPF programs are loaded into the kernel and intercept network packets at the earliest possible point, performing routing decisions and policy enforcement without the overhead of traversing multiple kernel layers.
+Calico's eBPF dataplane provides native routing that bypasses much of the Linux kernel's traditional networking stack, resulting in significantly lower latency and higher throughput compared to the iptables-based dataplane. eBPF programs are loaded into the kernel and attached to networking hooks such as TC, performing routing decisions and policy enforcement without the overhead of traversing multiple iptables chains.
 
 Native routing in eBPF mode eliminates the need for VXLAN or IP-in-IP encapsulation in many scenarios, as eBPF can directly program routes and perform NAT at packet arrival time. This makes it particularly valuable for latency-sensitive workloads and high-throughput microservices.
 
 ## Prerequisites
 
-- Linux kernel 5.3+ (5.8+ recommended for full feature support)
-- Calico v3.13+ with eBPF support
+- Linux kernel 5.10+ for current Calico Open Source eBPF support, or Red Hat kernel 4.18.0-305+ with the required backports
+- A current supported Calico release with eBPF dataplane support
 - kube-proxy disabled or replaced by Calico eBPF
 - kubectl and calicoctl access
 
@@ -28,8 +28,11 @@ Native routing in eBPF mode eliminates the need for VXLAN or IP-in-IP encapsulat
 
 kubectl patch ds -n kube-system kube-proxy -p   '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
 
-# Enable eBPF mode
-calicoctl patch felixconfiguration default --type merge   --patch '{"spec":{"bpfEnabled":true,"bpfDisableUnprivileged":true}}'
+# Enable eBPF mode for manifest-based installations
+calicoctl patch felixconfiguration default --type merge   --patch '{"spec":{"bpfEnabled":true}}'
+
+# For operator-based installations, set the Linux dataplane to BPF
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
 ```
 
 ## Verify eBPF Mode
@@ -38,12 +41,16 @@ calicoctl patch felixconfiguration default --type merge   --patch '{"spec":{"bpf
 # Check eBPF programs loaded on a node
 kubectl exec -n calico-system ds/calico-node -- bpftool prog list | grep calico
 
-# Verify kube-proxy replacement
-kubectl exec -n calico-system ds/calico-node -- calico-node -bpf-log-level Debug
+# Verify that service NAT entries are programmed by Calico's BPF dataplane
+kubectl exec -n calico-system ds/calico-node -- calico-node -bpf nat dump
+
+# For packet-level eBPF program logs, enable bpfLogLevel and read the trace log
+calicoctl patch felixconfiguration default --type merge --patch '{"spec":{"bpfLogLevel":"Debug"}}'
+kubectl exec -n calico-system ds/calico-node -- bpftool prog tracelog
 
 # Test connectivity
 kubectl run test1 --image=busybox -- sleep 3600
-kubectl exec test1 -- wget -O- http://kubernetes.default.svc
+kubectl exec test1 -- wget -qO- --no-check-certificate https://kubernetes.default.svc/version
 ```
 
 ## Benchmark eBPF vs iptables
