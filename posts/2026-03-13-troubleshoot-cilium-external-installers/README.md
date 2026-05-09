@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving issues when Cilium has been ins
 
 ## Introduction
 
-Cilium can be installed through various external tools and cluster provisioners beyond the official `cilium` CLI and Helm chart. Tools like kops, Kubespray, Talos Linux, Cluster API, and cloud-specific provisioners all include Cilium as a networking option. However, these installers may use specific Cilium versions, configurations, or deployment patterns that differ from the official installation, creating unique troubleshooting scenarios.
+Cilium can be installed through various external tools and cluster provisioners beyond the official `cilium` CLI and Helm chart. Tools like kops, Kubespray, Talos Linux, some Cluster API providers, and cloud-specific provisioners include Cilium as a networking option. However, these installers may use specific Cilium versions, configurations, or deployment patterns that differ from the official installation, creating unique troubleshooting scenarios.
 
 When Cilium is installed via an external tool, the configuration is often managed by the tool's lifecycle, meaning manual changes can be overwritten. Understanding how the installer manages Cilium and how to apply supported customizations is key to effective troubleshooting.
 
@@ -31,13 +31,13 @@ Determine the installation method to understand the management model.
 cilium version
 kubectl get pods -n kube-system -l k8s-app=cilium -o yaml | grep image
 
-# Look for annotations indicating the installer
+# Look for labels or annotations indicating the installer
 kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "installer|provisioner|managed-by"
 
 # Check if Cilium is managed by Helm
 helm list --all-namespaces | grep cilium
 
-# Check if Cilium is deployed as a kops addon
+# Check if Cilium is deployed by an external installer
 # (Look for kops-specific labels)
 kubectl get daemonset -n kube-system cilium -o yaml | grep -E "kops|kubespray|talos"
 ```
@@ -54,7 +54,7 @@ cilium status --wait
 kubectl get pods -n kube-system | grep -E "cilium|hubble"
 
 # Identify pods that are not running
-kubectl get pods -n kube-system -l k8s-app=cilium | grep -v Running
+kubectl get pods -n kube-system -l k8s-app=cilium --field-selector=status.phase!=Running
 
 # Check events for issues
 kubectl get events -n kube-system | grep -i cilium | tail -20
@@ -90,10 +90,11 @@ Make changes through the installer's supported mechanism to avoid drift.
 
 # For Kubespray, modify Cilium variables
 # Edit: inventory/mycluster/group_vars/k8s_cluster/k8s-net-cilium.yml
-# Then run: ansible-playbook -i inventory/mycluster upgrade-cluster.yml
+# Then run: ansible-playbook -i inventory/mycluster/inventory.ini upgrade-cluster.yml -b
 
 # For Talos Linux, modify the machine config
-# talosctl gen config with cilium configuration in extraArgs
+# Set cluster.network.cni.name to none, then manage Cilium with Helm/Cilium manifests,
+# inlineManifests, extraManifests, or a bootstrap job as documented by Talos.
 
 # Verify the change was applied without drift
 kubectl get configmap cilium-config -n kube-system -o yaml | grep <your-setting>
@@ -113,7 +114,7 @@ cilium connectivity test 2>&1 | grep -E "FAIL|ERROR"
 # Validate DNS works through Cilium
 kubectl run dns-test --rm -it --image=busybox -- nslookup kubernetes.default
 
-# Test network policy enforcement
+# Validate that a NetworkPolicy object is accepted by the Kubernetes API
 kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
