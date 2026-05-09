@@ -76,19 +76,21 @@ kubectl rollout restart deployment/calico-kube-controllers -n calico-system
 
 ## Issue 3: Profile Rules Creating Unexpected Allow
 
-**Symptom**: Traffic is allowed that shouldn't be. NetworkPolicy is denying the traffic but it still gets through.
+**Symptom**: Traffic is allowed that shouldn't be. No NetworkPolicy rule appears to allow the traffic, but it still gets through.
 
 **Diagnosis:**
 
 ```bash
-# Check if the profile has permissive rules that fire after NetworkPolicy
+# Check if the profile has deprecated permissive rules
 calicoctl get profile kns.production -o yaml | grep -A5 "ingress:\|egress:"
 
-# Profile rules fire AFTER NetworkPolicies
-# A profile with 'Allow all egress' will override a NetworkPolicy deny
+# NetworkPolicy resources take precedence over profile resources.
+# A matching NetworkPolicy Deny is not overridden by a profile Allow.
+# However, permissive profile rules can still allow traffic that is not
+# otherwise selected and denied by NetworkPolicy.
 ```
 
-**Fix**: Remove overly permissive rules from the namespace profile:
+**Fix**: Remove overly permissive deprecated rules from the namespace profile:
 
 ```bash
 calicoctl patch profile kns.production \
