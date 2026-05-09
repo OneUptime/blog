@@ -10,9 +10,9 @@ Description: Test and validate Kubernetes and Calico network policies on IBM Kub
 
 ## Introduction
 
-IBM Kubernetes Service uses Calico as its full CNI, giving IKS clusters access to both standard Kubernetes NetworkPolicy and Calico's extended GlobalNetworkPolicy resources. IBM also supports Calico's tiered policies, which allow you to assign priorities to policy tiers for ordered evaluation - a feature particularly useful in enterprise multi-team environments.
+IBM Kubernetes Service includes Calico networking, giving IKS clusters access to both standard Kubernetes NetworkPolicy and Calico's extended policy resources. Calico also supports tiered policies, which allow you to assign priorities to policy tiers for ordered evaluation - a feature particularly useful in enterprise multi-team environments.
 
-Testing network policies on IKS should cover both standard Kubernetes NetworkPolicy resources and Calico GlobalNetworkPolicy resources. IBM's IKS documentation recommends using Calico GlobalNetworkPolicy for cluster-wide default policies and namespace-scoped NetworkPolicy for application-level isolation.
+Testing network policies on IKS should cover both standard Kubernetes NetworkPolicy resources and Calico GlobalNetworkPolicy resources. IBM's IKS documentation recommends Kubernetes NetworkPolicy for pod-to-pod application isolation, with Calico policies available for advanced scenarios.
 
 ## Prerequisites
 
@@ -29,15 +29,15 @@ kubectl label namespace iks-app purpose=application
 kubectl label namespace iks-data purpose=datastore
 
 kubectl run app --image=busybox -n iks-app --labels=tier=app -- sleep 3600
-kubectl run db --image=nginx -n iks-data --labels=tier=db --port=5432
-kubectl expose pod db --port=5432 -n iks-data --name=db-svc
+kubectl run db --image=nginx -n iks-data --labels=tier=db --port=80
+kubectl expose pod db --port=80 -n iks-data --name=db-svc
 ```
 
 ## Step 2: Verify Pre-Policy Connectivity
 
 ```bash
 kubectl exec -n iks-app app -- \
-  wget --timeout=5 -qO- http://db-svc.iks-data.svc.cluster.local:5432
+  wget --timeout=5 -qO- http://db-svc.iks-data.svc.cluster.local:80
 ```
 
 ## Step 3: Apply Calico GlobalNetworkPolicy Default Deny
@@ -49,7 +49,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: iks-default-deny
 spec:
-  selector: "!has(projectcalico.org/system-pod)"
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   types:
   - Ingress
   - Egress
@@ -69,7 +69,7 @@ EOF
 
 ```bash
 kubectl exec -n iks-app app -- \
-  wget --timeout=5 -qO- http://db-svc.iks-data.svc.cluster.local:5432
+  wget --timeout=5 -qO- http://db-svc.iks-data.svc.cluster.local:80
 ```
 
 Should time out.
@@ -94,7 +94,7 @@ spec:
           purpose: application
     ports:
     - protocol: TCP
-      port: 5432
+      port: 80
 EOF
 ```
 
@@ -120,7 +120,7 @@ spec:
           purpose: datastore
     ports:
     - protocol: TCP
-      port: 5432
+      port: 80
   - ports:
     - protocol: UDP
       port: 53
@@ -131,7 +131,7 @@ EOF
 
 ```bash
 kubectl exec -n iks-app app -- \
-  wget -qO- http://db-svc.iks-data.svc.cluster.local:5432
+  wget -qO- http://db-svc.iks-data.svc.cluster.local:80
 ```
 
 Should now succeed.
