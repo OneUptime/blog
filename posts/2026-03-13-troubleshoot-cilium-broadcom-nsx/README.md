@@ -30,17 +30,17 @@ MTU mismatches are the most common issue in NSX + Cilium environments.
 ```bash
 # Check Cilium's configured MTU
 
-kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "mtu|tunnel"
+kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "mtu|routing-mode|tunnel-protocol"
 
 # Check the MTU of the node's primary interface (managed by NSX)
-kubectl debug node/<node-name> -it --image=ubuntu -- ip link show eth0
+kubectl debug node/<node-name> -it --image=ubuntu -- ip link show <primary-interface>
 
 # NSX uses Geneve encapsulation which adds ~50 bytes of overhead
 # If NSX segment MTU is 1500, node effective MTU is ~1450
 # Cilium should be configured to use 1450 or less
 
 # Test MTU with large packets
-kubectl run mtu-test --rm -it --image=busybox -- \
+kubectl run mtu-test --rm -it --restart=Never --image=nicolaka/netshoot --command -- \
   ping -s 1400 -M do <pod-ip>
 ```
 
@@ -53,8 +53,8 @@ NSX distributed firewall (DFW) rules may block Cilium's required protocols.
 # (NSX DFW rules are inspected via NSX Manager UI or API)
 
 # Test if pods can communicate across different NSX segments
-kubectl run nsx-test-1 --image=busybox --overrides='{"spec":{"nodeName":"<node-on-segment-A>"}}' -- sleep 3600
-kubectl run nsx-test-2 --image=busybox --overrides='{"spec":{"nodeName":"<node-on-segment-B>"}}' -- sleep 3600
+kubectl run nsx-test-1 --restart=Never --image=busybox --overrides='{"spec":{"nodeName":"<node-on-segment-A>"}}' --command -- sleep 3600
+kubectl run nsx-test-2 --restart=Never --image=busybox --overrides='{"spec":{"nodeName":"<node-on-segment-B>"}}' --command -- sleep 3600
 
 # Test cross-segment connectivity
 kubectl exec nsx-test-1 -- ping -c 3 <pod-ip-on-segment-B>
@@ -63,7 +63,7 @@ kubectl exec nsx-test-1 -- ping -c 3 <pod-ip-on-segment-B>
 CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium monitor --type drop
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg monitor --type drop
 ```
 
 ## Step 3: Diagnose IP Address Management Conflicts
@@ -75,10 +75,10 @@ Investigate conflicts between NSX IPAM and Cilium IPAM.
 kubectl get configmap cilium-config -n kube-system -o yaml | grep ipam
 
 # Verify pod IPs don't overlap with NSX-managed IP ranges
-kubectl get pods --all-namespaces -o wide | awk '{print $8}' | sort -u
+kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}' | sort -u
 
 # Check NSX logical port configuration for node VMs
-# (Via NSX Manager: Networking -> Logical Switches -> Ports)
+# (Via NSX Manager: Networking -> Segments -> Segment Ports)
 
 # Confirm that Cilium pod CIDR does not conflict with NSX segment subnets
 kubectl cluster-info dump | grep -i "pod-cidr\|cluster-cidr"
@@ -89,11 +89,11 @@ kubectl cluster-info dump | grep -i "pod-cidr\|cluster-cidr"
 Confirm that Cilium's eBPF programs load correctly on NSX-backed VMs.
 
 ```bash
-# Verify eBPF programs are loaded (requires kernel 4.9+)
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium status
+# Verify eBPF programs are loaded (requires kernel 5.10+ or an equivalent vendor kernel)
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg status
 
 # Check if NSX's virtual NIC driver supports the required BPF hooks
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium debuginfo | grep -i "driver\|nic"
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg debuginfo | grep -i "driver\|nic"
 
 # Run Cilium connectivity test
 cilium connectivity test
@@ -107,24 +107,24 @@ kubectl logs -n kube-system ${CILIUM_POD} | grep -E "ERROR|driver|xdp"
 Tune Cilium configuration for NSX Geneve overlay environments.
 
 ```bash
-# Update Cilium to disable its own tunnel and rely on NSX routing
+# Update Cilium to use native routing when NSX can route PodCIDRs
 # This avoids double encapsulation (NSX Geneve + Cilium VXLAN)
 
 kubectl patch configmap cilium-config -n kube-system --type merge \
-  --patch '{"data":{"tunnel":"disabled","auto-direct-node-routes":"true"}}'
+  --patch '{"data":{"routing-mode":"native","ipv4-native-routing-cidr":"<pod-cidr>","auto-direct-node-routes":"true"}}'
 
 # Restart Cilium to apply changes
 kubectl rollout restart daemonset -n kube-system cilium
 
 # Verify the tunnel mode change
-kubectl get configmap cilium-config -n kube-system -o yaml | grep tunnel
+kubectl get configmap cilium-config -n kube-system -o yaml | grep routing-mode
 ```
 
 ## Best Practices
 
 - Align Cilium's MTU with NSX segment MTU minus encapsulation overhead
 - Create NSX DFW exclusion rules for Cilium's health check traffic
-- Avoid double encapsulation by disabling Cilium's tunnel mode in NSX overlay environments
+- Avoid double encapsulation by using Cilium native routing when NSX can route PodCIDRs
 - Test pod connectivity after every NSX configuration change
 - Coordinate Cilium upgrades with NSX version compatibility testing
 
