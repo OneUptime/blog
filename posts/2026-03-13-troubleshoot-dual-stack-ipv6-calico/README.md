@@ -31,25 +31,36 @@ calicoctl get bgpconfiguration -o yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: example-pool
+  name: example-ipv4-pool
 spec:
   cidr: 10.48.0.0/16
+  natOutgoing: true
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: example-ipv6-pool
+spec:
+  cidr: 2001:db8:48::/64
   natOutgoing: true
 ```
 
 ## Verify
 
 ```bash
-kubectl get svc -A
-calicoctl ipam check
+kubectl get pods -A -o wide
+kubectl get svc -A -o wide
+calicoctl ipam show --show-blocks
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Architecture
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> SERVICE[Service IP]
-    SERVICE --> POD[Pod]
+    IPV4[IPv4 IPPool] --> POD[Pod IPs]
+    IPV6[IPv6 IPPool] --> POD
+    SERVICE[Dual-stack Service] --> POD
 ```
 
 ## Conclusion
