@@ -12,7 +12,7 @@ Description: Diagnose and resolve common Calico installation issues on single-no
 
 Single-node Kubernetes clusters bootstrapped with kubeadm can encounter Calico installation issues related to the kubeadm network configuration, control plane taint, and network interface detection. Since all components run on one machine, problems that would be distributed across nodes in a multi-node cluster are concentrated and easier to diagnose.
 
-Common issues on single-node clusters include the node remaining `NotReady` after applying the Calico manifest, CoreDNS pods staying `Pending`, and Calico detecting the wrong network interface for IP assignment. The control plane taint is a particularly common oversight that causes workload pods (including Calico) to remain unscheduled.
+Common issues on single-node clusters include the node remaining `NotReady` after applying the Calico manifest, CoreDNS pods staying `Pending`, and Calico detecting the wrong network interface for IP assignment. The control plane taint is a particularly common oversight that causes regular workload pods to remain unscheduled.
 
 This guide provides targeted troubleshooting steps for Calico on single-node Kubernetes, organized by the most common failure modes.
 
@@ -34,7 +34,7 @@ Look at the `Conditions` and `Taints` sections in the node description.
 
 ## Step 2: Remove Control Plane Taint if Present
 
-If the node shows a `control-plane` taint, Calico pods cannot be scheduled:
+If the node shows a `control-plane` taint, regular workload pods cannot be scheduled on a single-node cluster:
 
 ```bash
 kubectl describe node | grep Taints
@@ -71,16 +71,30 @@ kubectl rollout restart daemonset calico-node -n kube-system
 Verify that the kubeadm pod CIDR matches Calico's IP pool:
 
 ```bash
-kubectl cluster-info dump | grep -i pod-cidr
+kubectl -n kube-system get configmap kubeadm-config -o yaml | grep -i podSubnet
 calicoctl get ippool -o yaml | grep cidr
 ```
 
-If mismatched, update the IP pool:
+If mismatched, create a replacement IP pool inside the kubeadm pod CIDR and disable the old pool. Use the same encapsulation settings as the old pool:
 
 ```bash
+cat > new-pool.yaml <<'EOF'
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: new-ipv4-pool
+spec:
+  cidr: 192.168.0.0/16
+  ipipMode: Always
+  natOutgoing: true
+EOF
+
+calicoctl create -f new-pool.yaml
 calicoctl patch ippool default-ipv4-ippool \
-  -p '{"spec":{"cidr":"192.168.0.0/16"}}'
+  --patch='{"spec":{"disabled":true}}'
 ```
+
+Then recreate affected pods so new allocations come from the replacement pool.
 
 ## Step 6: Check for Swap or Kernel Issues
 
