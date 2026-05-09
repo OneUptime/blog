@@ -76,13 +76,13 @@ kubectl apply -f network-policy.yaml
 Test the allowed client - this should succeed.
 
 ```bash
-kubectl exec -n policy-test allowed-client -- wget -qO- --timeout=5 http://server
+kubectl exec -n policy-test allowed-client -- wget -qO- -T 5 http://server
 ```
 
 Test the denied client - this should time out or be refused.
 
 ```bash
-kubectl exec -n policy-test denied-client -- wget -qO- --timeout=5 http://server || echo "Connection denied as expected"
+kubectl exec -n policy-test denied-client -- wget -qO- -T 5 http://server || echo "Connection denied as expected"
 ```
 
 ## Step 5: Inspect Calico Policy State
