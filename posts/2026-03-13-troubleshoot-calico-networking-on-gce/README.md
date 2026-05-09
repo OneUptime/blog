@@ -30,7 +30,7 @@ GCE's globally-distributed VPC means that routes and firewall rules apply at the
 # Check VPC routes for pod CIDRs
 
 gcloud compute routes list --filter="destRange~192.168" \
-  --format="table(name,destRange,nextHopInstance,nextHopInstanceZone)"
+  --format="table(name,destRange,nextHopInstance)"
 
 # If a zone's pods are failing, check if their node's pod CIDR has a VPC route
 calicoctl ipam show --show-blocks | grep worker-us-west1-a
@@ -65,7 +65,7 @@ gcloud compute routes create worker-z2-pods \
 
 ```bash
 gcloud compute firewall-rules describe allow-calico-vxlan \
-  --format="yaml(targetTags,targetServiceAccounts,targetResources)"
+  --format="yaml(targetTags,targetServiceAccounts)"
 ```
 
 If the rule uses `targetTags`, verify the new node has the correct tag:
@@ -96,14 +96,20 @@ gcloud compute instances describe worker-1 \
 
 **Resolution:**
 
-For most GCE machine types, can-ip-forward requires stopping the instance:
+You can update `canIpForward` on an existing instance by exporting the instance configuration, setting `canIpForward: true`, and applying it with `update-from-file`:
 
 ```bash
-gcloud compute instances stop worker-1 --zone us-central1-a
+gcloud compute instances export worker-1 \
+  --zone us-central1-a \
+  --destination worker-1.yaml
 
-# Update via Terraform or recreate with --can-ip-forward flag
-# There is no direct in-place update for canIpForward on existing instances
-# Best practice: use instance templates with canIpForward=true
+# Edit worker-1.yaml and set: canIpForward: true
+gcloud compute instances update-from-file worker-1 \
+  --zone us-central1-a \
+  --source worker-1.yaml \
+  --most-disruptive-allowed-action REFRESH
+
+# Best practice: set canIpForward=true in instance templates for new nodes
 ```
 
 ## Issue 4: VXLAN Mode Firewall Blocking
@@ -128,10 +134,10 @@ gcloud compute firewall-rules create allow-calico-vxlan-fix \
 
 ## Issue 5: Route Count Limit
 
-GCP VPC has a limit on custom static routes per network (default 250 per region). In large clusters, this can be exhausted:
+GCP VPC has a quota for custom static routes per VPC network. In large clusters, this can be exhausted:
 
 ```bash
-gcloud compute routes list --filter="network=k8s-network" | wc -l
+gcloud compute routes list --filter="network~'/k8s-network$'" | wc -l
 ```
 
 If approaching the limit, switch to VXLAN mode to eliminate the need for per-node routes:
