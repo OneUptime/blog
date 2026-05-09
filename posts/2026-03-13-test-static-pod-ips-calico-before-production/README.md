@@ -12,13 +12,13 @@ Description: A pre-production testing guide for validating static pod IP assignm
 
 Assigning static IP addresses to pods is a common requirement for stateful workloads, legacy integrations, and compliance-driven environments. However, static IP configurations can introduce subtle failures that only manifest under specific conditions-such as pod restarts, node failures, or IPAM state corruption.
 
-Testing static pod IP assignment before moving to production is essential to identify and resolve these edge cases. A thorough pre-production test covers IP assignment, persistence across restarts, conflict detection, and behavior during node failures.
+Testing static pod IP assignment before moving to production is essential to identify and resolve these edge cases. A thorough pre-production test covers IP assignment, persistence across restarts, conflict detection, and behavior during node evacuations.
 
 This guide provides a structured testing checklist and procedures for validating Calico static IP assignment in a staging environment before rolling out to production.
 
 ## Prerequisites
 
-- A staging Kubernetes cluster with Calico installed (mirroring production config)
+- A staging Kubernetes cluster with Calico installed and Calico IPAM enabled (mirroring production config)
 - `calicoctl` installed and configured
 - `kubectl` with cluster admin access
 - A dedicated IP pool for static IP testing
@@ -35,10 +35,14 @@ kind: IPPool
 metadata:
   name: staging-static-pool
 spec:
-  # Mirror the production CIDR for testing
+  # Mirror the production static CIDR for testing. This range must be within the cluster's pod CIDR.
   cidr: 10.200.10.0/24
   natOutgoing: true
   ipipMode: Always
+  # Reserve this pool for manual/static assignments so Calico does not automatically assign these addresses to other pods.
+  nodeSelector: "!all()"
+  allowedUses:
+  - Workload
 ```
 
 ```bash
@@ -99,9 +103,9 @@ kubectl run conflict-test \
 kubectl describe pod conflict-test | grep -A5 Events
 ```
 
-## Step 5: Test Node Failure Scenario
+## Step 5: Test Node Evacuation Scenario
 
-Simulate a node failure and verify the static IP is released and can be reassigned.
+Simulate a controlled node evacuation and verify the static IP is released and can be reassigned.
 
 ```bash
 # Cordon and drain the node hosting the static IP pod
@@ -119,11 +123,11 @@ kubectl get pod static-ip-test -o wide
 ## Best Practices
 
 - Always test static IP behavior in a staging environment before production rollout
-- Include pod restart and node failure scenarios in your test plan
+- Include pod restart and node evacuation scenarios in your test plan
 - Verify IPAM cleanup occurs when pods are deleted to prevent IP leaks
 - Document the static IP allocation map and store it in version control
 - Set up monitoring alerts for IPAM exhaustion in static IP pools
 
 ## Conclusion
 
-Pre-production testing of static pod IPs in Calico is a critical step toward reliable production deployments. By validating assignment, persistence, conflict detection, and failure recovery in a staging environment, you can deploy static IP configurations to production with confidence that edge cases have been identified and addressed.
+Pre-production testing of static pod IPs in Calico is a critical step toward reliable production deployments. By validating assignment, persistence, conflict detection, and evacuation recovery in a staging environment, you can deploy static IP configurations to production with confidence that edge cases have been identified and addressed.
