@@ -42,7 +42,7 @@ Common pod status issues and their causes:
 
 - `Pending` - the scheduler cannot place the pod, often due to strict anti-affinity with not enough distinct nodes available
 - `CrashLoopBackOff` - Typha is starting but crashing; check logs immediately
-- `ContainerCreating` - waiting on a Secret mount, usually TLS credentials that have not been created yet
+- `ContainerCreating` - waiting on a ConfigMap or Secret mount, usually TLS credentials that have not been created yet
 
 ---
 
@@ -64,12 +64,11 @@ Common Felix-to-Typha error patterns:
 # Error: "connection refused" on port 5473
 # Cause: Typha Service does not exist or has no ready endpoints
 kubectl get svc calico-typha -n kube-system
-kubectl get endpoints calico-typha -n kube-system
+kubectl get endpointslices -n kube-system -l kubernetes.io/service-name=calico-typha
 
 # Error: "certificate verify failed" or "tls: bad certificate"
-# Cause: mTLS misconfiguration - verify Felix and Typha share the same CA
-kubectl get secret calico-typha-tls -n kube-system -o yaml | grep ca.crt | head -1
-kubectl get secret calico-felix-tls -n kube-system -o yaml | grep ca.crt | head -1
+# Cause: mTLS misconfiguration - verify Felix and Typha use the same CA ConfigMap
+kubectl get configmap calico-typha-ca -n kube-system -o yaml | grep typhaca.crt | head -1
 
 # Error: "context deadline exceeded" connecting to Typha
 # Cause: NetworkPolicy blocking port 5473 between Felix and Typha
@@ -83,41 +82,40 @@ kubectl get networkpolicy -n kube-system
 TLS errors prevent Felix from connecting at all. Diagnose them step by step:
 
 ```bash
-# Verify the CA cert in both Secrets is identical by comparing fingerprints
-TYPHA_CA=$(kubectl get secret calico-typha-tls -n kube-system \
-  -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -noout -fingerprint -sha256)
-FELIX_CA=$(kubectl get secret calico-felix-tls -n kube-system \
-  -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -noout -fingerprint -sha256)
+# Verify the CA cert mounted by Typha and calico/node is the expected certificate
+TYPHA_CA=$(kubectl get configmap calico-typha-ca -n kube-system \
+  -o jsonpath='{.data.typhaca\.crt}' | openssl x509 -noout -fingerprint -sha256)
 
 echo "Typha CA fingerprint: $TYPHA_CA"
-echo "Felix CA fingerprint: $FELIX_CA"
-# These two lines must match exactly; if they differ, recreate one of the Secrets
+# If this is not the CA that signed both leaf certificates, recreate the ConfigMap and certificates
 
-# Check Typha server certificate CN matches typhaServerCN in FelixConfiguration
-kubectl get secret calico-typha-tls -n kube-system \
-  -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject
+# Check Typha server certificate CN matches FELIX_TYPHACN in calico-node
+kubectl get secret calico-typha-certs -n kube-system \
+  -o jsonpath='{.data.typha\.crt}' | base64 -d | openssl x509 -noout -subject
 # Expected: subject=CN=calico-typha
 
 # Check Felix client certificate CN matches TYPHA_CLIENTCN in Typha env vars
-kubectl get secret calico-felix-tls -n kube-system \
-  -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject
-# Expected: subject=CN=calico-felix
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d | openssl x509 -noout -subject
+# Expected: subject=CN=calico-node
 ```
 
 ---
 
 ## Step 4: Diagnose Connection Imbalance
 
-If some Typha pods carry significantly more Felix connections than others:
+If Prometheus metrics are enabled and some Typha pods carry significantly more Felix connections than others:
 
 ```bash
 # Check active connection count per Typha pod
 for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
   echo "=== $pod ==="
-  kubectl exec -n kube-system $pod -- wget -qO- http://localhost:9093/metrics 2>/dev/null \
+  kubectl exec -n kube-system $pod -- wget -qO- http://localhost:9091/metrics 2>/dev/null \
     | grep typha_connections_active
 done
 ```
+
+If you configured `TYPHA_PROMETHEUSMETRICSPORT` to a non-default port, use that port instead.
 
 If one pod has 50% or more connections than others, restart it to force Felix agents to reconnect and redistribute:
 
