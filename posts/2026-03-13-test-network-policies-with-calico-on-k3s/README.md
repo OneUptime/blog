@@ -31,8 +31,8 @@ kubectl create namespace analytics
 kubectl run sensor --image=busybox -n sensor-data \
   --labels=app=sensor,tier=edge -- sleep 3600
 kubectl run analytics --image=nginx -n analytics \
-  --labels=app=analytics,tier=processing --port=8080
-kubectl expose pod analytics --port=8080 -n analytics --name=analytics-svc
+  --labels=app=analytics,tier=processing --port=80
+kubectl expose pod analytics --port=80 -n analytics --name=analytics-svc
 ```
 
 Label namespaces:
@@ -46,7 +46,7 @@ kubectl label namespace analytics env=processing
 
 ```bash
 kubectl exec -n sensor-data sensor -- \
-  wget --timeout=5 -qO- http://analytics-svc.analytics.svc.cluster.local:8080
+  wget -T 5 -qO- http://analytics-svc.analytics.svc.cluster.local:80
 ```
 
 ## Step 3: Apply Default Deny for Analytics
@@ -86,7 +86,7 @@ spec:
           env: edge
     ports:
     - protocol: TCP
-      port: 8080
+      port: 80
   egress:
   - to: []
     ports:
@@ -99,7 +99,7 @@ EOF
 
 ```bash
 kubectl exec -n sensor-data sensor -- \
-  wget -qO- http://analytics-svc.analytics.svc.cluster.local:8080
+  wget -qO- http://analytics-svc.analytics.svc.cluster.local:80
 ```
 
 ## Step 6: Test Calico GlobalNetworkPolicy for K3s Edge
@@ -128,7 +128,7 @@ EOF
 
 ```bash
 kubectl exec -n sensor-data sensor -- \
-  wget --timeout=3 -qO- http://169.254.169.254/
+  wget -T 3 -qO- http://169.254.169.254/
 ```
 
 Should be denied.
