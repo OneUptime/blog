@@ -8,7 +8,7 @@ Description: Learn how to define and use secrets in Podman Compose files for mul
 
 ---
 
-> Podman Compose supports the secrets syntax from Docker Compose, letting you manage sensitive data declaratively in your multi-container application stack.
+Podman's `podman compose` command runs an external Compose provider such as Docker Compose or podman-compose. With a provider that supports Compose secrets, you can manage sensitive data declaratively in your multi-container application stack.
 
 When running multi-container applications with Podman Compose, you can define secrets in your compose file to securely deliver passwords, API keys, and other sensitive data to your services. This keeps credentials out of environment variables and image layers.
 
@@ -18,8 +18,6 @@ When running multi-container applications with Podman Compose, you can define se
 
 ```yaml
 # docker-compose.yml
-
-version: "3.8"
 
 services:
   web:
@@ -69,8 +67,6 @@ echo -n "my-api-key" | podman secret create api_key -
 
 ```yaml
 # docker-compose.yml using pre-existing Podman secrets
-version: "3.8"
-
 services:
   web:
     image: my-web-app:latest
@@ -89,8 +85,6 @@ secrets:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   nginx:
     image: nginx:latest
@@ -111,22 +105,21 @@ secrets:
     file: ./certs/server.key
 ```
 
-## Secrets as Environment Variables
+## Secrets with File Path Environment Variables
+
+Compose secrets are mounted as files. Many images and applications support `*_FILE` environment variables that point to those files.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
+    environment:
+      DATABASE_PASSWORD_FILE: /run/secrets/db_password
+      API_KEY_FILE: /run/secrets/api_key
     secrets:
-      - source: db_password
-        target: DATABASE_PASSWORD
-        type: env
-      - source: api_key
-        target: API_KEY
-        type: env
+      - db_password
+      - api_key
 
 secrets:
   db_password:
@@ -139,8 +132,6 @@ secrets:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -166,7 +157,7 @@ services:
   redis:
     image: redis:7
     command: >
-      sh -c "redis-server --requirepass $$(cat /run/secrets/redis_password)"
+      sh -c 'redis-server --requirepass "$$(cat /run/secrets/redis_password)"'
     secrets:
       - redis_password
 
@@ -184,4 +175,4 @@ secrets:
 
 ## Summary
 
-Podman Compose supports secrets using the same syntax as Docker Compose. Define secrets in the `secrets` top-level key using either file-based or external (pre-created) secrets. Attach them to services to make them available as files under `/run/secrets/` or as environment variables. This approach keeps sensitive data out of your compose file and image layers while providing a declarative way to manage credentials across multi-container applications.
+Podman's Compose support can use secrets with the Compose syntax supported by the configured provider. Define secrets in the `secrets` top-level key using either file-based or external (pre-created) secrets. Attach them to services to make them available as files under `/run/secrets/`, then have your application read those files directly or use image-supported `*_FILE` environment variables. This approach keeps sensitive data out of your compose file and image layers while providing a declarative way to manage credentials across multi-container applications.

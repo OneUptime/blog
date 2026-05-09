@@ -18,12 +18,12 @@ OCI is the standard format used by container images. OpenTofu can use OCI regist
 
 ## Configuring OCI Provider Sources
 
-OpenTofu currently supports OCI registries as a *mirror* for providers — not as a primary source. You keep the standard provider source address in your configuration and configure OpenTofu to fetch the plugin from an OCI registry via the `oci_mirror` installation method.
+OpenTofu currently supports OCI registries as a *mirror* for providers - not as a primary source. You keep the standard provider source address in your configuration and configure OpenTofu to fetch the plugin from an OCI registry via the `oci_mirror` installation method.
 
 ```hcl
 terraform {
   required_providers {
-    # Standard provider source address — OpenTofu resolves it via the OCI mirror
+    # Standard provider source address - OpenTofu resolves it via the OCI mirror
     mycustom = {
       source  = "registry.example.com/myorg/mycustom"
       version = "~> 1.0"
@@ -114,7 +114,7 @@ oras cp \
 
 ## Using OCI Modules
 
-OpenTofu selects the module version using a `tag` or `digest` query parameter on the source URL — not a `:tag` suffix.
+OpenTofu selects the module version using a `tag` or `digest` query parameter on the source URL - not a `:tag` suffix.
 
 ```hcl
 # Reference a module stored in an OCI registry

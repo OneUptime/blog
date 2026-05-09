@@ -206,7 +206,7 @@ kubectl exec <pod> -c istio-proxy -- \
   openssl x509 -in /etc/certs/cert-chain.pem -noout -dates
 
 # Force certificate rotation in Istio (modern Istio uses SDS, so workload
-# certs live in proxy memory rather than Kubernetes secrets — restart the
+# certs live in proxy memory rather than Kubernetes secrets - restart the
 # pod to make the proxy fetch a fresh cert from istiod)
 kubectl rollout restart deployment/my-service -n default
 

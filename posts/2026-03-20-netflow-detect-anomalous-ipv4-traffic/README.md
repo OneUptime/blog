@@ -50,7 +50,7 @@ nfdump -R /var/log/netflow/ \
 
 Flag combinations to watch:
 - SYN only (`flags S and not flags AFRPU`): pure connection initiation, the canonical SYN-scan signature
-- SYN-ACK (`flags SA`): response — useful to find victims, not scanners
+- SYN-ACK (`flags SA`): response - useful to find victims, not scanners
 
 ## Step 2: Detect DDoS Attacks
 

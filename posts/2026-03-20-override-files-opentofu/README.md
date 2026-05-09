@@ -124,7 +124,7 @@ override.tf.json
 
 ## A Note on Visibility
 
-OpenTofu does not print a special warning when override files are applied — they are loaded silently as part of the normal configuration. The official documentation cautions that over-use of override files hurts readability, since a reader looking only at the original files cannot easily see that some portions have been overridden. Inspect the merged result with `tofu plan` (and check which `*_override.tf` / `override.tf` files exist in the working directory) before applying changes.
+OpenTofu does not print a special warning when override files are applied - they are loaded silently as part of the normal configuration. The official documentation cautions that over-use of override files hurts readability, since a reader looking only at the original files cannot easily see that some portions have been overridden. Inspect the merged result with `tofu plan` (and check which `*_override.tf` / `override.tf` files exist in the working directory) before applying changes.
 
 ## Override Variables
 

@@ -107,7 +107,7 @@ For GUI configuration:
 ## Monitoring Traffic
 
 ```text
-# Real-time traffic monitoring (Torch) — mac-protocol selects IPv6 frames
+# Real-time traffic monitoring (Torch) - mac-protocol selects IPv6 frames
 /tool torch interface=ether1 mac-protocol=ipv6
 
 # Interface statistics

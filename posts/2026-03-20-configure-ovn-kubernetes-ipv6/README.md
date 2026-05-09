@@ -44,7 +44,7 @@ data:
   mtu: "1400"
 ```
 
-OVN-Kubernetes infers IP family from the CIDR strings — providing both an IPv4 and an IPv6 CIDR in `net_cidr` and `svc_cidr` enables dual-stack.
+OVN-Kubernetes infers IP family from the CIDR strings - providing both an IPv4 and an IPv6 CIDR in `net_cidr` and `svc_cidr` enables dual-stack.
 
 ## Step 3: Verify OVN IPv6 Logical Network
 

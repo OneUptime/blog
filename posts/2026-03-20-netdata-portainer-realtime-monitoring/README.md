@@ -141,7 +141,7 @@ lookup: average -5m unaligned of user,system,softirq,irq,guest
 
 ### Step 6: Set Up Email Notifications
 
-Netdata sends emails via the local `sendmail` command, so you need an MTA (such as `msmtp`, `ssmtp`, or `postfix`) installed inside the container — `health_alarm_notify.conf` has no built-in SMTP fields. Install an MTA at runtime by adding `NETDATA_EXTRA_DEB_PACKAGES` to the stack environment, then point `sendmail` at your relay.
+Netdata sends emails via the local `sendmail` command, so you need an MTA (such as `msmtp`, `ssmtp`, or `postfix`) installed inside the container - `health_alarm_notify.conf` has no built-in SMTP fields. Install an MTA at runtime by adding `NETDATA_EXTRA_DEB_PACKAGES` to the stack environment, then point `sendmail` at your relay.
 
 Edit the notification configuration:
 
@@ -166,7 +166,7 @@ Configure your local MTA (for example `msmtp` via `/etc/msmtprc`) to forward mai
 
 ## Monitoring Multiple Hosts
 
-Deploy the Netdata agent on each host and connect them all to Netdata Cloud for a unified view, or use Netdata's built-in streaming to a parent node. Streaming is configured via `stream.conf`, not environment variables — exec into the child container and edit it:
+Deploy the Netdata agent on each host and connect them all to Netdata Cloud for a unified view, or use Netdata's built-in streaming to a parent node. Streaming is configured via `stream.conf`, not environment variables - exec into the child container and edit it:
 
 ```bash
 docker exec -it netdata bash

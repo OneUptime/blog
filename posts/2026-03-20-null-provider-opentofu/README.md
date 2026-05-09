@@ -33,7 +33,7 @@ terraform {
 provider "null" {}
 ```
 
-The `hashicorp/null` provider is resolved from the OpenTofu registry. There are no credentials or endpoints to configure — the provider itself is stateless.
+The `hashicorp/null` provider is resolved from the OpenTofu registry. There are no credentials or endpoints to configure - the provider itself is stateless.
 
 ## Step 2: Run a Local Script with a Provisioner
 
@@ -106,7 +106,7 @@ resource "null_resource" "post_deploy" {
 
 ## Step 5: Define Outputs
 
-`null_resource` exposes an `id` attribute that changes each time the resource is replaced — useful for downstream references that need to react to a re-run:
+`null_resource` exposes an `id` attribute that changes each time the resource is replaced - useful for downstream references that need to react to a re-run:
 
 ```hcl
 output "bootstrap_id" {

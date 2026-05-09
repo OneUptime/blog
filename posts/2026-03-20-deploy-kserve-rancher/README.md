@@ -15,7 +15,7 @@ This guide covers deploying KServe in a production Rancher environment, with pra
 - Rancher v2.7+ with a working Kubernetes cluster (Kubernetes 1.24+)
 - kubectl and Helm 3 configured
 - Persistent storage (Longhorn or NFS recommended)
-- KServe also requires cert-manager, Istio (for the default Serverless mode) and Knative Serving as dependencies — these are installed in Step 1
+- KServe also requires cert-manager, Istio (for the default Serverless mode) and Knative Serving as dependencies - these are installed in Step 1
 
 ## Architecture Overview
 

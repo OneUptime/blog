@@ -147,7 +147,7 @@ max-udp-queries-per-round=10000
 max-mthreads=2048
 ```
 
-For per-IP queries-per-second rate limiting, use a Lua script in `gettag` or `preresolve`, or rely on a firewall/eBPF layer in front of the recursor — the recursor itself does not expose a built-in QPS-per-IP knob.
+For per-IP queries-per-second rate limiting, use a Lua script in `gettag` or `preresolve`, or rely on a firewall/eBPF layer in front of the recursor - the recursor itself does not expose a built-in QPS-per-IP knob.
 
 ## Conclusion
 

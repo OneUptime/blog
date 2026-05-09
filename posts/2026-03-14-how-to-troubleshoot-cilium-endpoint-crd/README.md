@@ -43,8 +43,8 @@ graph TD
 ```bash
 # Compare pods to endpoints
 
-kubectl get pods -n default -o name | sort > /tmp/pods.txt
-kubectl get ciliumendpoints -n default -o name | sort > /tmp/endpoints.txt
+kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort > /tmp/pods.txt
+kubectl get ciliumendpoints -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort > /tmp/endpoints.txt
 diff /tmp/pods.txt /tmp/endpoints.txt
 
 # Check Cilium agent on the affected node
@@ -52,8 +52,10 @@ NODE=$(kubectl get pod <pod-name> -n default -o jsonpath='{.spec.nodeName}')
 kubectl get pods -n kube-system -l k8s-app=cilium --field-selector spec.nodeName=$NODE
 
 # Check agent logs for endpoint errors
-kubectl logs -n kube-system -l k8s-app=cilium \
-  --field-selector spec.nodeName=$NODE | grep -i "endpoint" | tail -50
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium \
+  --field-selector spec.nodeName=$NODE \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n kube-system "$CILIUM_POD" | grep -i "endpoint" | tail -50
 ```
 
 Common causes:
@@ -65,10 +67,10 @@ Common causes:
 
 ```bash
 # List non-ready endpoints
-cilium endpoint list | grep -v "ready"
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint list | grep -v "ready"
 
 # Get detailed status
-cilium endpoint get <endpoint-id>
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint get <endpoint-id>
 
 # Check for BPF compilation errors
 kubectl logs -n kube-system <cilium-pod> | grep "BPF" | grep -i "error"
@@ -80,8 +82,8 @@ kubectl logs -n kube-system <cilium-pod> | grep "Unable to allocate" | tail -10
 If stuck, try regenerating:
 
 ```bash
-# Force endpoint regeneration
-cilium endpoint config <endpoint-id> ConntrackLocal=Enabled
+# List endpoint options before changing any endpoint configuration
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint config <endpoint-id> --list-options
 
 # If that fails, restart the agent on the affected node
 kubectl delete pod -n kube-system <cilium-pod-on-affected-node>
@@ -92,10 +94,10 @@ kubectl delete pod -n kube-system <cilium-pod-on-affected-node>
 ```bash
 # Check identity assigned to an endpoint
 kubectl get ciliumendpoint <pod-name> -n <namespace> \
-  -o jsonpath='{.status.identity}'
+  -o jsonpath='{.status.identity.id}'
 
 # List all identities
-cilium identity list
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg identity list
 
 # Compare endpoint labels with expected labels
 kubectl get ciliumendpoint <pod-name> -n <namespace> \
@@ -120,7 +122,7 @@ kubectl delete ciliumendpoint <stale-endpoint-name> -n default
 ## Verification
 
 ```bash
-cilium endpoint list | grep -c "ready"
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint list | grep -c "ready"
 cilium connectivity test
 kubectl get ciliumendpoint <pod-name> -n <namespace> -o jsonpath='{.status.policy}'
 ```
@@ -128,7 +130,7 @@ kubectl get ciliumendpoint <pod-name> -n <namespace> -o jsonpath='{.status.polic
 ## Troubleshooting
 
 - **"Failed to create endpoint"**: Check IPAM pool exhaustion with `cilium status`.
-- **"Identity allocation failed"**: Kvstore (etcd) may be unreachable. Check `cilium status` for kvstore health.
+- **"Identity allocation failed"**: The identity backend (CRD-backed identities or kvstore, depending on your Cilium configuration) may be unreachable. Check `cilium status` for backend health.
 - **Endpoints constantly regenerating**: Look for label changes or conflicting admission webhooks.
 - **"BPF program compilation failed"**: Check memory and kernel version on the node.
 

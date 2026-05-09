@@ -46,7 +46,7 @@ amazonec2Config:
 ```
 
 ```bash
-# /path/to/userdata.sh — runs on first boot to prep the kernel for K8s
+# /path/to/userdata.sh - runs on first boot to prep the kernel for K8s
 #!/bin/bash
 # Disable swap (required for Kubernetes)
 swapoff -a
@@ -61,10 +61,10 @@ sysctl -w net.bridge.bridge-nf-call-iptables=1
 
 ## Step 3: Increase Provisioning Parallelism
 
-Rancher's CAPR controller provisions each machine via its own Kubernetes Job (`rancher-machine create`), so machines in a pool already run in parallel. The real ceilings are cloud-provider API rate limits and machine pool size — not a Rancher knob. To provision a large cluster faster, split nodes across multiple machine pools and raise the pool's `quantity`:
+Rancher's CAPR controller provisions each machine via its own Kubernetes Job (`rancher-machine create`), so machines in a pool already run in parallel. The real ceilings are cloud-provider API rate limits and machine pool size - not a Rancher knob. To provision a large cluster faster, split nodes across multiple machine pools and raise the pool's `quantity`:
 
 ```yaml
-# Cluster v1 (provisioning.cattle.io) — multiple pools provision concurrently
+# Cluster v1 (provisioning.cattle.io) - multiple pools provision concurrently
 spec:
   rkeConfig:
     machinePools:
@@ -96,7 +96,7 @@ RKE2 bundles all components as a self-contained archive, eliminating download ti
 Configure etcd snapshots after cluster creation to avoid post-provision pauses:
 
 ```yaml
-# Rancher Cluster v1 (provisioning.cattle.io) — RKE2 cluster spec
+# Rancher Cluster v1 (provisioning.cattle.io) - RKE2 cluster spec
 spec:
   rkeConfig:
     etcd:

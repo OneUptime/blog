@@ -58,9 +58,9 @@ echo 'source <(cilium-bugtool completion bash)' >> ~/.bashrc
 If the binary is not available locally:
 
 ```bash
-CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --   cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
 ```
 
 ### Using the Completions
@@ -74,7 +74,7 @@ cilium-bugtool <TAB>
 
 # Complete flags
 cilium-bugtool --<TAB>
-# Shows: --archive-type, --commands, --tmp, etc.
+# Shows: --archive, --archiveType, --config, --tmp, etc.
 
 # Complete completion subcommands
 cilium-bugtool completion <TAB>
@@ -107,6 +107,5 @@ wc -l /etc/bash_completion.d/cilium-bugtool
 ## Conclusion
 
 Bash completions for cilium-bugtool eliminate the need to remember exact flag names and subcommands during diagnostic sessions. With persistent installation, completions are always available when you need them most.
-
 
 

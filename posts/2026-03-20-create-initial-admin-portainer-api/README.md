@@ -40,7 +40,7 @@ curl -X POST "http://localhost:9000/api/users/admin/init" \
 # {"Id": 1, "Username": "admin", "Role": 1, ...}
 ```
 
-The minimum password length is 12 characters. The init endpoint does not return a JWT — to obtain one for follow-up API calls, authenticate against `/api/auth` with the same credentials:
+The minimum password length is 12 characters. The init endpoint does not return a JWT - to obtain one for follow-up API calls, authenticate against `/api/auth` with the same credentials:
 
 ```bash
 curl -X POST "http://localhost:9000/api/auth" \
@@ -103,7 +103,7 @@ echo "Portainer initialized successfully."
 
 ## Using with Docker Compose
 
-The official `portainer/portainer-ce` image is built `FROM scratch` and contains only the Portainer binary — no shell, no `curl`, no `wget`. That makes container-internal `HEALTHCHECK` impractical, so let the init container poll for readiness itself before posting:
+The official `portainer/portainer-ce` image is built `FROM scratch` and contains only the Portainer binary - no shell, no `curl`, no `wget`. That makes container-internal `HEALTHCHECK` impractical, so let the init container poll for readiness itself before posting:
 
 ```yaml
 # docker-compose.yml with init container
@@ -134,7 +134,7 @@ volumes:
   portainer_data:
 ```
 
-Note the `$$ADMIN_PASS` — this escapes the variable from Compose-time interpolation so it's expanded by the container's shell at runtime against the value injected via `environment:`.
+Note the `$$ADMIN_PASS` - this escapes the variable from Compose-time interpolation so it's expanded by the container's shell at runtime against the value injected via `environment:`.
 
 ## Conclusion
 

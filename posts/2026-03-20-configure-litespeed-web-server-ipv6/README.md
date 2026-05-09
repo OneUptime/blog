@@ -135,7 +135,7 @@ ss -tlnp | grep lshttpd
 
 ## LiteSpeed PHP with IPv6
 
-LSPHP runs as a separate `extprocessor` over a Unix domain socket — connections to the vhost over IPv6 are proxied to it locally:
+LSPHP runs as a separate `extprocessor` over a Unix domain socket - connections to the vhost over IPv6 are proxied to it locally:
 
 ```
 # /usr/local/lsws/conf/httpd_config.conf

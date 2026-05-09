@@ -227,7 +227,7 @@ data "aws_ami_ids" "old_apps" {
 }
 ```
 
-Note that data sources only read state — they do not deregister AMIs. You'll need a separate process (a script, scheduled job, or AWS Lambda) to call `aws ec2 deregister-image` against AMIs older than your retention threshold. Alternatively, use a lifecycle policy via AWS Image Builder, which Packer supports as a post-processor.
+Note that data sources only read state - they do not deregister AMIs. You'll need a separate process (a script, scheduled job, or AWS Lambda) to call `aws ec2 deregister-image` against AMIs older than your retention threshold. Alternatively, use a lifecycle policy via AWS Image Builder, which Packer supports as a post-processor.
 
 ## Best Practices
 

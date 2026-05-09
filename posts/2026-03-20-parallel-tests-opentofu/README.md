@@ -8,7 +8,7 @@ Description: Learn how to run OpenTofu tests in parallel by orchestrating multip
 
 ## Introduction
 
-A single `tofu test` invocation processes test files sequentially in alphabetical order, and run blocks within each file execute in the order they appear. OpenTofu does not yet support a built-in `parallel` attribute on test or run blocks (tracked in opentofu/opentofu issue #2542). To run tests in parallel today, you launch multiple `tofu test` processes externally — for example, from CI matrix jobs or background shells — each scoped to a different set of test files. Proper test isolation prevents these parallel invocations from interfering with each other.
+A single `tofu test` invocation processes test files sequentially in alphabetical order, and run blocks within each file execute in the order they appear. OpenTofu does not yet support a built-in `parallel` attribute on test or run blocks (tracked in opentofu/opentofu issue #2542). To run tests in parallel today, you launch multiple `tofu test` processes externally - for example, from CI matrix jobs or background shells - each scoped to a different set of test files. Proper test isolation prevents these parallel invocations from interfering with each other.
 
 ## How OpenTofu Test Execution Works
 
@@ -70,7 +70,7 @@ tests/
 ```
 
 ```bash
-# Launch one tofu test process per file in the background — they run in parallel
+# Launch one tofu test process per file in the background - they run in parallel
 tofu test -filter=tests/unit_compute.tftest.hcl &
 tofu test -filter=tests/unit_networking.tftest.hcl &
 tofu test -filter=tests/unit_storage.tftest.hcl &
@@ -174,4 +174,4 @@ time tofu test
 
 ## Conclusion
 
-OpenTofu runs tests sequentially within a single `tofu test` process — both across files and within a file. To gain parallelism today, orchestrate multiple processes externally, typically via CI matrix jobs or background shells, each scoped to its own set of test files with `-filter`. Design your tests with isolation in mind: unique resource names for integration tests, mock providers for unit tests, and separate accounts or regions when real resources would otherwise collide. Sequential execution within a file remains useful for multi-step integration scenarios where later runs depend on state created by earlier ones.
+OpenTofu runs tests sequentially within a single `tofu test` process - both across files and within a file. To gain parallelism today, orchestrate multiple processes externally, typically via CI matrix jobs or background shells, each scoped to its own set of test files with `-filter`. Design your tests with isolation in mind: unique resource names for integration tests, mock providers for unit tests, and separate accounts or regions when real resources would otherwise collide. Sequential execution within a file remains useful for multi-step integration scenarios where later runs depend on state created by earlier ones.

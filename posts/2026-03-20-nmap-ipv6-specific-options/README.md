@@ -58,7 +58,7 @@ nmap -6 --script ipv6-node-info 2001:db8::10
 # Enumerate multicast group memberships (MLD)
 nmap -6 --script ipv6-multicast-mld-list 2001:db8::10
 
-# Flood the link with Router Advertisements (DoS — dangerous)
+# Flood the link with Router Advertisements (DoS - dangerous)
 # (Use only in authorized lab environments; can crash hosts)
 nmap -6 --script ipv6-ra-flood
 

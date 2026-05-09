@@ -10,7 +10,7 @@ Description: Learn how to retrieve a Podman container's MAC address using podman
 
 > Retrieving a container's MAC address helps with network debugging, DHCP troubleshooting, and infrastructure documentation.
 
-Every container network interface has a MAC (Media Access Control) address that uniquely identifies it on the network. While you may not need it as often as an IP address, the MAC address is useful for network debugging, security audits, and tracking container communication at the data link layer. This guide shows you how to extract MAC addresses from Podman containers.
+Every Ethernet-style container network interface has a MAC (Media Access Control) address that uniquely identifies it on the network. While you may not need it as often as an IP address, the MAC address is useful for network debugging, security audits, and tracking container communication at the data link layer. This guide shows you how to extract MAC addresses from Podman containers on bridge or user-defined networks.
 
 ---
 
@@ -29,11 +29,11 @@ podman inspect my-app --format '{{range .NetworkSettings.Networks}}{{.MacAddress
 # Output: aa:bb:cc:dd:ee:ff (example)
 ```
 
-## Getting MAC Address from Default Network
+## Getting MAC Address from Default Bridge Network
 
 ```bash
-# Start a container on the default network
-podman run -d --name default-app nginx:latest
+# Start a container on the default bridge network
+podman run -d --name default-app --network bridge nginx:latest
 
 # Try the general network settings first
 podman inspect default-app --format '{{.NetworkSettings.MacAddress}}'
@@ -85,7 +85,7 @@ podman exec my-app ip link show 2>/dev/null | grep "link/ether" | awk '{print $2
 podman exec my-app cat /sys/class/net/eth0/address 2>/dev/null
 
 # List all interfaces and their MACs
-podman exec my-app /bin/bash -c 'for iface in /sys/class/net/*/address; do echo "$(basename $(dirname $iface)): $(cat $iface)"; done' 2>/dev/null
+podman exec my-app /bin/sh -c 'for addr in /sys/class/net/*/address; do iface=${addr%/address}; echo "${iface##*/}: $(cat "$addr")"; done' 2>/dev/null
 ```
 
 ### Using JSON Output

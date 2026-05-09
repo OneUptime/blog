@@ -8,9 +8,9 @@ Description: Learn how to create internal networks in Podman that allow containe
 
 ---
 
-> Internal networks allow containers to communicate with each other while completely blocking access to and from external networks, providing a strong security boundary for backend services.
+> Internal networks allow containers to communicate with each other while restricting access to external networks, providing a strong security boundary for backend services.
 
-An internal network in Podman has no gateway to the outside world. Containers on the network can talk to each other but cannot reach the internet or be reached from external networks. This is ideal for databases, caches, and other backend services.
+An internal bridge network in Podman does not add a default route to the outside world for attached containers. Containers on the network can talk to each other but cannot reach the internet through that network or be reached from external networks. This is ideal for databases, caches, and other backend services.
 
 ---
 
@@ -110,16 +110,16 @@ podman run -d --name db \
 
 ## DNS on Internal Networks
 
-Internal networks still support DNS resolution between containers:
+With Podman's current Netavark/aardvark-dns backend, internal networks still support DNS resolution between containers:
 
 ```bash
 # DNS works within the internal network
 podman exec api ping -c 1 db
 # Success - name resolution works on internal networks
 
-# But external DNS does not resolve
+# But external DNS names do not resolve on the internal network
 podman exec db nslookup google.com
-# nslookup: can't resolve 'google.com'
+# NXDOMAIN / cannot resolve
 ```
 
 ## Verifying Internal Network Status

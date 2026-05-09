@@ -155,7 +155,7 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Confirm the admin user has `CREATE USER` and `GRANT OPTION` privileges, and that `MYSQL_ENDPOINT` includes the port (`host:3306`). For MySQL 8.0, the default `caching_sha2_password` plugin can fail over plain TCP — set `auth_plugin = "mysql_native_password"` on `mysql_user` or enable TLS.
+Confirm the admin user has `CREATE USER` and `GRANT OPTION` privileges, and that `MYSQL_ENDPOINT` includes the port (`host:3306`). For MySQL 8.0, the default `caching_sha2_password` plugin can fail over plain TCP - set `auth_plugin = "mysql_native_password"` on `mysql_user` or enable TLS.
 
 ### Connection Errors From CI
 The provider opens a TCP connection during `tofu plan` and `tofu apply`. Make sure the runner can reach the database (security groups, VPN, bastion). For MySQL servers behind a private network, consider running OpenTofu from a runner inside that network.

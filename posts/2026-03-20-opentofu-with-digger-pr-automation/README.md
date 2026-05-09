@@ -82,7 +82,7 @@ projects:
   - name: dev-all
     dir: environments/dev
     opentofu: true
-    # Default apply_requirements is [mergeable] — no approval required
+    # Default apply_requirements is [mergeable] - no approval required
 ```
 
 ## Adding Pre-Plan Checks

@@ -19,7 +19,7 @@ This guide covers the complete troubleshooting workflow from initial diagnosis t
 ## Prerequisites
 
 - Kubernetes cluster with Cilium (v1.14+) installed
-- `cilium` CLI and Hubble CLI available
+- `cilium` CLI, Hubble CLI, and access to `cilium-dbg` inside Cilium agent pods
 - `kubectl` access to the cluster
 - Familiarity with CiliumNetworkPolicy resources
 - Access to Cilium agent logs
@@ -32,6 +32,15 @@ Start by assessing the overall health of your Cilium deployment:
 # Check Cilium agent health on all nodes
 
 kubectl -n kube-system get pods -l k8s-app=cilium -o wide
+```
+
+```bash
+# Select a Cilium agent pod for agent-local diagnostics
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+
+# Check detailed Cilium agent status
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg status --verbose
 ```
 
 ```bash
@@ -62,14 +71,15 @@ graph TD
 
 ### Issue 1: Endpoints Not Ready
 
-When endpoints are stuck in a non-ready state, policies cannot be enforced correctly.
+When endpoints are stuck in a non-ready state, new or updated policies may not be enforced as expected.
 
 ```bash
 # Check endpoint status for failures
-cilium endpoint list -o json | jq '.[] | select(.status.state != "ready")'
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json | \
+  jq '.[] | select(.status.state != "ready")'
 
 # Get detailed status for a problematic endpoint
-cilium endpoint get <ENDPOINT_ID> -o json | \
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint get <ENDPOINT_ID> -o json | \
   jq '{state: .status.state, health: .status.health, policy: .status.policy}'
 
 # Check if the endpoint is being regenerated
@@ -86,12 +96,13 @@ Verify that your policy selectors correctly match the target endpoints:
 kubectl get pods -n production --show-labels
 
 # View the realized policy on a specific endpoint
-cilium endpoint list -o json | \
-  jq '.[] | select(.status.labels.id | any(contains("app="))) | {
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json | \
+  jq '.[] | select(.status.identity.labels | any(contains("app="))) | {
     id: .id,
-    labels: .status.labels.id,
-    ingress_enforcing: .status.policy.realized."l4-ingress",
-    egress_enforcing: .status.policy.realized."l4-egress"
+    labels: .status.identity.labels,
+    ingress: .status.policy.realized.l4.ingress,
+    egress: .status.policy.realized.l4.egress,
+    policy_enabled: .status.policy.realized."policy-enabled"
   }'
 ```
 
@@ -141,7 +152,7 @@ hubble observe --verdict DROPPED --namespace production --output json | \
   }' | head -30
 
 # Check if the source identity is recognized
-cilium identity list | grep <IDENTITY_ID>
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg identity list | grep <IDENTITY_ID>
 ```
 
 ## Analyzing Agent Logs
@@ -168,7 +179,7 @@ After applying fixes, confirm the issue is resolved:
 
 ```bash
 # Verify the fix resolved the issue
-cilium endpoint health
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint health <ENDPOINT_ID>
 ```
 
 ```bash
@@ -184,7 +195,7 @@ cilium connectivity test
 ## Troubleshooting
 
 - **Cilium agent CrashLoopBackOff**: Check resource limits and node capacity. Review crash logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --previous`.
-- **Policy changes not propagating**: Force endpoint regeneration with `cilium endpoint regenerate all` (use with caution).
+- **Policy changes not propagating**: Inspect the endpoint's realized policy with `cilium-dbg endpoint get <ENDPOINT_ID>`. If the endpoint remains stale, delete and recreate the affected pod so Cilium allocates a fresh endpoint.
 - **Hubble relay unavailable**: Check Hubble relay pod status with `kubectl -n kube-system get pods -l app.kubernetes.io/name=hubble-relay`.
 - **Stale endpoint data**: Delete and recreate the affected pod to force a new endpoint allocation.
 

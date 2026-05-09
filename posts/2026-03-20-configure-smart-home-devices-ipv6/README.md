@@ -68,7 +68,7 @@ Thread networks need a Border Router to connect Thread IPv6 mesh to your home Wi
 
 ```bash
 # Build and install OpenThread Border Router from source
-# (no apt/deb package — clone and run the bootstrap/setup scripts)
+# (no apt/deb package - clone and run the bootstrap/setup scripts)
 git clone https://github.com/openthread/ot-br-posix.git
 cd ot-br-posix
 ./script/bootstrap

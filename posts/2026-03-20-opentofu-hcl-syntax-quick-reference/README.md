@@ -118,7 +118,7 @@ instance_type = var.environment == "prod" ? "m5.large" : "t3.micro"
 # Count-based conditional
 count = var.create_bucket ? 1 : 0
 
-# enabled meta-argument (OpenTofu 1.11+) — must be inside a lifecycle block
+# enabled meta-argument (OpenTofu 1.11+) - must be inside a lifecycle block
 resource "aws_instance" "example" {
   # ...
   lifecycle {

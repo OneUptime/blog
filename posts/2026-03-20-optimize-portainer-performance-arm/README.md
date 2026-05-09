@@ -80,7 +80,7 @@ systemctl stop docker
 # Move Docker data
 rsync -av /var/lib/docker/ /mnt/ssd/docker/
 
-# Update daemon.json — add "data-root" to the existing JSON object.
+# Update daemon.json - add "data-root" to the existing JSON object.
 # daemon.json must be a single JSON object, so merge the key in (here using jq):
 jq '. + {"data-root": "/mnt/ssd/docker"}' /etc/docker/daemon.json \
   > /etc/docker/daemon.json.tmp && mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json

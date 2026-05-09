@@ -129,7 +129,7 @@ for ns in $NAMESPACES; do
   done
 
   # Delete pods in Failed phase (note: CrashLoopBackOff pods stay in Running phase
-  # and will not match this selector — handle those separately if needed)
+  # and will not match this selector - handle those separately if needed)
   kubectl get pods -n "$ns" --field-selector=status.phase=Failed \
     -o jsonpath='{.items[*].metadata.name}' | \
   xargs -r kubectl delete pod -n "$ns"

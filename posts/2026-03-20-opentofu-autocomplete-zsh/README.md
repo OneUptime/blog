@@ -46,7 +46,7 @@ source ~/.zshrc
 
 ## Method 3: Using Oh My Zsh
 
-Oh My Zsh ships a `terraform` plugin, but it adds completion and aliases for the `terraform` binary only — it does not complete `tofu`. To get completion for OpenTofu under Oh My Zsh, create a small custom plugin:
+Oh My Zsh ships a `terraform` plugin, but it adds completion and aliases for the `terraform` binary only - it does not complete `tofu`. To get completion for OpenTofu under Oh My Zsh, create a small custom plugin:
 
 ```bash
 # Create a custom plugin for OpenTofu

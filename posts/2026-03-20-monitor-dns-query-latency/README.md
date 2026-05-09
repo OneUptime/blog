@@ -122,7 +122,7 @@ scrape_configs:
 # Average DNS latency by resolver:
 # avg(probe_duration_seconds{job="dns"}) by (instance)
 
-# DNS failure rate (probe_success is a gauge — average over a window):
+# DNS failure rate (probe_success is a gauge - average over a window):
 # avg_over_time(probe_success{job="dns"}[5m]) < 1
 
 # P99 DNS latency (blackbox metrics are gauges, so use quantile_over_time):

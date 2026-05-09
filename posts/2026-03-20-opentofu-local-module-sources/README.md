@@ -136,7 +136,7 @@ tofu apply
 
 ## No tofu init Needed for Module Code Changes
 
-When you only change the module's `.tf` files (not the source reference), you don't need to re-run `tofu init`. Unlike remote modules, local modules are not copied into `.terraform/modules/` — OpenTofu references them directly from their source directory, so any code edits are picked up on the next `tofu plan`.
+When you only change the module's `.tf` files (not the source reference), you don't need to re-run `tofu init`. Unlike remote modules, local modules are not copied into `.terraform/modules/` - OpenTofu references them directly from their source directory, so any code edits are picked up on the next `tofu plan`.
 
 ## Conclusion
 

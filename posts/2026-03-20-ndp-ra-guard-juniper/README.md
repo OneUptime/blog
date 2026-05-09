@@ -143,7 +143,7 @@ interfaces {
 ```
 
 > Note: After you apply a policy to an interface, you must also enable RA
-> guard on the corresponding VLAN — otherwise the interface policy has no
+> guard on the corresponding VLAN - otherwise the interface policy has no
 > effect on received RA packets.
 
 ## Configuring RA Guard with DHCPv6 Snooping Together

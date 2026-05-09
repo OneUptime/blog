@@ -26,7 +26,7 @@ First, gather NeuVector's SAML service provider information:
 
 # These values are needed when configuring your IdP.
 # In the NeuVector console, see Settings > SAML Setting and copy the
-# "SAML Redirect URL" — that is your ACS URL. The server name (default
+# "SAML Redirect URL" - that is your ACS URL. The server name (default
 # "saml1") becomes the trailing path segment.
 
 Entity ID (Audience URI): https://neuvector.company.com:8443

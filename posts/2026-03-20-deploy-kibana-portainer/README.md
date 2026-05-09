@@ -109,7 +109,7 @@ Kibana includes sample datasets for testing:
 
 ## Securing Kibana Access
 
-For production, put Kibana behind Nginx or Traefik. Remove the published port mapping so Kibana is only reachable from other containers on the same Docker network — keep `SERVER_HOST` at its default (`0.0.0.0`) so the reverse proxy container can reach it via the service name:
+For production, put Kibana behind Nginx or Traefik. Remove the published port mapping so Kibana is only reachable from other containers on the same Docker network - keep `SERVER_HOST` at its default (`0.0.0.0`) so the reverse proxy container can reach it via the service name:
 
 ```yaml
 kibana:

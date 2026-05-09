@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, ClusterMesh, Troubleshooting, Multi-Cluster
 
-Description: How to diagnose and resolve global service flapping between Cilium ClusterMesh clusters, including connectivity oscillation, identity conflicts, and synchronization issues.
+Description: How to diagnose and resolve global service flapping between Cilium ClusterMesh clusters, including connectivity oscillation, identity state synchronization, and stale endpoint data.
 
 ---
 
@@ -21,7 +21,7 @@ This guide provides a systematic approach to diagnosing and resolving global ser
 - Two or more Kubernetes clusters connected via Cilium ClusterMesh
 - kubectl contexts configured for each cluster
 - Cilium CLI installed
-- Access to ClusterMesh KVStore (etcd)
+- Access to the Cilium pods, and to the ClusterMesh KVStore through `clustermesh-apiserver` when direct KVStore inspection is required
 
 ## Diagnosing the Flapping
 
@@ -34,10 +34,10 @@ cilium clustermesh status
 kubectl get ciliumendpoints --all-namespaces -w
 
 # Check for flapping in Hubble
-hubble observe --service-name <flapping-service> --last 100
+hubble observe --service <flapping-service> --last 100
 
 # Check ClusterMesh connectivity
-cilium clustermesh status --wait=false
+cilium clustermesh status
 ```
 
 ```mermaid
@@ -46,8 +46,8 @@ graph TD
     B -->|No| C[Fix ClusterMesh Connectivity]
     B -->|Yes| D{Endpoints Stable?}
     D -->|No| E[Check KVStore Sync]
-    D -->|Yes| F{Identity Conflict?}
-    F -->|Yes| G[Resolve Identity Conflict]
+    D -->|Yes| F{Identity Sync Issue?}
+    F -->|Yes| G[Fix Identity Synchronization]
     F -->|No| H[Check Network Path]
 ```
 
@@ -63,8 +63,8 @@ kubectl get pods -n kube-system -l k8s-app=clustermesh-apiserver
 # View ClusterMesh agent logs
 kubectl logs -n kube-system -l k8s-app=clustermesh-apiserver --tail=100
 
-# Check KVStore connectivity
-cilium kvstore get --recursive cilium/state/identities/
+# Check ClusterMesh status from a Cilium agent
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status --all-clusters
 ```
 
 ## Resolving KVStore Synchronization Issues
@@ -75,26 +75,32 @@ kubectl logs -n kube-system -l k8s-app=clustermesh-apiserver | \
   grep -iE "sync|connect|error" | tail -30
 
 # Verify remote cluster endpoints are synced
-cilium endpoint list | grep -i "remote"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg service list
+
+# Check the agent's service cache when remote endpoints are missing
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg debuginfo | \
+  grep -A30 -i "externalEndpoints"
 
 # Force a resync by restarting ClusterMesh
 kubectl rollout restart deployment/clustermesh-apiserver -n kube-system
 ```
 
-## Fixing Identity Conflicts
+## Fixing Identity Synchronization Issues
 
-When two clusters assign different identities to the same labels:
+When remote identities are not synchronized:
 
 ```bash
-# Compare identities across clusters
+# Check identities across clusters
 # On cluster 1:
-cilium identity list | grep <service-labels>
+kubectl --context=cluster1 exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list | grep <service-labels>
 
 # On cluster 2:
-cilium identity list | grep <service-labels>
+kubectl --context=cluster2 exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list | grep <service-labels>
 
-# If they differ, the clusters may need shared identity allocation
-# Configure shared CA and identity allocation
+# Remote identities should be present and include the io.cilium.k8s.policy.cluster label.
+# If remote identities are missing, check ClusterMesh connectivity and synchronization.
 ```
 
 ## Stabilizing Global Services
@@ -131,16 +137,16 @@ cilium clustermesh status
 kubectl exec -it test-pod -- curl http://my-global-service
 
 # Monitor for flapping over time
-watch -n5 "cilium clustermesh status; echo '---'; cilium endpoint list | grep remote"
+watch -n5 "cilium clustermesh status; echo '---'; kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg service list"
 ```
 
 ## Troubleshooting
 
 - **ClusterMesh shows disconnected**: Check network connectivity between clusters. Verify firewall rules allow traffic on ClusterMesh ports.
-- **Identity conflicts**: Ensure both clusters use the same Cilium CA certificate. Configure shared identity allocation mode.
+- **Identity synchronization issues**: Ensure each cluster has a unique cluster name and cluster ID, then verify ClusterMesh connectivity and identity synchronization from a Cilium agent.
 - **Intermittent connectivity**: Check for network partitions or packet loss between cluster control planes.
 - **Stale endpoints after reconnect**: Restart ClusterMesh agents on both clusters to force a clean sync.
 
 ## Conclusion
 
-Global service flapping in Cilium ClusterMesh is usually caused by control plane connectivity issues rather than data plane problems. Start by verifying ClusterMesh status, check KVStore synchronization, resolve identity conflicts, and ensure stable network paths between clusters. Monitoring ClusterMesh health proactively prevents flapping from affecting applications.
+Global service flapping in Cilium ClusterMesh is usually caused by control plane connectivity issues rather than data plane problems. Start by verifying ClusterMesh status, check KVStore synchronization, resolve identity synchronization issues, and ensure stable network paths between clusters. Monitoring ClusterMesh health proactively prevents flapping from affecting applications.

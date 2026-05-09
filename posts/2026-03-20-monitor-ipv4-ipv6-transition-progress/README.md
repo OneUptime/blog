@@ -18,7 +18,7 @@ Start by identifying which hosts in your network already have IPv6 addresses ass
 # Scan a subnet for hosts responding on both IPv4 and IPv6
 
 # Discover IPv6 hosts on the local link via ICMPv6 multicast (nmap cannot
-# enumerate a full /64 directly — use the NSE multicast discovery scripts)
+# enumerate a full /64 directly - use the NSE multicast discovery scripts)
 nmap -6 -sn -e eth0 --script targets-ipv6-multicast-echo,targets-ipv6-multicast-mld
 
 nmap -4 -sn 192.168.1.0/24               # baseline IPv4 count

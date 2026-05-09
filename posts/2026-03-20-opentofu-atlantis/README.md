@@ -146,11 +146,11 @@ With `autoplan.enabled: true`, Atlantis runs `tofu plan` automatically whenever 
 
 Once configured, trigger Atlantis with PR comments:
 
-- `atlantis plan` — run a plan and post the output to the PR
-- `atlantis plan -- -var-file=staging.tfvars` — pass extra args through to `tofu plan`
-- `atlantis apply` — apply the most recent plan
-- `atlantis unlock` — remove all locks for the PR
-- `atlantis help` — show available commands
+- `atlantis plan` - run a plan and post the output to the PR
+- `atlantis plan -- -var-file=staging.tfvars` - pass extra args through to `tofu plan`
+- `atlantis apply` - apply the most recent plan
+- `atlantis unlock` - remove all locks for the PR
+- `atlantis help` - show available commands
 
 ## Step 5: Monitor and Verify
 

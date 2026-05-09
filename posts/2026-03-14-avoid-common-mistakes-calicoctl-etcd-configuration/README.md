@@ -108,13 +108,13 @@ Without `DATASTORE_TYPE=etcdv3`, calicoctl may default to the wrong backend:
 # WRONG: Missing datastore type
 export ETCD_ENDPOINTS=https://etcd1:2379
 calicoctl get nodes
-# Error: may try to use Kubernetes API or wrong etcd version
+# Error: may try to use the Kubernetes API datastore
 
 # CORRECT: Always set explicitly
 export DATASTORE_TYPE=etcdv3
 
 # Or use a configuration file that includes it
-cat > /etc/calicoctl/calicoctl.cfg <<EOF
+cat > /etc/calico/calicoctl.cfg <<EOF
 apiVersion: projectcalico.org/v3
 kind: CalicoAPIConfig
 metadata:
@@ -228,7 +228,7 @@ calicoctl version
 - **"transport: authentication handshake failed"**: Certificates are swapped or the CA does not match. Run the validation script to check file assignments.
 - **"context deadline exceeded" on single endpoint**: Add all etcd members to the endpoints list and verify each member is healthy.
 - **Empty results from etcdctl**: Ensure you are using the v3 API with `ETCDCTL_API=3` or using etcdctl v3.x binary.
-- **"invalid header field value"**: The configuration file has trailing whitespace or invisible characters in the endpoint URLs. Re-create the file with clean values.
+- **"invalid header field value"**: A copied configuration value may contain trailing whitespace or invisible characters. Re-create the file with clean values.
 
 ## Conclusion
 

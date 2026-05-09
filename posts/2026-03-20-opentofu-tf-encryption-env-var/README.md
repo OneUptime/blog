@@ -129,7 +129,7 @@ state {
 '
 ```
 
-Note that setting `enforced = false` only stops OpenTofu from erroring when encryption is missing — it does not decrypt existing state. To fully migrate away from encryption, you must use the `unencrypted` method together with a `fallback` block referencing your existing method, then run `tofu apply` to rewrite state in plaintext.
+Note that setting `enforced = false` only stops OpenTofu from erroring when encryption is missing - it does not decrypt existing state. To fully migrate away from encryption, you must use the `unencrypted` method together with a `fallback` block referencing your existing method, then run `tofu apply` to rewrite state in plaintext.
 
 ## Security Considerations
 

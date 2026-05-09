@@ -30,7 +30,6 @@ This guide provides the methodology and commands for baseline performance manage
 # Optimal Cilium configuration for near-baseline performance
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
@@ -69,7 +68,7 @@ echo "Target: > 95%"
 ## Verification
 
 ```bash
-cilium status --verbose
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
 echo "Compare pod throughput vs host baseline"
 ```
 
@@ -82,22 +81,22 @@ echo "Compare pod throughput vs host baseline"
 
 ## Implementing Changes Safely
 
-When applying performance fixes to a production Cilium cluster, follow a staged rollout approach to minimize risk:
+When applying performance fixes to a production Cilium cluster, follow a staged rollout approach to minimize risk. Datapath-changing settings such as native routing or device mode can require pod or node replacement; test them with per-node configuration or a replacement node pool before changing the cluster-wide Helm values.
 
 ```bash
-# Step 1: Test on a single node first
+# Step 1: Prepare a test node first
 kubectl cordon node-test-1
 kubectl drain node-test-1 --ignore-daemonsets --delete-emptydir-data
 
-# Step 2: Apply configuration changes
+# Step 2: Apply tested configuration changes
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --reuse-values \
   <your-changes-here>
 
-# Step 3: Wait for the Cilium agent on the test node to restart
+# Step 3: Wait for the Cilium agents to roll out
 kubectl rollout status ds/cilium -n kube-system --timeout=120s
 
-# Step 4: Run a quick benchmark on the test node
+# Step 4: Run a quick benchmark
 kubectl uncordon node-test-1
 # Deploy test pods on the node and verify performance
 
@@ -130,7 +129,7 @@ If a change causes unexpected behavior, roll back immediately:
 helm rollback cilium -n kube-system
 
 # Verify the rollback was successful
-cilium status --verbose
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
 kubectl rollout status ds/cilium -n kube-system
 ```
 
@@ -155,12 +154,12 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5s kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop | head -5
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"

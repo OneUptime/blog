@@ -28,7 +28,7 @@ systemctl enable --now nfs-server rpcbind
 
 ```bash
 # /etc/exports
-# Note: IPv6 addresses must NOT be wrapped in [ ] in /etc/exports —
+# Note: IPv6 addresses must NOT be wrapped in [ ] in /etc/exports -
 # brackets are interpreted as character-class wildcards by exportfs.
 
 # Export to a specific IPv6 client

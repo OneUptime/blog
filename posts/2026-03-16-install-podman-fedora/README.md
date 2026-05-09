@@ -18,7 +18,7 @@ Podman is a daemonless container engine developed by Red Hat that is fully compa
 
 Before you begin, make sure you have:
 
-- A Fedora system (Fedora 38 or later recommended)
+- A currently supported Fedora system
 - A user account with sudo privileges
 - An active internet connection
 
@@ -29,7 +29,7 @@ Always start by updating your system packages to ensure you have the latest secu
 ```bash
 # Update all installed packages
 
-sudo dnf update -y
+sudo dnf upgrade -y
 ```
 
 ## Step 2: Install Podman
@@ -150,11 +150,11 @@ If you encounter permission errors with rootless containers, reset your Podman s
 podman system reset
 ```
 
-If DNS resolution fails inside containers, check that `systemd-resolved` is running:
+If DNS resolution fails inside containers because the host DNS configuration is not usable from containers, pass a reachable DNS server explicitly:
 
 ```bash
-# Restart systemd-resolved
-sudo systemctl restart systemd-resolved
+# Run a container with an explicit DNS server
+podman run --rm --dns 1.1.1.1 docker.io/library/fedora getent hosts fedoraproject.org
 ```
 
 ## Summary

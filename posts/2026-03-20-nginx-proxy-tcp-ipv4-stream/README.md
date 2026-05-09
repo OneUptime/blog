@@ -51,7 +51,7 @@ stream {
 
 ## Load Balancing Methods
 
-By default Nginx uses round-robin. You can switch to least-connections or hash-based balancing (the stream module exposes the `hash` directive — use `hash $remote_addr` for client-IP affinity, since `ip_hash` is only available in the `http` module).
+By default Nginx uses round-robin. You can switch to least-connections or hash-based balancing (the stream module exposes the `hash` directive - use `hash $remote_addr` for client-IP affinity, since `ip_hash` is only available in the `http` module).
 
 ```nginx
 stream {

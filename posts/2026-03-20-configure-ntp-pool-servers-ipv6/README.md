@@ -12,7 +12,7 @@ The NTP Pool Project (pool.ntp.org) is a global network of thousands of voluntee
 
 ## NTP Pool IPv6 Zones
 
-The NTP Pool Project only returns IPv6 (AAAA) addresses for zones prefixed with `2.`. There is no separate `ipv6.` subdomain — the `2.` prefix is the official way to request IPv6-capable servers across all zones (global, continental, and country):
+The NTP Pool Project only returns IPv6 (AAAA) addresses for zones prefixed with `2.`. There is no separate `ipv6.` subdomain - the `2.` prefix is the official way to request IPv6-capable servers across all zones (global, continental, and country):
 
 ```text
 # Global zone with IPv6 (AAAA) records

@@ -21,7 +21,7 @@ Applications pass a `backlog` value to `listen()`, but the OS caps it at `somaxc
 # Check current somaxconn limit
 
 sysctl net.core.somaxconn
-# Default: 4096 on Linux 5.4+ (was 128 on older kernels) — still low for very high-traffic servers
+# Default: 4096 on Linux 5.4+ (was 128 on older kernels) - still low for very high-traffic servers
 
 # Check SYN backlog
 sysctl net.ipv4.tcp_max_syn_backlog

@@ -104,7 +104,7 @@ resource "aws_instance" "app" {
   )
 }
 
-# Kubernetes secret — provider auto-encodes `data` values, so pass plaintext.
+# Kubernetes secret - provider auto-encodes `data` values, so pass plaintext.
 # Use `binary_data` when you need to supply pre-encoded base64 values.
 resource "kubernetes_secret" "app" {
   metadata {

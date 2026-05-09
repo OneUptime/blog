@@ -123,7 +123,7 @@ flowchart TD
 
 ## Practical Example: Multi-Environment Tests
 
-Because top-level `variables` blocks in a test file outrank CLI `-var` values, leave environment-specific values out of the test file when you want CI to be able to override them — let the module's variable defaults supply local values instead.
+Because top-level `variables` blocks in a test file outrank CLI `-var` values, leave environment-specific values out of the test file when you want CI to be able to override them - let the module's variable defaults supply local values instead.
 
 ```hcl
 # tests/bucket.tftest.hcl

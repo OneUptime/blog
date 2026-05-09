@@ -18,7 +18,7 @@ pathexpand(path)
 
 - Replaces a leading `~` segment with the current user's home directory (typically the value of `$HOME`)
 - Returns the path unchanged if it doesn't start with `~`
-- Operates on the string only — it does not access the filesystem
+- Operates on the string only - it does not access the filesystem
 
 ## Basic Examples
 

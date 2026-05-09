@@ -66,7 +66,7 @@ router bgp 65000 vrf CUSTOMER_A
   !
   address-family ipv6 unicast
     redistribute connected
-    ! Advertise with SRv6 SID — accepts auto, an index, or explicit SID
+    ! Advertise with SRv6 SID - accepts auto, an index, or explicit SID
     sid vpn export auto
     rd vpn export 65000:100
     rt vpn both 0:100
@@ -98,10 +98,10 @@ vtysh -c "show segment-routing srv6 locator detail"
 
 ## Step 3: BGP SR Policy (RFC 9256)
 
-RFC 9256 defines the SR Policy architecture and the BGP SR Policy SAFI is used to distribute SRv6 TE policies from a controller. FRR's bgpd does not currently expose a configurable SR Policy address-family — SR Policy programming in FRR is handled by `pathd` (PCEP/CLI), and BGP SR Policy distribution is typically used on platforms such as Cisco IOS-XR and Junos. A typical IOS-XR head-end configuration receiving SR Policies from a controller is:
+RFC 9256 defines the SR Policy architecture and the BGP SR Policy SAFI is used to distribute SRv6 TE policies from a controller. FRR's bgpd does not currently expose a configurable SR Policy address-family - SR Policy programming in FRR is handled by `pathd` (PCEP/CLI), and BGP SR Policy distribution is typically used on platforms such as Cisco IOS-XR and Junos. A typical IOS-XR head-end configuration receiving SR Policies from a controller is:
 
 ```text
-! Cisco IOS-XR — receive SR Policies via BGP from a controller
+! Cisco IOS-XR - receive SR Policies via BGP from a controller
 router bgp 65000
  neighbor 5f00:controller::1
   remote-as 65000
@@ -165,7 +165,7 @@ router bgp 65000
 ## Checking BGP SRv6 on Cisco IOS-XR
 
 ```text
-! Cisco IOS-XR equivalent — SRv6 does not require allocate-label (that is MPLS-only)
+! Cisco IOS-XR equivalent - SRv6 does not require allocate-label (that is MPLS-only)
 router bgp 65000
  segment-routing srv6
   locator MyLocator

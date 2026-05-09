@@ -111,4 +111,4 @@ echo +192.168.1.1 > /sys/class/net/bond0/bonding/arp_ip_target
 
 ## Conclusion
 
-Setting `miimon=100` is the standard starting point for bond link monitoring (and is the kernel default when `arp_interval` is unset). Add `downdelay=200` and `updelay=200` to prevent flapping; both should be multiples of `miimon` (otherwise the kernel rounds them down to the nearest multiple). If `miimon` is set to 0, MII monitoring is disabled and the bonding driver cannot detect link failures via MII — you would need ARP monitoring instead.
+Setting `miimon=100` is the standard starting point for bond link monitoring (and is the kernel default when `arp_interval` is unset). Add `downdelay=200` and `updelay=200` to prevent flapping; both should be multiples of `miimon` (otherwise the kernel rounds them down to the nearest multiple). If `miimon` is set to 0, MII monitoring is disabled and the bonding driver cannot detect link failures via MII - you would need ARP monitoring instead.

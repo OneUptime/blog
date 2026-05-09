@@ -97,7 +97,7 @@ IPsecPolicySet {
 }
 ```
 
-Note: `HomeAgentPreference` and `HomeAgentLifetime` are not mip6d.conf options — they are advertised in Router Advertisements and configured in `radvd.conf` via `HomeAgentPreference` and `HomeAgentLifetime` under an `interface` block with `AdvHomeAgentFlag on;` and `AdvHomeAgentInfo on;`.
+Note: `HomeAgentPreference` and `HomeAgentLifetime` are not mip6d.conf options - they are advertised in Router Advertisements and configured in `radvd.conf` via `HomeAgentPreference` and `HomeAgentLifetime` under an `interface` block with `AdvHomeAgentFlag on;` and `AdvHomeAgentInfo on;`.
 
 ## Step 4: Configure IPsec Security Associations
 

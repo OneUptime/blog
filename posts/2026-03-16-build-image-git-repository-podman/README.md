@@ -103,13 +103,13 @@ podman build \
 For private repositories, use authenticated URLs or SSH.
 
 ```bash
-# Using HTTPS with a token
+# Using GitLab HTTPS with an OAuth token
 podman build -t myapp:latest \
-  https://oauth2:${GITHUB_TOKEN}@github.com/myorg/private-repo.git
+  https://oauth2:${GITLAB_TOKEN}@gitlab.com/myorg/private-repo.git
 
 # Using SSH (requires SSH key configured)
 podman build -t myapp:latest \
-  git@github.com:myorg/private-repo.git
+  ssh://git@github.com/myorg/private-repo.git
 
 # Using a personal access token in the URL
 podman build -t myapp:latest \
@@ -189,13 +189,14 @@ podman build -t myapp:latest http://localhost:3000/myorg/myapp.git#main
 
 ## Caching with Git Builds
 
-Git-based builds do not benefit from local build context caching since the repository is cloned fresh each time. To improve performance, consider caching strategies.
+Git-based builds clone the repository into a temporary location each time, so the checkout step still has to run for each build. To improve performance, consider caching strategies.
 
 ```bash
-# Strategy 1: Use --cache-from with a previously built image
-podman pull registry.example.com/myapp:latest || true
+# Strategy 1: Use a remote cache repository
 podman build \
-  --cache-from registry.example.com/myapp:latest \
+  --layers \
+  --cache-to registry.example.com/myapp/cache \
+  --cache-from registry.example.com/myapp/cache \
   -t myapp:latest \
   https://github.com/myorg/myapp.git#main
 

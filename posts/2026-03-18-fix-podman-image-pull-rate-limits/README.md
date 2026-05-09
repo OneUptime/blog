@@ -10,7 +10,7 @@ Description: Learn how to work around Docker Hub and registry image pull rate li
 
 > Docker Hub enforces pull rate limits that can break CI/CD pipelines and slow down deployments. This guide covers practical strategies to work around rate limits in Podman, from authentication to mirror configuration and local caching.
 
-You run `podman pull` and get an error message about rate limits being exceeded. Docker Hub introduced pull rate limits that restrict how many image pulls you can make in a given time window. For anonymous users, the limit is 100 pulls per 6 hours per IP address. For authenticated free accounts, it is 200 pulls per 6 hours. These limits are easily hit in CI/CD environments where multiple pipelines pull images from the same IP.
+You run `podman pull` and get an error message about rate limits being exceeded. Docker Hub introduced pull rate limits that restrict how many image pulls you can make in a given time window. For anonymous users, the limit is 100 pulls per 6 hours per IPv4 address or IPv6 /64 subnet. For authenticated Docker Personal accounts, it is 200 pulls per 6 hours. These limits are easily hit in CI/CD environments where multiple pipelines pull images from the same IP.
 
 Understanding these limits and knowing how to work around them is essential for maintaining reliable container workflows.
 
@@ -20,10 +20,9 @@ Understanding these limits and knowing how to work around them is essential for 
 
 Docker Hub rate limits are based on your authentication status and account type:
 
-- **Anonymous**: 100 pulls per 6 hours per source IP
-- **Authenticated (free)**: 200 pulls per 6 hours per account
-- **Authenticated (paid)**: Higher limits depending on plan
-- **Docker Pro/Team/Business**: Varies by plan
+- **Anonymous**: 100 pulls per 6 hours per IPv4 address or IPv6 /64 subnet
+- **Authenticated (Docker Personal)**: 200 pulls per 6 hours
+- **Docker Pro/Team/Business**: Unlimited pull rate, subject to Docker's fair use policy
 
 The rate limit error in Podman looks like:
 
@@ -82,12 +81,14 @@ Set up a mirror to cache Docker Hub images locally or use a cloud provider's mir
 unqualified-search-registries = ["docker.io"]
 
 [[registry]]
-prefix = "docker.io"
-location = "docker.io"
+prefix = "docker.io/library"
+location = "docker.io/library"
 
 [[registry.mirror]]
-location = "your-mirror.example.com"
+location = "your-mirror.example.com/library"
 ```
+
+The `docker.io/library` prefix covers Docker Official Images such as `nginx` and `alpine`. For images under another Docker Hub namespace, configure that namespace explicitly.
 
 ### Setting Up a Local Registry Mirror
 
@@ -130,11 +131,11 @@ Then configure Podman to use it:
 
 ```toml
 [[registry]]
-prefix = "docker.io"
-location = "docker.io"
+prefix = "docker.io/library"
+location = "docker.io/library"
 
 [[registry.mirror]]
-location = "localhost:5000"
+location = "localhost:5000/library"
 insecure = true
 ```
 
@@ -146,22 +147,22 @@ Major cloud providers offer Docker Hub mirrors:
 
 ```toml
 [[registry]]
-prefix = "docker.io"
-location = "docker.io"
+prefix = "docker.io/library"
+location = "docker.io/library"
 
 [[registry.mirror]]
-location = "public.ecr.aws/docker"
+location = "public.ecr.aws/docker/library"
 ```
 
-**Google Container Registry:**
+**Google Artifact Registry cache:**
 
 ```toml
 [[registry]]
-prefix = "docker.io"
-location = "docker.io"
+prefix = "docker.io/library"
+location = "docker.io/library"
 
 [[registry.mirror]]
-location = "mirror.gcr.io"
+location = "mirror.gcr.io/library"
 ```
 
 ## Fix 3: Cache Images Locally
@@ -217,11 +218,11 @@ jobs:
 **Use specific tags instead of `latest`:**
 
 ```bash
-# Bad - pulls every time to check for updates
+# Bad - podman pull defaults to --policy=always
 podman pull nginx:latest
 
-# Good - pulls once and caches
-podman pull nginx:1.25.3-alpine
+# Good - use a specific tag and only pull it if it is missing locally
+podman pull --policy=missing nginx:1.25.3-alpine
 ```
 
 **Combine multiple images into a single base image:**
@@ -255,7 +256,7 @@ podman pull public.ecr.aws/nginx/nginx:latest
 
 ## Fix 6: Use Podman's Image Caching
 
-Podman caches pulled images locally. You only hit the rate limit on the initial pull:
+Podman caches pulled images locally, but explicit `podman pull` defaults to `--policy=always`. Use `--policy=missing` or check whether the image exists locally before pulling:
 
 ```bash
 # Check if an image exists locally before pulling
@@ -270,6 +271,7 @@ For CI/CD, preserve the image store between runs:
 # Set a custom image store location that persists
 export CONTAINERS_STORAGE_CONF=~/.config/containers/storage.conf
 
+mkdir -p ~/.config/containers
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 driver = "overlay"
@@ -299,7 +301,7 @@ Run this before CI/CD pipelines to check if you have capacity. If remaining is l
 
 ## Fix 8: Upgrade Docker Hub Plan
 
-For organizations with heavy pull requirements, a paid Docker Hub plan is the most straightforward solution. Docker Pro, Team, and Business plans offer significantly higher rate limits. For open-source projects, Docker offers free team accounts.
+For organizations with heavy pull requirements, a paid Docker Hub plan is the most straightforward solution. Docker Pro, Team, and Business plans offer unlimited pull rates, subject to Docker's fair use policy. For open-source projects, Docker offers sponsored open source program options.
 
 ## Complete CI/CD Strategy
 
@@ -310,7 +312,6 @@ Here is a comprehensive approach for CI/CD environments:
 # ci-image-pull.sh - Rate-limit-aware image pulling
 
 IMAGE="$1"
-MIRROR="mirror.gcr.io"
 LOCAL_REGISTRY="registry.internal.company.com:5000"
 
 # Try local registry first (no rate limits)
@@ -320,7 +321,7 @@ if podman pull "${LOCAL_REGISTRY}/${IMAGE}" --tls-verify=false 2>/dev/null; then
     exit 0
 fi
 
-# Try mirror second
+# Try the configured mirror/source second
 if podman pull "${IMAGE}" 2>/dev/null; then
     # Push to local registry for future use
     podman tag "${IMAGE}" "${LOCAL_REGISTRY}/${IMAGE}"

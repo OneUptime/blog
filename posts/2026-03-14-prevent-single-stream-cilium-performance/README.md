@@ -42,11 +42,12 @@ spec:
         spec:
           containers:
           - name: benchmark
-            image: networkstatic/iperf3
+            image: alpine:3.20
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl iperf3 jq >/dev/null
               # Run single-stream test and push to Pushgateway
               RESULT=$(iperf3 -c iperf-server.monitoring -t 30 -P 1 -J)
               BPS=$(echo "$RESULT" | jq '.end.sum_sent.bits_per_second')
@@ -96,20 +97,21 @@ spec:
 
 ## Optimal Initial Configuration
 
-Start with the highest-performance Cilium configuration from day one:
+Start with a performance-oriented Cilium configuration from day one, on clusters where native routing prerequisites are met:
 
 ```bash
 helm install cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
   --set kubeProxyReplacement=true \
   --set bpf.masquerade=true \
   --set bpf.hostLegacyRouting=false \
-  --set bpf.ctGlobalTCPMax=524288 \
-  --set bpf.ctGlobalAnyMax=262144 \
+  --set bpf.ctTcpMax=524288 \
+  --set bpf.ctAnyMax=262144 \
   --set bpf.natMax=524288 \
+  --set bandwidthManager.enabled=true \
+  --set bandwidthManager.bbr=true \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
   --set hubble.enabled=true \
@@ -141,12 +143,12 @@ spec:
         summary: "Single-stream throughput dropped below 85% of 30-day average"
     - alert: CiliumConntrackTableHigh
       expr: |
-        cilium_bpf_map_ops_total{map_name=~".*ct.*"} > 400000
+        max(cilium_bpf_map_pressure{map_name=~".*ct.*"}) > 0.8
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Conntrack table approaching capacity"
+        summary: "Conntrack BPF map pressure above 80%"
 ```
 
 ## Policy Impact Assessment
@@ -234,7 +236,7 @@ kubectl get cronjobs -n monitoring
 curl -s http://prometheus.monitoring:9090/api/v1/query?query=cilium_single_stream_throughput_bps
 
 # Confirm Cilium configuration
-cilium config view | grep -E "tunnel|routing-mode|bpf-host-routing"
+cilium config view | grep -E "routing-mode|enable-bpf-masquerade|enable-host-legacy-routing|kube-proxy-replacement"
 
 # Validate alerting rules are loaded
 kubectl get prometheusrules -n monitoring

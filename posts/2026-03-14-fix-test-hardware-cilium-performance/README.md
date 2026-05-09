@@ -21,6 +21,7 @@ This guide provides the specific commands to optimize hardware configuration for
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
 - `cilium` CLI and `kubectl` access
 - Node-level root access
+- `ethtool` on nodes; `jq` and `iperf3` for validation
 - Prometheus monitoring (recommended)
 
 ## NIC Optimization
@@ -28,7 +29,14 @@ This guide provides the specific commands to optimize hardware configuration for
 ```bash
 # Maximize queues
 
-ethtool -L eth0 combined $(nproc)
+MAX_COMBINED=$(ethtool -l eth0 | awk '
+  /Pre-set maximums:/ {max=1; next}
+  /Current hardware settings:/ {max=0}
+  max && /Combined:/ {print $2; exit}
+')
+if [ -n "$MAX_COMBINED" ]; then
+  ethtool -L eth0 combined "$MAX_COMBINED"
+fi
 
 # Enable all relevant offloads
 ethtool -K eth0 rx-checksum on tx-checksum-ipv4 on
@@ -61,6 +69,9 @@ echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true
 ```bash
 # Pin IRQs to the NIC's NUMA node
 NIC_NUMA=$(cat /sys/class/net/eth0/device/numa_node)
+if [ "$NIC_NUMA" -lt 0 ]; then
+  NIC_NUMA=0
+fi
 CPUS=$(cat /sys/devices/system/node/node${NIC_NUMA}/cpulist)
 echo "Pin workloads to CPUs: $CPUS"
 
@@ -91,17 +102,25 @@ spec:
       hostPID: true
       initContainers:
       - name: tune
-        image: busybox:1.36
+        image: alpine:3.20
         securityContext:
           privileged: true
         command:
         - sh
         - -c
         - |
+          apk add --no-cache ethtool
           for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
             echo performance > $gov 2>/dev/null
           done
-          ethtool -L eth0 combined $(nproc) 2>/dev/null || true
+          MAX_COMBINED=$(ethtool -l eth0 | awk '
+            /Pre-set maximums:/ {max=1; next}
+            /Current hardware settings:/ {max=0}
+            max && /Combined:/ {print $2; exit}
+          ')
+          if [ -n "$MAX_COMBINED" ]; then
+            ethtool -L eth0 combined "$MAX_COMBINED" 2>/dev/null || true
+          fi
           ethtool -G eth0 rx 4096 tx 4096 2>/dev/null || true
       containers:
       - name: pause
@@ -198,12 +217,20 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+DROPS=$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  timeout 5 cilium-dbg monitor --type drop | grep -E " drop " | head -5 || true)
+if [ -n "$DROPS" ]; then
+  echo "$DROPS"
+else
+  echo "No drops in 5 seconds"
+fi
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"

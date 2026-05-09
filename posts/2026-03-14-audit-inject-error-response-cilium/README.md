@@ -149,7 +149,7 @@ go vet ./proxylib/myprotocol/...
 gosec ./proxylib/myprotocol/...
 
 # Test the injection code specifically
-go test ./proxylib/myprotocol/... -v -run "TestError\|TestInject" -race
+go test ./proxylib/myprotocol/... -v -run "TestError|TestInject" -race
 
 # Coverage of injection paths
 go test ./proxylib/myprotocol/... -coverprofile=inject-audit.out

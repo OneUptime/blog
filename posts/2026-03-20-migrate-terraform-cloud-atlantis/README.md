@@ -175,7 +175,7 @@ repos:
       - mergeable
 ```
 
-Atlantis only checks that *someone* has approved the PR. To require approval from a specific GitHub team (e.g. `my-org/infrastructure-team`), configure that in the repository's GitHub branch protection rules — Atlantis honors those rules through the `approved` requirement.
+Atlantis only checks that *someone* has approved the PR. To require approval from a specific GitHub team (e.g. `my-org/infrastructure-team`), configure that in the repository's GitHub branch protection rules - Atlantis honors those rules through the `approved` requirement.
 
 ## Phase 6: Validate and Cut Over
 

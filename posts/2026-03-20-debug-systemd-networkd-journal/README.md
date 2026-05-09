@@ -76,7 +76,7 @@ systemctl restart systemd-networkd
 ## Validating Configuration Files
 
 systemd-networkd does not ship a standalone "verify" subcommand. To validate
-`.network` and `.netdev` files, reload them and watch the journal — the parser
+`.network` and `.netdev` files, reload them and watch the journal - the parser
 prints the file and line number for any syntax errors.
 
 ```bash
@@ -138,5 +138,5 @@ dmesg | grep -E "eth0|nf_|bond" | tail -20
 
 - `journalctl -u systemd-networkd -f` provides real-time network configuration log monitoring.
 - Enable debug logging with `SYSTEMD_LOG_LEVEL=debug` in a systemd override file to see detailed DHCP and routing events.
-- To validate `.network` and `.netdev` files, run `networkctl reload` and watch the journal — there is no standalone verify subcommand.
+- To validate `.network` and `.netdev` files, run `networkctl reload` and watch the journal - there is no standalone verify subcommand.
 - `networkctl list` shows operational status; `degraded` means the interface has carrier and a link-local address but no routable address.

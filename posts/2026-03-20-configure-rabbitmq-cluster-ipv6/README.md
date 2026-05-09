@@ -104,7 +104,7 @@ sudo rabbitmq-plugins enable rabbitmq_management
 sudo rabbitmqctl status
 
 # Check node is accessible over IPv6 (use the resolvable hostname,
-# not a literal IPv6 address — Erlang node names do not accept those).
+# not a literal IPv6 address - Erlang node names do not accept those).
 sudo rabbitmqctl -n rabbit@rabbit-node1 status
 ```
 

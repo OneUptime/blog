@@ -23,11 +23,23 @@ Container images are built from base images that bundle hundreds of packages. Ov
 Trivy is a widely-used open-source vulnerability scanner that works well with Podman.
 
 ```bash
-# Install Trivy on Fedora/RHEL
-
-sudo dnf install -y trivy
+# Install Trivy on RHEL/CentOS
+cat << EOF | sudo tee -a /etc/yum.repos.d/trivy.repo
+[trivy]
+name=Trivy repository
+baseurl=https://aquasecurity.github.io/trivy-repo/rpm/releases/\$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://aquasecurity.github.io/trivy-repo/rpm/public.key
+EOF
+sudo yum -y update
+sudo yum -y install trivy
 
 # Or install on Debian/Ubuntu
+sudo apt-get install -y wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update
 sudo apt-get install -y trivy
 
 # Or install via the official install script
@@ -41,9 +53,12 @@ trivy version
 
 ## Scanning a Podman Image with Trivy
 
-Trivy can scan images stored in Podman's local storage directly.
+Trivy can scan images stored in Podman's local storage when the local Podman socket is available.
 
 ```bash
+# Enable the Podman socket for local image scanning
+systemctl --user enable --now podman.socket
+
 # Pull an image to scan
 podman pull docker.io/library/nginx:alpine
 
@@ -95,7 +110,7 @@ grype version
 # Scan a Podman image with Grype
 grype docker.io/library/python:3.12-slim
 
-# Show only critical vulnerabilities
+# Fail if fixed critical vulnerabilities are found
 grype docker.io/library/python:3.12-slim --only-fixed --fail-on critical
 ```
 
@@ -151,7 +166,7 @@ done
 ```bash
 # Generate an HTML vulnerability report
 trivy image --format template \
-  --template "@/usr/share/trivy/templates/html.tpl" \
+  --template "@/usr/local/share/trivy/templates/html.tpl" \
   --output report.html \
   docker.io/library/nginx:alpine
 

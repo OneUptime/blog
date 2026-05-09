@@ -45,7 +45,7 @@ ls /proc/sys/fs/binfmt_misc/qemu-*
 # Containerfile
 FROM golang:1.21 AS builder
 
-# These ARGs are automatically set by Podman based on --platform
+# Pass these ARGs from the build command based on the target platform
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
@@ -84,11 +84,14 @@ podman manifest create "${IMAGE}:${TAG}"
 
 # Build for each platform and add to the manifest
 for PLATFORM in "${PLATFORMS[@]}"; do
+    OS="${PLATFORM%/*}"
     ARCH="${PLATFORM#*/}"
     echo "Building for ${PLATFORM}..."
 
     podman build \
         --platform "${PLATFORM}" \
+        --build-arg "TARGETOS=${OS}" \
+        --build-arg "TARGETARCH=${ARCH}" \
         -t "${IMAGE}:${TAG}-${ARCH}" \
         -f Containerfile \
         .
@@ -182,6 +185,7 @@ kubectl logs myapp-arm64-test
 IMAGE ?= registry.example.com/myapp
 TAG ?= $(shell git describe --tags --always)
 PLATFORMS ?= linux/amd64,linux/arm64
+comma := ,
 
 .PHONY: build-multiarch push-multiarch
 
@@ -189,9 +193,12 @@ build-multiarch:
 	podman manifest rm $(IMAGE):$(TAG) 2>/dev/null || true
 	podman manifest create $(IMAGE):$(TAG)
 	@for platform in $(subst $(comma), ,$(PLATFORMS)); do \
+		os=$$(echo $$platform | cut -d/ -f1); \
 		arch=$$(echo $$platform | cut -d/ -f2); \
 		echo "Building $$platform..."; \
 		podman build --platform $$platform \
+			--build-arg TARGETOS=$$os \
+			--build-arg TARGETARCH=$$arch \
 			-t $(IMAGE):$(TAG)-$$arch .; \
 		podman manifest add $(IMAGE):$(TAG) $(IMAGE):$(TAG)-$$arch; \
 	done
@@ -203,4 +210,4 @@ push-multiarch: build-multiarch
 
 ## Summary
 
-Building multi-arch images for Kubernetes with Podman involves creating platform-specific builds, grouping them into a manifest list, and pushing the manifest to your registry. Kubernetes then automatically selects the correct image for each node architecture. Use QEMU emulation for cross-compilation or Podman farms for native builds on remote machines.
+Building multi-arch images for Kubernetes with Podman involves creating platform-specific builds, grouping them into a manifest list, and pushing the manifest to your registry. Kubernetes then automatically selects the correct image for each node architecture. Use QEMU emulation for foreign-architecture build steps or Podman farms for native builds on remote machines.

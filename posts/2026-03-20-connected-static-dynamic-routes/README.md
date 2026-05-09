@@ -48,7 +48,7 @@ ip route add default via 192.168.10.1
 ip route show
 ```
 
-Static routes added with `ip route` use a default metric of 0 on Linux — the kernel does not implement Cisco-style administrative distance, only per-route metrics where lower wins. Use the `metric` keyword to make a route less preferred:
+Static routes added with `ip route` use a default metric of 0 on Linux - the kernel does not implement Cisco-style administrative distance, only per-route metrics where lower wins. Use the `metric` keyword to make a route less preferred:
 
 ```bash
 # Lower metric = higher preference

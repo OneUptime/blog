@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, IPv6, Default Route, IOS, Routing
 
-Description: Add IPv6 default routes on Cisco IOS using static routes, floating static routes, and via BGP or OSPF learning.
+Description: Configure IPv6 default routes on Cisco IOS using static routes, floating static routes, and routing protocols such as BGP or OSPF.
 
 ## Overview
 
-Add IPv6 default routes on Cisco IOS using static routes, floating static routes, and via BGP or OSPF learning.
+Configure IPv6 default routes on Cisco IOS using static routes, floating static routes, and routing protocols such as BGP or OSPF.
 
 ## Prerequisites
 
-- Cisco IOS 12.4(6)T or later
+- Cisco IOS with IPv6 routing support
 - Global IPv6 routing enabled: `ipv6 unicast-routing`
 - Console or SSH access to the router
 
@@ -21,71 +21,71 @@ Add IPv6 default routes on Cisco IOS using static routes, floating static routes
 ### Basic IPv6 Setup
 
 ```text
-! Always start with enabling IPv6 routing globally
+! Always start by enabling IPv6 routing globally
 Router(config)# ipv6 unicast-routing
 
-! Configure interface with IPv6
+! Configure the primary upstream-facing interface with IPv6
 Router(config)# interface GigabitEthernet0/0
-Router(config-if)# ipv6 address 2001:db8::1/64
+Router(config-if)# ipv6 address 2001:db8:0:1::1/64
+Router(config-if)# no shutdown
+
+! Configure a secondary upstream-facing interface for backup routing
+Router(config)# interface GigabitEthernet0/1
+Router(config-if)# ipv6 address 2001:db8:0:2::1/64
 Router(config-if)# no shutdown
 ```
 
 ### Feature-Specific Configuration
 
 ```text
-! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
+! Static IPv6 default route using the primary upstream next hop
+Router(config)# ipv6 route ::/0 2001:db8:0:1::2
 
-! ACL example
-Router(config)# ipv6 access-list BLOCK-BOGONS
-Router(config-ipv6-acl)# deny ipv6 ::/8 any
-Router(config-ipv6-acl)# deny ipv6 2001:db8::/32 any
-Router(config-ipv6-acl)# permit ipv6 any any
+! Floating static IPv6 default route with a higher administrative distance
+Router(config)# ipv6 route ::/0 2001:db8:0:2::2 200
 
-! DHCPv6 server pool
-Router(config)# ipv6 dhcp pool IPV6-POOL
-Router(config-dhcpv6)# address prefix 2001:db8:1::/64
-Router(config-dhcpv6)# dns-server 2001:4860:4860::8888
-Router(config-dhcpv6)# domain-name example.com
-
-! Apply DHCPv6 to interface
-Router(config)# interface GigabitEthernet0/1
-Router(config-if)# ipv6 dhcp server IPV6-POOL
+! Advertise an existing default route into OSPF for IPv6
+Router(config)# ipv6 router ospf 10
+Router(config-rtr)# default-information originate
 ```
 
 ## Verification Commands
 
 ```text
-! Show IPv6 addresses
+! Show IPv6 interface status
 Router# show ipv6 interface brief
 
-! Show IPv6 routing table
+! Show configured IPv6 static routes
+Router# show ipv6 static
+
+! Show the installed default route
+Router# show ipv6 route ::/0
+
+! Show only IPv6 static routes in the routing table
+Router# show ipv6 route static
+
+! Show IPv6 routes learned from BGP or OSPF
+Router# show ipv6 route bgp
+Router# show ipv6 route ospf
+
+! Show the full IPv6 routing table
 Router# show ipv6 route
 
-! Show NDP neighbor cache
-Router# show ipv6 neighbors
-
-! Show DHCP bindings
-Router# show ipv6 dhcp binding
-
-! Ping IPv6 address
-Router# ping ipv6 2001:db8::1
+! Ping an IPv6 destination beyond the next hop
+Router# ping ipv6 2001:db8:ffff::1
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8:ffff::1
 ```
 
 ## Debug Commands
 
 ```text
-! Debug IPv6 packet processing
+! Debug IPv6 route installation and removal
+Router# debug ipv6 routing
+
+! Debug IPv6 packet forwarding
 Router# debug ipv6 packet
-
-! Debug NDP (Neighbor Discovery)
-Router# debug ipv6 nd
-
-! Debug DHCPv6
-Router# debug ipv6 dhcp
 
 ! Always disable debug when done
 Router# undebug all
@@ -97,4 +97,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Configure IPv6 Default Route on Cisco follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Configure IPv6 Default Route on Cisco follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally so the router can forward IPv6 traffic. Always verify that `::/0` appears in `show ipv6 route` after making changes.

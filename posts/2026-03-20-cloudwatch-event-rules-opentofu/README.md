@@ -13,7 +13,8 @@ CloudWatch Events (now Amazon EventBridge) routes events from AWS services, cust
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with CloudWatch Events and Lambda permissions
+- AWS credentials with EventBridge and target-service permissions
+- For CloudTrail-based rules, an AWS CloudTrail trail with management event logging enabled
 
 ## Step 1: Scheduled Event Rule (Cron)
 
@@ -91,6 +92,25 @@ resource "aws_cloudwatch_event_target" "ec2_state_sns" {
     input_template = "\"EC2 instance <instance> transitioned to <state> at <time>\""
   }
 }
+
+data "aws_iam_policy_document" "allow_eventbridge_ec2_state" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["sns:Publish"]
+    resources = [var.sns_topic_arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "ec2_state_sns" {
+  arn    = var.sns_topic_arn
+  policy = data.aws_iam_policy_document.allow_eventbridge_ec2_state.json
+}
 ```
 
 ## Step 3: CloudTrail Event Rule for Security Monitoring
@@ -100,11 +120,14 @@ resource "aws_cloudwatch_event_target" "ec2_state_sns" {
 resource "aws_cloudwatch_event_rule" "root_login" {
   name        = "${var.project_name}-root-login"
   description = "Alert on root account console login"
+  state       = "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS"
 
   event_pattern = jsonencode({
     source        = ["aws.signin"]
-    "detail-type" = ["AWS Console Sign In via CloudTrail"]
+    "detail-type" = ["AWS Console Sign In via CloudTrail", "AWS Console Signin via CloudTrail"]
     detail = {
+      eventSource = ["signin.amazonaws.com"]
+      eventName   = ["ConsoleLogin"]
       userIdentity = {
         type = ["Root"]
       }
@@ -120,15 +143,41 @@ resource "aws_cloudwatch_event_target" "root_login_alert" {
 
 # Alert on unauthorized API calls
 resource "aws_cloudwatch_event_rule" "unauthorized_api" {
-  name = "${var.project_name}-unauthorized-api"
+  name        = "${var.project_name}-unauthorized-api"
+  description = "Alert on unauthorized API calls"
+  state       = "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS"
 
   event_pattern = jsonencode({
-    source        = ["aws.cloudtrail"]
     "detail-type" = ["AWS API Call via CloudTrail"]
     detail = {
       errorCode = ["AccessDenied", "UnauthorizedOperation"]
     }
   })
+}
+
+resource "aws_cloudwatch_event_target" "unauthorized_api_alert" {
+  rule      = aws_cloudwatch_event_rule.unauthorized_api.name
+  target_id = "unauthorized-api-alert"
+  arn       = var.security_sns_topic_arn
+}
+
+data "aws_iam_policy_document" "allow_eventbridge_security_alerts" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["sns:Publish"]
+    resources = [var.security_sns_topic_arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "security_alerts" {
+  arn    = var.security_sns_topic_arn
+  policy = data.aws_iam_policy_document.allow_eventbridge_security_alerts.json
 }
 ```
 
@@ -150,6 +199,12 @@ resource "aws_cloudwatch_event_rule" "ecs_task_stopped" {
     }
   })
 }
+
+resource "aws_cloudwatch_event_target" "ecs_task_stopped_alert" {
+  rule      = aws_cloudwatch_event_rule.ecs_task_stopped.name
+  target_id = "ecs-task-stopped-alert"
+  arn       = var.security_sns_topic_arn
+}
 ```
 
 ## Step 5: Deploy
@@ -159,9 +214,8 @@ tofu init
 tofu plan
 tofu apply
 
-# Test the scheduled rule immediately
-aws events put-events \
-  --entries '[{"Source":"my.test","DetailType":"TestEvent","Detail":"{\"test\":true}"}]'
+# Scheduled rules run on their cron or rate expression; verify the rule configuration
+aws events describe-rule --name "my-project-daily-cleanup"
 ```
 
 ## Conclusion

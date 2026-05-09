@@ -116,7 +116,7 @@ locals {
   }
 
   # Generate team/environment bindings (nested for, since each team has a different
-  # set of allowed environments — setproduct would over-generate combinations here)
+  # set of allowed environments - setproduct would over-generate combinations here)
   team_env_bindings = flatten([
     for team in local.teams : [
       for env in local.team_env_access[team] : {

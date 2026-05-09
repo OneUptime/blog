@@ -10,7 +10,7 @@ Description: Learn how to validate that Cilium is correctly chained with the AWS
 
 ## Introduction
 
-AWS VPC CNI chaining with Cilium is a deployment model where the AWS VPC CNI (aws-node) handles pod IP allocation from VPC subnets while Cilium acts as the network policy enforcement engine. This combination provides the best of both worlds: native VPC networking for AWS-compatible IP addressing and Cilium's powerful L3/L4/L7 policy enforcement.
+AWS VPC CNI chaining with Cilium is a deployment model where the AWS VPC CNI (aws-node) handles pod IP allocation from VPC subnets while Cilium acts as the network policy enforcement engine. This combination provides the best of both worlds: native VPC networking for AWS-compatible IP addressing and Cilium's powerful L3/L4 policy enforcement, with some advanced features such as L7 policy subject to chaining-mode limitations.
 
 Validating this chained configuration is more complex than validating either CNI independently. You must verify that the aws-node CNI is assigning VPC IPs to pods, that Cilium is correctly intercepting and filtering traffic with eBPF programs, and that network policies applied to pods are being enforced by Cilium rather than falling through to the default-allow behavior.
 
@@ -49,11 +49,13 @@ Confirm pods are receiving AWS VPC IPs, not Cilium-assigned IPs.
 
 ```bash
 # Check pod IPs - they should be from your VPC subnet ranges
-kubectl get pods -A -o wide | grep -v NAMESPACE | awk '{print $8}' | sort | head -20
+kubectl get pods -A \
+  -o custom-columns=IP:.status.podIP --no-headers | \
+  sort | head -20
 
 # Verify these IPs are in your VPC subnet CIDR
 aws ec2 describe-subnets \
-  --filters "Name=tag:kubernetes.io/cluster/<cluster-name>,Values=shared" \
+  --filters "Name=tag:kubernetes.io/cluster/<cluster-name>,Values=shared,owned" \
   --query "Subnets[*].{SubnetId:SubnetId,CIDR:CidrBlock}" \
   --region <region>
 
@@ -68,17 +70,19 @@ aws ec2 describe-network-interfaces \
 Confirm Cilium's eBPF programs are intercepting traffic.
 
 ```bash
-# Check Cilium endpoints are registered for all pods
-cilium endpoint list | head -20
+# Check Cilium endpoints are registered for managed pods
+kubectl get ciliumendpoints -A | head -20
 
-# Verify the total endpoint count matches pod count
-CILIUM_EP_COUNT=$(cilium endpoint list | grep -c "ready")
-POD_COUNT=$(kubectl get pods -A --field-selector=status.phase=Running --no-headers | wc -l)
-echo "Cilium endpoints: $CILIUM_EP_COUNT, Running pods: $POD_COUNT"
+# Compare endpoint count with running non-hostNetwork pods.
+# Cilium may also create cilium-health endpoints, so investigate large gaps.
+CILIUM_EP_COUNT=$(kubectl get ciliumendpoints -A --no-headers | wc -l)
+POD_COUNT=$(kubectl get pods -A --field-selector=status.phase=Running \
+  -o jsonpath='{range .items[?(@.spec.hostNetwork!=true)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | wc -l)
+echo "Cilium endpoints: $CILIUM_EP_COUNT, Running non-hostNetwork pods: $POD_COUNT"
 
 # Check eBPF programs are loaded
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- \
-  cilium bpf endpoint list | head -10
+  cilium-dbg bpf endpoint list | head -10
 ```
 
 ## Step 4: Validate Network Policy Enforcement
@@ -90,6 +94,7 @@ Apply a test policy and verify Cilium enforces it correctly.
 kubectl run policy-test-server --image=nginx --labels="app=policy-server"
 kubectl run policy-test-client --image=curlimages/curl --labels="app=policy-client" \
   --command -- sleep infinity
+kubectl expose pod policy-test-server --port=80 --name=policy-test-server
 
 # Verify both pods are running
 kubectl get pods policy-test-server policy-test-client
@@ -127,8 +132,8 @@ Validate enforcement is visible in Hubble flows.
 cilium hubble port-forward &
 sleep 2
 
-# Watch flows during policy test
-hubble observe --namespace default --follow &
+# Watch dropped flows during policy test
+hubble observe --namespace default --verdict DROPPED --follow &
 
 # Generate traffic in another terminal
 kubectl exec policy-test-client -- \
@@ -138,6 +143,7 @@ kubectl exec policy-test-client -- \
 
 # Cleanup test resources
 kubectl delete pod policy-test-server policy-test-client
+kubectl delete service policy-test-server
 kubectl delete ciliumnetworkpolicy deny-all-ingress-test
 ```
 

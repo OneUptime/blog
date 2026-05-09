@@ -200,7 +200,7 @@ curl -sk -X PATCH \
   }'
 ```
 
-The DLP sensor `action` is either `allow` (monitor only — log violations without dropping traffic) or `deny` (block matching packets). Whether `deny` actually drops traffic also depends on the group's policy mode (Discover/Monitor/Protect).
+The DLP sensor `action` is either `allow` (monitor only - log violations without dropping traffic) or `deny` (block matching packets). Whether `deny` actually drops traffic also depends on the group's policy mode (Discover/Monitor/Protect).
 
 In the NeuVector UI:
 1. Go to **Policy** > **Groups**

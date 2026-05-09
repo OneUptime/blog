@@ -90,7 +90,7 @@ arp -an
 After adding a new interface (DMZ, OPT), pfSense blocks all traffic by default. Add explicit allow rules:
 
 Navigate to **Firewall > Rules > DMZ**:
-- Add rule: Proto=TCP, Source=DMZ net, Destination=any, Destination Port Range=HTTP (80) — add a second rule for HTTPS (443), or create a Ports alias (Firewall > Aliases) containing 80 and 443 and reference it in a single rule
+- Add rule: Proto=TCP, Source=DMZ net, Destination=any, Destination Port Range=HTTP (80) - add a second rule for HTTPS (443), or create a Ports alias (Firewall > Aliases) containing 80 and 443 and reference it in a single rule
 
 ## Conclusion
 

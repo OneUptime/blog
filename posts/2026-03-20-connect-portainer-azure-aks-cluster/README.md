@@ -52,7 +52,7 @@ for e in envs:
 For EKS, AKS, and GKE environments, deploy the agent by applying the official YAML manifest published by Portainer:
 
 ```bash
-# Standard agent (LoadBalancer) — Portainer Server reaches the agent over the public LB
+# Standard agent (LoadBalancer) - Portainer Server reaches the agent over the public LB
 kubectl apply -n portainer \
   -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-lb.yaml
 

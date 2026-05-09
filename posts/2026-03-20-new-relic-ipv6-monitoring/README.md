@@ -21,7 +21,7 @@ license_key: "{{ your_license_key }}"
 # IPv6 to reach the New Relic collector when the OS prefers IPv6.
 
 # Filter out unwanted interfaces from NetworkSample. Default filters
-# already exclude lo, dummy, vmnet, sit, tun, tap, veth — extend here
+# already exclude lo, dummy, vmnet, sit, tun, tap, veth - extend here
 # if you need to hide additional interfaces by prefix or by suffix
 # after a leading digit (index-1).
 network_interface_filters:
@@ -42,7 +42,7 @@ sudo systemctl status newrelic-infra
 
 ## Step 2: Configure a Flex Integration for IPv6 Ping Checks
 
-The `nri-flex` integration (bundled with the Infrastructure Agent) lets you wrap any command — including `ping6` — and ship the parsed output to New Relic as a custom event:
+The `nri-flex` integration (bundled with the Infrastructure Agent) lets you wrap any command - including `ping6` - and ship the parsed output to New Relic as a custom event:
 
 ```yaml
 # /etc/newrelic-infra/integrations.d/ipv6-ping.yml - Ping check for IPv6
@@ -78,7 +78,7 @@ curl -X POST "https://api.newrelic.com/graphql" \
 
 ## Step 4: Scripted API Monitor for IPv6
 
-For more control — for example, hitting a literal IPv6 address while sending a specific Host header — use a Scripted API monitor. The `$http` global is provided by the runtime (powered by `got`, with a request-compatible surface), so you do not need to `require` it:
+For more control - for example, hitting a literal IPv6 address while sending a specific Host header - use a Scripted API monitor. The `$http` global is provided by the runtime (powered by `got`, with a request-compatible surface), so you do not need to `require` it:
 
 ```javascript
 // New Relic Scripted API monitor: Test IPv6 endpoint

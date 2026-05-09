@@ -151,7 +151,7 @@ vtysh -c "show ipv6 pim bsr candidate-rp"
 # Inspect BSR-learned group-to-RP mappings
 vtysh -c "show ipv6 pim bsr rp-info"
 
-# Inspect (S,G) state at the RP — source registrations show up here
+# Inspect (S,G) state at the RP - source registrations show up here
 vtysh -c "show ipv6 pim upstream"
 ```
 
@@ -175,4 +175,4 @@ vtysh -c "show ipv6 pim upstream"
 
 ## Summary
 
-IPv6 multicast RPs can be configured statically (`rp <addr>` inside `router pim6`), dynamically via BSR, or using IPv6's unique Embedded RP feature where the RP is encoded in the multicast address. For redundancy, use Anycast RP where multiple routers share the same RP address — and remember that on IPv6 you use RFC 4610 (Anycast-RP using PIM), not MSDP. Always verify RP configuration with `show ipv6 pim rp-info` and test with actual multicast sources and receivers.
+IPv6 multicast RPs can be configured statically (`rp <addr>` inside `router pim6`), dynamically via BSR, or using IPv6's unique Embedded RP feature where the RP is encoded in the multicast address. For redundancy, use Anycast RP where multiple routers share the same RP address - and remember that on IPv6 you use RFC 4610 (Anycast-RP using PIM), not MSDP. Always verify RP configuration with `show ipv6 pim rp-info` and test with actual multicast sources and receivers.

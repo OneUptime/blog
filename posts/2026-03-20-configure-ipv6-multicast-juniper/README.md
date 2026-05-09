@@ -42,7 +42,7 @@ run show pim rps inet6
 
 ## Configuring Embedded RP for Dynamic RP Discovery
 
-Junos OS does not support PIM Bootstrap Router (BSR) or Auto-RP for IPv6 — only static RP and embedded RP are available for IPv6 PIM. Embedded RP carries the RP address inside the multicast group address itself (the IPv6 group format defined in RFC 3956), so receivers and sources can learn the RP without any out-of-band protocol.
+Junos OS does not support PIM Bootstrap Router (BSR) or Auto-RP for IPv6 - only static RP and embedded RP are available for IPv6 PIM. Embedded RP carries the RP address inside the multicast group address itself (the IPv6 group format defined in RFC 3956), so receivers and sources can learn the RP without any out-of-band protocol.
 
 ```juniper
 # Enable embedded RP processing (uses the default group range FF70::/12 to FFF0::/12)

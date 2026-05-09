@@ -84,7 +84,7 @@ MODULE_NAME="vpc"
 VERSION="v2.1.0"
 BUCKET="my-terraform-modules"
 
-# Create archive (extension must match the source URL — OpenTofu picks
+# Create archive (extension must match the source URL - OpenTofu picks
 # the decompressor based on the URL extension)
 (cd "./modules/${MODULE_NAME}/" && zip -r "../../${MODULE_NAME}-${VERSION}.zip" .)
 

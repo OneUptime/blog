@@ -98,7 +98,7 @@ auditLog:
 
 ## Step 6: Database Tuning (External PostgreSQL)
 
-Rancher v2 stores its data in the Kubernetes resources of the local cluster it runs on, so the "database" you tune is the datastore of that underlying cluster (etcd by default, or — when Rancher is running on K3s — the embedded SQLite). For large deployments running on K3s, switching K3s from SQLite to an external PostgreSQL is a common scaling step. This is configured on the K3s server, not via Rancher's `extraEnv`:
+Rancher v2 stores its data in the Kubernetes resources of the local cluster it runs on, so the "database" you tune is the datastore of that underlying cluster (etcd by default, or - when Rancher is running on K3s - the embedded SQLite). For large deployments running on K3s, switching K3s from SQLite to an external PostgreSQL is a common scaling step. This is configured on the K3s server, not via Rancher's `extraEnv`:
 
 ```bash
 # On each K3s server node (set before starting k3s)
@@ -109,7 +109,7 @@ k3s server \
   --datastore-endpoint="postgres://rancher:password@postgres.example.com:5432/rancher?sslmode=require"
 ```
 
-If the underlying cluster is RKE2 (which uses etcd), no SQL database migration is needed — instead, focus on the etcd tuning in Steps 3 and 4.
+If the underlying cluster is RKE2 (which uses etcd), no SQL database migration is needed - instead, focus on the etcd tuning in Steps 3 and 4.
 
 ## Step 7: Monitor Rancher Server Performance
 

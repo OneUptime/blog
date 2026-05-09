@@ -86,7 +86,7 @@ module "networking" {
 
 ## Local Paths Are Not Packages
 
-Local paths are not packages, so the `//` subdirectory syntax does not apply — the entire local path is treated as the module itself. Use a normal relative path to reference a nested module:
+Local paths are not packages, so the `//` subdirectory syntax does not apply - the entire local path is treated as the module itself. Use a normal relative path to reference a nested module:
 
 ```hcl
 # Local paths use a regular relative path, not //

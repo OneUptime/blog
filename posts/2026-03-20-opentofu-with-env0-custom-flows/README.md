@@ -48,7 +48,7 @@ deploy:
     - echo "Deployment failed for $ENV0_ENVIRONMENT_NAME (deployment $ENV0_DEPLOYMENT_LOG_ID)"
 ```
 
-If any command in a hook returns a non-zero exit code, env0 stops the deployment with a `Failed` status. Manual approval gates and cost-estimation thresholds aren't expressed as YAML steps — they're configured separately via env0's Approval Policies and Cost Estimation features in the UI or API.
+If any command in a hook returns a non-zero exit code, env0 stops the deployment with a `Failed` status. Manual approval gates and cost-estimation thresholds aren't expressed as YAML steps - they're configured separately via env0's Approval Policies and Cost Estimation features in the UI or API.
 
 ## Environment-Specific Flow Variations
 
@@ -72,7 +72,7 @@ Auto-apply (skipping the manual approval between plan and apply) is a per-enviro
 
 ## Custom Variables in Flows
 
-`env0.yml` doesn't have a top-level `variables:` section — environment and Terraform variables are managed in the env0 UI, API, or Terraform provider. To inject dynamic values that are computed at deploy time, export them as `TF_VAR_*` environment variables in a `before:` hook ahead of `terraformPlan`:
+`env0.yml` doesn't have a top-level `variables:` section - environment and Terraform variables are managed in the env0 UI, API, or Terraform provider. To inject dynamic values that are computed at deploy time, export them as `TF_VAR_*` environment variables in a `before:` hook ahead of `terraformPlan`:
 
 ```yaml
 version: 2

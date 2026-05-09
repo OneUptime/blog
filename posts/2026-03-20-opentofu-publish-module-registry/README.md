@@ -112,7 +112,7 @@ Unlike some registries, the OpenTofu Registry does not have a "Publish" button o
 1. Open the `opentofu/registry` repository on GitHub and choose "New issue"
 2. Select the "Submit new Module" issue template
 3. Fill in the **Module Repository** field with the path to your public GitHub repo following the pattern `{owner}/terraform-{target}-{name}` (for example, `myorg/terraform-aws-vpc`)
-4. Submit the issue — the OpenTofu team's automated pipeline and maintainers will validate and process it
+4. Submit the issue - the OpenTofu team's automated pipeline and maintainers will validate and process it
 
 Submissions must go through the issue form UI; pull requests against the registry repo, or issues created via the `gh` CLI or GitHub API, will not be processed. Once accepted, new versions are picked up automatically from any new Git tags you push that match the `vX.Y.Z` semantic versioning pattern.
 

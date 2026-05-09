@@ -161,7 +161,7 @@ cat /proc/net/ipv6_route | grep -v "^fe80"
 ip -6 -s route show table all | grep srv6
 
 # Trace SRv6 path (use tcpdump above to see SRH; traceroute itself
-# does not display the SRH — inspect with tcpdump/wireshark)
+# does not display the SRH - inspect with tcpdump/wireshark)
 traceroute6 2001:db8:destination::1
 ```
 

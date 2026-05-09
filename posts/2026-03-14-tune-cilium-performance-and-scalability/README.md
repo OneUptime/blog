@@ -28,7 +28,6 @@ This guide covers both performance and scalability tuning for Cilium, providing 
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
@@ -45,8 +44,8 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 # BPF map sizes for large clusters
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=1048576 \
-  --set bpf.ctGlobalAnyMax=524288 \
+  --set bpf.ctTcpMax=1048576 \
+  --set bpf.ctAnyMax=524288 \
   --set bpf.natMax=1048576 \
   --set bpf.policyMapMax=65536 \
   --set bpf.lbMapMax=65536 \
@@ -73,10 +72,10 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 ```bash
 # Limit identity-relevant labels to reduce identity count
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace"
+  --set labels="app io\\.kubernetes\\.pod\\.namespace"
 
 # Monitor identity count
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 # Should be manageable (< 10000 for most clusters)
 ```
 
@@ -104,7 +103,7 @@ graph TD
 
 ```bash
 cilium status --verbose
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 kubectl top pods -n kube-system -l k8s-app=cilium
 ```
 

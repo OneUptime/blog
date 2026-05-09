@@ -38,7 +38,7 @@ resource "aws_s3_bucket" "logs_us_east" {
 
 ## for_each on Provider Blocks (OpenTofu 1.9+)
 
-The provider block needs a static `alias` (it identifies the configuration block, not each instance) and `for_each` only works on aliased providers. Resources reference a specific instance with `aws.<alias>[<key>]`. Note that the resource's `for_each` expression must be different from the provider's `for_each` expression so OpenTofu can safely destroy resources before tearing down their provider instance — `setsubtract` over a "disabled" set is the idiomatic pattern.
+The provider block needs a static `alias` (it identifies the configuration block, not each instance) and `for_each` only works on aliased providers. Resources reference a specific instance with `aws.<alias>[<key>]`. Note that the resource's `for_each` expression must be different from the provider's `for_each` expression so OpenTofu can safely destroy resources before tearing down their provider instance - `setsubtract` over a "disabled" set is the idiomatic pattern.
 
 ```hcl
 # Dynamically create providers for each region

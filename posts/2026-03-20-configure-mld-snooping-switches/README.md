@@ -149,7 +149,7 @@ sysctl net.ipv6.mld_max_msf
 # Check or tune the MLD Querier Robustness Variable
 sysctl net.ipv6.mld_qrv
 
-# Note: net.ipv6.conf.<iface>.mc_forwarding is read-only — it is set by an IPv6
+# Note: net.ipv6.conf.<iface>.mc_forwarding is read-only - it is set by an IPv6
 # multicast routing daemon (pim6sd, mrouted) via the MRT6_INIT socket option,
 # not via sysctl.
 ```

@@ -44,7 +44,7 @@ Note: cost estimation in env0 requires an Infracost API key, configured at the o
 
 ## Cost Credentials via env0 Terraform Provider
 
-To pull actual cloud spend into env0, configure cloud-specific cost credentials. There is no unified `env0_cost_credentials` resource — env0 ships a separate resource per cloud:
+To pull actual cloud spend into env0, configure cloud-specific cost credentials. There is no unified `env0_cost_credentials` resource - env0 ships a separate resource per cloud:
 
 ```hcl
 resource "env0_aws_cost_credentials" "aws" {

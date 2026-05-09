@@ -1,14 +1,14 @@
-# How to Set Up Azure Defender for Cloud with OpenTofu
+# How to Set Up Microsoft Defender for Cloud with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Security, Defender, OpenTofu, Cloud Security, Compliance
 
-Description: Learn how to enable and configure Azure Defender for Cloud (Microsoft Defender for Cloud) with OpenTofu to protect Azure resources with threat detection and security posture management.
+Description: Learn how to enable and configure Microsoft Defender for Cloud with OpenTofu to protect Azure resources with threat detection and security posture management.
 
 ## Overview
 
-Microsoft Defender for Cloud provides unified security management and threat protection for Azure workloads. OpenTofu can enable Defender plans for specific resource types, configure security contacts, and set up auto-provisioning for the monitoring agent.
+Microsoft Defender for Cloud provides unified security management and threat protection for Azure workloads. OpenTofu can enable Defender plans for specific resource types, configure security contacts, assign a Log Analytics workspace for VM security data, and manage subscription-level Defender for Cloud settings. Legacy auto-provisioning of the Log Analytics agent is deprecated.
 
 ## Step 1: Enable Defender Plans
 
@@ -24,7 +24,7 @@ resource "azurerm_security_center_subscription_pricing" "defender_servers" {
 # Defender for SQL Servers on Machines
 resource "azurerm_security_center_subscription_pricing" "defender_sql" {
   tier          = "Standard"
-  resource_type = "SqlServers"
+  resource_type = "SqlServerVirtualMachines"
 }
 
 # Defender for Storage
@@ -69,29 +69,30 @@ resource "azurerm_security_center_contact" "security_contact" {
 }
 ```
 
-## Step 3: Configure Auto-Provisioning
+## Step 3: Configure Auto-Provisioning (Deprecated)
 
 ```hcl
-# Auto-provision the Log Analytics agent on new VMs
+# Legacy setting: auto-provisioning of the Log Analytics agent (MMA) is deprecated.
+# Avoid enabling this in new deployments.
 resource "azurerm_security_center_auto_provisioning" "mma" {
-  auto_provision = "On"
+  auto_provision = "Off"
 }
 ```
 
-## Step 4: Set Security Policy Workspace
+## Step 4: Set Security Center Workspace
 
 ```hcl
-# Connect Defender data to a Log Analytics workspace
+# Send VM security data to a Log Analytics workspace
 resource "azurerm_security_center_workspace" "law_workspace" {
-  scope        = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
-  workspace_id = azurerm_log_analytics_workspace.law.id
+  scope        = "/subscriptions/00000000-0000-0000-0000-000000000000"
+  workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/security-rg/providers/Microsoft.OperationalInsights/workspaces/defender-law"
 }
 ```
 
-## Step 5: Enable Defender for DevOps (GitHub/Azure DevOps)
+## Step 5: Enable Optional Defender for Cloud Settings
 
 ```hcl
-# Defender for DevOps security connector
+# Optional Defender for Cloud data access settings
 resource "azurerm_security_center_setting" "mcas_integration" {
   setting_name = "MCAS"
   enabled      = true
@@ -109,7 +110,7 @@ resource "azurerm_security_center_setting" "wdatp_integration" {
 output "defender_enabled_plans" {
   value = [
     "VirtualMachines",
-    "SqlServers",
+    "SqlServerVirtualMachines",
     "StorageAccounts",
     "KubernetesService",
     "ContainerRegistry",
@@ -121,4 +122,4 @@ output "defender_enabled_plans" {
 
 ## Summary
 
-Microsoft Defender for Cloud enabled via OpenTofu provides comprehensive threat protection across Azure services. By enabling Defender plans for specific resource types and configuring security contacts with auto-provisioning, you establish a security baseline that monitors for threats and provides remediation recommendations.
+Microsoft Defender for Cloud enabled via OpenTofu provides comprehensive threat protection across Azure services. By enabling Defender plans for specific resource types, configuring security contacts, and managing workspace and subscription settings, you establish a security baseline that monitors for threats and provides remediation recommendations. Legacy MMA auto-provisioning should remain disabled for new deployments.

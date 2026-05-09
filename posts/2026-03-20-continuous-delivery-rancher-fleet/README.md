@@ -108,7 +108,7 @@ kubectl label cluster.fleet.cattle.io/production \
   -n fleet-default
 ```
 
-Update the `GitRepo` targets to match. Note that `targets` in `GitRepo` only selects clusters — per-target Helm value overrides belong in `fleet.yaml` under `targetCustomizations`:
+Update the `GitRepo` targets to match. Note that `targets` in `GitRepo` only selects clusters - per-target Helm value overrides belong in `fleet.yaml` under `targetCustomizations`:
 
 ```yaml
 # In gitrepo-my-app.yaml:

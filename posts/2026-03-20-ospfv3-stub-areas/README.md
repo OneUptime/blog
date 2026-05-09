@@ -81,7 +81,7 @@ Router-ABR(config-router)# address-family ipv6 unicast
 Router-ABR(config-router-af)# area 1 default-cost 100
 ```
 
-Note: FRRouting's `ospf6d` (OSPFv3) does not currently implement an `area ... default-cost` command — only the IPv4 `ospfd` daemon does. To influence the cost of the default route advertised into a stub area in FRR, adjust the interface cost on the ABR (`ipv6 ospf6 cost <value>` under the relevant interface).
+Note: FRRouting's `ospf6d` (OSPFv3) does not currently implement an `area ... default-cost` command - only the IPv4 `ospfd` daemon does. To influence the cost of the default route advertised into a stub area in FRR, adjust the interface cost on the ABR (`ipv6 ospf6 cost <value>` under the relevant interface).
 
 ## Verifying Stub Area Configuration
 

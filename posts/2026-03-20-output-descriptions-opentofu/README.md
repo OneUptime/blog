@@ -119,7 +119,7 @@ output "hosted_zone_id" {
 
 ## Viewing Descriptions
 
-The `tofu output` command itself does not display descriptions — it only prints output names and values. Descriptions are also not included in `tofu output -json`, which exposes only `value`, `type`, and `sensitive` per output. To surface the descriptions you have written, use a documentation generator or your IDE:
+The `tofu output` command itself does not display descriptions - it only prints output names and values. Descriptions are also not included in `tofu output -json`, which exposes only `value`, `type`, and `sensitive` per output. To surface the descriptions you have written, use a documentation generator or your IDE:
 
 ```bash
 # Generate a markdown table of outputs (with descriptions) using terraform-docs,

@@ -8,9 +8,9 @@ Description: Learn how to use Podman to create isolated, reproducible build envi
 
 ---
 
-> Containerized build environments with Podman guarantee that your software builds the same way everywhere, eliminating surprises between development machines and CI pipelines.
+> Containerized build environments with Podman help ensure that your software builds consistently, reducing surprises between development machines and CI pipelines.
 
-Build reproducibility is a cornerstone of reliable software delivery. When a build succeeds on one machine but fails on another, the resulting debugging sessions waste hours of developer time. Podman solves this by encapsulating the entire build toolchain, dependencies, and configuration inside a container. Every build runs in an identical environment regardless of the host system, and because Podman does not require a daemon, it integrates cleanly into CI pipelines and developer workflows alike.
+Build reproducibility is a cornerstone of reliable software delivery. When a build succeeds on one machine but fails on another, the resulting debugging sessions waste hours of developer time. Podman solves this by encapsulating the entire build toolchain, dependencies, and configuration inside a container. Every build runs with the same containerized toolchain and configuration, and because Podman does not require a daemon, it integrates cleanly into CI pipelines and developer workflows alike.
 
 ---
 
@@ -18,7 +18,7 @@ Build reproducibility is a cornerstone of reliable software delivery. When a bui
 
 Traditional build setups rely on developers installing the correct versions of compilers, libraries, and tools on their machines. Over time, these installations diverge. One developer upgrades their compiler, another installs a different version of a shared library, and subtle incompatibilities creep in.
 
-Containerized builds eliminate this problem entirely. The build environment is defined in a Containerfile, version-controlled alongside your source code, and used by every developer and CI system. When you need to update a dependency, you change the Containerfile and everyone gets the update.
+Containerized builds greatly reduce this problem. The build environment is defined in a Containerfile, version-controlled alongside your source code, and used by every developer and CI system. When you need to update a dependency, you change the Containerfile and everyone gets the update.
 
 ## Setting Up a C/C++ Build Environment
 
@@ -114,6 +114,8 @@ ENTRYPOINT ["bash"]
 Use a named volume to cache Maven dependencies across builds:
 
 ```bash
+podman build -t java-build-env .
+
 podman volume create maven-cache
 
 podman run --rm -it \
@@ -141,6 +143,8 @@ ENTRYPOINT ["bash"]
 ```
 
 ```bash
+podman build -t rust-build-env .
+
 podman volume create cargo-registry
 podman volume create cargo-target
 
@@ -182,6 +186,8 @@ ENTRYPOINT ["bash"]
 ```
 
 ```bash
+podman build -t python-build-env .
+
 podman run --rm \
   -v $(pwd):/build:Z \
   python-build-env \
@@ -210,6 +216,7 @@ fi
 
 # Run the build
 podman run --rm \
+  --entrypoint /bin/sh \
   -v "$PROJECT_ROOT:$BUILD_DIR:Z" \
   -e BUILD_NUMBER="${BUILD_NUMBER:-local}" \
   -e GIT_COMMIT="$(git rev-parse HEAD)" \
@@ -228,19 +235,18 @@ Run multiple build variants simultaneously:
 #!/bin/bash
 # parallel-build.sh
 
-PLATFORMS=("linux/amd64" "linux/arm64")
+ARCHES=("amd64" "arm64")
 PIDS=()
 
-for platform in "${PLATFORMS[@]}"; do
-    arch=$(echo "$platform" | cut -d/ -f2)
+for arch in "${ARCHES[@]}"; do
     echo "Starting build for $arch..."
 
     podman run --rm \
-      --platform "$platform" \
-      -v $(pwd):/build:Z \
+      --entrypoint /bin/sh \
+      -v "$(pwd):/build:Z" \
       -e TARGET_ARCH="$arch" \
       build-env \
-      -c "make build-$arch" &
+      -c "cd /build && make build-$arch" &
 
     PIDS+=($!)
 done
@@ -287,9 +293,10 @@ jobs:
       - name: Run build
         run: |
           podman run --rm \
+            --entrypoint /bin/sh \
             -v ${{ github.workspace }}:/build:Z \
             build-env \
-            -c "make all && make test"
+            -c "cd /build && make all && make test"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -327,4 +334,4 @@ By copying the package manifest before the source code, Podman can cache the `np
 
 ## Conclusion
 
-Podman provides an excellent foundation for containerized build environments. By encapsulating your build toolchain in a container, you achieve reproducibility across developer machines and CI systems, simplify onboarding, and reduce build-related issues. The daemonless architecture makes Podman easy to integrate into existing workflows, and features like multi-stage builds and volume caching help you balance reproducibility with build speed. Start by containerizing your most problematic build and expand from there.
+Podman provides an excellent foundation for containerized build environments. By encapsulating your build toolchain in a container, you improve reproducibility across developer machines and CI systems, simplify onboarding, and reduce build-related issues. The daemonless architecture makes Podman easy to integrate into existing workflows, and features like multi-stage builds and volume caching help you balance reproducibility with build speed. Start by containerizing your most problematic build and expand from there.

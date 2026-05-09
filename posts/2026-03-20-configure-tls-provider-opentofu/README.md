@@ -83,7 +83,7 @@ output "private_key_pem" {
 
 ## Best Practices
 
-- Treat generated private keys as secrets — they are stored in plaintext in OpenTofu state, so use a remote backend with encryption and strict access controls
+- Treat generated private keys as secrets - they are stored in plaintext in OpenTofu state, so use a remote backend with encryption and strict access controls
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces

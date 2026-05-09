@@ -65,7 +65,7 @@ The Portainer Agent exposes an HTTPS API. Test it directly:
 # Test agent API endpoint (-k skips TLS verification, -i shows headers)
 curl -ki https://<agent-ip>:9001/ping
 
-# Expected: HTTP/2 204 (empty body — /ping is an unauthenticated health check)
+# Expected: HTTP/2 204 (empty body - /ping is an unauthenticated health check)
 # curl: (7) Failed to connect: TCP connection failed
 # curl: (35) SSL error: TLS handshake failed
 ```

@@ -67,7 +67,7 @@ signed_data =
   + All NDP options preceding the RSA Signature option
     (this includes the CGA option, Timestamp option,
      and Nonce option when present, in their on-the-wire
-     order — the CGA Parameters travel inside the CGA option)
+     order - the CGA Parameters travel inside the CGA option)
 
 The RSA Signature option itself, and any options following
 it, are excluded from the signed data. The Key Hash in the

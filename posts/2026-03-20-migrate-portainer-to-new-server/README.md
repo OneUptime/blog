@@ -163,7 +163,7 @@ echo "Old server cleaned up"
 
 If you have Portainer Edge agents, you need to consider how they reach the new Portainer server. The Portainer server URL is encoded inside the base64 `EDGE_KEY` (in the format `portainer_instance_url|tunnel_server_addr|tunnel_server_fingerprint|endpoint_ID`), so the agent will keep dialing whatever URL was baked into that key when the agent was first deployed.
 
-The simplest approach is to keep the same DNS hostname for Portainer and just point it at the new server — agents will reconnect automatically with no changes:
+The simplest approach is to keep the same DNS hostname for Portainer and just point it at the new server - agents will reconnect automatically with no changes:
 
 ```bash
 # On each edge host, inspect the current Edge configuration

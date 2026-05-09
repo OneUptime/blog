@@ -127,7 +127,7 @@ provider_installation {
 Push new versions with semantic version tags. Repeat the per-platform `oras push`, `oras manifest index create`, and `oras cp` workflow with the new version tag:
 
 ```bash
-# Release 1.1.0 — copy the new version index to the remote registry
+# Release 1.1.0 - copy the new version index to the remote registry
 oras cp --from-oci-layout tmp-layout:1.1.0 \
   registry.acme-corp.com/terraform-providers/internal:1.1.0
 
