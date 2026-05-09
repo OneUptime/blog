@@ -12,7 +12,7 @@ Description: Diagnose issues with BGP security configurations in Calico where au
 
 BGP security in Calico extends beyond basic session authentication to encompass a comprehensive security architecture for the routing control plane. BGP route injection attacks, where a compromised or misconfigured peer advertises incorrect routes, can cause widespread traffic misdirection or network blackholes. Implementing defense-in-depth for BGP security protects the entire cluster's network connectivity.
 
-Key BGP security controls include: MD5 session authentication, prefix length limits (rejecting unusually short or long prefixes), AS path filtering (rejecting routes with unexpected AS paths), and RPKI (Resource Public Key Infrastructure) validation for public internet routing. For internal Kubernetes clusters, the first two are most relevant.
+Key BGP security controls include: MD5 session authentication, route filters such as prefix length limits (rejecting unusually short or long prefixes), peer/source/interface/community filtering, and RPKI (Resource Public Key Infrastructure) validation for public internet routing. For internal Kubernetes clusters, the first two are most relevant.
 
 ## Prerequisites
 
@@ -40,6 +40,35 @@ spec:
 kubectl create secret generic bgp-secrets \
   --from-literal=peer-password='StrongBGPauth$ecret2024' \
   -n calico-system
+```
+
+Calico also needs permission to read the referenced Secret:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bgp-secrets-reader
+  namespace: calico-system
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["bgp-secrets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calico-read-bgp-secrets
+  namespace: calico-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bgp-secrets-reader
+subjects:
+- kind: ServiceAccount
+  name: calico-node
+  namespace: calico-system
 ```
 
 ## Configure Prefix Length Filters
@@ -89,7 +118,7 @@ graph TB
     subgraph BGP Security Controls
         L1[MD5 Authentication\nPrevents session hijacking]
         L2[Prefix Length Filter\nPrevents route injection]
-        L3[AS Path Filter\nPrevents route leaks]
+        L3[Route Filter\nPrevents route leaks]
         L4[Session Logging\nAudit trail]
     end
     subgraph Protected Infrastructure
