@@ -30,6 +30,8 @@ kubectl get pods -A -o wide | head -10
 
 ## Configuration
 
+Create a replacement IP pool with the desired `blockSize`; Calico only allows `blockSize` to be set when the pool is created.
+
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
@@ -39,7 +41,6 @@ spec:
   cidr: 10.48.0.0/16
   blockSize: 26
   ipipMode: Never
-  vxlanMode: Never
   natOutgoing: true
 ```
 
@@ -47,8 +48,8 @@ spec:
 
 ```bash
 # Validate changes
-calicoctl ipam check
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u
+calicoctl ipam show --show-blocks
+kubectl get pods -A -o wide | awk '{print $7}' | sort -u
 ```
 
 ## Architecture
