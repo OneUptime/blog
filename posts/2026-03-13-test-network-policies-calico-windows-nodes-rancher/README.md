@@ -19,11 +19,12 @@ Rancher organizes namespaces into Projects, and it creates its own system networ
 - Rancher-managed cluster with Windows and Linux nodes running Calico
 - Access to Rancher UI and kubectl
 - Windows pods deployable in the cluster
+- Windows node OS version matching the Windows container image tag used below
 
 ## Step 1: Check Rancher-Created Default Policies
 
 ```bash
-kubectl get networkpolicies -A | grep -v "<none>"
+kubectl get networkpolicies -A
 ```
 
 Rancher may have created default deny-all or allow-same-namespace policies in your project namespaces.
@@ -58,7 +59,7 @@ spec:
     kubernetes.io/os: windows
   containers:
   - name: iis
-    image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2019
+    image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
     ports:
     - containerPort: 80
 ```
@@ -68,6 +69,7 @@ kubectl apply -f windows-server.yaml
 kubectl expose pod win-server --port=80 -n win-policy-ns
 kubectl run allowed-client --image=busybox --labels="app=allowed,os=linux" -n win-policy-ns -- sleep 3600
 kubectl run blocked-client --image=busybox --labels="app=blocked,os=linux" -n win-policy-ns -- sleep 3600
+kubectl wait --for=condition=Ready pod/win-server pod/allowed-client pod/blocked-client -n win-policy-ns --timeout=5m
 ```
 
 ## Step 4: Apply and Test Network Policy
@@ -82,19 +84,24 @@ spec:
   podSelector:
     matchLabels:
       os: windows
+  policyTypes:
+    - Ingress
   ingress:
     - from:
         - podSelector:
             matchLabels:
               app: allowed
+      ports:
+        - protocol: TCP
+          port: 80
 ```
 
 ```bash
 kubectl apply -f allow-specific.yaml
 
 WIN_IP=$(kubectl get pod win-server -n win-policy-ns -o jsonpath='{.status.podIP}')
-kubectl exec -n win-policy-ns allowed-client -- wget -qO- --timeout=10 http://$WIN_IP
-kubectl exec -n win-policy-ns blocked-client -- wget -qO- --timeout=5 http://$WIN_IP || echo "Blocked"
+kubectl exec -n win-policy-ns allowed-client -- wget -qO- -T 10 http://$WIN_IP
+kubectl exec -n win-policy-ns blocked-client -- wget -qO- -T 5 http://$WIN_IP || echo "Blocked"
 ```
 
 ## Step 5: View Policy Status in Rancher UI
