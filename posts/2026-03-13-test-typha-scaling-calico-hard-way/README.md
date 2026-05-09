@@ -21,7 +21,7 @@ This post provides a set of repeatable test procedures for each of these scenari
 - Typha deployed with 2+ replicas per the setup post
 - `kubectl` and `calicoctl` access
 - A test namespace available for running network policy tests
-- Prometheus metrics enabled on Typha (`TYPHA_PROMETHEUSMETRICSENABLED=true`)
+- Prometheus metrics enabled on Typha (`TYPHA_PROMETHEUSMETRICSENABLED=true`; the examples below use `TYPHA_PROMETHEUSMETRICSPORT=9093`)
 
 ---
 
@@ -43,7 +43,7 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' '
 done
 ```
 
-You should see lines like `Connected to Typha v3.x.x` for each node. If nodes show direct API server connections instead, the `typhaK8sServiceName` in `FelixConfiguration` is not set correctly.
+You should see log lines indicating that Felix connected to Typha for each node. If nodes show direct API server connections instead, the `TyphaK8sServiceName` setting or `FELIX_TYPHAK8SSERVICENAME` environment variable is not set correctly.
 
 ---
 
@@ -57,6 +57,7 @@ kubectl create namespace typha-test
 
 # Deploy a server and client pod
 kubectl run server --image=nginx:alpine --port=80 -n typha-test
+kubectl expose pod server --port=80 -n typha-test
 kubectl run client --image=curlimages/curl:latest \
   --command -- sleep 3600 -n typha-test
 
@@ -68,7 +69,7 @@ kubectl exec -n typha-test client -- curl -s --max-time 5 \
   http://server.typha-test.svc.cluster.local | head -3
 ```
 
-Apply a deny policy through Typha and confirm it takes effect:
+Apply a deny policy and confirm Typha distributes the update to Felix:
 
 ```yaml
 # deny-all-test.yaml
@@ -103,7 +104,7 @@ kubectl delete namespace typha-test
 
 ## Step 3: Test Typha Pod Restart Resilience
 
-Verify that restarting one Typha pod does not cause a policy enforcement gap:
+Verify that restarting one Typha pod does not leave Felix without active Typha connections:
 
 ```bash
 # Record the current Typha pods
@@ -114,28 +115,15 @@ TYPHA_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | he
 echo "Deleting: $TYPHA_POD"
 kubectl delete $TYPHA_POD -n kube-system
 
-# Immediately apply a new policy while the pod restarts
-cat <<EOF | calicoctl apply -f -
-apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
-metadata:
-  name: restart-resilience-test
-spec:
-  selector: "has(restart-test)"
-  ingress:
-    - action: Allow
-  egress:
-    - action: Allow
-EOF
-
-# Confirm the policy appears correctly despite the Typha restart
-calicoctl get globalnetworkpolicy restart-resilience-test
-
 # Monitor the Deployment rolling replacement
 kubectl rollout status deployment/calico-typha -n kube-system
 
-# Clean up
-calicoctl delete globalnetworkpolicy restart-resilience-test
+# Confirm remaining/replacement Typha pods are serving Felix connections
+for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
+  echo "=== $pod ==="
+  kubectl exec -n kube-system $pod -- wget -qO- http://localhost:9093/metrics 2>/dev/null \
+    | grep -E '^typha_connections_(active|streaming)'
+done
 ```
 
 ---
@@ -173,14 +161,14 @@ TYPHA_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | he
 kubectl port-forward -n kube-system $TYPHA_POD 9093:9093 &
 sleep 2
 
-# Check for the three most important Typha metrics
+# Check for important Typha metrics
 curl -s http://localhost:9093/metrics | grep -E \
-  "^typha_connections_active|^typha_updates_sent_total|^typha_snapshots_generated_total"
+  "^typha_connections_active|^typha_connections_streaming|^typha_updates_total|^typha_snapshots_generated"
 
 kill %1
 ```
 
-All three metric families must be present and non-zero after at least 5 minutes of operation.
+These metric families must be present. In a live cluster with Felix clients, `typha_connections_streaming` should be non-zero; update and snapshot counters may remain zero until Typha has processed relevant datastore activity.
 
 ---
 
