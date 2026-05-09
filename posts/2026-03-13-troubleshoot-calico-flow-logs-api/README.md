@@ -1,16 +1,16 @@
-# How to Troubleshoot the Calico Flow Logs API
+# How to Troubleshoot Calico Felix Metrics
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Diagnose and resolve Calico Flow Logs API issues including authentication failures, missing data for recent time windows, and query timeout errors on large result sets.
+Description: Diagnose and resolve Calico Felix metrics issues including disabled Prometheus endpoints, missing scrape targets, and missing dataplane or calculation graph metrics.
 
 ---
 
 ## Introduction
 
-Flow Logs API troubleshooting focuses on authentication (API key or service account token failures), data availability (flows not indexed yet for recent time windows), and query performance (large time windows or unfiltered queries timing out). Most issues are resolved by narrowing the query time window or adding namespace/pod filters.
+Felix metrics troubleshooting focuses on whether the Prometheus endpoint is enabled, whether the endpoint is reachable on each calico-node pod, and whether Prometheus can discover the metrics target through a Service or ServiceMonitor. Most issues are resolved by enabling the Felix Prometheus endpoint, verifying port 9091 locally on the calico-node container, and checking that the scrape Service exposes a named metrics port.
 
 ## Key Commands
 
@@ -31,6 +31,22 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http
 ## ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
