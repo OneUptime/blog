@@ -10,9 +10,9 @@ Description: Diagnose and fix Gateway API listener readiness failures in Cilium 
 
 ## Introduction
 
-Gateway API listeners transition through several states before becoming ready: the Gateway must be accepted by the GatewayClass, the listener must have valid configuration, and (for LoadBalancer-type Gateways) an external IP must be assigned. When listeners never become ready, ingress traffic cannot reach any attached routes.
+Gateway API listeners transition through several states before becoming ready: the Gateway must be accepted by the GatewayClass, the listener must have valid configuration, and the configuration must be programmed into Cilium's Envoy datapath. For LoadBalancer-type Gateways, the Gateway address and underlying Service should also be checked because traffic cannot reach the listener until load-balancer infrastructure assigns an address.
 
-The `Programmed` condition on the Gateway resource is the top-level indicator, but the specific reason for failure is usually found in the listener-level conditions.
+The `Programmed` condition on the Gateway resource is the top-level indicator that configuration was programmed into the datapath, but the specific reason for listener failures is usually found in the listener-level conditions.
 
 ## Prerequisites
 
@@ -27,8 +27,8 @@ kubectl describe gateway <name> -n <namespace>
 
 Focus on the `Status.Conditions` section. Key conditions:
 
-- `Accepted`: GatewayClass is valid and controller is running
-- `Programmed`: All listeners have valid configuration and LB is assigned
+- `Accepted`: Gateway configuration was accepted by the controller
+- `Programmed`: Gateway configuration was programmed into Cilium's Envoy datapath
 
 ## Inspect Listener Conditions
 
@@ -52,7 +52,7 @@ flowchart TD
     A[Gateway created] --> B{GatewayClass accepted?}
     B -->|No| C[Check GatewayClass, Operator]
     B -->|Yes| D{LB IP assigned?}
-    D -->|No| E[Check cloud provider quota/config]
+    D -->|No| E[Check LB implementation or cloud provider events]
     D -->|Yes| F{Listener config valid?}
     F -->|TLS cert missing| G[ResolvedRefs: False]
     F -->|Port conflict| H[Accepted: False]
@@ -76,12 +76,13 @@ kubectl create secret tls my-tls-cert \
   -n <namespace>
 ```
 
-## Common Failure: Port Already in Use
+## Common Failure: Host-Network Port Already in Use
 
-If another service claims the same port:
+If Cilium Gateway API host network mode is enabled, listener ports must be unique per Gateway and available on all Cilium nodes where Gateway API listeners are exposed:
 
 ```bash
-kubectl get svc -A | grep ":80\|:443"
+kubectl get gateway -A -o json | \
+  jq '.items[] | {namespace: .metadata.namespace, name: .metadata.name, listeners: [.spec.listeners[] | {name, port, protocol}]}'
 ```
 
 ## Common Failure: Load Balancer Not Provisioned
@@ -89,7 +90,7 @@ kubectl get svc -A | grep ":80\|:443"
 Check if the underlying LoadBalancer Service has an external IP:
 
 ```bash
-kubectl get svc -n <namespace> -l cilium.io/gateway-name=<gateway-name>
+kubectl get svc -n <namespace> -l gateway.networking.k8s.io/gateway-name=<gateway-name>
 ```
 
 If no external IP after several minutes, check cloud provider events:
