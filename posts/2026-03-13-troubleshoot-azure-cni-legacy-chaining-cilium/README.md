@@ -31,7 +31,7 @@ Verify the cluster is using the legacy chaining mode.
 # Check the CNI configuration on a node for the chained plugin setup
 
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/10-azure.conflist
+  sh -c 'ls /host/etc/cni/net.d && sed -n "1,200p" /host/etc/cni/net.d/*.conflist'
 
 # In legacy chaining mode, you should see Cilium as a chained plugin
 # within the Azure CNI conflist
@@ -50,8 +50,8 @@ Investigate pods that fail during network setup in chained mode.
 kubectl describe pod <failing-pod> | grep -A10 Events
 
 # Look for errors in the kubelet logs on the affected node
-kubectl debug node/<node-name> -it --image=ubuntu -- \
-  journalctl -u kubelet | grep -E "CNI|network" | tail -50
+kubectl debug node/<node-name> -it --image=ubuntu --profile=sysadmin -- \
+  chroot /host journalctl -u kubelet | grep -E "CNI|network" | tail -50
 
 # Check Cilium logs for chaining-related errors
 kubectl logs -n kube-system <cilium-pod-on-node> | grep -E "chain|azure|ERROR"
@@ -71,7 +71,7 @@ kubectl debug node/<node-name> -it --image=ubuntu -- \
   tc filter show dev <veth-interface> ingress
 
 # Verify the Cilium endpoint is registered for the pod
-kubectl exec -n kube-system ${NODE_CILIUM_POD} -- cilium endpoint list
+kubectl exec -n kube-system ${NODE_CILIUM_POD} -- cilium-dbg endpoint list
 ```
 
 ## Step 4: Check Azure CNI and Cilium Route Conflicts
@@ -84,10 +84,10 @@ kubectl debug node/<node-name> -it --image=ubuntu -- ip route show
 
 # Look for duplicate or conflicting routes to pod CIDRs
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ip route show | grep -E "169.254|10.244"
+  ip route show | grep -E "<pod-cidr-or-pod-ip-prefix>"
 
 # Check Cilium's internal route view
-kubectl exec -n kube-system ${NODE_CILIUM_POD} -- cilium bpf ipcache list
+kubectl exec -n kube-system ${NODE_CILIUM_POD} -- cilium-dbg bpf ipcache list
 ```
 
 ## Step 5: Test Network Policy in Legacy Chaining Mode
@@ -112,7 +112,7 @@ EOF
 
 # Monitor for policy drops using Cilium
 kubectl exec -n kube-system ${NODE_CILIUM_POD} -- \
-  cilium monitor --type drop -n default
+  cilium-dbg monitor --type drop
 ```
 
 ## Best Practices
