@@ -17,7 +17,7 @@ The advantage of nftables for policy testing is atomic rule updates: when a poli
 ## Prerequisites
 
 - Calico running in nftables mode
-- `kubectl` and `calicoctl` installed
+- `kubectl` installed
 - SSH access to nodes for nftables rule inspection
 
 ## Step 1: Create Test Namespaces and Workloads
@@ -28,23 +28,28 @@ kubectl create namespace nft-policy-test
 kubectl run server --image=nginx --labels="app=server,env=test" -n nft-policy-test
 kubectl expose pod server --port=80 -n nft-policy-test
 
-kubectl run allowed-client --image=busybox --labels="app=allowed-client" -n nft-policy-test -- sleep 3600
-kubectl run blocked-client --image=busybox --labels="app=blocked-client" -n nft-policy-test -- sleep 3600
+kubectl run allowed-client --image=busybox --labels="app=allowed-client" -n nft-policy-test --command -- sleep 3600
+kubectl run blocked-client --image=busybox --labels="app=blocked-client" -n nft-policy-test --command -- sleep 3600
+
+kubectl wait --for=condition=Ready pod/server -n nft-policy-test --timeout=60s
+kubectl wait --for=condition=Ready pod/allowed-client -n nft-policy-test --timeout=60s
+kubectl wait --for=condition=Ready pod/blocked-client -n nft-policy-test --timeout=60s
 ```
 
 ## Step 2: Verify Baseline (No Policy)
 
 ```bash
 SERVER_IP=$(kubectl get pod server -n nft-policy-test -o jsonpath='{.status.podIP}')
-kubectl exec -n nft-policy-test allowed-client -- wget -qO- --timeout=5 http://$SERVER_IP
-kubectl exec -n nft-policy-test blocked-client -- wget -qO- --timeout=5 http://$SERVER_IP
+kubectl exec -n nft-policy-test allowed-client -- wget -qO- -T 5 http://$SERVER_IP
+kubectl exec -n nft-policy-test blocked-client -- wget -qO- -T 5 http://$SERVER_IP
 ```
 
 Both should succeed.
 
 ## Step 3: Apply Default Deny and Selective Allow
 
-```yaml
+```bash
+cat > nft-policies.yaml <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -68,6 +73,7 @@ spec:
         - podSelector:
             matchLabels:
               app: allowed-client
+EOF
 ```
 
 ```bash
@@ -77,8 +83,8 @@ kubectl apply -f nft-policies.yaml
 ## Step 4: Test Policy Enforcement
 
 ```bash
-kubectl exec -n nft-policy-test allowed-client -- wget -qO- --timeout=5 http://$SERVER_IP
-kubectl exec -n nft-policy-test blocked-client -- wget -qO- --timeout=5 http://$SERVER_IP || echo "Blocked by nftables"
+kubectl exec -n nft-policy-test allowed-client -- wget -qO- -T 5 http://$SERVER_IP
+kubectl exec -n nft-policy-test blocked-client -- wget -qO- -T 5 http://$SERVER_IP || echo "Blocked by nftables"
 ```
 
 ## Step 5: Inspect nftables Rules for the Policy
@@ -88,12 +94,12 @@ kubectl exec -n nft-policy-test blocked-client -- wget -qO- --timeout=5 http://$
 
 SERVER_NODE=$(kubectl get pod server -n nft-policy-test -o jsonpath='{.spec.nodeName}')
 # SSH into $SERVER_NODE
-nft list table ip calico-filter | grep -A5 "nft-policy-test"
+nft list table ip calico | grep -A5 "nft-policy-test"
 ```
 
 ## Step 6: Test Atomic Policy Update
 
-Add a new ingress rule and verify it takes effect atomically.
+Add a new ingress rule and verify it takes effect after Calico applies the nftables transaction.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -113,7 +119,7 @@ spec:
               app: blocked-client
 EOF
 
-kubectl exec -n nft-policy-test blocked-client -- wget -qO- --timeout=5 http://$SERVER_IP
+kubectl exec -n nft-policy-test blocked-client -- wget -qO- -T 5 http://$SERVER_IP
 kubectl delete namespace nft-policy-test
 ```
 
