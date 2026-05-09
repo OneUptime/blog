@@ -12,7 +12,7 @@ Description: A troubleshooting guide for diagnosing and resolving issues when ru
 
 Running Kubernetes with Cilium on VMware ESXi-hosted virtual machines presents unique networking challenges. ESXi's virtual networking layer-including virtual switches (vSwitches), distributed virtual switches (DVS), and port groups-can interfere with Cilium's eBPF-based networking if not configured correctly.
 
-The most common issues involve promiscuous mode requirements for overlay networking, MAC address changes being blocked by vSwitch security policies, forged transmits settings affecting pod traffic, and virtual NIC driver limitations that prevent some eBPF features from working.
+The most common issues involve vSwitch security policies blocking traffic when the guest sends or receives frames with MAC addresses that differ from the VM's configured vNIC MAC, MTU mismatches affecting encapsulated traffic, and virtual NIC or Linux kernel limitations that prevent XDP acceleration from working.
 
 This guide covers ESXi-specific Cilium troubleshooting procedures.
 
@@ -23,12 +23,12 @@ This guide covers ESXi-specific Cilium troubleshooting procedures.
 - `kubectl` and `cilium` CLI access
 - VMware vSphere/vCenter access for ESXi configuration
 
-## Step 1: Configure vSwitch Security Policies for Cilium
+## Step 1: Check vSwitch Security Policies for Cilium
 
-ESXi vSwitch security policies must be configured to allow pod networking traffic.
+ESXi vSwitch security policies may need to be configured if your Cilium mode or adjacent networking features require traffic with MAC addresses that differ from the VM's configured vNIC MAC.
 
 ```bash
-# These settings must be configured in vSphere for the port group
+# These settings may need to be configured in vSphere for the port group
 
 # used by Kubernetes node VMs:
 
@@ -43,24 +43,25 @@ ESXi vSwitch security policies must be configured to allow pod networking traffi
 # - MAC Address Changes: Accept
 # - Forged Transmits: Accept
 
-# Test if Cilium can create overlay interfaces after policy change
+# Test Cilium pods after any policy change
 kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
 ## Step 2: Check Virtual NIC Compatibility
 
-Verify that the virtual NIC type supports Cilium's eBPF requirements.
+Verify that the virtual NIC type and Linux kernel support the Cilium features you enable.
 
 ```bash
 # Check the virtual NIC type being used on the node VMs
 # In vSphere, node VMs should use VMXNET3 for best compatibility
 
 # Check network interface driver on the node
-kubectl debug node/<node-name> -it --image=ubuntu -- \
+kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
   ethtool -i eth0
 
-# VMXNET3 provides the best compatibility for eBPF offloading
-# E1000 may have limitations with some eBPF features
+# VMXNET3 is the preferred VMware paravirtual NIC.
+# Native XDP support for vmxnet3 requires Linux kernel 6.6 or later;
+# without native XDP, avoid enabling Cilium features that require it.
 
 # Verify Cilium status
 cilium status
@@ -72,7 +73,7 @@ VMware vSwitch can have MTU settings that interfere with Cilium's encapsulation.
 
 ```bash
 # Check the MTU on node network interfaces
-kubectl debug node/<node-name> -it --image=ubuntu -- ip link show eth0
+kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- ip link show eth0
 
 # VMware standard vSwitch default MTU is 1500
 # Distributed vSwitch (DVS) can support jumbo frames (9000)
@@ -85,6 +86,9 @@ kubectl get configmap cilium-config -n kube-system -o yaml | grep mtu
 
 kubectl patch configmap cilium-config -n kube-system --type merge \
   --patch '{"data":{"mtu":"1450"}}'
+
+# Restart Cilium agents so ConfigMap changes are picked up
+kubectl rollout restart daemonset/cilium -n kube-system
 ```
 
 ## Step 4: Test Pod-to-Pod Connectivity Across ESXi Hosts
@@ -107,7 +111,7 @@ CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-on-host-1> \
   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium monitor --type drop
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg monitor --type drop
 ```
 
 ## Step 5: Validate eBPF Program Loading on VMXNET3
@@ -117,7 +121,7 @@ Ensure eBPF programs load correctly on VMware virtual NICs.
 ```bash
 # Check if eBPF programs are attached to the node's network interface
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium debuginfo | grep -i "tc\|xdp\|prog"
+  cilium-dbg debuginfo | grep -i "tc\|xdp\|prog"
 
 # Check for eBPF program loading errors
 kubectl logs -n kube-system ${CILIUM_POD} | \
@@ -129,12 +133,12 @@ cilium connectivity test
 
 ## Best Practices
 
-- Always configure promiscuous mode, MAC address changes, and forged transmits on port groups used by Kubernetes node VMs
-- Use VMXNET3 virtual NICs for best Cilium compatibility-avoid E1000 and older adapters
-- Enable jumbo frames (9000 MTU) on DVS for optimal performance, eliminating encapsulation overhead
+- Configure promiscuous mode, MAC address changes, and forged transmits only when your Cilium routing mode or VMware network design requires frames whose source or destination MAC differs from the VM's configured vNIC MAC
+- Use VMXNET3 virtual NICs for best VMware performance and compatibility-avoid E1000 and older adapters
+- Enable jumbo frames (9000 MTU) on DVS when the physical network supports it to reduce the relative impact of encapsulation overhead
 - Test Cilium connectivity after any vSwitch or port group configuration changes
 - Document required ESXi/vSphere settings in your cluster provisioning runbooks
 
 ## Conclusion
 
-Cilium on VMware ESXi requires specific vSwitch security policy configurations to function correctly. By enabling promiscuous mode and forged transmits, using VMXNET3 NICs, and aligning MTU settings between vSwitches and Cilium, you can run Cilium reliably on VMware infrastructure. Test cross-host pod connectivity after any VMware networking changes.
+Cilium on VMware ESXi requires the vSwitch security policy, virtual NIC, kernel, and MTU settings to match the Cilium features you enable. By checking vSwitch security policies when non-vNIC MAC traffic is expected, using VMXNET3 NICs, and aligning MTU settings between vSwitches and Cilium, you can run Cilium reliably on VMware infrastructure. Test cross-host pod connectivity after any VMware networking changes.
