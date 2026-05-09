@@ -44,7 +44,7 @@ kubectl get events --all-namespaces | grep -i "ipam\|ip address\|assign"
 
 # Check if any specific IP pools are exhausted
 calicoctl get ippool -o yaml | grep -A5 "cidr:"
-calicoctl ipam show --show-blocks | grep "100%"
+calicoctl ipam show --show-blocks | grep -E "100%.*0 \\(0%\\)"
 
 # Resolution: Add a new IPPool or expand existing CIDR
 ```
@@ -70,7 +70,7 @@ kubectl logs -n calico-system -l k8s-app=calico-kube-controllers | \
   grep -i "error\|sync" | tail -30
 
 # Check if controllers are reporting health
-kubectl get tigerastatus kube-controllers -o yaml
+kubectl get tigerastatus calico -o yaml
 ```
 
 ## Cluster Troubleshooting Flow
@@ -91,4 +91,4 @@ flowchart TD
 
 ## Conclusion
 
-Cluster-wide Calico diagnostics require checking TigeraStatus first to identify the failing component, then targeting logs for that specific component. IPAM exhaustion is unique because it doesn't degrade TigeraStatus - pods simply fail to schedule. Always check `calicoctl ipam show` when new pods are stuck in ContainerCreating, especially in large or growing clusters. Collect `calicoctl cluster diags` before making any remediation changes.
+Cluster-wide Calico diagnostics require checking TigeraStatus first to identify the failing component, then targeting logs for that specific component. IPAM exhaustion is unique because it doesn't always degrade TigeraStatus - pods may be scheduled but fail during CNI setup and remain in ContainerCreating. Always check `calicoctl ipam show` when new pods are stuck in ContainerCreating, especially in large or growing clusters. Collect `calicoctl cluster diags` before making any remediation changes.
