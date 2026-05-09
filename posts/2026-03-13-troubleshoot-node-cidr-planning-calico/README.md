@@ -36,8 +36,8 @@ calicoctl ipam show --show-blocks
 # Get a summary of utilization across all IP pools
 calicoctl ipam show
 
-# Check which nodes are approaching block exhaustion
-calicoctl ipam show --show-blocks | awk '/Node/{node=$0} /In use/{if($3+0 > 50) print node, $0}'
+# Check which allocated blocks are approaching exhaustion
+calicoctl ipam show --show-blocks | awk -F'|' '/Block/ {gsub(/ /,"",$4); split($4,inuse,"("); if(inuse[1]+0 > 50) print $0}'
 
 # Show the current pool CIDR and block size
 calicoctl get ippool -o yaml | grep -E "cidr|blockSize"
@@ -45,7 +45,7 @@ calicoctl get ippool -o yaml | grep -E "cidr|blockSize"
 
 ## Step 2: Understand Calico's Block Size Configuration
 
-The block size determines how many IPs each node can allocate before requesting additional blocks. A larger block size gives more IPs per node but reduces the total number of nodes the pool can serve.
+The block size determines how many IPs each node can allocate before requesting additional blocks. A larger block (for example, `/24` instead of `/26`) gives more IPs per node but reduces the total number of node blocks the pool can serve.
 
 Calculate optimal block size for your workload:
 
@@ -68,7 +68,6 @@ spec:
   # blockSize 26 (default) = 64 IPs per block, suitable for up to ~60 pods per node
   # blockSize 28 = 16 IPs per block, for very small nodes
   blockSize: 24
-  ipipMode: Never
   vxlanMode: CrossSubnet
   natOutgoing: true
   disabled: false
@@ -91,18 +90,21 @@ Identify and address IPAM exhaustion:
 kubectl get events -A --field-selector reason=FailedCreatePodSandBox | grep -i "ipam\|ip"
 
 # Show the utilization per pool to identify near-exhaustion pools
-calicoctl ipam show | grep -E "(Pool|Capacity|Available)"
+calicoctl ipam show | grep -E "(IP Pool|IPS TOTAL|IPS FREE)"
 
-# Check if any nodes have more blocks than the max allowed (5 blocks per node by default)
-calicoctl ipam show --show-blocks | grep -E "Node" | wc -l
+# Check the configured maximum number of blocks that can be affine to a host (20 by default)
+kubectl get ipamconfiguration default -o yaml | grep maxBlocksPerHost
 
-# Release IP blocks from deleted nodes that still have orphaned allocations
-calicoctl ipam check
+# Check for leaked IPAM allocations, then release only the leaked addresses in the report
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Step 4: Expand IP Pool Capacity
 
-If the pool is exhausted or approaching exhaustion, expand by adding a new pool or resizing the existing CIDR.
+If the pool is exhausted or approaching exhaustion, expand by adding a new non-overlapping pool and migrating workloads if needed.
 
 Add supplemental IP pool capacity:
 
@@ -113,10 +115,9 @@ kind: IPPool
 metadata:
   name: supplemental-pool
 spec:
-  # Non-overlapping CIDR extending the cluster's IP space
+  # Non-overlapping CIDR extending the cluster's IP space; keep it within the Kubernetes cluster CIDR
   cidr: 10.245.0.0/16
   blockSize: 26
-  ipipMode: Never
   vxlanMode: CrossSubnet
   natOutgoing: true
   disabled: false
@@ -138,7 +139,7 @@ kubectl get pods -A -o json | jq -r '.items[].status.podIP' | grep "^10\.245\." 
 - Plan IP pools with 3x the required capacity to account for pod density growth and burst scheduling
 - Use `/26` block size (default 64 IPs) for nodes with up to 50 pods; use `/24` for nodes with 100+ pods
 - Monitor IPAM pool utilization with `calicoctl ipam show` regularly and alert at 70% utilization
-- Run `calicoctl ipam check` after every node deletion to release orphaned block affinity records
+- When manually decommissioning nodes, remove the Calico Node resource and use `calicoctl ipam check` with `calicoctl ipam release --from-report` to clean up leaked allocations
 - Create supplemental IP pools proactively rather than reactively to avoid pod scheduling failures
 
 ## Conclusion
