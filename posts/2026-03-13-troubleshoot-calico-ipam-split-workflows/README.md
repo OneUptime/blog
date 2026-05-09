@@ -18,7 +18,7 @@ This post covers the diagnostic commands and remediation steps for each common I
 
 ## Prerequisites
 
-- Calico v3.x with `calicoctl` v3.x installed
+- Calico Enterprise v3.x with a `calicoctl` version that supports `ipam check` and `ipam split`
 - `kubectl` cluster-admin access
 - A recently completed (or in-progress) IPAM split
 - Familiarity with the `setup` and `avoid-mistakes` posts in this series
@@ -71,11 +71,11 @@ grep "no matching pool" /tmp/ipam-check-output.txt
 calicoctl get ippool -o wide
 ```
 
-If the inconsistency is due to allocation records that reference the disabled original pool, check whether those allocations still have running pods:
+If the inconsistency is due to allocation records that reference a deleted original pool, check whether those allocations still have running pods:
 
 ```bash
 # Find all pods still using IPs from the original pool CIDR (e.g., 10.0.0.0/16)
-# that are NOT in either sub-pool CIDR
+# and compare the results against the sub-pool CIDRs
 kubectl get pods --all-namespaces -o json \
   | jq -r '.items[] | select(.status.podIP != null) | "\(.metadata.namespace)/\(.metadata.name): \(.status.podIP)"' \
   | grep "10.0." | head -30
@@ -91,20 +91,21 @@ If new pods are stuck in `ContainerCreating` with events showing IP allocation f
 # Check pod events for IP allocation errors
 kubectl describe pod <stuck-pod-name> -n <namespace> | grep -A5 "Events:"
 
-# Common error: "no IP addresses available in block"
+# Common errors include "no IP addresses available in pool"
 # Check block utilization for the affected node's pool
 STUCK_NODE=$(kubectl get pod <stuck-pod-name> -n <namespace> \
   -o jsonpath='{.spec.nodeName}')
 NODE_ZONE=$(kubectl get node "$STUCK_NODE" \
-  -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+  -o jsonpath='{.metadata.labels.zone}')
 echo "Node zone: $NODE_ZONE"
 
-# Check pool utilization for this zone
-calicoctl ipam show --show-blocks | grep "$NODE_ZONE"
+# Find the pool selector for this zone, then check block utilization
+calicoctl get ippool -o wide | grep "$NODE_ZONE"
+calicoctl ipam show --show-blocks
 
 # If the pool is exhausted, check if the original pool is still enabled
 # (it should be disabled but not deleted during the transition)
-calicoctl get ippool -o wide | grep disabled
+calicoctl get ippool -o wide
 ```
 
 If the pool for this zone is exhausted, either expand it by creating a larger replacement or add a temporary fallback pool:
