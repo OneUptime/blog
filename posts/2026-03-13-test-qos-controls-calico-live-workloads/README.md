@@ -10,7 +10,7 @@ Description: Test Calico QoS bandwidth limits with real workloads using iperf3 t
 
 ## Introduction
 
-Quality of Service (QoS) controls in Calico allow you to limit and prioritize pod network bandwidth to prevent noisy neighbors from consuming all available bandwidth and to ensure critical workloads receive the resources they need. Calico implements QoS using Linux traffic control (tc) to apply bandwidth limits to pod veth interfaces.
+Quality of Service (QoS) controls in Calico allow you to limit pod network bandwidth to prevent noisy neighbors from consuming all available bandwidth and to ensure critical workloads receive the resources they need. Calico implements bandwidth QoS using Linux traffic control (tc) to apply limits to pod interfaces.
 
 Pod bandwidth annotations provide a straightforward way to specify limits: annotate pods with the desired ingress and egress bandwidth limits, and Calico applies the corresponding tc rules when the pod interface is created. This integration with standard Kubernetes bandwidth annotations makes QoS configuration accessible without deep networking knowledge.
 
@@ -35,7 +35,8 @@ metadata:
 spec:
   containers:
   - name: app
-    image: nginx
+    image: networkstatic/iperf3
+    command: ["sleep", "3600"]
 ```
 
 ## Verify QoS Rules are Applied
@@ -55,7 +56,7 @@ tc class show dev cali<iface>
 
 ```bash
 # Run iperf3 server
-kubectl run iperf3-server --image=networkstatic/iperf3 -- iperf3 -s
+kubectl run iperf3-server --image=networkstatic/iperf3 -- -s
 
 # Run client with bandwidth-limited pod
 SERVER_IP=$(kubectl get pod iperf3-server -o jsonpath='{.status.podIP}')
@@ -71,8 +72,8 @@ graph TD
         APP[Application] --> ETH0[eth0]
     end
     subgraph Node
-        VETH[cali interface] -->|tc tbf\négress limit| NETWORK[Network]
-        NETWORK -->|tc ingress\npolicing| VETH
+        VETH[cali interface] -->|tc egress limit| NETWORK[Network]
+        NETWORK -->|tc ingress limit| VETH
     end
     ETH0 <-->|veth pair| VETH
 ```
