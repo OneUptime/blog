@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, Fragmentation, eBPF
 
-Description: A guide to diagnosing and resolving IP packet fragmentation issues in Cilium, including MTU mismatches and fragment reassembly problems affecting pod connectivity.
+Description: A guide to diagnosing and resolving IP packet fragmentation issues in Cilium, including MTU mismatches and fragment tracking problems affecting pod connectivity.
 
 ---
 
@@ -19,7 +19,7 @@ This guide covers identifying fragmentation issues in Cilium environments and re
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed
-- `kubectl` and `cilium` CLI access
+- `kubectl` access and access to `cilium-dbg` inside Cilium agent pods
 - Node-level access for packet capture and MTU inspection
 - Basic understanding of IP fragmentation and MTU
 
@@ -40,7 +40,7 @@ kubectl exec <test-pod> -- ping -s 1480 -M dont <destination-ip>
 CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium monitor --type drop | grep -i fragment
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg monitor --type drop | grep -i fragment
 ```
 
 ## Step 2: Check MTU Configuration in Cilium
@@ -49,38 +49,40 @@ Verify Cilium's MTU settings are correct for your network environment.
 
 ```bash
 # Check Cilium's configured MTU
-kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "mtu|tunnel"
+kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "mtu|routing-mode|tunnel-protocol"
 
 # Check the actual MTU on the node's primary interface
 kubectl debug node/<node-name> -it --image=ubuntu -- ip link show eth0
 
-# Check the MTU on Cilium's tunnel interface (if using overlay)
+# Check the MTU on Cilium's tunnel interface (if using VXLAN overlay)
 kubectl debug node/<node-name> -it --image=ubuntu -- ip link show cilium_vxlan
 
 # Recommended MTU values:
-# Direct routing: match the host MTU (e.g., 1500)
-# VXLAN overlay: host MTU - 50 bytes (e.g., 1450 for 1500 MTU host)
-# IPIP overlay: host MTU - 20 bytes (e.g., 1480 for 1500 MTU host)
+# Native routing: match the underlying network MTU (e.g., 1500)
+# VXLAN overlay: route MTU is host MTU - 50 bytes (e.g., 1450 for 1500 MTU host)
+# Geneve overlay: account for tunnel overhead and verify the route MTU with ip route
 ```
 
 ## Step 3: Check Cilium Fragment Tracking
 
-Inspect Cilium's fragment tracking state to identify reassembly issues.
+Inspect Cilium's fragment tracking state to identify fragment-tracking issues.
 
 ```bash
 # Check if Cilium has fragment tracking enabled
-kubectl get configmap cilium-config -n kube-system -o yaml | grep fragment
+kubectl get configmap cilium-config -n kube-system -o yaml | \
+  grep -E "enable-ipv[46]-fragment-tracking|bpf-fragments-map-max"
 
-# View fragment tracking statistics
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium bpf metrics list | grep fragment
+# View fragment tracking table entries
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg bpf frag list
 
-# Check for fragment tracking table exhaustion
+# Check fragment tracking map pressure and MTU error message metrics
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium bpf ct list global | grep -i frag
+  cilium-dbg metrics list | \
+  grep -E 'cilium_bpf_map_pressure.*cilium_ipv[46]_frag_datagrams|mtu_error_message_total'
 
 # Monitor fragment-related drops
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium monitor --type drop 2>&1 | grep -i frag
+  cilium-dbg monitor --type drop 2>&1 | grep -i frag
 ```
 
 ## Step 4: Capture and Analyze Fragmented Traffic
