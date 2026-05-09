@@ -10,16 +10,16 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-Self-managed Kubernetes on AWS EC2 runs Calico as a full CNI with complete IPAM, BGP routing, and network policy enforcement - unlike EKS where Calico operates in policy-only mode. This gives you access to all Calico features including IPIP/VXLAN encapsulation, BGP peering, and GlobalNetworkPolicy resources.
+Self-managed Kubernetes on AWS EC2 can run Calico as the cluster CNI with Calico IPAM, BGP routing, and network policy enforcement. This gives you direct control over Calico networking features including IPIP/VXLAN encapsulation, BGP peering, and GlobalNetworkPolicy resources.
 
-On AWS, IPIP encapsulation is required for cross-subnet pod-to-pod traffic unless you configure VPC routing tables to route pod CIDRs through EC2 instances. VXLAN is a simpler alternative that works reliably with AWS security groups without requiring additional VPC routing configuration.
+On AWS, encapsulation is required for cross-subnet pod-to-pod traffic unless the underlying network can route pod CIDRs. Calico documents IPIP with outgoing NAT for traffic across AWS VPC subnet boundaries, and VXLAN is another Calico overlay option when you do not want the underlay network to route workload IPs.
 
-Testing network policies on self-managed AWS clusters validates the complete Calico policy stack including cross-AZ and cross-VPC scenarios.
+Testing network policies on self-managed AWS clusters validates the Calico policy stack including cross-subnet and cross-AZ scenarios.
 
 ## Prerequisites
 
 - Self-managed Kubernetes cluster on AWS EC2
-- Calico installed with `kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml`
+- Calico installed with `kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml`
 - kubectl and calicoctl configured
 
 ## Step 1: Verify Cluster and Calico Health
@@ -37,22 +37,22 @@ calicoctl get ippool -o yaml
 kubectl create namespace aws-policy-test
 
 kubectl run web-frontend --image=busybox -n aws-policy-test \
-  --labels=tier=frontend -- sleep 3600
+  --labels=tier=frontend --command -- sleep 3600
 kubectl run api-backend --image=nginx -n aws-policy-test \
   --labels=tier=backend --port=80
 kubectl expose pod api-backend --port=80 -n aws-policy-test --name=api-svc
 
 kubectl run unauthorized --image=busybox -n aws-policy-test \
-  --labels=tier=unauthorized -- sleep 3600
+  --labels=tier=unauthorized --command -- sleep 3600
 ```
 
 ## Step 3: Test Pre-Policy Connectivity
 
 ```bash
 kubectl exec -n aws-policy-test web-frontend -- \
-  wget --timeout=5 -qO- http://api-svc
+  wget -T 5 -qO- http://api-svc
 kubectl exec -n aws-policy-test unauthorized -- \
-  wget --timeout=5 -qO- http://api-svc
+  wget -T 5 -qO- http://api-svc
 ```
 
 Both should succeed.
@@ -136,11 +136,11 @@ EOF
 ```bash
 # Should succeed
 
-kubectl exec -n aws-policy-test web-frontend -- wget -qO- http://api-svc
+kubectl exec -n aws-policy-test web-frontend -- wget -T 5 -qO- http://api-svc
 
 # Should fail
 kubectl exec -n aws-policy-test unauthorized -- \
-  wget --timeout=5 -qO- http://api-svc
+  wget -T 5 -qO- http://api-svc
 ```
 
 ## Step 8: Test Cross-AZ Policy (Multi-Node)
@@ -159,10 +159,14 @@ ZONE_B_NODE=$(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1b -o nam
 
 kubectl run cross-az-client --image=busybox -n aws-policy-test \
   --labels=tier=frontend \
-  --overrides="{\"spec\":{\"nodeName\":\"$ZONE_A_NODE\"}}" -- sleep 3600
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$ZONE_A_NODE\"}}" --command -- sleep 3600
 kubectl run cross-az-server --image=nginx -n aws-policy-test \
   --labels=tier=backend --port=80 \
-  --overrides="{\"spec\":{\"nodeName\":\"$ZONE_B_NODE\"}}"
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$ZONE_B_NODE\"}}"
+
+CROSS_AZ_SERVER_IP=$(kubectl get pod cross-az-server -n aws-policy-test -o jsonpath='{.status.podIP}')
+kubectl exec -n aws-policy-test cross-az-client -- \
+  wget -T 5 -qO- http://$CROSS_AZ_SERVER_IP
 ```
 
 ## Conclusion
