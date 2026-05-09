@@ -12,7 +12,7 @@ Description: Diagnose and resolve common Calico networking problems on AWS, incl
 
 Calico networking issues on AWS often stem from the interaction between Calico's routing logic and AWS network primitives - security groups, VPC route tables, and the source/destination check setting. Problems that work perfectly in other environments may fail on AWS due to these cloud-specific constraints.
 
-The most common AWS-specific failures involve cross-AZ traffic being dropped by security groups that don't allow encapsulation protocols, or by the source/destination check dropping packets with pod source IPs. This guide covers diagnosis and resolution of the most frequent Calico networking problems on AWS.
+The most common AWS-specific failures involve cross-AZ traffic being dropped by security groups that don't allow encapsulation protocols, or by the source/destination check dropping unencapsulated pod traffic. This guide covers diagnosis and resolution of the most frequent Calico networking problems on AWS.
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ graph TD
     A[Cross-AZ Ping Fails] --> B{Check Source/Dest Check}
     B -->|Enabled| C[Disable on all worker instances]
     B -->|Disabled| D{Check Security Group}
-    D -->|VXLAN blocked| E[Allow UDP 4789 / Protocol 4]
+    D -->|Encapsulation blocked| E[Allow UDP 4789 or IP protocol 4]
     D -->|Allowed| F{Check Encapsulation Mode}
     F -->|None - using native| G[Add VPC route for pod CIDR]
 ```
@@ -62,7 +62,7 @@ aws ec2 modify-instance-attribute \
 
 ## Issue 2: Security Group Blocking Encapsulation
 
-**Symptom**: Cross-AZ traffic fails; `tcpdump` shows VXLAN packets reaching the destination node but being dropped.
+**Symptom**: Cross-AZ traffic fails; `tcpdump` shows no VXLAN packets reaching the destination node.
 
 ```bash
 # On destination node, capture VXLAN traffic
@@ -79,15 +79,19 @@ aws ec2 authorize-security-group-ingress \
   --source-group sg-0123456789
 ```
 
+If your security group uses restricted egress rules, allow outbound UDP 4789 between the Calico nodes as well.
+
 ## Issue 3: IP-in-IP Traffic Blocked
 
-AWS security groups don't have a rule for "protocol 4" in the console. Use the CLI:
+AWS security groups don't have a named "IP-in-IP" rule in the console. Use a custom protocol or the CLI with protocol number 4:
 
 ```bash
 aws ec2 authorize-security-group-ingress \
   --group-id sg-0123456789 \
   --ip-permissions '[{"IpProtocol":"4","UserIdGroupPairs":[{"GroupId":"sg-0123456789"}]}]'
 ```
+
+If your security group uses restricted egress rules, allow outbound IP protocol 4 between the Calico nodes as well.
 
 ## Issue 4: VPC Route Table Not Updated
 
@@ -110,10 +114,18 @@ calicoctl ipam show --show-blocks | grep node2
 ```bash
 # Check IP pool usage
 calicoctl ipam show
-# If usage is > 90%, expand the pool
+# If usage is > 90%, add another pool within the Kubernetes cluster CIDR
 
-calicoctl patch ippool aws-pod-pool \
-  --patch='{"spec":{"cidr":"192.168.0.0/15"}}'
+cat <<EOF | calicoctl create -f -
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: aws-pod-pool-expanded
+spec:
+  cidr: 192.168.2.0/24
+  vxlanMode: CrossSubnet
+  natOutgoing: true
+EOF
 ```
 
 ## Conclusion
