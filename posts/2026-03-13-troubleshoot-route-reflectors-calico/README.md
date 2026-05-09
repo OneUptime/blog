@@ -29,9 +29,9 @@ kubectl label node rr-node-1 calico-route-reflector=true
 kubectl label node rr-node-2 calico-route-reflector=true
 
 # Set route reflector cluster ID
-calicoctl patch node rr-node-1 --type merge \
+calicoctl patch node rr-node-1 \
   --patch '{"spec":{"bgp":{"routeReflectorClusterID":"244.0.0.1"}}}'
-calicoctl patch node rr-node-2 --type merge \
+calicoctl patch node rr-node-2 \
   --patch '{"spec":{"bgp":{"routeReflectorClusterID":"244.0.0.1"}}}'
 ```
 
@@ -39,9 +39,11 @@ calicoctl patch node rr-node-2 --type merge \
 
 ```bash
 # Disable node-to-node mesh
-calicoctl patch bgpconfiguration default --type merge \
+calicoctl patch bgpconfiguration default \
   --patch '{"spec":{"nodeToNodeMeshEnabled":false}}'
 ```
+
+If the default BGPConfiguration resource does not exist, create it first with `nodeToNodeMeshEnabled: false`.
 
 Create BGPPeer resources for workers to peer with RRs:
 
@@ -67,12 +69,10 @@ spec:
 
 ```bash
 # On a worker node, check sessions are with RRs only
-RR_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=rr-node-1 -o name | head -1)
-kubectl exec -n calico-system ${RR_NODE_POD} -- birdcl show protocols
+sudo calicoctl node status
 
-# Verify routes are being reflected
-kubectl exec -n calico-system ${RR_NODE_POD} -- birdcl show route count
+# Verify reflected pod CIDR routes are installed on the worker
+ip route | grep proto\ 80
 ```
 
 ## Route Reflector Architecture
@@ -89,10 +89,14 @@ graph TB
         WN[Worker N]
     end
     W1 -->|BGP| RR1
+    W1 -->|BGP| RR2
     W2 -->|BGP| RR1
+    W2 -->|BGP| RR2
+    W3 -->|BGP| RR1
     W3 -->|BGP| RR2
+    WN -->|BGP| RR1
     WN -->|BGP| RR2
-    RR1 -->|Reflected routes| W3
+    RR1 -->|Reflected routes| W1
     RR2 -->|Reflected routes| W1
 ```
 
