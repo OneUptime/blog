@@ -12,9 +12,9 @@ Description: Diagnose and resolve common Cilium BGP session failures including s
 
 BGP session failures in Cilium can be difficult to diagnose because the problem may lie in the Kubernetes resource configuration, the Cilium agent's GoBGP state, network-level connectivity between nodes and routers, or the upstream router's policy. A methodical approach that checks each layer in order is the fastest path to resolution.
 
-The most common issues are BGP sessions stuck in `Active` state (Cilium is trying to connect but the router is not responding), sessions that establish but fail to advertise routes (often a policy mismatch or missing IP pool), and sessions that flap (timer misconfigurations or network instability). Cilium provides several built-in commands and log filters specifically for BGP troubleshooting.
+The most common issues are BGP sessions stuck in `Active` state (Cilium is trying to acquire the peer by accepting or retrying a TCP connection), sessions that establish but fail to advertise routes (often a policy mismatch, missing advertisement, or missing IP pool), and sessions that flap (timer misconfigurations or network instability). Cilium provides several built-in commands and log fields specifically for BGP troubleshooting.
 
-This guide provides a structured troubleshooting workflow for Cilium BGP, from checking basic connectivity to inspecting GoBGP state dumps.
+This guide provides a structured troubleshooting workflow for Cilium BGP, from checking basic connectivity to inspecting Cilium's BGP operational state.
 
 ## Prerequisites
 
@@ -36,21 +36,25 @@ cilium bgp peers | grep -v established
 
 Common states and their meanings:
 - `established` - session is up and routes are exchanged
-- `active` - Cilium is trying to connect; router not responding
-- `idle` - session is not being attempted; check policy
+- `active` - BGP is trying to acquire the peer by accepting or retrying a TCP connection
+- `idle` - session is not established; check policy, peer configuration, and logs
 - `connect` - TCP connection in progress
 
 ## Step 2: Verify Policy and Node Selector
 
 ```bash
 # Confirm the policy exists and is well-formed
-kubectl get ciliumbgppeeringpolicy -o yaml
+kubectl get ciliumbgpclusterconfig -o yaml
+kubectl get ciliumbgppeerconfig -o yaml
+kubectl get ciliumbgpadvertisement -o yaml
+kubectl get ciliumbgpnodeconfig -o yaml
 
 # Check that nodes match the nodeSelector
 kubectl get nodes --show-labels | grep rack
 
-# Confirm Cilium picked up the policy
-kubectl logs -n kube-system -l k8s-app=cilium | grep -i "bgpPeeringPolicy\|bgp.*policy"
+# Confirm Cilium picked up the BGP configuration
+kubectl logs -n kube-system -l k8s-app=cilium | grep "subsys=bgp-control-plane"
+kubectl logs -n kube-system deployment/cilium-operator | grep "subsys=bgp-cp-operator"
 ```
 
 ## Step 3: Test TCP Connectivity to Peer
@@ -65,22 +69,19 @@ kubectl debug node/worker-0 -it --image=nicolaka/netshoot
 nc -zv 10.0.0.1 179
 # Expected: Connection to 10.0.0.1 179 port [tcp/bgp] succeeded
 
-# Also verify the return path (router can reach node)
+# Also verify the source address and return path expected by the router
 ip addr show  # Check node IP
 ```
 
 ## Step 4: Check Cilium Agent BGP Logs
 
 ```bash
-# Filter BGP-specific log messages
-kubectl logs -n kube-system -l k8s-app=cilium --since=10m | grep -i bgp
-
-# Enable debug logging for BGP subsystem
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium config set debug-verbose datapath
+# Filter BGP-specific log messages from the agent and operator
+kubectl logs -n kube-system -l k8s-app=cilium --since=10m | grep "subsys=bgp-control-plane"
+kubectl logs -n kube-system deployment/cilium-operator --since=10m | grep "subsys=bgp-cp-operator"
 
 # Check for GoBGP errors
-kubectl logs -n kube-system cilium-xxxxx | grep -i "gobgp\|bgp.*error\|bgp.*fail"
+kubectl logs -n kube-system cilium-xxxxx | grep -i "gobgp\|bgp.*error\|bgp.*fail\|bgp-control-plane"
 ```
 
 ## Step 5: Inspect Advertised and Available Routes
@@ -94,7 +95,8 @@ cilium bgp routes available ipv4 unicast
 
 # If advertised routes are empty, check IP pool
 kubectl get ciliumbgpclusterconfig
-kubectl get ciliumulbippool
+kubectl get ciliumbgpadvertisement
+kubectl get ippools
 ```
 
 ## Step 6: Verify LoadBalancer IP Allocation
@@ -104,10 +106,10 @@ kubectl get ciliumulbippool
 kubectl get svc -A | grep LoadBalancer
 
 # Check IP pool availability
-kubectl describe ciliumulbippool
+kubectl describe ippools
 
-# Events on IP pool
-kubectl get events --field-selector reason=IPPoolExhausted
+# Service allocation status
+kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name}{" "}{.status.conditions}{"\n"}{end}'
 ```
 
 ## BGP Troubleshooting Decision Tree
@@ -115,10 +117,10 @@ kubectl get events --field-selector reason=IPPoolExhausted
 ```mermaid
 flowchart TD
     A[BGP Not Working] --> B{Session State?}
-    B -->|idle| C[Check CiliumBGPPeeringPolicy\nand node labels]
+    B -->|idle| C[Check CiliumBGPClusterConfig\nand node labels]
     B -->|active| D[Check TCP 179 connectivity\nRouter firewall?]
     B -->|established| E{Routes advertised?}
-    E -->|No routes| F[Check CiliumLoadBalancerIPPool\nCheck service type]
+    E -->|No routes| F[Check CiliumBGPAdvertisement\nCiliumLoadBalancerIPPool\nand service type]
     E -->|Routes present| G[Check upstream router\nroute acceptance policy]
     D --> H[Fix network/firewall]
     C --> I[Fix policy/labels]
@@ -128,4 +130,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium BGP troubleshooting follows a clear pattern: verify the Kubernetes resources are correct, confirm TCP connectivity, check the Cilium agent logs for GoBGP errors, and finally verify route advertisement and acceptance. The `cilium bgp peers` and `cilium bgp routes` commands are your primary diagnostic tools. When sessions are established but no routes appear, the issue is almost always a missing `CiliumLoadBalancerIPPool` or a service selector mismatch in the peering policy.
+Cilium BGP troubleshooting follows a clear pattern: verify the Kubernetes resources are correct, confirm TCP connectivity, check the Cilium agent and operator logs for BGP control plane errors, and finally verify route advertisement and acceptance. The `cilium bgp peers` and `cilium bgp routes` commands are your primary diagnostic tools. When sessions are established but no routes appear, the issue is often a missing `CiliumBGPAdvertisement`, a missing `CiliumLoadBalancerIPPool`, or a selector mismatch on the advertisement or IP pool.
