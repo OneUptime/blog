@@ -20,7 +20,7 @@ Connect to Typha without presenting a client certificate. The connection should 
 kubectl run tls-test --image=alpine --restart=Never -- sh -c \
   "apk add --quiet openssl curl && \
    echo | openssl s_client \
-   -connect calico-typha.calico-system.svc.cluster.local:5473 \
+   -connect calico-typha.kube-system.svc.cluster.local:5473 \
    2>&1 | tail -5"
 kubectl logs tls-test
 kubectl delete pod tls-test
@@ -38,23 +38,24 @@ Generate a certificate signed by a different CA (not the Typha CA) and attempt t
 openssl req -x509 -newkey rsa:2048 -keyout /tmp/untrusted-ca.key \
   -out /tmp/untrusted-ca.crt -days 1 -nodes -subj "/CN=untrusted-ca"
 openssl req -newkey rsa:2048 -keyout /tmp/untrusted.key \
-  -out /tmp/untrusted.csr -nodes -subj "/CN=calico-felix"
+  -out /tmp/untrusted.csr -nodes -subj "/CN=calico-node"
 openssl x509 -req -in /tmp/untrusted.csr \
   -CA /tmp/untrusted-ca.crt -CAkey /tmp/untrusted-ca.key \
   -CAcreateserial -out /tmp/untrusted.crt -days 1
 
 # Copy to a test pod and attempt connection
 kubectl run tls-reject-test --image=alpine --restart=Never -- sleep 300
+kubectl wait --for=condition=Ready pod/tls-reject-test --timeout=60s
 kubectl cp /tmp/untrusted.crt tls-reject-test:/tmp/
 kubectl cp /tmp/untrusted.key tls-reject-test:/tmp/
-kubectl cp /etc/calico/pki/typha-ca.crt tls-reject-test:/tmp/typha-ca.crt
+kubectl cp typhaca.crt tls-reject-test:/tmp/typhaca.crt
 
 kubectl exec tls-reject-test -- sh -c \
   "apk add --quiet openssl && \
    echo | openssl s_client \
-   -connect calico-typha.calico-system.svc.cluster.local:5473 \
+   -connect calico-typha.kube-system.svc.cluster.local:5473 \
    -cert /tmp/untrusted.crt -key /tmp/untrusted.key \
-   -CAfile /tmp/typha-ca.crt 2>&1 | tail -5"
+   -CAfile /tmp/typhaca.crt 2>&1 | tail -5"
 
 kubectl delete pod tls-reject-test
 ```
@@ -67,16 +68,17 @@ Connect with a valid Felix client certificate and verify acceptance.
 
 ```bash
 kubectl run tls-accept-test --image=alpine --restart=Never -- sleep 300
-kubectl cp /etc/calico/pki/felix-client.crt tls-accept-test:/tmp/
-kubectl cp /etc/calico/pki/felix-client.key tls-accept-test:/tmp/
-kubectl cp /etc/calico/pki/typha-ca.crt tls-accept-test:/tmp/
+kubectl wait --for=condition=Ready pod/tls-accept-test --timeout=60s
+kubectl cp calico-node.crt tls-accept-test:/tmp/
+kubectl cp calico-node.key tls-accept-test:/tmp/
+kubectl cp typhaca.crt tls-accept-test:/tmp/
 
 kubectl exec tls-accept-test -- sh -c \
   "apk add --quiet openssl && \
    echo | openssl s_client \
-   -connect calico-typha.calico-system.svc.cluster.local:5473 \
-   -cert /tmp/felix-client.crt -key /tmp/felix-client.key \
-   -CAfile /tmp/typha-ca.crt 2>&1 | grep -i 'verify return\|cipher\|protocol'"
+   -connect calico-typha.kube-system.svc.cluster.local:5473 \
+   -cert /tmp/calico-node.crt -key /tmp/calico-node.key \
+   -CAfile /tmp/typhaca.crt 2>&1 | grep -i 'verify return\|cipher\|protocol'"
 
 kubectl delete pod tls-accept-test
 ```
@@ -89,20 +91,19 @@ Expect `Verify return code: 0 (ok)` and a valid TLS protocol version.
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 
 # Perform certificate rotation
-kubectl create secret generic calico-typha-tls \
-  --from-file=ca.crt=/etc/calico/pki/typha-ca.crt \
-  --from-file=tls.crt=/etc/calico/pki/typha-server.crt \
-  --from-file=tls.key=/etc/calico/pki/typha-server.key \
-  -n calico-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic calico-typha-certs \
+  --from-file=typha.crt \
+  --from-file=typha.key \
+  -n kube-system --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl rollout restart deployment/calico-typha -n calico-system
-kubectl rollout status deployment/calico-typha -n calico-system --timeout=120s
+kubectl rollout restart deployment/calico-typha -n kube-system
+kubectl rollout status deployment/calico-typha -n kube-system --timeout=120s
 
 # Wait for Felix reconnection
 sleep 60
 
-CONNECTIONS=$(kubectl exec -n calico-system deployment/calico-typha -- \
-  wget -qO- http://localhost:9093/metrics | grep typha_connections_active | awk '{print $2}')
+CONNECTIONS=$(kubectl exec -n kube-system deployment/calico-typha -- \
+  wget -qO- http://localhost:9091/metrics | awk '/^typha_connections_streaming / {print $2; exit}')
 
 echo "After rotation: $CONNECTIONS / $NODE_COUNT nodes connected"
 [ "$CONNECTIONS" -ge "$NODE_COUNT" ] && echo "PASS: All nodes reconnected" || echo "FAIL: Missing connections"
@@ -115,12 +116,26 @@ echo "After rotation: $CONNECTIONS / $NODE_COUNT nodes connected"
 openssl req -newkey rsa:2048 -keyout /tmp/wrong-cn.key \
   -out /tmp/wrong-cn.csr -nodes -subj "/CN=unauthorized-agent"
 openssl x509 -req -in /tmp/wrong-cn.csr \
-  -CA /etc/calico/pki/typha-ca.crt -CAkey /etc/calico/pki/typha-ca.key \
+  -CA typhaca.crt -CAkey typhaca.key \
   -CAcreateserial -out /tmp/wrong-cn.crt -days 1
 
-# This should be rejected because CN doesn't match TYPHA_CLIENTCN=calico-felix
+# This should be rejected because CN doesn't match TYPHA_CLIENTCN=calico-node
 # (Connection is signed by trusted CA but CN is wrong)
-kubectl logs -n calico-system deployment/calico-typha | grep -i "CN\|client" | tail -5
+kubectl run tls-cn-test --image=alpine --restart=Never -- sleep 300
+kubectl wait --for=condition=Ready pod/tls-cn-test --timeout=60s
+kubectl cp /tmp/wrong-cn.crt tls-cn-test:/tmp/
+kubectl cp /tmp/wrong-cn.key tls-cn-test:/tmp/
+kubectl cp typhaca.crt tls-cn-test:/tmp/
+
+kubectl exec tls-cn-test -- sh -c \
+  "apk add --quiet openssl && \
+   echo | openssl s_client \
+   -connect calico-typha.kube-system.svc.cluster.local:5473 \
+   -cert /tmp/wrong-cn.crt -key /tmp/wrong-cn.key \
+   -CAfile /tmp/typhaca.crt 2>&1 | tail -5"
+
+kubectl logs -n kube-system deployment/calico-typha | grep -i "CN\|client" | tail -5
+kubectl delete pod tls-cn-test
 ```
 
 ## Conclusion
