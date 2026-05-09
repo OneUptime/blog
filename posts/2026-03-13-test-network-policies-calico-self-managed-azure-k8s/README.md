@@ -10,9 +10,9 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-Self-managed Kubernetes on Azure Virtual Machines runs Calico as a full CNI - unlike AKS where Calico operates in policy-only mode. This gives you access to Calico's complete feature set including IPAM, BGP routing, VXLAN encapsulation, and GlobalNetworkPolicy resources on Azure infrastructure.
+Self-managed Kubernetes on Azure Virtual Machines can run Calico as a full CNI - unlike AKS clusters that use Azure CNI with Calico for network policy enforcement only. This gives you access to Calico's complete feature set including IPAM, BGP routing, VXLAN encapsulation, and GlobalNetworkPolicy resources on Azure infrastructure.
 
-Azure networking requires VXLAN encapsulation for Calico pod-to-pod traffic in most configurations, since IPIP (protocol 4) may be blocked by Azure NSG rules. The VXLAN mode (UDP port 4789) is more reliably allowed through Azure's default NSG configurations. Testing network policies on self-managed Azure Kubernetes validates both the Calico policy enforcement layer and the Azure networking layer underneath.
+Azure networking requires VXLAN encapsulation for Calico pod-to-pod traffic in most configurations, since Azure does not support IP-in-IP traffic. The VXLAN mode (UDP port 4789) is supported for Calico networking on Azure. Testing network policies on self-managed Azure Kubernetes validates both the Calico policy enforcement layer and the Azure networking layer underneath.
 
 ## Prerequisites
 
@@ -36,13 +36,13 @@ Confirm VXLAN mode is configured for Azure compatibility.
 kubectl create namespace azure-policy-test
 
 kubectl run frontend --image=busybox -n azure-policy-test \
-  --labels=tier=web -- sleep 3600
+  --labels=tier=web --command -- sleep 3600
 kubectl run backend --image=nginx -n azure-policy-test \
   --labels=tier=api --port=80
 kubectl expose pod backend --port=80 -n azure-policy-test --name=backend-api
 
 kubectl run intruder --image=busybox -n azure-policy-test \
-  --labels=tier=unknown -- sleep 3600
+  --labels=tier=unknown --command -- sleep 3600
 ```
 
 ## Step 3: Test Pre-Policy Connectivity
@@ -90,6 +90,8 @@ spec:
   egress:
   - ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
 EOF
 ```
@@ -140,6 +142,8 @@ spec:
   - ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
 EOF
 ```
 
@@ -165,7 +169,7 @@ NODE2=$(kubectl get nodes -o name | sed -n '2p' | cut -d/ -f2)
 
 kubectl run cross-vm-client --image=busybox -n azure-policy-test \
   --labels=tier=web \
-  --overrides="{\"spec\":{\"nodeName\":\"$NODE1\"}}" -- sleep 3600
+  --overrides="{\"spec\":{\"nodeName\":\"$NODE1\"}}" --command -- sleep 3600
 
 kubectl run cross-vm-server --image=nginx -n azure-policy-test \
   --labels=tier=api --port=80 \
