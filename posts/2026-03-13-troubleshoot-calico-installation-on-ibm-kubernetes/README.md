@@ -21,18 +21,20 @@ This guide covers common Calico issues specific to IKS and provides targeted dia
 - IBM Kubernetes Service cluster
 - `ibmcloud` CLI with `ks` plugin installed
 - `kubectl` configured for the IKS cluster
-- `calicoctl` configured for the IKS datastore
+- `calicoctl` installed and configured for the IKS cluster
 
 ## Step 1: Configure calicoctl for IKS
 
-IKS requires specific configuration for calicoctl to access the Calico datastore.
+For Kubernetes version 1.19 and later, IKS uses the Kubernetes datastore for Calico resources. Configure `kubectl` for the cluster and set `DATASTORE_TYPE` so `calicoctl` uses the Kubernetes API.
 
 ```bash
-# Download IKS-specific calicoctl configuration
+# Download the kubeconfig configuration file for your cluster
+ibmcloud ks cluster config --cluster <cluster-id>
 
-ibmcloud ks cluster config --cluster <cluster-id> --admin --network
+# Configure calicoctl to use the Kubernetes datastore
+export DATASTORE_TYPE=kubernetes
 
-# Verify calicoctl can connect to the IKS datastore
+# Verify calicoctl can query Calico resources
 calicoctl get nodes
 
 # Check the Calico version installed by IKS
@@ -126,7 +128,7 @@ kubectl exec <pod-1> -- curl http://<pod-2-ip>
 - Always use `ibmcloud ks` to configure `calicoctl` for IKS rather than manual configuration
 - Test custom policies in a development IKS cluster before applying to production
 - Open IBM support tickets for issues caused by IBM-managed Calico component failures
-- Check IKS cluster update notes before upgrading-Calico updates are managed by IBM
+- Check IKS cluster update notes before upgrading; Calico updates are managed by IBM
 
 ## Conclusion
 
