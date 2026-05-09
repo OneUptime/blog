@@ -10,15 +10,15 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-EKS with Calico supports full Kubernetes NetworkPolicy and Calico GlobalNetworkPolicy enforcement. AWS environments introduce unique networking considerations - security groups, VPC flow logs, and AWS-specific egress paths - that interact with Calico policy enforcement. Testing network policies on EKS validates that Calico correctly enforces isolation between workloads running in the same VPC.
+EKS with Calico supports the Kubernetes NetworkPolicy API, and EKS users can also use Calico NetworkPolicy and GlobalNetworkPolicy APIs. AWS environments introduce unique networking considerations - security groups, VPC flow logs, and AWS-specific egress paths - that interact with Calico policy enforcement. Testing network policies on EKS validates that Calico correctly enforces isolation between workloads running in the same VPC.
 
-On EKS, pod-to-pod traffic within a node is handled at the Linux level by the VPC CNI, while Calico Felix enforces policies using iptables or eBPF. Pod-to-pod traffic between nodes traverses the VPC routing infrastructure. Testing must cover both intra-node and cross-node policy scenarios to ensure comprehensive coverage.
+On EKS with Amazon VPC CNI and Calico policy enforcement, pod IP assignment and VPC-native routing are handled by the VPC CNI, while Calico enforces policies in the node dataplane. Pod-to-pod traffic between nodes traverses the VPC routing infrastructure. Testing must cover both intra-node and cross-node policy scenarios to ensure comprehensive coverage.
 
 ## Prerequisites
 
 - EKS cluster with Calico installed
 - kubectl configured for EKS
-- calicoctl installed
+- calicoctl installed if testing Calico-specific policies
 - Multiple nodes for cross-node tests
 
 ## Step 1: Set Up Multi-Namespace Test Environment
@@ -77,8 +77,12 @@ spec:
   - ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
 EOF
 ```
+
+This is not required for the nginx connectivity test above, because the client pod resolves the service name and no egress policy is applied in the app namespace. It is useful if DB pods need DNS after the default-deny egress policy.
 
 ## Step 5: Verify Deny is Enforced
 
@@ -144,4 +148,4 @@ kubectl exec -n eks-test-app cross-node-client -- wget -qO- http://$CROSS_SERVER
 
 ## Conclusion
 
-You have tested Calico network policies on EKS, confirming default deny, DNS allow, and selective ingress allow policies across both same-node and cross-node scenarios. Calico correctly enforces policies within EKS's VPC networking model, providing the same security guarantees as on self-managed Kubernetes.
+You have tested Calico network policies on EKS, confirming default deny and selective ingress allow policies across both same-node and cross-node scenarios. Calico correctly enforces policies within EKS's VPC networking model, providing the same security guarantees as on self-managed Kubernetes.
