@@ -10,7 +10,7 @@ Description: A practical guide to testing Kubernetes and Calico network policies
 
 ## Introduction
 
-Network policies on on-premises Kubernetes clusters are your primary tool for enforcing zero-trust networking between workloads. Calico implements both the standard Kubernetes NetworkPolicy API and its own richer GlobalNetworkPolicy and NetworkPolicy CRDs, which support egress rules, CIDR-based selectors, and ordering. Testing these policies thoroughly before production deployment prevents security gaps.
+Network policies on on-premises Kubernetes clusters are your primary tool for enforcing zero-trust networking between workloads. Calico implements both the standard Kubernetes NetworkPolicy API and its own richer GlobalNetworkPolicy and NetworkPolicy CRDs, which add global scope, explicit deny rules, CIDR-based matches, and ordering. Testing these policies thoroughly before production deployment prevents security gaps.
 
 On-prem clusters often have stricter security requirements than cloud deployments, making policy validation even more important. The physical network may already enforce some isolation, but relying solely on physical network controls leaves the pod-to-pod layer unprotected. Calico policies close this gap.
 
@@ -42,8 +42,8 @@ kubectl run client-b --image=busybox --labels="role=client-b" -n policy-demo -- 
 Without any policy, all pods can communicate.
 
 ```bash
-kubectl exec -n policy-demo client-a -- wget -qO- --timeout=5 http://server
-kubectl exec -n policy-demo client-b -- wget -qO- --timeout=5 http://server
+kubectl exec -n policy-demo client-a -- wget -q -O- -T 5 http://server
+kubectl exec -n policy-demo client-b -- wget -q -O- -T 5 http://server
 ```
 
 Both should succeed.
@@ -91,30 +91,29 @@ spec:
 
 ```bash
 kubectl apply -f allow-client-a.yaml
-kubectl exec -n policy-demo client-a -- wget -qO- --timeout=5 http://server
-kubectl exec -n policy-demo client-b -- wget -qO- --timeout=5 http://server || echo "Blocked as expected"
+kubectl exec -n policy-demo client-a -- wget -q -O- -T 5 http://server
+kubectl exec -n policy-demo client-b -- wget -q -O- -T 5 http://server || echo "Blocked as expected"
 ```
 
 ## Step 6: Test Calico GlobalNetworkPolicy
 
-Test a Calico-specific policy that applies across namespaces.
+Test a Calico-specific policy that can apply across namespaces, scoped here to the test namespace.
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: deny-all-egress
+  name: deny-policy-demo-egress
 spec:
-  selector: all()
-  egress: []
+  selector: projectcalico.org/namespace == "policy-demo"
   types:
     - Egress
 ```
 
 ```bash
 calicoctl apply -f global-deny-egress.yaml
-kubectl exec -n policy-demo client-a -- wget -qO- --timeout=5 http://example.com || echo "Egress blocked"
-calicoctl delete globalnetworkpolicy deny-all-egress
+kubectl exec -n policy-demo client-a -- wget -q -O- -T 5 http://example.com || echo "Egress blocked"
+calicoctl delete globalnetworkpolicy deny-policy-demo-egress
 ```
 
 ## Conclusion
