@@ -40,7 +40,7 @@ Look for pods stuck in `Pending`, `CrashLoopBackOff`, or `Init:Error`.
 
 kubectl logs -n tigera-operator deploy/tigera-operator --tail=50
 
-# calico-node logs on a specific node
+# calico-node logs
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 ```
 
@@ -55,8 +55,8 @@ kubectl logs -n calico-system -l k8s-app=calico-node | grep "IP address"
 Fix by setting the auto-detection method explicitly:
 
 ```bash
-kubectl patch ds calico-node -n calico-system --type merge \
-  -p '{"spec":{"template":{"spec":{"containers":[{"name":"calico-node","env":[{"name":"IP_AUTODETECTION_METHOD","value":"interface=bond0"}]}]}}}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"nodeAddressAutodetectionV4":{"interface":"bond0"}}}}'
 ```
 
 ## Step 4: Diagnose BGP Failures
