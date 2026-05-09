@@ -30,7 +30,6 @@ metadata:
 spec:
   cidr: 10.244.0.0/16
   vxlanMode: Always
-  ipipMode: Never
   natOutgoing: true
 ```
 
@@ -49,24 +48,24 @@ ip addr show vxlan.calico
 # View VXLAN forwarding database (FDB)
 bridge fdb show dev vxlan.calico
 
-# View ARP table for VTEP neighbors
-arp -n | grep "vxlan"
+# View neighbor table entries for the VXLAN device
+ip neigh show dev vxlan.calico
 
 # Check Calico VTEP information
-kubectl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
+calicoctl get node -o yaml | grep -A5 vxlanTunnelMACAddr
 ```
 
 ## Test Cross-Subnet Pod Connectivity
 
 ```bash
 # Deploy pods on different subnets
-kubectl run pod1 --image=busybox --overrides='{"spec":{"nodeName":"node-subnet-a"}}' -- sleep 3600
-kubectl run pod2 --image=busybox --overrides='{"spec":{"nodeName":"node-subnet-b"}}' -- sleep 3600
+kubectl run pod1 --image=busybox --overrides='{"apiVersion":"v1","spec":{"nodeName":"node-subnet-a"}}' -- sleep 3600
+kubectl run pod2 --image=busybox --overrides='{"apiVersion":"v1","spec":{"nodeName":"node-subnet-b"}}' -- sleep 3600
 
 POD2_IP=$(kubectl get pod pod2 -o jsonpath='{.status.podIP}')
 kubectl exec pod1 -- ping -c 3 ${POD2_IP}
 
-# Verify VXLAN encapsulation with tcpdump
+# Verify VXLAN encapsulation with tcpdump on one of the nodes
 tcpdump -i eth0 -n 'udp port 4789' -c 10
 ```
 
@@ -74,11 +73,11 @@ tcpdump -i eth0 -n 'udp port 4789' -c 10
 
 ```mermaid
 graph LR
-    subgraph Node A - Subnet 10.0.1.0/24
-        POD_A[Pod 10.244.1.5] --> VXLAN_A[vxlan.calico\nVTEP 10.0.1.10]
+    subgraph NODE_A["Node A - Subnet 10.0.1.0/24"]
+        POD_A[Pod 10.244.1.5] --> VXLAN_A[vxlan.calico<br/>VTEP 10.0.1.10]
     end
-    subgraph Node B - Subnet 10.0.2.0/24
-        VXLAN_B[vxlan.calico\nVTEP 10.0.2.10] --> POD_B[Pod 10.244.2.5]
+    subgraph NODE_B["Node B - Subnet 10.0.2.0/24"]
+        VXLAN_B[vxlan.calico<br/>VTEP 10.0.2.10] --> POD_B[Pod 10.244.2.5]
     end
     VXLAN_A -->|UDP 4789 Encapsulated| VXLAN_B
 ```
