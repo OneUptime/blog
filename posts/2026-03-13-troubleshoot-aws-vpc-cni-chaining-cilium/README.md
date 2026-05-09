@@ -31,13 +31,13 @@ Confirm that Cilium is correctly configured for AWS VPC CNI chaining.
 ```bash
 # Check Cilium's ConfigMap for chaining mode settings
 
-kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "chain|cni-conf"
+kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "cni-chaining|cni-exclusive|cni-conf"
 
 # Verify the CNI configuration on a node
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conflist
+  cat /host/etc/cni/net.d/05-cilium.conflist
 
-# The conflist should reference aws-cni as the chained plugin
+# The conflist should contain aws-cni before cilium in the plugins list
 ```
 
 ## Step 2: Check Cilium Agent Health
@@ -66,8 +66,15 @@ kubectl logs -n kube-system -l k8s-app=aws-node | grep -E "ERROR|WARN|ipamd"
 # Verify that Cilium is not conflicting with AWS VPC CNI IPAM
 kubectl get configmap cilium-config -n kube-system -o yaml | grep ipam
 
-# Check the number of available IPs on the node
-kubectl describe node <node-name> | grep -A5 "Allocatable"
+# Check the AWS VPC CNI IP pool on the node
+AWS_NODE_POD=$(kubectl get pod -n kube-system -l k8s-app=aws-node \
+  --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n kube-system -c aws-node ${AWS_NODE_POD} -- \
+  curl -s http://localhost:61679/v1/enis
+
+kubectl exec -n kube-system -c aws-node ${AWS_NODE_POD} -- \
+  curl -s http://localhost:61678/metrics | grep awscni_assigned_ip_addresses
 ```
 
 ## Step 4: Troubleshoot Network Policy Enforcement
@@ -79,15 +86,15 @@ Debug cases where Cilium network policies are not enforced as expected.
 CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n kube-system ${CILIUM_POD} -- cilium endpoint list
+kubectl exec -n kube-system ${CILIUM_POD} -- cilium-dbg endpoint list
 
 # Inspect policy enforcement for a specific endpoint
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium endpoint get <endpoint-id>
+  cilium-dbg endpoint get <endpoint-id>
 
 # Check for dropped packets due to policy
 kubectl exec -n kube-system ${CILIUM_POD} -- \
-  cilium monitor --type drop
+  cilium-dbg monitor --type drop
 ```
 
 ## Step 5: Validate Chained CNI Plugin Order
@@ -97,13 +104,13 @@ Ensure the CNI plugin chain is ordered correctly.
 ```bash
 # Verify CNI plugin configuration file ordering
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /etc/cni/net.d/
+  ls -la /host/etc/cni/net.d/
 
-# The file with the lowest number should be processed first
-# For AWS VPC CNI chaining: aws-cni should come before cilium
+# The kubelet selects the first valid CNI config file by lexicographic order
+# In the active conflist, aws-cni should come before cilium in the plugins list
 # Check conflist plugin chain order
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conflist | python3 -m json.tool
+  cat /host/etc/cni/net.d/05-cilium.conflist | python3 -m json.tool
 ```
 
 ## Best Practices
