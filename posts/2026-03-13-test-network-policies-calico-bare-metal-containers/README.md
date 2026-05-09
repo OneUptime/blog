@@ -39,8 +39,8 @@ kubectl expose pod api-server --port=80 -n backend
 ## Step 3: Deploy Frontend Clients
 
 ```bash
-kubectl run frontend-pod --image=busybox --labels="tier=frontend" -n frontend -- sleep 3600
-kubectl run other-pod --image=busybox --labels="tier=other" -n backend -- sleep 3600
+kubectl run frontend-pod --image=busybox --labels="tier=frontend" -n frontend --command -- sleep 3600
+kubectl run other-pod --image=busybox --labels="tier=other" -n backend --command -- sleep 3600
 ```
 
 ## Step 4: Apply a Cross-Namespace Policy
@@ -74,13 +74,13 @@ The frontend pod should be able to reach the backend.
 
 ```bash
 BACKEND_IP=$(kubectl get pod api-server -n backend -o jsonpath='{.status.podIP}')
-kubectl exec -n frontend frontend-pod -- wget -qO- --timeout=5 http://$BACKEND_IP
+kubectl exec -n frontend frontend-pod -- wget -qO- -T 5 http://$BACKEND_IP
 ```
 
 The other pod in the backend namespace should be blocked.
 
 ```bash
-kubectl exec -n backend other-pod -- wget -qO- --timeout=5 http://api-server || echo "Blocked"
+kubectl exec -n backend other-pod -- wget -qO- -T 5 http://api-server || echo "Blocked"
 ```
 
 ## Step 6: Test Latency Impact of Policy Enforcement
@@ -89,10 +89,10 @@ Measure the round-trip time for an allowed connection to verify policy enforceme
 
 ```bash
 kubectl exec -n frontend frontend-pod -- sh -c \
-  "time wget -qO- --timeout=5 http://$BACKEND_IP > /dev/null"
+  "time wget -qO- -T 5 http://$BACKEND_IP > /dev/null"
 ```
 
-On bare metal with eBPF dataplane, policy enforcement overhead should be under 0.1ms.
+On bare metal with eBPF dataplane, policy enforcement overhead is usually very low, but the exact value depends on hardware, kernel version, Calico version, and workload traffic patterns.
 
 ## Conclusion
 
