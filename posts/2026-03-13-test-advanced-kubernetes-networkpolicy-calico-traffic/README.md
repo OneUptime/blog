@@ -91,7 +91,7 @@ calicoctl apply -f calico-extension-policy.yaml
 
 ```mermaid
 flowchart TD
-    A[Source] -->|Traffic| B{Calico Policy\nAdvanced K8s NetworkPolicy}
+    A[Source] -->|Traffic| B{Calico Policy<br/>Advanced K8s NetworkPolicy}
     B -->|Allowed| C[Destination]
     B -->|Denied| D[Blocked]
     E[Felix] -->|Enforces| B
