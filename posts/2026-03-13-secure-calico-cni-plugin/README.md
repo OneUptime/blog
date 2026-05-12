@@ -60,12 +60,12 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["pods", "nodes", "namespaces"]
-    verbs: ["get", "list"]
-  - apiGroups: ["projectcalico.org"]
-    resources: ["workloadendpoints"]
-    verbs: ["get", "list", "create", "update", "delete"]
-  - apiGroups: ["projectcalico.org"]
-    resources: ["ippools", "ipamblocks", "ipamhandles", "ipamconfigs"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["patch"]
+  - apiGroups: ["crd.projectcalico.org"]
+    resources: ["blockaffinities", "ipamblocks", "ipamhandles", "ipamconfigs", "clusterinformations", "ippools", "ipreservations"]
     verbs: ["get", "list", "create", "update", "delete"]
 ```
 
@@ -113,7 +113,7 @@ spec:
         message: "Host network is not allowed"
         pattern:
           spec:
-            hostNetwork: "false | null"
+            hostNetwork: "!true"
 ```
 
 ## Security Practice 5: Audit CNI Invocations
