@@ -55,8 +55,9 @@ Test different firewall rule approaches using iptables to simulate legacy firewa
 INITIAL_POD_IP=$(kubectl get pod fw-test-pod-1 -o jsonpath='{.status.podIP}')
 
 # Simulate a legacy firewall rule that only allows the initial pod IP
-iptables -I FORWARD -d $INITIAL_POD_IP -p tcp --dport 8080 -j ACCEPT
-iptables -I FORWARD -d $INITIAL_POD_IP -j DROP  # Drop all other traffic to this IP
+# Use -A so the ACCEPT rule is evaluated before the catch-all DROP
+iptables -A FORWARD -d $INITIAL_POD_IP -p tcp --dport 8080 -j ACCEPT
+iptables -A FORWARD -d $INITIAL_POD_IP -j DROP  # Drop all other traffic to this IP
 
 # Test connectivity while pod has the initial IP
 kubectl exec test-client -- curl --max-time 5 http://$INITIAL_POD_IP:8080/
@@ -67,9 +68,9 @@ kubectl delete pod fw-test-pod-1
 kubectl run fw-test-pod-1 --image=nginx:1.25 --labels="app=fw-test"
 NEW_POD_IP=$(kubectl get pod fw-test-pod-1 -o jsonpath='{.status.podIP}')
 
-# Test with old IP - this simulates what legacy firewall does after pod restart
+# Test connectivity to the new pod IP - the firewall ACCEPT rule was set for the old IP
 kubectl exec test-client -- curl --max-time 5 http://$NEW_POD_IP:8080/
-# Expected: Fails - because the old firewall rule used the original IP
+# Expected: Fails in a default-deny firewall - no ACCEPT rule matches the new IP
 
 # Remove the wrong rule
 iptables -D FORWARD -d $INITIAL_POD_IP -p tcp --dport 8080 -j ACCEPT
