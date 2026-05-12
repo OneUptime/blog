@@ -27,7 +27,7 @@ kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"logSeverityScreen":"Info"}}'
 
-# Available log levels: Debug, Info, Warning, Error, Fatal
+# Available log levels: Trace, Debug, Info, Warning, Error, Fatal
 # For production: Info (default)
 # For troubleshooting: Debug (high volume, temporary only)
 
@@ -35,17 +35,19 @@ kubectl patch felixconfiguration default \
 kubectl get felixconfiguration default -o jsonpath='{.spec.logSeverityScreen}'
 ```
 
-## Step 2: Enable JSON Logging for Calico Components
+## Step 2: Route Calico Logs to Stdout Only
+
+Felix does not emit JSON-formatted logs natively - it uses a logrus-based text format. Structured/JSON ingestion is handled at the log shipper layer (see Step 4). What you can do at the Calico layer is ensure logs go to stdout (where Kubernetes can capture them) rather than to the default on-disk path (`/var/log/calico/felix.log`).
 
 ```yaml
-# FelixConfiguration with JSON log format
+# FelixConfiguration: stdout-only logging
 apiVersion: projectcalico.org/v3
 kind: FelixConfiguration
 metadata:
   name: default
 spec:
   logSeverityScreen: Info
-  logFilePath: none  # Log to stdout only (Kubernetes captures this)
+  logFilePath: none  # Disable file logging; Kubernetes captures stdout
 ```
 
 ## Step 3: Verify Component Logs Are Accessible
@@ -103,8 +105,22 @@ data:
 ## Step 5: Test Log Collection
 
 ```bash
-# Generate test log entries by describing a node (triggers Felix reconcile)
-kubectl describe node <any-node> | head -5
+# Generate test log entries by applying and removing a GlobalNetworkPolicy
+# (Felix logs as it programs and unprograms dataplane rules)
+cat <<EOF | kubectl apply -f -
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: log-collection-test
+spec:
+  selector: all()
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+EOF
+
+kubectl delete globalnetworkpolicy log-collection-test
 
 # Verify logs appear in aggregation system
 # Search for: kubernetes.namespace_name:calico-system
