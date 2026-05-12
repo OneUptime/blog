@@ -96,7 +96,7 @@ kubectl patch felixconfiguration default --type=merge -p '{
 # Or use environment variables on the calico-node DaemonSet
 kubectl set env ds/calico-node -n calico-system \
   FELIX_LOGSEVERITYSCREEN=Debug \
-  FELIX_DEBUGBPFMAP=true
+  FELIX_BPFLOGLEVEL=Debug
 ```
 
 ## Step 4: Configure BPF Map Inspection
@@ -131,19 +131,19 @@ flowchart LR
 ```bash
 # Calico provides built-in eBPF diagnostic commands
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-list-progs 2>/dev/null
+  calico-node -bpf ipsets dump 2>/dev/null | head -30
 
 # Dump NAT table (service routing)
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-nat-dump 2>/dev/null | head -30
+  calico-node -bpf nat dump 2>/dev/null | head -30
 
 # Dump conntrack table
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-conntrack-dump 2>/dev/null | head -30
+  calico-node -bpf conntrack dump 2>/dev/null | head -30
 
 # Dump routing table
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-route-dump 2>/dev/null | head -30
+  calico-node -bpf routes dump 2>/dev/null | head -30
 ```
 
 ## Conclusion
