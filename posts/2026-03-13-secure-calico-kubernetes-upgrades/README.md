@@ -87,8 +87,9 @@ Revert GitOps PR - estimated 15 minutes
 # Verify policy enforcement is unchanged after upgrade
 kubectl run sec-test-blocked --image=busybox --restart=Never \
   -n default -- wget -qO/dev/null --timeout=3 http://8.8.8.8
-kubectl wait pod/sec-test-blocked --for=condition=completed --timeout=30s 2>/dev/null || \
-  echo "EXPECTED: External access blocked by policy"
+kubectl wait pod/sec-test-blocked --for=jsonpath='{.status.phase}'=Failed --timeout=30s 2>/dev/null && \
+  echo "EXPECTED: External access blocked by policy" || \
+  echo "UNEXPECTED: External access was NOT blocked - check policy enforcement"
 
 # Compare active policy count to pre-upgrade snapshot
 CURRENT_POLICY_COUNT=$(calicoctl get gnp --no-headers | wc -l)
