@@ -40,8 +40,11 @@ Restrict API access via VPP startup configuration:
 api-segment {
   uid vpp
   gid vpp
-  socket-name /run/vpp/api.sock
   prefix vpe
+}
+
+socksvr {
+  socket-name /run/vpp/api.sock
 }
 ```
 
@@ -77,7 +80,11 @@ Protect ACL tables from overflow:
 ```bash
 # Check ACL table capacity vs. usage
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show acl-plugin statistics | grep -E "hash.*table|memory"
+  vppctl show acl-plugin tables
+
+# Inspect ACL plugin memory consumption
+kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+  vppctl show acl-plugin memory
 
 # Limit GlobalNetworkPolicy creation via OPA/Kyverno
 ```
