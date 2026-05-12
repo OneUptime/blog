@@ -153,6 +153,7 @@ def handle_deploy(request_body):
         name=name,
         body=kustomization,
         field_manager="platform-api",
+        _content_type="application/apply-patch+yaml",
     )
     return {"status": "accepted", "name": name, "namespace": namespace}
 ```
@@ -201,7 +202,7 @@ def handle_sync(name, namespace):
     patch = {
         "metadata": {
             "annotations": {
-                "reconcile.fluxcd.io/requestedAt": datetime.datetime.utcnow().isoformat() + "Z"
+                "reconcile.fluxcd.io/requestedAt": datetime.datetime.now(datetime.timezone.utc).isoformat()
             }
         }
     }
