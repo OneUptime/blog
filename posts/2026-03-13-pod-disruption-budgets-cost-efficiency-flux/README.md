@@ -165,7 +165,7 @@ kubectl get pdb -A
 kubectl get pdb -A -o wide
 
 # Simulate a node drain to test PDB behavior (dry run)
-kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --dry-run
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --dry-run=client
 
 # Check PDB status for a specific workload
 kubectl describe pdb web-api-pdb -n backend
