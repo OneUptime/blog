@@ -49,7 +49,6 @@ spec:
     - action: Allow
       destination:
         selector: app == 'database'
-      destination:
         ports: [5432]
     - action: Allow
       protocol: UDP
