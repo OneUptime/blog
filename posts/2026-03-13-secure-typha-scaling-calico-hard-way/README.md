@@ -112,7 +112,7 @@ spec:
             - name: TYPHA_LOGSEVERITYSCREEN
               value: "info"
             # CA that signed the Felix client certificates
-            - name: TYPHA_CLIENTCA
+            - name: TYPHA_CAFILE
               value: "/calico-secrets/ca.crt"
             # Typha's own server certificate
             - name: TYPHA_SERVERCERTFILE
@@ -155,29 +155,46 @@ spec:
 kubectl apply -f typha-deployment-tls.yaml
 ```
 
-Configure Felix to use its client certificate:
+Configure Felix to use its client certificate by patching the `calico-node` DaemonSet. Felix's TLS settings are read from environment variables on the calico-node container, not from the FelixConfiguration CRD:
 
 ```yaml
-# felixconfiguration-tls.yaml
-# FelixConfiguration pointing Felix at its client credentials and Typha's expected CN
-apiVersion: projectcalico.org/v3
-kind: FelixConfiguration
+# calico-node-tls.yaml
+# Patch calico-node so Felix mounts its client credentials and trusts Typha's CN
+apiVersion: apps/v1
+kind: DaemonSet
 metadata:
-  name: default
+  name: calico-node
+  namespace: kube-system
 spec:
-  typhaK8sServiceName: calico-typha
-  # CA that signed Typha's certificate
-  typhaCaFile: "/calico-secrets/ca.crt"
-  # Felix's client certificate
-  typhaClientCertFile: "/calico-secrets/tls.crt"
-  # Felix's private key
-  typhaClientKeyFile: "/calico-secrets/tls.key"
-  # CN Typha must present - prevents Felix from connecting to a rogue server
-  typhaServerCN: "calico-typha"
+  template:
+    spec:
+      containers:
+        - name: calico-node
+          env:
+            # CA that signed Typha's certificate
+            - name: FELIX_TYPHACAFILE
+              value: "/calico-secrets/ca.crt"
+            # Felix's client certificate
+            - name: FELIX_TYPHACERTFILE
+              value: "/calico-secrets/tls.crt"
+            # Felix's private key
+            - name: FELIX_TYPHAKEYFILE
+              value: "/calico-secrets/tls.key"
+            # CN Typha must present - prevents Felix from connecting to a rogue server
+            - name: FELIX_TYPHACN
+              value: "calico-typha"
+          volumeMounts:
+            - name: felix-tls
+              mountPath: /calico-secrets
+              readOnly: true
+      volumes:
+        - name: felix-tls
+          secret:
+            secretName: calico-felix-tls
 ```
 
 ```bash
-calicoctl apply -f felixconfiguration-tls.yaml
+kubectl apply -f calico-node-tls.yaml
 ```
 
 ---
