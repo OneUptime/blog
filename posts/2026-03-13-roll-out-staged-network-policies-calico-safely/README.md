@@ -29,7 +29,7 @@ The following YAML demonstrates the key pattern for Staged Policies:
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: NetworkPolicy
+kind: StagedNetworkPolicy
 metadata:
   name: roll-out-staged-policies
   namespace: production
@@ -63,7 +63,7 @@ spec:
 calicoctl apply -f roll-out-staged-policies.yaml
 
 # 2. Verify it's active
-calicoctl get networkpolicies -n production -o wide
+calicoctl get stagednetworkpolicies -n production -o wide
 
 # 3. Test connectivity
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
@@ -77,14 +77,14 @@ curl -s http://localhost:9091/metrics | grep felix_denied
 
 ```bash
 # List all relevant policies
-calicoctl get networkpolicies --all-namespaces
-calicoctl get globalnetworkpolicies
+calicoctl get stagednetworkpolicies --all-namespaces
+calicoctl get stagedglobalnetworkpolicies
 
 # View policy details
-calicoctl get networkpolicy roll-out-policy -n production -o yaml
+calicoctl get stagednetworkpolicy roll-out-staged-policies -n production -o yaml
 
 # Delete a policy if needed
-calicoctl delete networkpolicy roll-out-policy -n production
+calicoctl delete stagednetworkpolicy roll-out-staged-policies -n production
 ```
 
 ## Architecture
