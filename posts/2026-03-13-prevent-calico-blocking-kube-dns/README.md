@@ -81,7 +81,7 @@ echo "Testing DNS from all namespaces..."
 FAILED=0
 for NS in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   RESULT=$(kubectl run dns-test-$RANDOM --image=busybox -n $NS \
-    --restart=Never --rm -i --timeout=10s \
+    --restart=Never --rm -i --pod-running-timeout=10s \
     -- nslookup kubernetes.default 2>&1)
   if echo "$RESULT" | grep -q "Address"; then
     echo "PASS: $NS"
