@@ -87,7 +87,7 @@ Prevent route leaks by filtering out prefixes that are too large or too small:
 calicoctl get bgpconfiguration default -o yaml
 ```
 
-Create a route filter to reject unexpected prefixes via BGPFilter resource (Calico v3.27+):
+Create a route filter to reject unexpected prefixes via BGPFilter resource (Calico v3.26+):
 
 ```yaml
 apiVersion: projectcalico.org/v3
