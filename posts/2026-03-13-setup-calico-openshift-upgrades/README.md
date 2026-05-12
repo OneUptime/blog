@@ -51,13 +51,18 @@ kubectl get tigerastatus > pre-upgrade-tigerastatus.txt
 # OCP upgrades can change SCCs, kernel modules, or CNI interfaces
 
 # Step 3: Upgrade Calico via operator
+# On OpenShift the Tigera operator is upgraded by applying the new
+# manifests for the target Calico version - the operator then reconciles
+# and rolls out the new Calico components.
 CALICO_VERSION=v3.28.0
-kubectl patch installation default --type=merge \
-  -p '{"spec":{"version":"'"${CALICO_VERSION}"'"}}'
+oc apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/ocp/crds/
+oc apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/ocp/tigera-operator/
 
 # Step 4: Monitor OCP-specific components
 oc get pods -n calico-system
-oc get clusteroperators | grep -i calico
+watch oc get tigerastatus
 ```
 
 ## OpenShift SCC Validation Post-Upgrade
