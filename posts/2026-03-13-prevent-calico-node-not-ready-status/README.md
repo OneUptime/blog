@@ -81,7 +81,7 @@ spec:
     rules:
     - alert: CalicoNodeNotReady
       expr: |
-        kube_pod_status_ready{namespace="kube-system",container="calico-node"} == 0
+        kube_pod_container_status_ready{namespace="kube-system",container="calico-node"} == 0
       for: 3m
       labels:
         severity: critical
