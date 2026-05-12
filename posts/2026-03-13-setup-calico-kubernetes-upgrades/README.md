@@ -36,7 +36,7 @@ CURRENT_VERSION=$(kubectl get installation default \
 echo "Current Calico version: ${CURRENT_VERSION}"
 
 # 2. Target version compatibility with Kubernetes
-K8S_VERSION=$(kubectl version --short 2>/dev/null | grep "Server Version" | awk '{print $3}')
+K8S_VERSION=$(kubectl version -o json 2>/dev/null | grep gitVersion | head -2 | tail -1 | awk -F'"' '{print $4}')
 echo "Kubernetes version: ${K8S_VERSION}"
 echo "Check compatibility matrix: https://docs.tigera.io/calico/latest/getting-started/kubernetes/requirements"
 
@@ -55,15 +55,18 @@ kubectl get tigerastatus
 ```bash
 CALICO_VERSION=v3.28.0
 
-# Step 1: Update the operator image (if upgrading the operator too)
-kubectl set image deploy/tigera-operator \
-  tigera-operator=quay.io/tigera/operator:${CALICO_VERSION} \
-  -n tigera-operator
+# Step 1: Apply the operator CRDs for the target version
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/operator-crds.yaml
 
-# Step 2: Wait for operator to be ready
+# Step 2: Apply the tigera-operator manifest for the target version
+# This updates the operator deployment to the matching operator image tag
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
+
+# Step 3: Wait for the operator to be ready
 kubectl rollout status deploy/tigera-operator -n tigera-operator --timeout=120s
 
-# Step 3: The operator will automatically upgrade Calico components
+# Step 4: The operator will automatically upgrade Calico components
 # Monitor progress
 kubectl get tigerastatus -w
 
@@ -89,9 +92,9 @@ EOF
 
 kubectl apply -f calico-imageset-v3.28.0.yaml
 
-# Update Installation to target version
-kubectl patch installation default --type=merge \
-  -p '{"spec":{"version":"v3.28.0"}}'
+# Apply the operator manifest for the matching version
+# The operator discovers the ImageSet by name (calico-<version>) automatically
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
 
 # Monitor upgrade
 kubectl get tigerastatus -w
