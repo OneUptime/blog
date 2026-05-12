@@ -61,7 +61,6 @@ spec:
     - action: Allow
       destination:
         selector: app == 'payment-db'
-      destination:
         ports: [5432]
     - action: Allow
       protocol: UDP
@@ -82,17 +81,15 @@ kubectl exec -n kube-system calico-node-node1 -- wg show all
 kubectl exec -n kube-system calico-node-node1 -- wg show all | grep transfer
 
 # Verify no unencrypted traffic (packet capture should show WireGuard frames)
-kubectl debug node/node1 -it --image=busybox -- tcpdump -i any -n port 51820
+kubectl debug node/node1 -it --image=nicolaka/netshoot -- tcpdump -i any -n port 51820
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Pod A
-Node 1] -->|WireGuard Encrypted| B[Node 1 -> Node 2]
-    B -->|Decrypt| C[Pod B
-Node 2]
+    A[Pod A on Node 1] -->|WireGuard Encrypted| B[Node 1 to Node 2]
+    B -->|Decrypt| C[Pod B on Node 2]
     D[Network Policy] -->|Evaluated before encryption| A
     E[Attacker] -.-x|Cannot read traffic| B
 ```
