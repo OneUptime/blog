@@ -110,7 +110,7 @@ Configure MySQL replication to use the DNS name.
 
 ```bash
 # Configure replication using DNS name (stable across pod restarts)
-kubectl exec -n database mysql-1 -- mysql -u root -p <<'EOF'
+kubectl exec -i -n database mysql-1 -- mysql -u root -p <<'EOF'
 STOP REPLICA;
 CHANGE REPLICATION SOURCE TO
   SOURCE_HOST='mysql-0.mysql-headless.database.svc.cluster.local',
@@ -147,7 +147,7 @@ kubectl exec -n ${NAMESPACE} ${REPLICA_POD} -- \
 kubectl exec -n ${NAMESPACE} ${REPLICA_POD} -- \
   mysql -u root -ppassword \
   -e "SHOW REPLICA STATUS\G" 2>/dev/null | \
-  grep -E "Slave_IO_Running|Slave_SQL_Running|Seconds_Behind_Master"
+  grep -E "Replica_IO_Running|Replica_SQL_Running|Seconds_Behind_Source"
 ```
 
 ## Step 4: Monitor Replication Health Continuously
