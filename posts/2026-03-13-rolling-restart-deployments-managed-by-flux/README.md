@@ -24,7 +24,7 @@ In this guide you will learn the correct ways to perform rolling restarts of Flu
 
 ## Step 1: Understand How Flux Manages Deployments
 
-Before performing a rolling restart, understand how Flux applies manifests. Flux uses server-side apply with a specific field manager (`gotk-sync-manager` or `manager`). Only fields declared in Git manifests are owned by Flux. The `restartedAt` annotation is not in your Git manifests, so Flux will not overwrite it.
+Before performing a rolling restart, understand how Flux applies manifests. Flux uses server-side apply with a specific field manager (`kustomize-controller` for resources reconciled by the kustomize-controller, and `helm-controller` for resources owned by HelmReleases). Only fields declared in Git manifests are owned by Flux. The `restartedAt` annotation is not in your Git manifests, so Flux will not overwrite it.
 
 Check which fields Flux owns:
 
