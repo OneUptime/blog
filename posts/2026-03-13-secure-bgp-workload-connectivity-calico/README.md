@@ -84,6 +84,7 @@ metadata:
 spec:
   exportV4:
   - action: Accept
+    matchOperator: In
     cidr: 10.48.0.0/16
     prefixLength:
       min: 24
