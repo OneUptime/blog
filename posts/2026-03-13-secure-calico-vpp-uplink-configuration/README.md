@@ -32,9 +32,12 @@ dmesg | grep -i iommu
 ls /sys/kernel/iommu_groups/
 # Should list IOMMU groups
 
-# Verify vfio-pci is using IOMMU
-cat /sys/bus/pci/drivers/vfio-pci/0000:00:0a.0/iommu_group/type
-# Expected: DMA (IOMMU DMA protection active)
+# Verify the device's IOMMU group enforces DMA translation
+# (replace <group_id> with the group number from the iommu_group symlink:
+#   readlink /sys/bus/pci/devices/0000:00:0a.0/iommu_group)
+cat /sys/kernel/iommu_groups/<group_id>/type
+# Expected: DMA or DMA-FQ (IOMMU DMA protection active)
+# Other values: identity (passthrough), auto
 ```
 
 Add to GRUB configuration:
@@ -57,7 +60,7 @@ data:
         {
           "interfaceName": "eth0",
           "vppDriver": "dpdk",
-          "newDriverName": "vfio-pci"    # NEVER use uio_pci_generic in production
+          "newDriver": "vfio-pci"    # NEVER use uio_pci_generic in production
         }
       ]
     }
@@ -74,12 +77,18 @@ graph TD
     B -->|Source MAC valid| D[Packet forwarded]
 ```
 
-Configure VPP to filter by MAC address:
+Configure VPP to filter by MAC address using the MACIP ACL plugin
+(ingress-only, matches source MAC + source IP):
 
 ```bash
-# Add MAC source filter for pods
+# Add a MACIP ACL permitting only an approved source MAC
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl set interface l2 tag-rewrite GigabitEthernet0/0/0 pop 0
+  vppctl macip_acl_add ipv4 permit ip 0.0.0.0/0 \
+    mac 00:01:02:03:04:05 mask ff:ff:ff:ff:ff:ff
+
+# Attach the ACL (index returned by the command above) to the uplink
+kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+  vppctl macip_acl_interface_add_del sw_if_index <N> add acl <ACL_INDEX>
 ```
 
 ## Security Practice 4: Protect VPP ConfigMap
