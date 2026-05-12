@@ -57,7 +57,7 @@ kubectl get daemonset -n kube-system | grep -E "canal|calico|flannel"
 kubectl get pods -n kube-system -l k8s-app=canal
 ```
 
-All Canal pods should reach `Running` status. Each pod contains both the `flannel` and `calico-node` (Felix) containers.
+All Canal pods should reach `Running` status. Each pod contains both the `kube-flannel` and `calico-node` (Felix) containers.
 
 ## Step 5: Confirm Nodes Are Ready
 
@@ -104,7 +104,7 @@ kubectl delete pod test-a test-b
 ```bash
 # Install calicoctl if needed
 kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calicoctl.yaml
-kubectl exec -n kube-system deploy/calicoctl -- calicoctl node status
+kubectl exec -n kube-system calicoctl -- calicoctl node status
 ```
 
 ## Conclusion
