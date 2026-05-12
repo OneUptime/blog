@@ -109,7 +109,7 @@ spec:
             recordApplicationTags: true
     # Deletion protection prevents accidental instance deletion
     deletionProtection: true
-  writeConnectionSecretsToRef:
+  writeConnectionSecretToRef:
     namespace: crossplane-system
     name: production-postgres-connection
   providerConfigRef:
