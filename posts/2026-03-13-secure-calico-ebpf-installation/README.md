@@ -71,7 +71,7 @@ metadata:
   name: default-deny-all
 spec:
   order: 1000
-  selector: "!has(calico-system) && !has(kube-system)"
+  selector: projectcalico.org/namespace not in {'kube-system', 'calico-system', 'calico-apiserver', 'tigera-operator'}
   types:
     - Ingress
     - Egress
