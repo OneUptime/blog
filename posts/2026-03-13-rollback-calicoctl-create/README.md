@@ -35,8 +35,8 @@ calicoctl delete globalnetworkpolicy my-policy
 calicoctl patch felixconfiguration default \
   -p '{"spec":{"logSeverityScreen":"Info"}}'
 
-# Dry-run a file without applying
-calicoctl apply -f resource.yaml --dry-run
+# Validate a file without applying
+calicoctl validate -f resource.yaml
 ```
 
 ## Safe Workflow Pattern
@@ -74,7 +74,7 @@ mindmap
       patch (partial update)
       delete
     Validate
-      apply --dry-run -f file.yaml
+      validate -f file.yaml
     Diagnostics
       node status
       node diags
