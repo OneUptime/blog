@@ -106,7 +106,7 @@ echo "PASS: All IP pools have natOutgoing enabled"
 ```bash
 # Post-policy-change test script
 kubectl run post-change-test --image=busybox --restart=Never -- sh -c \
-  "wget -qO- --timeout=10 http://1.1.1.1 && echo DNS_OK && nslookup google.com | grep -q Address && echo PASS"
+  "wget -qO- --timeout=10 http://1.1.1.1 && echo HTTP_OK && nslookup google.com | grep -q Address && echo DNS_OK"
 
 kubectl wait pod post-change-test --for=condition=Ready --timeout=30s
 kubectl logs post-change-test
