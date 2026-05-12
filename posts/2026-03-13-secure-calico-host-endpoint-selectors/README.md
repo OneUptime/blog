@@ -122,11 +122,24 @@ for doc in yaml.safe_load_all(sys.stdin):
 
 ## Principle 6: Audit Label History
 
-Use Kubernetes audit logs to maintain a history of node label changes:
+Use Kubernetes audit logs to maintain a history of node label changes. First, ensure the API server is configured with an audit policy that captures node update and patch operations:
+
+```yaml
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: RequestResponse
+    verbs: ["update", "patch"]
+    resources:
+      - group: ""
+        resources: ["nodes"]
+```
+
+Then inspect the audit log on the control plane (path is set by `--audit-log-path` on the API server):
 
 ```bash
-# Retrieve audit log events for node label changes
-kubectl get events --field-selector reason=NodeLabelUpdated
+# Filter API server audit log for node patch/update events
+grep -E '"verb":"(patch|update)".*"resource":"nodes"' /var/log/kubernetes/audit.log
 ```
 
 ## Conclusion
