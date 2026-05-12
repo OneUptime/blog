@@ -22,35 +22,53 @@ The security model for eBPF troubleshooting tools should be: authorized on-call 
 
 ## Security Control 1: RBAC for Troubleshooting Access
 
+Kubernetes `PolicyRule` does not have a `namespaces` field — to scope permissions to specific namespaces you either use a `Role` (namespace-scoped) or a `ClusterRole` bound via a `RoleBinding` in the target namespace. We split the permissions so cluster-wide read-only access to Calico CRDs uses a `ClusterRole`, while exec and pod management permissions are scoped per-namespace.
+
 ```yaml
 # calico-ebpf-troubleshoot-role.yaml
 
+# Cluster-wide read-only access to Calico resources
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: calico-ebpf-troubleshooter
 rules:
-  # Can exec into calico-system pods
-  - apiGroups: [""]
-    resources: ["pods/exec"]
-    namespaces: ["calico-system"]
-    verbs: ["create"]
-
-  # Can view pod logs
-  - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get"]
-
-  # Can view Calico resources (read-only)
   - apiGroups: ["projectcalico.org"]
     resources: ["*"]
     verbs: ["get", "list", "watch"]
 
-  # Can deploy debug pods
+---
+# Exec and log access scoped to calico-system
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: calico-ebpf-troubleshooter-system
+  namespace: calico-system
+rules:
   - apiGroups: [""]
     resources: ["pods"]
-    namespaces: ["calico-debug"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+---
+# Debug pod management scoped to calico-debug
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: calico-ebpf-troubleshooter-debug
+  namespace: calico-debug
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
     verbs: ["create", "delete", "get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -61,6 +79,36 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: calico-ebpf-troubleshooter
+subjects:
+  - kind: Group
+    name: oncall-engineers
+    apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calico-ebpf-troubleshooter-system
+  namespace: calico-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: calico-ebpf-troubleshooter-system
+subjects:
+  - kind: Group
+    name: oncall-engineers
+    apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calico-ebpf-troubleshooter-debug
+  namespace: calico-debug
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: calico-ebpf-troubleshooter-debug
 subjects:
   - kind: Group
     name: oncall-engineers
@@ -76,9 +124,9 @@ kind: Namespace
 metadata:
   name: calico-debug
   labels:
-    # Allow privileged pods in this namespace only
+    # Allow privileged pods (debug pods need host access)
     pod-security.kubernetes.io/enforce: privileged
-    # But audit restricted everywhere else
+    # Still emit audit annotations for anything that fails the restricted profile
     pod-security.kubernetes.io/audit: restricted
 
 ---
@@ -110,7 +158,9 @@ cat <<EOF
 EOF
 
 # Review audit logs for troubleshooting sessions
-kubectl get events -A --field-selector reason=exec | grep calico
+# (pod exec is recorded by the apiserver audit log, not the Kubernetes events API)
+jq 'select(.objectRef.subresource=="exec" and (.objectRef.namespace=="calico-system" or .objectRef.namespace=="calico-debug"))' \
+  /var/log/kubernetes/audit.log
 ```
 
 ## Security Control 4: Time-Limited Debug Access
