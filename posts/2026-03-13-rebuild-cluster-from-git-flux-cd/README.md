@@ -54,13 +54,14 @@ The key principle is that `clusters/production/` is the entry point Flux bootstr
 Run the Flux bootstrap command pointing at your existing repository. Flux will install its controllers and create a `GitRepository` source pointing at your repo.
 
 ```bash
+export GITHUB_TOKEN=<your-personal-access-token>
+
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/production \
-  --personal \
-  --token-env=GITHUB_TOKEN
+  --personal
 ```
 
 Flux will commit its own manifests to `clusters/production/flux-system/` if they are not already present, then begin reconciling everything referenced from that path.
@@ -102,7 +103,10 @@ flux get kustomizations -A
 flux get helmreleases -A
 
 # Describe a failing resource for details
-flux describe kustomization apps -n flux-system
+kubectl describe kustomization apps -n flux-system
+
+# Or view recent events for a Kustomization
+flux events --for Kustomization/apps -n flux-system
 ```
 
 Watch for `Ready=True` across all resources. Common issues at this stage include missing secrets, image pull errors, or PVC provisioning delays.
@@ -155,12 +159,12 @@ REPO_NAME="${2}"
 BRANCH="${3:-main}"
 
 echo "==> Bootstrapping Flux..."
+: "${GITHUB_TOKEN:?GITHUB_TOKEN env var must be set}"
 flux bootstrap github \
   --owner="$REPO_OWNER" \
   --repository="$REPO_NAME" \
   --branch="$BRANCH" \
-  --path=clusters/production \
-  --token-env=GITHUB_TOKEN
+  --path=clusters/production
 
 echo "==> Restoring sealed-secrets master key..."
 kubectl apply -f backups/sealed-secrets-master-key.yaml -n kube-system
