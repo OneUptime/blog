@@ -60,7 +60,8 @@ spec:
   ingress:
   - action: Allow
     source:
-      selector: app == 'ingress-nginx'
+      namespaceSelector: kubernetes.io/metadata.name == 'ingress-nginx'
+      selector: app.kubernetes.io/name == 'ingress-nginx'
     destination:
       ports:
       - 8080
@@ -85,7 +86,7 @@ kubectl describe ingress app-ingress
 ```mermaid
 graph LR
     CLIENT[External Client] -->|HTTPS| LB[Load Balancer IP]
-    LB --> IGW[Ingress Controller\nCalico Policy Enforced]
+    LB --> IGW[Ingress Controller<br/>Calico Policy Enforced]
     IGW -->|Route by Host/Path| SVC1[Service A]
     IGW -->|Route by Host/Path| SVC2[Service B]
     SVC1 --> POD1[Pod A]
