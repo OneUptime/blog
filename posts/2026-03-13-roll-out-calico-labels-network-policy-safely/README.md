@@ -27,26 +27,26 @@ This guide provides a structured rollout process that validates label coverage, 
 ```bash
 # Audit all pods missing required labels
 
-kubectl get pods --all-namespaces -o json | python3 << 'EOF'
+kubectl get pods --all-namespaces -o json | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
-required = ['app', 'tier', 'environment']
-for pod in data['items']:
-    labels = pod['metadata'].get('labels', {})
+required = ["app", "tier", "environment"]
+for pod in data["items"]:
+    labels = pod["metadata"].get("labels", {})
     missing = [l for l in required if l not in labels]
     if missing:
-        name = pod['metadata']['name']
-        ns = pod['metadata']['namespace']
+        name = pod["metadata"]["name"]
+        ns = pod["metadata"]["namespace"]
         print(f"{ns}/{name}: missing labels: {missing}")
-EOF
+'
 ```
 
 ## Phase 2: Label All Deployments
 
 ```bash
-# Script to add missing labels to all deployments
+# Dry-run preview: show the patch that would set tier=unknown on every deployment
 kubectl get deployments --all-namespaces -o json | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | while read ns name; do
-  # Add required labels if missing
+  # Preview only — drop --dry-run=client and replace "unknown" with the real value to apply
   kubectl patch deployment "$name" -n "$ns" --type=merge -p '{
     "spec": {"template": {"metadata": {"labels": {"tier": "unknown"}}}}
   }' --dry-run=client
@@ -99,9 +99,9 @@ done
 for namespace in dev staging production; do
   echo "Rolling out to: $namespace"
 
-  # Count unlabeled pods first
-  UNLABELED=$(kubectl get pods -n "$namespace" --no-headers | grep -v "Running" | wc -l)
-  echo "Non-running pods: $UNLABELED"
+  # Count non-running pods first (a noisy baseline can mask new policy-induced failures)
+  NOT_RUNNING=$(kubectl get pods -n "$namespace" --no-headers | grep -v "Running" | wc -l)
+  echo "Non-running pods: $NOT_RUNNING"
 
   calicoctl apply -f "policies/$namespace-label-policy.yaml"
   sleep 60
