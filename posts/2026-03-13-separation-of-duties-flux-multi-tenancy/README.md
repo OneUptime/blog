@@ -18,7 +18,7 @@ This guide walks through configuring Flux multi-tenancy with tenant-scoped permi
 
 ## Prerequisites
 
-- Flux CD bootstrapped with the `--multi-tenant` flag or with explicit RBAC configuration
+- Flux CD bootstrapped with multi-tenancy lockdown patches applied (see Step 1) or with explicit RBAC configuration
 - Multiple teams that need isolated deployment permissions
 - `flux` CLI and `kubectl` installed
 - Admin access to configure namespace RBAC
@@ -124,11 +124,8 @@ spec:
   # Run with team-alpha's service account - limits permissions to their namespace
   serviceAccountName: team-alpha
   targetNamespace: team-alpha  # Force all resources into team-alpha namespace
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      namespace: team-alpha
-      name: "*"
+  wait: true                   # Wait for all reconciled resources to become ready
+  timeout: 5m
 ```
 
 ## Step 4: Enforce SoD with CODEOWNERS
