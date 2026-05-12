@@ -43,7 +43,7 @@ spec:
 Annotate or configure `externalTrafficPolicy: Local` on the created LoadBalancer service:
 
 ```bash
-kubectl patch svc -n default $(kubectl get svc -n default -l cilium.io/gateway-name=cilium-gateway -o name) \
+kubectl patch svc -n default $(kubectl get svc -n default -l gateway.networking.k8s.io/gateway-name=cilium-gateway -o name) \
   -p '{"spec":{"externalTrafficPolicy":"Local"}}'
 ```
 
@@ -71,17 +71,18 @@ kubectl logs <nginx-pod> | grep "client_ip\|remote_addr"
 
 ## Method 2: X-Forwarded-For Header
 
-For HTTP routes, add a header filter to inject the source IP:
+For HTTP routes, Cilium's Envoy proxy automatically appends the visible client address to the `X-Forwarded-For` header and exposes the trusted client address in `X-Envoy-External-Address` — no filter configuration is required. Your application reads these headers to identify the original client:
 
 ```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+  namespace: default
 spec:
+  parentRefs:
+    - name: cilium-gateway
   rules:
-    - filters:
-        - type: RequestHeaderModifier
-          requestHeaderModifier:
-            add:
-              - name: X-Real-IP
-                value: "%{client_ip}s"
     - backendRefs:
         - name: my-app
           port: 8080
