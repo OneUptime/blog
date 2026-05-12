@@ -81,7 +81,7 @@ metadata:
 spec:
   # vCenter server address
   server: vcenter.example.com
-  # vSphere datacenter where VMs will be created
+  # SHA1 thumbprint of the vCenter server's TLS certificate
   thumbprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD"
   identityRef:
     kind: Secret
