@@ -35,8 +35,10 @@ rules:
     resources: ["pods/exec"]
     verbs: ["create"]
 ---
-# Restrict kubectl debug node to cluster-admin only
-# (no specific RBAC - this uses node/proxy which requires cluster-admin)
+# Restrict kubectl debug node to privileged users only
+# (creates a debug pod sharing host PID/Network/IPC namespaces with /host
+# mounted from the node - requires create on pods plus the ability to
+# bypass restricted/baseline Pod Security Standards)
 ```
 
 ## Audit Policy for Node Diagnostic Access
@@ -53,12 +55,19 @@ rules:
         resources: ["pods/exec"]
     namespaces: ["calico-system"]
     verbs: ["create"]
-  # Log node debug operations
+  # Log direct node proxy access (kubectl proxy, raw API to /nodes/{name}/proxy)
   - level: RequestResponse
     resources:
       - group: ""
         resources: ["nodes/proxy"]
     verbs: ["*"]
+  # Log creation of debug pods (kubectl debug node creates pods with host
+  # namespaces; audit pod creation in the namespaces operators debug from)
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["pods"]
+    verbs: ["create"]
 ```
 
 ## Safe vs Sensitive Diagnostic Operations
@@ -76,8 +85,8 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
   calicoctl node status
 
 # HIGHLY SENSITIVE: Host-level access
-kubectl debug node/"${NODE}" --image=alpine -- \
-  nsenter -t 1 -n -- iptables -L
+kubectl debug node/"${NODE}" --image=nicolaka/netshoot -- \
+  nsenter -t 1 -m -n -- iptables -L
 # This gives full host network namespace access
 # Restrict to incident commanders only
 ```
