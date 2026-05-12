@@ -67,11 +67,11 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Scrape Felix metrics (default port 9091)
+curl -s http://node-ip:9091/metrics | grep ^felix_
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# Watch dataplane activity in real-time
+watch -n1 'curl -s http://localhost:9091/metrics | grep felix_int_dataplane_apply_time_seconds'
 ```
 
 ## eBPF Rate Limiting (Calico with eBPF dataplane)
