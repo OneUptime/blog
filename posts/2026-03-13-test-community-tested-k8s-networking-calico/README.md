@@ -45,7 +45,7 @@ git clone https://github.com/projectcalico/calico.git
 cd calico
 
 # Run e2e tests against your cluster
-make e2e-tests
+make e2e-test
 ```
 
 ## Community-Recommended Configuration
@@ -59,7 +59,7 @@ metadata:
 spec:
   logSeverityScreen: Warning
   reportingInterval: 0s
-  mtu: 1480  # Conservative MTU for IP-in-IP
+  ipipMTU: 1480  # Conservative MTU for IP-in-IP
   prometheusMetricsEnabled: true
 ```
 
