@@ -17,7 +17,7 @@ This guide covers a complete fresh installation of Calico with eBPF enabled on a
 ## Prerequisites
 
 - New Kubernetes cluster (kubeadm, k3s, or similar) with NO CNI installed yet
-- Linux kernel 5.3+ on all nodes (5.10+ recommended)
+- Linux kernel 5.10+ on all nodes (6.6+ recommended)
 - `kubectl` with cluster-admin access
 - Nodes should be in `NotReady` state (awaiting CNI)
 
@@ -54,7 +54,7 @@ kubeadm init \
 
 # Or if already installed, disable kube-proxy
 kubectl patch ds kube-proxy -n kube-system \
-  -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico-ebpf":"true"}}}}}'
+  -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
 ```
 
 ## Step 3: Get API Server Endpoint for eBPF ConfigMap
