@@ -157,7 +157,7 @@ spec:
     region: us-east-1
     bucketRef:
       name: my-app-assets-prod
-    # Enforce HTTPS-only access and deny unencrypted uploads
+    # Enforce HTTPS-only access by denying any request not using TLS
     policy: |
       {
         "Version": "2012-10-17",
