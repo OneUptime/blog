@@ -152,7 +152,7 @@ metadata:
   namespace: calico-system
 spec:
   selector:
-    app: calico-typha
+    k8s-app: calico-typha
   ports:
   - port: 5473
     targetPort: 5473
@@ -167,10 +167,10 @@ Update FelixConfiguration to point Felix at Typha.
 ```bash
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{
-    "typhak8sServiceName": "calico-typha",
-    "typhak8sNamespace": "calico-system",
+    "typhaK8sServiceName": "calico-typha",
+    "typhaK8sNamespace": "calico-system",
     "typhaCAFile": "/felix-tls/ca.crt",
-    "tymphaCertFile": "/felix-tls/tls.crt",
+    "typhaCertFile": "/felix-tls/tls.crt",
     "typhaKeyFile": "/felix-tls/tls.key"
   }}'
 ```
