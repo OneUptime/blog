@@ -31,7 +31,7 @@ metadata:
   name: default
 spec:
   wireguardEnabled: true
-  wireguardInterfaceMTU: 1440
+  wireguardMTU: 1440
   wireguardListeningPort: 51820
 ```
 
@@ -51,7 +51,7 @@ kubectl get node -o custom-columns='NAME:.metadata.name,WIREGUARD:.metadata.anno
 kubectl exec -n kube-system calico-node-xxx -- wg show
 
 # Verify peer connections
-kubectl exec -n kube-system calico-node-node1 -- wg show calico.wireguard peers
+kubectl exec -n kube-system calico-node-node1 -- wg show wireguard.cali peers
 
 # Check that traffic between nodes is encrypted
 kubectl debug node/node1 -it --image=nicolaka/netshoot -- tcpdump -i eth0 -n port 51820 -c 10
