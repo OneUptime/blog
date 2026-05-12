@@ -49,9 +49,9 @@ echo "=== Step 1: Drain workloads (optional but recommended) ==="
 # kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
 
 echo "=== Step 2: Use calicoctl to clean IPAM ==="
-# Clean up IP allocations
-calicoctl ipam release --from-report=all 2>/dev/null || true
-calicoctl ipam check --show-all-ips 2>/dev/null || true
+# Generate an IPAM report first, then release any leaked allocations
+calicoctl ipam check --show-all-ips --output=ipam-report.json 2>/dev/null || true
+calicoctl ipam release --from-report=ipam-report.json --force 2>/dev/null || true
 
 echo "=== Step 3: Delete Calico components in order ==="
 kubectl delete daemonset calico-node -n kube-system --ignore-not-found
