@@ -86,7 +86,7 @@ cilium status
 
 # Verify the CNI chain configuration on a node
 kubectl debug node/<node-name> -it --image=busybox -- \
-  cat /etc/cni/net.d/05-cilium.conf
+  cat /etc/cni/net.d/05-cilium.conflist
 
 # Run connectivity tests to validate policy enforcement
 cilium connectivity test --test no-policies
