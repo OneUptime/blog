@@ -41,13 +41,13 @@ metadata:
 spec:
   typhaK8sServiceName: calico-typha
 
-  # Felix will reconnect if no messages arrive within this window
+  # Felix will exit and restart if Typha sends no data for this window.
   # Shorter values detect dead connections faster but cause more reconnects
-  # on slow networks. 30s is a reasonable default for most clusters.
+  # on slow networks. 30s is the Felix default and reasonable for most clusters.
   typhaReadTimeout: 30s
 
-  # How often Felix sends keepalives to Typha to keep the connection alive
-  # Must be less than typhaReadTimeout on the Typha side
+  # Write timeout when Felix sends data (including keepalive acks) to Typha.
+  # Should be lower than typhaReadTimeout so slow writes surface quickly.
   typhaWriteTimeout: 10s
 ```
 
@@ -61,7 +61,7 @@ calicoctl apply -f felixconfig-optimized.yaml
 
 When all Felix agents reconnect simultaneously (e.g., after a rolling Typha restart), they can overwhelm the new Typha pod. Felix introduces randomized jitter during reconnects by default, but you can reinforce this behavior at the Typha level by setting `TYPHA_MAXCONNECTIONSLOWERLIMIT`.
 
-When a Typha pod reaches its connection limit, Felix clients receive a redirect response and connect to a different Typha pod instead, naturally spreading load:
+When a Typha pod's active connection count exceeds the lower limit, Typha gracefully drops a small number of connections each `ConnectionDropIntervalSecs` (1s by default); the dropped Felix clients then reconnect, usually to a less-loaded pod via the service DNS, naturally spreading load. Above the upper limit, new connections are rejected outright.
 
 ```yaml
 # typha-deployment-optimized.yaml
@@ -103,20 +103,22 @@ spec:
             - name: TYPHA_LOGSEVERITYSCREEN
               value: "info"
 
-            # Cap connections per pod to enforce natural load balancing
-            # When a pod hits this limit, Felix clients redirect to another pod
+            # Lower bound at which Typha starts gracefully dropping excess
+            # connections so clients redistribute across pods.
             # Formula: total_nodes / replicas * 1.2 (20% headroom)
             - name: TYPHA_MAXCONNECTIONSLOWERLIMIT
               value: "100"
 
-            # Disconnect Felix clients that fall behind reading updates
-            # Prevents slow clients from holding memory indefinitely
-            - name: TYPHA_CLIENTTIMEOUT
-              value: "90s"
+            # Disconnect Felix clients that fall behind reading updates by
+            # more than this many seconds. Prevents slow clients from holding
+            # memory indefinitely. Default is 300 seconds.
+            - name: TYPHA_SERVERMAXFALLBEHINDSECS
+              value: "90"
 
-            # Internal snapshot buffer depth per connected client
-            # Increase if you have many large policy objects (>1000 policies)
-            - name: TYPHA_SNAPSHOTCACHESIZES
+            # Max number of KV pairs Typha sends to a client per batch when
+            # streaming the initial snapshot. Default is 100; raise for
+            # clusters with many large policy objects (>1000 policies).
+            - name: TYPHA_SNAPSHOTCACHEMAXBATCHSIZE
               value: "100"
 
             - name: TYPHA_PROMETHEUSMETRICSENABLED
