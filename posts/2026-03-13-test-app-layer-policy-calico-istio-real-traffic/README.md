@@ -12,9 +12,9 @@ Description: Test Calico application-layer network policies using Istio integrat
 
 Application-Layer Policy with Calico and Istio combines Calico's network-layer enforcement with Istio's application-layer visibility. This powerful combination lets you write policies that reference HTTP attributes - methods, paths, headers - in addition to network-level properties like IP addresses and ports.
 
-Calico's `projectcalico.org/v3` ApplicationPolicy (available with Istio integration) allows you to write rules that are evaluated by Istio's Envoy sidecar proxies rather than at the network layer. This enables fine-grained control like "allow GET requests to /api/health but deny POST requests to /api/admin."
+Calico's `projectcalico.org/v3` NetworkPolicy (with the `http` match field enabled via Istio integration) allows you to write rules that are evaluated by Istio's Envoy sidecar proxies rather than at the network layer. This enables fine-grained control like "allow GET requests to /api/health but deny POST requests to /api/admin."
 
-This guide covers test App-Layer Policy using Calico and Istio together.
+This guide covers testing App-Layer Policy using Calico and Istio together.
 
 ## Prerequisites
 
@@ -64,7 +64,8 @@ spec:
 # Verify Calico-Istio integration
 
 kubectl get pods -n istio-system | grep calico
-kubectl get pods -n calico-system | grep dikastes
+# Dikastes runs as a per-pod sidecar (not in calico-system); inspect a workload pod's containers
+kubectl get pod -n production <pod-name> -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n' | grep dikastes
 
 # Enable sidecar injection for namespace
 kubectl label namespace production istio-injection=enabled
@@ -89,10 +90,10 @@ flowchart TD
     A[Frontend Pod] -->|HTTP Request| B[Envoy Sidecar]
     B -->|Calico App Policy| C{HTTP Method + Path Check}
     C -->|GET /api/v1/data - ALLOW| D[Backend Pod]
-    C -->|DELETE /api/admin - DENY| E[403 Forbidden]
+    C -->|DELETE /api/v1/admin - DENY| E[403 Forbidden]
     F[Calico Dikastes] -->|App Policy Rules| B
 ```
 
 ## Conclusion
 
-Application-Layer Policy with Calico and Istio with Calico and Istio provides the most fine-grained network security available in Kubernetes, combining network-layer enforcement with application-layer policy evaluation. By filtering on HTTP methods, paths, and headers, you can implement access controls that are impossible with pure network-layer policies. Ensure your Calico-Istio integration is properly configured and test both allowed and denied request patterns to verify your application-layer policies are working correctly.
+Application-Layer Policy with Calico and Istio provides the most fine-grained network security available in Kubernetes, combining network-layer enforcement with application-layer policy evaluation. By filtering on HTTP methods, paths, and headers, you can implement access controls that are impossible with pure network-layer policies. Ensure your Calico-Istio integration is properly configured and test both allowed and denied request patterns to verify your application-layer policies are working correctly.
