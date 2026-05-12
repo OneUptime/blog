@@ -81,53 +81,67 @@ ibmcloud is security-group-rule-add k8s-workers-secure inbound tcp \
 
 ## Security Layer 4: Namespace Isolation with Calico
 
+Calico does not provide a single global policy expression for "same namespace as the workload." The valid pattern is a per-namespace `NetworkPolicy` that selects on the namespace by name via the `projectcalico.org/name` label. Apply one of these to each non-system namespace:
+
 ```yaml
-# GlobalNetworkPolicy for strict namespace isolation
+# NetworkPolicy for namespace isolation (apply per namespace)
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: NetworkPolicy
 metadata:
   name: namespace-isolation
+  namespace: my-app
 spec:
   order: 5000
-  namespaceSelector: "name not in {'kube-system', 'ibm-system', 'calico-system'}"
+  selector: all()
   ingress:
     - action: Allow
       source:
-        namespaceSelector: same as destination
+        namespaceSelector: projectcalico.org/name == "my-app"
     - action: Deny
   egress:
     - action: Allow
+      protocol: UDP
       destination:
         ports: [53]
-        protocols: [UDP]
     - action: Allow
-      source:
-        namespaceSelector: same as destination
+      destination:
+        namespaceSelector: projectcalico.org/name == "my-app"
     - action: Deny
 ```
 
-## Security Layer 5: Enable IBM Cloud Security Advisor
+## Security Layer 5: Enable IBM Cloud Security and Compliance Center Workload Protection
+
+IBM Cloud Security Advisor Network Insights was deprecated in 2021. The current service for container threat detection on IBM Cloud is Security and Compliance Center Workload Protection (built on Sysdig Secure and Falco). Provision an instance from the IBM Cloud catalog and connect it to your cluster:
 
 ```bash
-# IBM Cloud Security Advisor integrates with Calico for cluster threat detection
-ibmcloud security-advisor network-insights enable --cluster my-cluster
+# Create a Workload Protection instance
+ibmcloud resource service-instance-create my-workload-protection \
+  sysdig-secure graduated-tier us-south
 
-# This provides:
-# - Suspicious outbound connections detection
-# - Port scanning detection
-# - DGA domain detection
+# Install the agent (Helm) into your cluster using the access key from the instance
+# See: https://cloud.ibm.com/docs/workload-protection
 ```
+
+This provides:
+- Container runtime threat detection (Falco-based)
+- Suspicious process and network activity detection
+- Vulnerability scanning across registries and runtimes
+- Compliance posture management
 
 ## Security Layer 6: Private Endpoint for Kubernetes API
 
 ```bash
-# Restrict kubectl access to private network only
-ibmcloud ks cluster feature enable private-service-endpoint --cluster my-cluster
+# Restrict kubectl access to private network only (classic clusters; for VPC
+# clusters the endpoint configuration is set at cluster creation time)
+ibmcloud ks cluster master private-service-endpoint enable --cluster my-cluster
 
 # Disable public API endpoint
-ibmcloud ks cluster feature disable public-service-endpoint --cluster my-cluster
+ibmcloud ks cluster master public-service-endpoint disable --cluster my-cluster
+
+# Refresh the master to apply the endpoint changes
+ibmcloud ks cluster master refresh --cluster my-cluster
 ```
 
 ## Conclusion
 
-Securing Calico on IBM Cloud requires working within IBM's managed policy structure - custom policies should use order numbers above 5000 to avoid conflicting with IBM's baseline. The combination of IBM Cloud VPC security groups for node-level access control, Calico policies for pod-level microsegmentation, IBM Cloud Security Advisor for threat detection, and private API endpoints creates a strong defense-in-depth security posture for Kubernetes workloads on IBM Cloud.
+Securing Calico on IBM Cloud requires working within IBM's managed policy structure - custom policies should use order numbers above 5000 to avoid conflicting with IBM's baseline. The combination of IBM Cloud VPC security groups for node-level access control, Calico policies for pod-level microsegmentation, IBM Cloud Security and Compliance Center Workload Protection for threat detection, and private API endpoints creates a strong defense-in-depth security posture for Kubernetes workloads on IBM Cloud.
