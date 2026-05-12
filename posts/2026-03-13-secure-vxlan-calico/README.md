@@ -53,7 +53,7 @@ bridge fdb show dev vxlan.calico
 arp -n | grep "vxlan"
 
 # Check Calico VTEP information
-kubectl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
+kubectl get nodes -o yaml | grep -A5 VXLANTunnelMACAddr
 ```
 
 ## Test Cross-Subnet Pod Connectivity
