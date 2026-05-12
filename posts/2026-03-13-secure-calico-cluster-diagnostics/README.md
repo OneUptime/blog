@@ -62,7 +62,7 @@ collect-calico-cluster-diags.sh
 aws s3 cp calico-cluster-diags.tar.gz \
   s3://incident-diagnostics-bucket/calico/$(date +%Y/%m/%d)/ \
   --sse aws:kms \
-  --kms-key-id arn:aws:kms:region:account:key/key-id
+  --sse-kms-key-id arn:aws:kms:region:account:key/key-id
 
 # Apply bucket policy: restrict to incident-response role only
 ```
