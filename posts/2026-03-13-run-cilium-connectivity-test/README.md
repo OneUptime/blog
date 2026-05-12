@@ -78,10 +78,10 @@ cilium connectivity test --test "*-policies*"
 cilium connectivity test --test "pod-to-world,pod-to-cidr"
 
 # Skip tests that require internet access (useful in air-gapped environments)
-cilium connectivity test --skip-tests "pod-to-world"
+cilium connectivity test --test '!pod-to-world'
 
-# Run tests with multiple workers for faster completion
-cilium connectivity test --parallel-tests 4
+# Run tests across multiple namespaces in parallel for faster completion
+cilium connectivity test --test-concurrency 4
 ```
 
 ## Step 4: Interpret Test Results
@@ -107,8 +107,8 @@ Remove the test namespace after validation.
 # Delete test pods and namespace
 kubectl delete namespace cilium-test
 
-# Or use the cilium CLI cleanup command
-cilium connectivity test --cleanup-on-exit
+# Or use the cilium CLI cleanup command (removes artifacts without running tests)
+cilium connectivity test --cleanup
 ```
 
 ## Best Practices
