@@ -42,7 +42,7 @@ iptables -t nat -L | grep KUBE | wc -l
 ```bash
 # Check Calico BPF service map
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-nat-dump
+  calico-node -bpf nat dump
 
 # Verify service IP routes
 kubectl exec test-pod -- nslookup kubernetes.default.svc.cluster.local
