@@ -44,8 +44,9 @@ metadata:
   name: sriov-network-operator
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h
-  url: https://k8snetworkplumbingwg.github.io/sriov-network-operator
+  url: oci://ghcr.io/k8snetworkplumbingwg
 ---
 # clusters/production/infrastructure/sriov-operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -57,8 +58,8 @@ spec:
   interval: 1h
   chart:
     spec:
-      chart: sriov-network-operator
-      version: "1.3.x"
+      chart: sriov-network-operator-chart
+      version: "1.6.x"
       sourceRef:
         kind: HelmRepository
         name: sriov-network-operator
@@ -70,14 +71,12 @@ spec:
   values:
     # Operator configuration
     operator:
-      resourcePrefix: k8s.io
-    # Enable webhook for resource request validation
-    webhook:
-      enable: true
-    # Node feature discovery integration
-    sriovOperatorConfig:
-      enableInjector: true
-      enableOperatorWebhook: true
+      # Prefix used to advertise SR-IOV VFs as Kubernetes extended resources.
+      # Must not use the reserved kubernetes.io / k8s.io domains.
+      resourcePrefix: intel.com
+      # Enable admission controllers: operator webhook + network resources injector
+      admissionControllers:
+        enabled: true
 ```
 
 ## Step 3: Configure SR-IOV Node Policy
@@ -207,11 +206,11 @@ spec:
             requests:
               memory: "1Gi"
               cpu: "2"
-              k8s.io/intelnics: "1"  # Request 1 SR-IOV VF
+              intel.com/intelnics: "1"  # Request 1 SR-IOV VF
             limits:
               memory: "1Gi"
               cpu: "2"
-              k8s.io/intelnics: "1"
+              intel.com/intelnics: "1"
           volumeMounts:
             - name: hugepages
               mountPath: /dev/hugepages
