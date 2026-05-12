@@ -90,7 +90,7 @@ spec:
         encapsulation: VXLAN    # Match existing encap
         natOutgoing: Enabled
         nodeSelector: "all()"
-  # Specify current version to avoid automatic upgrade
+  # Select the open-source Calico variant (vs. Calico Enterprise)
   variant: Calico
 ```
 
