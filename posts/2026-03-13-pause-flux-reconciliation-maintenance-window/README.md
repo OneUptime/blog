@@ -124,23 +124,40 @@ echo "========================================"
 # Save pre-maintenance state
 flux get all --all-namespaces > /tmp/flux-pre-maintenance-$(date +%Y%m%d-%H%M%S).txt
 
-# Suspend all sources
-for resource_type in source git source helm source oci; do
-  kubectl get $(echo $resource_type | tr ' ' '') --all-namespaces -o json 2>/dev/null | \
-    jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
-    while read ns name; do
-      flux suspend $resource_type "$name" -n "$ns" 2>/dev/null
-    done
-done
+# Suspend all GitRepository sources
+kubectl get gitrepositories --all-namespaces -o json 2>/dev/null | \
+  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns name; do
+    flux suspend source git "$name" -n "$ns" 2>/dev/null
+  done
 
-# Suspend all reconcilers
-for resource_type in kustomization helmrelease; do
-  kubectl get ${resource_type}s --all-namespaces -o json 2>/dev/null | \
-    jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
-    while read ns name; do
-      flux suspend $resource_type "$name" -n "$ns" 2>/dev/null
-    done
-done
+# Suspend all HelmRepository sources
+kubectl get helmrepositories --all-namespaces -o json 2>/dev/null | \
+  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns name; do
+    flux suspend source helm "$name" -n "$ns" 2>/dev/null
+  done
+
+# Suspend all OCIRepository sources
+kubectl get ocirepositories --all-namespaces -o json 2>/dev/null | \
+  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns name; do
+    flux suspend source oci "$name" -n "$ns" 2>/dev/null
+  done
+
+# Suspend all Kustomizations
+kubectl get kustomizations --all-namespaces -o json 2>/dev/null | \
+  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns name; do
+    flux suspend kustomization "$name" -n "$ns" 2>/dev/null
+  done
+
+# Suspend all HelmReleases
+kubectl get helmreleases --all-namespaces -o json 2>/dev/null | \
+  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns name; do
+    flux suspend helmrelease "$name" -n "$ns" 2>/dev/null
+  done
 
 echo ""
 echo "All Flux reconciliation suspended."
@@ -154,9 +171,10 @@ echo "IMPORTANT: Run ./scripts/maintenance-end.sh when maintenance is complete."
 After suspending Flux, confirm the cluster is stable before proceeding.
 
 ```bash
-# Verify all Kustomizations are suspended
-flux get kustomizations --all-namespaces | grep -c "True"
-# Should show 0 unsuspended Kustomizations
+# Verify no Kustomizations are still unsuspended
+kubectl get kustomizations --all-namespaces -o json | \
+  jq '[.items[] | select(.spec.suspend != true)] | length'
+# Should output 0
 
 # Verify no Flux controllers are making changes
 kubectl get events --all-namespaces --field-selector reason=ReconciliationSucceeded \
