@@ -53,9 +53,9 @@ spec:
         name: kyverno
         namespace: flux-system
   values:
-    replicaCount: 2      # HA for production
+    # Kyverno chart v3.x splits controllers - configure replicas per-controller.
     admissionController:
-      replicas: 2
+      replicas: 2        # HA for the validating/mutating webhook
     backgroundController:
       replicas: 1
     cleanupController:
@@ -80,7 +80,7 @@ metadata:
       All Deployments and StatefulSets must include standard labels for
       cost attribution, ownership tracking, and operational dashboards.
 spec:
-  validationFailureAction: enforce
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-app-labels
@@ -111,7 +111,7 @@ metadata:
   annotations:
     policies.kyverno.io/title: Container Security Standards
 spec:
-  validationFailureAction: enforce
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-non-root
@@ -181,7 +181,11 @@ spec:
             labels:
               # Automatically label all Flux-reconciled resources
               managed-by: flux
-              reconciled-at: "{{request.object.metadata.annotations.\"reconcile.fluxcd.io/requestedAt\"}}"
+            annotations:
+              # Stamp the admission time so we can see when the resource last
+              # passed through the mutation webhook. Timestamps go in annotations
+              # because label values cannot contain ':' from an RFC3339 string.
+              admission.example.com/mutated-at: "{{ time_now_utc() }}"
 ```
 
 ## Step 5: Enforce Naming Conventions
@@ -193,7 +197,7 @@ kind: ClusterPolicy
 metadata:
   name: enforce-naming-conventions
 spec:
-  validationFailureAction: enforce
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: deployment-name-pattern
@@ -207,10 +211,12 @@ spec:
         deny:
           conditions:
             all:
-              # Deny if the name does not match the pattern team-service[-anything]
-              - key: "{{request.object.metadata.name}}"
-                operator: NotMatch
-                value: "^[a-z][a-z0-9-]+-[a-z][a-z0-9-]+$"
+              # Deny if the name does not match the pattern team-service[-anything].
+              # Kyverno preconditions do regex via the JMESPath regex_match() filter -
+              # it returns a bool which we compare against false.
+              - key: "{{ regex_match('^[a-z][a-z0-9-]+-[a-z][a-z0-9-]+$', '{{request.object.metadata.name}}') }}"
+                operator: Equals
+                value: false
 ```
 
 ## Step 6: Manage Kyverno Policies via Flux
@@ -259,8 +265,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Kyverno CLI
+        env:
+          KYVERNO_VERSION: v1.13.0
         run: |
-          curl -sL https://github.com/kyverno/kyverno/releases/latest/download/kyverno-cli_linux_x86_64.tar.gz \
+          # Release assets are versioned: kyverno-cli_<version>_linux_x86_64.tar.gz
+          # The extracted binary is named `kyverno`.
+          curl -sL "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz" \
             | tar xz && sudo mv kyverno /usr/local/bin/
 
       - name: Test policies with unit tests
@@ -285,7 +295,7 @@ jobs:
 ## Best Practices
 
 - Deploy Kyverno with 2+ replicas in production to prevent a single point of failure in the admission webhook path - a Kyverno outage can block all new resource creation.
-- Start new policies in `Audit` mode (set `validationFailureAction: audit`) to see what would be rejected before switching to `enforce`.
+- Start new policies in `Audit` mode (set `validationFailureAction: Audit`) to see what would be rejected before switching to `Enforce`.
 - Create a policy exemption process: add an `exclude` block in the policy for specific namespaces or resources that have legitimate exceptions, and require a PR with security team approval to add exemptions.
 - Write Kyverno unit tests (`kyverno test`) for every policy and include them in CI to catch policy regressions early.
 - Use Kyverno's `PolicyReport` resources to view current violations across namespaces without querying events.
