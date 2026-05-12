@@ -52,12 +52,13 @@ If Flux's own CRDs were deleted, the Flux controllers will stop working. The fas
 
 ```bash
 # Option 1: Re-run flux bootstrap (safest, idempotent)
+# GITHUB_TOKEN env var must be exported beforehand
+export GITHUB_TOKEN=<your-token>
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
-  --path=clusters/production \
-  --token-env=GITHUB_TOKEN
+  --path=clusters/production
 
 # Option 2: Apply CRDs directly from the Flux release
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
