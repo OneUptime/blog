@@ -16,7 +16,7 @@ Calico IPAM (IP Address Management) allocates IP addresses to pods using a block
 
 - `calicoctl` v3.x installed and configured for Kubernetes datastore
 - kubectl with access to calico-system namespace
-- Sufficient permissions to read IPAMBlock and IPAMAllocation CRDs
+- Sufficient permissions to read IPAMBlock and IPAMHandle CRDs
 
 ## Step 1: Run calicoctl ipam check
 
@@ -58,7 +58,7 @@ calicoctl get ippool -o wide
 
 ```bash
 # Show which pod has which IP
-calicoctl ipam show --show-all-ips | head -50
+calicoctl ipam check --show-all-ips | head -50
 
 # Show borrowed IPs (cross-node allocations in certain topologies)
 calicoctl ipam show --show-borrowed
