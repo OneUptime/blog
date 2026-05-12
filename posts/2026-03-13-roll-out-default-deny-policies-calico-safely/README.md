@@ -12,7 +12,7 @@ Description: A safe, phased approach to rolling out Calico default deny network 
 
 Applying a default deny policy to a production Kubernetes cluster without preparation is one of the fastest ways to cause a major outage. Every service that relies on implicit network access will immediately fail. A safe rollout requires careful planning, staged deployment, and the ability to roll back instantly.
 
-Calico's `StagedGlobalNetworkPolicy` feature (available in Calico Enterprise) lets you preview the impact of a policy before enforcing it. In open-source Calico, you can simulate a safe rollout by applying policies namespace by namespace and monitoring impact at each stage.
+Calico's staged network policy resources (`StagedNetworkPolicy`, `StagedGlobalNetworkPolicy`, and `StagedKubernetesNetworkPolicy`) let you preview the impact of a policy before enforcing it. Combined with a namespace-by-namespace rollout and monitoring at each stage, you can simulate the effect of a default deny before turning it on.
 
 This guide provides a phased rollout strategy that minimizes risk while progressively strengthening your security posture. Each phase is independently verifiable so you can catch problems before they affect the entire cluster.
 
@@ -25,15 +25,26 @@ This guide provides a phased rollout strategy that minimizes risk while progress
 
 ## Phase 1: Audit Existing Traffic
 
-Before any policy changes, establish a traffic baseline using Calico flow logs:
+Before any policy changes, establish a traffic baseline using a staged default deny. A staged policy is evaluated as if enforced but does not actually drop traffic, so any flow that *would* be denied is reported without breaking the workload:
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: StagedGlobalNetworkPolicy
+metadata:
+  name: staged-default-deny
+spec:
+  order: 1000
+  selector: all()
+  types:
+    - Ingress
+    - Egress
+```
 
 ```bash
-# Enable flow logging in Felix
+calicoctl apply -f staged-default-deny.yaml
 
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"flowLogsEnabled":true}}'
-
-# Review logs after 24 hours
-kubectl logs -n kube-system -l k8s-app=calico-node | grep CALICO
+# Let it run for at least 24 hours, then inspect which flows would have been denied
+calicoctl get stagedglobalnetworkpolicy staged-default-deny -o yaml
 ```
 
 ## Phase 2: Apply Default Deny to Non-Production Namespaces First
