@@ -32,8 +32,9 @@ metadata:
   name: skupper
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h
-  url: https://skupper.io/releases/latest
+  url: oci://quay.io/skupper/helm
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -44,8 +45,8 @@ spec:
   interval: 1h
   chart:
     spec:
-      chart: skupper-site-controller
-      version: "1.7.x"
+      chart: skupper
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: skupper
