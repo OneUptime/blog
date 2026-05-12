@@ -32,11 +32,11 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,IP:.status.addresses[0].
   done
 ```
 
-Disable IP fragment forwarding if your pods don't need it:
+Drop forwarded IP fragments if your pods don't need them:
 
 ```bash
 # On nodes (requires caution - test before applying)
-sysctl -w net.ipv4.conf.all.accept_source_route=0
+iptables -A FORWARD -f -j DROP
 ```
 
 ## Secure PMTU Discovery
