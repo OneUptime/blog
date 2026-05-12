@@ -117,9 +117,9 @@ echo "Validating API access in namespace: $NAMESPACE"
 
 # Deploy a test pod
 kubectl run egress-test --image=curlimages/curl -n $NAMESPACE \
-  --restart=Never --rm -i --timeout=30s \
-  -- curl -sk https://kubernetes.default.svc.cluster.local/api/v1 \
-     --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+  --restart=Never --rm -i --pod-running-timeout=30s \
+  -- sh -c 'curl -sk https://kubernetes.default.svc.cluster.local/api/v1 \
+     --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"' \
   2>/dev/null | python3 -m json.tool | grep '"kind"'
 
 if [ $? -eq 0 ]; then
