@@ -47,7 +47,7 @@ calicoctl get blockaffinity -o json | \
 # apiVersion: projectcalico.org/v3
 # kind: BlockAffinity
 # metadata:
-#   name: node-worker-1-192-168-10-0-26
+#   name: worker-1-192-168-10-0-26
 # spec:
 #   cidr: 192.168.10.0/26
 #   deleted: "false"
