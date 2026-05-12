@@ -10,7 +10,7 @@ Description: A phased rollout strategy for Calico ICMP and ping rules that preve
 
 ## Introduction
 
-Roll Out ICMP and Ping Rules in Calico provides fine-grained network traffic control using the `projectcalico.org/v3` API. This guide covers how to roll Roll Out ICMP and Ping Rules effectively with production-ready configurations.
+ICMP and Ping rules in Calico provide fine-grained control over diagnostic traffic using the `projectcalico.org/v3` API. This guide covers how to roll out ICMP and Ping rules effectively with production-ready configurations.
 
 ## Prerequisites
 
@@ -23,16 +23,29 @@ Roll Out ICMP and Ping Rules in Calico provides fine-grained network traffic con
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
-  name: roll-roll-out-icmp-and-ping-rules
+  name: roll-out-icmp-and-ping-rules
   namespace: production
 spec:
   order: 100
   selector: all()
   ingress:
     - action: Allow
+      protocol: ICMP
+      icmp:
+        type: 8
+      source:
+        selector: app == 'authorized'
+    - action: Allow
+      protocol: ICMPv6
+      icmp:
+        type: 128
       source:
         selector: app == 'authorized'
   egress:
+    - action: Allow
+      protocol: ICMP
+      icmp:
+        type: 8
     - action: Allow
       protocol: UDP
       destination:
@@ -45,9 +58,9 @@ spec:
 ## Implementation
 
 ```bash
-calicoctl apply -f roll-policy.yaml
+calicoctl apply -f roll-out-icmp-and-ping-rules.yaml
 calicoctl get networkpolicies -n production -o wide
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
+kubectl exec -n production test-pod -- ping -c 3 -W 5 target
 echo "Result: $?"
 ```
 
@@ -62,4 +75,4 @@ flowchart TD
 
 ## Conclusion
 
-Roll Roll Out ICMP and Ping Rules in Calico ensures your network security controls are correctly configured and enforced. Always validate in staging before production and maintain comprehensive logging for visibility.
+Rolling out ICMP and Ping rules in Calico ensures your network security controls are correctly configured and enforced without breaking diagnostic tooling. Always validate in staging before production and maintain comprehensive logging for visibility.
