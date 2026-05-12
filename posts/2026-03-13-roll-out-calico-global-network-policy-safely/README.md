@@ -62,11 +62,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Scrape Felix Prometheus metrics (default port 9091)
+curl -s http://localhost:9091/metrics | grep ^felix_
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Inspect Felix logs (calico-node pod under the Tigera operator)
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i policy
 ```
 
 ## Architecture
