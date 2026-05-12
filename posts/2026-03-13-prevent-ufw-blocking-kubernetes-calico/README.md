@@ -62,14 +62,18 @@ sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' \
 # Allow Kubernetes and Calico traffic
 ufw allow 6443/tcp       # Kubernetes API
 ufw allow 179/tcp        # BGP
-ufw allow proto 4 from <node-cidr>  # IPIP
 ufw allow 4789/udp from <node-cidr> # VXLAN
 ufw allow 5473/tcp       # Calico Typha
-ufw allow 9091/tcp       # Calico Felix metrics
+ufw allow 9091/tcp       # Calico Felix metrics (if enabled)
 ufw allow 10250/tcp      # kubelet
-ufw allow 10251/tcp      # kube-scheduler
-ufw allow 10252/tcp      # kube-controller-manager
+ufw allow 10259/tcp      # kube-scheduler
+ufw allow 10257/tcp      # kube-controller-manager
 ufw allow 2379:2380/tcp  # etcd
+
+# UFW's `proto` keyword does not accept raw IP protocol numbers, so
+# IPIP (IP protocol 4) cannot be allowed with a plain `ufw allow` rule.
+# If IPIP is in use, add a raw iptables rule to /etc/ufw/before.rules:
+#   -A ufw-before-input -p 4 -s <node-cidr> -j ACCEPT
 
 ufw --force enable
 ```
