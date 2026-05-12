@@ -39,7 +39,7 @@ kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
 # Look for pods in non-Running state
 
 # Check Felix health on each node
-kubectl exec -n kube-system <calico-node-pod> -- calico-node -felix-health-check 2>/dev/null
+kubectl exec -n kube-system <calico-node-pod> -- calico-node -felix-ready -felix-live 2>/dev/null
 ```
 
 **Step 2: Check iptables chains on affected node**
