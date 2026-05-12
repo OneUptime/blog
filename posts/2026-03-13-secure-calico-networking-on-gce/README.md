@@ -28,6 +28,7 @@ Create a firewall policy at the folder level to enforce baseline rules across al
 # Create hierarchical firewall policy
 
 gcloud compute firewall-policies create k8s-baseline-policy \
+  --folder FOLDER_ID \
   --description "Baseline security for all K8s clusters"
 
 # Add deny-all as lowest priority (evaluated last)
@@ -63,7 +64,6 @@ spec:
       destination:
         nets:
           - 169.254.169.254/32
-          - metadata.google.internal/32
 ```
 
 This prevents pods from accessing the GCE metadata server which could expose service account credentials and instance metadata.
