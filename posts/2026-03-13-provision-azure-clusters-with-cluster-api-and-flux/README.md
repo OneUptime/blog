@@ -180,7 +180,7 @@ spec:
         marketplace:
           publisher: cncf-upstream
           offer: capi
-          sku: ubuntu-2004-gen1
+          sku: ubuntu-2204-gen2
           version: latest
 ```
 
@@ -248,7 +248,7 @@ spec:
         marketplace:
           publisher: cncf-upstream
           offer: capi
-          sku: ubuntu-2004-gen1
+          sku: ubuntu-2204-gen2
           version: latest
 ```
 
