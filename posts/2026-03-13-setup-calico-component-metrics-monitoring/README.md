@@ -204,7 +204,7 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090 &
 
 # Test queries
 curl -s "http://localhost:9090/api/v1/query?query=felix_active_local_policies" | jq .
-curl -s "http://localhost:9090/api/v1/query?query=typha_connections_accepted_total" | jq .
+curl -s "http://localhost:9090/api/v1/query?query=typha_connections_accepted" | jq .
 ```
 
 ## Conclusion
