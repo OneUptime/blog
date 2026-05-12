@@ -68,19 +68,29 @@ def create_metric_descriptor(project_id):
 create_metric_descriptor("my-project")
 ```
 
-You can also create metric descriptors using the gcloud CLI:
+The `gcloud` CLI does not have a dedicated subcommand for creating metric descriptors. If you prefer not to write code, you can either let Cloud Monitoring auto-create the descriptor when you write your first data point, or call the REST API directly with `curl`:
 
 ```bash
-# Create a metric descriptor via the REST API using gcloud
+# Create a metric descriptor via the Cloud Monitoring REST API
+ACCESS_TOKEN=$(gcloud auth print-access-token)
+PROJECT_ID=my-project
 
-gcloud monitoring metrics-descriptors create \
-  custom.googleapis.com/orders/processed_count \
-  --description="Total number of orders processed" \
-  --display-name="Orders Processed" \
-  --type=custom.googleapis.com/orders/processed_count \
-  --metric-kind=cumulative \
-  --value-type=int64 \
-  --project=my-project
+curl -X POST \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/metricDescriptors" \
+  -d '{
+    "type": "custom.googleapis.com/orders/processed_count",
+    "metricKind": "CUMULATIVE",
+    "valueType": "INT64",
+    "description": "Total number of orders processed",
+    "displayName": "Orders Processed",
+    "unit": "1",
+    "labels": [
+      {"key": "region", "valueType": "STRING", "description": "The region where the order was processed"},
+      {"key": "status", "valueType": "STRING", "description": "Order status: success, failure, pending"}
+    ]
+  }'
 ```
 
 ## Writing Time Series Data
@@ -357,15 +367,13 @@ Custom metrics work with alerting policies just like built-in metrics:
 
 ```bash
 # Alert when order failure rate exceeds threshold
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High Order Failure Rate" \
   --condition-display-name="Order failures > 10/min" \
   --condition-filter='metric.type="custom.googleapis.com/orders/processed_count" AND metric.labels.status="failure"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation-alignment-period=60s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_RATE \
+  --if='> 10' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod": "60s", "perSeriesAligner": "ALIGN_RATE"}' \
   --notification-channels=projects/my-project/notificationChannels/12345 \
   --project=my-project
 ```
