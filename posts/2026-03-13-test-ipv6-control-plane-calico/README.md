@@ -58,11 +58,11 @@ metadata:
 spec:
   # Enable IPv6 interface detection and routing
   ipv6Support: true
-  # IPv6 autodetection method for node IP selection
-  ipv6AutodetectionMethod: "first-found"
   # Enable WireGuard for IPv6 inter-node encryption (optional)
   wireguardEnabledV6: false
 ```
+
+The IPv6 autodetection method itself is not a FelixConfiguration field. Set it on the `calico-node` DaemonSet via the `IP6_AUTODETECTION_METHOD` environment variable (e.g. `first-found`, `kubernetes-internal-ip`, `interface=eth.*`), or on operator-based installs via `Installation.spec.calicoNetwork.nodeAddressAutodetectionV6`.
 
 ## Step 2: Test IPv6 BGP Peering
 
@@ -133,8 +133,9 @@ spec:
 kubectl apply -f ipv6-network-policy.yaml
 
 # Get IPv6 addresses of test pods
+# kubectl JSONPath does not support regex, so filter for ':' with grep
 SERVER_IPV6=$(kubectl get pod web-server -n test \
-  -o jsonpath='{.status.podIPs[?(@.ip=~"::")].ip}')
+  -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ':' | head -1)
 echo "Server IPv6: $SERVER_IPV6"
 
 # Test allowed client can reach server via IPv6
