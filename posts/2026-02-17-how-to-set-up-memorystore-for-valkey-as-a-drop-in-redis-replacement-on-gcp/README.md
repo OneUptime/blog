@@ -20,22 +20,23 @@ Google's Memorystore for Valkey is a fully managed service that handles provisio
 
 ## Creating a Memorystore for Valkey Instance
 
-Set up a Valkey instance using the gcloud CLI:
+Set up a Valkey instance using the gcloud CLI. Memorystore for Valkey uses Private Service Connect (PSC) for connectivity, so you pass the target VPC through `--endpoints` rather than a `--network` flag:
 
 ```bash
 # Enable the Memorystore API if not already enabled
 
 gcloud services enable memorystore.googleapis.com
 
-# Create a standalone Valkey instance for development or small workloads
+# Create a Cluster Mode Disabled Valkey instance for development or small workloads
 gcloud memorystore instances create my-valkey-instance \
-  --region=us-central1 \
+  --location=us-central1 \
   --node-type=standard-small \
   --engine-version=VALKEY_8_0 \
   --replica-count=1 \
   --shard-count=1 \
-  --network=projects/my-project/global/networks/default \
-  --transit-encryption-mode=SERVER_AUTHENTICATION
+  --mode=cluster-disabled \
+  --endpoints='[{"connections": [{"pscAutoConnection": {"network": "projects/my-project/global/networks/default", "projectId": "my-project"}}]}]' \
+  --transit-encryption-mode=server-authentication
 ```
 
 For a cluster mode setup with multiple shards for higher throughput:
@@ -44,14 +45,15 @@ For a cluster mode setup with multiple shards for higher throughput:
 # Create a clustered Valkey instance for production workloads
 # Multiple shards distribute data across nodes for higher throughput
 gcloud memorystore instances create my-valkey-cluster \
-  --region=us-central1 \
-  --node-type=standard-medium \
+  --location=us-central1 \
+  --node-type=highmem-medium \
   --engine-version=VALKEY_8_0 \
   --replica-count=2 \
   --shard-count=3 \
-  --network=projects/my-project/global/networks/default \
-  --transit-encryption-mode=SERVER_AUTHENTICATION \
-  --deletion-protection
+  --mode=cluster \
+  --endpoints='[{"connections": [{"pscAutoConnection": {"network": "projects/my-project/global/networks/default", "projectId": "my-project"}}]}]' \
+  --transit-encryption-mode=server-authentication \
+  --deletion-protection-enabled
 ```
 
 ## Getting Connection Details
@@ -61,11 +63,11 @@ Retrieve the connection information for your Valkey instance:
 ```bash
 # Get instance details including endpoints
 gcloud memorystore instances describe my-valkey-instance \
-  --region=us-central1
+  --location=us-central1
 
 # Extract just the discovery endpoints
 gcloud memorystore instances describe my-valkey-instance \
-  --region=us-central1 \
+  --location=us-central1 \
   --format="yaml(discoveryEndpoints)"
 ```
 
@@ -135,7 +137,7 @@ cluster.set("{session:abc}:user_id", "1001")
 
 ## Migrating from Memorystore for Redis
 
-If you have an existing Memorystore for Redis instance, here is the migration process.
+If you have an existing Memorystore for Redis instance, you have two migration paths. The simplest is to export an RDB file from the source and seed a new Valkey instance from it at creation time. For zero-downtime cutovers, Memorystore for Valkey also supports a replication-based migration where the new Valkey instance becomes a read replica of the source until you cut over.
 
 Step 1: Export data from your Redis instance:
 
@@ -146,14 +148,21 @@ gcloud redis instances export gs://my-migration-bucket/redis-export.rdb \
   --region=us-central1
 ```
 
-Step 2: Import the data into your Valkey instance:
+Step 2: Create a new Valkey instance seeded from the RDB file. Memorystore for Valkey does not expose a separate `import` subcommand; you pass `--gcs-source-uris` to `instances create` to seed at creation time. Grant the Memorystore service agent `storage.buckets.get` and `storage.objects.get` on the bucket first:
 
 ```bash
-# Import the RDB file into the Valkey instance
+# Seed a new Valkey instance from the RDB file in Cloud Storage
 # The RDB format is compatible between Redis and Valkey
-gcloud memorystore instances import gs://my-migration-bucket/redis-export.rdb \
-  my-valkey-instance \
-  --region=us-central1
+gcloud memorystore instances create my-valkey-instance \
+  --location=us-central1 \
+  --node-type=standard-small \
+  --engine-version=VALKEY_8_0 \
+  --replica-count=1 \
+  --shard-count=1 \
+  --mode=cluster-disabled \
+  --endpoints='[{"connections": [{"pscAutoConnection": {"network": "projects/my-project/global/networks/default", "projectId": "my-project"}}]}]' \
+  --transit-encryption-mode=server-authentication \
+  --gcs-source-uris=gs://my-migration-bucket/redis-export.rdb
 ```
 
 Step 3: Update your application configuration:
@@ -290,7 +299,7 @@ Use the same monitoring approaches you use for Redis:
 ```bash
 # Check instance metrics through gcloud
 gcloud memorystore instances describe my-valkey-instance \
-  --region=us-central1 \
+  --location=us-central1 \
   --format="yaml(nodeConfig,state)"
 ```
 
