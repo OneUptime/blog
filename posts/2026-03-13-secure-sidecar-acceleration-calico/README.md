@@ -10,13 +10,14 @@ Description: Ensure Calico sidecar acceleration does not bypass security control
 
 ## Introduction
 
-Calico's sidecar acceleration feature uses eBPF to optimize traffic flows in service mesh environments. When pods use sidecar proxies like Envoy, network packets traverse multiple kernel networking layers. Calico eBPF can identify these patterns and apply fast-path processing that reduces the overhead introduced by sidecar interception.
+Calico's sidecar acceleration feature uses an eBPF SOCKMAP program to short-circuit the loopback path between an Envoy sidecar and the application container in the same pod. When pods use sidecar proxies, packets normally traverse the kernel TCP/IP stack twice on the loopback interface; SOCKMAP lets matched sockets exchange data directly, reducing the per-hop overhead introduced by sidecar interception.
 
-This is one of the most impactful performance optimizations available for microservices architectures that have adopted service meshes - latency improvements of 30-50% are achievable for high-frequency inter-service calls.
+This optimization is documented for Istio-style sidecar deployments and is marked **experimental** in the Calico documentation - it should be evaluated carefully before being used in production. The Calico documentation does not publish a specific latency-improvement figure; benchmark against your own workload.
 
 ## Prerequisites
 
-- Calico eBPF dataplane enabled
+- Calico eBPF dataplane enabled (`bpfEnabled: true`)
+- Linux kernel 5.7+ on every node (SOCKMAP requirements)
 - Service mesh with sidecar injection (Istio, Linkerd, etc.)
 - kubectl and calicoctl access
 
@@ -24,15 +25,18 @@ This is one of the most impactful performance optimizations available for micros
 
 ```bash
 # Verify eBPF is enabled
-
 calicoctl get felixconfiguration default -o yaml | grep bpfEnabled
 
-# Check sidecar proxy detection
-kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -show-bpf-map-sizes
+# Enable sidecar acceleration (experimental)
+calicoctl patch felixconfiguration default \
+  --patch '{"spec":{"sidecarAccelerationEnabled": true}}'
 
-# Verify acceleration is active for a pod
-kubectl exec test-pod -- cat /proc/net/if_inet6
+# Confirm Calico eBPF programs are attached on a node
+kubectl exec -n calico-system ds/calico-node -- bpftool prog show | grep -i cali
+
+# Verify acceleration is active by inspecting BPF counters
+kubectl exec -n calico-system ds/calico-node -- \
+  calico-node -bpf counters dump
 ```
 
 ## Benchmark Acceleration
@@ -68,4 +72,4 @@ graph LR
 
 ## Conclusion
 
-How to Secure Sidecar Acceleration in Calico requires enabling Calico eBPF mode and verifying that service mesh sidecar traffic is being processed through the optimized eBPF path. Monitor latency metrics before and after enabling acceleration to quantify the performance improvement in your specific workload profile.
+How to Secure Sidecar Acceleration in Calico requires enabling Calico eBPF mode, opting in to `sidecarAccelerationEnabled` (currently flagged experimental upstream), and verifying that service mesh sidecar traffic is being processed through the optimized SOCKMAP path. Monitor latency metrics before and after enabling acceleration to quantify the performance improvement in your specific workload profile.
