@@ -34,9 +34,6 @@ apiVersion: rds.aws.upbound.io/v1beta1
 kind: SubnetGroup
 metadata:
   name: production-db-subnet-group
-  annotations:
-    # Crossplane will wait for this resource before marking it ready
-    crossplane.io/paused: "false"
 spec:
   forProvider:
     region: us-east-1
@@ -88,9 +85,9 @@ spec:
     protocol: tcp
     # Reference the application security group by its ID
     sourceSecurityGroupId: sg-0a1b2c3d4e5f60010
-    securityGroupIdSelector:
-      matchLabels:
-        crossplane.io/name: production-rds-sg
+    # Attach this rule to the production-rds-sg SecurityGroup managed above
+    securityGroupIdRef:
+      name: production-rds-sg
   providerConfigRef:
     name: default
 ```
@@ -139,7 +136,7 @@ spec:
     # Prevent accidental deletion
     deletionProtection: true
     skipFinalSnapshot: false
-    finalSnapshotIdentifierPrefix: production-postgres-final
+    finalSnapshotIdentifier: production-postgres-final-snapshot
     # Auto minor version upgrades during maintenance window
     autoMinorVersionUpgrade: true
     tags:
