@@ -55,8 +55,8 @@ kubectl get nodes -o wide | grep "${LEAKED_IP}"
 calicoctl ipam release --ip="${LEAKED_IP}"
 
 # Verify the release succeeded
-calicoctl ipam show --show-all-ips | grep "${LEAKED_IP}"
-# Should show no output (IP is now free)
+calicoctl ipam show --ip="${LEAKED_IP}"
+# Should report the IP is not assigned (now free)
 ```
 
 ## IPAM Release Workflow
@@ -80,8 +80,11 @@ flowchart TD
 # For blocks assigned to deleted nodes:
 calicoctl ipam show --show-blocks | grep <deleted-node>
 
-# Release block affinity (if node is truly deleted)
-calicoctl ipam release --block=<cidr> --node=<deleted-node>
+# List block affinities to find the resource name for the deleted node
+calicoctl get blockaffinity -o wide | grep <deleted-node>
+
+# Delete the block affinity (if node is truly deleted)
+calicoctl delete blockaffinity <block-affinity-name>
 # This releases the block back to the pool for reassignment
 ```
 
