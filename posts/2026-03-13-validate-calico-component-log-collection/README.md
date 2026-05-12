@@ -26,7 +26,7 @@ check_component() {
   local container="$2"
   local ns="calico-system"
 
-  LOG_LINES=$(kubectl logs -n "${ns}" -l "app=${label}" \
+  LOG_LINES=$(kubectl logs -n "${ns}" -l "k8s-app=${label}" \
     -c "${container}" --tail=10 2>/dev/null | wc -l)
 
   if [ "${LOG_LINES}" -gt 0 ]; then
