@@ -26,13 +26,13 @@ Whether you are setting up a new Autopilot cluster or migrating an existing Flux
 
 ## Step 1: Understand GKE Autopilot Resource Minimums
 
-GKE Autopilot enforces minimum resource requests per container. As of GKE 1.30+:
+GKE Autopilot enforces minimum resource requests per Pod (summed across all containers). As of GKE 1.30+:
 
-- **Standard workload class**: minimum 250m CPU, 512Mi memory per container
-- **Balanced workload class**: minimum 500m CPU, 512Mi memory
+- **General-purpose compute class** (default): minimum 250m CPU, 512Mi memory per Pod for clusters without burst support; 50m CPU, 52Mi memory per Pod for clusters that support bursting
+- **Balanced compute class**: minimum 250m CPU, 0.5Gi memory per Pod, with a required CPU:memory ratio between 1:1 and 1:8
 - Host network pods, privileged containers, and `hostPath` volumes are not permitted
 
-Flux controllers default to much lower requests (e.g., 100m CPU), so they must be patched.
+Flux controllers default to much lower requests (e.g., 100m CPU, 64Mi memory), so they must be patched.
 
 ## Step 2: Create the Flux Namespace and Kustomize Patch Files
 
@@ -73,7 +73,7 @@ spec:
         - name: manager
           resources:
             requests:
-              cpu: "250m"      # Autopilot standard class minimum
+              cpu: "250m"      # Autopilot general-purpose class minimum (no burst)
               memory: "512Mi"
             limits:
               cpu: "1000m"
@@ -185,7 +185,7 @@ spec:
 
 - Use Kustomize overlays to maintain separate resource configurations for Autopilot and Standard cluster environments in the same repository.
 - Set up Flux alerts (`Alert` and `Provider` resources) to notify your team when a controller pod fails to start due to resource admission rejection.
-- GKE Autopilot automatically applies `cluster-autoscaler.kubernetes.io/safe-to-evict: "true"` annotations - account for this in pod disruption budgets.
+- On GKE Autopilot, Pods are evictable by default during node upgrades and autoscaling; set `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` on workloads that must not be evicted and pair it with Pod Disruption Budgets.
 - Avoid using `hostNetwork`, `hostPID`, `hostIPC`, or `privileged` in any manifest synced by Flux on Autopilot, as Autopilot's admission webhook will reject them.
 - Use Workload Identity for all GCP API access from pods running on Autopilot rather than node service accounts.
 
