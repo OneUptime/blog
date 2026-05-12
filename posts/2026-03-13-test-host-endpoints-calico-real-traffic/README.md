@@ -86,7 +86,7 @@ ssh user@node01-ip "echo connected"
 calicoctl get hostendpoints
 
 # View host-level policy decisions
-sudo iptables -L -n | grep CALICO
+sudo iptables -L -n | grep cali
 
 # Check Felix status on node
 kubectl exec -n kube-system calico-node-xxx -- calico-node -felix-live
