@@ -75,10 +75,10 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: default
-    - podSelector:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
         matchLabels:
-          component: apiserver
+          component: kube-apiserver
     ports:
     - protocol: TCP
       port: 443
@@ -107,7 +107,7 @@ kubectl run test-dns --image=busybox -n $NS --restart=Never --rm -i \
 **Prevention 3: Admission webhook or OPA policy to enforce DNS allow**
 
 ```yaml
-# OPA/Gatekeeper ConstraintTemplate example (simplified)
+# OPA/Gatekeeper Constraint example (simplified)
 # Enforce that any namespace with a default-deny NetworkPolicy
 # must also have a DNS allow rule
 apiVersion: constraints.gatekeeper.sh/v1beta1
