@@ -85,13 +85,14 @@ If the etcd snapshot predates the Flux installation, or if Flux's own resources 
 kubectl get namespace flux-system
 kubectl get pods -n flux-system
 
-# If flux-system is missing, re-bootstrap
+# If flux-system is missing, re-bootstrap (GITHUB_TOKEN must be exported)
+export GITHUB_TOKEN=<your-github-pat>
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/production \
-  --token-env=GITHUB_TOKEN
+  --token-auth
 ```
 
 If Flux controllers are present but their state (GitRepository objects, Kustomization objects) is outdated or missing from the older snapshot, Flux will reconcile and restore them from Git automatically within minutes.
@@ -126,10 +127,8 @@ kubectl get secrets -A | grep Opaque
 # For Sealed Secrets - restore the master key first
 kubectl apply -f backups/sealed-secrets-master-key.yaml -n kube-system
 
-# Force re-sync of SealedSecret objects
-kubectl get sealedsecrets -A -o name | \
-  xargs -I{} kubectl annotate {} \
-  sealedsecrets.bitnami.com/managed=true --overwrite
+# Restart the controller so it picks up the restored sealing key
+kubectl rollout restart deployment/sealed-secrets-controller -n kube-system
 ```
 
 ## Step 6: Automate etcd Backups to Prevent Recurrence
