@@ -18,7 +18,7 @@ Mixed OS networking requires careful attention to differences in how Windows han
 
 - Kubernetes cluster with Linux control plane nodes
 - Windows worker nodes (Windows Server 2019+)
-- Calico v3.12+ with Windows support
+- Calico v3.16+ with Windows support (open-source Calico for Windows)
 - VXLAN mode configured (required for Windows)
 
 ## Configure VXLAN for Windows Compatibility
@@ -44,7 +44,7 @@ Invoke-WebRequest -Uri https://github.com/projectcalico/calico/releases/download
 Expand-Archive calico-windows.zip -DestinationPath C:\CalicoWindows
 
 # Configure and start Calico
-C:\CalicoWindows\install-calico.ps1
+C:\CalicoWindows\install-calico-windows.ps1
 ```
 
 ## Test Cross-OS Connectivity
