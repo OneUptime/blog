@@ -10,7 +10,7 @@ Description: Implement identity-aware and HTTP-aware network policies in Cilium 
 
 ## Introduction
 
-Cilium's identity-aware policy enforcement ties network access control to the cryptographic identity of Kubernetes workloads rather than to ephemeral IP addresses. Combined with HTTP-aware policies that inspect request method, path, and headers, this creates a robust zero-trust networking model.
+Cilium's identity-aware policy enforcement ties network access control to the label-derived security identity of Kubernetes workloads rather than to ephemeral IP addresses. Combined with HTTP-aware policies that inspect request method, path, and headers, this creates a robust zero-trust networking model.
 
 Traditional firewall rules based on IPs break when pods scale, reschedule, or share IP addresses. Cilium uses endpoint identities derived from Kubernetes labels to create rules that persist correctly as workloads move across the cluster.
 
@@ -105,14 +105,20 @@ spec:
                 path: "^/api/v1/.*"
 ```
 
-## Verify with Policy Trace
+## Verify Selector to Identity Mapping
+
+Inspect which numeric identities each selector matches:
 
 ```bash
 kubectl exec -n kube-system ds/cilium -- \
-  cilium-dbg policy trace \
-  --src-label app=frontend \
-  --dst-label app=api-server \
-  --dport 8080/tcp
+  cilium-dbg policy selectors
+```
+
+To observe actual policy verdicts on live traffic, use Hubble:
+
+```bash
+hubble observe --verdict DROPPED \
+  --to-label app=api-server
 ```
 
 ## Monitor L7 Policy Decisions
