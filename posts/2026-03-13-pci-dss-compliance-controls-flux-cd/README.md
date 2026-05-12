@@ -18,7 +18,7 @@ The core PCI DSS requirement for change management (Requirement 6.5) demands tha
 
 - Flux CD managing a Kubernetes cluster in or adjacent to the Cardholder Data Environment (CDE)
 - Separate namespaces and network policies for CDE workloads
-- A log aggregation system with 12-month retention (PCI DSS Requirement 10.7)
+- A log aggregation system with 12-month retention (PCI DSS Requirement 10.5.1)
 - `flux` CLI and `kubectl` installed
 
 ## Step 1: Isolate the Cardholder Data Environment
@@ -245,7 +245,7 @@ echo "Evidence file: $OUTPUT"
 
 - Engage a Qualified Security Assessor (QSA) early to confirm that Git-based PR approvals satisfy their interpretation of PCI DSS authorization requirements for your specific Report on Compliance (ROC).
 - Never store cardholder data or primary account numbers (PANs) in your Git repository - use Sealed Secrets or External Secrets for all credentials.
-- Retain Git history and Flux event logs for a minimum of 12 months online and 12 months offline storage to satisfy PCI DSS Requirement 10.7.
+- Retain Git history and Flux event logs for a minimum of 12 months, with at least the most recent 3 months immediately available for analysis, to satisfy PCI DSS Requirement 10.5.1.
 - Run automated vulnerability scans on all container images in CI before they are referenced in the GitOps repository.
 - Conduct a full Flux configuration review whenever your PCI DSS scope changes.
 
