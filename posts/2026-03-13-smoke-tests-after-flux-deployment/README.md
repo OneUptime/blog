@@ -82,7 +82,7 @@ Use a Flux Alert to apply the smoke test Job after reconciliation completes:
 
 ```yaml
 # clusters/staging/notifications/smoke-test-trigger.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: smoke-test-webhook
@@ -93,7 +93,7 @@ spec:
   secretRef:
     name: smoke-test-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: smoke-test-on-deploy
@@ -107,7 +107,7 @@ spec:
       name: myapp
       namespace: flux-system
   inclusionList:
-    - ".*succeeded.*"
+    - ".*Reconciliation finished.*"
 ```
 
 ## Step 3: Use a Post-Deploy Job Pattern with Kustomize Patches
