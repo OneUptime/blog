@@ -134,8 +134,10 @@ spec:
     autoDiscovery:
       clusterName: production-cluster
     cloudProvider: clusterapi
-    clusterAPIMode: incluster-incluster
-    # The autoscaler runs on the workload cluster but manages CAPI on management cluster
+    # Syntax: workloadClusterMode-managementClusterMode
+    # The autoscaler runs on the workload cluster (incluster) but manages CAPI
+    # on the management cluster (reached via the mounted kubeconfig).
+    clusterAPIMode: incluster-kubeconfig
     clusterAPIKubeconfigSecret: management-cluster-kubeconfig
     extraArgs:
       # Scale down when a node is underutilized for 10 minutes
