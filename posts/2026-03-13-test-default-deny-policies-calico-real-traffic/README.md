@@ -32,7 +32,7 @@ kubectl create namespace test-source
 kubectl create namespace test-dest
 
 kubectl run source-pod -n test-source --image=busybox --restart=Never -- sleep 3600
-kubectl run dest-pod -n test-dest --image=nginx --restart=Never -- sleep 3600
+kubectl run dest-pod -n test-dest --image=nginx --restart=Never --labels="app=dest-pod"
 ```
 
 Get the destination pod IP:
