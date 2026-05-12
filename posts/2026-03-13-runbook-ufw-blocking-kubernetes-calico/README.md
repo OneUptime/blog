@@ -75,7 +75,9 @@ kubectl delete pod ufw-test
 ssh $AFFECTED_NODE << 'EOF'
 sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' \
   /etc/default/ufw
-sudo ufw allow proto 4 from any
+# UFW does not support IP-in-IP (proto 4) via the high-level CLI, so add it
+# directly to /etc/ufw/before.rules. Only needed if Calico is using IPIP.
+sudo sed -i '/^# End required lines/a -A ufw-before-input -p 4 -j ACCEPT\n-A ufw-before-output -p 4 -j ACCEPT\n-A ufw-before-forward -p 4 -j ACCEPT' /etc/ufw/before.rules
 sudo ufw allow 4789/udp
 sudo ufw allow 179/tcp
 sudo ufw reload
