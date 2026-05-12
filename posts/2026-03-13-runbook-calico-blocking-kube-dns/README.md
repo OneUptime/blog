@@ -27,7 +27,7 @@ Calico blocking kube-dns is a P1 incident - it causes total DNS failure across a
 
 ```bash
 kubectl run dns-emergency --image=busybox --restart=Never --rm -i \
-  --timeout=10s -- nslookup kubernetes.default 2>&1
+  --pod-running-timeout=10s -- nslookup kubernetes.default 2>&1
 # If this fails: cluster-wide DNS is down
 
 ```
@@ -37,8 +37,7 @@ kubectl run dns-emergency --image=busybox --restart=Never --rm -i \
 ```bash
 kubectl get networkpolicy -n kube-system \
   --sort-by='.metadata.creationTimestamp' | tail -3
-calicoctl get globalnetworkpolicy \
-  --sort-by='.metadata.creationTimestamp' 2>/dev/null | head
+calicoctl get globalnetworkpolicy 2>/dev/null
 ```
 
 ## Solution
@@ -54,7 +53,7 @@ calicoctl delete globalnetworkpolicy <policy-name>
 
 # Verify immediately
 kubectl run test --image=busybox --restart=Never --rm -i \
-  --timeout=10s -- nslookup kubernetes.default
+  --pod-running-timeout=10s -- nslookup kubernetes.default
 ```
 
 **Option B: Apply emergency DNS allow (if can't delete)**
@@ -88,7 +87,7 @@ EOF
 ```bash
 for NS in default kube-system production; do
   kubectl run test --image=busybox -n $NS --restart=Never --rm -i \
-    --timeout=10s -- nslookup kubernetes.default 2>&1 | grep -c "Address" \
+    --pod-running-timeout=10s -- nslookup kubernetes.default 2>&1 | grep -c "Address" \
     && echo "PASS: $NS" || echo "FAIL: $NS"
 done
 ```
