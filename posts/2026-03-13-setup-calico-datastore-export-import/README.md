@@ -22,6 +22,8 @@ Calico's `calicoctl datastore migrate` commands enable migration between datasto
 
 ```bash
 # Export from etcd-backed Calico to a backup file
+# Note: calicoctl datastore migrate export only supports etcdv3 source datastores.
+# It will return "Datastore type must be etcdv3" against a Kubernetes datastore.
 
 DATASTORE_TYPE=etcdv3 \
   ETCD_ENDPOINTS=https://etcd:2379 \
@@ -29,11 +31,6 @@ DATASTORE_TYPE=etcdv3 \
   ETCD_CERT_FILE=/etc/etcd/ssl/client-cert.pem \
   ETCD_CA_CERT_FILE=/etc/etcd/ssl/ca.pem \
   calicoctl datastore migrate export > calico-datastore-backup.yaml
-
-# Export from Kubernetes API datastore
-DATASTORE_TYPE=kubernetes \
-  KUBECONFIG=~/.kube/config \
-  calicoctl datastore migrate export > calico-k8s-backup.yaml
 
 # Verify export was successful
 wc -l calico-datastore-backup.yaml
@@ -57,6 +54,7 @@ DATASTORE_TYPE=etcdv3 \
 
 ```bash
 # Import the exported data into Kubernetes API datastore
+# The import command only targets a Kubernetes API datastore.
 DATASTORE_TYPE=kubernetes \
   KUBECONFIG=~/.kube/config \
   calicoctl datastore migrate import -f calico-datastore-backup.yaml
@@ -82,9 +80,16 @@ flowchart LR
 ## Step 4: Backup Use Case (Not Migration)
 
 ```bash
-# Regular backup without migration (Kubernetes datastore)
+# Regular backup without migration (etcdv3 datastore only)
+# calicoctl datastore migrate export requires DATASTORE_TYPE=etcdv3;
+# for Kubernetes-backed Calico, back up the CRDs with kubectl instead.
 BACKUP_FILE="calico-backup-$(date +%Y%m%d).yaml"
-calicoctl datastore migrate export > "${BACKUP_FILE}"
+DATASTORE_TYPE=etcdv3 \
+  ETCD_ENDPOINTS=https://etcd:2379 \
+  ETCD_KEY_FILE=/etc/etcd/ssl/client-key.pem \
+  ETCD_CERT_FILE=/etc/etcd/ssl/client-cert.pem \
+  ETCD_CA_CERT_FILE=/etc/etcd/ssl/ca.pem \
+  calicoctl datastore migrate export > "${BACKUP_FILE}"
 
 echo "Backup complete: ${BACKUP_FILE}"
 echo "Resources backed up: $(grep -c "^kind:" "${BACKUP_FILE}")"
