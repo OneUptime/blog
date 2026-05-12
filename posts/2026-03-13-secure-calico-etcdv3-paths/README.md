@@ -26,15 +26,15 @@ Each Calico component should only be able to write to the paths it actually need
 
 | Component | Writable Paths | Read-Only Paths |
 |-----------|---------------|-----------------|
-| Felix | `/calico/v1/host/`, `/calico/felix/v1/` | `/calico/v1/policy/`, `/calico/v1/config/` |
-| CNI | `/calico/v1/ipam/`, `/calico/v1/host/` | `/calico/v1/config/` |
-| API Server | `/calico/v1/` (all) | - |
+| Felix | `/calico/felix/v1/` | `/calico/resources/v3/projectcalico.org/`, `/calico/ipam/v2/` |
+| CNI | `/calico/ipam/v2/` | `/calico/resources/v3/projectcalico.org/` |
+| API Server | `/calico/resources/v3/projectcalico.org/` (all) | - |
 
 ```bash
-# Verify Felix cannot write to policy paths
+# Verify Felix cannot write to policy resources
 
 etcdctl --cert=calico-felix.crt --key=calico-felix.key \
-  put /calico/v1/policy/test "value"
+  put /calico/resources/v3/projectcalico.org/globalnetworkpolicies/test "value"
 # Should fail: permission denied
 ```
 
@@ -68,7 +68,7 @@ resources:
 ```mermaid
 graph TD
     A[Untrusted Input] -->|Path injection attempt| B{etcd RBAC}
-    B -->|/calico/v1/policy/ allowed| C[Write Permitted]
+    B -->|/calico/resources/v3/projectcalico.org/ allowed| C[Write Permitted]
     B -->|/registry/secrets/ denied| D[Permission Denied]
     C --> E[Input validation in Calico API]
     E -->|Valid resource| F[Written to etcd]
@@ -79,11 +79,14 @@ Always interact with etcd through calicoctl or the Calico API server, which vali
 
 ## Security Layer 4: Audit All Path Access
 
-Enable etcd audit logging for Calico paths:
+etcd does not have a native audit log feature. Capture access events by enabling structured logging and scraping the gRPC metrics that etcd exposes on `/metrics`:
 
-```yaml
-# etcd audit configuration
---audit-log-path=/var/log/etcd/audit.log
+```bash
+# etcd structured logging (zap) to a file
+etcd \
+  --logger=zap \
+  --log-outputs=/var/log/etcd/etcd.log \
+  --log-level=info
 ```
 
 Create a monitoring rule to alert on unauthorized access:
