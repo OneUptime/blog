@@ -61,7 +61,7 @@ oc adm must-gather -- gather_audit_logs
 
 # After collecting, search for calico-related changes
 grep '"namespace":"calico-system"' audit.log | \
-  grep '"verb":"update\|patch\|delete"' | \
+  grep -E '"verb":"(update|patch|delete)"' | \
   jq '{time: .requestReceivedTimestamp, user: .user.username, verb: .verb, resource: .objectRef.resource}' | \
   head -20
 ```
@@ -98,4 +98,4 @@ flowchart TD
 
 ## Conclusion
 
-Securing Calico upgrades on OpenShift requires checking for relevant Red Hat Security Advisories, auditing SCC permissions before and after to detect privilege changes, reviewing OCP audit logs for unexpected changes, and validating image pull sources. The most important security check is comparing SCC permissions before and after - any broadening of privileges (new `allowPrivileged: true` or new capability additions) should trigger a security review before the upgrade is accepted.
+Securing Calico upgrades on OpenShift requires checking for relevant Red Hat Security Advisories, auditing SCC permissions before and after to detect privilege changes, reviewing OCP audit logs for unexpected changes, and validating image pull sources. The most important security check is comparing SCC permissions before and after - any broadening of privileges (new `allowPrivilegedContainer: true` or new capability additions) should trigger a security review before the upgrade is accepted.
