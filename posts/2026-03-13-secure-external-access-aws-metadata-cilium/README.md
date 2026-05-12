@@ -35,7 +35,7 @@ This returns node metadata accessible to all pods.
 
 ## Create a Default-Deny Policy for IMDS
 
-Block all pods from accessing the metadata endpoint by default:
+Block all pods from accessing the metadata endpoint by default. Use an `egressDeny` rule, and exclude pods labeled `needs-imds=true` from the selector so they can be allowed by a separate policy (Cilium deny rules always take precedence over allow rules, so the exception must be expressed via the selector):
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -43,11 +43,14 @@ kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: block-imds-default
 spec:
-  endpointSelector: {}
-  egress:
-    - toCIDRSet:
-        - cidr: "169.254.169.254/32"
-          except: []
+  endpointSelector:
+    matchExpressions:
+      - key: needs-imds
+        operator: NotIn
+        values: ["true"]
+  egressDeny:
+    - toCIDR:
+        - "169.254.169.254/32"
 ```
 
 ## Architecture
@@ -105,6 +108,7 @@ At the node level, restrict IMDSv2 to hop limit 1 to prevent containers from acc
 ```bash
 aws ec2 modify-instance-metadata-options \
   --instance-id <instance-id> \
+  --http-tokens required \
   --http-put-response-hop-limit 1 \
   --http-endpoint enabled
 ```
