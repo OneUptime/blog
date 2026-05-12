@@ -22,16 +22,11 @@ Calico cluster diagnostics assess the health of the entire Calico installation a
 
 ```bash
 # Collect comprehensive cluster diagnostic bundle
+# Can be run from any workstation that has kubeconfig access to the cluster
+calicoctl cluster diags
 
-# Must be run from within a calico-node pod
-CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
-  -o jsonpath='{.items[0].metadata.name}')
-
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
-  calicoctl cluster diags
-
-# Copy the diagnostic archive out of the pod
-kubectl cp calico-system/"${CALICO_POD}":/tmp/calico-diags.tar.gz \
+# The bundle is written to ./calico-diagnostics.tar.gz in the current directory
+mv calico-diagnostics.tar.gz \
   calico-cluster-diags-$(date +%Y%m%d).tar.gz
 ```
 
@@ -54,8 +49,8 @@ kubectl logs -n tigera-operator -l k8s-app=tigera-operator | \
 
 ```bash
 # Deploy a test pod on node-A, test connectivity to pod on node-B
-kubectl run test-client --image=nicolaka/netshoot \
-  --node-name=<node-a> --restart=Never -- sleep 3600
+kubectl run test-client --image=nicolaka/netshoot --restart=Never \
+  --overrides='{"spec":{"nodeName":"<node-a>"}}' -- sleep 3600
 
 TEST_POD_IP=$(kubectl get pod test-pod-on-node-b \
   -o jsonpath='{.status.podIP}')
