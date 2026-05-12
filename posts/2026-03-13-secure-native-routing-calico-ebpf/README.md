@@ -38,8 +38,9 @@ calicoctl patch felixconfiguration default --type merge   --patch '{"spec":{"bpf
 # Check eBPF programs loaded on a node
 kubectl exec -n calico-system ds/calico-node -- bpftool prog list | grep calico
 
-# Verify kube-proxy replacement
-kubectl exec -n calico-system ds/calico-node -- calico-node -bpf-log-level Debug
+# Verify kube-proxy replacement (dump BPF NAT and conntrack maps)
+kubectl exec -n calico-system ds/calico-node -- calico-node -bpf nat dump
+kubectl exec -n calico-system ds/calico-node -- calico-node -bpf conntrack dump
 
 # Test connectivity
 kubectl run test1 --image=busybox -- sleep 3600
