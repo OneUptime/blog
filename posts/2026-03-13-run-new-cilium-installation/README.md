@@ -27,14 +27,13 @@ The installation process requires pre-flight checks to verify kernel and system 
 
 Validate that all nodes meet Cilium's requirements before installation.
 ```bash
-# Run Cilium's pre-flight checker to validate node requirements
+# Render the manifests that would be applied without installing
+cilium install --version 1.14.0 --dry-run
 
-cilium install --dry-run
+# Print the Helm values that would be applied for review
+cilium install --version 1.14.0 --dry-run-helm-values
 
-# For a detailed pre-flight check with kernel feature validation
-cilium preflight install --config-path /tmp/cilium-check
-
-# Check kernel version on each node
+# Check kernel version on each node (KERNEL-VERSION column)
 kubectl get nodes -o wide
 kubectl debug node/<node-name> -it --image=busybox -- uname -r
 ```
@@ -116,10 +115,11 @@ resources:
 After installation, existing pods must be restarted to get Cilium-managed network interfaces.
 ```bash
 # Restart all pods in all non-system namespaces
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' \
+kubectl get pods --all-namespaces --no-headers \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' \
   | grep -v 'kube-system\|cilium' \
-  | tail -n +2 \
-  | xargs -I{} sh -c 'echo {} | read ns name; kubectl delete pod $name -n $ns'
+  | awk '{print "kubectl delete pod " $2 " -n " $1}' \
+  | sh
 
 # Or use a rolling restart for each deployment
 kubectl rollout restart deployment --all -n <namespace>
