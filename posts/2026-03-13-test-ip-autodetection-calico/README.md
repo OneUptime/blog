@@ -48,7 +48,7 @@ spec:
 ```bash
 # Validate changes
 calicoctl ipam check
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u
+kubectl get pods -A -o wide | awk '{print $7}' | sort -u
 ```
 
 ## Architecture
