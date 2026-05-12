@@ -86,9 +86,9 @@ spec:
       globalnet: false
     submariner:
       cableDriver: libreswan  # or vxlan for non-IPsec
-      clusterCIDR: "10.244.0.0/16"  # This cluster's Pod CIDR
-      serviceCIDR: "10.96.0.0/16"   # This cluster's Service CIDR
-      clusterID: "cluster-01"
+      clusterCidr: "10.244.0.0/16"  # This cluster's Pod CIDR
+      serviceCidr: "10.96.0.0/16"   # This cluster's Service CIDR
+      clusterId: "cluster-01"
       colorCodes: "blue"
       natEnabled: false  # Set true if clusters are behind NAT
 ```
