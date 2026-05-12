@@ -51,30 +51,30 @@ DaemonSet              cilium             Desired: 3, Ready: 3/3, Available: 3/3
 
 ## Step 2: Check Endpoint Status
 
-Verify that Cilium has programmed network policies for all pods.
+Verify that Cilium has programmed network policies for all pods. These commands use the in-agent CLI, so they run via `kubectl exec` against a Cilium pod.
 ```bash
 # List all endpoints managed by Cilium
-cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium endpoint list
 
 # Check a specific endpoint's policy status
-cilium endpoint get <endpoint-id>
+kubectl exec -n kube-system ds/cilium -- cilium endpoint get <endpoint-id>
 
 # Check for endpoints stuck in "not-ok" state
-cilium endpoint list | grep -v "ready"
+kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
 ```
 
 ## Step 3: Inspect eBPF Map Status
 
 Validate that eBPF maps are loaded and not near capacity.
 ```bash
-# Check eBPF map sizes and utilization
-cilium bpf map list
+# List all open BPF maps with their sizes
+kubectl exec -n kube-system ds/cilium -- cilium map list
 
-# Check the connection tracking table size
-cilium bpf ct list global | head -20
+# Check the connection tracking table contents
+kubectl exec -n kube-system ds/cilium -- cilium bpf ct list global | head -20
 
-# View loaded eBPF programs
-cilium bpf prog list
+# View loaded eBPF programs (run on a Cilium-managed node)
+bpftool prog list
 ```
 
 ## Step 4: Verify Network Policy Enforcement
@@ -82,13 +82,13 @@ cilium bpf prog list
 Confirm that network policies are compiled and enforced.
 ```bash
 # List all network policies known to Cilium
-cilium policy get
+kubectl exec -n kube-system ds/cilium -- cilium policy get
 
-# Check if a specific policy is being enforced
-cilium policy get --name <policy-name> -n <namespace>
+# Check a specific CiliumNetworkPolicy from the Kubernetes side
+kubectl get cnp <policy-name> -n <namespace> -o yaml
 
 # Monitor real-time policy verdicts
-cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -- cilium monitor --type policy-verdict
 ```
 
 ## Step 5: Check Individual Agent Health via kubectl
@@ -126,9 +126,9 @@ hubble observe --verdict DROPPED --last 50
 - Monitor endpoint count via Prometheus - unexpected drops indicate CNI issues
 - Set up alerts for any Cilium component reporting a non-OK status
 - Run `cilium status` before and after any network policy change to confirm no regressions
-- Check `cilium bpf map list` when experiencing connection issues - near-full maps cause drops
+- Check `cilium map list` (via `kubectl exec` against a Cilium pod) when experiencing connection issues - near-full maps cause drops
 - Use `cilium monitor` during incident investigations to trace specific flows
 
 ## Conclusion
 
-Regular Cilium status checks are a critical part of operating a healthy Kubernetes networking stack. The `cilium status`, `cilium endpoint list`, and `cilium bpf map list` commands together give you a comprehensive picture of the CNI's health. Build these checks into your operational runbooks, monitoring dashboards, and incident response procedures to detect and diagnose Cilium issues quickly.
+Regular Cilium status checks are a critical part of operating a healthy Kubernetes networking stack. The `cilium status`, `cilium endpoint list`, and `cilium map list` commands together give you a comprehensive picture of the CNI's health. Build these checks into your operational runbooks, monitoring dashboards, and incident response procedures to detect and diagnose Cilium issues quickly.
