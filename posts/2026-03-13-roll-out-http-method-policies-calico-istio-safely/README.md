@@ -95,4 +95,4 @@ flowchart TD
 
 ## Conclusion
 
-HTTP Method Policies with Calico and Istio with Calico and Istio provides the most fine-grained network security available in Kubernetes, combining network-layer enforcement with application-layer policy evaluation. By filtering on HTTP methods, paths, and headers, you can implement access controls that are impossible with pure network-layer policies. Ensure your Calico-Istio integration is properly configured and test both allowed and denied request patterns to verify your application-layer policies are working correctly.
+HTTP Method Policies with Calico and Istio provide the most fine-grained network security available in Kubernetes, combining network-layer enforcement with application-layer policy evaluation. By filtering on HTTP methods, paths, and headers, you can implement access controls that are impossible with pure network-layer policies. Ensure your Calico-Istio integration is properly configured and test both allowed and denied request patterns to verify your application-layer policies are working correctly.
