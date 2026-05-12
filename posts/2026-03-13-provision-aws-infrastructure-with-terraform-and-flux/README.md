@@ -58,7 +58,8 @@ spec:
     namespace: flux-system
   path: ./modules/vpc
   workspace: aws-production-vpc
-  approvePlan: "manual"
+  # Empty string requires manual approval; set to "auto" to auto-apply plans
+  approvePlan: ""
   storeReadablePlan: human
 
   backendConfig:
@@ -116,7 +117,7 @@ spec:
     namespace: flux-system
   path: ./modules/eks
   workspace: aws-production-eks
-  approvePlan: "manual"
+  approvePlan: ""
   # EKS cluster creation takes 15-20 minutes
   runnerTerminationGracePeriodSeconds: 1800
 
@@ -186,7 +187,7 @@ spec:
     namespace: flux-system
   path: ./modules/rds
   workspace: aws-production-rds
-  approvePlan: "manual"
+  approvePlan: ""
 
   backendConfig:
     customConfiguration: |
@@ -267,7 +268,7 @@ kubectl get terraform -n flux-system --watch
 # After VPC is applied, check its outputs
 kubectl get secret aws-vpc-outputs -n flux-system -o yaml
 
-# After EKS is ready, get the kubeconfig
+# After EKS is ready, get the cluster API endpoint
 EKS_ENDPOINT=$(kubectl get secret aws-eks-outputs \
   -n flux-system \
   -o jsonpath='{.data.cluster_endpoint}' | base64 -d)
@@ -283,7 +284,7 @@ kubectl get secret aws-rds-outputs \
 
 - Use separate Terraform resources and workspaces for VPC, EKS, and RDS. This allows independent updates and prevents a change to the database from triggering a plan against the VPC.
 - Pass outputs from one Terraform resource (VPC outputs) to another (EKS) via the `writeOutputsToSecret` and `varsFrom` pattern. This creates a declarative dependency chain.
-- Set `approvePlan: "manual"` for all production Terraform resources. The time cost of review is worth the protection against unintended changes.
+- Leave `approvePlan: ""` (the default) for all production Terraform resources to require manual approval. The time cost of review is worth the protection against unintended changes.
 - Use S3 state backend with DynamoDB locking for all production Terraform resources to prevent concurrent plan/apply operations.
 - Set generous `runnerTerminationGracePeriodSeconds` for resources with long provisioning times (EKS: 30 minutes, RDS: 20 minutes).
 
