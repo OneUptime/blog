@@ -25,7 +25,7 @@ Setting up a VPP troubleshooting environment means: installing the VPP CLI tools
 ```bash
 # Access VPP CLI from a calico-vpp-node pod
 
-VPP_POD=$(kubectl get pod -n calico-vpp-dataplane -l app=calico-vpp-node \
+VPP_POD=$(kubectl get pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node \
   -o jsonpath='{.items[0].metadata.name}')
 
 # Run vppctl commands
@@ -106,14 +106,21 @@ flowchart LR
 ## Step 5: Set Up Persistent Debug Logging
 
 ```yaml
-# Enable debug logging for calico-vpp-manager
+# Enable debug logging for the calico-vpp agent and vpp-manager.
+# Patch the existing ConfigMap (it already contains CALICOVPP_INTERFACES,
+# CALICOVPP_INITIAL_CONFIG, and CALICOVPP_CONFIG_TEMPLATE) — do not replace it.
+#
+#   kubectl patch configmap calico-vpp-config -n calico-vpp-dataplane \
+#     --type merge -p '{"data":{"CALICOVPP_LOG_LEVEL":"debug"}}'
+#
+# Valid values for CALICOVPP_LOG_LEVEL are parsed by logrus:
+# panic, fatal, error, warn, info, debug, trace.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: calico-vpp-config
   namespace: calico-vpp-dataplane
 data:
-  CALICOVPP_DEBUG_ENABLE: "true"
   CALICOVPP_LOG_LEVEL: "debug"
 ```
 
