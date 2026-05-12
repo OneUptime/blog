@@ -52,7 +52,7 @@ export GCP_B64ENCODED_CREDENTIALS=$(base64 -w0 /tmp/capg-credentials.json)
 rm /tmp/capg-credentials.json
 
 # Generate CAPG components
-clusterctl generate provider --infrastructure gcp:v1.7.0 \
+clusterctl generate provider --infrastructure gcp:v1.11.1 \
   > infrastructure/cluster-api/components/provider-gcp.yaml
 ```
 
@@ -104,28 +104,14 @@ spec:
   project: my-gcp-project
   location: us-central1
   # GKE channel controls automatic upgrade behavior
-  releaseChannel: REGULAR  # Options: RAPID, REGULAR, STABLE
+  releaseChannel: regular  # Options: rapid, regular, stable
   # Minimum Kubernetes version (GKE manages the patch version within the channel)
-  kubernetesVersion: "1.29"
-  # Enable private cluster - nodes have no public IP
-  enablePrivateNodes: true
-  masterIpv4CidrBlock: "172.16.0.0/28"
-  # Enable Workload Identity for GKE
-  workloadIdentityConfig:
-    workloadPool: my-gcp-project.svc.id.goog
-  # Logging and monitoring
-  loggingConfig:
-    enableComponents:
-      - SYSTEM_COMPONENTS
-      - WORKLOADS
-  monitoringConfig:
-    enableComponents:
-      - SYSTEM_COMPONENTS
+  controlPlaneVersion: "1.29"
   # Authorized networks for API server access
-  masterAuthorizedNetworksConfig:
-    cidrBlocks:
-      - cidrBlock: "10.0.0.0/8"
-        displayName: "Internal networks"
+  master_authorized_networks_config:
+    cidr_blocks:
+      - cidr_block: "10.0.0.0/8"
+        display_name: "Internal networks"
 ```
 
 ## Step 4: Define Node Pools
@@ -167,19 +153,16 @@ spec:
     enableAutoscaling: true
     minCount: 2
     maxCount: 10
-  # Node configuration
-  nodeConfig:
-    # Enable Workload Identity on nodes
-    workloadMetadataConfig:
-      mode: GKE_METADATA
-    # OAuth scopes for node VMs
-    oauthScopes:
-      - https://www.googleapis.com/auth/cloud-platform
-    # Labels applied to nodes
-    labels:
-      pool: default
-      environment: production
-    # Taints for specialized workloads (optional)
+  # Service account and OAuth scopes for node VMs
+  nodeSecurity:
+    serviceAccount:
+      scopes:
+        - https://www.googleapis.com/auth/cloud-platform
+  # Labels applied to nodes
+  kubernetesLabels:
+    pool: default
+    environment: production
+  # Taints for specialized workloads (optional) - omitted for the default pool
   management:
     autoRepair: true   # Automatically repair unhealthy nodes
     autoUpgrade: true  # Allow GKE to upgrade node versions
@@ -219,23 +202,20 @@ spec:
   machineType: n2-standard-8
   diskSizeGb: 100
   diskType: pd-standard
-  # Enable Spot VMs for significant cost reduction
-  spot: true
   scaling:
     enableAutoscaling: true
     minCount: 0
     maxCount: 20
-  nodeConfig:
-    workloadMetadataConfig:
-      mode: GKE_METADATA
-    oauthScopes:
-      - https://www.googleapis.com/auth/cloud-platform
-    labels:
-      pool: spot
-    taints:
-      - key: cloud.google.com/gke-spot
-        value: "true"
-        effect: NO_SCHEDULE
+  nodeSecurity:
+    serviceAccount:
+      scopes:
+        - https://www.googleapis.com/auth/cloud-platform
+  kubernetesLabels:
+    pool: spot
+  kubernetesTaints:
+    - key: cloud.google.com/gke-spot
+      value: "true"
+      effect: NoSchedule
 ```
 
 ## Step 6: Create the Flux Kustomization
@@ -266,12 +246,12 @@ spec:
 
 ## Best Practices
 
-- Use the `REGULAR` release channel for production GKE clusters. It provides a balance between stability and access to new features.
-- Enable Workload Identity (`workloadMetadataConfig.mode: GKE_METADATA`) on all node pools to allow pods to use GCP service accounts securely.
-- Use Spot VMs with a taint for batch and stateless workloads to reduce costs by 60-80%. Configure `PodDisruptionBudgets` and `tolerations` appropriately.
+- Use the `regular` release channel for production GKE clusters. It provides a balance between stability and access to new features.
+- Workload Identity is enabled by default on GKE clusters created through CAPG and is the recommended way for pods to authenticate to GCP services. Bind Kubernetes service accounts to GCP service accounts using the `iam.gke.io/gcp-service-account` annotation.
+- Use a dedicated node pool with a taint for batch and stateless workloads. Configure `PodDisruptionBudgets` and `tolerations` appropriately. To run on Spot VMs, configure the GKE node pool's provisioning model directly with `gcloud` or in the GKE console, as CAPG v1.11 does not yet expose Spot mode on `GCPManagedMachinePool`.
 - Enable `autoRepair: true` and `autoUpgrade: true` on node pools to let GKE handle node maintenance automatically.
-- Set `enablePrivateNodes: true` and restrict `masterAuthorizedNetworksConfig` to internal CIDRs for production clusters.
+- Restrict `master_authorized_networks_config` to internal CIDRs for production clusters to limit API server exposure.
 
 ## Conclusion
 
-A GKE cluster with multiple node pools is now provisioned and managed through Cluster API and Flux CD. Google manages the control plane lifecycle while CAPI manages the node pool configuration declaratively from Git. Workload Identity is enabled for secure GCP access, and Spot VMs provide a cost-efficient pool for batch workloads.
+A GKE cluster with multiple node pools is now provisioned and managed through Cluster API and Flux CD. Google manages the control plane lifecycle while CAPI manages the node pool configuration declaratively from Git. Workload Identity is enabled by default for secure GCP access, and a dedicated pool with taints provides a place to schedule batch workloads.
