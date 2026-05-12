@@ -119,7 +119,7 @@ Configure etcd to check the CRL:
 
 ```bash
 etcd --trusted-ca-file=calico-etcd-ca.crt \
-     --crl-file=calico-etcd-crl.pem
+     --client-crl-file=calico-etcd-crl.pem
 ```
 
 ## Conclusion
