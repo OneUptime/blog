@@ -28,7 +28,7 @@ Preventing Calico IP pool exhaustion requires a combination of adequate initial 
 
 ```bash
 calicoctl ipam show
-calicoctl ipam show --show-blocks | grep -E "free|used"
+calicoctl ipam show --show-blocks | grep -iE "free|used"
 ```
 
 ## Solution
