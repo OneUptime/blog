@@ -130,7 +130,7 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- \
 
 # Monitor BPF map operations with bpftrace (advanced)
 # Only run for security auditing purposes
-bpftrace -e 'kprobe:sys_bpf { printf("BPF syscall: pid=%d comm=%s\n", pid, comm); }'
+bpftrace -e 'tracepoint:syscalls:sys_enter_bpf { printf("BPF syscall: pid=%d comm=%s\n", pid, comm); }'
 ```
 
 ## Conclusion
