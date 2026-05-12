@@ -68,8 +68,8 @@ calicoctl node status
 # Check BGP peer status
 calicoctl node status | grep Established
 
-# Verify MD5 authentication is active
-bird cli <<< "show protocols all bgp_peer_router01" | grep auth
+# Verify MD5 authentication is active (run inside the calico-node pod or on the node)
+birdcl -s /var/run/calico/bird.ctl show protocols all
 
 # Check for unauthorized BGP connections
 calicoctl get bgppeers -o wide
