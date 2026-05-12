@@ -81,9 +81,9 @@ spec:
 
 Cilium provides official dashboards at:
 
-- **Cilium Overview**: Dashboard ID `16611`
-- **Hubble L7 HTTP**: Dashboard ID `16612`
-- **Cilium Operator**: Dashboard ID `16613`
+- **Cilium Agent Metrics**: Dashboard ID `16611`
+- **Cilium Operator Metrics**: Dashboard ID `16612`
+- **Cilium Hubble Metrics**: Dashboard ID `16613`
 
 Import via Grafana UI: Dashboards → Import → Enter Dashboard ID.
 
@@ -95,7 +95,7 @@ Import via Grafana UI: Dashboards → Import → Enter Dashboard ID.
 rate(cilium_policy_l7_total[5m])
 
 # Active connections in CT table
-cilium_bpf_map_ops_total{mapName="cilium_ct4_global"}
+cilium_bpf_map_ops_total{map_name="cilium_ct4_global"}
 
 # Drop rate by reason
 rate(cilium_drop_count_total[5m]) by (reason)
