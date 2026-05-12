@@ -32,6 +32,7 @@ This guide covers integrating both Conftest and Kyverno CLI into GitHub Actions 
 package main
 
 import future.keywords.if
+import future.keywords.in
 import future.keywords.contains
 
 # Deny containers without resource limits
