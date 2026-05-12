@@ -174,8 +174,8 @@ resources:
   - resources:
       - secrets
     providers:
-      # Encrypt secrets with AES-CBC using a 256-bit key
-      - aescbc:
+      # Encrypt secrets with AES-GCM using a 256-bit key (aesgcm is recommended over aescbc, which is vulnerable to padding oracle attacks)
+      - aesgcm:
           keys:
             - name: key1
               secret: <base64-encoded-32-byte-key>
