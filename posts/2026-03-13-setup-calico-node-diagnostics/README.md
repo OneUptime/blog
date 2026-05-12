@@ -52,11 +52,16 @@ kubectl logs -n calico-system "${CALICO_POD}" -c calico-node | \
 
 ```bash
 # Collect comprehensive node diagnostics
+# The command prints the saved tarball path at the end, e.g.
+# "Diags saved to /tmp/calico<random>/diags-20260313_151219.tar.gz"
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
   calicoctl node diags
 
-# The output is saved inside the container; copy it out
-kubectl cp calico-system/"${CALICO_POD}":/tmp/calico-diags.tar.gz \
+# Locate the most recent diags tarball inside the container and copy it out
+DIAGS_PATH=$(kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
+  sh -c 'ls -t /tmp/calico*/diags-*.tar.gz 2>/dev/null | head -1')
+
+kubectl cp calico-system/"${CALICO_POD}":"${DIAGS_PATH}" \
   ./calico-node-diags-$(date +%Y%m%d).tar.gz
 ```
 
@@ -88,8 +93,10 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
 
 ```bash
 # View Felix-managed iptables rules (standard Calico dataplane)
-kubectl debug node/"${PROBLEM_NODE}" --image=alpine -it -- \
-  nsenter -t 1 -n -- iptables -L cali-FORWARD -n | head -20
+# calico-node runs with hostNetwork: true, so exec'ing into it gives
+# direct access to the host's iptables rules (no nsenter required).
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
+  iptables -L cali-FORWARD -n | head -20
 ```
 
 ## Conclusion
