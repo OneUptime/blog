@@ -85,7 +85,7 @@ exit $MISSING_DNS
 # Always test DNS after creating a namespace with policies
 NS=$1
 kubectl run dns-test --image=busybox -n $NS --restart=Never --rm -i \
-  --timeout=15s -- nslookup kubernetes.default \
+  --pod-running-timeout=15s -- nslookup kubernetes.default \
   && echo "DNS OK in $NS" || echo "FAIL: DNS blocked in $NS"
 ```
 
