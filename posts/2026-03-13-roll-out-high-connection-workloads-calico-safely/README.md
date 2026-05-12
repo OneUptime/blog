@@ -55,7 +55,6 @@ spec:
 # Tune Felix for high-connection workloads
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "ipSetSize": 1048576,
     "maxIpsetSize": 1048576,
     "prometheusMetricsEnabled": true
   }
