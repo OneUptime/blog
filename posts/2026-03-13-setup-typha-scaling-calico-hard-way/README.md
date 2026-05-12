@@ -59,10 +59,18 @@ kind: ClusterRole
 metadata:
   name: calico-typha
 rules:
-  # Typha watches Kubernetes Nodes to track topology
+  # Typha watches core Kubernetes resources on behalf of Felix
   - apiGroups: [""]
     resources: ["nodes", "namespaces", "pods", "serviceaccounts", "endpoints", "services"]
     verbs: ["watch", "list", "get"]
+  # Typha watches Kubernetes NetworkPolicies for Felix policy enforcement
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["watch", "list"]
+  # Typha watches EndpointSlices for service-based policy rule enforcement
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["watch", "list"]
   # Typha watches Calico resources via the aggregated API
   - apiGroups: ["crd.projectcalico.org"]
     resources:
@@ -127,8 +135,8 @@ spec:
       labels:
         k8s-app: calico-typha
       annotations:
-        # Prevent the kube-scheduler from accounting for Typha's own
-        # network policy enforcement latency during scheduling
+        # Prevent the cluster-autoscaler from evicting Typha pods
+        # during node scale-down so Felix connections stay stable
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       # Use the dedicated Typha service account
