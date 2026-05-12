@@ -143,8 +143,10 @@ metadata:
   namespace: api
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-internal: "true"  # AWS internal LB
-    # ExternalDNS: do NOT create public record for this service
-    external-dns.alpha.kubernetes.io/exclude: "true"
+    # ExternalDNS: do NOT create public record for this service.
+    # Setting controller to any value other than "dns-controller" causes the
+    # source to ignore the resource.
+    external-dns.alpha.kubernetes.io/controller: "none"
 spec:
   type: LoadBalancer
   selector:
