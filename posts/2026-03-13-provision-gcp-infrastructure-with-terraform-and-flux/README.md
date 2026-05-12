@@ -66,7 +66,7 @@ spec:
     namespace: flux-system
   path: ./modules/gcp/networking
   workspace: gcp-production-networking
-  approvePlan: "manual"
+  approvePlan: ""
 
   backendConfig:
     customConfiguration: |
@@ -127,7 +127,7 @@ spec:
     namespace: flux-system
   path: ./modules/gcp/gke
   workspace: gcp-production-gke
-  approvePlan: "manual"
+  approvePlan: ""
   runnerTerminationGracePeriodSeconds: 2400
 
   backendConfig:
@@ -207,7 +207,7 @@ spec:
     namespace: flux-system
   path: ./modules/gcp/cloudsql
   workspace: gcp-production-cloudsql
-  approvePlan: "manual"
+  approvePlan: ""
 
   backendConfig:
     customConfiguration: |
