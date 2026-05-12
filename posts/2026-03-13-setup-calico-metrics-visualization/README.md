@@ -71,18 +71,15 @@ The key dashboard categories for Calico are: component health overview (Felix, T
 
 ```promql
 # Felix dataplane programming latency by node
-
-histogram_quantile(0.99,
-  rate(felix_int_dataplane_apply_time_seconds_bucket[5m])
-)
+# Note: felix_int_dataplane_apply_time_seconds is a summary, so query the
+# pre-computed quantile label rather than _bucket with histogram_quantile.
+felix_int_dataplane_apply_time_seconds{quantile="0.99"}
 
 # Felix iptables rule count over time
 felix_iptables_rules
 
-# Felix resync duration
-histogram_quantile(0.99,
-  rate(felix_exec_time_micros_bucket{action="add-rule"}[5m])
-) / 1000000
+# Felix fork/exec time (summary, in microseconds)
+felix_exec_time_micros{quantile="0.99"} / 1000000
 ```
 
 ## Step 1: Import the Calico Community Dashboard
@@ -91,15 +88,14 @@ histogram_quantile(0.99,
 # Import the official Calico Grafana dashboard (ID: 12175)
 # Via Grafana UI: + > Import > ID: 12175
 
-# Or via API
-curl -X POST "http://grafana.monitoring.svc:3000/api/dashboards/import" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
-  -d '{
-    "dashboard": {"id": 12175},
-    "folderId": 0,
-    "overwrite": true
-  }'
+# Or via API: fetch the dashboard JSON from grafana.com, then POST it to
+# the supported /api/dashboards/db endpoint.
+curl -s "https://grafana.com/api/dashboards/12175/revisions/latest/download" \
+  | jq '{dashboard: ., folderId: 0, overwrite: true}' \
+  | curl -X POST "http://grafana.monitoring.svc:3000/api/dashboards/db" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
+      -d @-
 ```
 
 ## Step 2: Create IPAM Visualization
@@ -152,9 +148,13 @@ flowchart LR
 ## Step 4: Configure Alert Annotations
 
 ```promql
-# Add annotation to show when Calico upgrades happened
-# Triggered by calico_node_version metric changes
-changes(calico_node_version[1h]) > 0
+# Add annotation to show when Calico upgrades happened.
+# Calico components do not expose a built-in version metric, so derive it
+# from kube-state-metrics: the `image` label on calico-node containers
+# carries the version tag, and a change in the time series means an upgrade.
+changes(
+  count by (image) (kube_pod_container_info{container="calico-node"})
+[1h:1m]) > 0
 ```
 
 ## Dashboard Best Practices
