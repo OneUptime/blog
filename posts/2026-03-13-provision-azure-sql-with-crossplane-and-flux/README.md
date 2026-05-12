@@ -16,7 +16,7 @@ Azure SQL provisioning with Crossplane requires an Azure SQL Server resource as 
 
 ## Prerequisites
 
-- Crossplane with `provider-azure-sql` and `provider-azure-resource` installed
+- Crossplane with `provider-azure-sql` and `provider-azure-azure` installed
 - The Azure ProviderConfig named `default` configured
 - Flux CD bootstrapped on the cluster
 - An Azure subscription with an existing virtual network
@@ -48,7 +48,7 @@ The SQL Server is the logical container for one or more databases.
 ```yaml
 # infrastructure/databases/azure/sql-server.yaml
 apiVersion: sql.azure.upbound.io/v1beta1
-kind: Server
+kind: MSSQLServer
 metadata:
   name: production-sql-server
 spec:
@@ -83,7 +83,7 @@ spec:
 ```yaml
 # infrastructure/databases/azure/firewall-rules.yaml
 apiVersion: sql.azure.upbound.io/v1beta1
-kind: FirewallRule
+kind: MSSQLFirewallRule
 metadata:
   name: allow-azure-services
 spec:
@@ -91,25 +91,21 @@ spec:
     # Setting both start and end to 0.0.0.0 allows Azure services
     startIpAddress: "0.0.0.0"
     endIpAddress: "0.0.0.0"
-    serverNameRef:
+    serverIdRef:
       name: production-sql-server
-    resourceGroupNameRef:
-      name: production-databases-rg
   providerConfigRef:
     name: default
 
 ---
 # Allow specific VNet subnets using Virtual Network Rules
 apiVersion: sql.azure.upbound.io/v1beta1
-kind: VirtualNetworkRule
+kind: MSSQLVirtualNetworkRule
 metadata:
   name: allow-app-subnet
 spec:
   forProvider:
-    serverNameRef:
+    serverIdRef:
       name: production-sql-server
-    resourceGroupNameRef:
-      name: production-databases-rg
     # Reference the subnet ID where your application pods run
     subnetId: /subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/network-rg/providers/Microsoft.Network/virtualNetworks/main-vnet/subnets/app-subnet
     ignoreMissingVnetServiceEndpoint: false
@@ -122,7 +118,7 @@ spec:
 ```yaml
 # infrastructure/databases/azure/sql-database.yaml
 apiVersion: sql.azure.upbound.io/v1beta1
-kind: Database
+kind: MSSQLDatabase
 metadata:
   name: production-appdb
 spec:
@@ -195,11 +191,11 @@ spec:
 
 ```bash
 # Watch resource creation (Azure SQL takes several minutes)
-kubectl get servers.sql.azure.upbound.io --watch
-kubectl get databases.sql.azure.upbound.io --watch
+kubectl get mssqlservers.sql.azure.upbound.io --watch
+kubectl get mssqldatabases.sql.azure.upbound.io --watch
 
 # Check for errors
-kubectl describe database.sql.azure.upbound.io production-appdb
+kubectl describe mssqldatabase.sql.azure.upbound.io production-appdb
 
 # Retrieve the connection string endpoint
 kubectl get secret production-azure-sql-connection \
