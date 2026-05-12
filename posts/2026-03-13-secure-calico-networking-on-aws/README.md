@@ -57,13 +57,13 @@ SG_ID=$(aws ec2 create-security-group \
 # Allow only required traffic
 # Kubelet from control plane
 aws ec2 authorize-security-group-ingress \
-  --group-id $SG_ID --protocol tcp --port 10250 \
-  --source-group sg-control-plane
+  --group-id $SG_ID \
+  --ip-permissions 'IpProtocol=tcp,FromPort=10250,ToPort=10250,UserIdGroupPairs=[{GroupId=sg-0123456789abcdef0}]'
 
 # VXLAN encapsulation between nodes
 aws ec2 authorize-security-group-ingress \
-  --group-id $SG_ID --protocol udp --port 4789 \
-  --source-group $SG_ID
+  --group-id $SG_ID \
+  --ip-permissions "IpProtocol=udp,FromPort=4789,ToPort=4789,UserIdGroupPairs=[{GroupId=$SG_ID}]"
 
 # NodePort services (if needed)
 aws ec2 authorize-security-group-ingress \
