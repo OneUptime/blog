@@ -29,7 +29,7 @@ calicoctl ipam release --ip="${IP}"
 
 # Post-release verification
 calicoctl ipam check
-calicoctl ipam show | grep "${IP}"  # Should show no output
+calicoctl ipam show --ip="${IP}"  # Should report IP is not assigned
 ```
 
 ## Workflow Summary
