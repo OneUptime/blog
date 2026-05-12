@@ -214,14 +214,13 @@ kubectl logs -n monitoring deployment/prometheus-adapter --tail=50
 # External metrics (cluster-wide metrics not tied to pods)
 rules:
   external:
-    - seriesQuery: 'aws_sqs_approximate_number_of_messages_visible'
+    - seriesQuery: 'aws_sqs_approximate_number_of_messages_visible{queue_name!=""}'
       resources:
-        overrides:
-          queue_name:
-            resource: "externaldns.k8s.io/v1alpha1.dnsendpoints"  # Arbitrary mapping
+        template: <<.Resource>>
       name:
+        matches: "^aws_sqs_approximate_number_of_messages_visible$"
         as: "sqs_queue_depth"
-      metricsQuery: 'avg(<<.Series>>{queue_name="{{.MetricLabel.queue_name}}"})'
+      metricsQuery: 'avg(<<.Series>>{<<.LabelMatchers>>}) by (queue_name)'
 ```
 
 ## Best Practices
