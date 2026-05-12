@@ -35,15 +35,8 @@ done
 ```bash
 # Update each deployment
 for deploy in frontend backend; do
-  kubectl patch deployment $deploy -n production --type=merge -p "{
-    "spec": {
-      "template": {
-        "spec": {
-          "serviceAccountName": "${deploy}-sa"
-        }
-      }
-    }
-  }"
+  kubectl patch deployment $deploy -n production --type=merge \
+    -p "{\"spec\":{\"template\":{\"spec\":{\"serviceAccountName\":\"${deploy}-sa\"}}}}"
 done
 # Wait for rollout
 kubectl rollout status deployment/backend -n production
@@ -63,10 +56,14 @@ spec:
   ingress:
     - action: Log
       source:
-        serviceAccountSelector: name == 'backend-sa'
+        serviceAccounts:
+          names:
+            - backend-sa
     - action: Allow
       source:
-        serviceAccountSelector: name == 'backend-sa'
+        serviceAccounts:
+          names:
+            - backend-sa
     - action: Log
     - action: Allow  # Still allow all during audit phase
   types:
@@ -89,7 +86,9 @@ spec:
   ingress:
     - action: Allow
       source:
-        serviceAccountSelector: name == 'backend-sa'
+        serviceAccounts:
+          names:
+            - backend-sa
     - action: Deny
   types:
     - Ingress
