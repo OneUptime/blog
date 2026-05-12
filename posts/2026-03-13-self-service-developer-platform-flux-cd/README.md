@@ -124,8 +124,7 @@ kind: Kustomization
 resources:
   - ../../base
   - gitrepository.yaml
-  - kustomization.yaml
-namePrefix: ""
+  - apps.yaml
 patches:
   - patch: |-
       - op: replace
@@ -145,6 +144,12 @@ patches:
         value: team-alpha-developers
     target:
       kind: RoleBinding
+  - patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: team-alpha
+    target:
+      kind: ResourceQuota
 ```
 
 ## Step 4: Give Developers Their Own GitRepository Source
@@ -168,7 +173,7 @@ spec:
 ```
 
 ```yaml
-# tenants/overlays/team-alpha/kustomization.yaml
+# tenants/overlays/team-alpha/apps.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -226,6 +231,9 @@ mkdir -p tenants/overlays/${TENANT}
 # Copy base overlay template and substitute team name
 sed "s/team-alpha/${TENANT}/g" tenants/overlays/team-alpha/kustomization.yaml \
   > tenants/overlays/${TENANT}/kustomization.yaml
+
+sed "s/team-alpha/${TENANT}/g" tenants/overlays/team-alpha/apps.yaml \
+  > tenants/overlays/${TENANT}/apps.yaml
 
 sed "s|team-alpha-apps|${TENANT}-apps|g; s|acme/team-alpha-apps|acme/${TEAM_REPO}|g" \
   tenants/overlays/team-alpha/gitrepository.yaml \
