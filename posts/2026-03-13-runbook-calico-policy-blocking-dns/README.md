@@ -29,7 +29,7 @@ DNS blocking by Calico policies is a high-priority incident because it cascades 
 ```bash
 NS=<affected-namespace>
 kubectl run dns-check --image=busybox -n $NS --restart=Never --rm -i \
-  --timeout=15s -- nslookup kubernetes.default 2>&1
+  --pod-running-timeout=15s -- nslookup kubernetes.default 2>&1
 ```
 
 **Step 2: Find the blocking policy**
@@ -70,7 +70,7 @@ EOF
 # Verify
 
 kubectl run dns-test --image=busybox -n $NS --restart=Never --rm -i \
-  --timeout=15s -- nslookup kubernetes.default
+  --pod-running-timeout=15s -- nslookup kubernetes.default
 ```
 
 **Permanent: Fix blocking policy**
