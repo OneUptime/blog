@@ -223,7 +223,9 @@ jobs:
 
       - name: Install Conftest
         run: |
-          curl -sL https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz \
+          CONFTEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest \
+            | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -sL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
             | tar xz && sudo mv conftest /usr/local/bin/
 
       - name: Test app manifests against policies
@@ -251,7 +253,7 @@ Configure alerting when Gatekeeper rejects a resource in production:
 
 ```yaml
 # clusters/production/monitoring/policy-violation-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: policy-violation-alert
