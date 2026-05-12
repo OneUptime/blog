@@ -77,16 +77,53 @@ echo "Required IPs: $((30 * 10 + 10))"
 
 ## Step 4: Install Cilium in Azure CNI Legacy Chain Mode
 
-Deploy Cilium configured for Azure CNI legacy chaining.
+Deploy the CNI chaining ConfigMap that wires Azure CNI, portmap, and Cilium together, then install Cilium pointing at that ConfigMap.
 ```bash
-# Install Cilium in azure-cni chaining mode
+# Deploy the CNI chaining configuration
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cni-configuration
+  namespace: kube-system
+data:
+  cni-config: |-
+    {
+      "cniVersion": "0.3.0",
+      "name": "azure",
+      "plugins": [
+        {
+          "type": "azure-vnet",
+          "mode": "transparent",
+          "ipam": {
+             "type": "azure-vnet-ipam"
+           }
+        },
+        {
+          "type": "portmap",
+          "capabilities": {"portMappings": true},
+          "snat": true
+        },
+        {
+           "name": "cilium",
+           "type": "cilium-cni"
+        }
+      ]
+    }
+EOF
+
+# Install Cilium chained on top of Azure CNI via the generic-veth chaining mode
 helm install cilium cilium/cilium \
   --version 1.14.0 \
   --namespace kube-system \
-  --set cni.chainingMode=azure-cni \
+  --set cni.chainingMode=generic-veth \
+  --set cni.customConf=true \
+  --set cni.configMap=cni-configuration \
   --set cni.exclusive=false \
+  --set routingMode=native \
   --set enableIPv4Masquerade=false \
-  --set azure.resourceGroup=<resource-group>
+  --set endpointRoutes.enabled=true \
+  --set nodeinit.enabled=true
 ```
 
 ## Step 5: Verify Deployment
