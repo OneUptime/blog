@@ -34,7 +34,10 @@ neutron-db-manage --config-file /etc/neutron/neutron.conf   --config-file /etc/n
 openstack network agent list | grep calico
 
 # 3. Upgrade Kubernetes-facing Calico (standard operator upgrade)
-kubectl patch installation default --type=merge   -p '{"spec":{"version":"v3.28.0"}}'
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/operator-crds.yaml
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
 
 # 4. Upgrade calico-felix on compute nodes (via Ansible)
 ansible compute_nodes -m package -a "name=calico-felix state=latest"
