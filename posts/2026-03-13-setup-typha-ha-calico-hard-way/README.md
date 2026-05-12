@@ -49,7 +49,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
                 "labelSelector": {
                   "matchExpressions": [
                     {
-                      "key": "app",
+                      "key": "k8s-app",
                       "operator": "In",
                       "values": ["calico-typha"]
                     }
@@ -84,7 +84,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
                 "weight": 100,
                 "podAffinityTerm": {
                   "labelSelector": {
-                    "matchLabels": {"app": "calico-typha"}
+                    "matchLabels": {"k8s-app": "calico-typha"}
                   },
                   "topologyKey": "topology.kubernetes.io/zone"
                 }
