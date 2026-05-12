@@ -14,7 +14,7 @@ A service mesh provides the infrastructure layer for service-to-service communic
 
 Managing Istio and its configuration through Flux CD solves this comprehensively. The mesh installation, namespace enrollment, traffic policies, authorization rules, and observability integrations all live in Git. Every change is reviewed, audited, and automatically applied. Flux's health check capabilities let you verify that Istio components are healthy before applying dependent configurations.
 
-In this guide you will install Istio via Flux using the Helm charts, enroll namespaces in the mesh, configure traffic management, and implement progressive delivery with Argo Rollouts integration.
+In this guide you will install Istio via Flux using the Helm charts, enroll namespaces in the mesh, configure traffic management with canary routing, and enforce zero-trust authorization policies.
 
 ## Prerequisites
 
@@ -94,12 +94,9 @@ spec:
       # Default to STRICT mTLS for all services
       defaultConfig:
         holdApplicationUntilProxyStarts: true
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: istiod
-      namespace: istio-system
 ```
+
+The Helm controller waits for all release resources to become ready before marking the `HelmRelease` ready, so downstream Kustomizations and HelmReleases can use `dependsOn` to wait for istiod to be healthy.
 
 ## Step 2: Configure Mesh-Wide mTLS Policy
 
@@ -221,7 +218,7 @@ spec:
   interval: 10m
   dependsOn:
     - name: istiod
-      namespace: flux-system
+      namespace: istio-system
   chart:
     spec:
       chart: kiali-operator
