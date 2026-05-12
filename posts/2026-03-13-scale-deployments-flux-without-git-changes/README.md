@@ -12,7 +12,7 @@ Description: Temporarily scale Flux-managed deployments without triggering recon
 
 Scaling a deployment managed by Flux creates a conflict: you manually set `replicas: 10` for a traffic spike, but Flux sees the Git-declared value of `replicas: 3` and reconciles it back to three. This drift correction is Flux doing exactly what it is designed to do - but it is the wrong behavior when you intentionally need to override replica counts during incidents or traffic events.
 
-There are three correct approaches to scaling Flux-managed deployments: using a HorizontalPodAutoscaler (which Flux explicitly accommodates), temporarily suspending Flux reconciliation, or modifying the replica count in Git as an emergency change. Each approach has a different tradeoff between speed, safety, and GitOps compliance.
+There are three correct approaches to scaling Flux-managed deployments: using a HorizontalPodAutoscaler (which Flux explicitly accommodates), temporarily suspending Flux reconciliation for an emergency override, or modifying the replica count in Git (the standard GitOps path). Each approach has a different tradeoff between speed, safety, and GitOps compliance.
 
 This guide covers all three approaches, explains when to use each, and shows how to configure Flux to coexist peacefully with HPA-managed replica counts.
 
@@ -91,14 +91,14 @@ spec:
 With HPA in place, you can scale manually without Flux reverting:
 
 ```bash
-# Scale up temporarily during a traffic spike
+# Scale up temporarily during a traffic spike by raising the HPA floor
 kubectl patch hpa my-service -n team-alpha \
   --type=merge \
   -p '{"spec":{"minReplicas":10}}'
 
-# Or use kubectl scale (works on HPA min replicas through the HPA object)
+# kubectl scale on the Deployment also works (Flux no longer owns spec.replicas),
+# but HPA may scale it back down once metrics drop below threshold.
 kubectl scale --replicas=10 deployment/my-service -n team-alpha
-# This works because Flux no longer owns spec.replicas
 ```
 
 ## Step 3: Suspend Flux Reconciliation for Emergency Scaling
@@ -147,11 +147,11 @@ If the Git-declared replica count is too low for the current traffic, update Git
 flux resume kustomization my-service -n team-alpha
 ```
 
-## Step 5: Use Flux's ignore Annotation for Specific Fields
+## Step 5: Use Flux's SSA Merge Annotation to Coexist With HPA
 
-Flux supports a `kustomize.toolkit.fluxcd.io/ssa: merge` annotation that switches from server-side apply to a merge strategy for specific resources, giving manual changes a longer window before being overwritten.
+If you cannot remove `spec.replicas` from your manifest, Flux supports a `kustomize.toolkit.fluxcd.io/ssa: Merge` annotation that tells the kustomize-controller to preserve fields added by other tools to the resource. This is the supported way to let HPA mutate `spec.replicas` while Flux continues to manage the rest of the Deployment.
 
-For fine-grained control, annotate the Deployment to exclude specific fields:
+Annotate the Deployment so Flux merges rather than overrides:
 
 ```yaml
 # deploy/deployment.yaml
@@ -160,29 +160,19 @@ kind: Deployment
 metadata:
   name: my-service
   annotations:
-    # Tell Flux to ignore diffs in spec.replicas (useful with HPA)
+    # Preserve fields (like spec.replicas) set by other controllers, e.g. HPA
+    kustomize.toolkit.fluxcd.io/ssa: Merge
+```
+
+If instead you want Flux to create the Deployment once and never reconcile it again, use `IfNotPresent`. Be aware this also freezes other fields (image, env, resources), so it is rarely what you want for an actively maintained workload:
+
+```yaml
+metadata:
+  annotations:
     kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
 ```
 
-Or use Flux's `force: false` and field exclusion via the Kustomization:
-
-```yaml
-# Kustomization spec to ignore replica drift
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: my-service
-  namespace: team-alpha
-spec:
-  interval: 5m
-  force: false
-  sourceRef:
-    kind: GitRepository
-    name: team-alpha-apps
-  path: ./deploy
-```
-
-## Step 6: Emergency Scaling via Git (the GitOps-Correct Way)
+## Step 6: Scaling via Git (the GitOps-Correct Way)
 
 For non-emergency situations, always make replica changes through Git:
 
