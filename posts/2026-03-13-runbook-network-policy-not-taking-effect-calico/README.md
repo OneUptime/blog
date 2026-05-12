@@ -37,7 +37,7 @@ kubectl get pods -n <namespace> --show-labels | grep "<target-label>"
 POD_NODE=$(kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.nodeName}')
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=$POD_NODE -o name)
-kubectl exec $NODE_POD -n kube-system -- wget -qO- http://localhost:9099/readiness
+kubectl exec $NODE_POD -n kube-system -- calico-node -felix-ready
 ```
 
 **Step 3: Check iptables rules for the policy**
@@ -96,7 +96,7 @@ flowchart TD
 
 - Test all NetworkPolicy changes before production
 - Monitor Felix health and policy sync state
-- Use audit mode during policy development
+- Use staged network policies during policy development
 
 ## Conclusion
 
