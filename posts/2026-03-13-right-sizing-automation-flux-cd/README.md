@@ -261,7 +261,7 @@ gh pr list --label right-sizing
 - Always require human review of right-sizing pull requests before merging - automated recommendations can occasionally be too aggressive if workloads had unusual traffic during the measurement period.
 - Apply recommendations to staging first; monitor for 48 hours before promoting to production to catch memory pressure issues that only manifest under real traffic.
 - Set a minimum threshold for recommendation changes - only open a PR if the recommended values differ from current settings by more than 20% to avoid noise.
-- Use the "lower bound" VPA recommendation rather than "target" for memory limits; target recommendations can be too close to peak usage, risking OOMKills.
+- Use the "upper bound" VPA recommendation rather than "target" for memory limits; target recommendations can be too close to peak usage, risking OOMKills.
 - Include the VPA measurement window in the PR description so reviewers know whether the data reflects typical traffic or an anomaly.
 - Archive right-sizing PRs in a changelog to build a record of savings achieved over time.
 
