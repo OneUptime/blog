@@ -32,7 +32,7 @@ curl -X POST "http://grafana.monitoring.svc:3000/api/folders" \
 curl -X POST "http://grafana.monitoring.svc:3000/api/folders/calico-networking/permissions" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '[{"teamId": 1, "permission": 1}]'  # 1 = View only
+  -d '{"items": [{"teamId": 1, "permission": 1}]}'  # 1 = View only
 ```
 
 ## Security Control 2: Prometheus Data Source Restrictions
