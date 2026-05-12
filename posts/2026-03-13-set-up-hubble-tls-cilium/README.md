@@ -89,13 +89,13 @@ kubectl get cm -n kube-system cilium-config \
 Test the Hubble API with TLS:
 
 ```bash
-hubble --tls --tls-ca-cert ca.crt status
+hubble --tls --tls-ca-cert-files ca.crt status
 ```
 
 ## Access Hubble UI with TLS
 
 ```bash
-cilium hubble port-forward --tls &
+cilium hubble port-forward &
 hubble status
 ```
 
