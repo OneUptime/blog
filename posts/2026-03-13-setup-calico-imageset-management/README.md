@@ -50,22 +50,23 @@ For a full Calico deployment, you typically need:
 ## Step 2: Mirror Images to Private Registry
 
 ```bash
-REGISTRY=registry.internal.example.com/calico
+REGISTRY=registry.internal.example.com
 CALICO_VERSION=v3.27.0
 
 IMAGES=(
   "quay.io/tigera/operator:${CALICO_VERSION}"
-  "calico/cni:${CALICO_VERSION}"
-  "calico/node:${CALICO_VERSION}"
-  "calico/kube-controllers:${CALICO_VERSION}"
-  "calico/typha:${CALICO_VERSION}"
-  "calico/pod2daemon-flexvol:${CALICO_VERSION}"
-  "calico/apiserver:${CALICO_VERSION}"
+  "docker.io/calico/cni:${CALICO_VERSION}"
+  "docker.io/calico/node:${CALICO_VERSION}"
+  "docker.io/calico/kube-controllers:${CALICO_VERSION}"
+  "docker.io/calico/typha:${CALICO_VERSION}"
+  "docker.io/calico/pod2daemon-flexvol:${CALICO_VERSION}"
+  "docker.io/calico/apiserver:${CALICO_VERSION}"
 )
 
-for img in "${IMAGES[@]}"; do
-  src="docker.io/${img}"
-  dest="${REGISTRY}/$(basename ${img%:*}):${CALICO_VERSION}"
+for src in "${IMAGES[@]}"; do
+  # Strip the source registry hostname; keep the owner/image:tag path
+  path="${src#*/}"
+  dest="${REGISTRY}/${path}"
   crane copy "${src}" "${dest}"
   echo "Mirrored: ${dest}"
 done
@@ -118,7 +119,7 @@ kind: Installation
 metadata:
   name: default
 spec:
-  registry: registry.internal.example.com/calico
+  registry: registry.internal.example.com/
   imagePath: ""
   imagePrefix: ""
   calicoNetwork:
