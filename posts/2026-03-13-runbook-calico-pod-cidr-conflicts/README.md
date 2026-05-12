@@ -72,9 +72,13 @@ spec:
   natOutgoing: true
 EOF
 
-# Roll all workloads
-kubectl rollout restart deployment --all --all-namespaces
-kubectl rollout restart daemonset --all --all-namespaces
+# Roll all workloads to pull IPs from the new pool
+# kubectl rollout restart does not support --all-namespaces, so iterate.
+kubectl get deploy,ds -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.kind}/{.metadata.name}{"\n"}{end}' \
+  | while read ns resource; do
+      kubectl -n "$ns" rollout restart "$resource"
+    done
 
 # Monitor until all pods have new IPs
 watch kubectl get pods --all-namespaces -o wide
