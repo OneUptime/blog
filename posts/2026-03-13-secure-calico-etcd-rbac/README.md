@@ -48,13 +48,13 @@ Review and minimize permissions beyond defaults:
 
 ```mermaid
 graph TD
-    A[calico-felix role] --> B[/calico/v1/host/ - readwrite]
-    A --> C[/calico/v1/policy/ - READ ONLY]
-    A --> D[/calico/v1/config/ - READ ONLY]
+    A[calico-felix role] --> B[/calico/resources/v3/projectcalico.org/workloadendpoints/ - readwrite]
+    A --> C[/calico/resources/v3/projectcalico.org/networkpolicies/ - READ ONLY]
+    A --> D[/calico/resources/v3/projectcalico.org/clusterinformations/ - READ ONLY]
     A --> E[/calico/felix/v1/ - readwrite]
-    F[calico-cni role] --> G[/calico/v1/ipam/ - readwrite]
-    F --> H[/calico/v1/host/ - readwrite]
-    F --> I[/calico/v1/config/ - READ ONLY]
+    F[calico-cni role] --> G[/calico/ipam/v2/ - readwrite]
+    F --> H[/calico/resources/v3/projectcalico.org/workloadendpoints/ - readwrite]
+    F --> I[/calico/resources/v3/projectcalico.org/ippools/ - READ ONLY]
 ```
 
 Regularly audit permissions with:
