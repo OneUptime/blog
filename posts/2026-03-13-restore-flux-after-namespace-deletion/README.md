@@ -86,9 +86,10 @@ Secrets in Kubernetes are not version-controlled in plaintext. After namespace r
 # If using Sealed Secrets, check that SealedSecret objects are re-applied
 kubectl get sealedsecrets -n production
 
-# Force the controller to reconcile
-kubectl annotate sealedsecret my-app-secret -n production \
-  sealedsecrets.bitnami.com/managed=true --overwrite
+# The sealed-secrets controller automatically reconciles when a SealedSecret
+# is (re-)applied. If the corresponding Secret is missing and reconciliation
+# appears stuck, restart the controller to force a full resync.
+kubectl rollout restart deployment sealed-secrets-controller -n kube-system
 
 # If using External Secrets Operator
 kubectl get externalsecrets -n production
@@ -103,9 +104,9 @@ PVCs are the trickiest resource to recover. If the underlying PersistentVolume h
 # Find PVs that were previously bound to the deleted namespace
 kubectl get pv | grep Released
 
-# Patch the PV to remove the old claim reference, making it available
-kubectl patch pv pvc-abc123 -p \
-  '{"spec":{"claimRef":{"name":null,"namespace":null,"uid":null}}}'
+# Patch the PV to remove the old claim reference, making it Available again
+kubectl patch pv pvc-abc123 --type=merge -p \
+  '{"spec":{"claimRef": null}}'
 ```
 
 Then ensure your Git manifests include the correct `volumeName` in the PVC spec so Flux binds to the correct PV on re-apply.
