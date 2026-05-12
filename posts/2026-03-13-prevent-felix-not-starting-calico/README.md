@@ -73,7 +73,7 @@ kubectl patch daemonset calico-node -n kube-system --type=json \
 
 ```bash
 # Before applying FelixConfiguration changes
-calicoctl apply -f felixconfig.yaml --dry-run
+kubectl apply -f felixconfig.yaml --dry-run=server
 calicoctl get felixconfiguration default -o yaml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)" \
   && echo "FelixConfiguration YAML is valid"
 ```
@@ -94,7 +94,7 @@ flowchart LR
     B -- Fail --> C[Install missing tools / load modules]
     B -- Pass --> D[Node ready for calico-node]
     D --> E[Felix starts and passes readiness probe]
-    F[FelixConfiguration change] --> G[Validate with calicoctl dry-run]
+    F[FelixConfiguration change] --> G[Validate with kubectl --dry-run=server]
     G -- Valid --> H[Apply to cluster]
 ```
 
