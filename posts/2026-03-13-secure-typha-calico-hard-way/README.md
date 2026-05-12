@@ -33,7 +33,7 @@ Verify on the Felix side.
 calicoctl get felixconfiguration default -o yaml | grep -i typha
 ```
 
-Expect `typhaCAFile`, `tymphaCertFile`, and `typhaKeyFile` to be set.
+Expect `typhaCAFile`, `typhaCertFile`, and `typhaKeyFile` to be set.
 
 ## Step 2: Restrict Typha RBAC to Minimum Permissions
 
@@ -138,7 +138,7 @@ Verify Typha does not accept unauthenticated connections.
 ```bash
 # Attempt an unauthenticated connection to Typha (should fail)
 kubectl run tls-test --image=busybox --restart=Never -- \
-  wget --timeout=5 typha-svc.calico-system.svc.cluster.local:5473 || echo "Correctly rejected"
+  wget --timeout=5 calico-typha.calico-system.svc.cluster.local:5473 || echo "Correctly rejected"
 kubectl delete pod tls-test
 ```
 
