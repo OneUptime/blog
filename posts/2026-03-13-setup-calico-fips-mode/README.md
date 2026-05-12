@@ -49,9 +49,13 @@ cat /proc/sys/crypto/fips_enabled
 ## Step 2: Verify FIPS-Capable Kubernetes
 
 ```bash
-# Kubernetes control plane must also be FIPS-capable
-# Check if kube-apiserver uses FIPS-compliant TLS
-kubectl get configmap kube-apiserver-config -n kube-system -o yaml | grep tls-cipher-suites
+# Kubernetes control plane must also be FIPS-capable.
+# In kubeadm clusters, kube-apiserver runs as a static pod; inspect its manifest
+# on a control-plane node to confirm --tls-cipher-suites is set appropriately:
+sudo grep -A1 tls-cipher-suites /etc/kubernetes/manifests/kube-apiserver.yaml
+
+# Alternatively, inspect the running kube-apiserver pod spec:
+kubectl -n kube-system get pod -l component=kube-apiserver -o yaml | grep tls-cipher-suites
 
 # Acceptable FIPS cipher suites for kube-apiserver:
 # TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
@@ -93,15 +97,15 @@ kind: Installation
 metadata:
   name: default
 spec:
-  # Enable FIPS mode
+  # Enable FIPS mode (valid values: Enabled, Disabled)
   fipsMode: Enabled
   calicoNetwork:
     ipPools:
       - cidr: 192.168.0.0/16
         encapsulation: VXLAN
-  # Use FIPS-validated TLS cipher suites
-  componentResources: []
 ```
+
+> Note: FIPS mode requires Linux x86_64 nodes, disables features that rely on non-FIPS-validated crypto (WireGuard, BGP password, Application Layer API/L7 features), and switching FIPS mode off and then on again is not supported.
 
 Apply the configuration:
 
