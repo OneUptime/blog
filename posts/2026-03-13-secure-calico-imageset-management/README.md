@@ -136,8 +136,7 @@ spec:
       match:
         any:
           - resources:
-              kinds: ["ImageSet"]
-              apiGroups: ["operator.tigera.io"]
+              kinds: ["operator.tigera.io/v1/ImageSet"]
       validate:
         message: "All images in ImageSet must specify a digest"
         foreach:
@@ -145,7 +144,7 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ element.digest }}"
+                  - key: "{{ element.digest || '' }}"
                     operator: Equals
                     value: ""
 ```
