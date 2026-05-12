@@ -83,9 +83,11 @@ rm -f /opt/cni/bin/calico-ipam
 ip link delete tunl0 type ipip 2>/dev/null || true
 ip link delete vxlan.calico 2>/dev/null || true
 
-# Flush cali-* iptables chains
-for CHAIN in $(iptables -L | grep "^Chain cali-" | awk '{print $2}'); do
-  iptables -F $CHAIN 2>/dev/null && iptables -X $CHAIN 2>/dev/null || true
+# Flush cali-* iptables chains from all tables
+for TABLE in filter nat mangle raw; do
+  for CHAIN in $(iptables -t $TABLE -L | grep "^Chain cali-" | awk '{print $2}'); do
+    iptables -t $TABLE -F $CHAIN 2>/dev/null && iptables -t $TABLE -X $CHAIN 2>/dev/null || true
+  done
 done
 
 echo "Node cleanup complete"
