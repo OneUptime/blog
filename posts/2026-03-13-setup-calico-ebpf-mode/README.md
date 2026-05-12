@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, eBPF, Performance
 
-Description: A step-by-step guide to enabling Calico's eBPF data plane for improved network performance, replacing iptables with high-performance BPF programs on Linux kernels 5.3+.
+Description: A step-by-step guide to enabling Calico's eBPF data plane for improved network performance, replacing iptables with high-performance BPF programs on Linux kernels 5.10+.
 
 ---
 
@@ -12,14 +12,14 @@ Description: A step-by-step guide to enabling Calico's eBPF data plane for impro
 
 Calico's eBPF data plane replaces the traditional iptables-based networking with BPF (Berkeley Packet Filter) programs that run directly in the Linux kernel. This delivers significant performance improvements: lower latency, higher throughput, and reduced CPU overhead, especially for services with many endpoints. The eBPF data plane also enables features like direct server return (DSR) for services, which eliminates NAT overhead for external traffic.
 
-Enabling eBPF mode requires Linux kernel 5.3 or later, which is available in most modern Linux distributions. The migration from iptables to eBPF involves configuring kube-proxy to work in eBPF mode (or disabling it entirely) and enabling the eBPF data plane in the Calico Installation resource.
+Enabling eBPF mode requires Linux kernel 5.10 or later (or RHEL with kernel 4.18.0-305+), which is available in most modern Linux distributions. The migration from iptables to eBPF involves configuring kube-proxy to work in eBPF mode (or disabling it entirely) and enabling the eBPF data plane in the Calico Installation resource.
 
 This guide walks through the complete setup process including kernel verification, kube-proxy configuration, and Calico eBPF enablement.
 
 ## Prerequisites
 
 - Calico v3.20+ installed via the Tigera Operator
-- Linux kernel 5.3+ on all nodes (5.10+ recommended for full feature set)
+- Linux kernel 5.10+ on all nodes (or RHEL with kernel 4.18.0-305+)
 - Kubernetes v1.20+
 - No non-standard kube-proxy configurations
 
@@ -34,10 +34,9 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
 done
 
 # Minimum versions for eBPF features:
-# - 5.3: Basic eBPF data plane
-# - 5.8: TCP timestamp support
-# - 5.10: LRU conntrack table, improved performance
+# - 5.10: Minimum supported (LRU conntrack table, improved performance)
 # - 5.14+: Full feature set
+# - RHEL 4.18.0-305+ is also supported (backported BPF features)
 
 # Check BPF filesystem is mounted
 kubectl debug node/<node> --image=alpine -it --quiet -- \
@@ -54,7 +53,7 @@ Before enabling eBPF, configure kube-proxy to not conflict:
 kubectl patch ds -n kube-system kube-proxy \
   -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico": "true"}}}}}'
 
-# Option B: Keep kube-proxy but set iptables-backend to nftables
+# Option B: Keep kube-proxy but run it in ipvs mode to minimize iptables conflicts
 # (for clusters that need kube-proxy for specific features)
 kubectl get configmap kube-proxy -n kube-system -o yaml | \
   grep -A5 mode
@@ -100,7 +99,7 @@ metadata:
 spec:
   calicoNetwork:
     linuxDataplane: BPF
-    hostPorts: Disabled  # hostPorts not supported with eBPF
+    hostPorts: Enabled  # hostPorts are supported in eBPF mode (v3.20+)
     multiInterfaceMode: None
     ipPools:
       - cidr: 192.168.0.0/16
@@ -152,4 +151,4 @@ flowchart LR
 
 ## Conclusion
 
-Setting up Calico eBPF mode delivers significant performance improvements by replacing iptables with in-kernel BPF programs. The key steps are: verifying kernel version compatibility (5.3+ required), configuring kube-proxy to avoid conflicts, providing Felix with direct API server access, and enabling the BPF data plane in the Installation resource. After enabling eBPF, verify that BPF programs are loaded and iptables rules have been replaced to confirm the transition was successful.
+Setting up Calico eBPF mode delivers significant performance improvements by replacing iptables with in-kernel BPF programs. The key steps are: verifying kernel version compatibility (5.10+ required), configuring kube-proxy to avoid conflicts, providing Felix with direct API server access, and enabling the BPF data plane in the Installation resource. After enabling eBPF, verify that BPF programs are loaded and iptables rules have been replaced to confirm the transition was successful.
