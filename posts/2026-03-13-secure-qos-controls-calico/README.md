@@ -71,7 +71,7 @@ graph TD
         APP[Application] --> ETH0[eth0]
     end
     subgraph Node
-        VETH[cali interface] -->|tc tbf\négress limit| NETWORK[Network]
+        VETH[cali interface] -->|tc tbf\negress limit| NETWORK[Network]
         NETWORK -->|tc ingress\npolicing| VETH
     end
     ETH0 <-->|veth pair| VETH
