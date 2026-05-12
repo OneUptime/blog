@@ -133,7 +133,7 @@ jobs:
 
       - name: Install SOPS
         run: |
-          SOPS_VERSION="v3.8.1"
+          SOPS_VERSION="v3.12.2"
           curl -sLO "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
           chmod +x sops-${SOPS_VERSION}.linux.amd64
           sudo mv sops-${SOPS_VERSION}.linux.amd64 /usr/local/bin/sops
@@ -143,16 +143,18 @@ jobs:
           chmod +x scripts/validate-sops.sh
           ./scripts/validate-sops.sh
 
-      - name: Validate SOPS recipient keys
+      - name: Verify SOPS encryption status
         run: |
-          # Check that each encrypted file uses the expected recipients
+          # Use 'sops filestatus' to confirm each file is encrypted
           find . -path '*/secrets/*.yaml' -exec grep -q 'sops:' {} \; -print | while read -r file; do
-            echo "Checking recipients in: $file"
-            # Extract recipient fingerprints from the file
-            # (SOPS stores public key info in the metadata)
-            sops --input-type yaml --output-type yaml \
-              filestatus "$file" 2>/dev/null || \
-              echo "WARNING: Could not verify recipients for $file"
+            echo "Checking: $file"
+            # 'sops filestatus' returns {"encrypted":true} or {"encrypted":false}
+            status=$(sops filestatus --input-type yaml "$file" 2>/dev/null || echo '{"encrypted":false}')
+            if echo "$status" | grep -q '"encrypted":true'; then
+              echo "OK: $file is SOPS-encrypted"
+            else
+              echo "WARNING: $file did not report encrypted status: $status"
+            fi
           done
 
       - name: Check for plaintext secrets in git history
@@ -189,11 +191,10 @@ If your CI environment has access to the decryption key (e.g., staging CI), vali
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/getsops/sops
-    rev: v3.8.1
+  - repo: https://github.com/yuvipanda/pre-commit-hook-ensure-sops
+    rev: v1.1
     hooks:
-      - id: sops-check
-        args: ['--input-type', 'yaml']
+      - id: sops-encryption
 ```
 
 ## Best Practices
