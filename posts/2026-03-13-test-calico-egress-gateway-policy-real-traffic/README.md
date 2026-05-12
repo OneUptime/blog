@@ -63,7 +63,7 @@ echo "Result: $?"
 
 ```bash
 # Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+curl -s http://localhost:9091/metrics | grep calico_denied
 
 # Review flow logs
 tail -f /var/log/calico/felix.log | grep "DENY"
