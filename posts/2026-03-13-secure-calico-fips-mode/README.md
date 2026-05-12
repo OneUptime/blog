@@ -47,7 +47,7 @@ kubectl patch deployment tigera-operator -n tigera-operator \
     "path": "/spec/template/spec/containers/0/env/-",
     "value": {
       "name": "GODEBUG",
-      "value": "tlsrsakex=0,tls13=1"
+      "value": "tlsrsakex=0"
     }
   }]'
 ```
@@ -105,7 +105,7 @@ spec:
         - protocol: TCP
           port: 9091  # Felix metrics
         - protocol: TCP
-          port: 9094  # Typha metrics
+          port: 9093  # Typha metrics
     # Allow kubelet health checks
     - from: []
       ports:
@@ -139,7 +139,7 @@ metadata:
   namespace: calico-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: calico-tls-secrets-viewer
 subjects:
   - kind: ServiceAccount
@@ -167,7 +167,7 @@ flowchart LR
 # Use sealed secrets or external secrets for Calico credentials
 # Example with External Secrets Operator
 cat <<EOF | kubectl apply -f -
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: calico-etcd-secrets
