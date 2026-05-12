@@ -65,7 +65,7 @@ spec:
 # Example: for 4 replicas needing 2Gi each: 8Gi + 0.5Gi + 1Gi = ~10Gi node
 ```
 
-**Prevention 3: Set eviction threshold higher for calico-node namespace**
+**Prevention 3: Configure kubelet eviction thresholds**
 
 ```bash
 # Configure kubelet to use higher eviction thresholds for system pods
