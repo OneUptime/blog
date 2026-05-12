@@ -134,18 +134,18 @@ spec:
     initConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: aws
+          cloud-provider: external
     joinConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: aws
+          cloud-provider: external
     clusterConfiguration:
       apiServer:
         extraArgs:
-          cloud-provider: aws
+          cloud-provider: external
       controllerManager:
         extraArgs:
-          cloud-provider: aws
+          cloud-provider: external
 
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -162,9 +162,9 @@ spec:
       rootVolume:
         size: 50
         type: gp3
-      ami:
-        # Use the latest validated AMI for the Kubernetes version
-        lookupType: AnyOwner
+      # AMI is auto-looked up by CAPA based on the Kubernetes version.
+      # To pin a specific image, set `ami.id` or override `imageLookupFormat`,
+      # `imageLookupOrg`, and `imageLookupBaseOS` on this spec.
 ```
 
 ## Step 5: Define Worker Node Pool
@@ -208,7 +208,7 @@ spec:
       joinConfiguration:
         nodeRegistration:
           kubeletExtraArgs:
-            cloud-provider: aws
+            cloud-provider: external
 
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -268,6 +268,16 @@ kubectl --kubeconfig=production-workload-01.kubeconfig get nodes
 # Install a CNI plugin (required before nodes become Ready)
 kubectl --kubeconfig=production-workload-01.kubeconfig apply -f \
   https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+
+# Install the AWS Cloud Controller Manager (required because the kubelet,
+# kube-apiserver, and kube-controller-manager are configured with
+# `cloud-provider: external`).
+helm repo add aws-cloud-controller-manager \
+  https://kubernetes.github.io/cloud-provider-aws
+helm upgrade --install aws-cloud-controller-manager \
+  aws-cloud-controller-manager/aws-cloud-controller-manager \
+  --kubeconfig=production-workload-01.kubeconfig \
+  --namespace kube-system
 ```
 
 ## Best Practices
