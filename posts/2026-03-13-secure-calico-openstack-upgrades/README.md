@@ -35,7 +35,7 @@ grep "auth_uri\|identity_uri" /etc/neutron/neutron.conf | head -5
 grep "etcd" /etc/calico/felix.cfg | grep -v "^#"
 
 # Verify OpenStack audit logs for calico service account activity
-openstack event list --project service --all-projects | grep calico
+grep -i calico /var/log/keystone/keystone.log | tail -50
 ```
 
 ## Conclusion
