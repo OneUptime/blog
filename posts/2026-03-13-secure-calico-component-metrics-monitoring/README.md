@@ -118,14 +118,15 @@ rules:
 
 ```yaml
 # Prometheus service account needs to scrape calico-system
+# Use a namespaced Role to limit access to the calico-system namespace
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: prometheus-calico-scraper
+  namespace: calico-system
 rules:
   - apiGroups: [""]
     resources: ["pods", "endpoints", "services"]
-    namespaces: ["calico-system"]
     verbs: ["get", "list", "watch"]
 ```
 
