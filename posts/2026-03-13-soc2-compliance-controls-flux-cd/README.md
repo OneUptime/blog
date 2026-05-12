@@ -127,7 +127,6 @@ data:
         elasticsearch:
           hosts:
             - http://elasticsearch.logging:9200
-          index: flux-audit-{.metadata.namespace}
           indexFormat: "flux-audit-{2006.01.02}"
 ```
 
