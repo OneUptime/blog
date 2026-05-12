@@ -118,7 +118,7 @@ spec:
 
 ```bash
 az security pricing create \
-  --name KubernetesService \
+  --name Containers \
   --tier Standard
 
 # This enables threat detection for:
@@ -136,6 +136,7 @@ Restrict kubectl access to VNet:
 # For self-managed, ensure API server binding
 # is on private IP and NSG restricts port 6443
 az network nsg rule create \
+  --resource-group k8s-rg \
   --nsg-name control-plane-nsg \
   --name AllowKubectlVPN \
   --priority 110 \
