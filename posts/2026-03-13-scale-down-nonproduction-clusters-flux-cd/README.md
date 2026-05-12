@@ -64,14 +64,14 @@ patches:
 Deploy a CronJob that suspends Flux reconciliation for non-production Kustomizations at the end of the business day.
 ```yaml
 # cronjob-scale-down.yaml
-# CronJob scaling down dev cluster workloads at 7pm on weekdays
+# CronJob scaling down dev cluster workloads at end of business day on weekdays
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: dev-scale-down
   namespace: flux-system
 spec:
-  # Scale down at 7pm EST (00:00 UTC+1) Monday-Friday
+  # Scale down at 23:00 UTC (6pm EST / 7pm EDT) Monday-Friday
   schedule: "0 23 * * 1-5"
   jobTemplate:
     spec:
@@ -102,7 +102,7 @@ metadata:
   name: dev-scale-up
   namespace: flux-system
 spec:
-  # Resume at 7am EST (12:00 UTC) Monday-Friday
+  # Resume at 12:00 UTC (7am EST / 8am EDT) Monday-Friday
   schedule: "0 12 * * 1-5"
   jobTemplate:
     spec:
