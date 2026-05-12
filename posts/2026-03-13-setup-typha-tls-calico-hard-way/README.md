@@ -23,8 +23,8 @@ Setting up TLS for Typha in a hard way installation involves generating a certif
 The CA is the root of trust. All certificates must be signed by this CA.
 
 ```bash
-cd /etc/calico/pki
 mkdir -p /etc/calico/pki
+cd /etc/calico/pki
 
 # Generate CA private key and self-signed certificate
 
@@ -131,7 +131,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{
     "typhaCAFile": "/felix-tls/ca.crt",
-    "tymphaCertFile": "/felix-tls/tls.crt",
+    "typhaCertFile": "/felix-tls/tls.crt",
     "typhaKeyFile": "/felix-tls/tls.key"
   }}'
 ```
