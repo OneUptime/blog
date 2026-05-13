@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Backup, Restore, CloudNativePG, PgBackRest
+Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Backup, Restore, CloudNativePG, Barman Cloud
 
 Description: Configure PostgreSQL backup and restore using operator CRDs and Flux CD for automated, GitOps-managed database disaster recovery.
 
@@ -10,15 +10,15 @@ Description: Configure PostgreSQL backup and restore using operator CRDs and Flu
 
 ## Introduction
 
-Database backup and restore configuration is one of the most critical aspects of running PostgreSQL in production. Modern PostgreSQL operators like CloudNativePG, PGO, and the Percona operator integrate pgBackRest for physical backups and WAL archiving, providing point-in-time recovery (PITR) capabilities. Configuring these backups through Flux CD ensures that backup schedules, retention policies, and restore procedures are version-controlled and consistently applied across clusters.
+Database backup and restore configuration is one of the most critical aspects of running PostgreSQL in production. Modern PostgreSQL operators like CloudNativePG, PGO, and the Percona operator support physical backups and WAL archiving, providing point-in-time recovery (PITR) capabilities through tools such as Barman Cloud and pgBackRest. Configuring these backups through Flux CD ensures that backup schedules, retention policies, and restore procedures are version-controlled and consistently applied across clusters.
 
 A GitOps approach to backup configuration also makes disaster recovery testing reproducible: you can bootstrap a new cluster from a backup by simply committing a CRD with the restore configuration and letting Flux apply it.
 
 ## Prerequisites
 
-- CloudNativePG operator deployed via Flux (or compatible operator)
-- S3-compatible object store (AWS S3, MinIO, or GCS)
-- IAM credentials with read/write access to the backup bucket
+- CloudNativePG operator and the Barman Cloud Plugin deployed via Flux
+- Object store supported by Barman Cloud (AWS S3, MinIO, Azure Blob Storage, or GCS)
+- Object store credentials with read/write access to the backup bucket
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Configure Backup Object Store Credentials
@@ -34,13 +34,45 @@ metadata:
 type: Opaque
 stringData:
   ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
-  SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  ACCESS_SECRET_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
 
 ## Step 2: Configure Backup in the CloudNativePG Cluster
 
 ```yaml
 # infrastructure/databases/postgres/production/cluster.yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: app-postgres-backup
+  namespace: databases
+spec:
+  configuration:
+    # S3 bucket destination
+    destinationPath: "s3://my-company-postgres-backups/production/app-postgres"
+    s3Credentials:
+      accessKeyId:
+        name: backup-s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-s3-credentials
+        key: ACCESS_SECRET_KEY
+    # Set endpointURL only for S3-compatible providers such as MinIO
+    # endpointURL: "https://minio.example.com"
+    # WAL archiving compression
+    wal:
+      compression: gzip
+      encryption: AES256  # server-side encryption
+      maxParallel: 8      # parallel WAL upload threads
+    # Data backup compression
+    data:
+      compression: gzip
+      encryption: AES256
+      immediateCheckpoint: false
+      jobs: 2   # parallel backup jobs
+  # Keep full backups
+  retentionPolicy: "30d"  # retain 30 days of backups
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -50,33 +82,12 @@ spec:
   instances: 3
   imageName: ghcr.io/cloudnative-pg/postgresql:16.3
 
-  # Backup configuration
-  backup:
-    barmanObjectStore:
-      # S3 bucket destination
-      destinationPath: "s3://my-company-postgres-backups/production/app-postgres"
-      s3Credentials:
-        accessKeyId:
-          name: backup-s3-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: backup-s3-credentials
-          key: SECRET_ACCESS_KEY
-      # AWS region
-      endpointURL: ""  # leave empty for AWS S3; set for MinIO
-      # WAL archiving compression
-      wal:
-        compression: gzip
-        encryption: AES256  # server-side encryption
-        maxParallel: 8      # parallel WAL upload threads
-      # Data backup compression
-      data:
-        compression: gzip
-        encryption: AES256
-        immediateCheckpoint: false
-        jobs: 2   # parallel backup jobs
-    # Keep full backups
-    retentionPolicy: "30d"  # retain 30 days of backups
+  # Backup and WAL archiving configuration
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: app-postgres-backup
 
   # ... (rest of cluster spec)
   bootstrap:
@@ -101,11 +112,14 @@ metadata:
   namespace: databases
 spec:
   # Schedule: daily at 1 AM
-  schedule: "0 1 * * *"
+  schedule: "0 0 1 * * *"
   # Backup type: full physical backup
   backupOwnerReference: cluster
   cluster:
     name: app-postgres
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   immediate: false  # wait for next scheduled time
   suspend: false    # active
 ---
@@ -116,10 +130,13 @@ metadata:
   namespace: databases
 spec:
   # Weekly full backup on Sunday at midnight
-  schedule: "0 0 * * 0"
+  schedule: "0 0 0 * * 0"
   backupOwnerReference: cluster
   cluster:
     name: app-postgres
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   immediate: false
   suspend: false
 ```
@@ -134,20 +151,23 @@ kubectl get backup -n databases
 kubectl get scheduledbackup -n databases
 
 # Trigger a manual backup
+BACKUP_NAME="app-postgres-manual-$(date +%Y%m%d%H%M)"
 kubectl apply -f - <<EOF
 apiVersion: postgresql.cnpg.io/v1
 kind: Backup
 metadata:
-  name: app-postgres-manual-$(date +%Y%m%d%H%M)
+  name: ${BACKUP_NAME}
   namespace: databases
 spec:
-  method: barmanObjectStore
   cluster:
     name: app-postgres
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
 EOF
 
 # Check backup status and S3 path
-kubectl get backup app-postgres-manual-20260313 -n databases -o yaml
+kubectl get backup "${BACKUP_NAME}" -n databases -o yaml
 ```
 
 ## Step 5: Restore from Backup (Point-in-Time Recovery)
@@ -167,29 +187,19 @@ spec:
 
   bootstrap:
     recovery:
-      # Reference to the original cluster's backup configuration
-      backup:
-        name: app-postgres-manual-20260313  # specific backup
-      # OR: recover from a specific point in time
-      recoveryTarget:
-        targetTime: "2026-03-13T12:00:00.000000+00:00"
-      # Source cluster's WAL archive
+      # Recover from a specific point in time using the source cluster's WAL archive
       source: app-postgres
+      recoveryTarget:
+        targetTime: "2026-03-13T12:00:00Z"
 
-  # Must match the original cluster's backup configuration
+  # Reference the ObjectStore that contains the original cluster's backups
   externalClusters:
     - name: app-postgres
-      barmanObjectStore:
-        destinationPath: "s3://my-company-postgres-backups/production/app-postgres"
-        s3Credentials:
-          accessKeyId:
-            name: backup-s3-credentials
-            key: ACCESS_KEY_ID
-          secretAccessKey:
-            name: backup-s3-credentials
-            key: SECRET_ACCESS_KEY
-        wal:
-          maxParallel: 8
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: app-postgres-backup
+          serverName: app-postgres
 
   storage:
     size: 50Gi
@@ -199,10 +209,40 @@ Apply this via Flux by committing it to a `recovery` path in your repository.
 
 ## Step 6: Automate Restore Testing
 
-Test restores periodically using a CronJob that validates backup integrity:
+Test restores periodically using a CronJob that creates a temporary recovery cluster and waits for it to become ready:
 
 ```yaml
 # infrastructure/databases/postgres/backup-validation-job.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-validation
+  namespace: databases
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-validation
+  namespace: databases
+rules:
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-validation
+  namespace: databases
+subjects:
+  - kind: ServiceAccount
+    name: backup-validation
+    namespace: databases
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backup-validation
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -215,22 +255,51 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          serviceAccountName: backup-validation
           containers:
             - name: validate
-              image: ghcr.io/cloudnative-pg/postgresql:16.3
+              image: bitnami/kubectl:1.29
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Use pgbackrest to verify the latest backup
-                  pgbackrest --stanza=app-postgres check
+                  set -eu
+                  trap 'kubectl delete cluster app-postgres-restore-test -n databases --wait=false --ignore-not-found' EXIT
+
+                  # Create a throwaway recovery cluster from the latest available backup
+                  cat <<'EOF' | kubectl apply -f -
+                  apiVersion: postgresql.cnpg.io/v1
+                  kind: Cluster
+                  metadata:
+                    name: app-postgres-restore-test
+                    namespace: databases
+                  spec:
+                    instances: 1
+                    imageName: ghcr.io/cloudnative-pg/postgresql:16.3
+                    bootstrap:
+                      recovery:
+                        source: app-postgres
+                    externalClusters:
+                      - name: app-postgres
+                        plugin:
+                          name: barman-cloud.cloudnative-pg.io
+                          parameters:
+                            barmanObjectName: app-postgres-backup
+                            serverName: app-postgres
+                    storage:
+                      size: 50Gi
+                  EOF
+                  kubectl wait cluster/app-postgres-restore-test \
+                    -n databases \
+                    --for=condition=Ready \
+                    --timeout=30m
                   echo "Backup validation completed: $(date)"
 ```
 
 ## Best Practices
 
 - Test your restore procedure in a non-production environment at least monthly to verify backups are valid and the process works.
-- Use `retentionPolicy: "30d"` but also verify the actual S3 bucket contents - retention is applied on the next scheduled backup run.
+- Use `retentionPolicy: "30d"` but also verify the actual object store contents - retention is applied during plugin reconciliation.
 - Enable WAL compression with `gzip` and encryption with `AES256` for all production backups to save costs and meet security requirements.
 - Store backup credentials in SealedSecrets and rotate them quarterly.
 - Use Flux `dependsOn` to ensure the ScheduledBackup resource is only created after the Cluster is healthy.
