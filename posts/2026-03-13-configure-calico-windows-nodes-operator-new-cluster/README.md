@@ -10,9 +10,9 @@ Description: A guide to configuring Calico on Windows nodes via the Tigera Opera
 
 ## Introduction
 
-When using the Tigera Operator to manage Calico on Windows nodes, all configuration flows through the operator's CRDs - primarily the `Installation` resource. The operator translates the Installation spec into the appropriate Windows DaemonSet configuration, CNI config files, and network settings. This unified configuration model is the main advantage of the operator approach over manual Windows Calico installation.
+When using the Tigera Operator to manage Calico on Windows nodes, most installation configuration flows through the operator's CRDs - primarily the `Installation` resource. The operator translates the Installation spec into the appropriate Windows DaemonSet configuration, CNI config files, and network settings. This unified configuration model is the main advantage of the operator approach over manual Windows Calico installation.
 
-The key configuration decisions for Windows nodes are encapsulation mode (VXLAN is required), Windows dataplane selection (HNS), and IP pool CIDR alignment with the rest of the cluster. The operator enforces that Windows-incompatible settings are not applied to Windows nodes.
+The key configuration decisions for Windows nodes are the networking mode (VXLAN overlay or BGP without encapsulation), Windows dataplane selection (HNS), the Kubernetes service CIDR, and IP pool CIDR alignment with the rest of the cluster. For VXLAN clusters, use `VXLAN` and not `VXLANCrossSubnet`, and disable BGP.
 
 This guide covers the operator-based configuration workflow for Windows nodes.
 
@@ -21,6 +21,7 @@ This guide covers the operator-based configuration workflow for Windows nodes.
 - Calico installed on Linux nodes via the Tigera Operator
 - Windows nodes joined to the cluster
 - `kubectl` with cluster admin access
+- Kubernetes v1.22 or later, HostProcess container support, and containerd v1.6 or later on Windows nodes
 
 ## Step 1: Review the Current Installation CR
 
@@ -30,6 +31,12 @@ kubectl get installation default -o yaml
 
 Identify the current IP pool configuration and verify it is compatible with Windows (VXLAN encapsulation).
 
+For clusters using Calico networking, also enable strict affinity so Linux nodes do not borrow IP addresses from Windows nodes:
+
+```bash
+kubectl patch ipamconfigurations default --type merge --patch='{"spec": {"strictAffinity": true}}'
+```
+
 ## Step 2: Configure the Installation CR for Windows
 
 ```yaml
@@ -38,7 +45,10 @@ kind: Installation
 metadata:
   name: default
 spec:
+  serviceCIDRs:
+  - 10.96.0.0/12
   calicoNetwork:
+    bgp: Disabled
     windowsDataplane: HNS
     ipPools:
     - blockSize: 26
@@ -46,7 +56,6 @@ spec:
       encapsulation: VXLAN
       natOutgoing: Enabled
       nodeSelector: all()
-    mtu: 1450
 ```
 
 ```bash
@@ -63,7 +72,10 @@ kind: Installation
 metadata:
   name: default
 spec:
+  serviceCIDRs:
+  - 10.96.0.0/12
   calicoNetwork:
+    bgp: Disabled
     windowsDataplane: HNS
     ipPools:
     - blockSize: 26
@@ -84,7 +96,7 @@ spec:
 kubectl get daemonset calico-node-windows -n calico-system -o yaml | grep -A5 "env:"
 ```
 
-## Step 5: Configure Felix for Windows Compatibility
+## Step 5: Configure Felix Logging and Metrics
 
 ```bash
 calicoctl patch felixconfiguration default \
@@ -100,9 +112,10 @@ calicoctl patch felixconfiguration default \
 # On a Windows node
 
 Get-HnsNetwork | Select-Object Name, Type, AddressPrefix
-cat C:\CalicoWindows\config\cni\calico.conf | ConvertFrom-Json
+Get-ChildItem C:\etc\cni\net.d
+Get-Content C:\etc\cni\net.d\*.conf* | ConvertFrom-Json
 ```
 
 ## Conclusion
 
-Operator-managed Calico configuration for Windows nodes centralizes all settings in the Installation CR. The key settings - `windowsDataplane: HNS`, VXLAN encapsulation, and appropriate MTU - ensure the operator deploys the correct Windows DaemonSet configuration. Separate IP pools for Windows and Linux nodes provide clean address space separation in mixed-OS clusters.
+Operator-managed Calico configuration for Windows nodes centralizes most settings in the Installation CR. The key settings - `windowsDataplane: HNS`, `serviceCIDRs`, VXLAN encapsulation, and disabled BGP for VXLAN clusters - ensure the operator deploys the correct Windows DaemonSet configuration. Separate IP pools for Windows and Linux nodes provide clean address space separation in mixed-OS clusters.
