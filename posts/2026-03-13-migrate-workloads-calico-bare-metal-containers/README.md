@@ -10,9 +10,9 @@ Description: A guide to migrating containerized workloads from another CNI to Ca
 
 ## Introduction
 
-Migrating containerized workloads to Calico on a bare metal cluster replaces not just the CNI plugin but potentially the entire routing model. If you are moving from an overlay-based CNI like Flannel or Weave to Calico with native BGP routing, the change in IP addressing and routing means all pods will receive new IPs and all routes in your physical network will change. Planning this migration carefully prevents extended downtime.
+Migrating containerized workloads to Calico on a bare metal cluster replaces not just the CNI plugin but potentially the entire routing model. If you are moving from an overlay-based CNI like Flannel or Weave to Calico with native BGP routing, pods recreated during the migration will receive new IPs, and your physical network must learn routes for the Calico pod CIDR. Planning this migration carefully prevents extended downtime.
 
-Bare metal environments offer a distinct advantage for migration: you can schedule the change entirely around your own maintenance windows and coordinate directly with your network team to update physical switch configurations in concert with the Calico installation. This coordination is not possible in cloud environments where the network is managed externally.
+Bare metal environments offer a distinct advantage for migration: you can schedule the change entirely around your own maintenance windows and coordinate directly with your network team to update physical switch configurations in concert with the Calico installation. This switch-level coordination is different from most cloud environments where the network is managed externally.
 
 This guide covers a full CNI migration to Calico on a bare metal cluster with containers.
 
@@ -21,6 +21,7 @@ This guide covers a full CNI migration to Calico on a bare metal cluster with co
 - A bare metal Kubernetes cluster with a non-Calico CNI
 - Cluster admin `kubectl` access
 - SSH access to all nodes
+- `calicoctl` installed and configured if you want to verify BGP status with `calicoctl node status`
 - Coordination with your network team if BGP is in scope
 - A documented maintenance window
 
@@ -60,7 +61,8 @@ If you are switching from overlay to native BGP routing, notify your network tea
 ## Step 5: Install Calico
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 cat <<EOF | kubectl apply -f -
 apiVersion: operator.tigera.io/v1
@@ -73,8 +75,14 @@ spec:
     - blockSize: 26
       cidr: 10.244.0.0/16
       encapsulation: None
-      natOutgoing: true
+      natOutgoing: Enabled
       nodeSelector: all()
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
 EOF
 ```
 
