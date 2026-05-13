@@ -35,28 +35,29 @@ VXLAN uses 50 bytes of overhead per packet (UDP + VXLAN headers) and operates on
 ```bash
 # Switch to VXLAN
 
-calicoctl patch ippool default-ipv4-ippool --type merge \
-  --patch '{"spec":{"vxlanMode":"Always","ipipMode":"Never"}}'
+kubectl patch ippool default-ipv4-ippool --type=merge \
+  -p '{"spec":{"vxlanMode":"Always","ipipMode":"Never"}}'
 
 # Benchmark with iperf3
-kubectl run iperf-server --image=networkstatic/iperf3 -- iperf3 -s
+kubectl run iperf-server --image=networkstatic/iperf3 --command -- iperf3 -s
+kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 SRV=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
-kubectl run iperf-client --image=networkstatic/iperf3 \
-  --overrides='{"spec":{"nodeName":"different-node"}}' \
-  -- iperf3 -c ${SRV} -t 30 > vxlan-results.txt
+kubectl run iperf-client --image=networkstatic/iperf3 --restart=Never --rm -i \
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"different-node"}}' \
+  --command -- iperf3 -c ${SRV} -t 30 > vxlan-results.txt
 ```
 
 ## Configure and Test IP-in-IP
 
 ```bash
 # Switch to IP-in-IP
-calicoctl patch ippool default-ipv4-ippool --type merge \
-  --patch '{"spec":{"ipipMode":"Always","vxlanMode":"Never"}}'
+kubectl patch ippool default-ipv4-ippool --type=merge \
+  -p '{"spec":{"ipipMode":"Always","vxlanMode":"Never"}}'
 
 # Benchmark
-kubectl run iperf-client2 --image=networkstatic/iperf3 \
-  --overrides='{"spec":{"nodeName":"different-node"}}' \
-  -- iperf3 -c ${SRV} -t 30 > ipip-results.txt
+kubectl run iperf-client2 --image=networkstatic/iperf3 --restart=Never --rm -i \
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"different-node"}}' \
+  --command -- iperf3 -c ${SRV} -t 30 > ipip-results.txt
 
 diff vxlan-results.txt ipip-results.txt
 ```
