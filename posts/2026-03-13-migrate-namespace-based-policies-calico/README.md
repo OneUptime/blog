@@ -28,7 +28,8 @@ Migrating to Calico namespace-based policies under `projectcalico.org/v3` requir
 kubectl get networkpolicies --all-namespaces -o json | jq '.items[] | {
   name: .metadata.name,
   namespace: .metadata.namespace,
-  from_types: [.spec.ingress[]?.from[]? | keys[]]
+  ingress_from_types: [.spec.ingress[]?.from[]? | keys[]],
+  egress_to_types: [.spec.egress[]?.to[]? | keys[]]
 }'
 ```
 
@@ -53,11 +54,20 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-monitoring-by-cidr
+  namespace: production
 spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
   ingress:
     - from:
         - ipBlock:
             cidr: 10.100.0.0/16  # monitoring subnet
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9091
 
 # After: namespace-based
 apiVersion: projectcalico.org/v3
@@ -66,9 +76,11 @@ metadata:
   name: allow-monitoring-by-namespace
 spec:
   order: 200
+  namespaceSelector: environment == 'production'
   selector: all()
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         namespaceSelector: team == 'observability'
       destination:
@@ -84,7 +96,7 @@ spec:
 calicoctl apply -f allow-monitoring-by-namespace.yaml
 
 # Verify monitoring still works
-kubectl exec -n monitoring prometheus -- curl -s http://production-app:9090/metrics
+kubectl exec -n monitoring prometheus -- curl -s http://production-app.production.svc.cluster.local:9090/metrics
 echo "Test result: $?"
 
 # If successful, remove old CIDR-based policy
