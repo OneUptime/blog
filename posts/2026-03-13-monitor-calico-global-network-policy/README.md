@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Global Policy, Security
 
-Description: Monitor Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces.
+Description: Monitor Calico GlobalNetworkPolicy for cluster-wide network traffic control that applies across all namespaces and configured host endpoints.
 
 ---
 
 ## Introduction
 
-Calico GlobalNetworkPolicy in Calico provides comprehensive network traffic controls using the `projectcalico.org/v3` API. This guide covers monitor GlobalNetworkPolicy with production-ready configurations.
+Calico GlobalNetworkPolicy in Calico provides comprehensive network traffic controls using the `projectcalico.org/v3` API. This guide covers monitoring GlobalNetworkPolicy with production-ready configurations.
 
 ## Prerequisites
 
@@ -31,6 +31,8 @@ spec:
     - action: Allow
       source:
         selector: app == 'authorized'
+    - action: Log
+    - action: Deny
   egress:
     - action: Allow
       protocol: UDP
@@ -39,6 +41,8 @@ spec:
     - action: Allow
       destination:
         selector: app == 'permitted-destination'
+    - action: Log
+    - action: Deny
   types:
     - Ingress
     - Egress
@@ -52,7 +56,7 @@ spec:
 calicoctl apply -f monitor-globalnetworkpolicy.yaml
 
 # Verify policy is active
-calicoctl get globalnetworkpolicies -o wide
+calicoctl get globalnetworkpolicy -o wide
 
 # Test connectivity
 kubectl exec -n test test-pod -- curl -s --max-time 5 http://target:8080
@@ -62,11 +66,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Check Felix policy metrics
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Review policy logs on Linux iptables dataplane nodes
+journalctl -k -f | grep calico-packet
 ```
 
 ## Architecture
