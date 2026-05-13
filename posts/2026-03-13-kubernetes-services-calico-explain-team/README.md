@@ -41,7 +41,7 @@ kubectl run backend --image=ealen/echo-server --port=8080
 kubectl expose pod backend --name=backend-svc --port=80 --target-port=8080
 
 # Deploy a client pod
-kubectl run client --image=nicolaka/netshoot -- sleep 3600
+kubectl run client --image=nicolaka/netshoot --command -- sleep 3600
 
 # Have the client send traffic via the service ClusterIP
 SVC_IP=$(kubectl get svc backend-svc -o jsonpath='{.spec.clusterIP}')
@@ -58,7 +58,7 @@ For developers, frame the difference in terms of the result, not the mechanism:
 |---|---|---|
 | Service routing | Yes | Yes |
 | Source IP for NodePort | Node IP (Cluster mode) | Original client IP |
-| Performance at scale | Degrades with rule count | Constant (hash map) |
+| Performance at scale | Degrades with rule count | Lower latency and CPU using BPF maps |
 | Observability | iptables -L | bpftool map dump |
 
 The key developer benefit of Calico eBPF: accurate source IPs in application logs for external traffic, without needing `externalTrafficPolicy: Local`.
@@ -71,7 +71,7 @@ The honest answer is: not directly, because services don't exist at the packet l
 
 **Method 1**: Allow from the specific client pod labels that are the only callers of the service.
 
-**Method 2**: For NodePort/LoadBalancer services, use `externalTrafficPolicy: Local` and write ingress policy matching on the node's IP range.
+**Method 2**: For NodePort/LoadBalancer services, use `externalTrafficPolicy: Local` and write ingress policy matching on the original external client IP range.
 
 ```yaml
 # Allow ingress from client pods that use the service
