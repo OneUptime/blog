@@ -168,6 +168,7 @@ spec:
   distribution:
     version: "2.4.0"
     registry: registry.internal.company.com/fluxcd
+    variant: upstream-alpine
     imagePullSecret: registry-credentials
   components:
     - source-controller
@@ -256,7 +257,7 @@ spec:
     - name: flux-operator
       rules:
         - alert: FluxVersionMismatch
-          expr: flux_instance_info{version!="2.4.0"} == 1
+          expr: flux_instance_info{revision!~"v2\\.4\\.0@.*"} == 1
           for: 5m
           labels:
             severity: warning
