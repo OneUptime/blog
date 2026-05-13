@@ -14,15 +14,15 @@ When Flux installs a Helm chart for the first time, the installation can fail du
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
-- Flux v2.3 or later installed on the cluster
+- A Kubernetes cluster version supported by your Flux release
+- Flux v2.3 or later installed on the cluster, preferably a currently supported Flux release
 - kubectl configured to access the cluster
 - A Git repository connected to Flux
 - A HelmRepository source configured in Flux
 
 ## Understanding Install Remediation
 
-Install remediation controls what Flux does when a Helm chart installation fails. The `spec.install.remediation` field in a HelmRelease lets you specify how many times to retry the installation, whether to uninstall a failed release before retrying, and whether to keep retrying indefinitely. Without remediation configured, a failed installation stays in a failed state until the next reconciliation interval.
+Install remediation controls what Flux does when a Helm chart installation fails. The `spec.install.remediation` field in a HelmRelease lets you specify how many times to retry the installation, whether to remediate the final failed attempt after retries are exhausted, and whether to keep retrying indefinitely. Without retries configured, Flux does not make additional retry attempts for the same desired state.
 
 ## Basic Retry Configuration
 
@@ -36,6 +36,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  releaseName: nginx
   chart:
     spec:
       chart: nginx
@@ -51,9 +53,9 @@ spec:
 
 With `retries: 3`, Flux attempts the installation up to 3 additional times after the initial failure, for a total of 4 attempts.
 
-## Retry with Cleanup
+## Retry with Final Cleanup
 
-By default, Flux does not uninstall a failed release before retrying. This can cause issues if the failed installation left partial resources. Configure `remediateLastFailure` to clean up before the final retry:
+When install retries are configured with the default remediation strategy, Flux uninstalls the failed release between retry attempts. By default, Flux does not remediate the final failed attempt after all retries are exhausted. Configure `remediateLastFailure` to clean up after the last failed attempt:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -63,6 +65,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  releaseName: my-app
   chart:
     spec:
       chart: my-app
@@ -77,7 +81,7 @@ spec:
       remediateLastFailure: true
 ```
 
-With `remediateLastFailure: true`, on the last retry Flux uninstalls the failed release before attempting the installation again. This gives the final attempt a clean slate.
+With `remediateLastFailure: true`, if the last install attempt fails and no retries remain, Flux uninstalls the failed release instead of leaving the final failed release in place.
 
 ## Unlimited Retries
 
@@ -91,6 +95,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: ingress-nginx
+  releaseName: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
@@ -100,6 +106,7 @@ spec:
         name: ingress-nginx
         namespace: flux-system
   install:
+    createNamespace: true
     remediation:
       retries: -1
 ```
@@ -118,6 +125,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  releaseName: my-app
   chart:
     spec:
       chart: my-app
@@ -148,6 +157,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  releaseName: postgresql
   chart:
     spec:
       chart: postgresql
@@ -195,7 +206,7 @@ helm history my-app -n default
 kubectl get events -n flux-system --field-selector involvedObject.name=my-app
 ```
 
-The HelmRelease status shows the current attempt number and failure reasons:
+The HelmRelease status includes failure counters, and the conditions include failure reasons. To print the install failure count:
 
 ```bash
 kubectl get helmrelease my-app -n flux-system -o jsonpath='{.status.installFailures}'
@@ -242,6 +253,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  releaseName: my-app
   chart:
     spec:
       chart: my-app
@@ -290,15 +303,14 @@ Common installation failure causes include chart values referencing non-existent
 
 ## Resetting After Failed Retries
 
-If all retries are exhausted and the installation has permanently failed, you can reset the failure count by suspending and resuming the HelmRelease:
+If all retries are exhausted and the installation has permanently failed, you can reset the failure count and trigger a fresh reconciliation with `flux reconcile --reset`:
 
 ```bash
-flux suspend helmrelease my-app
-flux resume helmrelease my-app
+flux reconcile helmrelease my-app --reset
 ```
 
-This resets the retry counter and triggers a fresh installation attempt.
+This resets the retry counter and triggers a fresh installation attempt for the current desired state.
 
 ## Conclusion
 
-Install remediation with retries in Flux HelmRelease provides automatic recovery from transient installation failures. By configuring appropriate retry counts, timeouts, and cleanup behavior, you ensure that Helm chart installations succeed even when faced with temporary issues like slow storage provisioning or brief network problems. Use generous retry counts for infrastructure charts, moderate retries for application charts, and always set `remediateLastFailure: true` to clean up partial installations before the final retry attempt.
+Install remediation with retries in Flux HelmRelease provides automatic recovery from transient installation failures. By configuring appropriate retry counts, timeouts, and cleanup behavior, you ensure that Helm chart installations succeed even when faced with temporary issues like slow storage provisioning or brief network problems. Use generous retry counts for infrastructure charts, moderate retries for application charts, and consider setting `remediateLastFailure: true` when you want Flux to clean up the final failed install after retries are exhausted.
