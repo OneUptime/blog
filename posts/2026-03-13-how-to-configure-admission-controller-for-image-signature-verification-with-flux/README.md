@@ -8,13 +8,13 @@ Description: Learn how to configure a Kubernetes admission controller to enforce
 
 ---
 
-Admission controllers act as gatekeepers in Kubernetes, intercepting API requests before objects are persisted. By configuring an admission controller to verify container image signatures, you can prevent unsigned or untrusted images from running in your cluster. This guide demonstrates how to deploy and configure admission controllers for image signature verification in a Flux-managed environment using both Kyverno and the Sigstore Policy Controller.
+Admission controllers act as gatekeepers in Kubernetes, intercepting API requests before objects are persisted. By configuring an admission controller to verify container image signatures, you can prevent unsigned or untrusted images from running in your cluster. This guide demonstrates how to deploy and configure admission controllers for image signature verification in a Flux-managed environment using Kyverno.
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.25 or later)
+- A running Kubernetes cluster supported by your Flux and Kyverno versions
 - Flux CLI installed and bootstrapped on the cluster
 - kubectl configured to access your cluster
 - A Git repository connected to Flux
@@ -43,9 +43,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
-  namespace: kyverno
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: kyverno
   chart:
     spec:
       chart: kyverno
@@ -62,8 +63,18 @@ spec:
     remediation:
       retries: 3
   values:
-    replicaCount: 3
-    webhookEnabled: true
+    admissionController:
+      replicas: 3
+    backgroundController:
+      replicas: 2
+    cleanupController:
+      replicas: 2
+    reportsController:
+      replicas: 2
+    features:
+      policyExceptions:
+        enabled: true
+        namespace: kyverno
 ```
 
 Commit and push these files, then verify the deployment:
@@ -94,9 +105,9 @@ metadata:
       Ensures all container images are signed with Cosign
       before they can be deployed to the cluster.
 spec:
-  validationFailureAction: Enforce
   background: false
-  webhookTimeoutSeconds: 30
+  webhookConfiguration:
+    timeoutSeconds: 30
   rules:
     - name: verify-cosign-signature
       match:
@@ -110,6 +121,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "myregistry.example.com/myorg/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -131,7 +143,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-keyless-signatures
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: verify-keyless-cosign
@@ -145,11 +156,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/myorg/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://github.com/myorg/*/.*"
+                    subjectRegExp: "^https://github\\.com/myorg/.+"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -166,7 +178,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-flux-images
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: verify-flux-cosign
@@ -180,11 +191,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/fluxcd/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://github.com/fluxcd/.*"
+                    subjectRegExp: "^https://github\\.com/fluxcd/.*$"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -192,14 +204,14 @@ spec:
 
 ## Step 5: Configure Policy Exceptions
 
-Create exceptions for system components or images that do not support signing:
+Create exceptions for specific workloads or images that do not support signing:
 
 ```yaml
 # clusters/my-cluster/kyverno/policies/exceptions.yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
-  name: system-images-exception
+  name: legacy-images-exception
   namespace: kyverno
 spec:
   exceptions:
@@ -212,7 +224,9 @@ spec:
           kinds:
             - Pod
           namespaces:
-            - kube-system
+            - production
+          names:
+            - legacy-*
 ```
 
 ## Step 6: Configure Audit Mode Before Enforcement
@@ -226,7 +240,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-images-audit
 spec:
-  validationFailureAction: Audit  # Log violations without blocking
   background: true
   rules:
     - name: verify-all-images
@@ -238,15 +251,15 @@ spec:
       verifyImages:
         - imageReferences:
             - "*"
+          failureAction: Audit  # Log violations without blocking
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: ".*"
+                    subjectRegExp: ".+"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
-          required: false
 ```
 
 Check audit results:
@@ -276,7 +289,7 @@ kubectl get clusterpolicy
 3. Test with an unsigned image:
 
 ```bash
-kubectl run test-unsigned --image=docker.io/library/nginx:latest -n production
+kubectl run test-unsigned --image=myregistry.example.com/myorg/unsigned:latest -n production
 # Should be rejected with a signature verification error
 ```
 
@@ -305,16 +318,17 @@ kubectl describe clusterpolicy verify-image-signatures
 
 # Temporarily switch to audit mode
 kubectl patch clusterpolicy verify-image-signatures \
-  --type merge -p '{"spec":{"validationFailureAction":"Audit"}}'
+  --type json -p='[{"op":"replace","path":"/spec/rules/0/verifyImages/0/failureAction","value":"Audit"}]'
 ```
 
 ### Kyverno webhook timeout errors
 
-If verification takes too long, increase the webhook timeout:
+If verification takes too long, set the webhook timeout up to the Kubernetes maximum of 30 seconds:
 
 ```yaml
 spec:
-  webhookTimeoutSeconds: 60
+  webhookConfiguration:
+    timeoutSeconds: 30
 ```
 
 ### Image pull errors during verification
@@ -340,13 +354,22 @@ kubectl get clusterpolicy verify-image-signatures -o yaml | grep -A 20 "match:"
 
 ### Kyverno and Flux reconciliation conflicts
 
-If Kyverno blocks Flux from deploying resources, ensure the flux-system namespace is either exempted or Flux images are covered by a permissive policy:
+If Kyverno blocks Flux from deploying resources, ensure the flux-system namespace is either covered by a Flux image verification policy or excluded through Kyverno's webhook namespace selector:
 
-```bash
-# Add an exception for flux-system
-kubectl label namespace flux-system policies.kyverno.io/exclude=true
+```yaml
+# Exclude flux-system in the Kyverno Helm values if your policy rollout requires it
+config:
+  webhooks:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kyverno
+            - flux-system
 ```
 
 ## Summary
 
-Configuring an admission controller for image signature verification adds a robust enforcement layer to your Flux-managed Kubernetes cluster. Whether you choose Kyverno or the Sigstore Policy Controller, the result is the same: only container images with valid signatures can run in your cluster. By managing these policies through GitOps with Flux, you maintain a consistent, auditable, and version-controlled security posture across your entire infrastructure.
+Configuring an admission controller for image signature verification adds a robust enforcement layer to your Flux-managed Kubernetes cluster. With Kyverno, only container images with valid signatures can run in your cluster. By managing these policies through GitOps with Flux, you maintain a consistent, auditable, and version-controlled security posture across your entire infrastructure.
