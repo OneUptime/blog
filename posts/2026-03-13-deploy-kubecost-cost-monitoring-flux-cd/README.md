@@ -14,7 +14,7 @@ Kubernetes infrastructure costs can spiral out of control without proper visibil
 
 Flux CD provides the GitOps foundation for deploying and managing Kubecost as code. By defining your Kubecost installation in a Git repository, you get full audit trails, consistent deployments across environments, and the ability to roll back configuration changes instantly. This combination of Kubecost and Flux CD gives your team both cost visibility and operational confidence.
 
-In this guide, you will deploy Kubecost into a Kubernetes cluster using Flux CD HelmRelease. You will configure persistent storage for cost data retention, set up namespace-level cost allocation, and expose the Kubecost UI through an Ingress resource - all managed declaratively through Git.
+In this guide, you will deploy Kubecost into a Kubernetes cluster using Flux CD HelmRelease. You will configure persistent storage for cost data, view namespace-level cost allocation, and expose the Kubecost UI through an Ingress resource - all managed declaratively through Git.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ spec:
   url: https://kubecost.github.io/cost-analyzer/
 ```
 
-Commit both files to your Git repository. Flux CD will detect them and register the Helm repository.
+Commit both files to your Git repository. After the Flux Kustomization in Step 3 is applied, Flux CD will detect them and register the Helm repository.
 
 ## Step 2: Deploy Kubecost with a HelmRelease
 
@@ -69,14 +69,14 @@ spec:
   chart:
     spec:
       chart: cost-analyzer
-      version: ">=2.0.0 <3.0.0"
+      version: ">=2.0.0 <2.9.0"
       sourceRef:
         kind: HelmRepository
         name: kubecost
         namespace: flux-system
       interval: 12h
   values:
-    # Enable persistent storage for 15-day cost retention
+    # Enable persistent storage for Kubecost data
     persistentVolume:
       enabled: true
       size: 32Gi
@@ -92,26 +92,37 @@ spec:
     # Kubecost token (free tier - no token required)
     kubecostToken: ""
 
-    # Enable cost reports
+    # Disable product analytics
     reporting:
       productAnalytics: false
 
-    # Resource allocation for cost-analyzer
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 800m
-        memory: 1Gi
+    # Resource allocation for the cost-model container
+    kubecostModel:
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 800m
+          memory: 1Gi
 ```
 
 ## Step 3: Configure the Kustomization
 
-Wire everything together with a Flux Kustomization that applies all resources in order.
+Wire everything together with a Kustomize file in the Kubecost directory, then create a Flux Kustomization in a directory that is already reconciled by Flux.
 
 ```yaml
 # infrastructure/kubecost/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+```
+
+```yaml
+# clusters/production/kubecost-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -127,16 +138,16 @@ spec:
   dependsOn:
     - name: infrastructure-controllers
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: kubecost-cost-analyzer
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kubecost
       namespace: kubecost
   timeout: 5m
 ```
 
 ## Step 4: Expose the Kubecost UI
 
-Add an Ingress to make the Kubecost dashboard accessible to your team.
+Add an Ingress to make the Kubecost dashboard accessible to your team. The `kubecost-basic-auth` Secret must exist in the `kubecost` namespace and contain an `auth` key generated with `htpasswd`.
 
 ```yaml
 # infrastructure/kubecost/ingress.yaml
@@ -163,13 +174,23 @@ spec:
                   number: 9090
 ```
 
+Then add `ingress.yaml` to `infrastructure/kubecost/kustomization.yaml`.
+
+```yaml
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - ingress.yaml
+```
+
 ## Step 5: Verify the Deployment
 
 After committing all files to Git, verify that Flux CD has reconciled the resources successfully.
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease kubecost -n kubecost
+flux get helmreleases -n kubecost
 
 # Check all pods are running
 kubectl get pods -n kubecost
@@ -178,7 +199,7 @@ kubectl get pods -n kubecost
 kubectl get pvc -n kubecost
 
 # Check Flux Kustomization status
-flux get kustomization kubecost
+flux get kustomizations -n flux-system
 ```
 
 Expected output shows the HelmRelease in a `Ready` state with `Applied revision` matching your Git commit.
