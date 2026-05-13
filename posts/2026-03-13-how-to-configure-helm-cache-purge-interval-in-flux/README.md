@@ -10,11 +10,11 @@ Description: Configure how frequently the Flux source-controller scans for and r
 
 ## What the Purge Interval Controls
 
-The `--helm-cache-purge-interval` flag determines how often the source-controller's Helm cache housekeeping routine runs. During each purge cycle, the controller scans all cached Helm repository index entries and removes any that have exceeded their TTL. This frees memory and ensures that stale data does not persist indefinitely.
+The `--helm-cache-purge-interval` flag determines how often the source-controller's Helm cache housekeeping routine runs when Helm index caching is enabled. During each purge cycle, the controller scans all cached Helm repository index entries and removes any that have exceeded their TTL. This frees memory and ensures that stale data does not persist indefinitely.
 
 ## Default Behavior
 
-The default purge interval is 1 minute. This means the cache is scanned every 60 seconds for expired entries. For most installations, this default is appropriate.
+The default purge interval is 1 minute. When Helm index caching is enabled, this means the cache is scanned every 60 seconds for expired entries. For most installations that enable the cache, this default is appropriate.
 
 ## When to Change the Purge Interval
 
@@ -94,7 +94,7 @@ git push
 
 These three settings form the complete cache configuration:
 
-1. **Max size** (`--helm-cache-max-size`): Limits how many entries can exist in the cache at once. When full, the least recently used entry is evicted.
+1. **Max size** (`--helm-cache-max-size`): Limits how many entries can exist in the cache at once. If set to `0`, the cache is disabled. When full, no more items can be added to the cache and the source-controller reports a warning event.
 2. **TTL** (`--helm-cache-ttl`): Marks entries as expired after this duration. Expired entries are not served to callers.
 3. **Purge interval** (`--helm-cache-purge-interval`): Controls how often expired entries are actually deleted from memory.
 
