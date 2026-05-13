@@ -43,7 +43,7 @@ Download and create the IAM policy for the Load Balancer Controller:
 ```bash
 # Download the official IAM policy
 
-curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.3.0/docs/install/iam_policy.json
 
 # Create the policy
 aws iam create-policy \
@@ -131,7 +131,7 @@ spec:
   chart:
     spec:
       chart: aws-load-balancer-controller
-      version: "1.7.x"
+      version: "3.3.x"
       sourceRef:
         kind: HelmRepository
         name: eks-charts
@@ -233,7 +233,6 @@ metadata:
   name: web-app
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
@@ -241,6 +240,7 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-east-1:123456789012:regional/webacl/my-waf/id
 spec:
+  ingressClassName: alb
   rules:
     - host: app.example.com
       http:
