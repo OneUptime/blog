@@ -12,7 +12,7 @@ Managing secrets in Kubernetes is a critical challenge, especially in GitOps wor
 
 ## Prerequisites
 
-- An existing EKS cluster (version 1.25 or later)
+- An existing supported EKS cluster
 - Flux CLI installed and bootstrapped on your cluster
 - AWS CLI configured with appropriate permissions
 - kubectl configured to access your EKS cluster
@@ -45,10 +45,14 @@ cat <<EOF > external-secrets-policy.json
         "secretsmanager:GetResourcePolicy",
         "secretsmanager:GetSecretValue",
         "secretsmanager:DescribeSecret",
-        "secretsmanager:ListSecretVersionIds",
-        "secretsmanager:ListSecrets"
+        "secretsmanager:ListSecretVersionIds"
       ],
       "Resource": "arn:aws:secretsmanager:us-west-2:*:secret:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "secretsmanager:ListSecrets",
+      "Resource": "*"
     },
     {
       "Effect": "Allow",
@@ -129,7 +133,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: "0.9.*"
+      version: "2.4.*"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -158,7 +162,7 @@ The `ClusterSecretStore` tells the operator how to connect to AWS Secrets Manage
 
 ```yaml
 # clusters/my-cluster/external-secrets/cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -178,7 +182,7 @@ For AWS SSM Parameter Store, create an additional store:
 
 ```yaml
 # clusters/my-cluster/external-secrets/cluster-secret-store-ssm.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-parameter-store
@@ -200,10 +204,12 @@ Store your application secrets in AWS Secrets Manager:
 
 ```bash
 aws secretsmanager create-secret \
+  --region us-west-2 \
   --name my-app/database \
   --secret-string '{"username":"admin","password":"supersecret","host":"db.example.com","port":"5432"}'
 
 aws secretsmanager create-secret \
+  --region us-west-2 \
   --name my-app/api-keys \
   --secret-string '{"stripe-key":"sk_live_xxx","sendgrid-key":"SG.xxx"}'
 ```
@@ -214,7 +220,7 @@ Define `ExternalSecret` resources in Git that tell the operator which secrets to
 
 ```yaml
 # apps/my-app/external-secret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -254,7 +260,7 @@ For fetching all keys from a secret at once:
 
 ```yaml
 # apps/my-app/external-secret-api.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -309,6 +315,7 @@ When you update a secret in AWS Secrets Manager, the External Secrets Operator w
 
 ```bash
 aws secretsmanager update-secret \
+  --region us-west-2 \
   --secret-id my-app/database \
   --secret-string '{"username":"admin","password":"newsecret","host":"db.example.com","port":"5432"}'
 ```
