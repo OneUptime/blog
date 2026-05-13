@@ -27,11 +27,11 @@ Before you begin, ensure you have:
 
 ## How Docker Hub Webhooks Work
 
-Docker Hub sends a POST request to a configured URL whenever a new image is pushed to a repository. The payload includes the repository name, the tag that was pushed, the pusher information, and a callback URL. Flux's notification controller can parse this payload and trigger reconciliation of specified resources.
+Docker Hub sends a POST request to a configured URL whenever a new image is pushed to a repository. The payload includes the repository name, the tag that was pushed, and the pusher information. Flux's notification controller can parse this payload and trigger reconciliation of specified resources.
 
 ## Creating the Webhook Secret
 
-Create the authentication secret:
+Create the receiver token secret:
 
 ```bash
 TOKEN=$(openssl rand -hex 32)
@@ -69,11 +69,9 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
-      name: my-app
 ```
 
-Note that for Docker Hub receivers, the `events` field is optional. The receiver responds to any webhook call from Docker Hub. The resources listed should include your ImageRepository and ImagePolicy resources so that Flux re-scans for new tags immediately.
+Note that Docker Hub receivers do not support filtering with the `events` field. The receiver accepts valid Docker Hub webhook payloads sent to its generated path. The resources listed should include your ImageRepository resources so that Flux re-scans for new tags immediately; ImagePolicy resources are updated automatically when their referenced ImageRepository changes.
 
 ## Setting Up Image Automation Resources
 
@@ -115,7 +113,7 @@ kubectl apply -f dockerhub-receiver.yaml
 kubectl get receiver dockerhub-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
 ```
 
-The full webhook URL combines your notification controller's external domain with this path.
+The full webhook URL combines your webhook receiver's external domain with this path.
 
 ## Exposing the Notification Controller
 
@@ -143,7 +141,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -158,7 +156,7 @@ In Docker Hub, navigate to your repository:
 4. Enter the full webhook URL
 5. Click "Create"
 
-Docker Hub will send a test request to verify the URL is reachable.
+Docker Hub records webhook delivery attempts in the repository's webhook history.
 
 ## Triggering Full Deployment Chain
 
@@ -177,17 +175,9 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
-      name: my-app
-    - kind: ImageUpdateAutomation
-      name: flux-system
-    - kind: GitRepository
-      name: flux-system
-    - kind: Kustomization
-      name: apps
 ```
 
-This triggers a cascade: the ImageRepository re-scans, the ImagePolicy evaluates the new tag, the ImageUpdateAutomation commits the new tag to Git, the GitRepository picks up the commit, and the Kustomization deploys the update.
+This starts the deployment chain: the ImageRepository re-scans, the ImagePolicy evaluates the new tag, the ImageUpdateAutomation detects the changed policy and commits the new tag to Git, the GitRepository picks up the commit, and the Kustomization deploys the update.
 
 ## Multiple Image Repositories
 
@@ -210,12 +200,6 @@ spec:
       name: backend-api
     - kind: ImageRepository
       name: worker-service
-    - kind: ImagePolicy
-      name: frontend-app
-    - kind: ImagePolicy
-      name: backend-api
-    - kind: ImagePolicy
-      name: worker-service
 ```
 
 Configure a webhook in each Docker Hub repository pointing to the same webhook URL.
@@ -237,11 +221,9 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-    - kind: HelmRelease
-      name: my-app
 ```
 
-The HelmRelease reconciliation will pick up the new image if it references the ImagePolicy for its values.
+Image automation can update HelmRelease image values in Git when those values are marked with ImagePolicy setter comments. After the ImageUpdateAutomation commits the changed values, Flux reconciles the Git source and the HelmRelease from the updated manifests.
 
 ## Verifying the Integration
 
@@ -277,7 +259,7 @@ Verify the Receiver is ready:
 kubectl describe receiver dockerhub-receiver -n flux-system
 ```
 
-Ensure the notification controller service is accessible. Docker Hub requires HTTPS endpoints for webhooks. Self-signed certificates may cause delivery failures.
+Ensure the webhook receiver endpoint is publicly accessible. TLS is recommended for internet-facing webhooks, and certificate or ingress misconfiguration can cause delivery failures.
 
 Check the notification controller logs:
 
