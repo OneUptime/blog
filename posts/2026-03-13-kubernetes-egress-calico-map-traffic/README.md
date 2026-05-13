@@ -12,7 +12,7 @@ Description: A packet-level walkthrough of real egress traffic scenarios in a Ca
 
 Egress traffic in Calico is more complex than it appears. A single pod attempting to reach `api.stripe.com` traverses multiple Calico components - IPAM, iptables/eBPF SNAT rules, NetworkPolicy enforcement, and optionally an egress gateway. Tracing this path makes egress behavior predictable and debuggable.
 
-This post maps three egress scenarios to their actual packet paths: default SNAT egress, egress with NetworkPolicy, and egress via an egress gateway. For each scenario, we show the packet flow and the Calico artifacts you can observe.
+This post maps four egress scenarios to their actual packet paths: default SNAT egress, egress with NetworkPolicy, egress via an egress gateway, and FQDN-based egress policy. For each scenario, we show the packet flow and the Calico artifacts you can observe.
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ sequenceDiagram
 
 The key Calico artifact is the MASQUERADE iptables rule:
 ```bash
-sudo iptables -t nat -L CALICO-MASQ -n -v
+sudo iptables -t nat -L cali-nat-outgoing -n -v
 # Shows: MASQUERADE rules for pod CIDRs exiting the cluster
 
 ```
@@ -56,11 +56,11 @@ graph LR
     SNAT --> External[External Service]
 ```
 
-The policy evaluation happens in the pod's network namespace interface TC hook (eBPF) or via iptables rules in the `cali-tw-*` chain (iptables mode):
+The policy evaluation happens at TC hooks on Calico interfaces (eBPF) or via iptables rules in the host-side workload chains such as `cali-fw-*` for traffic from the workload (iptables mode):
 
 ```bash
 # iptables mode: inspect egress policy chains
-sudo iptables -L cali-po-<pod-interface> -n -v
+sudo iptables -L cali-fw-<pod-interface> -n -v
 # Shows: ACCEPT/DROP rules for the pod's egress destinations
 ```
 
@@ -76,29 +76,29 @@ graph LR
     EGW -->|DNAT back to\n10.0.1.5| Pod
 ```
 
-Calico programs a policy-based route on the source node that sends traffic from specific pods via the egress gateway pod instead of directly to the gateway. This is implemented using Linux routing policy rules:
+Calico programs a policy-based route on the source node that sends traffic from specific pods to the egress gateway over the `egress.calico` interface. This is implemented using Linux routing policy rules and a dedicated routing table:
 
 ```bash
 # On the source node, verify egress gateway routing rule
 ip rule list
-# Expected: rule pointing pod subnet traffic to a specific routing table
+# Expected: rule matching the client pod IP and fwmark to a specific routing table
 # that contains the route via the egress gateway
 ```
 
 ## Scenario 4: FQDN Egress Policy (Cloud/Enterprise)
 
-FQDN egress policies require Calico's DNS sniffer component to intercept DNS responses and update eBPF/iptables rules with resolved IPs:
+FQDN egress policies require Calico Enterprise or Calico Cloud to learn DNS responses from trusted DNS servers and update eBPF/iptables policy state with resolved IPs:
 
 ```mermaid
 sequenceDiagram
     participant Pod
     participant DNS as CoreDNS
-    participant Calico as Calico DNS Controller
+    participant Calico as Calico DNS Policy State
     participant Policy as Policy Enforcement
 
     Pod->>DNS: Resolve api.stripe.com
     DNS->>Pod: Response: 3.18.12.75
-    DNS->>Calico: DNS sniffer intercepts response
+    DNS->>Calico: Calico observes trusted DNS response
     Calico->>Policy: Update policy map:\napi.stripe.com → [3.18.12.75]
     Pod->>Policy: Packet to 3.18.12.75
     Policy->>Policy: Lookup: 3.18.12.75 matches api.stripe.com → Allow
@@ -108,19 +108,22 @@ This dynamic DNS-to-IP mapping is what makes FQDN policies resilient to IP addre
 
 ## Observing Egress Flows
 
-Use Felix metrics to observe egress policy decisions:
+Use Felix metrics to observe policy programming health, and iptables counters or policy logs to inspect individual drops:
 
 ```bash
 # Felix Prometheus metrics (iptables mode)
 kubectl exec -n calico-system daemonset/calico-node -- \
-  curl -s http://localhost:9091/metrics | grep felix_calc_policy
+  curl -s http://localhost:9091/metrics | grep felix_iptables
+
+# Inspect non-zero DROP counters in iptables mode
+sudo iptables-save -c | grep DROP | grep -v '0:0'
 ```
 
 ## Best Practices
 
 - Use `tcpdump` on the egress gateway pod's interface to confirm traffic is routing through the gateway
 - Verify SNAT source IP with `curl https://ifconfig.me` from within pods after policy changes
-- Monitor Felix's DNS controller logs for FQDN policy update events
+- Use DNS logs and calico-node logs to troubleshoot FQDN policy updates
 
 ## Conclusion
 
