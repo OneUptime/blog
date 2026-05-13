@@ -14,8 +14,8 @@ Crossplane extends Kubernetes to manage cloud infrastructure through custom reso
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
-- Flux v2.3 or later installed on the cluster
+- A Kubernetes cluster version supported by your Flux release (Flux v2.5 supports Kubernetes 1.30-1.32)
+- Flux v2.5 or later installed on the cluster
 - Crossplane installed with appropriate providers (AWS, GCP, Azure)
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
@@ -62,20 +62,22 @@ spec:
     name: flux-system
   timeout: 30m
   healthChecks:
-    - apiVersion: rds.aws.upbound.io/v1beta1
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: Instance
       name: production-db
       namespace: crossplane-system
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
+      kind: Instance
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 The corresponding Crossplane managed resource:
 
 ```yaml
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: production-db
@@ -88,8 +90,8 @@ spec:
     engineVersion: "16"
     allocatedStorage: 100
     dbName: myapp
-    masterUsername: admin
-    masterPasswordSecretRef:
+    username: admin
+    passwordSecretRef:
       name: db-master-password
       namespace: crossplane-system
       key: password
@@ -99,6 +101,7 @@ spec:
       - name: db-security-group
   providerConfigRef:
     name: aws-provider
+    kind: ProviderConfig
 ```
 
 Note the 30-minute timeout. RDS instance provisioning typically takes 10-20 minutes.
@@ -109,14 +112,16 @@ S3 buckets provision quickly but still benefit from health verification:
 
 ```yaml
 healthChecks:
-  - apiVersion: s3.aws.upbound.io/v1beta1
+  - apiVersion: s3.aws.m.upbound.io/v1beta1
     kind: Bucket
     name: app-assets
     namespace: crossplane-system
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: s3.aws.m.upbound.io/v1beta1
+    kind: Bucket
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+      && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 ## Health Checking Multiple Cloud Resources
@@ -138,30 +143,34 @@ spec:
     name: flux-system
   timeout: 45m
   healthChecks:
-    - apiVersion: rds.aws.upbound.io/v1beta1
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: Instance
       name: production-db
       namespace: crossplane-system
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
-    - apiVersion: elasticache.aws.upbound.io/v1beta1
+    - apiVersion: elasticache.aws.m.upbound.io/v1beta1
       kind: ReplicationGroup
       name: production-redis
       namespace: crossplane-system
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
-    - apiVersion: s3.aws.upbound.io/v1beta1
+    - apiVersion: s3.aws.m.upbound.io/v1beta1
       kind: Bucket
       name: app-uploads
       namespace: crossplane-system
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
+      kind: Instance
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+    - apiVersion: elasticache.aws.m.upbound.io/v1beta1
+      kind: ReplicationGroup
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+    - apiVersion: s3.aws.m.upbound.io/v1beta1
+      kind: Bucket
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 The timeout is set to 45 minutes to accommodate the slowest resource (typically RDS instances or ElastiCache clusters).
@@ -191,10 +200,12 @@ healthChecks:
     kind: PostgreSQLInstance
     name: production-db
     namespace: production
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: database.example.com/v1alpha1
+    kind: PostgreSQLInstance
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+      && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 The Claim's `Ready` condition reflects the aggregate health of all composed resources.
@@ -235,14 +246,16 @@ spec:
     - name: crossplane-providers
   timeout: 45m
   healthChecks:
-    - apiVersion: rds.aws.upbound.io/v1beta1
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: Instance
       name: production-db
       namespace: crossplane-system
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
+      kind: Instance
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -310,22 +323,25 @@ For GCP Crossplane resources, the CEL expressions are the same since Crossplane 
 
 ```yaml
 healthChecks:
-  - apiVersion: sql.gcp.upbound.io/v1beta1
+  - apiVersion: sql.gcp.m.upbound.io/v1beta1
     kind: DatabaseInstance
     name: production-db
     namespace: crossplane-system
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
-  - apiVersion: storage.gcp.upbound.io/v1beta1
+  - apiVersion: storage.gcp.m.upbound.io/v1beta1
     kind: Bucket
     name: app-storage
     namespace: crossplane-system
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-        && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: sql.gcp.m.upbound.io/v1beta1
+    kind: DatabaseInstance
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+      && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  - apiVersion: storage.gcp.m.upbound.io/v1beta1
+    kind: Bucket
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+      && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 ## Debugging Crossplane Health Check Failures
@@ -337,10 +353,10 @@ When a Crossplane resource health check fails:
 flux get kustomization cloud-infra
 
 # Check managed resource status
-kubectl get instance.rds production-db -n crossplane-system -o yaml
+kubectl get instance.rds.aws.m.upbound.io production-db -n crossplane-system -o yaml
 
 # Check conditions
-kubectl get instance.rds production-db -n crossplane-system -o jsonpath='{.status.conditions}' | jq .
+kubectl get instance.rds.aws.m.upbound.io production-db -n crossplane-system -o jsonpath='{.status.conditions}' | jq .
 
 # Check Crossplane provider logs
 kubectl logs -n crossplane-system -l pkg.crossplane.io/revision -c package-runtime --tail=50
@@ -349,7 +365,7 @@ kubectl logs -n crossplane-system -l pkg.crossplane.io/revision -c package-runti
 kubectl get events -n crossplane-system --field-selector involvedObject.name=production-db
 
 # Check provider config
-kubectl get providerconfig aws-provider -o yaml
+kubectl get providerconfig.aws.m.upbound.io aws-provider -n crossplane-system -o yaml
 ```
 
 Common Crossplane health check failure causes:
