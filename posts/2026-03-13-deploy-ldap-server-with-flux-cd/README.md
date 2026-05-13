@@ -14,7 +14,7 @@ OpenLDAP is the de facto open-source implementation of the Lightweight Directory
 
 Running OpenLDAP on Kubernetes makes your directory service available cluster-wide without a separate virtual machine. Flux CD ensures the deployment is reproducible: from the initial schema to the admin credentials, everything is declared in Git and reconciled automatically. Combined with a web-based LDAP browser like phpLDAPadmin, teams gain a complete self-hosted directory solution.
 
-This guide deploys OpenLDAP and phpLDAPadmin using the Bitnami Helm chart managed by Flux CD.
+This guide deploys OpenLDAP and phpLDAPadmin using the `openldap-stack-ha` Helm chart managed by Flux CD. The chart uses the Bitnami OpenLDAP container image and includes phpLDAPadmin as an optional subchart.
 
 ## Prerequisites
 
@@ -32,21 +32,21 @@ kubectl create namespace openldap
 
 kubectl create secret generic openldap-secrets \
   --namespace openldap \
-  --from-literal=adminpassword=LdapAdmin1! \
-  --from-literal=configpassword=LdapConfig1!
+  --from-literal=LDAP_ADMIN_PASSWORD=LdapAdmin1! \
+  --from-literal=LDAP_CONFIG_ADMIN_PASSWORD=LdapConfig1!
 ```
 
-## Step 2: Add the Bitnami Helm Repository
+## Step 2: Add the OpenLDAP Helm Repository
 
 ```yaml
 # clusters/my-cluster/openldap/helm-repository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: bitnami
+  name: helm-openldap
   namespace: flux-system
 spec:
-  url: https://charts.bitnami.com/bitnami
+  url: https://jp-gouin.github.io/helm-openldap/
   interval: 12h
 ```
 
@@ -63,30 +63,24 @@ spec:
   interval: 10m
   chart:
     spec:
-      chart: openldap
-      version: ">=4.0.0 <5.0.0"
+      chart: openldap-stack-ha
+      version: ">=4.3.0 <5.0.0"
       sourceRef:
         kind: HelmRepository
-        name: bitnami
+        name: helm-openldap
         namespace: flux-system
   values:
     # Base domain for the LDAP directory
     global:
       ldapDomain: "example.com"
-
-    # Admin credentials from secret
-    auth:
-      adminUsername: admin
-      adminPassword: ""
-      configAdminUsername: admin
-      configAdminPassword: ""
+      adminUser: admin
+      configUser: admin
       existingSecret: openldap-secrets
-      adminPasswordKey: adminpassword
-      configPasswordKey: configpassword
 
-    # TLS configuration
-    tls:
-      enabled: false   # Enable with a TLS secret for production
+    # TLS configuration. Set initTLSSecret.tls_enabled and initTLSSecret.secret
+    # to use your own certificate secret in production.
+    initTLSSecret:
+      tls_enabled: false
 
     # Persistent storage for LDAP data
     persistence:
@@ -95,6 +89,14 @@ spec:
 
     # Pre-populate the directory with seed data
     customLdifFiles:
+      00-root.ldif: |
+        # Root organization
+        dn: dc=example,dc=com
+        objectClass: dcObject
+        objectClass: organization
+        dc: example
+        o: Example
+
       01-base-structure.ldif: |
         # Organizational units
         dn: ou=users,dc=example,dc=com
@@ -113,6 +115,18 @@ spec:
         description: Engineering team
         member: uid=jdoe,ou=users,dc=example,dc=com
 
+    phpldapadmin:
+      enabled: true
+      ingress:
+        enabled: true
+        ingressClassName: nginx
+        hosts:
+          - ldap-admin.example.com
+        tls:
+          - secretName: ldap-admin-tls
+            hosts:
+              - ldap-admin.example.com
+
     resources:
       requests:
         cpu: 100m
@@ -122,53 +136,14 @@ spec:
         memory: 512Mi
 ```
 
-## Step 4: Deploy phpLDAPadmin
+## Step 4: Configure phpLDAPadmin
 
-```yaml
-# clusters/my-cluster/openldap/phpldapadmin-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: phpldapadmin
-  namespace: openldap
-spec:
-  interval: 10m
-  dependsOn:
-    - name: openldap
-  chart:
-    spec:
-      chart: phpldapadmin
-      version: ">=0.1.0 <1.0.0"
-      sourceRef:
-        kind: HelmRepository
-        name: bitnami
-        namespace: flux-system
-  values:
-    # Connect to the OpenLDAP service
-    ldap:
-      uri: ldap://openldap:389
-      base: dc=example,dc=com
-      bindDN: cn=admin,dc=example,dc=com
-
-    ingress:
-      enabled: true
-      ingressClassName: nginx
-      hostname: ldap-admin.example.com
-      tls: true
-
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 128Mi
-```
+The `openldap-stack-ha` chart includes phpLDAPadmin as a subchart. The `phpldapadmin` values in the OpenLDAP `HelmRelease` above enable it and expose it through Ingress. By default, the subchart points phpLDAPadmin at the OpenLDAP service and uses the bind DN for the configured LDAP domain.
 
 ## Step 5: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/openldap/kustomization.yaml
+# clusters/my-cluster/openldap-sync.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -204,8 +179,8 @@ kubectl run ldap-test --rm -it --restart=Never \
 To add a user via `ldapadd`:
 
 ```bash
-kubectl exec -n openldap $(kubectl get pod -n openldap -l app.kubernetes.io/name=openldap -o name | head -1) -- \
-  ldapadd -H ldapi:/// -D "cn=admin,dc=example,dc=com" -w LdapAdmin1! << 'EOF'
+kubectl exec -i -n openldap $(kubectl get pod -n openldap -l app.kubernetes.io/component=openldap -o name | head -1) -- \
+  ldapadd -H ldap://localhost:1389 -D "cn=admin,dc=example,dc=com" -w LdapAdmin1! << 'EOF'
 dn: uid=jdoe,ou=users,dc=example,dc=com
 objectClass: inetOrgPerson
 cn: John Doe
@@ -227,7 +202,7 @@ Both Keycloak and Authentik support LDAP user federation. Point them to:
 
 ## Best Practices
 
-- Enable TLS (`tls.enabled: true`) with a cert-manager-issued certificate for encrypted LDAP (LDAPS) connections.
+- Enable TLS with `initTLSSecret.tls_enabled: true` and a cert-manager-issued certificate for encrypted LDAP (LDAPS) connections.
 - Back up the LDAP database regularly using `slapd`'s `slapcat` command and store exports in object storage.
 - Use `customLdifFiles` in the Helm values to seed initial organizational units, groups, and service accounts declaratively.
 - Restrict access to phpLDAPadmin using OAuth2 Proxy to prevent unauthorized access to the directory.
