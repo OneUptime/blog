@@ -24,12 +24,12 @@ This guide shows how to configure Flagger's automated rollback based on HTTP err
 
 ## Step 1: Understanding Flagger's Rollback Mechanism
 
-Flagger uses a threshold-based rollback system. During canary analysis, Flagger queries metrics at each `interval`. If a metric check fails, Flagger increments a failure counter. When the failure counter reaches the `threshold` value, Flagger rolls back the canary by scaling it to zero and routing all traffic back to the primary.
+Flagger uses a threshold-based rollback system. During canary analysis, Flagger queries metrics at each `interval`. If a metric check fails, Flagger increments a failure counter for the current analysis run. When the failure counter reaches the `threshold` value, Flagger rolls back the canary by scaling it to zero and routing all traffic back to the primary.
 
 The key fields controlling rollback behavior are:
 
 - `analysis.interval`: How often Flagger checks metrics (e.g., `30s`).
-- `analysis.threshold`: Number of consecutive failed metric checks before rollback.
+- `analysis.threshold`: Maximum number of failed checks before rollback.
 - `metrics[].thresholdRange.min`: Minimum acceptable value for the metric.
 
 ## Step 2: Configure the Canary with Error Rate Rollback
@@ -66,7 +66,7 @@ With this configuration:
 
 - Every 30 seconds, Flagger queries the success rate metric.
 - The success rate must be at least 99% (meaning error rate must be below 1%).
-- If the success rate drops below 99% for 3 consecutive checks (90 seconds), Flagger triggers a rollback.
+- If the success rate check fails 3 times during the analysis, Flagger triggers a rollback.
 
 ## Step 3: Use the Built-in Request Success Rate Metric
 
@@ -137,7 +137,7 @@ Reference it in your Canary:
 
 The relationship between `interval`, `threshold`, and `metrics[].interval` determines how quickly Flagger reacts to errors:
 
-| Configuration | Rollback Time | Sensitivity |
+| Configuration | Fastest Rollback After Failed Checks | Sensitivity |
 |---|---|---|
 | interval: 15s, threshold: 2 | 30 seconds | High - fast rollback |
 | interval: 30s, threshold: 3 | 90 seconds | Medium - balanced |
@@ -183,8 +183,8 @@ Supplement metric-based rollback with webhook checks that verify application-spe
         metadata:
           type: bash
           cmd: |
-            error_rate=$(curl -s http://my-app-canary.default:8080/metrics | grep http_errors_total | awk '{print $2}')
-            if [ $(echo "$error_rate > 10" | bc) -eq 1 ]; then
+            error_count=$(curl -s http://my-app-canary.default:8080/metrics | awk '$1 == "http_errors_total" { value=$2 } END { print value+0 }')
+            if [ "$error_count" -gt 10 ]; then
               exit 1
             fi
 ```
@@ -195,7 +195,7 @@ Supplement metric-based rollback with webhook checks that verify application-spe
 graph TD
     A[Canary deployed] --> B[Flagger checks metrics every interval]
     B --> C{Success rate >= 99%?}
-    C -->|yes| D[Reset failure counter]
+    C -->|yes| D[Continue analysis]
     D --> E[Increment canary weight]
     E --> B
     C -->|no| F[Increment failure counter]
