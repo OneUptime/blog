@@ -10,15 +10,15 @@ Description: Deploy the Strimzi Kafka Operator and Kafka clusters on Kubernetes 
 
 ## Introduction
 
-Strimzi is the leading open-source Kubernetes operator for Apache Kafka. It manages Kafka brokers, ZooKeeper (or KRaft for newer versions), Kafka Connect, MirrorMaker 2, and the Kafka Bridge through Kubernetes Custom Resources. Strimzi handles TLS certificate generation, user authentication, rolling upgrades, and topic management declaratively.
+Strimzi is the leading open-source Kubernetes operator for Apache Kafka. It manages Kafka brokers, KRaft metadata controllers, Kafka Connect, MirrorMaker 2, and the Kafka Bridge through Kubernetes Custom Resources. Strimzi handles TLS certificate generation, user authentication, rolling upgrades, and topic management declaratively.
 
 Deploying Strimzi through Flux CD gives you GitOps control over your entire Kafka infrastructure - from broker configuration and topic definitions to user ACLs and connector deployments. Every change to your event streaming platform flows through a Git pull request, making your messaging infrastructure as auditable as your application code.
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes v1.30+ with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs (SSDs recommended for Kafka)
-- Minimum 3 nodes for a production Kafka cluster
+- Minimum 3 nodes for this Kafka cluster example
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Add the Strimzi HelmRepository
@@ -39,7 +39,7 @@ spec:
 ## Step 2: Deploy the Strimzi Operator
 
 ```yaml
-# infrastructure/messaging/strimzi/namespace.yaml
+# infrastructure/messaging/strimzi/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -49,7 +49,7 @@ metadata:
 ```
 
 ```yaml
-# infrastructure/messaging/strimzi/operator.yaml
+# infrastructure/messaging/strimzi/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -60,7 +60,7 @@ spec:
   chart:
     spec:
       chart: strimzi-kafka-operator
-      version: "0.42.0"
+      version: "1.0.0"
       sourceRef:
         kind: HelmRepository
         name: strimzi
@@ -78,23 +78,62 @@ spec:
       limits:
         cpu: "500m"
         memory: "512Mi"
-    # Watch all namespaces (or restrict to 'kafka')
+    # Watch the release namespace. Set watchAnyNamespace: true to watch all namespaces.
     watchNamespaces: []
+    watchAnyNamespace: false
 ```
 
 ## Step 3: Deploy a Kafka Cluster
 
 ```yaml
-# infrastructure/messaging/strimzi/kafka-cluster.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+# infrastructure/messaging/strimzi/cluster/kafka-cluster.yaml
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: kafka
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: "500m"
+    limits:
+      memory: 4Gi
+      cpu: "2"
+  jvmOptions:
+    -Xms: 1024m
+    -Xmx: 2048m
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: premium-ssd
+    deleteClaim: false
+  template:
+    pod:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  strimzi.io/cluster: production
+                  strimzi.io/kind: Kafka
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production
   namespace: kafka
 spec:
   kafka:
-    version: 3.7.1
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: "4.2"
     listeners:
       # Internal plaintext listener
       - name: plain
@@ -129,56 +168,12 @@ spec:
       num.recovery.threads.per.data.dir: 1
       auto.create.topics.enable: "false"  # always create topics explicitly
 
-    resources:
-      requests:
-        memory: 2Gi
-        cpu: "500m"
-      limits:
-        memory: 4Gi
-        cpu: "2"
-
-    jvmOptions:
-      -Xms: 1024m
-      -Xmx: 2048m
-
-    storage:
-      type: persistent-claim
-      size: 100Gi
-      class: premium-ssd
-      deleteClaim: false
-
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
         configMapKeyRef:
           name: kafka-metrics-config
           key: kafka-metrics-config.yml
-
-    template:
-      pod:
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              - topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchLabels:
-                    strimzi.io/cluster: production
-                    strimzi.io/kind: Kafka
-
-  # Use KRaft mode (no ZooKeeper) for Kafka 3.7+
-  zookeeper:
-    replicas: 3
-    resources:
-      requests:
-        memory: 1Gi
-        cpu: "250m"
-      limits:
-        memory: 2Gi
-        cpu: "500m"
-    storage:
-      type: persistent-claim
-      size: 10Gi
-      deleteClaim: false
 
   entityOperator:
     topicOperator:
@@ -199,10 +194,10 @@ spec:
           cpu: "500m"
 ```
 
-## Step 4: Create Kafka Metrics ConfigMap
+## Step 4: Create Kafka Metrics ConfigMap and Test Topic
 
 ```yaml
-# infrastructure/messaging/strimzi/kafka-metrics.yaml
+# infrastructure/messaging/strimzi/cluster/kafka-metrics.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -227,9 +222,45 @@ data:
           broker: "$4:$5"
 ```
 
+```yaml
+# infrastructure/messaging/strimzi/cluster/test-topic.yaml
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: my-test-topic
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production
+spec:
+  partitions: 3
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+```
+
 ## Step 5: Flux Kustomization
 
 ```yaml
+# clusters/production/strimzi-operator-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: strimzi-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/messaging/strimzi/operator
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: strimzi-kafka-operator
+      namespace: kafka
+  timeout: 10m
+---
 # clusters/production/kafka-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -241,12 +272,12 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/messaging/strimzi
+  path: ./infrastructure/messaging/strimzi/cluster
   prune: true
   dependsOn:
     - name: strimzi-operator
   healthChecks:
-    - apiVersion: kafka.strimzi.io/v1beta2
+    - apiVersion: kafka.strimzi.io/v1
       kind: Kafka
       name: production
       namespace: kafka
@@ -266,7 +297,7 @@ kubectl get pods -n kafka
 kubectl logs -n kafka production-kafka-0 --tail=30
 
 # Produce a test message
-kubectl exec -n kafka production-kafka-0 -- \
+kubectl exec -i -n kafka production-kafka-0 -- \
   kafka-console-producer.sh \
   --bootstrap-server production-kafka-bootstrap:9092 \
   --topic my-test-topic <<< "test message from flux post"
