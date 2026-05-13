@@ -10,7 +10,7 @@ Description: Diagnose MySQL replication failures in Kubernetes clusters with Cal
 
 ## Introduction
 
-MySQL replication failures in Kubernetes environments running Calico often have networking root causes that are distinct from MySQL configuration issues. When MySQL replica pods cannot connect to the primary, the problem may be a network policy blocking port 3306, a BGP routing issue preventing cross-node communication, or IPAM exhaustion causing pods to receive incorrect IP addresses.
+MySQL replication failures in Kubernetes environments running Calico often have networking root causes that are distinct from MySQL configuration issues. When MySQL replica pods cannot connect to the primary, the problem may be a network policy blocking port 3306, a BGP routing issue preventing cross-node communication, or IPAM exhaustion causing pods to fail IP allocation.
 
 This post focuses on the networking layer diagnostics for MySQL replication failures, which should be ruled out before diving into MySQL-specific configuration troubleshooting.
 
@@ -70,14 +70,11 @@ If Calico cannot program policy for a pod (WorkloadEndpoint missing), traffic to
 # Check that both MySQL pods have WorkloadEndpoints
 calicoctl get workloadendpoints --all-namespaces | grep mysql
 
-# Get detailed WEP for the primary pod
-calicoctl get workloadendpoint \
-  --node=$(kubectl get pod ${PRIMARY_POD} -n ${NAMESPACE} -o jsonpath='{.spec.nodeName}') \
-  --orchestrator=k8s \
-  --workload=${NAMESPACE}/${PRIMARY_POD} \
-  -o yaml 2>/dev/null
+# Get detailed WEP data for the primary pod
+calicoctl get workloadendpoints -n ${NAMESPACE} -o yaml | \
+  grep -A 30 "pod: ${PRIMARY_POD}"
 
-# A missing WorkloadEndpoint means Felix cannot apply policies for that pod
+# A missing WorkloadEndpoint usually indicates a CNI or Calico datastore issue
 ```
 
 ## Step 4: Check BGP Routes for Cross-Node Replication
@@ -95,7 +92,7 @@ REPLICA_NODE=$(kubectl get pod ${REPLICA_POD} -n ${NAMESPACE} -o jsonpath='{.spe
 echo "Primary on: ${PRIMARY_NODE}"
 echo "Replica on: ${REPLICA_NODE}"
 
-# Check BGP peers are established (route exchange working)
+# Check BGP peers are established (run this on the node you are troubleshooting)
 calicoctl node status
 ```
 
@@ -119,9 +116,9 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 ## Best Practices
 
 - Always define explicit ingress rules allowing port 3306 from replica pod selectors when using default-deny policies
-- Use named ports in Calico network policies for MySQL (`3306`) to make policy intent clear
+- Use a named port such as `mysql` in the pod spec and Calico policies when you need indirection; otherwise use the numeric port `3306`
 - Monitor MySQL replication lag as a leading indicator of connectivity issues before full replication failure
-- Ensure MySQL pods use stable pod IPs (or use a headless Service) since pod IP changes after restarts break replication
+- Configure replication to use stable DNS names from a headless Service rather than pod IPs, since pod IPs can change after restarts
 
 ## Conclusion
 
