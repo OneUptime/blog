@@ -12,7 +12,7 @@ Description: A step-by-step guide to installing Calico networking on Windows Ser
 
 Running Windows containers in Kubernetes requires special handling for networking. Calico supports Windows nodes through a dedicated installation path that runs calico-node as a Windows service rather than a container (since Windows does not support privileged containers). This enables Windows pods to get Calico-managed IP addresses and participate in Calico network policies alongside Linux pods.
 
-Windows nodes in Kubernetes clusters require Calico to be installed with VXLAN or Windows Host Network Service (HNS) networking. The BGP-based routing that works well on Linux is not supported on Windows nodes, so VXLAN is the recommended encapsulation mode for Windows workloads.
+Windows nodes in Kubernetes clusters can use Calico VXLAN or Calico BGP networking with the Windows BGP router. IP-in-IP is not supported on Windows nodes, and if Calico CNI with VXLAN is used, BGP must be disabled. VXLAN is commonly used because it can traverse most networks and is supported by Calico for Windows.
 
 This guide covers installing Calico on Windows Server nodes in a mixed Linux/Windows Kubernetes cluster.
 
@@ -21,7 +21,8 @@ This guide covers installing Calico on Windows Server nodes in a mixed Linux/Win
 - A Kubernetes cluster with Linux nodes already running Calico
 - Windows Server 2019 or 2022 worker nodes joined to the cluster
 - PowerShell access to the Windows nodes
-- `kubectl` access from a Linux node
+- `kubectl.exe` and the kubelet kubeconfig copied to `C:\k\config` on each Windows node
+- `kubectl` access from a Linux node for cluster verification
 
 ## Step 1: Verify Linux Nodes Have Calico Installed
 
@@ -56,15 +57,15 @@ Windows Server 2019 (1809) or later is required.
 
 ```powershell
 # On the Windows node, download the installation script
-Invoke-WebRequest -Uri "https://github.com/projectcalico/calico/releases/download/v3.27.0/calico-windows-v3.27.0.zip" -OutFile C:\calico-windows.zip
-Expand-Archive -Path C:\calico-windows.zip -DestinationPath C:\CalicoWindows
+Invoke-WebRequest -Uri "https://github.com/projectcalico/calico/releases/download/v3.27.0/install-calico-windows.ps1" -OutFile C:\install-calico-windows.ps1
+C:\install-calico-windows.ps1 -DownloadOnly yes -KubeVersion <your Kubernetes version>
 ```
 
 ## Step 4: Configure the Installation
 
 ```powershell
 # Edit the configuration file
-C:\CalicoWindows\config.ps1
+notepad C:\CalicoWindows\config.ps1
 ```
 
 Set the following variables:
@@ -74,7 +75,8 @@ $env:CALICO_NETWORKING_BACKEND = "vxlan"
 $env:CALICO_DATASTORE_TYPE = "kubernetes"
 $env:KUBECONFIG = "C:\k\config"
 $env:VXLAN_VNI = "4096"
-$env:CALICO_K8S_NODE_REF = $env:COMPUTERNAME.ToLower()
+$env:NODENAME = $(hostname).ToLower()
+$env:CALICO_K8S_NODE_REF = $env:NODENAME
 ```
 
 ## Step 5: Run the Installation
