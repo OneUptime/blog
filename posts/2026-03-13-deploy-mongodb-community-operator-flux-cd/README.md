@@ -10,13 +10,13 @@ Description: Deploy the MongoDB Community Kubernetes Operator for managed MongoD
 
 ## Introduction
 
-The MongoDB Community Operator is the free, open-source Kubernetes operator maintained by MongoDB, Inc. It supports MongoDB replica sets, TLS configuration, SCRAM authentication, and rolling upgrades. While it lacks some enterprise features of the Percona or Ops Manager operators (like automated backups to S3 and sharding), it is the simplest path to running a production-grade MongoDB replica set on Kubernetes for teams that don't need those features.
+The MongoDB Community Operator is the free, open-source Kubernetes operator from MongoDB, Inc. Its GitHub repository is archived as of December 12, 2025, but the official Helm chart remains available for teams that have already accepted that lifecycle status. It supports MongoDB replica sets, TLS configuration, SCRAM authentication, and rolling upgrades. While it lacks some enterprise features of the Percona or Ops Manager operators (like automated backups to S3 and sharding), it is a straightforward path to running a MongoDB replica set on Kubernetes for teams that don't need those features.
 
 Deploying the MongoDB Community Operator through Flux CD gives you GitOps-managed MongoDB clusters where topology changes and configuration updates flow through pull requests. The operator is available as a Helm chart from MongoDB's official repository.
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- A supported Kubernetes cluster with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs
 - `kubectl` and `flux` CLIs installed
 
@@ -57,7 +57,7 @@ spec:
   chart:
     spec:
       chart: community-operator
-      version: "0.10.0"
+      version: "0.13.0"
       sourceRef:
         kind: HelmRepository
         name: mongodb
@@ -69,8 +69,7 @@ spec:
   values:
     operator:
       watchNamespace: "*"  # watch all namespaces, or specify "mongodb"
-    resources:
-      operator:
+      resources:
         requests:
           cpu: "100m"
           memory: "256Mi"
@@ -91,7 +90,7 @@ metadata:
 spec:
   members: 3
   type: ReplicaSet
-  version: "7.0.11"
+  version: "7.0.28"
 
   security:
     authentication:
@@ -102,7 +101,7 @@ spec:
       certificateKeySecretRef:
         name: mongodb-tls-cert
       caCertificateSecretRef:
-        name: mongodb-ca-cert
+        name: mongodb-tls-cert
 
   users:
     # Admin user
@@ -132,7 +131,7 @@ spec:
     storage.wiredTiger.engineConfig.journalCompressor: snappy
     operationProfiling.mode: slowOp
     operationProfiling.slowOpThresholdMs: 100
-    net.ssl.mode: requireSSL
+    net.tls.mode: requireTLS
 
   statefulSet:
     spec:
@@ -212,12 +211,16 @@ spec:
     algorithm: RSA
     size: 2048
   dnsNames:
+    - "my-mongodb-svc.mongodb.svc.cluster.local"
+    - "my-mongodb-svc.mongodb.svc"
     - "*.my-mongodb-svc.mongodb.svc.cluster.local"
     - "*.my-mongodb-svc.mongodb.svc"
   issuerRef:
     name: cluster-issuer
     kind: ClusterIssuer
 ```
+
+The `mongodb-tls-cert` Secret must contain `tls.crt`, `tls.key`, and `ca.crt`. cert-manager includes `ca.crt` when the issuing CA is known; for ACME issuers, use a separate CA Secret and reference it in `caCertificateSecretRef`.
 
 ## Step 5: Flux Kustomization
 
@@ -255,7 +258,7 @@ kubectl get mongodbcommunity my-mongodb -n mongodb
 kubectl get pods -n mongodb
 
 # Get the connection string
-kubectl get secret my-mongodb-my-user -n mongodb \
+kubectl get secret my-mongodb-admin-my-user -n mongodb \
   -o jsonpath='{.data.connectionString\.standardSrv}' | base64 -d
 
 # Connect with mongosh (requires TLS cert)
