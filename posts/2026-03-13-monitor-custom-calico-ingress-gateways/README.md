@@ -55,9 +55,11 @@ spec:
   selector:
     app: custom-gateway
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
-  - port: 443
+  - name: https
+    port: 443
     targetPort: 443
 ```
 
@@ -69,6 +71,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-custom-gateway-egress
 spec:
+  namespaceSelector: projectcalico.org/name == 'gateway-system'
   selector: app == 'custom-gateway'
   types:
   - Egress
@@ -91,7 +94,7 @@ spec:
   ingress:
   - action: Allow
     source:
-      namespaceSelector: kubernetes.io/metadata.name == 'gateway-system'
+      namespaceSelector: projectcalico.org/name == 'gateway-system'
       selector: app == 'custom-gateway'
 ```
 
