@@ -85,9 +85,11 @@ calicoctl ipam show --show-blocks
 calicoctl ipam show
 
 # Find blocks with low utilization (many free IPs)
+# Note: .spec.allocations is a fixed-size array (one slot per IP in the block),
+# with null for unallocated slots, so we filter out nulls to count real allocations.
 calicoctl get ipamblock -o json | \
-  jq -r '.items[] | select(.spec.allocations | length < 10) |
-  "\(.metadata.cidr) has \(.spec.allocations | length) allocations"'
+  jq -r '.items[] | select(([.spec.allocations[] | select(. != null)] | length) < 10) |
+  "\(.spec.cidr) has \([.spec.allocations[] | select(. != null)] | length) allocations"'
 ```
 
 ## Step 4: Release Unused Block Affinities
@@ -104,8 +106,9 @@ kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | sort >
 # Find stale BlockAffinity entries
 comm -23 /tmp/calico-nodes.txt /tmp/k8s-nodes.txt
 
-# Release stale IPAM data after node removal
-calicoctl ipam release --ip=<orphaned-block-cidr>
+# Delete the stale BlockAffinity to free the block for reallocation
+# (calicoctl ipam release --ip=<IP> only releases a single IP at a time)
+calicoctl delete blockaffinity <affinity-name>
 ```
 
 ## Step 5: Configure IPAM Pre-Allocation
