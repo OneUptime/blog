@@ -28,36 +28,42 @@ This guide deploys Cassandra using the Bitnami Helm chart and Jaeger using the J
 Deploy a 3-node Cassandra ring with persistent storage.
 
 ```yaml
-# clusters/my-cluster/jaeger/cassandra-helmrepository.yaml
+# clusters/my-cluster/jaeger/infrastructure/cassandra-source.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: bitnami
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://charts.bitnami.com/bitnami
+  url: oci://registry-1.docker.io/bitnamicharts/cassandra
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    semver: ">=12.0.0 <13.0.0"
 ---
-# clusters/my-cluster/jaeger/cassandra-helmrelease.yaml
+# clusters/my-cluster/jaeger/infrastructure/cassandra-helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cassandra
-  namespace: observability
+  namespace: flux-system
 spec:
   interval: 15m
-  chart:
-    spec:
-      chart: cassandra
-      version: ">=10.0.0 <11.0.0"
-      sourceRef:
-        kind: HelmRepository
-        name: bitnami
-        namespace: flux-system
+  targetNamespace: observability
+  install:
+    createNamespace: true
+  chartRef:
+    kind: OCIRepository
+    name: bitnami
+    namespace: flux-system
   values:
     # 3-node ring for production; use 1 for dev/test
     replicaCount: 3
+    cluster:
+      datacenter: dc1
     # Set the Cassandra superuser password - override with a Secret in production
     dbUser:
       user: cassandra
@@ -84,7 +90,7 @@ spec:
 ## Step 2: Create the Cassandra Credentials Secret
 
 ```yaml
-# clusters/my-cluster/jaeger/cassandra-secret.yaml
+# clusters/my-cluster/jaeger/infrastructure/cassandra-secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -99,14 +105,27 @@ stringData:
 ## Step 3: Deploy the Jaeger Operator
 
 ```yaml
-# clusters/my-cluster/jaeger/jaeger-operator-helmrelease.yaml
+# clusters/my-cluster/jaeger/infrastructure/jaeger-operator-source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jaegertracing
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://jaegertracing.github.io/helm-charts
+---
+# clusters/my-cluster/jaeger/infrastructure/jaeger-operator-helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: jaeger-operator
-  namespace: observability
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: observability
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: jaeger-operator
@@ -123,7 +142,7 @@ spec:
 ## Step 4: Create the Jaeger Instance with Cassandra Storage
 
 ```yaml
-# clusters/my-cluster/jaeger/jaeger-instance.yaml
+# clusters/my-cluster/jaeger/instance/jaeger-instance.yaml
 apiVersion: jaegertracing.io/v1
 kind: Jaeger
 metadata:
@@ -140,17 +159,17 @@ spec:
         # Point at the Cassandra headless service
         servers: cassandra-headless.observability.svc
         keyspace: jaeger_v1_dc1
-        local-dc: datacenter1
+        local-dc: dc1
         tls:
           enabled: false
-    # Run the Cassandra schema init job before starting Jaeger components
+    # Run the dependency graph job on a schedule
     dependencies:
       enabled: true
       schedule: "55 23 * * *"
+    # Run the Cassandra schema init job before starting Jaeger components
     cassandraCreateSchema:
       datacenter: "dc1"
       mode: prod
-      replicationFactor: 3
 
   collector:
     # Scale collectors based on trace ingestion volume
@@ -168,7 +187,25 @@ spec:
 ## Step 5: Create the Flux Kustomization with Dependencies
 
 ```yaml
-# clusters/my-cluster/jaeger/kustomization.yaml
+# clusters/my-cluster/jaeger/infrastructure-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: jaeger-infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/my-cluster/jaeger/infrastructure
+  prune: true
+  wait: true
+  timeout: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: cert-manager
+---
+# clusters/my-cluster/jaeger/instance-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -176,23 +213,24 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./clusters/my-cluster/jaeger
+  path: ./clusters/my-cluster/jaeger/instance
   prune: true
+  wait: true
+  timeout: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
   dependsOn:
-    # Cassandra must be healthy before Jaeger starts schema init
-    - name: cassandra
-    - name: cert-manager
+    # Cassandra and the Jaeger CRD must be ready before the Jaeger instance is applied
+    - name: jaeger-infrastructure
 ```
 
 ## Best Practices
 
-- Set Cassandra's `replicaCount` to 3 and Jaeger's `cassandraCreateSchema.replicationFactor` to 3 for production quorum writes.
+- Set Cassandra's `replicaCount` to at least 3 and use Jaeger's `cassandraCreateSchema.mode: prod` so the schema job uses `NetworkTopologyStrategy`.
 - Use a `fast-ssd` StorageClass for Cassandra PVCs; spinning disks cause significant write latency.
 - Enable Cassandra's built-in TTL (`default_time_to_live`) on the traces table to auto-expire old spans without manual compaction tuning.
-- Use `dependsOn` in the Kustomization to enforce startup ordering between Cassandra and the Jaeger schema job.
+- Use `dependsOn` between Flux Kustomizations to apply the Jaeger instance only after Cassandra and the Jaeger Operator are ready.
 - Monitor Cassandra heap usage and GC pause time; excessive GC is the most common Cassandra performance issue.
 
 ## Conclusion
