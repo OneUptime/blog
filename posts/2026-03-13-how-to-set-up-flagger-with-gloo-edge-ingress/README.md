@@ -18,9 +18,9 @@ Gloo Edge provides advanced traffic management features including rate limiting,
 
 Before you begin, make sure you have the following in place:
 
-- A Kubernetes cluster running version 1.22 or later.
+- A Kubernetes cluster running a version supported by the Gloo Edge and Flagger versions you plan to install.
 - `kubectl` installed and configured to interact with your cluster.
-- Helm 3 installed on your local machine.
+- A supported Helm 3 version installed on your local machine.
 - Gloo Edge installed on your cluster.
 - A metrics provider such as Prometheus available in your cluster.
 
@@ -69,34 +69,9 @@ helm install flagger flagger/flagger \
   --values flagger-values.yaml
 ```
 
-## Creating an Upstream for Your Application
-
-Gloo Edge uses Upstream resources to define backend services. Create an Upstream that points to your application service.
-
-```yaml
-# upstream.yaml
-# Gloo Edge Upstream resource pointing to the application service
-apiVersion: gloo.solo.io/v1
-kind: Upstream
-metadata:
-  name: podinfo
-  namespace: gloo-system
-spec:
-  kube:
-    serviceName: podinfo
-    serviceNamespace: test
-    servicePort: 9898
-```
-
-Apply the Upstream resource.
-
-```bash
-kubectl apply -f upstream.yaml
-```
-
 ## Creating a VirtualService for Routing
 
-Define a Gloo Edge VirtualService that routes traffic to your application through the Upstream.
+Define a Gloo Edge VirtualService that delegates traffic to the RouteTable that Flagger creates and manages for your application.
 
 ```yaml
 # virtualservice.yaml
@@ -105,7 +80,7 @@ apiVersion: gateway.solo.io/v1
 kind: VirtualService
 metadata:
   name: podinfo
-  namespace: gloo-system
+  namespace: test
 spec:
   virtualHost:
     domains:
@@ -113,16 +88,16 @@ spec:
     routes:
       - matchers:
           - prefix: /
-        routeAction:
-          single:
-            upstream:
-              name: podinfo
-              namespace: gloo-system
+        delegateAction:
+          ref:
+            name: podinfo
+            namespace: test
 ```
 
 Apply the VirtualService.
 
 ```bash
+kubectl create namespace test
 kubectl apply -f virtualservice.yaml
 ```
 
@@ -164,6 +139,12 @@ spec:
             periodSeconds: 10
 ```
 
+Apply the Deployment.
+
+```bash
+kubectl apply -f deployment.yaml
+```
+
 ## Configuring the Flagger Canary Resource
 
 Create a Canary custom resource that tells Flagger how to manage progressive delivery for your application using Gloo Edge.
@@ -182,11 +163,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: podinfo
-  upstreamRef:
-    apiVersion: gloo.solo.io/v1
-    kind: Upstream
-    name: podinfo
-    namespace: gloo-system
+  service:
+    port: 9898
+    targetPort: 9898
   progressDeadlineSeconds: 60
   analysis:
     interval: 30s
@@ -212,7 +191,7 @@ kubectl apply -f canary.yaml
 
 ## Verifying the Setup
 
-After applying the Canary resource, Flagger will initialize it by creating the primary and canary Deployments along with the corresponding ClusterIP services.
+After applying the Canary resource, Flagger will initialize it by creating the primary Deployment, the corresponding ClusterIP services, a Gloo RouteTable, and Gloo Upstreams for the primary and canary services.
 
 ```bash
 # Check the canary status
@@ -222,7 +201,7 @@ kubectl get canary -n test
 kubectl describe canary podinfo -n test
 ```
 
-The canary status should show `Initialized` once Flagger has completed the setup. Flagger will have created `podinfo-primary` and `podinfo-canary` Deployments and updated the Gloo Edge routing configuration to point to the primary.
+The canary status should show `Initialized` once Flagger has completed the setup. Flagger will have created the `podinfo-primary` Deployment and updated the Gloo Edge routing configuration to point to the primary service.
 
 ## Triggering a Canary Deployment
 
