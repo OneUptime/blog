@@ -10,13 +10,13 @@ Description: Deploy the Percona MySQL Operator for PerconaXtraDB clusters on Kub
 
 ## Introduction
 
-The Percona Operator for MySQL based on Percona XtraDB Cluster (PXC) provides synchronous multi-primary MySQL replication using Galera. Unlike traditional MySQL replication which has a single primary and read replicas, XtraDB Cluster allows writes on any node and automatically handles conflict resolution. This makes it ideal for active-active deployments where all replicas need to be writable.
+The Percona Operator for MySQL based on Percona XtraDB Cluster (PXC) provides virtually synchronous multi-primary MySQL replication using Galera. Unlike traditional MySQL replication which has a single primary and read replicas, XtraDB Cluster allows writes on any node and uses certification to detect conflicting transactions. This makes it useful for active-active deployments where all replicas need to be writable, as long as applications handle possible transaction rollbacks from certification conflicts.
 
 Deploying the Percona MySQL Operator through Flux CD ensures your MySQL cluster topology, backup configuration, and PMM monitoring settings are version-controlled. Scaling, credential rotation, and operator upgrades all flow through the same GitOps pull request workflow.
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes version supported by Percona Operator 1.15.1 with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs
 - `kubectl` and `flux` CLIs installed
 - S3-compatible storage for backups
@@ -39,7 +39,7 @@ spec:
 ## Step 2: Deploy the Percona MySQL Operator
 
 ```yaml
-# infrastructure/databases/percona-mysql/namespace.yaml
+# infrastructure/databases/percona-mysql/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -47,7 +47,7 @@ metadata:
 ```
 
 ```yaml
-# infrastructure/databases/percona-mysql/operator.yaml
+# infrastructure/databases/percona-mysql/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -81,7 +81,7 @@ spec:
 ## Step 3: Create a PerconaXtraDBCluster
 
 ```yaml
-# infrastructure/databases/percona-mysql/pxc-cluster.yaml
+# infrastructure/databases/percona-mysql/cluster/pxc-cluster.yaml
 apiVersion: pxc.percona.com/v1
 kind: PerconaXtraDBCluster
 metadata:
@@ -92,7 +92,7 @@ spec:
   allowUnsafeConfigurations: false
   updateStrategy: SmartUpdate
   upgradeOptions:
-    apply: Disabled   # disable auto-upgrades in production
+    apply: disabled   # disable auto-upgrades in production
     schedule: "0 4 * * *"
 
   secretsName: cluster1-secrets
@@ -133,7 +133,7 @@ spec:
   haproxy:
     enabled: true
     size: 2
-    image: percona/percona-xtradb-cluster-operator:1.15.1-haproxy
+    image: percona/haproxy:2.8.5
     resources:
       requests:
         memory: 128M
@@ -149,12 +149,12 @@ spec:
   # PMM monitoring (optional)
   pmm:
     enabled: false
-    image: percona/pmm-client:2.41.1
+    image: percona/pmm-client:2.42.0
     serverHost: monitoring-service
 
   # Backup configuration
   backup:
-    image: percona/percona-xtradb-cluster-operator:1.15.1-pxc8.0-backup
+    image: percona/percona-xtradb-cluster-operator:1.15.1-pxc8.0-backup-pxb8.0.35
     storages:
       s3-us-east:
         type: s3
@@ -172,7 +172,7 @@ spec:
 ## Step 4: Create Cluster Secrets
 
 ```yaml
-# infrastructure/databases/percona-mysql/secrets.yaml (use SealedSecret)
+# infrastructure/databases/percona-mysql/cluster/secrets.yaml (use SealedSecret)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -183,9 +183,8 @@ stringData:
   root: "RootPassword123!"
   xtrabackup: "XtrabackupPassword!"
   monitor: "MonitorPassword!"
-  clustercheck: "ClusterCheckPassword!"
   proxyadmin: "ProxyAdminPassword!"
-  pmmserver: ""
+#  pmmserverkey: "PMMServerAPIKey"
   operator: "OperatorPassword!"
   replication: "ReplicationPassword!"
 ---
@@ -203,24 +202,40 @@ stringData:
 ## Step 5: Flux Kustomization
 
 ```yaml
-# clusters/production/mysql-kustomization.yaml
+# clusters/production/percona-mysql-operator-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: percona-mysql
+  name: percona-mysql-operator
   namespace: flux-system
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/databases/percona-mysql
+  path: ./infrastructure/databases/percona-mysql/operator
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: percona-xtradb-cluster-operator
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: percona-mysql-operator
       namespace: mysql
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: percona-mysql-cluster
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: percona-mysql-operator
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/databases/percona-mysql/cluster
+  prune: true
 ```
 
 ## Step 6: Verify the Cluster
