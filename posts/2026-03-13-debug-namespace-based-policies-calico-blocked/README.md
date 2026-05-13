@@ -46,9 +46,10 @@ kubectl get namespace monitoring --show-labels | grep "team=observability"
 ## Step 3: Check Policy Ordering
 
 ```bash
-# List all policies affecting the namespace, sorted by order
-calicoctl get networkpolicies -n production -o wide
-calicoctl get globalnetworkpolicies -o wide | sort -t'|' -k3 -n
+# List all policies affecting the namespace and compare the ORDER column.
+# Lower order values are evaluated first.
+calicoctl get networkpolicy -n production -o wide
+calicoctl get globalnetworkpolicy -o wide
 ```
 
 ## Step 4: Add a Temporary Log Rule
@@ -72,7 +73,9 @@ spec:
 calicoctl apply -f debug-log.yaml
 # Trigger the failed traffic
 # Check logs
-sudo journalctl | grep "CALICO" | tail -30
+sudo journalctl | grep -i "calico" | tail -30
+# In eBPF mode, use the Calico node trace log instead:
+kubectl exec -n calico-system ds/calico-node -- bpftool prog tracelog
 ```
 
 ## Step 5: Fix Missing Namespace Labels
