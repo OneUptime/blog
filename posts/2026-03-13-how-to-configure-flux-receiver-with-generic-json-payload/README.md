@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Generics, JSON, CI/CD
 
-Description: Learn how to configure a Flux Receiver with the generic type to accept JSON webhook payloads from any CI/CD system or custom automation tool.
+Description: Learn how to configure a Flux Receiver with the generic type to trigger reconciliation from any CI/CD system or custom automation tool.
 
 ---
 
 ## Introduction
 
-Not every webhook source has a dedicated Flux Receiver type. CI/CD platforms like Jenkins, CircleCI, Tekton, Argo Workflows, and custom automation tools all generate webhook events that you might want to use as reconciliation triggers. The generic Receiver type in Flux accepts any JSON payload, making it a universal integration point for systems that do not have a built-in receiver type.
+Not every webhook source has a dedicated Flux Receiver type. CI/CD platforms like Jenkins, CircleCI, Tekton, Argo Workflows, and custom automation tools all generate webhook events that you might want to use as reconciliation triggers. The generic Receiver type in Flux responds to calls on the generated webhook path and can carry arbitrary JSON payloads, making it a universal integration point for systems that do not have a built-in receiver type.
 
 This guide covers how to configure a generic Flux Receiver, connect it to various CI/CD systems, and use it to build flexible event-driven reconciliation workflows.
 
@@ -18,7 +18,7 @@ This guide covers how to configure a generic Flux Receiver, connect it to variou
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller accessible from your CI/CD system
 - kubectl access to the flux-system namespace
@@ -26,9 +26,9 @@ Before you begin, ensure you have:
 
 ## How the Generic Receiver Works
 
-The generic Receiver type accepts any HTTP POST request and validates it using an HMAC signature or a simple token header. Unlike provider-specific receivers (GitHub, GitLab, etc.), the generic type does not parse the payload for event-specific information. It simply validates the request and triggers reconciliation of the specified resources.
+The generic Receiver type responds to requests on the generated webhook path and triggers reconciliation of the specified resources. Unlike provider-specific receivers (GitHub, GitLab, etc.), the generic type does not parse the payload for event-specific information and does not validate the incoming request body.
 
-This makes it ideal for any system that can send an HTTP POST request with an authorization header.
+This makes it ideal for any system that can send an HTTP POST request to the generated webhook URL. Use the `generic-hmac` type when you need HMAC validation of the request body.
 
 ## Creating the Webhook Secret
 
@@ -89,7 +89,7 @@ The complete webhook URL is your notification controller domain plus the webhook
 
 ## Calling the Generic Receiver
 
-The generic receiver expects the token in the request body or as a header. Send a POST request with the token:
+The generic receiver does not expect the token in the request body or as a header. The token in the Secret is used when Flux generates the webhook path. Send a POST request to that generated URL:
 
 ```bash
 curl -X POST https://flux-webhook.yourdomain.com/hook/abc123... \
@@ -97,13 +97,14 @@ curl -X POST https://flux-webhook.yourdomain.com/hook/abc123... \
   -d '{}'
 ```
 
-For HMAC-based validation, the generic receiver uses the token to verify the request body:
+For HMAC-based validation, use a `generic-hmac` receiver. The receiver uses the token to verify the request body against the `X-Signature` header:
 
 ```bash
 BODY='{}'
 SIGNATURE=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "your-secure-random-token-here" | awk '{print $2}')
 curl -X POST https://flux-webhook.yourdomain.com/hook/abc123... \
   -H "Content-Type: application/json" \
+  -H "X-Signature: sha256=$SIGNATURE" \
   -d "$BODY"
 ```
 
@@ -128,7 +129,7 @@ spec:
       name: apps
 ```
 
-The `generic-hmac` type validates the `X-Signature` header against the HMAC-SHA256 of the request body using the shared secret.
+The `generic-hmac` type validates the `X-Signature` header against the HMAC of the request body using the shared secret. The header value must include the hash function prefix, for example `sha256=<hash>`.
 
 ## Integration with Jenkins
 
@@ -291,7 +292,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -354,7 +355,7 @@ Verify the Receiver status:
 kubectl describe receiver generic-receiver -n flux-system
 ```
 
-Test with a simple curl command to isolate networking issues from payload issues. The generic receiver should accept any valid JSON body.
+Test with a simple curl command to isolate networking issues from payload issues. The generic receiver does not parse the JSON body, so authentication and routing issues are usually related to the generated webhook path or Ingress configuration.
 
 Check the notification controller logs:
 
@@ -366,4 +367,4 @@ Ensure the webhook URL path is correct. A common mistake is using the Receiver n
 
 ## Conclusion
 
-The generic Flux Receiver is the most versatile webhook integration point in the Flux notification system. By accepting any JSON payload with simple token or HMAC authentication, it connects Flux to any CI/CD platform or automation tool that can send HTTP POST requests. Whether you are using Jenkins, CircleCI, Tekton, or custom scripts, the generic receiver provides a standard interface for triggering event-driven reconciliation. Use separate receivers with different secrets for different pipelines to maintain security isolation, and target specific resources to keep reconciliation focused and efficient.
+The generic Flux Receiver is the most versatile webhook integration point in the Flux notification system. By responding to the generated webhook URL, and by offering HMAC authentication through `generic-hmac` when needed, it connects Flux to any CI/CD platform or automation tool that can send HTTP POST requests. Whether you are using Jenkins, CircleCI, Tekton, or custom scripts, the generic receiver provides a standard interface for triggering event-driven reconciliation. Use separate receivers with different secrets for different pipelines to maintain security isolation, and target specific resources to keep reconciliation focused and efficient.
