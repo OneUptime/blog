@@ -32,11 +32,12 @@ spec:
           serviceAccountName: calico-typha
           containers:
           - name: cert-check
-            image: alpine/openssl
+            image: alpine:3.19
             command:
             - sh
             - -c
             - |
+              apk add --no-cache openssl coreutils
               EXPIRY=$(openssl x509 -enddate -noout -in /typha-tls/tls.crt | awk -F= '{print $2}')
               EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
               NOW=$(date +%s)
@@ -60,15 +61,15 @@ EOF
 
 ### Prometheus Certificate Expiry Metric
 
-If using Prometheus with the kube-state-metrics certificate monitor:
+kube-state-metrics does not parse Secret contents, so use [x509-certificate-exporter](https://github.com/enix/x509-certificate-exporter) to expose certificate expiry as a Prometheus metric:
 
 ```yaml
 # prometheus alert for certificate expiry
 
 - alert: TyphaTLSCertExpiringSoon
   expr: |
-    (kube_secret_info{namespace="calico-system", secret="calico-typha-tls"} * on (namespace, secret)
-    group_left(expiry_date) kube_secret_labels) < 30 * 24 * 3600
+    (x509_cert_not_after{secret_name="calico-typha-tls", secret_namespace="calico-system"} - time())
+    < 30 * 24 * 3600
   for: 1h
   labels:
     severity: warning
@@ -111,8 +112,8 @@ The number of active TLS connections to Typha should equal the number of running
 
 ```bash
 # Check connection count
-kubectl port-forward -n calico-system deployment/calico-typha 9093:9093 &
-curl -s http://localhost:9093/metrics | grep typha_connections_active
+kubectl port-forward -n calico-system deployment/calico-typha 9091:9091 &
+curl -s http://localhost:9091/metrics | grep typha_connections_active
 
 # Compare to node count
 kubectl get nodes --no-headers | wc -l
@@ -163,8 +164,11 @@ kubectl get secret calico-typha-tls -n calico-system \
   -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -enddate -noout
 
 echo "=== Active Connections ==="
-kubectl exec -n calico-system deployment/calico-typha -- \
-  wget -qO- http://localhost:9093/metrics | grep typha_connections_active
+kubectl port-forward -n calico-system deployment/calico-typha 9091:9091 >/dev/null 2>&1 &
+PF_PID=$!
+sleep 2
+curl -s http://localhost:9091/metrics | grep typha_connections_active
+kill $PF_PID
 
 echo "=== Recent TLS Errors ==="
 kubectl logs -n calico-system deployment/calico-typha --since=30m | grep -i "tls\|error" | tail -10
