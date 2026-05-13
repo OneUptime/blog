@@ -27,6 +27,23 @@ This guide deploys Jaeger all-in-one using the Jaeger Operator and configures OT
 The Jaeger Operator's webhook requires cert-manager for TLS certificate generation.
 
 ```yaml
+# clusters/my-cluster/cert-manager/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+---
+# clusters/my-cluster/cert-manager/helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 12h
+  type: oci
+  url: oci://quay.io/jetstack/charts
+---
 # clusters/my-cluster/cert-manager/helmrelease.yaml
 
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -45,13 +62,20 @@ spec:
         name: jetstack
         namespace: flux-system
   values:
-    # Install CRDs as part of the Helm release
-    installCRDs: true
+    # Install and upgrade CRDs as part of the Helm release
+    crds:
+      enabled: true
 ```
 
 ## Step 2: Deploy the Jaeger Operator via HelmRelease
 
 ```yaml
+# clusters/my-cluster/jaeger/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
 # clusters/my-cluster/jaeger/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -82,12 +106,6 @@ spec:
     # Watch all namespaces for Jaeger custom resources
     rbac:
       clusterRole: true
-    # Enable Prometheus metrics for the operator
-    metrics:
-      prometheusRule:
-        enabled: true
-      serviceMonitor:
-        enabled: true
 ```
 
 ## Step 3: Create the Jaeger All-in-One Instance
@@ -138,6 +156,8 @@ Expose the OTLP gRPC and HTTP ports so OpenTelemetry applications can send trace
 
 ```yaml
 # clusters/my-cluster/jaeger/otlp-service.yaml
+# The Jaeger Operator also creates jaeger-allinone-collector with these
+# ports. This shorter service gives applications a stable OTLP-only endpoint.
 apiVersion: v1
 kind: Service
 metadata:
@@ -161,7 +181,7 @@ spec:
 ## Step 5: Create the Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/jaeger/kustomization.yaml
+# clusters/my-cluster/flux-system/jaeger-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -185,7 +205,7 @@ spec:
 - Set `max-traces` in memory storage to prevent unbounded memory growth.
 - Migrate to a persistent backend (Cassandra or Elasticsearch) before running in production.
 - Use `dependsOn` in the Kustomization to ensure cert-manager is ready before the Jaeger Operator installs its webhook.
-- Enable Prometheus metrics and the ServiceMonitor to track span ingestion rates and query latency.
+- Scrape the Jaeger admin and collector metrics endpoints, or create a ServiceMonitor for them if you use Prometheus Operator.
 
 ## Conclusion
 
