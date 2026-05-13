@@ -35,6 +35,10 @@ kubectl run allowed-client --image=nicolaka/netshoot \
 # Deploy a denied source pod
 kubectl run denied-client --image=nicolaka/netshoot \
   --labels="app=denied-client" -- sleep 3600
+
+kubectl wait --for=condition=Ready pod/target --timeout=120s
+kubectl wait --for=condition=Ready pod/allowed-client --timeout=120s
+kubectl wait --for=condition=Ready pod/denied-client --timeout=120s
 ```
 
 ## Validation 1: Baseline (No Policy) - All Ingress Allowed
@@ -113,7 +117,7 @@ kubectl exec denied-client -- wget --timeout=5 -qO- http://$TARGET_IP
 Test that Calico's explicit `Deny` action works and applies in the correct order:
 
 ```bash
-kubectl apply -f - <<EOF
+calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -123,6 +127,7 @@ spec:
   selector: app == 'target'
   ingress:
   - action: Allow
+    protocol: TCP
     source:
       selector: app == 'allowed-client'
     destination:
@@ -146,9 +151,12 @@ kubectl exec denied-client -- wget --timeout=5 -qO- http://$TARGET_IP
 Test that cross-namespace source selectors work correctly:
 
 ```bash
+calicoctl delete networkpolicy calico-ingress-policy -n default
+
 kubectl create namespace external-ns
 kubectl run external-client -n external-ns --image=nicolaka/netshoot \
   --labels="app=external-client" -- sleep 3600
+kubectl wait -n external-ns --for=condition=Ready pod/external-client --timeout=120s
 
 kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
