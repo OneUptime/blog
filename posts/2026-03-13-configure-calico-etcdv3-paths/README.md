@@ -24,17 +24,16 @@ The Calico etcdv3 path hierarchy is organized by data type, with each path prefi
 
 ```mermaid
 graph TD
-    A[/calico/] --> B[/calico/v1/]
-    A --> C[/calico/felix/v1/]
-    B --> D[/calico/v1/policy/]
-    B --> E[/calico/v1/host/]
-    B --> F[/calico/v1/ipam/]
-    B --> G[/calico/v1/config/]
-    B --> H[/calico/v1/net/]
-    D --> I[/calico/v1/policy/tier/]
-    D --> J[/calico/v1/policy/profile/]
-    E --> K[/calico/v1/host/<hostname>/]
-    F --> L[/calico/v1/ipam/v2/]
+    A[/calico/] --> B[/calico/felix/v1/]
+    A --> C[/calico/felix/v2/]
+    A --> D[/calico/ipam/v2/]
+    A --> E[/calico/resources/v3/projectcalico.org/]
+    E --> F[/calico/resources/v3/projectcalico.org/networkpolicies/]
+    E --> G[/calico/resources/v3/projectcalico.org/globalnetworkpolicies/]
+    E --> H[/calico/resources/v3/projectcalico.org/profiles/]
+    E --> I[/calico/resources/v3/projectcalico.org/nodes/]
+    E --> J[/calico/resources/v3/projectcalico.org/workloadendpoints/]
+    E --> K[/calico/resources/v3/projectcalico.org/felixconfigurations/]
 ```
 
 ## Key Path Categories
@@ -44,58 +43,57 @@ graph TD
 ```bash
 # List all network policies
 
-etcdctl get /calico/v1/policy/ --prefix --keys-only
+etcdctl get /calico/resources/v3/projectcalico.org/networkpolicies/ --prefix --keys-only
 
 # Key paths:
-# /calico/v1/policy/tier/<tier-name>/policy/<policy-name>
-# /calico/v1/policy/profile/<profile-name>/rules
-# /calico/v1/policy/profile/<profile-name>/tags
-# /calico/v1/policy/profile/<profile-name>/labels
+# /calico/resources/v3/projectcalico.org/tiers/
+# /calico/resources/v3/projectcalico.org/networkpolicies/
+# /calico/resources/v3/projectcalico.org/globalnetworkpolicies/
+# /calico/resources/v3/projectcalico.org/profiles/
 ```
 
 ### Host/Endpoint Paths
 
 ```bash
 # List all host data
-etcdctl get /calico/v1/host/ --prefix --keys-only
+etcdctl get /calico/resources/v3/projectcalico.org/nodes/ --prefix --keys-only
 
 # Key paths:
-# /calico/v1/host/<hostname>/metadata
-# /calico/v1/host/<hostname>/bird_ip
-# /calico/v1/host/<hostname>/workload/<workload-id>/endpoint/<endpoint-id>
-# /calico/v1/host/<hostname>/config/
+# /calico/resources/v3/projectcalico.org/nodes/
+# /calico/resources/v3/projectcalico.org/hostendpoints/
+# /calico/resources/v3/projectcalico.org/workloadendpoints/
+# /calico/resources/v3/projectcalico.org/felixconfigurations/
 ```
 
 ### IPAM Paths
 
 ```bash
 # View IPAM data
-etcdctl get /calico/v1/ipam/ --prefix --keys-only
+etcdctl get /calico/ipam/v2/ --prefix --keys-only
 
 # Key paths:
-# /calico/v1/ipam/v2/host/<hostname>/ipv4/block/<cidr>
-# /calico/v1/ipam/v2/assignment/ipv4/block/<cidr>
-# /calico/v1/ipam/v2/handle/<handle-id>
+# /calico/ipam/v2/
+# /calico/resources/v3/projectcalico.org/ippools/
+# /calico/resources/v3/projectcalico.org/ipreservations/
 ```
 
-## Step 1: Configure the etcd Root Path Prefix
+## Step 1: Configure etcd Datastore Settings
 
-Calico supports a configurable prefix for all its etcd paths. Set it via the Felix configuration:
+Calico's documented etcd paths use the `/calico/` prefix. Configure kube-controllers etcdv3 compaction on the KubeControllersConfiguration resource:
 
 ```bash
-kubectl patch felixconfiguration default \
-  --type=merge \
+calicoctl patch kubecontrollersconfiguration default \
   --patch='{"spec":{"etcdV3CompactionPeriod":"10m"}}'
 ```
 
-Or via environment variable in the DaemonSet:
+Configure component datastore access via environment variables in the DaemonSet:
 
 ```yaml
 env:
+  - name: DATASTORE_TYPE
+    value: "etcdv3"
   - name: ETCD_ENDPOINTS
     value: "https://etcd:2379"
-  - name: CALICO_ETCD_PREFIX
-    value: "/calico"
 ```
 
 ## Step 2: Explore Current Data
@@ -105,10 +103,10 @@ env:
 etcdctl get /calico/ --prefix --keys-only | wc -l
 
 # View a specific policy
-etcdctl get /calico/v1/policy/tier/default/policy/allow-web
+etcdctl get /calico/resources/v3/projectcalico.org/networkpolicies/ --prefix --keys-only
 
 # View Felix configuration
-etcdctl get /calico/v1/config/ --prefix
+etcdctl get /calico/resources/v3/projectcalico.org/felixconfigurations/default
 ```
 
 ## Step 3: Verify Data Integrity
@@ -116,11 +114,11 @@ etcdctl get /calico/v1/config/ --prefix
 ```bash
 # Check that host entries exist for all cluster nodes
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
-  count=$(etcdctl get "/calico/v1/host/${node}/" --prefix --keys-only | wc -l)
+  count=$(etcdctl get "/calico/resources/v3/projectcalico.org/nodes/${node}" --keys-only | wc -l)
   echo "Node ${node}: ${count} etcd entries"
 done
 ```
 
 ## Conclusion
 
-Understanding Calico's etcdv3 path structure enables precise RBAC configuration, targeted backup/restore operations, and effective troubleshooting. The key prefixes - `/calico/v1/policy/`, `/calico/v1/host/`, `/calico/v1/ipam/`, and `/calico/felix/v1/` - each serve distinct functional areas and can be managed independently. Always interact with these paths using calicoctl in preference to direct etcdctl manipulation to avoid data corruption.
+Understanding Calico's etcdv3 path structure enables precise RBAC configuration, targeted backup/restore operations, and effective troubleshooting. The key prefixes - `/calico/resources/v3/projectcalico.org/`, `/calico/ipam/v2/`, `/calico/felix/v1/`, and `/calico/felix/v2/` - each serve distinct functional areas and can be managed independently. Always interact with these paths using calicoctl in preference to direct etcdctl manipulation to avoid data corruption.
