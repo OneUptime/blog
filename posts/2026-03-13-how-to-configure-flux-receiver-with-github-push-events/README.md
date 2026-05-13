@@ -18,7 +18,7 @@ This guide walks you through configuring a Flux Receiver for GitHub push events,
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller running with a publicly accessible endpoint (or via an ingress)
 - A GitHub repository that Flux is tracking
@@ -116,7 +116,7 @@ kubectl get receiver github-push-receiver -n flux-system -o jsonpath='{.status.w
 
 ## Exposing the Receiver Endpoint
 
-The notification controller needs to be accessible from the internet for GitHub to reach it. Set up an ingress or use a LoadBalancer service:
+The notification controller's `webhook-receiver` service needs to be accessible from the internet for GitHub to reach it. Set up an ingress or use a LoadBalancer service:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -140,7 +140,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -204,11 +204,9 @@ spec:
       name: app-frontend-repo
     - kind: GitRepository
       name: app-backend-repo
-    - kind: Kustomization
-      name: apps
 ```
 
-You can also include Kustomization and HelmRelease resources directly to trigger their reconciliation alongside the source update.
+For GitHub push webhooks, target the source resources such as GitRepository, OCIRepository, or ImageRepository. When a source detects a new artifact revision, Flux automatically notifies downstream Kustomization and HelmRelease resources that reference it.
 
 ## Verifying the Setup
 
@@ -240,13 +238,15 @@ Verify the Receiver is ready:
 kubectl describe receiver github-push-receiver -n flux-system
 ```
 
-Check that the webhook URL is correct and accessible from the internet. Test with curl:
+Check that the webhook URL is correct and accessible from the internet. A direct curl request without GitHub's event and signature headers is expected to fail authentication:
 
 ```bash
 curl -X POST https://flux-webhook.yourdomain.com/hook/abc123... \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
+
+Use GitHub's webhook delivery history to redeliver a signed ping or push event when testing the full Receiver flow.
 
 Ensure the secret token matches between the Kubernetes secret and the GitHub webhook configuration. A mismatch causes HMAC validation failures, which appear in the notification controller logs.
 
