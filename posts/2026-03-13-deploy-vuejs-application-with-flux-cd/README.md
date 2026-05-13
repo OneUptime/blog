@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Vue.js, JavaScript, SPA, Nginx
 
-Description: Deploy a Vue.js application to Kubernetes using Flux CD GitOps workflow, with Nginx serving and runtime environment variable injection.
+Description: Deploy a Vue.js application to Kubernetes using Flux CD GitOps workflow, with Nginx serving and runtime configuration injection.
 
 ---
 
@@ -53,6 +53,12 @@ server {
     index index.html;
     gzip on;
     gzip_types text/plain text/css application/javascript application/json;
+
+    # Runtime config should not be cached like hashed build assets
+    location = /config.js {
+        expires -1;
+        add_header Cache-Control "no-store";
+    }
 
     # Long-lived caching for hashed assets
     location ~* \.(js|css|woff2|png|jpg|svg|ico)$ {
@@ -253,7 +259,7 @@ spec:
       author:
         email: fluxbot@your-org.com
         name: Flux Bot
-      messageTemplate: "chore: update my-vue-app to {{range .Updated.Images}}{{.}}{{end}}"
+      messageTemplate: "chore: update my-vue-app{{range .Changed.Changes}} {{.OldValue}} -> {{.NewValue}}{{end}}"
     push:
       branch: main
   update:
