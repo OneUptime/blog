@@ -16,8 +16,8 @@ Key BGP security controls include: MD5 session authentication, prefix length lim
 
 ## Prerequisites
 
-- Calico with BGP mode
-- calicoctl v3.26+
+- Calico v3.29+ with BGP mode
+- calicoctl v3.29+
 - BGP peer routers supporting authentication
 
 ## Configure BGP MD5 Authentication
@@ -52,11 +52,13 @@ metadata:
 spec:
   importV4:
   - action: Reject
+    matchOperator: In
     cidr: 0.0.0.0/0
     prefixLength:
       min: 0
       max: 7  # Reject excessively broad routes
   - action: Reject
+    matchOperator: In
     cidr: 0.0.0.0/0
     prefixLength:
       min: 25
