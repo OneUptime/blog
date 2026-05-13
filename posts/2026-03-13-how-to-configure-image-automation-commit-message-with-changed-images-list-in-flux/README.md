@@ -24,10 +24,10 @@ This guide focuses specifically on building commit messages that list all change
 
 ## The Changed Images Data Structure
 
-Flux provides changed image information through several template variables. The most useful for listing changed images is `.Changed.Changes`, which is a flat list of all image changes. Each change has:
+Flux provides changed image information through several template variables. The most useful for listing changed images is `.Changed.Changes`, which is a flat list of all image-related field changes. Each change has:
 
-- `.OldValue` - The previous image reference (registry/name:old-tag)
-- `.NewValue` - The new image reference (registry/name:new-tag)
+- `.OldValue` - The previous value, such as an image reference, tag, name, or digest
+- `.NewValue` - The new value, such as an image reference, tag, name, or digest
 
 The `.Changed.Objects` variable groups changes by Kubernetes resource, and `.Changed.FileChanges` groups them by file.
 
@@ -94,7 +94,7 @@ spec:
         chore: update container images
 
         {{ range $resource, $changes := .Changed.Objects -}}
-        {{ $resource.Resource.Kind }}/{{ $resource.Resource.Name }}:
+        {{ $resource.Kind }}/{{ $resource.Name }}:
         {{ range $change := $changes -}}
           - {{ $change.OldValue }} -> {{ $change.NewValue }}
         {{ end }}
@@ -243,7 +243,7 @@ spec:
         The following images were updated in production:
 
         {{ range $resource, $changes := .Changed.Objects -}}
-        ### {{ $resource.Resource.Kind }}/{{ $resource.Resource.Name }}
+        ### {{ $resource.Kind }}/{{ $resource.Name }}
         {{ range $change := $changes -}}
         - {{ $change.OldValue }}
         + {{ $change.NewValue }}
