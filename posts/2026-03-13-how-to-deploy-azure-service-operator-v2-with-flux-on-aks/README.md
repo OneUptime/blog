@@ -46,7 +46,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.*"
+      version: "v1.20.*"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -54,7 +54,8 @@ spec:
   install:
     createNamespace: true
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ```
 
 ## Step 2: Create a Managed Identity for ASO
@@ -78,9 +79,11 @@ ASO_OBJECT_ID=$(az identity show \
   --query principalId -o tsv)
 
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
 
 az role assignment create \
   --assignee-object-id "$ASO_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID"
 ```
@@ -99,7 +102,7 @@ az identity federated-credential create \
   --resource-group my-resource-group \
   --issuer "$AKS_OIDC_ISSUER" \
   --subject system:serviceaccount:azureserviceoperator-system:azureserviceoperator-default \
-  --audience api://AzureADTokenExchange
+  --audiences api://AzureADTokenExchange
 ```
 
 ## Step 4: Deploy ASO v2 with Flux
@@ -128,7 +131,7 @@ spec:
   chart:
     spec:
       chart: azure-service-operator
-      version: "2.6.*"
+      version: "2.19.*"
       sourceRef:
         kind: HelmRepository
         name: aso
@@ -147,7 +150,7 @@ The `crdPattern` field controls which Azure resource CRDs are installed. Only in
 
 ## Step 5: Create Azure Resources Through GitOps
 
-Now you can define Azure resources as Kubernetes manifests. Here is an example that creates a resource group, a storage account, and a PostgreSQL server:
+Now you can define Azure resources as Kubernetes manifests. Here is an example that creates a resource group, a storage account, and a PostgreSQL server, assuming the `postgres-admin-password` Kubernetes secret already exists:
 
 ```yaml
 apiVersion: resources.azure.com/v1api20200601
@@ -195,7 +198,7 @@ spec:
 
 ## Step 6: Manage Secrets for Azure Resources
 
-ASO can export connection strings and credentials to Kubernetes secrets. Configure the operatorSpec on your resources:
+ASO can export keys and endpoints to Kubernetes secrets. Configure the operatorSpec on your resources:
 
 ```yaml
 apiVersion: storage.azure.com/v1api20230101
@@ -218,9 +221,9 @@ spec:
       key2:
         name: storage-account-keys
         key: secondaryKey
-      connectionString1:
+      blobEndpoint:
         name: storage-account-keys
-        key: connectionString
+        key: blobEndpoint
 ```
 
 ## Step 7: Organize with Flux Kustomizations
@@ -240,8 +243,6 @@ spec:
     name: flux-system
   path: ./infrastructure/aso
   prune: true
-  dependsOn:
-    - name: cert-manager
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
