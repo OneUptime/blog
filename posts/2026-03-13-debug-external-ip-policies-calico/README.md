@@ -10,9 +10,9 @@ Description: Diagnose and fix External IP Policies failures in Calico when traff
 
 ## Introduction
 
-External IP Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to debug External IP effectively.
+External IP rules in Calico policies provide fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to debug External IP effectively.
 
-Calico's extensible policy model supports External IP through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
+Calico's extensible policy model supports external IPs and CIDRs through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your external IP criteria.
 
 This guide provides practical techniques for debug External IP in your Kubernetes cluster, following security best practices and production-tested patterns.
 
@@ -25,7 +25,8 @@ This guide provides practical techniques for debug External IP in your Kubernete
 ## Step 1: Identify the Blocked Traffic
 
 ```bash
-kubectl exec -n my-namespace my-pod -- curl -v --max-time 5 http://target-service:8080
+EXTERNAL_ENDPOINT=api.example.com
+kubectl exec -n my-namespace my-pod -- curl -v --max-time 5 "http://${EXTERNAL_ENDPOINT}:8080"
 ```
 
 ## Step 2: Check Applicable Policies
@@ -44,19 +45,20 @@ metadata:
   name: debug-log
   namespace: my-namespace
 spec:
-  order: 999
+  order: 100000
   selector: all()
-  ingress:
+  egress:
     - action: Log
+    - action: Allow
   types:
-    - Ingress
+    - Egress
 ```
 
 ## Step 4: Review Logs and Fix
 
 ```bash
-sudo journalctl | grep "CALICO" | tail -30
-# Identify the blocking rule, fix selector or order
+sudo journalctl -k | grep -i "calico-packet" | tail -30
+# Identify the unhandled egress traffic, then fix destination nets, selector, or order
 
 calicoctl delete networkpolicy debug-log -n my-namespace
 ```
@@ -66,7 +68,7 @@ calicoctl delete networkpolicy debug-log -n my-namespace
 ```mermaid
 flowchart TD
     A[Source Pod] -->|Traffic| B{Calico Policy\nExternal IP}
-    B -->|Allow Rule Matches| C[Destination Pod]
+    B -->|Allow Rule Matches| C[External Endpoint]
     B -->|No Match / Deny| D[BLOCKED]
     E[Policy Controller] -->|Updates| B
 ```
