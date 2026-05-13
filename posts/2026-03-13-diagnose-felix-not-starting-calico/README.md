@@ -20,7 +20,7 @@ Felix startup failures are distinct from calico-node CrashLoopBackOff. In a star
 - `kubectl logs <calico-node-pod> -c calico-node` shows Felix startup errors
 - Node is in Ready state but NetworkPolicy is not being applied
 - Felix healthcheck endpoint returns unhealthy
-- `calicoctl node status` shows Felix unhealthy
+- calico-node readiness check reports Felix as not ready
 
 ## Root Causes
 
@@ -71,9 +71,9 @@ calicoctl get felixconfiguration default -o yaml
 
 ```bash
 kubectl describe $NODE_POD -n kube-system | grep -A 10 "Readiness:"
-# Look for the probe path - typically /readiness
+# Look for the readiness command, typically /bin/calico-node -felix-ready
 
-kubectl exec $NODE_POD -n kube-system -- wget -qO- http://localhost:9099/readiness 2>/dev/null
+kubectl exec $NODE_POD -n kube-system -- /bin/calico-node -felix-ready
 ```
 
 ```mermaid
