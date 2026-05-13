@@ -12,7 +12,7 @@ Description: Learn how to configure CRD installation policies in HelmRelease res
 
 Custom Resource Definitions (CRDs) are a common component of Kubernetes applications. Many Helm charts include CRDs that define custom resources used by operators and controllers. However, CRD management during Helm operations requires special attention because CRDs are cluster-scoped resources that affect the entire Kubernetes API, and mishandling them can break other applications.
 
-Flux CD provides the `spec.install.crds` field in HelmRelease resources that controls how CRDs are handled during installation. The Create policy, in particular, tells Helm to create CRDs during the initial install but not update or replace them during upgrades. This is the safest default for most use cases.
+Flux CD provides the `spec.install.crds` field in HelmRelease resources that controls how CRDs from a chart's `crds/` directory are handled during installation. The Create policy, in particular, tells Flux to create CRDs during the initial install but not update or replace existing CRDs. This is the safest default for most use cases.
 
 This guide explains the available CRD policies, how to configure the Create policy, and best practices for managing CRDs in a GitOps workflow.
 
@@ -31,29 +31,29 @@ Flux HelmRelease supports several CRD policies through the `spec.install.crds` f
 
 - `Skip`: Do not install or manage CRDs at all. Use this when CRDs are managed separately.
 - `Create`: Create CRDs during install but do not update them during upgrades. This is the safest option.
-- `CreateReplace`: Create CRDs during install and replace them during upgrades. Use this when you want Helm to manage the full CRD lifecycle.
+- `CreateReplace`: Create CRDs during install and replace them during upgrades. Use this when you want Flux to manage CRD creation and updates.
 
 The same options are available under `spec.upgrade.crds` for controlling CRD behavior during upgrades.
 
 ## Configuring the Create Policy
 
-The Create policy is recommended for most applications. It ensures CRDs are created when the chart is first installed but leaves them untouched during subsequent upgrades:
+The Create policy is recommended for most applications. It ensures CRDs from the chart's `crds/` directory are created when the chart is first installed but leaves existing CRDs untouched:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cert-manager
-  namespace: cert-manager
+  name: my-operator
+  namespace: my-operator-system
 spec:
   interval: 10m
   chart:
     spec:
-      chart: cert-manager
-      version: "1.14.0"
+      chart: my-operator
+      version: "4.0.0"
       sourceRef:
         kind: HelmRepository
-        name: jetstack
+        name: my-repo
         namespace: flux-system
   install:
     crds: Create
@@ -61,7 +61,7 @@ spec:
       retries: 3
 ```
 
-With this configuration, the CRDs bundled with cert-manager are created during the initial installation. On subsequent upgrades, the CRDs are left as-is, even if the chart includes updated CRD definitions.
+With this configuration, the CRDs bundled in the chart's `crds/` directory are created during the initial installation. On subsequent upgrades, the CRDs are left as-is by default, even if the chart includes updated CRD definitions, because `spec.upgrade.crds` defaults to `Skip`.
 
 ## Configuring CRD Policies for Both Install and Upgrade
 
@@ -71,17 +71,17 @@ To control CRD behavior across the full lifecycle, set policies for both install
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cert-manager
-  namespace: cert-manager
+  name: my-operator
+  namespace: my-operator-system
 spec:
   interval: 10m
   chart:
     spec:
-      chart: cert-manager
-      version: "1.14.0"
+      chart: my-operator
+      version: "4.0.0"
       sourceRef:
         kind: HelmRepository
-        name: jetstack
+        name: my-repo
         namespace: flux-system
   install:
     crds: Create
@@ -96,9 +96,9 @@ spec:
 
 This creates CRDs on install but skips any CRD changes during upgrades. This is the most conservative approach and prevents accidental CRD modifications.
 
-## Using CreateReplace for Full CRD Management
+## Using CreateReplace for CRD Updates
 
-If you want Helm to manage the full CRD lifecycle, including updates:
+If you want Flux to manage CRD creation and updates from the chart's `crds/` directory:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -153,6 +153,8 @@ spec:
     crds: Skip
   upgrade:
     crds: Skip
+  values:
+    installCRDs: false
 ```
 
 Then manage the CRDs with a Flux Kustomization that applies the CRD manifests directly:
@@ -176,7 +178,7 @@ Setting `prune: false` on the Kustomization ensures that CRDs are never deleted 
 
 ## Handling CRD Upgrade Issues
 
-CRD upgrades can fail for several reasons. A common issue is that Helm does not delete CRD fields that are removed in newer versions. If you encounter CRD upgrade issues, you may need to apply the new CRDs manually:
+CRD upgrades can fail for several reasons. Helm itself does not support upgrading or deleting CRDs from a chart's `crds/` directory, and Flux's `CreateReplace` policy replaces existing CRDs but does not delete CRDs that are no longer shipped by the chart. If you manage cert-manager CRDs separately and encounter CRD upgrade issues, apply the new CRDs manually before upgrading the Helm release:
 
 ```bash
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.crds.yaml
@@ -224,7 +226,7 @@ spec:
     keepHistory: false
 ```
 
-This creates CRDs during install and updates them during upgrades while maintaining rollback capability. The `cleanupOnFail` option removes any newly created resources if the upgrade fails.
+This creates CRDs during install and updates existing CRDs during upgrades while enabling rollback remediation for the Helm release. The `cleanupOnFail` option removes any newly created resources if the upgrade fails.
 
 ## Conclusion
 
