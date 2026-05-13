@@ -14,11 +14,11 @@ A shallow clone is a Git clone that downloads only a limited number of commits i
 
 ## How Flux Handles Git Clones
 
-The Flux source-controller clones each GitRepository resource on every reconciliation cycle to check for changes. By default, Flux already performs a shallow clone with depth 1 for performance. However, understanding this behavior and knowing how to verify and adjust it is important for optimizing large-scale deployments.
+The Flux source-controller fetches each GitRepository resource on every reconciliation cycle to check for changes and produce an artifact. By default, Flux performs shallow clones for supported references, using depth 1 for branch and tag references. There is no GitRepository field for setting clone depth, so optimization is mainly about choosing efficient references and reducing the artifact contents.
 
 ## Default Shallow Clone Behavior
 
-When you create a GitRepository without specifying clone depth, Flux clones with depth 1:
+When you create a GitRepository with a branch reference, Flux clones that branch with depth 1:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -33,7 +33,7 @@ spec:
     branch: main
 ```
 
-This is equivalent to running `git clone --depth=1 --branch=main`.
+This is similar to running `git clone --depth=1 --branch=main --no-tags https://github.com/my-org/my-repo.git`.
 
 ## When Shallow Clone Is Critical
 
@@ -46,14 +46,14 @@ Shallow clones provide the most benefit when:
 
 ## Verifying Shallow Clone Is Active
 
-Check the source-controller logs to see clone behavior:
+There is no GitRepository spec field to enable shallow clone manually. For branch and tag references, shallow clone is source-controller behavior. You can still check the source-controller logs to confirm that the repository is being fetched and reconciled:
 
 ```bash
 kubectl logs -n flux-system deploy/source-controller | \
   grep -i "clone\|fetch\|checkout"
 ```
 
-You should see entries indicating shallow clone operations.
+You should see entries for repository fetch or checkout operations, but the logs may not print the clone depth explicitly.
 
 ## Using a Tag Reference
 
@@ -74,7 +74,7 @@ spec:
 
 ## Using a Commit Reference
 
-When you pin to a specific commit, Flux must fetch enough history to reach that commit. This can be slower than a branch reference with depth 1:
+When you pin to a specific commit without a branch, Flux cannot use the branch-only shallow clone path. This can be slower than a branch reference with depth 1:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -89,7 +89,21 @@ spec:
     commit: abc123def456
 ```
 
-For performance, prefer branch or tag references over commit references when possible.
+For performance, prefer branch or tag references when possible. If you need to pin a commit, combine `commit` with `branch` when the commit exists on that branch so Flux can target that branch while checking out the commit:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: my-repo
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/my-org/my-repo.git
+  ref:
+    branch: main
+    commit: abc123def456
+```
 
 ## Using SemVer Ranges
 
@@ -110,7 +124,7 @@ spec:
 
 ## Combining Shallow Clone with Ignore Rules
 
-For maximum efficiency, combine shallow cloning with ignore rules to minimize both the clone size and the resulting artifact size:
+For maximum efficiency, combine shallow cloning with ignore rules to minimize the resulting artifact size:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -153,7 +167,7 @@ Run this before and after configuration changes to measure the impact.
 
 Shallow clones have some limitations to be aware of:
 
-- Flux cannot detect file renames across commits because the history is not available
+- Git history is not available in the generated artifact, so workflows that need previous commits or rename history should not rely on the GitRepository artifact alone
 - Some Git servers may not support shallow fetching for all reference types
 - If your Kustomize overlays use Git-based remote references, those are resolved separately by Kustomize and are not affected by the GitRepository clone depth
 
