@@ -10,7 +10,7 @@ Description: Learn how to configure a confirm-promotion webhook in Flagger to ad
 
 ## Introduction
 
-Flagger's `confirm-promotion` webhook type acts as a gate before the final promotion of a canary to production. After all analysis steps have passed and the canary has reached maximum traffic weight, Flagger calls the confirm-promotion webhook. If the webhook returns a non-200 response, Flagger holds the canary at its current state and retries on the next analysis interval. Promotion does not happen until the webhook returns HTTP 200.
+Flagger's `confirm-promotion` webhook type acts as a gate before the final promotion of a canary to production. After all analysis steps have passed and the canary has reached maximum traffic weight, Flagger calls the confirm-promotion webhook. If the webhook does not return an accepted HTTP response (200-202), Flagger holds the canary at its current state and retries on the next analysis interval. Promotion does not happen until the webhook returns an accepted response.
 
 This gate is useful when you want human approval before a canary becomes the new production version, or when you need an external system to validate that promotion is safe. Unlike `confirm-rollout` (which gates the start of analysis), `confirm-promotion` gates the final step after all metrics have been validated.
 
@@ -31,8 +31,8 @@ The confirm-promotion webhook fires at a specific point in the canary lifecycle:
 2. Canary analysis runs through all steps, shifting traffic incrementally
 3. Once the canary reaches `maxWeight` and all metrics pass, Flagger is ready to promote
 4. Before promoting, Flagger calls all `confirm-promotion` webhooks
-5. If all return HTTP 200, Flagger promotes the canary (copies the canary spec to the primary)
-6. If any return non-200, Flagger waits and retries on the next interval
+5. If all return an accepted response, Flagger promotes the canary (copies the canary spec to the primary)
+6. If any return a response that is not accepted, Flagger waits and retries on the next interval
 
 During the wait, the canary continues receiving traffic at its current weight. Metric checks continue running. If metrics start failing while waiting for promotion approval, the canary can still be rolled back.
 
@@ -65,13 +65,14 @@ spec:
         url: http://my-approval-service.default.svc.cluster.local/approve
 ```
 
-Flagger sends an HTTP POST with canary metadata when promotion is pending:
+Flagger sends an HTTP POST with canary metadata when checking the promotion gate. For `confirm-promotion`, the webhook payload phase is `Progressing`; if the gate does not approve, the Canary status changes to `WaitingPromotion`:
 
 ```json
 {
   "name": "my-app",
   "namespace": "default",
-  "phase": "Promoting",
+  "phase": "Progressing",
+  "checksum": "85d557f47b",
   "metadata": {}
 }
 ```
@@ -84,23 +85,25 @@ The Flagger load tester includes built-in gate endpoints that work well for manu
     webhooks:
       - name: promotion-gate
         type: confirm-promotion
-        url: http://flagger-loadtester.test/gate/approve
+        url: http://flagger-loadtester.test/gate/check
 ```
 
-The gate starts closed. When Flagger reaches the promotion phase, the webhook returns non-200 and Flagger waits. To approve the promotion, open the gate:
+The gate starts closed. When Flagger reaches the promotion phase, the webhook returns a response that is not accepted and Flagger waits. To approve the promotion, open the gate:
 
 ```bash
 kubectl -n test exec deploy/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/open
+  curl -s -d '{"name":"my-app","namespace":"default"}' \
+  http://localhost:8080/gate/open
 ```
 
-Flagger calls the gate again on the next interval, receives HTTP 200, and promotes the canary. The gate automatically closes after the promotion completes, ready for the next deployment.
+Flagger calls the gate again on the next interval, receives HTTP 200, and promotes the canary. Close the gate after the promotion completes so it is ready for the next deployment.
 
-To deny promotion and keep waiting:
+To close the gate and keep waiting:
 
 ```bash
 kubectl -n test exec deploy/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/close
+  curl -s -d '{"name":"my-app","namespace":"default"}' \
+  http://localhost:8080/gate/close
 ```
 
 ## Passing Metadata for Approval Context
@@ -123,7 +126,7 @@ Your approval service can use this metadata to display the relevant change ticke
 
 ## Integrating with ChatOps
 
-A popular pattern is connecting the confirm-promotion gate to a ChatOps system. When Flagger is ready to promote, the webhook sends a message to Slack or Teams asking for approval. A team member responds, which triggers the approval service to return 200 on the next poll:
+A popular pattern is connecting the confirm-promotion gate to a ChatOps system. When Flagger is ready to promote, the webhook sends a message to Slack or Teams asking for approval. A team member responds, which triggers the approval service to return an accepted response on the next poll:
 
 ```yaml
     webhooks:
@@ -140,7 +143,7 @@ The chatops bot posts the approval request to the specified Slack channel and wa
 
 ## Setting a Timeout for the Approval
 
-If you want to auto-approve after a certain amount of time, your webhook service can implement a timeout. Flagger itself will keep polling indefinitely, but your webhook service can start returning 200 after a configurable wait period.
+If you want to auto-approve after a certain amount of time, your webhook service can implement a timeout. Flagger itself will keep polling, but your webhook service can start returning an accepted response after a configurable wait period.
 
 The webhook call itself has a timeout for each individual request:
 
@@ -152,7 +155,7 @@ The webhook call itself has a timeout for each individual request:
         timeout: 10s
 ```
 
-This timeout controls how long Flagger waits for a response from the webhook on each call. It does not control how long Flagger waits for approval overall. Flagger will keep calling the webhook at each analysis interval until it gets a 200.
+This timeout controls how long Flagger waits for a response from the webhook on each call. It does not control how long Flagger waits for approval overall. Flagger will keep calling the webhook at each analysis interval until it gets an accepted response.
 
 ## Complete Example with Promotion Gate
 
@@ -189,7 +192,7 @@ spec:
           cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.default:80/"
       - name: promotion-gate
         type: confirm-promotion
-        url: http://flagger-loadtester.test/gate/approve
+        url: http://flagger-loadtester.test/gate/check
       - name: post-promotion
         type: post-rollout
         url: http://my-notifier.default/promoted
@@ -200,4 +203,4 @@ In this flow, the canary goes through metric analysis with load testing, waits f
 
 ## Conclusion
 
-The `confirm-promotion` webhook in Flagger provides a final approval gate before a canary is promoted to production. Flagger polls the webhook at each analysis interval until it receives HTTP 200, keeping the canary at its current traffic weight in the meantime. This is ideal for manual approval workflows, ChatOps integration, and external validation systems. The built-in load tester gate endpoint offers a simple way to implement manual approval without building a custom service, while custom webhook services can integrate with existing approval and change management tools.
+The `confirm-promotion` webhook in Flagger provides a final approval gate before a canary is promoted to production. Flagger polls the webhook at each analysis interval until it receives an accepted response, keeping the canary at its current traffic weight in the meantime. This is ideal for manual approval workflows, ChatOps integration, and external validation systems. The built-in load tester gate endpoint offers a simple way to implement manual approval without building a custom service, while custom webhook services can integrate with existing approval and change management tools.
