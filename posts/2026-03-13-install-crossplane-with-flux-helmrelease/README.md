@@ -18,7 +18,7 @@ This guide walks through bootstrapping Crossplane on a Kubernetes cluster using 
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.26 or later)
+- An actively supported Kubernetes version
 - Flux CD bootstrapped on the cluster (`flux bootstrap`)
 - `kubectl` configured to access the cluster
 - A Git repository that Flux is tracking
@@ -74,7 +74,7 @@ spec:
     spec:
       chart: crossplane
       # Pin to a specific version for reproducibility
-      version: "1.15.x"
+      version: "2.2.x"
       sourceRef:
         kind: HelmRepository
         name: crossplane-stable
@@ -147,13 +147,13 @@ git push origin main
 
 ```bash
 # Watch Flux reconcile the Kustomization
-flux get kustomization crossplane --watch
+flux get kustomizations crossplane --watch
 
 # Check that Crossplane pods are running
 kubectl get pods -n crossplane-system
 
 # Verify the HelmRelease status
-flux get helmrelease crossplane -n crossplane-system
+flux get helmreleases crossplane -n crossplane-system
 ```
 
 Expected output for the pods:
@@ -165,7 +165,7 @@ crossplane-rbac-manager-5b4f7d6c8-mj3q1   1/1     Running   0          2m
 
 ## Best Practices
 
-- Pin the Crossplane chart version with a semantic version constraint (e.g., `1.15.x`) to receive patch updates automatically while preventing unexpected major version jumps.
+- Pin the Crossplane chart version with a semantic version constraint (e.g., `2.2.x`) to receive patch updates automatically while preventing unexpected major version jumps.
 - Place the HelmRepository in `flux-system` namespace and the HelmRelease in `crossplane-system` to keep source and release objects organized.
 - Use Flux health checks on the Crossplane deployments so dependent Kustomizations (for providers, compositions) wait until Crossplane is fully ready.
 - Set resource requests and limits on Crossplane pods to prevent runaway resource consumption in shared clusters.
