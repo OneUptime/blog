@@ -55,29 +55,43 @@ kustomize build overlays/production | kubeconform -summary
 
 ## Step 3: Add Flux CRD Schemas
 
-kubeconform needs custom schemas to validate Flux CRDs. The Flux project provides these schemas.
+kubeconform needs custom schemas to validate Flux CRDs. The Flux project publishes CRD manifests with OpenAPI v3 validation schemas, and those schemas can be converted or read from a cluster.
 
 ```bash
-# Download Flux CRD schemas
+# Generate Flux CRD schemas from your cluster's CRDs
 mkdir -p /tmp/flux-schemas
 
-# Use the Flux CRD schema repository
-# Schemas are available at:
-# https://github.com/fluxcd/flux2/tree/main/manifests/crds
+# Flux CRD manifests are referenced from:
+# https://github.com/fluxcd/flux2/blob/main/manifests/crds/kustomization.yaml
 
-# Alternatively, generate schemas from your cluster's CRDs
 kubectl get crds -o json | \
-  jq -r '.items[] | select(.spec.group | endswith("fluxcd.io")) | .metadata.name' | \
-  while read crd; do
-    kubectl get crd "$crd" -o json | \
-      jq '.spec.versions[0].schema.openAPIV3Schema' > \
-      "/tmp/flux-schemas/${crd}.json"
+  jq -c '.items[]
+    | select(.spec.group | endswith("fluxcd.io"))
+    | . as $crd
+    | $crd.spec.versions[]
+    | select(.schema.openAPIV3Schema != null)
+    | {
+        kind: $crd.spec.names.kind,
+        version: .name,
+        schema: .schema.openAPIV3Schema
+      }' | \
+  while read -r item; do
+    kind=$(jq -r '.kind' <<<"$item" | tr '[:upper:]' '[:lower:]')
+    version=$(jq -r '.version' <<<"$item")
+    jq '.schema' <<<"$item" > "/tmp/flux-schemas/${kind}_${version}.json"
   done
+
+# Validate with locally generated schemas
+kubeconform \
+  -schema-location default \
+  -schema-location '/tmp/flux-schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  -summary \
+  manifests/
 ```
 
 ## Step 4: Use the Flux Schema Repository
 
-The Flux community maintains schemas compatible with kubeconform.
+The CRDs-catalog project includes Flux schemas compatible with kubeconform.
 
 ```bash
 # Validate with Flux CRD schemas from the community repository
@@ -214,7 +228,8 @@ validate_dir "sources/" "Source definitions"
 
 # Validate kustomize build output if overlays exist
 if [ -d "overlays" ]; then
-  for overlay in overlays/*/; do
+  for overlay in overlays/*; do
+    [ -d "$overlay" ] || continue
     echo "=== Validating kustomize build: $overlay ==="
     if kustomize build "$overlay" 2>/dev/null | \
       kubeconform \
