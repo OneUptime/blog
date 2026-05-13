@@ -21,6 +21,7 @@ This guide covers the Next.js standalone Docker build, Kubernetes manifest desig
 - A Next.js 14+ application
 - A Kubernetes cluster with Flux CD bootstrapped
 - A container registry accessible from the cluster
+- Metrics Server installed if you plan to use the Horizontal Pod Autoscaler
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Configure Next.js for Standalone Output
@@ -57,6 +58,8 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Pass build-time public env vars here if needed
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -81,13 +84,19 @@ CMD ["node", "server.js"]
 ```
 
 ```bash
-docker build -t ghcr.io/your-org/my-nextjs-app:1.0.0 .
+docker build --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t ghcr.io/your-org/my-nextjs-app:1.0.0 .
 docker push ghcr.io/your-org/my-nextjs-app:1.0.0
 ```
 
 ## Step 3: Write the Kubernetes Manifests
 
 ```yaml
+# deploy/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: my-nextjs-app
+---
 # deploy/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -112,8 +121,8 @@ spec:
           env:
             - name: PORT
               value: "3000"
-            # Runtime environment variables injected from a ConfigMap
-            - name: NEXT_PUBLIC_API_URL
+            # Server-side runtime environment variables injected from a ConfigMap
+            - name: API_URL
               valueFrom:
                 configMapKeyRef:
                   name: nextjs-config
@@ -133,16 +142,30 @@ spec:
               memory: "512Mi"
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /api/healthz
               port: 3000
             initialDelaySeconds: 15
             periodSeconds: 20
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/ready
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
+---
+# deploy/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nextjs-app
+  namespace: my-nextjs-app
+spec:
+  selector:
+    app: my-nextjs-app
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
 ---
 # deploy/configmap.yaml
 apiVersion: v1
@@ -152,6 +175,17 @@ metadata:
   namespace: my-nextjs-app
 data:
   api_url: "https://api.example.com"
+---
+# deploy/secret.yaml
+# In production GitOps repositories, store this with SOPS, Sealed Secrets, or another encrypted secret workflow.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nextjs-secrets
+  namespace: my-nextjs-app
+type: Opaque
+stringData:
+  database_url: "postgres://user:password@postgres:5432/mydb"
 ---
 # deploy/hpa.yaml
 apiVersion: autoscaling/v2
@@ -269,7 +303,7 @@ spec:
 # Check all Flux objects
 flux get sources git my-nextjs-app
 flux get kustomizations my-nextjs-app
-flux get image repository my-nextjs-app
+flux get images repository my-nextjs-app
 
 # Check the running pods
 kubectl get pods -n my-nextjs-app
@@ -282,7 +316,7 @@ curl http://localhost:3000
 ## Best Practices
 
 - Use Next.js `output: "standalone"` to minimize image size; the full `.next` build output is much larger than the standalone bundle.
-- Implement a `/api/health` route that checks database connectivity and any critical dependencies for accurate liveness and readiness probes.
+- Implement a lightweight `/api/healthz` route for liveness and a `/api/ready` route that checks database connectivity and any critical dependencies for readiness.
 - For `NEXT_PUBLIC_*` variables (baked at build time), pass them as Docker build arguments in your CI pipeline; inject runtime-only variables via ConfigMaps and Secrets.
 - Configure Horizontal Pod Autoscaler for SSR workloads since rendering is CPU-intensive during traffic spikes.
 - Use `PodDisruptionBudget` to ensure at least one replica remains available during rolling updates.
