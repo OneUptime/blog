@@ -29,10 +29,9 @@ The following YAML demonstrates the key pattern for Staged GlobalNetworkPolicy:
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: NetworkPolicy
+kind: StagedGlobalNetworkPolicy
 metadata:
   name: monitor-staged-globalnetworkpolicy
-  namespace: production
 spec:
   order: 100
   selector: all()
@@ -63,7 +62,7 @@ spec:
 calicoctl apply -f monitor-staged-globalnetworkpolicy.yaml
 
 # 2. Verify it's active
-calicoctl get networkpolicies -n production -o wide
+calicoctl get stagedglobalnetworkpolicies -o wide
 
 # 3. Test connectivity
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
@@ -77,14 +76,14 @@ curl -s http://localhost:9091/metrics | grep felix_denied
 
 ```bash
 # List all relevant policies
-calicoctl get networkpolicies --all-namespaces
+calicoctl get stagedglobalnetworkpolicies
 calicoctl get globalnetworkpolicies
 
 # View policy details
-calicoctl get networkpolicy monitor-policy -n production -o yaml
+calicoctl get stagedglobalnetworkpolicy monitor-policy -o yaml
 
 # Delete a policy if needed
-calicoctl delete networkpolicy monitor-policy -n production
+calicoctl delete stagedglobalnetworkpolicy monitor-policy
 ```
 
 ## Architecture
@@ -103,7 +102,7 @@ flowchart TD
 
 1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
 2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
-3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
+3. **Order conflicts**: Run `calicoctl get stagedglobalnetworkpolicies -o wide` and sort by order field
 4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress
 
 ## Conclusion
