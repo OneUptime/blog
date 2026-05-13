@@ -10,9 +10,9 @@ Description: Use Flux CD to enforce GDPR-compliant data handling practices in Ku
 
 ## Introduction
 
-GDPR (General Data Protection Regulation) imposes strict requirements on organizations that process personal data of EU residents. For Kubernetes infrastructure teams, the most relevant GDPR obligations are data minimization, purpose limitation, storage limitation, data residency requirements, and the need for demonstrable accountability.
+GDPR (General Data Protection Regulation) imposes strict requirements on organizations that process personal data of people in the EU. For Kubernetes infrastructure teams, the most relevant GDPR obligations are data minimization, purpose limitation, storage limitation, transfer controls, and the need for demonstrable accountability.
 
-Flux CD GitOps supports GDPR compliance by making all infrastructure decisions explicit, reviewable, and auditable through Git. Data residency constraints (which regions process personal data), access controls (which workloads can reach personal data stores), and retention policies (which resources exist in personal data namespaces) are all declared in Git manifests and enforced by Flux reconciliation.
+Flux CD GitOps supports GDPR compliance by making all infrastructure decisions explicit, reviewable, and auditable through Git. Data residency constraints (which regions process personal data), access controls (which workloads can reach personal data stores), and retention policies (which resources exist in personal data namespaces) are all declared in Git manifests and reconciled by Flux.
 
 This guide shows how to implement GDPR-relevant controls in your Flux configuration and how to collect evidence for data protection impact assessments (DPIAs).
 
@@ -26,7 +26,7 @@ This guide shows how to implement GDPR-relevant controls in your Flux configurat
 
 ## Step 1: Declare Data Residency with Region-Scoped Kustomizations
 
-GDPR Article 44 restricts cross-border transfers of personal data. Declare data residency requirements in your Flux configuration:
+GDPR Article 44 restricts transfers of personal data to third countries or international organizations unless the GDPR's transfer conditions are met. Declare data residency requirements in your Flux configuration:
 
 ```yaml
 # clusters/eu-west-1/flux-system/data-residency.yaml
@@ -41,7 +41,7 @@ metadata:
     compliance: gdpr
     data-residency: eu
   annotations:
-    gdpr.article: "Article 44 - Transfers subject to appropriate safeguards"
+    gdpr.article: "Article 44 - General principle for transfers"
     gdpr.region: "EU (eu-west-1)"
     gdpr.dpo: "dpo@example.com"
 data:
@@ -91,6 +91,22 @@ rules:
     verbs: ["get", "list"]
   # Explicitly NO access to Secrets from application accounts
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: personal-data-processor-binding
+  namespace: personal-data
+  annotations:
+    gdpr.control: "Article 5(1)(f) - Integrity and confidentiality"
+subjects:
+  - kind: ServiceAccount
+    name: personal-data-app
+    namespace: personal-data
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: personal-data-processor
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -113,7 +129,7 @@ spec:
     - ports:
         - port: 53
           protocol: UDP
-    # Block all other egress (prevents cross-border data transfers)
+    # Block all other egress from selected pods when enforced by a compatible NetworkPolicy implementation
 ```
 
 ## Step 3: Implement Data Retention Controls
@@ -158,11 +174,11 @@ spec:
 
 ## Step 4: Audit Logging for Personal Data Access
 
-GDPR Article 30 requires records of processing activities. Configure Flux to log all changes to personal data namespaces:
+GDPR Article 30 requires records of processing activities. Configure Flux notifications to send reconciliation events for personal data infrastructure changes to your audit system:
 
 ```yaml
 # clusters/eu-west-1/monitoring/gdpr-audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gdpr-audit-log
@@ -170,24 +186,27 @@ metadata:
   annotations:
     gdpr.control: "Article 30 - Records of processing activities"
 spec:
-  summary: "GDPR Audit: Change to personal data infrastructure"
+  eventMetadata:
+    summary: "GDPR Audit: Change to personal data infrastructure"
   providerRef:
     name: gdpr-audit-system
   eventSeverity: info
   eventSources:
     - kind: Kustomization
+      name: '*'
       namespace: flux-system
     - kind: HelmRelease
+      name: '*'
       namespace: personal-data
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gdpr-audit-system
   namespace: flux-system
 spec:
   type: generic
-  url: https://dpa-audit.example.com/api/events
+  address: https://dpa-audit.example.com/api/events
   secretRef:
     name: gdpr-audit-token
 ```
@@ -198,11 +217,11 @@ GDPR Article 17 (Right to Erasure) requires the ability to delete personal data 
 
 ```yaml
 # apps/personal-data/erasure/erasure-job-template.yaml
-# Template for GDPR erasure requests - instantiated per request via CI/CD
+# Template for GDPR erasure requests - instantiate with lowercase, DNS-compatible names per request via CI/CD
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: gdpr-erasure-request-TICKET-ID   # Replace with actual ticket ID
+  name: gdpr-erasure-request-ticket-id   # Replace with actual lowercase ticket ID
   namespace: personal-data
   labels:
     gdpr.operation: erasure
@@ -230,7 +249,7 @@ spec:
             - name: USER_ID
               valueFrom:
                 secretKeyRef:
-                  name: erasure-request-USER_ID
+                  name: erasure-request-user-id
                   key: user-id
 ```
 
@@ -275,4 +294,4 @@ echo "DPIA evidence exported to $OUTPUT_DIR"
 
 ## Conclusion
 
-Flux CD GitOps makes GDPR compliance infrastructure changes explicit, reviewable, and auditable. Data residency is enforced through region-specific Kustomizations and NetworkPolicies in Git. Access is restricted via RBAC managed by Flux. Every change to personal data infrastructure is reviewed via PR and permanently recorded in Git - providing the accountability evidence that GDPR Article 5(2) requires organizations to demonstrate.
+Flux CD GitOps makes GDPR compliance infrastructure changes explicit, reviewable, and auditable. Data residency policy is represented through region-specific Kustomizations, and network paths can be restricted with NetworkPolicies in Git when the cluster uses a compatible implementation. Access is restricted via RBAC managed by Flux. Every change to personal data infrastructure is reviewed via PR and permanently recorded in Git - providing the accountability evidence that GDPR Article 5(2) requires organizations to demonstrate.
