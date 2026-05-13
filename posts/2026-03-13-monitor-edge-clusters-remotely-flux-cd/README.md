@@ -18,8 +18,9 @@ This guide covers setting up comprehensive remote monitoring for edge clusters m
 
 ## Prerequisites
 
-- Central monitoring cluster with Prometheus, Grafana, and Loki
+- Central monitoring cluster with a remote-write-compatible metrics endpoint, Grafana, and Loki
 - Edge clusters with Flux CD deployed
+- Flux custom resource metrics enabled in kube-state-metrics for Flux readiness dashboards and alerts
 - Network path that allows outbound HTTPS from edge sites to the central monitoring cluster
 - `flux` and `kubectl` CLI access
 
@@ -41,7 +42,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "56.x"
+      version: "84.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -50,6 +51,9 @@ spec:
     # Minimal resource config for edge
     prometheus:
       prometheusSpec:
+        externalLabels:
+          edge_site_id: "${SITE_ID}"
+          edge_region: "${SITE_REGION}"
         # Push metrics to central Prometheus
         remoteWrite:
           - url: https://prometheus.central.example.com/api/v1/write
@@ -60,12 +64,6 @@ spec:
               password:
                 key: password
                 name: remote-write-credentials
-            writeRelabelConfigs:
-              # Add site identifier to all metrics
-              - targetLabel: edge_site_id
-                replacement: "${SITE_ID}"
-              - targetLabel: edge_region
-                replacement: "${SITE_REGION}"
         # Smaller retention on edge (central has the long-term data)
         retention: 24h
         retentionSize: 5GB
@@ -88,7 +86,7 @@ spec:
 ```yaml
 # infrastructure/base/monitoring/flux-provider.yaml
 # Send Flux events to central monitoring
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: central-monitoring-webhook
@@ -103,7 +101,7 @@ spec:
 
 ```yaml
 # infrastructure/base/monitoring/flux-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-events
@@ -119,7 +117,10 @@ spec:
       name: "*"
     - kind: HelmRelease
       name: "*"
-  summary: "[${SITE_ID}] Flux event: {{ .InvolvedObject.Kind }}/{{ .InvolvedObject.Name }}"
+  eventMetadata:
+    summary: "[${SITE_ID}] Flux event"
+    edge_site_id: "${SITE_ID}"
+    edge_region: "${SITE_REGION}"
 ```
 
 ## Step 3: Set Up Prometheus Federation for Edge Metrics
@@ -145,50 +146,73 @@ spec:
         'match[]':
           - '{job="kubelet"}'
           - '{job="node-exporter"}'
-          - 'flux_reconcile_duration_seconds'
-          - 'flux_source_info'
+          - '{__name__=~"gotk_reconcile_duration_seconds.*"}'
+          - 'gotk_resource_info'
       interval: 5m
       honorLabels: true
 ```
 
 For push-based (firewall-friendly) metrics, the `remoteWrite` config in Step 1 handles this.
 
-## Step 4: Deploy Loki for Log Shipping from Edge
+## Step 4: Deploy Alloy for Log Shipping from Edge
 
 ```yaml
-# infrastructure/base/monitoring/loki-agent.yaml
-# Promtail on edge cluster ships logs to central Loki
+# infrastructure/base/monitoring/alloy-logs.yaml
+# Grafana Alloy on edge cluster ships logs to central Loki
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: promtail
+  name: alloy-logs
   namespace: monitoring
 spec:
   interval: 10m
   chart:
     spec:
-      chart: promtail
-      version: "6.x"
+      chart: alloy
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: grafana-charts
         namespace: flux-system
   values:
-    config:
-      clients:
-        - url: https://loki.central.example.com/loki/api/v1/push
-          basic_auth:
-            username: edge-site
-            password_file: /var/run/secrets/loki-password
-          external_labels:
-            edge_site_id: "${SITE_ID}"
-            edge_region: "${SITE_REGION}"
-      scrape_configs:
-        - job_name: kubernetes-pods
-          kubernetes_sd_configs:
-            - role: pod
-          pipeline_stages:
-            - cri: {}
+    controller:
+      type: deployment
+      replicas: 1
+    alloy:
+      envFrom:
+        - secretRef:
+            name: loki-credentials
+      configMap:
+        content: |
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          loki.source.kubernetes "pods" {
+            targets    = discovery.kubernetes.pods.targets
+            forward_to = [loki.process.edge_labels.receiver]
+          }
+
+          loki.process "edge_labels" {
+            stage.static_labels {
+              values = {
+                edge_site_id = "${SITE_ID}",
+                edge_region  = "${SITE_REGION}",
+              }
+            }
+
+            forward_to = [loki.write.central.receiver]
+          }
+
+          loki.write "central" {
+            endpoint {
+              url = "https://loki.central.example.com/loki/api/v1/push"
+              basic_auth {
+                username = "edge-site"
+                password = sys.env("LOKI_PASSWORD")
+              }
+            }
+          }
 ```
 
 ## Step 5: Create a Central Fleet Dashboard
@@ -202,7 +226,7 @@ spec:
       "type": "stat",
       "targets": [
         {
-          "expr": "count(up{job='node-exporter'} == 1) by (edge_site_id)",
+          "expr": "count(count by (edge_site_id) (up{job=\"node-exporter\"} == 1))",
           "legendFormat": "Connected Sites"
         }
       ]
@@ -212,8 +236,8 @@ spec:
       "type": "table",
       "targets": [
         {
-          "expr": "gotk_reconcile_condition{type='Ready', status='True'} by (edge_site_id, name, kind)",
-          "legendFormat": "{{edge_site_id}} - {{kind}}/{{name}}"
+          "expr": "max by (edge_site_id, name, customresource_kind) (gotk_resource_info{ready=\"True\"})",
+          "legendFormat": "{{edge_site_id}} - {{customresource_kind}}/{{name}}"
         }
       ]
     },
@@ -222,7 +246,7 @@ spec:
       "type": "table",
       "targets": [
         {
-          "expr": "kube_pod_status_phase{phase!~'Running|Succeeded'} by (edge_site_id, namespace, pod)",
+          "expr": "max by (edge_site_id, namespace, pod, phase) (kube_pod_status_phase{phase!~\"Running|Succeeded\"} == 1)",
           "legendFormat": "{{edge_site_id}} - {{namespace}}/{{pod}}"
         }
       ]
@@ -232,7 +256,7 @@ spec:
       "type": "table",
       "targets": [
         {
-          "expr": "time() - max_over_time(up{job='node-exporter'}[30d]) by (edge_site_id)",
+          "expr": "time() - max by (edge_site_id) (max_over_time(timestamp(up{job=\"node-exporter\"} == 1)[30d:]))",
           "legendFormat": "{{edge_site_id}} - seconds since last contact"
         }
       ]
@@ -256,8 +280,7 @@ spec:
       rules:
         - alert: EdgeSiteOffline
           expr: |
-            absent(up{job="node-exporter", edge_site_id=~".+"}) or
-            (time() - max_over_time(up{job="node-exporter"}[15m])) > 900
+            time() - max by (edge_site_id) (max_over_time(timestamp(up{job="node-exporter"} == 1)[30m:])) > 900
           for: 10m
           labels:
             severity: warning
@@ -266,13 +289,13 @@ spec:
 
         - alert: FluxReconciliationFailing
           expr: |
-            gotk_reconcile_condition{type="Ready", status="False"} == 1
+            gotk_resource_info{ready="False"} == 1
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Flux reconciliation failing on {{ $labels.edge_site_id }}"
-            description: "{{ $labels.kind }}/{{ $labels.name }} is not reconciling"
+            description: "{{ $labels.customresource_kind }}/{{ $labels.exported_namespace }}/{{ $labels.name }} is not reconciling"
 ```
 
 ## Best Practices
@@ -281,9 +304,9 @@ spec:
 - Label all metrics with `edge_site_id` and `edge_region` so you can filter by site in central Grafana.
 - Set short retention (24h) on edge Prometheus - the central system is the long-term store.
 - Configure alerting from the central system, not from edge Prometheus (edge Alertmanager may be offline).
-- Use Flux notification webhooks as a lightweight alternative to full Prometheus for connectivity health.
+- Use Flux notification webhooks as a lightweight signal alongside metrics-based connectivity health.
 - Deploy the monitoring stack itself via Flux to ensure monitoring is consistently deployed across all sites.
 
 ## Conclusion
 
-Remote monitoring of edge clusters requires a push-first approach that works through firewalls and intermittent connectivity. By combining Prometheus remoteWrite for metrics, Promtail log shipping to Loki, and Flux notification webhooks for GitOps events, you get comprehensive visibility into every edge cluster from a central dashboard. Managing the monitoring stack through Flux ensures every edge site has consistent, version-controlled observability configuration.
+Remote monitoring of edge clusters requires a push-first approach that works through firewalls and intermittent connectivity. By combining Prometheus remoteWrite for metrics, Alloy log shipping to Loki, and Flux notification webhooks for GitOps events, you get comprehensive visibility into every edge cluster from a central dashboard. Managing the monitoring stack through Flux ensures every edge site has consistent, version-controlled observability configuration.
