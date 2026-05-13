@@ -16,11 +16,11 @@ This guide walks through setting up and testing drift detection with Flux.
 
 Drift occurs when someone or something modifies a Kubernetes resource directly in the cluster without updating the corresponding manifest in Git. Flux can detect this drift and either report it or automatically correct it by reapplying the desired state from Git.
 
-Flux uses server-side apply to track field ownership. When a field managed by Flux is modified by another actor, Flux detects the conflict during the next reconciliation cycle.
+Flux uses server-side apply to track field ownership and performs a server-side apply dry run during reconciliation. When a Flux-managed field is changed in the cluster, Flux detects the difference during the next reconciliation cycle and reapplies the desired state.
 
 ## Enabling Drift Detection
 
-Drift detection is configured at the Kustomization level. Enable it by setting the `force` field or by using the drift detection feature:
+For Flux Kustomizations, drift detection and correction happen during reconciliation according to the Kustomization interval. Configure the interval and enable pruning if you also want Flux to remove resources that were deleted from Git:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -32,13 +32,12 @@ spec:
   interval: 5m
   path: ./apps/production
   prune: true
-  force: false
   sourceRef:
     kind: GitRepository
     name: flux-system
 ```
 
-With `prune: true`, Flux will also remove resources that have been deleted from Git.
+With `prune: true`, Flux will also remove resources that have been deleted from Git. The `force` field is not required for drift detection; it is only used when Flux needs to replace resources after immutable field changes.
 
 ## Setting Up a Local Test Environment
 
@@ -99,7 +98,7 @@ flux events --for kustomization/test-apps -n flux-system --watch
 You will see events like:
 
 ```text
-Deployment/default/my-app configured (server dry run)
+Deployment/default/my-app configured
 ```
 
 This indicates Flux detected a difference and corrected it.
@@ -163,7 +162,7 @@ kubectl get deployment extra-app -n default
 See what Flux would change without actually applying corrections:
 
 ```bash
-flux diff kustomization test-apps -n flux-system
+flux diff kustomization test-apps --path=./apps/production -n flux-system
 ```
 
 This shows the diff between the cluster state and the desired state without making any changes.
