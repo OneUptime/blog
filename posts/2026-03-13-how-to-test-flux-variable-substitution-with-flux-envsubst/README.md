@@ -104,28 +104,25 @@ kustomize build apps/production | flux envsubst
 
 This approach lets you maintain separate variable files for each environment and test substitutions against any of them.
 
-## Detecting Unsubstituted Variables
+## Detecting Undefined Variables
 
-One common problem is forgetting to define a variable, leaving `${UNDEFINED_VAR}` in your rendered output. You can detect this with a simple grep:
+One common problem is forgetting to define a variable. By default, Flux substitutes undefined variables with an empty string unless a default value is provided. Use `--strict` to fail when a variable is missing:
 
 ```bash
 set -a
 source vars/production.env
 set +a
 
-OUTPUT=$(kustomize build apps/production | flux envsubst)
-UNSUBSTITUTED=$(echo "$OUTPUT" | grep -oP '\$\{[A-Z_]+\}' | sort -u)
-
-if [ -n "$UNSUBSTITUTED" ]; then
-  echo "WARNING: Unsubstituted variables found:"
-  echo "$UNSUBSTITUTED"
+OUTPUT=$(kustomize build apps/production | flux envsubst --strict 2>&1) || {
+  echo "ERROR: Variable substitution failed:"
+  echo "$OUTPUT"
   exit 1
-fi
+}
 ```
 
 ## Using Default Values
 
-Flux supports default values in variable substitutions using the `${VAR:-default}` syntax:
+Flux supports default values in variable substitutions using the `${VAR:=default}` syntax:
 
 ```yaml
 apiVersion: apps/v1
@@ -133,14 +130,14 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
-  replicas: ${REPLICAS:-1}
+  replicas: ${REPLICAS:=1}
   template:
     spec:
       containers:
         - name: my-app
           env:
             - name: LOG_LEVEL
-              value: ${LOG_LEVEL:-info}
+              value: ${LOG_LEVEL:=info}
 ```
 
 Test that defaults work correctly by omitting some variables:
@@ -166,7 +163,7 @@ If any variable is referenced but not defined and has no default, the command wi
 
 ## Combining with flux build
 
-For a complete test that includes both Kustomize building and variable substitution, combine the two:
+For a complete test that includes both Kustomize building and Flux post-build substitution from a local Kustomization file, use `flux build kustomization` with `--strict-substitute`:
 
 ```bash
 set -a
@@ -175,7 +172,9 @@ set +a
 
 flux build kustomization apps \
   --path ./apps/production \
-  --dry-run | flux envsubst --strict
+  --kustomization-file ./clusters/production/apps.yaml \
+  --dry-run \
+  --strict-substitute
 ```
 
 ## Testing Multiple Environments
