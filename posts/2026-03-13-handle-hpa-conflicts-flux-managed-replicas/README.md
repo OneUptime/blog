@@ -14,7 +14,7 @@ The most common day-two conflict in Flux-managed clusters is the replica count f
 
 This conflict exists because Flux uses server-side apply to manage the `spec.replicas` field. When Flux owns that field and HPA writes a different value, the next Flux reconciliation overwrites HPA's work. The solution is to relinquish Flux's ownership of `spec.replicas` so HPA can manage it freely.
 
-This guide covers every method for resolving this conflict: removing `spec.replicas` from the manifest, using Kustomize to drop the field, and configuring Flux's field management correctly.
+This guide covers the common methods for resolving this conflict: removing `spec.replicas` from the manifest, using Kustomize to drop the field, and verifying Flux's field management.
 
 ## Prerequisites
 
@@ -52,6 +52,8 @@ kubectl get deployment my-service -n team-alpha \
 ## Step 2: Remove spec.replicas from the Deployment Manifest
 
 The cleanest fix is to remove `spec.replicas` from your Git manifest entirely.
+
+Before removing the field, make sure the HPA has already written to the target at least once or use Kubernetes' server-side apply ownership transfer procedure. If no other field manager owns `spec.replicas` when Flux removes it from its applied configuration, the API server can reset the Deployment to the default replica count of 1.
 
 ```yaml
 # Before (causes conflict)
@@ -213,14 +215,18 @@ spec:
       rules:
         - alert: HPAReplicasResetByFlux
           expr: |
-            kube_horizontalpodautoscaler_status_current_replicas
+            kube_horizontalpodautoscaler_status_desired_replicas
+            * on (namespace, horizontalpodautoscaler)
+              group_left(scaletargetref_name)
+              kube_horizontalpodautoscaler_info{scaletargetref_kind="Deployment"}
             !=
-            kube_deployment_spec_replicas
+            on (namespace, scaletargetref_name)
+              label_replace(kube_deployment_spec_replicas, "scaletargetref_name", "$1", "deployment", "(.*)")
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "HPA replica count differs from Deployment spec - possible Flux conflict"
+            summary: "HPA desired replica count differs from Deployment spec - possible Flux conflict"
 ```
 
 ## Best Practices
