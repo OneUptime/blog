@@ -46,7 +46,7 @@ Steps:
 
 Rollback:
 - Revert ImageSet to previous version
-- Verify eBPF re-activates: check felix_bpf_enabled metric
+- Verify eBPF re-activates: check FelixConfiguration `bpfEnabled` and presence of `felix_bpf_*` metrics
 ```
 
 ## Operational Concern: BPF Map Capacity Planning
@@ -58,7 +58,7 @@ Rollback:
 
 # Check current NAT table usage (service endpoints)
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-nat-dump 2>/dev/null | wc -l
+  calico-node -bpf nat dump 2>/dev/null | wc -l
 
 # Key capacity limits to track:
 # - NAT table: scales with number of service endpoints
@@ -95,7 +95,7 @@ validate_new_node() {
     --field-selector=spec.nodeName=${node} -o jsonpath='{.items[0].metadata.name}')
 
   bpf_programs=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    bpftool prog list 2>/dev/null | grep -c calico || echo 0)
+    bpftool prog list 2>/dev/null | grep -c cali_ || echo 0)
 
   if [[ "${bpf_programs}" -gt 5 ]]; then
     echo "OK: Node ${node} running eBPF mode (${bpf_programs} programs)"
@@ -140,7 +140,7 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   [[ -z "${pod}" ]] && continue
 
   programs=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    bpftool prog list 2>/dev/null | grep -c calico || echo 0)
+    bpftool prog list 2>/dev/null | grep -c cali_ || echo 0)
   [[ "${programs}" -gt 5 ]] && ebpf_nodes=$((ebpf_nodes + 1))
 done
 
