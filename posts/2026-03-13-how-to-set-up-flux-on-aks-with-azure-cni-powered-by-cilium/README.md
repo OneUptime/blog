@@ -10,30 +10,24 @@ Description: Learn how to set up Flux CD on an AKS cluster using Azure CNI power
 
 ## Introduction
 
-Azure CNI powered by Cilium combines the Azure CNI networking model with Cilium's eBPF data plane. This integration provides high-performance networking, advanced network policies with L7 filtering, and built-in observability through Hubble. For GitOps workflows with Flux, Cilium's advanced network policy capabilities offer fine-grained control over traffic between Flux controllers and your workloads.
+Azure CNI powered by Cilium combines the Azure CNI networking model with Cilium's eBPF data plane. This integration provides high-performance networking, advanced network policies with L7 filtering, and observability through Advanced Container Networking Services (ACNS). For GitOps workflows with Flux, Cilium's advanced network policy capabilities offer fine-grained control over traffic between Flux controllers and your workloads.
 
 This guide walks through creating an AKS cluster with Cilium, bootstrapping Flux, and leveraging Cilium's features to secure and observe your GitOps pipeline.
 
 ## Prerequisites
 
 - An Azure subscription
-- Azure CLI version 2.48 or later with the aks-preview extension
+- Azure CLI version 2.79 or later
 - Flux CLI version 2.0 or later
-- kubectl and Cilium CLI installed
+- kubectl and Hubble CLI installed
 
-## Step 1: Install the AKS Preview Extension
+## Step 1: Verify Azure CLI
 
-Cilium integration requires the AKS preview extension:
+Cilium integration is available through the Azure CLI. Verify that you are signed in and running a current version:
 
 ```bash
-az extension add --name aks-preview
-az extension update --name aks-preview
-
-az feature register \
-  --namespace Microsoft.ContainerService \
-  --name CiliumDataplanePreview
-
-az provider register --namespace Microsoft.ContainerService
+az login
+az version
 ```
 
 ## Step 2: Create an AKS Cluster with Cilium
@@ -48,6 +42,9 @@ az aks create \
   --network-dataplane cilium \
   --pod-cidr 192.168.0.0/16 \
   --node-count 3 \
+  --kubernetes-version 1.33 \
+  --enable-acns \
+  --acns-advanced-networkpolicies L7 \
   --enable-managed-identity \
   --generate-ssh-keys
 ```
@@ -60,7 +57,7 @@ az aks get-credentials \
   --name my-cilium-cluster
 
 kubectl get pods -n kube-system -l k8s-app=cilium
-kubectl get pods -n kube-system -l app.kubernetes.io/name=hubble-relay
+kubectl get pods -n kube-system -l k8s-app=hubble-relay
 ```
 
 ## Step 3: Bootstrap Flux
@@ -71,6 +68,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/my-cilium-cluster \
+  --token-auth \
   --personal
 ```
 
@@ -96,12 +94,12 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
           rules:
             dns:
               - matchPattern: "*"
@@ -122,10 +120,10 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: flux-system
+            "k8s:io.kubernetes.pod.namespace": flux-system
 ```
 
-This policy restricts Flux controllers to only communicate with DNS, GitHub, and ACR, providing a least-privilege network configuration.
+This starter policy restricts selected Flux traffic to DNS, GitHub, and ACR. Adjust the FQDN list for your exact Git provider, registry, Helm repository, and notification endpoints before treating it as a least-privilege network configuration.
 
 ## Step 5: Deploy Application-Level Network Policies
 
@@ -167,62 +165,229 @@ spec:
 
 ## Step 6: Enable Hubble Observability
 
-Hubble provides real-time network flow visibility. Configure it through Flux:
+Hubble provides real-time network flow visibility when ACNS is enabled. For stored flow logs, configure a `ContainerNetworkLog` through Flux:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: acn.azure.com/v1alpha1
+kind: ContainerNetworkLog
 metadata:
-  name: hubble-config
-  namespace: kube-system
-data:
-  enable-hubble: "true"
-  hubble-listen-address: ":4244"
-  hubble-metrics-server: ":9965"
-  hubble-metrics: "dns:query;ignoreAAAA,drop,tcp,flow,icmp,httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction"
+  name: flux-system-flows
+spec:
+  includefilters:
+    - name: flux-system
+      from:
+        labelSelector:
+          matchLabels:
+            k8s.io/namespace: flux-system
+      verdict:
+        - forwarded
+        - dropped
 ```
 
-To view network flows, use the Cilium CLI:
+To view network flows on demand, port-forward Hubble Relay and configure the Hubble CLI with the client certificates from the cluster:
 
 ```bash
-cilium hubble port-forward &
+kubectl port-forward -n kube-system svc/hubble-relay --address 127.0.0.1 4245:443 &
+
+mkdir -p .certs
+kubectl get secret hubble-relay-client-certs -n kube-system -o jsonpath="{.data['tls\.crt']}" | base64 -d > .certs/tls.crt
+kubectl get secret hubble-relay-client-certs -n kube-system -o jsonpath="{.data['tls\.key']}" | base64 -d > .certs/tls.key
+kubectl get secret hubble-relay-client-certs -n kube-system -o jsonpath="{.data['ca\.crt']}" | base64 -d > .certs/ca.crt
+hubble config set tls true
+hubble config set tls-client-cert-file .certs/tls.crt
+hubble config set tls-client-key-file .certs/tls.key
+hubble config set tls-ca-cert-files .certs/ca.crt
+hubble config set tls-server-name instance.hubble-relay.cilium.io
+
 hubble observe --namespace flux-system
-hubble observe --namespace default --protocol http
+hubble observe --namespace default
 ```
 
 ## Step 7: Deploy a Hubble UI Through Flux
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: cilium
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://helm.cilium.io/
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+apiVersion: v1
+kind: ServiceAccount
 metadata:
   name: hubble-ui
-  namespace: flux-system
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hubble-ui
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - componentstatuses
+      - endpoints
+      - namespaces
+      - nodes
+      - pods
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - cilium.io
+    resources:
+      - "*"
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hubble-ui
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hubble-ui
+subjects:
+  - kind: ServiceAccount
+    name: hubble-ui
+    namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hubble-ui-nginx
+  namespace: kube-system
+data:
+  nginx.conf: |
+    server {
+        listen       8081;
+        server_name  localhost;
+        root /app;
+        index index.html;
+        location / {
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, HEAD, DELETE, OPTIONS";
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Max-Age 1728000;
+            add_header Access-Control-Expose-Headers content-length,grpc-status,grpc-message;
+            add_header Access-Control-Allow-Headers range,keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout;
+            if ($request_method = OPTIONS) {
+                return 204;
+            }
+            location /api {
+                proxy_http_version 1.1;
+                proxy_pass_request_headers on;
+                proxy_hide_header Access-Control-Allow-Origin;
+                proxy_pass http://127.0.0.1:8090;
+            }
+            location / {
+                try_files $uri $uri/ /index.html /index.html;
+            }
+            location /healthz {
+                access_log off;
+                add_header Content-Type text/plain;
+                return 200 'ok';
+            }
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hubble-ui
+  namespace: kube-system
 spec:
-  interval: 30m
-  chart:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: hubble-ui
+  template:
+    metadata:
+      labels:
+        k8s-app: hubble-ui
     spec:
-      chart: cilium
-      version: "1.15.*"
-      sourceRef:
-        kind: HelmRepository
-        name: cilium
-  targetNamespace: kube-system
-  values:
-    hubble:
-      relay:
-        enabled: true
-      ui:
-        enabled: true
+      serviceAccountName: hubble-ui
+      automountServiceAccountToken: true
+      containers:
+        - name: frontend
+          image: mcr.microsoft.com/oss/cilium/hubble-ui:v0.12.2
+          ports:
+            - name: http
+              containerPort: 8081
+          volumeMounts:
+            - name: hubble-ui-nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: nginx.conf
+            - name: tmp-dir
+              mountPath: /tmp
+        - name: backend
+          image: mcr.microsoft.com/oss/cilium/hubble-ui-backend:v0.12.2
+          env:
+            - name: EVENTS_SERVER_PORT
+              value: "8090"
+            - name: FLOWS_API_ADDR
+              value: "hubble-relay:443"
+            - name: TLS_TO_RELAY_ENABLED
+              value: "true"
+            - name: TLS_RELAY_SERVER_NAME
+              value: ui.hubble-relay.cilium.io
+            - name: TLS_RELAY_CA_CERT_FILES
+              value: /var/lib/hubble-ui/certs/hubble-relay-ca.crt
+            - name: TLS_RELAY_CLIENT_CERT_FILE
+              value: /var/lib/hubble-ui/certs/client.crt
+            - name: TLS_RELAY_CLIENT_KEY_FILE
+              value: /var/lib/hubble-ui/certs/client.key
+          ports:
+            - name: grpc
+              containerPort: 8090
+          volumeMounts:
+            - name: hubble-ui-client-certs
+              mountPath: /var/lib/hubble-ui/certs
+              readOnly: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      volumes:
+        - configMap:
+            name: hubble-ui-nginx
+          name: hubble-ui-nginx-conf
+        - emptyDir: {}
+          name: tmp-dir
+        - name: hubble-ui-client-certs
+          projected:
+            defaultMode: 0400
+            sources:
+              - secret:
+                  name: hubble-relay-client-certs
+                  items:
+                    - key: tls.crt
+                      path: client.crt
+                    - key: tls.key
+                      path: client.key
+                    - key: ca.crt
+                      path: hubble-relay-ca.crt
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hubble-ui
+  namespace: kube-system
+spec:
+  type: ClusterIP
+  selector:
+    k8s-app: hubble-ui
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8081
 ```
 
 ## Step 8: Organize with Flux Kustomizations
@@ -263,7 +428,7 @@ spec:
 
 **L7 HTTP filtering**: Control which HTTP methods and paths are allowed between services, providing application-layer security for your GitOps-deployed workloads.
 
-**Flow observability**: Use Hubble to debug connectivity issues between Flux controllers and source repositories, or between your deployed services.
+**Flow observability**: Use ACNS container network logs and on-demand Hubble access to debug connectivity issues between Flux controllers and source repositories, or between your deployed services.
 
 **eBPF performance**: Cilium's eBPF data plane provides better networking performance compared to iptables-based solutions, which benefits clusters with many Flux-managed resources.
 
@@ -272,7 +437,7 @@ spec:
 ```bash
 flux get all -A
 kubectl get ciliumnetworkpolicies -A
-cilium status
+kubectl get pods -n kube-system -l k8s-app=hubble-relay
 hubble observe --namespace flux-system --last 10
 ```
 
@@ -280,10 +445,10 @@ hubble observe --namespace flux-system --last 10
 
 **Flux controllers cannot reach GitHub**: Check CiliumNetworkPolicy egress rules. Use `hubble observe --namespace flux-system --verdict DROPPED` to identify dropped flows.
 
-**Cilium agent not running**: Verify the cluster was created with `--network-dataplane cilium`. Cilium cannot be added to existing clusters that use a different dataplane.
+**Cilium agent not running**: Verify the cluster was created with `--network-dataplane cilium`. Existing Azure CNI clusters can be updated to Azure CNI powered by Cilium if they meet AKS upgrade requirements, but the update reimages node pools.
 
-**Hubble relay connection refused**: Ensure the Hubble relay pod is running and the port-forward is active.
+**Hubble relay connection refused**: Ensure ACNS is enabled, the Hubble relay pod is running, the port-forward is active, and the Hubble CLI is configured with the cluster's client certificates.
 
 ## Conclusion
 
-AKS with Azure CNI powered by Cilium provides advanced networking capabilities that complement Flux's GitOps model. Cilium's DNS-based network policies let you define least-privilege network rules for Flux controllers, while Hubble gives you visibility into every network flow in your cluster. By managing Cilium policies through Flux, you maintain a fully declarative, version-controlled approach to both application deployment and network security.
+AKS with Azure CNI powered by Cilium provides advanced networking capabilities that complement Flux's GitOps model. Cilium's DNS-based network policies let you define least-privilege network rules for Flux controllers, while ACNS gives you visibility into network flows in your cluster. By managing Cilium policies through Flux, you maintain a fully declarative, version-controlled approach to both application deployment and network security.
