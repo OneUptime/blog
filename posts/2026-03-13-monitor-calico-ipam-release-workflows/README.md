@@ -21,15 +21,15 @@ calicoctl ipam check
 
 # Verify specific IP before release
 IP="192.168.1.42"
-kubectl get pod --all-namespaces -o wide | grep "${IP}"
-kubectl get endpoints --all-namespaces | grep "${IP}"
+kubectl get pod --all-namespaces -o wide | grep -F "${IP}"
+kubectl get endpointslices --all-namespaces -o wide | grep -F "${IP}"
 
 # Release after verification (no pod found)
 calicoctl ipam release --ip="${IP}"
 
 # Post-release verification
 calicoctl ipam check
-calicoctl ipam show | grep "${IP}"  # Should show no output
+calicoctl ipam show --ip="${IP}"  # Should report that the IP is not assigned
 ```
 
 ## Workflow Summary
@@ -58,8 +58,8 @@ calicoctl ipam check  # After - should still show "consistent"
 
 # Correct approach: verify each one
 for ip in $(cat release-candidates.txt); do
-  IN_USE=$(kubectl get pod --all-namespaces -o wide | grep -c "${ip}" || echo 0)
-  if [ "${IN_USE}" -eq 0 ]; then
+  if ! kubectl get pod --all-namespaces -o wide | grep -Fq "${ip}" && \
+     ! kubectl get endpointslices --all-namespaces -o wide | grep -Fq "${ip}"; then
     calicoctl ipam release --ip="${ip}"
     echo "Released ${ip}"
   else
