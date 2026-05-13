@@ -32,14 +32,16 @@ Felix is designed to be resilient: it retries iptables programming and will repr
 
 ```bash
 # Most common fix - restart calico-node on affected node
+# Use calico-system for operator-managed installs, or kube-system for manifest installs.
+CALICO_NAMESPACE=kube-system
 
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
+NODE_POD=$(kubectl get pods -n $CALICO_NAMESPACE -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
-kubectl delete pod $NODE_POD -n kube-system
+kubectl delete pod $NODE_POD -n $CALICO_NAMESPACE
 # Wait for DaemonSet to reschedule
 
-kubectl get pods -n kube-system -l k8s-app=calico-node \
+kubectl get pods -n $CALICO_NAMESPACE -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name>
 # Expected: 1/1 Running
 ```
@@ -65,18 +67,18 @@ ssh <node-name> "sudo lsof /run/xtables.lock 2>/dev/null"
 # If another process holds the lock, identify and stop it
 ssh <node-name> "sudo fuser /run/xtables.lock"
 
-# Clear stale lock if process no longer running
-ssh <node-name> "sudo rm -f /run/xtables.lock"
+# Do not remove /run/xtables.lock while another iptables process is running.
+# Wait for the process to finish or stop the process that is holding the lock.
 
 # Then restart calico-node
-kubectl delete pod $NODE_POD -n kube-system
+kubectl delete pod $NODE_POD -n $CALICO_NAMESPACE
 ```
 
 **Fix 4: Fix invalid FelixConfiguration**
 
 ```bash
 # Check for Felix configuration errors in logs
-kubectl logs $NODE_POD -n kube-system -c calico-node | grep -i "felix\|error\|config"
+kubectl logs $NODE_POD -n $CALICO_NAMESPACE -c calico-node | grep -i "felix\|error\|config"
 
 # Validate FelixConfiguration
 calicoctl get felixconfiguration default -o yaml
@@ -84,7 +86,7 @@ calicoctl get felixconfiguration default -o yaml
 # Reset to defaults if corrupted
 calicoctl delete felixconfiguration default
 # Felix will recreate with defaults on next calico-node start
-kubectl rollout restart daemonset calico-node -n kube-system
+kubectl rollout restart daemonset calico-node -n $CALICO_NAMESPACE
 ```
 
 **Fix 5: Verify chains after fix**
@@ -98,13 +100,13 @@ ssh <node-name> "sudo iptables -t nat -L | grep -c '^Chain cali'"
 # Expected: cali-nat-outgoing and related NAT chains
 ```
 
-**Fix 6: Force iptables save/restore if rules were manually flushed**
+**Fix 6: Restart Calico if rules were manually flushed**
 
 ```bash
 # If iptables were manually flushed with iptables -F
 # Restarting calico-node will repopulate all Calico chains
-kubectl rollout restart daemonset calico-node -n kube-system
-kubectl rollout status daemonset calico-node -n kube-system --timeout=300s
+kubectl rollout restart daemonset calico-node -n $CALICO_NAMESPACE
+kubectl rollout status daemonset calico-node -n $CALICO_NAMESPACE --timeout=300s
 
 # Verify
 ssh <node-name> "sudo iptables -L cali-FORWARD -n 2>/dev/null | head -5"
