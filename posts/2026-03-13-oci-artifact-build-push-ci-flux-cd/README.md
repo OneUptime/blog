@@ -102,7 +102,7 @@ jobs:
             oci://${{ env.REGISTRY }}/${{ env.ARTIFACT_REPO }}:${{ steps.tag.outputs.tag }} \
             --path=manifests/myapp/ \
             --source="$(git config --get remote.origin.url)" \
-            --revision="$(git rev-parse --short HEAD)" \
+            --revision="${{ github.ref_name }}@sha1:${{ github.sha }}" \
             --annotations='org.opencontainers.image.description=myapp manifests'
 
       - name: Sign the OCI artifact with Cosign
@@ -185,8 +185,8 @@ kubectl create secret generic cosign-public-key \
 # Check the OCIRepository source status
 flux get sources oci myapp-manifests -n flux-system
 
-# View artifact metadata
-flux get artifact oci://ghcr.io/your-org/manifests/myapp:latest
+# Pull the artifact to inspect its contents
+flux pull artifact oci://ghcr.io/your-org/manifests/myapp:latest --output=/tmp/myapp-manifests
 
 # Check if Kustomization applied successfully
 flux get kustomizations myapp -n flux-system
