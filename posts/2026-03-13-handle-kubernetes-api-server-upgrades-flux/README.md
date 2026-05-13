@@ -12,7 +12,7 @@ Description: Safely upgrade the Kubernetes API server in a Flux-managed cluster 
 
 Kubernetes API server upgrades are one of the most consequential operations in cluster management. The API server is the central control plane component - Flux's controllers, all Kubernetes controllers, and all operator tools depend on it. During an upgrade, the API server may be briefly unavailable, API versions may be deprecated, and CRDs may need migration.
 
-Flux CD has specific behaviors during API server upgrades that you need to understand: its controllers will retry with backoff when the API server is unavailable, deprecated API versions in your Git manifests will cause reconciliation failures, and the upgrade itself should ideally be performed with Flux temporarily suspended to prevent reconciliation noise during the sensitive upgrade window.
+Flux CD has specific behaviors during API server upgrades that you need to understand: its controllers will retry with backoff when the API server is unavailable, API versions in your Git manifests that are removed in the target Kubernetes version will cause reconciliation failures, and the upgrade itself should ideally be performed with Flux temporarily suspended to prevent reconciliation noise during the sensitive upgrade window.
 
 This guide covers the complete workflow for upgrading the Kubernetes API server in a Flux-managed cluster safely.
 
@@ -25,7 +25,7 @@ This guide covers the complete workflow for upgrading the Kubernetes API server 
 
 ## Step 1: Pre-Upgrade API Deprecation Check
 
-API deprecations are the most common cause of post-upgrade failures. Flux manifests that use deprecated API versions will fail to reconcile after the upgrade.
+API deprecations are the most common cause of post-upgrade failures. Flux manifests that use API versions removed in the target Kubernetes version will fail to reconcile after the upgrade.
 
 ```bash
 # Install pluto for deprecated API detection
@@ -36,10 +36,11 @@ helm install pluto fairwinds-stable/pluto \
   --create-namespace
 
 # Or install the CLI directly
-curl -L https://github.com/FairwindsOps/pluto/releases/latest/download/pluto_linux_amd64.tar.gz | tar xz
+PLUTO_VERSION=v5.24.0
+curl -L "https://github.com/FairwindsOps/pluto/releases/download/${PLUTO_VERSION}/pluto_${PLUTO_VERSION#v}_linux_amd64.tar.gz" | tar xz
 sudo mv pluto /usr/local/bin/
 
-# Check all Kustomize manifests for deprecated APIs
+# Check all in-cluster resources and Helm release manifests for deprecated APIs
 pluto detect-all-in-cluster --target-versions k8s=v1.30.0
 
 # Check your Git repository manifests
@@ -53,7 +54,7 @@ pluto detect-files --directory /path/to/platform-gitops \
 
 ## Step 2: Update Deprecated API Versions in Git
 
-For each deprecated API found, update the manifests in Git before performing the upgrade.
+For each deprecated or removed API found, update the manifests in Git before performing the upgrade.
 
 ```yaml
 # Before: deprecated API version
@@ -67,7 +68,7 @@ kind: Ingress
 metadata:
   name: my-service
 spec:
-  ingressClassName: nginx               # Required field in v1
+  ingressClassName: nginx               # Use when no default IngressClass is configured
   rules:
     - host: my-service.acme.example.com
       http:
@@ -103,7 +104,7 @@ echo "Snapshot saved. Proceeding with upgrade preparation."
 ## Step 4: Suspend Flux Before the Upgrade
 
 ```bash
-# Suspend all Flux sources and reconcilers
+# Suspend Flux Kustomizations and HelmReleases
 kubectl get kustomizations --all-namespaces -o json | \
   jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read ns name; do
@@ -155,8 +156,8 @@ kubectl wait --for=condition=Ready nodes --all --timeout=10m
 kubectl get namespaces
 kubectl cluster-info
 
-# Check control plane component health
-kubectl get componentstatuses
+# Check API server readiness
+kubectl get --raw='/readyz?verbose'
 
 # Verify Flux controllers are still running
 kubectl get pods -n flux-system
@@ -174,8 +175,8 @@ flux check --pre
 # Update the flux-system kustomization.yaml to reference a new Flux version
 # Then resume and let Flux update itself
 
-# Or update Flux directly:
-flux install --version=v2.3.0 --export | kubectl apply -f -
+# Or update Flux directly to the latest version supported by your CLI:
+flux install --export | kubectl apply -f -
 ```
 
 ## Step 8: Resume Flux and Verify Convergence
@@ -186,7 +187,8 @@ flux resume kustomization infrastructure -n flux-system
 flux reconcile kustomization infrastructure -n flux-system --with-source
 
 # Wait for infrastructure to be healthy
-flux get kustomization infrastructure -n flux-system --watch
+kubectl wait kustomization/infrastructure -n flux-system \
+  --for=condition=Ready --timeout=10m
 
 # Resume remaining Kustomizations
 kubectl get kustomizations --all-namespaces -o json | \
@@ -205,7 +207,8 @@ kubectl get helmreleases --all-namespaces -o json | \
   done
 
 # Verify all reconciliation is healthy
-flux get all --all-namespaces | grep "False"
+flux get all --all-namespaces
+flux get all --all-namespaces --status-selector ready=false
 ```
 
 ## Best Practices
@@ -219,4 +222,4 @@ flux get all --all-namespaces | grep "False"
 
 ## Conclusion
 
-Kubernetes API server upgrades require careful coordination with Flux to avoid reconciliation failures caused by deprecated API versions. By checking for deprecated APIs in Git manifests before the upgrade, suspending Flux during the upgrade window, and resuming in dependency order afterward, you can perform major Kubernetes version upgrades with confidence. The GitOps model actually makes upgrades safer - your manifests are in Git, deprecation scanning tools can check them automatically, and the audit trail documents every step of the upgrade process.
+Kubernetes API server upgrades require careful coordination with Flux to avoid reconciliation failures caused by removed API versions. By checking for deprecated and removed APIs in Git manifests before the upgrade, suspending Flux during the upgrade window, and resuming in dependency order afterward, you can perform major Kubernetes version upgrades with confidence. The GitOps model actually makes upgrades safer - your manifests are in Git, deprecation scanning tools can check them automatically, and the audit trail documents every step of the upgrade process.
