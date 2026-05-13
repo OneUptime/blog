@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Dark Launch, Feature Flag, Progressive Delivery
 
-Description: Deploy new features in dark launch mode using Flux CD, serving the new code path to all requests without exposing results to users for safe pre-production validation.
+Description: Deploy new features in dark launch mode using Flux CD, serving the new code path to sampled production requests without exposing results to users for safe pre-production validation.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Deploy new features in dark launch mode using Flux CD, serving the 
 
 A dark launch deploys new code to production but keeps its output invisible to end users. The new code path executes alongside the existing code - handling real production traffic, querying real databases, processing real data - but the results are discarded or logged rather than returned to users. This lets you validate behavior, performance, and correctness under real production load before flipping the switch to make the feature visible.
 
-In Kubernetes, dark launches are implemented through application-level feature flags combined with infrastructure-level traffic configuration. Flux CD manages both layers as Git-declared configuration, giving you the same review-and-merge workflow for dark launch activation as for any other change.
+In Kubernetes, dark launches are commonly implemented through application-level feature flags, and can also be combined with infrastructure-level traffic configuration when traffic routing is part of the rollout. Flux CD manages these layers as Git-declared configuration, giving you the same review-and-merge workflow for dark launch activation as for any other change.
 
 This guide shows how to structure a dark launch using a feature flag ConfigMap managed by Flux, combined with an application that runs both code paths and logs the dark results.
 
@@ -73,7 +73,7 @@ spec:
       labels:
         app: my-app
       annotations:
-        # Restart pods automatically when config changes (optional)
+        # Changing this value triggers a rollout when config changes (optional)
         configHash: ""        # CI can populate this with a hash of the ConfigMap
     spec:
       containers:
@@ -198,7 +198,7 @@ gh pr create --title "feat: dark launch sample rate 25%"
 ```bash
 # Watch for divergence logs in the application
 kubectl logs -n production -l app=my-app \
-  | grep dark_launch | jq '.'
+  | grep dark_launch
 
 # Check error rates for the dark code path
 kubectl logs -n production -l app=my-app \
@@ -217,11 +217,11 @@ When the dark code path has validated successfully at 100% sample rate with no d
 
 ```bash
 # 1. Create a final PR: disable dark launch and enable the feature
-cat > apps/my-app/base/feature-flags.yaml <<'EOF'
+cat > apps/my-app/base/dark-launch-config.yaml <<'EOF'
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: my-app-feature-flags
+  name: my-app-dark-launch
   namespace: production
 data:
   ENABLE_NEW_PAYMENT_PROCESSOR: "true"   # Now live for all users
