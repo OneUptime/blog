@@ -12,68 +12,53 @@ Description: Manage NATS accounts and security configurations using Flux CD for 
 
 NATS accounts provide multi-tenancy and security isolation within a single NATS server or cluster. Each account has its own subject namespace, JetStream resources, and connection limits. Services in different accounts cannot communicate unless explicitly configured with import/export capabilities. The NATS Operator and decentralized JWT-based security model allow large organizations to manage hundreds of accounts with cryptographic, zero-trust security.
 
-For simpler deployments, NATS supports static account configuration in the server config file, which maps well to Flux CD management via ConfigMaps. This post covers configuring NATS accounts using the resolver-based JWT approach for production multi-tenancy.
+For simpler deployments, NATS supports static account configuration in the server config file, which maps well to Flux CD management via ConfigMaps. This post covers configuring NATS accounts using static account definitions managed through the official NATS Helm chart and Flux CD.
 
 ## Prerequisites
 
 - NATS cluster deployed via Flux CD (see NATS JetStream post)
-- `nsc` (NATS Security Credentials) tool installed locally
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Understand NATS Account Architecture
 
 ```mermaid
 graph TD
-    A[NATS Operator] -->|signs| B[Account A JWT]
-    A -->|signs| C[Account B JWT]
-    B -->|signs| D[User A1 credentials]
-    B -->|signs| E[User A2 credentials]
-    C -->|signs| F[User B1 credentials]
-    B -->|exports| G[Subject: events.>]
-    C -->|imports| G
+    A[NATS Server Configuration] --> B[Services Account]
+    A --> C[Analytics Account]
+    B --> D[User: services-user]
+    C --> E[User: analytics-user]
+    B -->|exports| F[Subject: orders.>]
+    C -->|imports| F
 ```
 
-Each level (Operator → Account → User) uses NKey cryptography. The server verifies JWTs cryptographically without needing a central registry.
+Each account has its own users, subject namespace, and optional JetStream limits. Accounts exchange messages only when the exporting account defines an export and the importing account defines a matching import.
 
-## Step 2: Generate NATS Security Credentials
+## Step 2: Generate Account Passwords
 
 ```bash
-# Initialize nsc environment
-
-nsc add operator --name production-operator
-nsc add account --name services-account
-nsc add account --name analytics-account
-
-# Add users to each account
-nsc add user --account services-account --name orders-service
-nsc add user --account analytics-account --name analytics-worker
-
-# Generate credentials files
-nsc generate creds --account services-account --name orders-service \
-  > orders-service.creds
-nsc generate creds --account analytics-account --name analytics-worker \
-  > analytics-worker.creds
-
-# Export the resolver configuration
-nsc generate config --mem-resolver --config-file nats-resolver.conf
+SERVICES_PASSWORD="$(openssl rand -base64 32)"
+ANALYTICS_PASSWORD="$(openssl rand -base64 32)"
+SYS_PASSWORD="$(openssl rand -base64 32)"
 ```
 
-## Step 3: Store Credentials in Kubernetes Secrets
+## Step 3: Store Passwords in Kubernetes Secrets
 
 ```bash
-# Store operator JWT and resolver config
-kubectl create secret generic nats-operator-config \
+# Store passwords where the NATS Helm release runs
+kubectl create secret generic nats-account-passwords \
   -n nats \
-  --from-file=resolver.conf=nats-resolver.conf
+  --from-literal=services-password="${SERVICES_PASSWORD}" \
+  --from-literal=analytics-password="${ANALYTICS_PASSWORD}" \
+  --from-literal=sys-password="${SYS_PASSWORD}"
 
-# Store user credentials
+# Store the application-specific password in each application namespace
 kubectl create secret generic orders-service-nats-creds \
   -n myapp \
-  --from-file=orders-service.creds=orders-service.creds
+  --from-literal=password="${SERVICES_PASSWORD}"
 
 kubectl create secret generic analytics-worker-nats-creds \
   -n analytics \
-  --from-file=analytics-worker.creds=analytics-worker.creds
+  --from-literal=password="${ANALYTICS_PASSWORD}"
 ```
 
 For GitOps, use Sealed Secrets:
@@ -82,9 +67,9 @@ For GitOps, use Sealed Secrets:
 # (SealedSecret wrapping the above credentials)
 ```
 
-## Step 4: Configure NATS with Account Resolver
+## Step 4: Configure NATS Accounts
 
-Update the NATS HelmRelease to use the resolver:
+Update the NATS HelmRelease to configure the accounts:
 
 ```yaml
 # infrastructure/messaging/nats/nats-cluster.yaml (updated values)
@@ -117,13 +102,13 @@ spec:
             enabled: true
             size: 10Gi
 
-      # Account configuration with JWT resolver
+      # Static account configuration
       merge:
         accounts:
           services:
             users:
               - user: services-user
-                password: "$SERVICES_PASSWORD"
+                password: << $SERVICES_PASSWORD >>
             jetstream:
               max_memory: 512Mi
               max_file: 10Gi
@@ -132,36 +117,48 @@ spec:
                   subject: "analytics.>"
                   account: analytics
             exports:
-              - stream:
-                  subject: "orders.>"
+              - stream: "orders.>"
 
           analytics:
             users:
               - user: analytics-user
-                password: "$ANALYTICS_PASSWORD"
+                password: << $ANALYTICS_PASSWORD >>
             jetstream:
               max_memory: 256Mi
               max_file: 5Gi
+            exports:
+              - stream: "analytics.>"
             imports:
               - stream:
                   subject: "orders.>"
                   account: services
 
+          SYS:
+            users:
+              - user: sys-user
+                password: << $SYS_PASSWORD >>
+
         # System account for monitoring
         system_account: SYS
 
     # Inject account passwords from Secrets
-    extraEnvs:
-      - name: SERVICES_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: nats-account-passwords
-            key: services-password
-      - name: ANALYTICS_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: nats-account-passwords
-            key: analytics-password
+    container:
+      env:
+        SERVICES_PASSWORD:
+          valueFrom:
+            secretKeyRef:
+              name: nats-account-passwords
+              key: services-password
+        ANALYTICS_PASSWORD:
+          valueFrom:
+            secretKeyRef:
+              name: nats-account-passwords
+              key: analytics-password
+        SYS_PASSWORD:
+          valueFrom:
+            secretKeyRef:
+              name: nats-account-passwords
+              key: sys-password
 ```
 
 ## Step 5: Create Account Password Secret
@@ -177,6 +174,7 @@ type: Opaque
 stringData:
   services-password: "ServicesPassword123!"
   analytics-password: "AnalyticsPassword123!"
+  sys-password: "SysPassword123!"
 ```
 
 ## Step 6: Configure Applications to Use Account Credentials
@@ -189,10 +187,17 @@ metadata:
   name: orders-service
   namespace: myapp
 spec:
+  selector:
+    matchLabels:
+      app: orders-service
   template:
+    metadata:
+      labels:
+        app: orders-service
     spec:
       containers:
         - name: app
+          image: ghcr.io/example/orders-service:1.0.0
           env:
             - name: NATS_URL
               value: "nats://nats.nats.svc.cluster.local:4222"
@@ -201,8 +206,8 @@ spec:
             - name: NATS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: nats-account-passwords
-                  key: services-password
+                  name: orders-service-nats-creds
+                  key: password
 ```
 
 ## Step 7: Flux Kustomization
@@ -235,21 +240,21 @@ kubectl exec -n nats deploy/nats-box -- \
   --password 'ServicesPassword123!' \
   sub "orders.>"
 
-# Verify analytics account cannot subscribe to orders without import
-kubectl exec -n nats deploy/nats-box -- \
-  nats --server nats://nats.nats.svc.cluster.local:4222 \
-  --user analytics-user \
-  --password 'AnalyticsPassword123!' \
-  sub "orders.>" 2>&1
-# Expected: "Permissions Violation"
-
-# Verify import allows cross-account access
+# Verify analytics can subscribe to orders through the configured import
 kubectl exec -n nats deploy/nats-box -- \
   nats --server nats://nats.nats.svc.cluster.local:4222 \
   --user analytics-user \
   --password 'AnalyticsPassword123!' \
   sub "orders.>" 2>&1
 # This should work via the defined import
+
+# Verify non-exported subjects remain isolated
+kubectl exec -n nats deploy/nats-box -- \
+  nats --server nats://nats.nats.svc.cluster.local:4222 \
+  --user analytics-user \
+  --password 'AnalyticsPassword123!' \
+  sub "internal.>" 2>&1
+# This subscribes in the analytics account namespace and will not receive services account messages.
 ```
 
 ## Best Practices
@@ -257,9 +262,9 @@ kubectl exec -n nats deploy/nats-box -- \
 - Use the `system_account` for monitoring and internal NATS tooling - never use it for application connections.
 - Scope JetStream limits per account (`max_memory`, `max_file`) to prevent one account from consuming all JetStream storage.
 - Use exports/imports for cross-account communication rather than giving accounts access to each other's subjects.
-- Rotate user passwords by updating the Kubernetes Secret and triggering a NATS server config reload.
+- Rotate user passwords by updating the Kubernetes Secret and restarting or reconciling the NATS pods so the password environment variables are refreshed.
 - Monitor account statistics with the NATS monitoring endpoint at `/accountz`.
 
 ## Conclusion
 
-NATS account configuration managed through Flux CD gives you a version-controlled, multi-tenant messaging infrastructure where security boundaries are defined in Git. Account isolation prevents services from subscribing to subjects they don't own, and the export/import model enables controlled cross-account communication. With Flux managing the NATS configuration and Sealed Secrets handling credentials, your messaging security posture is as strong as your application security.
+NATS account configuration managed through Flux CD gives you a version-controlled, multi-tenant messaging infrastructure where security boundaries are defined in Git. Account isolation prevents services from receiving messages from other account namespaces unless imports and exports allow it, and the export/import model enables controlled cross-account communication. With Flux managing the NATS configuration and Sealed Secrets handling credentials, your messaging security posture is as strong as your application security.
