@@ -41,7 +41,7 @@ spec:
 ## Step 2: Create the Namespace
 
 ```yaml
-# infrastructure/databases/percona-pg/namespace.yaml
+# infrastructure/databases/percona-pg/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -53,7 +53,7 @@ metadata:
 ## Step 3: Deploy the Percona PostgreSQL Operator
 
 ```yaml
-# infrastructure/databases/percona-pg/operator.yaml
+# infrastructure/databases/percona-pg/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -74,6 +74,7 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
+    fullnameOverride: percona-postgresql-operator
     replicaCount: 1
     resources:
       requests:
@@ -87,7 +88,7 @@ spec:
 ## Step 4: Deploy a PostgreSQL Cluster
 
 ```yaml
-# infrastructure/databases/percona-pg/pg-cluster.yaml
+# infrastructure/databases/percona-pg/cluster/pg-cluster.yaml
 apiVersion: pgv2.percona.com/v2
 kind: PerconaPGCluster
 metadata:
@@ -95,9 +96,16 @@ metadata:
   namespace: postgres
 spec:
   crVersion: "2.4.1"
-  image: percona/percona-postgresql-operator:2.4.1-ppg16-postgres
+  image: percona/percona-postgresql-operator:2.4.1-ppg16.3-postgres
+  postgresVersion: 16
 
   imagePullPolicy: IfNotPresent
+
+  users:
+    - name: app
+      databases:
+        - app
+      secretName: cluster1-pguser-app
 
   instances:
     - name: instance1
@@ -130,7 +138,7 @@ spec:
   proxy:
     pgBouncer:
       replicas: 2
-      image: percona/percona-postgresql-operator:2.4.1-ppg16-pgbouncer
+      image: percona/percona-postgresql-operator:2.4.1-ppg16.3-pgbouncer1.22.1
       resources:
         requests:
           cpu: "100m"
@@ -139,7 +147,10 @@ spec:
   # Backup configuration
   backups:
     pgbackrest:
-      image: percona/percona-postgresql-operator:2.4.1-ppg16-pgbackrest
+      image: percona/percona-postgresql-operator:2.4.1-ppg16.3-pgbackrest2.51-1
+      configuration:
+        - secret:
+            name: cluster1-pgbackrest-secrets
       repos:
         - name: repo1
           schedules:
@@ -170,21 +181,12 @@ spec:
 ## Step 5: Create Required Secrets
 
 ```yaml
-# infrastructure/databases/percona-pg/secrets.yaml (use SealedSecret)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cluster1-pguser-app
-  namespace: postgres
-type: Opaque
-stringData:
-  password: "SecureAppPassword!"
----
+# infrastructure/databases/percona-pg/cluster/secrets.yaml (use SealedSecret)
 # S3 credentials for pgBackRest
 apiVersion: v1
 kind: Secret
 metadata:
-  name: cluster1-pgbackrest-secret
+  name: cluster1-pgbackrest-secrets
   namespace: postgres
 type: Opaque
 stringData:
@@ -197,24 +199,40 @@ stringData:
 ## Step 6: Set Up Flux Kustomization
 
 ```yaml
-# clusters/production/percona-pg-kustomization.yaml
+# clusters/production/percona-pg-operator-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: percona-postgresql
+  name: percona-postgresql-operator
   namespace: flux-system
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/databases/percona-pg
+  path: ./infrastructure/databases/percona-pg/operator
   prune: true
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
       name: percona-postgresql-operator
       namespace: postgres
+---
+# clusters/production/percona-pg-cluster-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: percona-postgresql-cluster
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/databases/percona-pg/cluster
+  prune: true
+  dependsOn:
+    - name: percona-postgresql-operator
 ```
 
 ## Step 7: Verify and Connect
@@ -226,25 +244,29 @@ kubectl get perconapgcluster -n postgres
 # Check all pods
 kubectl get pods -n postgres
 
-# Get the connection details (service name format: <cluster>-ha)
+# Get the connection details (the operator creates services such as cluster1-ha and cluster1-pgbouncer)
 kubectl get service -n postgres
 
 # Connect via PgBouncer proxy
 kubectl port-forward svc/cluster1-pgbouncer 5432:5432 -n postgres
-psql -h localhost -U app -d app
+PGPASSWORD=$(kubectl get secret cluster1-pguser-app -n postgres -o jsonpath='{.data.password}' | base64 --decode) \
+  psql -h localhost -U app -d app
 
 # Verify replication
-kubectl exec -n postgres cluster1-instance1-0 -- \
+PRIMARY_POD=$(kubectl get pod -n postgres \
+  -l postgres-operator.crunchydata.com/cluster=cluster1,postgres-operator.crunchydata.com/role=master \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n postgres "$PRIMARY_POD" -c database -- \
   psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 
 # Check backup status
-kubectl exec -n postgres cluster1-instance1-0 -- \
+kubectl exec -n postgres "$PRIMARY_POD" -c pgbackrest -- \
   pgbackrest --stanza=db info
 ```
 
 ## Best Practices
 
-- Store pgBackRest S3 credentials in a SealedSecret and reference them in the cluster spec rather than embedding in plaintext.
+- Store pgBackRest S3 credentials in a SealedSecret and reference them through `backups.pgbackrest.configuration` rather than embedding them in plaintext.
 - Enable `proxy.pgBouncer` with at least 2 replicas for production to pool connections and reduce PostgreSQL connection overhead.
 - Set `patroni.dynamicConfiguration.postgresql.parameters` to tune PostgreSQL for your workload rather than using defaults.
 - Use `repo1-retention-full` and `repo1-retention-diff` to balance backup storage costs with your recovery point objectives.
