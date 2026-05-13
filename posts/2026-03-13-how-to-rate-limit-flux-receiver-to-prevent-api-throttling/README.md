@@ -8,7 +8,7 @@ Description: Learn how to rate limit incoming webhook requests to the Flux Recei
 
 ---
 
-In high-activity repositories or environments with multiple webhook sources, the Flux Receiver can be overwhelmed with requests. Each webhook triggers a reconciliation, and if too many arrive in a short window, the source-controller and kustomize-controller can spend all their time reconciling instead of converging. Additionally, rapid-fire reconciliations can hit Git provider API rate limits, causing fetch failures.
+In high-activity repositories or environments with multiple webhook sources, the Flux Receiver can be overwhelmed with requests. Each webhook triggers a reconciliation, and if too many arrive in a short window, the source-controller and kustomize-controller can spend all their time reconciling instead of converging. Additionally, rapid-fire reconciliations can hit Git provider rate or abuse limits, causing fetch failures.
 
 This guide covers multiple strategies for rate limiting webhook traffic to the Flux Receiver at the Ingress layer, the Flux configuration layer, and the provider layer.
 
@@ -25,7 +25,7 @@ Consider a monorepo with 50 developers pushing frequently. Each push triggers a 
 
 - The source-controller fetches the repository 50 times in rapid succession.
 - Each fetch may trigger downstream Kustomization and HelmRelease reconciliations.
-- GitHub API rate limits (5000 requests/hour for authenticated, 60/hour for unauthenticated) can be exhausted.
+- Git provider rate or abuse limits can be reached, especially when repeated fetches happen in a short period.
 - Controller CPU and memory usage spikes, potentially affecting other workloads.
 
 ## Strategy 1: NGINX Ingress Rate Limiting
@@ -48,14 +48,8 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "5"
     # Allow bursts of up to 10 requests
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
-    # Return 429 Too Many Requests when rate limit is exceeded
-    nginx.ingress.kubernetes.io/limit-rate-after: "0"
-    # Custom error page for rate-limited requests
-    nginx.ingress.kubernetes.io/server-snippet: |
-      error_page 429 @rate_limited;
-      location @rate_limited {
-        return 429 '{"message": "rate limit exceeded, retry later"}';
-      }
+    # ingress-nginx returns 503 for rejected rate-limited requests by default.
+    # To return 429 instead, set limit-req-status-code: "429" in the controller ConfigMap.
 spec:
   ingressClassName: nginx
   tls:
@@ -70,7 +64,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -93,11 +87,11 @@ annotations:
   nginx.ingress.kubernetes.io/limit-rps: "5"
   # Burst multiplier
   nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
-  # Whitelist trusted IPs (e.g., GitHub webhook IPs)
-  nginx.ingress.kubernetes.io/limit-whitelist: "192.30.252.0/22,185.199.108.0/22"
+  # Whitelist trusted IPs (e.g., GitHub webhook CIDRs from the hooks field of https://api.github.com/meta)
+  nginx.ingress.kubernetes.io/limit-whitelist: "<provider-webhook-cidr-1>,<provider-webhook-cidr-2>"
 ```
 
-The whitelist is important if you want to exempt your webhook provider's IP ranges from rate limiting. GitHub publishes their webhook IP ranges, which you can add to the whitelist.
+The whitelist is important if you want to exempt your webhook provider's IP ranges from rate limiting. GitHub publishes webhook IP ranges through the `hooks` field in the Meta API response, which you can add to the whitelist and refresh regularly.
 
 ### Request Size Limiting
 
@@ -114,9 +108,9 @@ annotations:
 
 ## Strategy 2: Flux Resource Interval Configuration
 
-Even if webhooks arrive rapidly, you can control how often Flux actually reconciles by configuring minimum intervals on the target resources.
+Even if webhooks arrive rapidly, you can control how often Flux polls by configuring intervals on the target resources. This does not cap webhook-triggered reconciliations.
 
-### Set Minimum Reconciliation Intervals
+### Set Polling Reconciliation Intervals
 
 ```yaml
 # gitrepository-with-interval.yaml
@@ -132,7 +126,7 @@ spec:
     branch: main
 ```
 
-The `interval` field sets the minimum time between reconciliations. Even if webhooks trigger the `reconcile.fluxcd.io/requestedAt` annotation multiple times within 5 minutes, the source-controller will not re-fetch more often than this interval dictates for poll-based reconciliation. However, webhook-triggered reconciliations via annotation changes bypass the interval timer and cause immediate reconciliation.
+The `interval` field sets how often the source-controller requeues the GitRepository for polling after a successful reconciliation. Webhook-triggered reconciliations via annotation changes bypass the interval timer and cause immediate reconciliation when the requested value changes.
 
 To limit how often the annotation change triggers a real reconciliation, you need to work at the Ingress or provider layer.
 
@@ -174,14 +168,12 @@ spec:
       kind: HTTPRoute
       name: flux-receiver
   rateLimit:
-    type: Global
     global:
       rules:
         - clientSelectors:
-            - headers:
-                - name: ":path"
-                  value: "/hook/"
-                  type: Distinct
+            - path:
+                type: PathPrefix
+                value: /hook/
           limit:
             requests: 10
             unit: Minute
@@ -198,9 +190,9 @@ Configure the webhook provider to send fewer events:
 On GitHub, limit which events trigger the webhook:
 
 - Select only "Pushes" instead of "Send me everything."
-- Use branch filtering if your repository uses many branches but you only care about `main`.
+- If you only care about one branch, filter by branch in Flux or in a small webhook middleware before forwarding to Flux.
 
-GitHub also has a built-in throttling mechanism that coalesces rapid pushes within a short window.
+GitHub does not automatically redeliver failed webhook deliveries. If rate limiting returns an error, GitHub records the delivery as failed; you can redeliver it manually or with your own automation. Flux's normal polling interval still provides eventual reconciliation even if an individual webhook is dropped.
 
 ### GitLab
 
@@ -238,7 +230,7 @@ spec:
           env:
             # Forward to the notification-controller after debouncing
             - name: UPSTREAM_URL
-              value: "http://notification-controller.flux-system.svc.cluster.local"
+              value: "http://webhook-receiver.flux-system.svc.cluster.local"
             # Wait 30 seconds of inactivity before forwarding
             - name: DEBOUNCE_SECONDS
               value: "30"
@@ -317,7 +309,7 @@ for i in $(seq 1 20); do
 done
 ```
 
-With rate limiting configured at 5 RPS, you should see the first few requests return 200 and subsequent ones return 429.
+With rate limiting configured at 5 RPS, you should see the first few requests return 200 and subsequent ones return 503 by default, or 429 if you configured `limit-req-status-code: "429"` in the ingress-nginx controller ConfigMap.
 
 Monitor the NGINX Ingress controller for rate limiting activity:
 
@@ -343,10 +335,10 @@ kubectl -n ingress-nginx exec deploy/ingress-nginx-controller -- nginx -T | grep
 
 If rate limiting is working at the Ingress level but controllers are still under load, check if there are other sources of reconciliation such as polling intervals that are too aggressive. Increase the `interval` on GitRepository and Kustomization resources.
 
-### 429 errors in GitHub webhook delivery log
+### 429 or 503 errors in GitHub webhook delivery log
 
-This is expected behavior. GitHub will retry failed deliveries automatically. The important thing is that at least some requests get through to trigger reconciliation.
+This is expected behavior when ingress-nginx rejects excess requests. GitHub does not automatically retry failed webhook deliveries, but you can redeliver failed deliveries manually or with your own automation. Flux will also continue reconciling on the `GitRepository` interval, so webhooks are an acceleration mechanism rather than the only path to convergence.
 
 ## Summary
 
-Rate limiting Flux Receivers involves multiple layers: NGINX Ingress annotations for request-level throttling, Flux resource intervals for reconciliation frequency, provider-side event filtering for reducing webhook volume, and resource quotas for protecting the cluster. The most effective approach combines Ingress-level rate limiting with sensible provider-side filtering to keep webhook traffic manageable without missing important events.
+Rate limiting Flux Receivers involves multiple layers: NGINX Ingress annotations for request-level throttling, Flux resource intervals for polling frequency, provider-side event filtering for reducing webhook volume, and resource quotas for protecting the cluster. The most effective approach combines Ingress-level rate limiting with sensible provider-side filtering to keep webhook traffic manageable, while relying on Flux's normal polling interval as the fallback for any webhook deliveries that are rejected.
