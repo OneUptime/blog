@@ -12,7 +12,7 @@ Description: Monitor secure BGP sessions in Calico to prevent route injection an
 
 BGP (Border Gateway Protocol) sessions in Calico are used to distribute pod routes between nodes and to upstream routers. Unsecured BGP sessions are vulnerable to route injection attacks, where a malicious peer could inject false routes and redirect cluster traffic. Securing BGP sessions is an essential part of hardening a production Calico deployment.
 
-Calico supports BGP session authentication using MD5 passwords and can be configured to only peer with authorized BGP peers. The `projectcalico.org/v3` BGPPeer resource lets you configure per-peer authentication and encryption settings.
+Calico supports BGP session authentication using TCP MD5 passwords (RFC 2385) and can be configured to only peer with authorized BGP peers. The `projectcalico.org/v3` BGPPeer resource lets you configure per-peer password authentication via a Kubernetes Secret.
 
 This guide covers monitor BGP sessions in Calico to prevent unauthorized route injection and BGP hijacking.
 
@@ -68,8 +68,9 @@ calicoctl node status
 # Check BGP peer status
 calicoctl node status | grep Established
 
-# Verify MD5 authentication is active
-bird cli <<< "show protocols all bgp_peer_router01" | grep auth
+# Verify MD5 authentication is active (run inside a calico-node pod)
+kubectl exec -n calico-system <calico-node-pod> -- \
+  birdcl -s /var/run/calico/bird.ctl show protocols all | grep -iE "BGP|password"
 
 # Check for unauthorized BGP connections
 calicoctl get bgppeers -o wide
