@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Image Automation Controller, Pod Crashes, Image Updates, Automation
 
-Description: Learn how to diagnose and fix Image Automation Controller pod crashes in Flux, including Git push failures, SSH key issues, and commit signing problems.
+Description: Learn how to diagnose Image Automation Controller pod crashes and reconciliation failures in Flux, including Git push failures, SSH key issues, and commit signing problems.
 
 ---
 
-The Image Automation Controller works together with the Image Reflector Controller to automate container image updates. It writes updated image references back to your Git repository by creating commits and pushing changes. When this controller crashes, automatic image updates stop and your deployments will not receive new container images. This guide walks you through diagnosing and resolving Image Automation Controller pod crashes.
+The Image Automation Controller works together with the Image Reflector Controller to automate container image updates. It writes updated image references back to your Git repository by creating commits and pushing changes. When this controller crashes or cannot reconcile successfully, automatic image updates stop and your deployments will not receive new container images. This guide walks you through diagnosing and resolving Image Automation Controller pod crashes and reconciliation failures.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ kubectl logs -n flux-system deploy/image-automation-controller --tail=200
 
 ### Git Authentication Failures
 
-The Image Automation Controller needs write access to your Git repository. If SSH keys or tokens are missing or expired, the controller may crash:
+The Image Automation Controller needs write access to your Git repository. If SSH keys or tokens are missing or expired, the automation will fail to reconcile:
 
 ```bash
 kubectl logs -n flux-system deploy/image-automation-controller | grep -i "auth\|ssh\|permission denied\|publickey"
@@ -70,7 +70,7 @@ kubectl get imageupdateautomations -n flux-system -o jsonpath='{.items[*].spec.g
 
 ### Git Push Conflicts
 
-If multiple ImageUpdateAutomation resources try to update the same branch simultaneously, or if there are upstream changes that conflict with the automated commits, the controller may crash:
+If multiple ImageUpdateAutomation resources try to update the same branch simultaneously, or if there are upstream changes that conflict with the automated commits, the automation may fail to push:
 
 ```bash
 kubectl logs -n flux-system deploy/image-automation-controller | grep -i "conflict\|push\|rejected\|non-fast-forward"
@@ -95,7 +95,7 @@ spec:
 
 ### Commit Signing Configuration Errors
 
-If the controller is configured to sign commits with GPG and the signing key is missing or misconfigured, the controller may crash:
+If the controller is configured to sign commits with a PGP key and the signing key is missing or misconfigured, the automation will fail to reconcile:
 
 ```bash
 kubectl logs -n flux-system deploy/image-automation-controller | grep -i "gpg\|sign\|pgp"
@@ -121,11 +121,11 @@ Increase memory limits:
 kubectl patch deployment image-automation-controller -n flux-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "1Gi"}]'
 ```
 
-Consider using shallow clones or keeping your repository size manageable by avoiding large binary files.
+Flux uses shallow clones by default. If shallow clones were disabled with `--feature-gates=GitShallowClone=false`, re-enable them or keep your repository size manageable by avoiding large binary files.
 
 ### Invalid Marker Patterns
 
-The controller uses markers in your manifest files to know which image references to update. Invalid markers can cause parsing errors:
+The controller uses markers in your manifest files to know which image references to update. Invalid markers can cause parsing errors and reconciliation failures:
 
 ```bash
 kubectl logs -n flux-system deploy/image-automation-controller | grep -i "marker\|pattern\|parse"
@@ -147,7 +147,7 @@ spec:
 Review the status of all ImageUpdateAutomation resources:
 
 ```bash
-flux get image update --all-namespaces
+flux get images update --all-namespaces
 ```
 
 Look for resources with error conditions:
@@ -183,4 +183,4 @@ flux reconcile image update <automation-name> -n flux-system
 
 ## Summary
 
-Image Automation Controller pod crashes are typically caused by Git authentication failures, push conflicts, commit signing misconfigurations, or memory exhaustion from large repositories. Ensuring proper Git credentials, using dedicated automation branches, and validating marker patterns will resolve most crash scenarios. Regular credential rotation and access testing are effective preventive measures.
+Image Automation Controller pod crashes or reconciliation failures are typically caused by Git authentication failures, push conflicts, commit signing misconfigurations, invalid markers, or memory exhaustion from large repositories. Ensuring proper Git credentials, using dedicated automation branches, and validating marker patterns will resolve most failure scenarios. Regular credential rotation and access testing are effective preventive measures.
