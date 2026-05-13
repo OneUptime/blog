@@ -10,7 +10,7 @@ Description: A guide to configuring Calico NetworkSet resources to group externa
 
 ## Introduction
 
-Calico NetworkSet resources provide a way to name and group IP addresses, CIDRs, and DNS names that appear in network policies. Instead of embedding raw IP ranges directly in policy rules - which makes policies harder to read and maintain - you define named sets and reference them by selector in your policies.
+Calico NetworkSet resources provide a way to name and group IP addresses and CIDRs that appear in network policies. Instead of embedding raw IP ranges directly in policy rules - which makes policies harder to read and maintain - you define named sets and reference them by selector in your policies.
 
 NetworkSet resources exist in both namespace-scoped (NetworkSet) and cluster-scoped (GlobalNetworkSet) forms. Use namespace-scoped sets for environment-specific IP groups and global sets for cluster-wide trusted or blocked ranges.
 
@@ -86,13 +86,13 @@ spec:
 ```
 
 ```yaml
-# Allow SSH ingress from management hosts (GlobalNetworkPolicy)
+# Allow SSH ingress from management hosts to SSH server endpoints (GlobalNetworkPolicy)
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
   name: allow-management-ssh
 spec:
-  selector: "has(node)"
+  selector: "role == 'ssh-server'"
   order: 10
   ingress:
     - action: Allow
