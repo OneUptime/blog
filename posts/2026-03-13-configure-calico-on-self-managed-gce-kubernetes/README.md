@@ -12,7 +12,7 @@ Description: A guide to deploying Calico on a self-managed Kubernetes cluster ru
 
 Google Compute Engine (GCE) provides a flexible infrastructure for self-managed Kubernetes clusters. Unlike GKE which comes with managed networking, GCE VMs give you full control over the CNI plugin and networking configuration.
 
-Calico on GCE can leverage GCE's native routing capabilities. Because GCE VPCs support custom static routes, you can configure Calico without encapsulation by advertising pod CIDRs as GCE routes - eliminating the overlay networking overhead. Alternatively, VXLAN encapsulation works seamlessly when you don't have permission to manage GCE routes.
+Calico on GCE can leverage GCE's native routing capabilities. Because GCE VPCs support custom static routes, you can configure Calico without encapsulation by creating GCE routes for pod CIDRs - eliminating the overlay networking overhead. Alternatively, VXLAN encapsulation works when you don't have permission to manage GCE routes, provided UDP 4789 is allowed between nodes.
 
 This guide covers both approaches: encapsulated Calico for simplicity and non-encapsulated Calico with GCE route programming for performance.
 
@@ -32,25 +32,28 @@ Set up the firewall rules required for Calico.
 
 NETWORK_NAME="kubernetes-network"
 PROJECT="my-gcp-project"
+VPC_CIDR="10.0.0.0/8"
+POD_CIDR="192.168.0.0/16"
 
-# Allow all traffic within the cluster (internal)
+# Allow all traffic within the cluster (internal).
+# Include the pod CIDR if you use non-encapsulated GCE routes.
 gcloud compute firewall-rules create allow-internal-cluster \
   --project $PROJECT \
   --network $NETWORK_NAME \
   --allow tcp,udp,icmp \
-  --source-ranges 10.0.0.0/8
+  --source-ranges "$VPC_CIDR,$POD_CIDR"
 
 # Allow Calico VXLAN (if using VXLAN mode)
 gcloud compute firewall-rules create allow-calico-vxlan \
   --project $PROJECT \
   --network $NETWORK_NAME \
   --allow udp:4789 \
-  --source-ranges 10.0.0.0/8
+  --source-ranges "$VPC_CIDR"
 ```
 
-## Step 2: Disable GCE Source/Destination Check (for BGP mode)
+## Step 2: Enable GCE IP Forwarding (for GCE route mode)
 
-To use Calico without encapsulation (routing mode), disable IP forwarding checks.
+To use Calico without encapsulation and route pod CIDRs through nodes, enable IP forwarding on the GCE instances that will be used as route next hops.
 
 ```bash
 # Get instance names
@@ -60,7 +63,7 @@ ZONE="us-central1-a"
 
 # GCE VMs have IP forwarding disabled by default - enable it for Kubernetes
 # This is done when creating the instance (--can-ip-forward flag)
-# Or can be enabled on existing instances via:
+# Check whether an existing instance already has it enabled:
 gcloud compute instances describe $CONTROL_PLANE_INSTANCE \
   --zone $ZONE \
   --format="get(canIpForward)"
@@ -69,6 +72,7 @@ gcloud compute instances describe $CONTROL_PLANE_INSTANCE \
 gcloud compute instances create k8s-control-plane \
   --project $PROJECT \
   --zone $ZONE \
+  --network $NETWORK_NAME \
   --machine-type n2-standard-2 \
   --image-family ubuntu-2204-lts \
   --image-project ubuntu-os-cloud \
@@ -133,9 +137,13 @@ kubectl wait --for=condition=Available tigerastatus/calico --timeout=10m
 For production clusters, configure Calico to use GCE's native routing without encapsulation.
 
 ```bash
-# If using BGP with GCE routes (no encapsulation):
+# If using GCE routes (no encapsulation):
 # 1. Each node must have a GCE static route for its pod CIDR
-# 2. Update Calico installation to use no encapsulation
+# 2. For a new Calico installation, set the IP pool encapsulation to None
+#    in calico-gce-installation.yaml.
+#    For an existing operator-managed install, change the IPPool resource
+#    with kubectl or calicoctl because Installation ipPool changes are not
+#    applied after installation.
 
 # After nodes join, create GCE routes for each node's pod CIDR
 # Get the pod CIDR assigned to each node
@@ -152,7 +160,7 @@ gcloud compute routes create pod-route-worker-1 \
 
 ## Best Practices
 
-- Enable IP forwarding (`--can-ip-forward`) on all GCE instances at creation time - it cannot be changed later
+- Enable IP forwarding (`--can-ip-forward`) on all GCE instances that will be used as GCE route next hops. Configuring it at creation time is simplest; existing instances can also be updated through the Compute Engine instance update workflow.
 - Use VXLAN for simpler deployments and GCE static routes for latency-sensitive workloads
 - Apply GCE firewall rules before initializing the cluster to ensure node join succeeds
 - Tag your GCE instances with a cluster tag and use it in firewall rules for maintainability
