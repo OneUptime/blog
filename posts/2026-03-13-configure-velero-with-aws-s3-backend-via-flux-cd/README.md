@@ -69,6 +69,23 @@ done
 
 ```bash
 # Create an IAM role for S3 replication
+cat > /tmp/s3-replication-trust-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "s3.amazonaws.com"
+    },
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+  --role-name S3ReplicationRole \
+  --assume-role-policy-document file:///tmp/s3-replication-trust-policy.json
+
 cat > /tmp/s3-replication-policy.json << 'EOF'
 {
   "Version": "2012-10-17",
@@ -99,6 +116,11 @@ cat > /tmp/s3-replication-policy.json << 'EOF'
 }
 EOF
 
+aws iam put-role-policy \
+  --role-name S3ReplicationRole \
+  --policy-name S3ReplicationPolicy \
+  --policy-document file:///tmp/s3-replication-policy.json
+
 # Enable replication from primary to DR bucket
 aws s3api put-bucket-replication \
   --bucket my-cluster-velero-primary \
@@ -106,6 +128,13 @@ aws s3api put-bucket-replication \
     "Role": "arn:aws:iam::123456789012:role/S3ReplicationRole",
     "Rules": [{
       "Status": "Enabled",
+      "Priority": 1,
+      "DeleteMarkerReplication": {
+        "Status": "Disabled"
+      },
+      "Filter": {
+        "Prefix": ""
+      },
       "Destination": {
         "Bucket": "arn:aws:s3:::my-cluster-velero-dr",
         "StorageClass": "STANDARD_IA"
@@ -143,6 +172,52 @@ cat > /tmp/velero-trust-policy.json << EOF
 }
 EOF
 
+# Create the Velero backup policy
+cat > /tmp/velero-backup-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "ec2:DescribeVolumes",
+      "ec2:DescribeSnapshots",
+      "ec2:CreateTags",
+      "ec2:CreateVolume",
+      "ec2:CreateSnapshot",
+      "ec2:DeleteSnapshot"
+    ],
+    "Resource": "*"
+  }, {
+    "Effect": "Allow",
+    "Action": [
+      "s3:GetObject",
+      "s3:DeleteObject",
+      "s3:PutObject",
+      "s3:PutObjectTagging",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts"
+    ],
+    "Resource": [
+      "arn:aws:s3:::my-cluster-velero-primary/*",
+      "arn:aws:s3:::my-cluster-velero-dr/*"
+    ]
+  }, {
+    "Effect": "Allow",
+    "Action": [
+      "s3:ListBucket"
+    ],
+    "Resource": [
+      "arn:aws:s3:::my-cluster-velero-primary",
+      "arn:aws:s3:::my-cluster-velero-dr"
+    ]
+  }]
+}
+EOF
+
+aws iam create-policy \
+  --policy-name VeleroBackupPolicy \
+  --policy-document file:///tmp/velero-backup-policy.json
+
 # Create the Velero IRSA role
 aws iam create-role \
   --role-name VeleroEKSRole \
@@ -168,7 +243,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "6.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -176,7 +251,7 @@ spec:
   values:
     initContainers:
       - name: velero-plugin-for-aws
-        image: velero/velero-plugin-for-aws:v1.9.0
+        image: velero/velero-plugin-for-aws:v1.14.0
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -227,6 +302,9 @@ aws s3api put-bucket-lifecycle-configuration \
     "Rules": [{
       "ID": "TransitionToIA",
       "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
       "Transitions": [{
         "Days": 30,
         "StorageClass": "STANDARD_IA"
