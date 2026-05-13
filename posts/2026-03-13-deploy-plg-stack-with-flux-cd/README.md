@@ -12,9 +12,11 @@ Description: Deploy Promtail, Loki, and Grafana (PLG) logging stack to Kubernete
 
 The PLG stack - Promtail, Loki, and Grafana - is a lightweight, cost-effective alternative to the ELK stack for Kubernetes log aggregation. Loki indexes only log metadata (labels) rather than full log content, making it dramatically cheaper to operate at scale. Promtail runs as a DaemonSet and ships logs from every node directly to Loki. Grafana, which your team likely already uses for metrics, doubles as the query and visualization frontend.
 
+Promtail reached end-of-life on March 2, 2026. Use Grafana Alloy for new deployments; the Promtail example below is intended for legacy PLG environments that still need to manage Promtail with Flux.
+
 Flux CD is a natural fit for managing the PLG stack because all three components are available as Helm charts through the Grafana chart repository. Pinning chart versions and values in Git ensures your logging configuration is auditable and reproducible across staging and production clusters.
 
-This guide deploys Loki in simple scalable mode, Promtail as a DaemonSet, and connects Grafana with a pre-configured Loki datasource - all via Flux HelmRelease resources.
+This guide deploys Loki in single-binary mode, Promtail as a DaemonSet, and connects Grafana with a pre-configured Loki datasource - all via Flux HelmRelease resources.
 
 ## Prerequisites
 
@@ -91,6 +93,12 @@ spec:
       persistence:
         enabled: true
         size: 20Gi
+    backend:
+      replicas: 0
+    read:
+      replicas: 0
+    write:
+      replicas: 0
     gateway:
       enabled: true
 ```
@@ -204,10 +212,19 @@ spec:
   path: ./infrastructure/logging
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: loki
+      namespace: logging
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: promtail
+      namespace: logging
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: grafana
       namespace: logging
+  timeout: 5m
 ```
 
 ## Step 6: Verify Log Collection
@@ -228,7 +245,7 @@ kubectl port-forward svc/grafana 3000:80 -n logging
 
 - For production, configure Loki with S3 or GCS object storage to decouple storage from the pod lifecycle.
 - Use Loki's `limits_config` to set per-tenant ingestion rate limits and prevent a single noisy application from overwhelming the stack.
-- Store the Grafana admin password in a Kubernetes Secret and reference it with `adminPasswordSecretKeyRef` in the chart values.
+- Store the Grafana admin password in a Kubernetes Secret and reference it with `admin.existingSecret` and `admin.passwordKey` in the chart values.
 - Add Flux `dependsOn` so Promtail only starts after Loki is healthy and ready to accept pushes.
 - Create Grafana dashboards as ConfigMaps in Git using the `grafana.sidecar.dashboards` feature for full GitOps control over your dashboards.
 
