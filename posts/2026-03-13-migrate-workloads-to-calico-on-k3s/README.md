@@ -21,15 +21,28 @@ This guide provides a comprehensive migration plan for moving K3s workloads from
 - K3s cluster with Flannel and running workloads
 - Storage for workload backups
 - Maintenance window planned
+- `jq` installed for cleaning exported Kubernetes resources
 
 ## Step 1: Inventory All Workloads
 
 ```bash
-kubectl get all --all-namespaces -o yaml > all-workloads.yaml
-kubectl get configmap --all-namespaces -o yaml > configmaps.yaml
-kubectl get secret --all-namespaces -o yaml > secrets.yaml
-kubectl get pvc --all-namespaces -o yaml > pvcs.yaml
-kubectl get ingress --all-namespaces -o yaml > ingresses.yaml
+clean_export() {
+  kubectl get "$1" --all-namespaces -o json | jq 'del(
+    .items[].metadata.uid,
+    .items[].metadata.resourceVersion,
+    .items[].metadata.generation,
+    .items[].metadata.creationTimestamp,
+    .items[].metadata.managedFields,
+    .items[].status
+  )'
+}
+
+clean_export deployment,statefulset,daemonset,job,cronjob,service > workloads.json
+clean_export configmap > configmaps.json
+clean_export secret > secrets.json
+clean_export pvc > pvcs.json
+clean_export ingress > ingresses.json
+clean_export networkpolicy > networkpolicies.json
 ```
 
 ## Step 2: Backup Stateful Data
@@ -37,7 +50,7 @@ kubectl get ingress --all-namespaces -o yaml > ingresses.yaml
 For each stateful workload, backup persistent data:
 
 ```bash
-kubectl exec -n <namespace> <pod> -- tar czf - /data > workload-data-backup.tar.gz
+kubectl exec -n <namespace> <pod> -- tar czf - -C /data . > workload-data-backup.tar.gz
 ```
 
 ## Step 3: Scale Down Workloads
@@ -50,7 +63,11 @@ kubectl scale statefulset --all --replicas=0 --all-namespaces
 ## Step 4: Uninstall K3s
 
 ```bash
+# On server nodes:
 sudo /usr/local/bin/k3s-uninstall.sh
+
+# On agent nodes:
+sudo /usr/local/bin/k3s-agent-uninstall.sh
 ```
 
 ## Step 5: Reinstall K3s with Calico Support
@@ -69,7 +86,9 @@ sudo chown $USER ~/.kube/config
 ## Step 6: Install Calico
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl -fsSL https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml -o calico.yaml
+perl -0pi -e 's/"policy": \{\n              "type": "k8s"\n          \},/"policy": {\n              "type": "k8s"\n          },\n          "container_settings": {\n              "allow_ip_forwarding": true\n          },/' calico.yaml
+kubectl apply -f calico.yaml
 kubectl wait --namespace kube-system \
   --for=condition=ready pod \
   --selector=k8s-app=calico-node \
@@ -79,16 +98,18 @@ kubectl wait --namespace kube-system \
 ## Step 7: Redeploy Workloads
 
 ```bash
-kubectl apply -f configmaps.yaml
-kubectl apply -f secrets.yaml
-kubectl apply -f all-workloads.yaml
-kubectl apply -f ingresses.yaml
+kubectl apply -f configmaps.json
+kubectl apply -f secrets.json
+kubectl apply -f pvcs.json
+kubectl apply -f workloads.json
+kubectl apply -f ingresses.json
+kubectl apply -f networkpolicies.json
 ```
 
 ## Step 8: Restore Stateful Data
 
 ```bash
-kubectl exec -n <namespace> <new-pod> -- tar xzf - /data < workload-data-backup.tar.gz
+kubectl exec -i -n <namespace> <new-pod> -- tar xzf - -C /data < workload-data-backup.tar.gz
 ```
 
 ## Step 9: Validate
