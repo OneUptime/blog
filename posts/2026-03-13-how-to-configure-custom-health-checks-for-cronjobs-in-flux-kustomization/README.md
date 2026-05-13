@@ -10,7 +10,7 @@ Description: Learn how to configure custom health checks for CronJob resources i
 
 ## Introduction
 
-CronJobs in Kubernetes schedule Jobs to run at specific intervals, handling recurring tasks like backups, report generation, log cleanup, and periodic data synchronization. While CronJobs themselves do not run continuously like Deployments, health checking them in Flux ensures that the CronJob resource is properly created and configured. This guide explains how to set up health checks for CronJobs in Flux Kustomization and covers the nuances of monitoring scheduled workloads.
+CronJobs in Kubernetes schedule Jobs to run at specific intervals, handling recurring tasks like backups, report generation, log cleanup, and periodic data synchronization. While CronJobs themselves do not run continuously like Deployments, health checking them in Flux ensures that the CronJob resource is applied and present in the cluster. This guide explains how to set up health checks for CronJobs in Flux Kustomization and covers the nuances of monitoring scheduled workloads.
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ CronJobs in Kubernetes schedule Jobs to run at specific intervals, handling recu
 
 ## How CronJob Health Checking Differs
 
-CronJobs behave differently from other workloads when it comes to health checking. A CronJob is a template for creating Jobs on a schedule. The CronJob itself does not run pods directly. Flux considers a CronJob healthy once the resource is successfully created and accepted by the API server. Unlike Deployments or StatefulSets, there is no ongoing readiness state to monitor since the CronJob only spawns Jobs at scheduled intervals.
+CronJobs behave differently from other workloads when it comes to health checking. A CronJob is a template for creating Jobs on a schedule. The CronJob itself does not run pods directly. Flux considers a CronJob healthy once the resource is successfully applied and found in the cluster. Unlike Deployments or StatefulSets, there is no ongoing readiness state to monitor since the CronJob only spawns Jobs at scheduled intervals.
 
-This means health checks for CronJobs primarily verify that the resource is correctly defined and applied, rather than checking for running pods.
+This means health checks for CronJobs primarily verify that the resource is applied, rather than checking for running pods or validating future Job executions.
 
 ## Basic CronJob Health Check
 
@@ -149,11 +149,11 @@ spec:
   timeout: 5m
 ```
 
-This verifies all resources in the path are successfully applied.
+This runs health checks for all reconciled resources in the path. For CronJobs and supporting resources such as Secrets and ConfigMaps, this primarily verifies that the resources were successfully applied.
 
 ## Combining CronJobs with Other Resources
 
-CronJobs often depend on other resources like ConfigMaps, Secrets, ServiceAccounts, and RBAC rules. Health check the CronJob alongside these dependencies:
+CronJobs often depend on other resources like ConfigMaps, Secrets, ServiceAccounts, and RBAC rules. Include the CronJob alongside these dependencies so Flux applies them together:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -327,7 +327,7 @@ flux get kustomization scheduled-tasks
 kubectl get cronjob database-backup -n production
 
 # Check recent Job runs
-kubectl get jobs -n production -l job-name=database-backup
+kubectl get jobs -n production --sort-by=.metadata.creationTimestamp | grep '^database-backup-'
 
 # Check for validation errors
 kubectl describe cronjob database-backup -n production
@@ -339,9 +339,11 @@ kubectl logs job/database-backup-28912345 -n production
 CronJob health check failures in Flux typically occur because:
 
 - The CronJob manifest has validation errors (invalid schedule format, missing required fields)
-- Referenced Secrets, ConfigMaps, or ServiceAccounts do not exist
-- RBAC permissions are insufficient for the CronJob's ServiceAccount
-- The container image referenced in the CronJob template does not exist
+- The namespace for the CronJob does not exist
+- The health check references a CronJob name or namespace that was not applied
+- Flux does not have permission to apply or read the CronJob
+
+Problems with referenced Secrets, ConfigMaps, ServiceAccounts, RBAC permissions for the Job's pod, or container images usually show up when Kubernetes creates a Job from the CronJob. They should be diagnosed from the Job and Pod status rather than the Flux CronJob health check alone.
 
 ## Monitoring CronJob Execution
 
@@ -361,4 +363,4 @@ kubectl get jobs -n production --sort-by=.metadata.creationTimestamp | grep data
 
 ## Conclusion
 
-Health checks for CronJobs in Flux Kustomization verify that your scheduled workloads are properly defined and deployed to the cluster. While CronJobs do not have a persistent running state like Deployments, health checking them ensures the resource is valid and all dependencies (RBAC, Secrets, ConfigMaps) are in place. Combined with Kustomization dependencies, you can ensure infrastructure is ready before scheduled tasks are deployed, creating a reliable GitOps pipeline for your recurring workloads.
+Health checks for CronJobs in Flux Kustomization verify that your scheduled workloads are deployed to the cluster. While CronJobs do not have a persistent running state like Deployments, health checking them ensures the resource is applied, and keeping dependencies such as RBAC, Secrets, and ConfigMaps in the same Kustomization helps Flux apply them together. Combined with Kustomization dependencies, you can ensure infrastructure is ready before scheduled tasks are deployed, creating a reliable GitOps pipeline for your recurring workloads.

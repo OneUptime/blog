@@ -30,7 +30,7 @@ flux version
 Collect Kubernetes cluster information:
 
 ```bash
-kubectl version --short
+kubectl version -o yaml
 kubectl cluster-info
 kubectl get nodes -o wide
 ```
@@ -50,7 +50,7 @@ By default, Flux controllers log at the `info` level. To get detailed debug info
 
 ```bash
 for deploy in source-controller kustomize-controller helm-controller notification-controller; do
-  kubectl patch deployment $deploy -n flux-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/args", "value": ["--log-level=debug", "--log-encoding=json"]}]'
+  kubectl patch deployment $deploy -n flux-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--log-level=debug"}]'
 done
 ```
 
@@ -177,9 +177,9 @@ kubectl get deployments -n flux-system -o yaml > flux-deployments.yaml
 kubectl top pods -n flux-system > flux-pod-resources.txt 2>&1 || true
 ```
 
-## Step 8: Collect Custom Resource Definitions
+## Step 8: Collect Custom Resources
 
-Export the Flux resource YAML (with secrets redacted):
+Export the Flux resource YAML and review it for sensitive fields before sharing:
 
 ```bash
 # Export GitRepository resources (without secret values)
@@ -200,9 +200,10 @@ kubectl get helmrepositories --all-namespaces -o yaml | sed 's/password:.*/passw
 Create a diagnostic bundle with all collected information:
 
 ```bash
-mkdir flux-diagnostics-$(date +%Y%m%d)
-mv *.txt *.log *.yaml flux-diagnostics-$(date +%Y%m%d)/
-tar czf flux-diagnostics-$(date +%Y%m%d).tar.gz flux-diagnostics-$(date +%Y%m%d)/
+DIAG_DIR="flux-diagnostics-$(date +%Y%m%d)"
+mkdir "$DIAG_DIR"
+mv *.txt *.log *.yaml "$DIAG_DIR"/
+tar czf "${DIAG_DIR}.tar.gz" "$DIAG_DIR"/
 ```
 
 Alternatively, use a single script to collect everything:
@@ -216,7 +217,7 @@ echo "Collecting Flux diagnostics..."
 
 flux version > "$DIAG_DIR/flux-version.txt" 2>&1
 flux check > "$DIAG_DIR/flux-check.txt" 2>&1
-kubectl version --short > "$DIAG_DIR/k8s-version.txt" 2>&1
+kubectl version -o yaml > "$DIAG_DIR/k8s-version.txt" 2>&1
 kubectl get nodes -o wide > "$DIAG_DIR/nodes.txt" 2>&1
 
 for deploy in source-controller kustomize-controller helm-controller notification-controller image-reflector-controller image-automation-controller; do
@@ -243,7 +244,7 @@ After collecting the information you need, revert to normal logging to avoid exc
 
 ```bash
 for deploy in source-controller kustomize-controller helm-controller notification-controller; do
-  kubectl patch deployment $deploy -n flux-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/args", "value": ["--log-level=info", "--log-encoding=json"]}]'
+  kubectl rollout undo deployment/$deploy -n flux-system
 done
 ```
 
