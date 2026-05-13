@@ -10,11 +10,11 @@ Description: Monitor for Calico policy DNS blocking using CoreDNS error rate met
 
 ## Introduction
 
-Monitoring for DNS blocking by Calico policies requires detecting DNS failures quickly and identifying which namespace is affected. CoreDNS Prometheus metrics provide cluster-wide visibility, while per-namespace DNS probe CronJobs pinpoint the specific namespace where policies are blocking DNS.
+Monitoring for DNS blocking by Calico policies requires detecting DNS failures quickly and identifying which namespace is affected. CoreDNS Prometheus metrics provide cluster-wide visibility for DNS failures that reach CoreDNS, while per-namespace DNS probe CronJobs pinpoint the specific namespace where policies are blocking DNS.
 
 ## Symptoms
 
-- CoreDNS SERVFAIL rate increases after a policy change
+- CoreDNS SERVFAIL rate may increase after a policy change that affects CoreDNS or its upstream lookups
 - Specific namespace's DNS probe failing
 
 ## Root Causes
@@ -25,9 +25,12 @@ Monitoring for DNS blocking by Calico policies requires detecting DNS failures q
 ## Diagnosis Steps
 
 ```bash
-kubectl exec -n kube-system \
-  $(kubectl get pods -n kube-system -l k8s-app=kube-dns -o name | head -1) \
-  -- wget -qO- http://localhost:9153/metrics | grep coredns_dns
+kubectl port-forward -n kube-system \
+  $(kubectl get deployment -n kube-system -l k8s-app=kube-dns -o name | head -1) \
+  9153:9153
+
+# In another terminal:
+curl -fsS http://localhost:9153/metrics | grep coredns_dns
 ```
 
 ## Solution
@@ -74,6 +77,7 @@ spec:
   schedule: "*/3 * * * *"
   jobTemplate:
     spec:
+      ttlSecondsAfterFinished: 600
       template:
         spec:
           containers:
@@ -104,4 +108,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring for DNS blocking by Calico policies uses two signals: CoreDNS SERVFAIL rate (cluster-wide indicator) and per-namespace DNS probe CronJobs (precise localization). Together they provide detection within minutes of a policy change that blocks DNS.
+Monitoring for DNS blocking by Calico policies uses two signals: CoreDNS SERVFAIL rate for failures that reach CoreDNS, and per-namespace DNS probe CronJobs for precise localization of namespace-level DNS access problems. Together they provide detection within minutes of a policy change that breaks DNS.
