@@ -25,16 +25,16 @@ Understanding the relationship between these parameters and performance metrics 
 The optimal buffer pool size depends on your traffic profile:
 
 ```plaintext
-# Buffer calculation formula:
+# Buffer calculation formula (bandwidth-delay product, in packets):
 
-# Total_buffers = NIC_line_rate (bps) × buffer_hold_time (s) / avg_packet_size (bytes) × 8
-# For 10G NIC, 1ms hold time, 1000B average:
-# 10e9 × 0.001 / 1000 × 8 = 1,250,000 buffers (round to 2M)
+# Total_buffers = (NIC_line_rate (bps) × buffer_hold_time (s)) / (avg_packet_size (bytes) × 8)
+# For 10G NIC, 100ms hold time, 64B worst-case packets:
+# (10e9 × 0.1) / (64 × 8) ≈ 1,953,125 buffers (round to 2M)
 
 # Adjust in startup.conf
 buffers {
   buffers-per-numa 2097152    # 2M buffers (2M × 2KB = 4GB from hugepages)
-  page-size 2m
+  page-size 2M
   default data-size 2048
 }
 ```
@@ -93,15 +93,18 @@ done
 ## Optimization 4: Optimize ACL Hash Table Size
 
 ```bash
-# Check current ACL hash table capacity
+# Check current ACL hash table state and memory usage
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show acl-plugin statistics | grep "hash table"
+  vppctl show acl-plugin tables
+kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+  vppctl show acl-plugin memory
 
 # Pre-size hash tables for your policy count
 # Configure via vpp startup.conf
 acl-plugin {
   hash-lookup-heap-size 64M
-  hash-lookup-mheap-size 4G
+  hash-lookup-hash-memory 64M
+  hash-lookup-hash-buckets 65536
 }
 ```
 
@@ -111,23 +114,18 @@ acl-plugin {
 # Optimize VPP scheduler for dedicated cores
 cpu {
   main-core 0
-  corelist-workers 2-9        # 8 dedicated workers
-  # Disable hyperthreading siblings for consistency
-  skip-cores 0                # Start from first worker core
+  corelist-workers 2-9        # 8 dedicated workers on explicit cores
+  # To avoid hyperthreading siblings, list only physical-core IDs above
+  # (or isolate them via the kernel cmdline / nosmt)
 }
 
 # Configure per-thread queue counts
+# RSS is enabled implicitly when num-rx-queues > 1; the hash function
+# is selected automatically based on NIC capability.
 dpdk {
   dev 0000:00:0a.0 {
     num-rx-queues 8           # Match worker count
     num-tx-queues 8
-    rss {                     # Spread load across all queues
-      ipv4-tcp
-      ipv4-udp
-      ipv4
-      ipv6-tcp
-      ipv6-udp
-    }
   }
 }
 ```
