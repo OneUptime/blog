@@ -14,8 +14,8 @@ The source-controller is responsible for fetching artifacts from Git repositorie
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.25 or later)
-- Flux CLI installed (v2.0 or later)
+- A running Kubernetes cluster supported by your Flux release (Flux v2.8 supports Kubernetes v1.33 to v1.35)
+- Flux CLI installed (v2.8 or later for the image tag shown below)
 - kubectl configured with cluster access
 - Flux bootstrapped on the cluster
 
@@ -55,7 +55,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/source-controller:v1.4.1
+          image: ghcr.io/fluxcd/source-controller:v1.8.3
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-1
@@ -182,7 +182,7 @@ spec:
 
 ## Step 5: Configure Downstream Controllers
 
-When using source-controller shards, downstream controllers (kustomize-controller, helm-controller) need to be able to reach the shard's artifact server. The artifact URL in the source status will automatically contain the shard's service address since you set `--storage-adv-addr`.
+When using source-controller shards, downstream controllers (kustomize-controller, helm-controller) need to be able to reach the shard's artifact server. The artifact URL in the source status will automatically contain the shard's service address since you set `--storage-adv-addr`. If you also shard kustomize-controller and helm-controller, label the related Kustomization, HelmRelease, and generated HelmChart resources with the same sharding key.
 
 Verify the artifact URL is correct:
 
@@ -227,8 +227,10 @@ kubectl get pods -n flux-system -l app=source-controller-shard-1
 # Verify the shard is serving artifacts
 kubectl logs deployment/source-controller-shard-1 -n flux-system --tail=20
 
-# Check artifact availability
-curl -s http://source-controller-shard-1.flux-system.svc.cluster.local/
+# Check artifact availability from inside the cluster
+kubectl run curl-source-shard -n flux-system --rm -i --restart=Never \
+  --image=curlimages/curl -- \
+  http://source-controller-shard-1.flux-system.svc.cluster.local/
 ```
 
 ## Scaling to More Shards
