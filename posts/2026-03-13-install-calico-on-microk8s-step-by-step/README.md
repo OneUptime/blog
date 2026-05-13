@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, MicroK8s
 
-Description: A step-by-step guide to enabling and installing Calico as the CNI on a MicroK8s cluster.
+Description: A step-by-step guide to installing MicroK8s with Calico as the default CNI and verifying the Calico deployment.
 
 ---
 
 ## Introduction
 
-MicroK8s is a lightweight, CNCF-certified Kubernetes distribution developed by Canonical. It ships with a built-in add-on system that includes Calico as a supported CNI option. Enabling Calico on MicroK8s is simpler than on many other Kubernetes distributions because MicroK8s manages the CNI lifecycle through its add-on framework.
+MicroK8s is a lightweight, CNCF-certified Kubernetes distribution developed by Canonical. It ships with a built-in add-on system and includes Calico as the default CNI option. Using Calico on MicroK8s is simpler than on many other Kubernetes distributions because MicroK8s deploys and manages the default CNI configuration for you.
 
-By default, MicroK8s uses Calico as its networking plugin when the `calico` add-on is enabled, making it one of the easiest platforms to get Calico running. The MicroK8s Calico add-on installs a version of Calico that is tested and validated against the specific MicroK8s Kubernetes version, reducing compatibility concerns.
+By default, MicroK8s uses Calico as its networking plugin, making it one of the easiest platforms to get Calico running. The Calico manifest included with MicroK8s is tied to the MicroK8s release you install, reducing compatibility concerns.
 
-This guide covers enabling Calico on MicroK8s using the add-on system as well as verifying the installation. It also covers the manual installation approach for cases where you need a specific Calico version.
+This guide covers installing MicroK8s with its default Calico CNI configuration as well as verifying the installation. It also covers installing `calicoctl` for cases where you need to inspect or manage Calico resources directly.
 
 ## Prerequisites
 
@@ -32,13 +32,13 @@ sudo usermod -aG microk8s $USER
 newgrp microk8s
 ```
 
-## Step 2: Enable the Calico Add-On
+## Step 2: Confirm Calico Is Installed
 
 ```bash
-microk8s enable calico
+microk8s status
 ```
 
-MicroK8s will download and configure Calico automatically. Wait for the add-on to complete.
+MicroK8s installs and configures Calico automatically. There is no separate `calico` add-on to enable on current MicroK8s releases.
 
 ## Step 3: Verify MicroK8s Is Ready
 
@@ -80,8 +80,9 @@ source ~/.bashrc
 
 ```bash
 curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
-  -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
+  -o calicoctl
+chmod +x calicoctl
+sudo mv calicoctl /usr/local/bin/
 export DATASTORE_TYPE=kubernetes
 export KUBECONFIG=/var/snap/microk8s/current/credentials/client.config
 calicoctl version
@@ -89,4 +90,4 @@ calicoctl version
 
 ## Conclusion
 
-You have installed Calico on MicroK8s using the built-in add-on system. MicroK8s simplifies Calico installation by handling the networking configuration automatically. Your MicroK8s cluster now enforces Kubernetes NetworkPolicy resources and is ready for Calico-specific policy configurations.
+You have installed MicroK8s with its default Calico CNI configuration. MicroK8s simplifies Calico installation by handling the networking configuration automatically. Your MicroK8s cluster now enforces Kubernetes NetworkPolicy resources and is ready for Calico-specific policy configurations.
