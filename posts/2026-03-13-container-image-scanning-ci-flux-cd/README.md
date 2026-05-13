@@ -31,7 +31,7 @@ graph LR
     B --> C[Scan Image with Trivy]
     C --> D{Vulnerabilities?}
     D -->|Critical/High found| E[Fail CI - Block Push]
-    D -->|Clean or Low only| F[Push to Registry]
+    D -->|No Critical/High found| F[Push to Registry]
     F --> G[Flux ImagePolicy detects new tag]
     G --> H[Flux deploys to cluster]
 ```
@@ -60,24 +60,24 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image (no push yet)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true # Load into local Docker daemon for scanning
-          tags: myapp:scan-target
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}-scanned
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: 'myapp:scan-target'
+          image-ref: 'ghcr.io/${{ github.repository }}:${{ github.ref_name }}-scanned'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -87,39 +87,36 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always() # Upload even if scan failed for visibility
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 
       - name: Log in to GHCR (only reached if scan passes)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push image to registry
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-          cache-from: type=gha
+        run: docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}-scanned
 ```
 
 ## Step 3: Generate a Scan Report as a Job Artifact
 
 ```yaml
       - name: Run Trivy scan for JSON report
-        uses: aquasecurity/trivy-action@master
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: 'myapp:scan-target'
+          image-ref: 'ghcr.io/${{ github.repository }}:${{ github.ref_name }}-scanned'
           format: 'json'
           output: 'trivy-report.json'
           severity: 'CRITICAL,HIGH,MEDIUM'
           exit-code: '0' # Don't fail here; we already enforced exit-code:1 above
 
       - name: Upload scan report as artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-scan-report
@@ -130,7 +127,7 @@ jobs:
 ## Step 4: Add Trivy Configuration File for Fine-Grained Control
 
 ```yaml
-# .trivy.yaml (in the root of the repository)
+# trivy.yaml (in the root of the repository)
 severity:
   - CRITICAL
   - HIGH
@@ -143,11 +140,12 @@ ignorefile: .trivyignore
 vulnerability:
   ignore-unfixed: true
 
-# Scan OS packages and application dependencies
-security-checks:
-  - vuln
-  - config
-  - secret
+# Scan vulnerabilities, misconfigurations, and secrets
+scan:
+  scanners:
+    - vuln
+    - config
+    - secret
 ```
 
 ```plaintext
@@ -170,7 +168,10 @@ metadata:
 spec:
   imageRepositoryRef:
     name: myapp
-  # Only consider SemVer tags, which are only created by the CI pipeline after scanning
+  # Only consider scanned SemVer tags, which are only pushed after the CI scan passes
+  filterTags:
+    pattern: '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-scanned$'
+    extract: '$version'
   policy:
     semver:
       range: ">=1.0.0"
@@ -193,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Scan production image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'ghcr.io/${{ github.repository }}:latest'
           format: 'table'
@@ -203,7 +204,7 @@ jobs:
 
 ## Best Practices
 
-- Fail on CRITICAL severity unconditionally; treat HIGH vulnerabilities as warnings that require review within a defined SLA.
+- Fail on CRITICAL and HIGH vulnerabilities when they are part of your deployment gate; if HIGH findings are warnings, enforce a defined review SLA.
 - Use `ignore-unfixed: true` to avoid failing on vulnerabilities where no upstream fix exists, but document accepted risks.
 - Upload SARIF reports to GitHub Advanced Security to give security teams visibility without blocking developers.
 - Scan base images separately and track them in a dedicated Dependabot or Renovate configuration.
