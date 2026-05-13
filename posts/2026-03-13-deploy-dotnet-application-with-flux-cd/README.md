@@ -10,7 +10,7 @@ Description: Deploy a .NET Core ASP.NET application to Kubernetes using Flux CD 
 
 ## Introduction
 
-.NET (formerly .NET Core) has become a top-tier choice for building high-performance microservices and web APIs. ASP.NET Core is fast, cross-platform, and ships with built-in health check endpoints, graceful shutdown support, and structured logging - features that map directly to Kubernetes operational requirements. The .NET SDK's built-in Docker support (`dotnet publish /p:PublishProfile=DefaultContainer`) makes containerization straightforward.
+.NET (formerly .NET Core) has become a top-tier choice for building high-performance microservices and web APIs. ASP.NET Core is fast, cross-platform, and ships with built-in health check middleware, graceful shutdown support, and structured logging - features that map directly to Kubernetes operational requirements. The .NET SDK's built-in Docker support (`dotnet publish /p:PublishProfile=DefaultContainer`) makes containerization straightforward.
 
 Running .NET on Kubernetes with Flux CD gives you a GitOps-driven deployment pipeline where configuration differences between environments are managed through Kubernetes ConfigMaps and Secrets, not separate Docker images. Flux ensures every cluster always reflects the state declared in your Git repository.
 
@@ -41,7 +41,6 @@ RUN dotnet publish \
     --runtime linux-musl-x64 \
     --self-contained true \
     -p:PublishSingleFile=true \
-    -p:PublishTrimmed=true \
     --output /app/publish
 
 # Use a minimal runtime image
@@ -65,6 +64,9 @@ docker push ghcr.io/your-org/my-dotnet-app:1.0.0
 
 ```csharp
 // Program.cs
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add health checks
@@ -80,7 +82,7 @@ var app = builder.Build();
 // Map health check endpoints
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
-    Predicate = _ => false   // Liveness: only check self, not dependencies
+    Predicate = _ => false   // Liveness: only verify the app can respond, not dependencies
 });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
@@ -94,20 +96,15 @@ app.Run();
 ## Step 3: Configure for Kubernetes via appsettings
 
 ```json
-// appsettings.Production.json
 {
   "Logging": {
     "LogLevel": {
       "Default": "Information",
       "Microsoft.AspNetCore": "Warning"
+    },
+    "Console": {
+      "FormatterName": "json"
     }
-  },
-  // Use structured JSON logging for Kubernetes log aggregation
-  "Serilog": {
-    "Using": ["Serilog.Sinks.Console"],
-    "WriteTo": [
-      { "Name": "Console", "Args": { "formatter": "Serilog.Formatting.Compact.CompactJsonFormatter, Serilog.Formatting.Compact" } }
-    ]
   }
 }
 ```
@@ -131,6 +128,16 @@ data:
   ASPNETCORE_ENVIRONMENT: "Production"
   ASPNETCORE_URLS: "http://+:8080"
   Logging__LogLevel__Default: "Information"
+---
+# deploy/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dotnet-secrets
+  namespace: my-dotnet-app
+type: Opaque
+stringData:
+  CONNECTION_STRING: "replace-with-your-connection-string"
 ---
 # deploy/deployment.yaml
 apiVersion: apps/v1
@@ -302,7 +309,7 @@ spec:
       author:
         email: fluxbot@your-org.com
         name: Flux Bot
-      messageTemplate: "chore: update dotnet app to {{range .Updated.Images}}{{.}}{{end}}"
+      messageTemplate: "chore: update dotnet app {{range .Changed.Changes}}{{.OldValue}} -> {{.NewValue}}{{end}}"
     push:
       branch: main
   update:
@@ -325,7 +332,7 @@ curl http://localhost:8080/health/ready
 
 - Use `IHostApplicationLifetime.ApplicationStopping` to hook graceful shutdown logic in your .NET services so in-flight requests complete before the pod terminates.
 - Use ASP.NET Core's built-in environment variable configuration binding: `ConnectionStrings__DefaultConnection` maps to `ConnectionStrings:DefaultConnection` in `appsettings.json`.
-- Enable `PublishTrimmed=true` and `PublishSingleFile=true` to produce smaller, self-contained binaries that start faster.
+- Use `PublishTrimmed=true` and `PublishSingleFile=true` only after testing your app and dependencies for trimming compatibility; trimming can reduce self-contained binary size, but reflection-heavy libraries may need extra configuration.
 - Add Prometheus metrics with the `prometheus-net.AspNetCore` package for out-of-the-box request rate, duration, and error metrics.
 - Use Entity Framework Core migrations as a startup task with `db.Database.MigrateAsync()` or a separate migration Job (as with Django and Rails) depending on your team's preference.
 
