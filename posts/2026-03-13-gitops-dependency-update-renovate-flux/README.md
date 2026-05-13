@@ -31,7 +31,8 @@ Create `renovate.json` in the root of your repository:
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base"
+    "config:recommended",
+    ":dependencyDashboard"
   ],
   "schedule": ["after 6am and before 10am on Monday"],
   "timezone": "UTC",
@@ -40,24 +41,15 @@ Create `renovate.json` in the root of your repository:
   "assignees": ["nawazdhandala"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
+  "flux": {
+    "managerFilePatterns": ["/(^|/)apps/.+\\.ya?ml$/", "/(^|/)clusters/.+\\.ya?ml$/", "/(^|/)infrastructure/.+\\.ya?ml$/"]
+  },
   "kubernetes": {
-    "fileMatch": ["(^|/)apps/.+\\.yaml$", "(^|/)clusters/.+\\.yaml$"]
+    "managerFilePatterns": ["/(^|/)apps/.+\\.ya?ml$/", "/(^|/)clusters/.+\\.ya?ml$/", "/(^|/)infrastructure/.+\\.ya?ml$/"]
   },
   "helm-values": {
-    "fileMatch": ["(^|/)helm-values/.+\\.yaml$"]
+    "managerFilePatterns": ["/(^|/)helm-values/.+\\.ya?ml$/"]
   },
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Update Flux HelmRelease chart versions",
-      "fileMatch": ["(^|/).+\\.yaml$"],
-      "matchStrings": [
-        "chart:\\s+\\n\\s+spec:\\s+\\n\\s+chart:\\s+(?<depName>[^\\n]+)\\s+\\n\\s+version:\\s+[\"']?(?<currentValue>[^\"'\\n]+)[\"']?"
-      ],
-      "datasourceTemplate": "helm",
-      "registryUrlTemplate": "https://charts.example.com"
-    }
-  ],
   "packageRules": [
     {
       "description": "Group Flux system updates together",
@@ -72,7 +64,7 @@ Create `renovate.json` in the root of your repository:
       "matchManagers": ["helm-values"],
       "automerge": true,
       "automergeType": "pr",
-      "requiredStatusChecks": ["validate-flux-manifests"]
+      "labels": ["patch", "dependencies"]
     },
     {
       "description": "Require manual review for major updates",
@@ -93,11 +85,21 @@ Create `renovate.json` in the root of your repository:
 
 ## Step 2: Configure Renovate for Flux HelmRelease Resources
 
-Renovate understands Flux `HelmRelease` resources natively. It detects the chart version and opens PRs when new versions are available:
+Renovate understands Flux `HelmRelease` resources natively when the `flux` manager scans the Flux manifests and can also see the referenced `HelmRepository` resources. It detects the chart version and opens PRs when new versions are available:
 
 ```yaml
-# Example HelmRelease that Renovate will update
+# Example HelmRepository and HelmRelease that Renovate will update
 
+# infrastructure/sources/jetstack.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+---
 # apps/production/cert-manager/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -190,15 +192,29 @@ jobs:
             -strict \
             -ignore-missing-schemas \
             -summary \
-            $(find . -name "*.yaml" -not -path "./.git/*")
+            $(find apps clusters infrastructure -type f \( -name "*.yaml" -o -name "*.yml" \) 2>/dev/null)
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+      - name: Install Flux CLI
+        uses: fluxcd/flux2/action@main
 
-      - name: Validate Helm template rendering
+      - name: Install yq
         run: |
-          # For each HelmRelease, template render to check for errors
-          find . -name "helmrelease.yaml" -exec helm template test {} \; || true
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.45.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Build Flux Kustomizations
+        run: |
+          for file in $(find clusters -type f \( -name "*.yaml" -o -name "*.yml" \) 2>/dev/null); do
+            name=$(yq '.metadata.name // ""' "$file")
+            path=$(yq '.spec.path // ""' "$file")
+            kind=$(yq '.kind // ""' "$file")
+            if [ "$kind" = "Kustomization" ] && [ -n "$name" ] && [ -n "$path" ]; then
+              flux build kustomization "$name" \
+                --path "$path" \
+                --kustomization-file "$file" \
+                --dry-run > /dev/null
+            fi
+          done
 ```
 
 ## Step 5: Review and Merge a Renovate PR
