@@ -21,11 +21,20 @@ Debug Calico Tiered Policies When Traffic Is Blocked in Calico provides fine-gra
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: debug
+spec:
+  order: 300
+  defaultAction: Pass
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: debug-debug-calico-tiered-policies-when-t
   namespace: production
 spec:
+  tier: debug
   order: 100
   selector: all()
   ingress:
