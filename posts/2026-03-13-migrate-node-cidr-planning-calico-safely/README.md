@@ -10,7 +10,7 @@ Description: Learn how to safely re-plan and migrate Calico's node CIDR allocati
 
 ## Introduction
 
-Node CIDR planning determines how many pod IP addresses are available per node in your Kubernetes cluster. Calico allocates blocks of IPs from IP pools to nodes based on the configured block size. Incorrect block sizing leads to IP exhaustion on high-pod-density nodes or wasteful over-allocation on lightly loaded nodes.
+Node CIDR planning determines how many pod IP addresses are available across your Kubernetes cluster. Calico allocates blocks of IPs from IP pools to nodes based on the configured block size, and can allocate additional blocks to a node if the node exhausts its current block. Incorrect block sizing can lead to extra borrowed IP routes on high-pod-density nodes or wasteful over-allocation on lightly loaded nodes.
 
 Migrating to a new node CIDR plan requires changing IP pool block sizes or CIDR ranges-operations that cannot be done in-place on active pools. Understanding how to plan the right node CIDR sizing and execute the migration safely is critical for clusters that are scaling up or being restructured.
 
@@ -28,15 +28,15 @@ Gather data on current pod density to inform your CIDR planning decisions.
 ```bash
 # Check current IP pool block size
 
-calicoctl get ippool -o jsonpath='{range .items[*]}{.metadata.name}{": blockSize="}{.spec.blockSize}{"\n"}{end}'
+calicoctl get ippool -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{": blockSize="}}{{.Spec.BlockSize}}{{"\n"}}{{end}}{{end}}'
 
 # Calculate pods per node to understand density
-kubectl get pods --all-namespaces -o wide | awk '{print $8}' | sort | uniq -c | sort -rn
+kubectl get pods --all-namespaces -o wide --no-headers | awk '{print $8}' | sort | uniq -c | sort -rn
 
 # Calculate how many IPs are available per block
-# blockSize=26 -> 2^(32-26) = 64 IPs per block (62 usable)
-# blockSize=25 -> 2^(32-25) = 128 IPs per block (126 usable)
-# blockSize=24 -> 2^(32-24) = 256 IPs per block (254 usable)
+# blockSize=26 -> 2^(32-26) = 64 IPs per block
+# blockSize=25 -> 2^(32-25) = 128 IPs per block
+# blockSize=24 -> 2^(32-24) = 256 IPs per block
 
 # Show current block utilization across all nodes
 calicoctl ipam show --show-blocks
@@ -75,7 +75,7 @@ Size the IP pool CIDR to accommodate your current and projected node count.
 ```
 
 ```yaml
-# calico-ipam/new-node-cidr-pool.yaml - New IP pool sized for 110 pods per node, 100 nodes
+# new-node-cidr-pool.yaml - New IP pool sized for 110 pods per node, 100 nodes
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -96,13 +96,11 @@ spec:
 Disable the old pool, enable the new one, and roll nodes to pick up new blocks.
 
 ```bash
-# Create the new pool
+# Create the new pool. Match ipipMode or vxlanMode to your existing Calico encapsulation.
 calicoctl apply -f new-node-cidr-pool.yaml
 
 # Disable the old pool to redirect new allocations
-calicoctl get ippool default-ipv4-ippool -o yaml | \
-  python3 -c "import sys, yaml; d=yaml.safe_load(sys.stdin); d['spec']['disabled']=True; print(yaml.dump(d))" | \
-  calicoctl apply -f -
+calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"disabled": true}}'
 
 # Migrate nodes one at a time
 for NODE in $(kubectl get nodes -o name | cut -d/ -f2); do
@@ -111,6 +109,11 @@ for NODE in $(kubectl get nodes -o name | cut -d/ -f2); do
   echo "Waiting for pods on $NODE to stabilize..."
   sleep 30
 done
+
+# kubectl drain does not delete DaemonSet-managed pods.
+# Restart workload DaemonSets separately if they also need IPs from the new pool.
+kubectl get daemonset -A
+# Example: kubectl rollout restart daemonset/<daemonset-name> -n <namespace>
 ```
 
 ## Step 5: Validate New CIDR Allocations
@@ -121,10 +124,10 @@ After migration, confirm that nodes are receiving blocks from the new pool with 
 # Verify blocks are now from the new CIDR
 calicoctl ipam show --show-blocks | grep "172.16"
 
-# Confirm the block size is correct for each node
-calicoctl ipam show --show-blocks | awk '/Blocks/{print}'
+# Confirm the block size is correct in the block CIDRs, for example /24
+calicoctl ipam show --show-blocks | grep "/24"
 
-# Check that no nodes have blocks from the old pool
+# Check that no nodes have blocks from the old pool; replace 10.244 with your old CIDR prefix
 calicoctl ipam show --show-blocks | grep "10.244"  # Should be empty after full migration
 
 # Run IPAM consistency check
@@ -133,7 +136,7 @@ calicoctl ipam check
 
 ## Best Practices
 
-- Plan for 2x your maximum pod count per node to account for rolling updates that temporarily double pod count
+- Plan enough headroom above your maximum pod count per node to account for rollouts, rescheduling, and burst capacity
 - Size the total IP pool CIDR to accommodate 3-5x your current node count for future growth
 - Use `/24` block size (256 IPs) for most production clusters with standard 110-pod-per-node limits
 - Monitor IP exhaustion with Calico's IPAM metrics before it becomes a production issue
@@ -142,4 +145,4 @@ calicoctl ipam check
 
 ## Conclusion
 
-Careful node CIDR planning prevents IP exhaustion and ensures Calico's IPAM can scale with your cluster. By assessing current pod density, calculating required block sizes with appropriate headroom, and migrating to a new pool incrementally, you can restructure your IP allocation strategy without disrupting running workloads.
+Careful node CIDR planning prevents IP exhaustion and ensures Calico's IPAM can scale with your cluster. By assessing current pod density, calculating required block sizes with appropriate headroom, and migrating to a new pool incrementally, you can restructure your IP allocation strategy with controlled workload disruption.
