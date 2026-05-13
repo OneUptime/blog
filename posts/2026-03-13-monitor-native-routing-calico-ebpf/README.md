@@ -19,7 +19,7 @@ Monitoring this configuration requires verifying that native routes are correctl
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.23+ in eBPF mode with native routing
-- Linux kernel 5.3+ on all nodes
+- Linux kernel 5.10+ on all nodes (required by Calico's eBPF data plane for CO-RE support)
 - All nodes on the same L3 network (no overlay required)
 - `kubectl` with admin access
 - `calicoctl` v3.27+ installed
@@ -81,15 +81,16 @@ Inspect eBPF programs loaded by Calico:
 
 ```bash
 # List all eBPF programs loaded by Calico on a node
-kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
+# Note: --profile=sysadmin grants CAP_SYS_ADMIN, required for bpftool to enumerate kernel BPF objects
+kubectl debug node/<node-name> -it --profile=sysadmin --image=nicolaka/netshoot -- \
   bpftool prog list | grep -i calico
 
 # Check eBPF map statistics for policy enforcement
-kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
+kubectl debug node/<node-name> -it --profile=sysadmin --image=nicolaka/netshoot -- \
   bpftool map list | grep calico
 
 # Verify Calico eBPF programs are attached to interfaces
-kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
+kubectl debug node/<node-name> -it --profile=sysadmin --image=nicolaka/netshoot -- \
   tc filter show dev eth0 | grep bpf
 
 # Check eBPF program load errors in calico-node logs
@@ -141,23 +142,24 @@ spec:
   groups:
   - name: calico-native-routing
     rules:
-    - alert: CalicoRouteLost
-      # Alert if route count drops below expected minimum
+    - alert: CalicoDataplaneFailures
+      # Alert if Felix reports dataplane sync failures (route programming, etc.)
       expr: |
-        felix_route_table_list_failures_total > 0
+        rate(felix_int_dataplane_failures[5m]) > 0
       for: 2m
       labels:
         severity: critical
       annotations:
-        summary: "Calico route table failures - native routing may be broken"
-    - alert: CalicoEBPFProgramUnloaded
+        summary: "Calico dataplane failures - native routes may not be programmed"
+    - alert: CalicoEBPFEndpointsUnhealthy
+      # Alert when BPF endpoints are dirty (BPF program attach/sync failed)
       expr: |
-        felix_bpf_enabled != 1
+        felix_bpf_dirty_dataplane_endpoints > 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Calico eBPF mode disabled - native routing without eBPF policy enforcement"
+        summary: "Calico eBPF endpoints in dirty state - policy enforcement may be degraded"
 ```
 
 Apply the alert rules:
@@ -170,7 +172,7 @@ kubectl apply -f native-routing-ebpf-alerts.yaml
 
 - Use native routing mode only when all nodes are on the same L3 network - it will not work across NAT boundaries without BGP
 - Monitor the kernel routing table size on large clusters as native routing adds one route per node
-- Enable Calico's auto-routing mode which automatically selects native routing where possible and falls back to VXLAN
+- For clusters that span multiple subnets, configure your IP pool's `vxlanMode` or `ipipMode` to `CrossSubnet` so encapsulation is used only when traffic crosses subnet boundaries and native routing is used within a subnet
 - Test failover scenarios where a node goes down and verify that routes are withdrawn from other nodes promptly
 - Configure OneUptime latency monitors between pods on different nodes to detect native routing performance regressions
 
