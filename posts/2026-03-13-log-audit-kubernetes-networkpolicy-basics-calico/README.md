@@ -22,47 +22,66 @@ This guide covers log audit Kubernetes NetworkPolicy Basics in Calico with produ
 ## Core Configuration
 
 ```yaml
-# Standard Kubernetes NetworkPolicy (enforced by Calico)
+# Calico NetworkPolicy with Log actions
 
-apiVersion: networking.k8s.io/v1
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: allow-frontend-to-backend
   namespace: production
 spec:
-  podSelector:
-    matchLabels:
-      app: backend
-  policyTypes:
+  selector: app == "backend"
+  types:
     - Ingress
     - Egress
   ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: frontend
-      ports:
-        - port: 8080
+    - action: Log
+      protocol: TCP
+      source:
+        selector: app == "frontend"
+      destination:
+        ports:
+          - 8080
+    - action: Allow
+      protocol: TCP
+      source:
+        selector: app == "frontend"
+      destination:
+        ports:
+          - 8080
   egress:
-    - to:
-        - podSelector:
-            matchLabels:
-              app: database
-      ports:
-        - port: 5432
-    - ports:
-        - port: 53
-          protocol: UDP
+    - action: Log
+      protocol: TCP
+      destination:
+        selector: app == "database"
+        ports:
+          - 5432
+    - action: Allow
+      protocol: TCP
+      destination:
+        selector: app == "database"
+        ports:
+          - 5432
+    - action: Log
+      protocol: UDP
+      destination:
+        ports:
+          - 53
+    - action: Allow
+      protocol: UDP
+      destination:
+        ports:
+          - 53
 ```
 
 ## Apply and Test
 
 ```bash
-# Apply Kubernetes NetworkPolicy
-kubectl apply -f basic-network-policy.yaml
+# Apply Calico NetworkPolicy
+calicoctl apply -f basic-network-policy.yaml
 
 # Verify policy is enforced by Calico
-kubectl describe networkpolicy allow-frontend-to-backend -n production
+calicoctl get networkpolicy allow-frontend-to-backend -n production -o yaml
 
 # Test connectivity
 kubectl exec -n production frontend-pod -- curl -s http://backend-service:8080
