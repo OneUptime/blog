@@ -8,7 +8,7 @@ Description: A practical guide to testing Flux Receiver webhook endpoints using 
 
 ---
 
-Before wiring up a webhook provider to your Flux Receiver, you should verify that the endpoint works correctly. Testing with curl lets you simulate webhook deliveries, validate token authentication, and confirm that reconciliation is triggered without waiting for actual Git events. This guide provides ready-to-use curl commands for every Flux Receiver type.
+Before wiring up a webhook provider to your Flux Receiver, you should verify that the endpoint works correctly. Testing with curl lets you simulate webhook deliveries, validate token authentication, and confirm that reconciliation is triggered without waiting for actual Git events. This guide provides ready-to-use curl commands for common Flux Receiver types.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ Inside the pod, use the cluster-internal service URL:
 
 ```bash
 # Internal URL format
-INTERNAL_URL="http://notification-controller.flux-system.svc.cluster.local"
+INTERNAL_URL="http://webhook-receiver.flux-system.svc.cluster.local"
 WEBHOOK_PATH="/hook/your-webhook-path-here"
 
 curl -v -X POST \
@@ -55,6 +55,8 @@ curl -v -X POST \
   -d '{}' \
   ${INTERNAL_URL}${WEBHOOK_PATH}
 ```
+
+For authenticated receiver types, use the same headers shown in the sections below with the internal URL.
 
 ## Testing a GitHub Receiver
 
@@ -79,7 +81,7 @@ curl -v -X POST \
   ${WEBHOOK_URL}${WEBHOOK_PATH}
 ```
 
-A successful response returns HTTP 200 with an empty body or a short acknowledgment.
+A successful response returns HTTP 200 with an empty body.
 
 ### GitHub Ping Event
 
@@ -114,7 +116,7 @@ curl -v -X POST \
   ${WEBHOOK_URL}${WEBHOOK_PATH}
 ```
 
-This should return HTTP 403.
+This should return HTTP 400.
 
 ### Test with Missing Signature (Should Fail)
 
@@ -126,7 +128,7 @@ curl -v -X POST \
   ${WEBHOOK_URL}${WEBHOOK_PATH}
 ```
 
-This should also return HTTP 403.
+This should also return HTTP 400.
 
 ## Testing a GitLab Receiver
 
@@ -169,7 +171,7 @@ curl -v -X POST \
   ${WEBHOOK_URL}${WEBHOOK_PATH}
 ```
 
-Expected result: HTTP 403.
+Expected result: HTTP 400.
 
 ## Testing a Bitbucket Receiver
 
@@ -190,11 +192,11 @@ curl -v -X POST \
   ${WEBHOOK_URL}${WEBHOOK_PATH}
 ```
 
-## Testing a Generic Receiver
+## Testing Generic Receivers
 
-The generic Receiver type validates the token as a query parameter.
+The `generic` Receiver type does not validate incoming requests. If you need token-based validation for a custom webhook, use `generic-hmac` and send an HMAC signature in the `X-Signature` header.
 
-### Generic Webhook with Token Parameter
+### Generic Webhook
 
 ```bash
 PAYLOAD='{"action":"sync","timestamp":"2026-03-13T10:00:00Z"}'
@@ -202,7 +204,7 @@ PAYLOAD='{"action":"sync","timestamp":"2026-03-13T10:00:00Z"}'
 curl -v -X POST \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" \
-  "${WEBHOOK_URL}${WEBHOOK_PATH}?token=${TOKEN}"
+  "${WEBHOOK_URL}${WEBHOOK_PATH}"
 ```
 
 ### Generic Webhook with Empty Body
@@ -213,19 +215,37 @@ The generic receiver also works with an empty JSON body:
 curl -v -X POST \
   -H "Content-Type: application/json" \
   -d '{}' \
-  "${WEBHOOK_URL}${WEBHOOK_PATH}?token=${TOKEN}"
+  "${WEBHOOK_URL}${WEBHOOK_PATH}"
 ```
 
-### Test with Wrong Token (Should Fail)
+### Generic HMAC Webhook
 
 ```bash
+PAYLOAD='{"action":"sync","timestamp":"2026-03-13T10:00:00Z"}'
+
+SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$TOKEN" | awk '{print $2}')
+
 curl -v -X POST \
   -H "Content-Type: application/json" \
-  -d '{}' \
-  "${WEBHOOK_URL}${WEBHOOK_PATH}?token=wrong-token"
+  -H "X-Signature: sha256=$SIGNATURE" \
+  -d "$PAYLOAD" \
+  "${WEBHOOK_URL}${WEBHOOK_PATH}"
 ```
 
-Expected result: HTTP 403.
+### Test with Wrong HMAC Signature (Should Fail)
+
+```bash
+PAYLOAD='{"action":"sync"}'
+WRONG_SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "wrong-secret" | awk '{print $2}')
+
+curl -v -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Signature: sha256=$WRONG_SIGNATURE" \
+  -d "$PAYLOAD" \
+  "${WEBHOOK_URL}${WEBHOOK_PATH}"
+```
+
+Expected result: HTTP 400.
 
 ## Testing a Docker Hub Receiver
 
@@ -234,12 +254,10 @@ Docker Hub sends push events when a new image is pushed:
 ```bash
 PAYLOAD='{"push_data":{"tag":"latest","pushed_at":1678700000},"repository":{"repo_name":"org/app","repo_url":"https://hub.docker.com/r/org/app"}}'
 
-SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$TOKEN" | awk '{print $2}')
-
 curl -v -X POST \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" \
-  "${WEBHOOK_URL}${WEBHOOK_PATH}?token=${TOKEN}"
+  "${WEBHOOK_URL}${WEBHOOK_PATH}"
 ```
 
 ## Automating Tests with a Shell Script
@@ -302,7 +320,15 @@ case "$RECEIVER_TYPE" in
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
       -H "Content-Type: application/json" \
       -d "$PAYLOAD" \
-      "${WEBHOOK_URL}${WEBHOOK_PATH}?token=${TOKEN}")
+      "${WEBHOOK_URL}${WEBHOOK_PATH}")
+    ;;
+  generic-hmac)
+    SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$TOKEN" | awk '{print $2}')
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+      -H "Content-Type: application/json" \
+      -H "X-Signature: sha256=$SIGNATURE" \
+      -d "$PAYLOAD" \
+      "${WEBHOOK_URL}${WEBHOOK_PATH}")
     ;;
   *)
     echo "Unsupported receiver type: $RECEIVER_TYPE"
@@ -337,17 +363,25 @@ case "$RECEIVER_TYPE" in
       "${WEBHOOK_URL}${WEBHOOK_PATH}")
     ;;
   generic)
+    echo "SKIP: Generic receivers do not validate authentication"
+    HTTP_CODE="skip"
+    ;;
+  generic-hmac)
+    BAD_SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "bad-token" | awk '{print $2}')
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
       -H "Content-Type: application/json" \
+      -H "X-Signature: sha256=$BAD_SIG" \
       -d "$PAYLOAD" \
-      "${WEBHOOK_URL}${WEBHOOK_PATH}?token=bad-token")
+      "${WEBHOOK_URL}${WEBHOOK_PATH}")
     ;;
 esac
 
-if [ "$HTTP_CODE" = "403" ]; then
+if [ "$HTTP_CODE" = "skip" ]; then
+  :
+elif [ "$HTTP_CODE" = "400" ]; then
   echo "PASS: Invalid auth returned HTTP $HTTP_CODE"
 else
-  echo "FAIL: Invalid auth returned HTTP $HTTP_CODE (expected 403)"
+  echo "FAIL: Invalid auth returned HTTP $HTTP_CODE (expected 400)"
 fi
 
 echo ""
@@ -402,7 +436,7 @@ kubectl -n flux-system get receiver github-receiver -o jsonpath='{.status.webhoo
 
 Make sure the URL includes the full path including the `/hook/` prefix.
 
-### curl returns 403 with a correct token
+### curl returns 400 with a correct token
 
 Check for encoding issues. The token may have been created with a trailing newline:
 
@@ -438,4 +472,4 @@ curl --cacert ca.crt -v -X POST ...
 
 ## Summary
 
-Testing Flux Receivers with curl is an essential step in webhook configuration. Each Receiver type has specific authentication requirements: GitHub uses HMAC-SHA256 in `X-Hub-Signature-256`, GitLab uses a plain token in `X-Gitlab-Token`, Bitbucket uses HMAC in `X-Hub-Signature`, and generic receivers expect the token as a query parameter. Always test both valid and invalid authentication to confirm the endpoint is properly secured. The automated test script provided in this guide can be integrated into your CI/CD pipeline for ongoing validation.
+Testing Flux Receivers with curl is an essential step in webhook configuration. The covered Receiver types have specific authentication requirements: GitHub uses HMAC-SHA256 in `X-Hub-Signature-256`, GitLab uses a plain token in `X-Gitlab-Token`, Bitbucket uses HMAC in `X-Hub-Signature`, `generic-hmac` uses HMAC in `X-Signature`, and `generic` and DockerHub receivers do not authenticate requests beyond the generated webhook path and payload parsing behavior. Always test both valid and invalid authentication where the receiver type supports validation to confirm the endpoint is properly secured. The automated test script provided in this guide can be integrated into your CI/CD pipeline for ongoing validation.
