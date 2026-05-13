@@ -24,15 +24,22 @@ Velero's AWS plugin works with any S3-compatible storage, including MinIO. By po
 ## Step 1: Deploy MinIO with Flux HelmRelease
 
 ```yaml
+# infrastructure/minio/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio
+
+---
 # infrastructure/minio/helmrepository.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: minio-operator
+  name: minio
   namespace: flux-system
 spec:
-  url: https://operator.min.io/
+  url: https://charts.min.io/
   interval: 10m
 
 ---
@@ -50,7 +57,7 @@ spec:
       version: "5.x"
       sourceRef:
         kind: HelmRepository
-        name: minio-operator
+        name: minio
         namespace: flux-system
   values:
     # MinIO root credentials (encrypt with SOPS before committing)
@@ -170,6 +177,17 @@ rm /tmp/velero-minio-credentials.txt
 ## Step 4: Configure Velero HelmRelease for MinIO
 
 ```yaml
+# infrastructure/velero/helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: vmware-tanzu
+  namespace: flux-system
+spec:
+  url: https://vmware-tanzu.github.io/helm-charts
+  interval: 10m
+
+---
 # infrastructure/velero/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -181,7 +199,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "6.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -189,7 +207,7 @@ spec:
   values:
     initContainers:
       - name: velero-plugin-for-aws
-        image: velero/velero-plugin-for-aws:v1.9.0
+        image: velero/velero-plugin-for-aws:v1.14.0
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -207,20 +225,21 @@ spec:
             region: "us-east-1"  # Required but unused for MinIO
             # Point to the internal MinIO service
             s3Url: http://minio.minio.svc.cluster.local:9000
-            publicUrl: http://minio.minio.svc.cluster.local:9000
-            # MinIO does not use path-style access by default
+            # Set publicUrl only if your Velero CLI needs an externally reachable URL for logs/describe output
+            # publicUrl: http://minio.example.com:9000
+            # MinIO requires path-style access by default
             s3ForcePathStyle: "true"
-            # Disable SSL for internal cluster communication
-            # (enable if MinIO has TLS configured)
+            # Keep TLS verification enabled; configure TLS and a CA certificate for HTTPS endpoints
             insecureSkipTLSVerify: "false"
           default: true
 
-    # Note: Volume snapshots require a cloud provider plugin
-    # For on-premises, use node-agent with Restic for PV backups
+    # Use node-agent for file system backups when snapshots are not available.
+    # CSI-capable storage can also use Velero's CSI snapshot support.
     deployNodeAgent: true
     nodeAgent:
       podVolumePath: /var/lib/kubelet/pods
-      privileged: true
+      containerSecurityContext:
+        privileged: true
 ```
 
 ## Step 5: Create Flux Kustomizations
@@ -288,7 +307,7 @@ mc ls myminio/velero-backups/backups/minio-test/
 - Enable MinIO TLS using a self-signed certificate or cert-manager. Use `insecureSkipTLSVerify: false` with a proper CA certificate instead of disabling TLS verification.
 - Create a dedicated MinIO user for Velero with the minimum necessary permissions. Avoid using the root user.
 - Configure MinIO lifecycle rules to automatically delete old backup objects to prevent unbounded storage growth.
-- For on-premises PV backup, use Velero's file system backup mode (node-agent with Restic) since cloud volume snapshots are not available in on-premises environments.
+- For on-premises PV backup, use Velero's file system backup mode with node-agent when snapshots are not available. If your storage supports CSI snapshots, Velero can use CSI snapshot support as an alternative.
 
 ## Conclusion
 
