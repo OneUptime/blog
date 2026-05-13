@@ -4,163 +4,151 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Artifactgenerator, Flux-Tree, Visualization
 
-Description: Learn how to use the flux tree command with ArtifactGenerator resources to visualize source dependencies and deployment relationships.
+Description: Learn how to use the flux tree artifact generator command with ArtifactGenerator resources to visualize generated ExternalArtifact inventory.
 
 ---
 
 ## Introduction
 
-As your Flux deployment grows with multiple ArtifactGenerators, sources, and Kustomizations, understanding the dependency graph becomes critical. The `flux tree` command provides a visual representation of how resources relate to each other. When used with ArtifactGenerator resources, it shows which input sources feed into each generator and which Kustomizations consume the generated artifacts.
+As your Flux deployment grows with multiple ArtifactGenerators, sources, and Kustomizations, understanding which generated artifacts are available becomes critical. The `flux tree artifact generator` command provides a visual representation of the ExternalArtifacts managed by an ArtifactGenerator. You can combine it with `flux get artifact generators`, `kubectl`, and `flux tree kustomization` to inspect generator status, source inputs, and deployed resources.
 
-This guide demonstrates how to use `flux tree` to visualize ArtifactGenerator dependencies, debug reconciliation chains, and understand your deployment topology.
+This guide demonstrates how to use `flux tree artifact generator` to visualize generated artifacts, debug reconciliation chains, and understand your deployment topology.
 
 ## Prerequisites
 
-- A Kubernetes cluster running Flux v2.4 or later
+- A Kubernetes cluster running Flux v2.7 or later with the `source-watcher` component enabled
 - ArtifactGenerator resources deployed in your cluster
-- `flux` CLI (v2.4 or later) installed
+- `flux` CLI (v2.7 or later) installed
 - `kubectl` configured for cluster access
 
 ## Understanding flux tree
 
-The `flux tree` command traverses the dependency graph of Flux resources and displays them in a tree format. For ArtifactGenerators, it shows the input sources that feed into the generator and the Kustomizations or other resources that consume the generated artifact.
+The `flux tree` command shows resources reconciled or managed by Flux resources in a tree format. For ArtifactGenerators, the `flux tree artifact generator` subcommand prints the ExternalArtifact inventory recorded in the ArtifactGenerator status. To inspect the input sources for a generator, read the ArtifactGenerator spec and status with `kubectl`.
 
 ## Step 1: Basic Tree View of an ArtifactGenerator
 
-View the dependency tree of a specific ArtifactGenerator:
+View the generated artifact inventory of a specific ArtifactGenerator:
 
 ```bash
-flux tree artifactgenerator app-production -n flux-system
+flux tree artifact generator app-production -n flux-system
 ```
 
 This produces output similar to:
 
 ```text
 ArtifactGenerator/flux-system/app-production
-├── GitRepository/flux-system/platform-base (input: base)
-│   └── url: https://github.com/your-org/platform-base
-├── GitRepository/flux-system/app-overlay (input: overlay)
-│   └── url: https://github.com/your-org/app-overlays
-└── Kustomization/flux-system/app-deployment (consumer)
-    └── path: ./overlay
+├── ExternalArtifact/flux-system/app-production
+└── ExternalArtifact/flux-system/app-production-manifests
 ```
 
 ## Step 2: View All ArtifactGenerators
 
-List all ArtifactGenerators with their dependency status:
+List all ArtifactGenerators with their status:
 
 ```bash
-flux tree artifactgenerator -A
+flux get artifact generators -A
 ```
 
 Sample output:
 
 ```text
-NAMESPACE    NAME                  READY  INPUTS  CONSUMERS
-flux-system  app-production        True   2       1
-flux-system  backend-staging       True   3       2
-flux-system  infra-controllers     True   1       1
-flux-system  observability-stack   False  4       3
+NAMESPACE    NAME                  SUSPENDED  READY  MESSAGE
+flux-system  app-production        False      True   stored artifact for revision 'latest@sha256:abc123'
+flux-system  backend-staging       False      True   stored artifact for revision 'latest@sha256:def456'
+flux-system  infra-controllers     False      True   stored artifact for revision 'latest@sha256:789abc'
+flux-system  observability-stack   False      False  failed to fetch source artifact
 ```
 
-For a detailed tree of all generators, run the command for each generator name from the list above, or use the JSON output and format it:
+For a detailed tree of all generators, run the tree command for each generator from the list above:
 
 ```bash
-flux tree artifactgenerator -A -o json
+flux get artifact generators -A --no-header | while read -r namespace name _; do
+  flux tree artifact generator "$name" -n "$namespace"
+done
 ```
 
 ## Step 3: Trace Source to Deployment
 
-To understand the full path from a source to deployed resources, start from the source:
+To understand the deployed resources for a Kustomization that consumes a generated ExternalArtifact, start from the Kustomization:
 
 ```bash
 flux tree kustomization app-deployment -n flux-system
 ```
 
-Output showing the full chain:
+Output showing the applied resources:
 
 ```text
 Kustomization/flux-system/app-deployment
-├── ArtifactGenerator/flux-system/app-production (source)
-│   ├── GitRepository/flux-system/platform-base (input)
-│   └── GitRepository/flux-system/app-overlay (input)
 ├── Deployment/production/frontend
-│   └── Ready: True
 ├── Service/production/frontend
-│   └── Ready: True
 ├── ConfigMap/production/app-config
-│   └── Ready: True
 └── HorizontalPodAutoscaler/production/frontend
-    └── Ready: True
+```
+
+Then check the Kustomization source reference to confirm which generated ExternalArtifact it consumes:
+
+```bash
+kubectl get kustomization app-deployment -n flux-system \
+  -o jsonpath='{.spec.sourceRef.kind}/{.spec.sourceRef.name}{"\n"}'
 ```
 
 ## Step 4: Identify Stale or Failing Dependencies
 
-Use the tree view to find which input sources are causing issues. First, list all generators and identify which are not ready:
+Use the generator status to find which ArtifactGenerators are not ready:
 
 ```bash
-flux get all -A | grep ArtifactGenerator | grep -v True
+flux get artifact generators -A --status-selector ready=false
 ```
 
-For a specific generator that is not ready:
+For a specific generator that is not ready, inspect its generated artifact inventory:
 
 ```bash
-flux tree artifactgenerator observability-stack -n flux-system --verbose
+flux tree artifact generator observability-stack -n flux-system
 ```
 
 ```text
 ArtifactGenerator/flux-system/observability-stack
-├── HelmChart/flux-system/kube-prometheus-stack (input: prometheus)
-│   ├── Status: True
-│   └── Revision: 60.3.0
-├── HelmChart/flux-system/loki (input: loki)
-│   ├── Status: False
-│   └── Message: chart pull error: failed to fetch chart
-├── GitRepository/flux-system/dashboards (input: dashboards)
-│   ├── Status: True
-│   └── Revision: main@sha1:abc123
-└── GitRepository/flux-system/alert-rules (input: alerts)
-    ├── Status: True
-    └── Revision: main@sha1:def456
+└── ExternalArtifact/flux-system/observability-stack
 ```
 
-This immediately shows that the `loki` HelmChart is the failing input preventing the ArtifactGenerator from reconciling.
+Then inspect the generator status and source references with `kubectl`:
+
+```bash
+kubectl describe artifactgenerator observability-stack -n flux-system
+kubectl get artifactgenerator observability-stack -n flux-system \
+  -o jsonpath='{range .spec.sources[*]}{.kind}/{.name}{"\n"}{end}'
+```
+
+This shows the source references and status messages you can use to find the failing input that prevents the ArtifactGenerator from reconciling.
 
 ## Step 5: Export Tree as JSON
 
-For programmatic analysis, export the dependency tree as JSON:
+For programmatic analysis, export the generated artifact inventory as JSON:
 
 ```bash
-flux tree artifactgenerator app-production -n flux-system -o json
+flux tree artifact generator app-production -n flux-system -o json
 ```
 
 ```json
 {
-  "kind": "ArtifactGenerator",
-  "name": "app-production",
-  "namespace": "flux-system",
-  "ready": true,
-  "inputs": [
-    {
-      "name": "base",
-      "kind": "GitRepository",
-      "sourceRef": "platform-base",
-      "ready": true,
-      "revision": "main@sha1:abc123"
-    },
-    {
-      "name": "overlay",
-      "kind": "GitRepository",
-      "sourceRef": "app-overlay",
-      "ready": true,
-      "revision": "main@sha1:def456"
+  "resource": {
+    "Namespace": "flux-system",
+    "Name": "app-production",
+    "GroupKind": {
+      "Group": "source.extensions.fluxcd.io",
+      "Kind": "ArtifactGenerator"
     }
-  ],
-  "consumers": [
+  },
+  "resources": [
     {
-      "kind": "Kustomization",
-      "name": "app-deployment",
-      "ready": true
+      "resource": {
+        "Namespace": "flux-system",
+        "Name": "app-production",
+        "GroupKind": {
+          "Group": "source.toolkit.fluxcd.io",
+          "Kind": "ExternalArtifact"
+        }
+      }
     }
   ]
 }
@@ -169,43 +157,48 @@ flux tree artifactgenerator app-production -n flux-system -o json
 Use this with `jq` for filtering:
 
 ```bash
-# Find all generators with failing inputs
+# List generated ExternalArtifacts for a generator
 
-flux tree artifactgenerator -A -o json | \
-  jq '.[] | select(.inputs[] | .ready == false) | .name'
+flux tree artifact generator app-production -n flux-system -o json | \
+  jq -r '.resources[].resource | "\(.Namespace)/\(.Name)"'
 ```
 
 ## Step 6: Visualize Cross-Namespace Dependencies
 
-When ArtifactGenerators reference sources across namespaces, the tree shows the full namespace path:
+When reviewing ArtifactGenerators in tenant namespaces, the tree shows the namespace path from the status inventory:
 
 ```bash
-flux tree artifactgenerator multi-tenant-app -n tenant-a
+flux tree artifact generator multi-tenant-app -n tenant-a
 ```
 
 ```text
 ArtifactGenerator/tenant-a/multi-tenant-app
-├── GitRepository/flux-system/shared-platform (input: platform)
-│   └── CrossNamespaceRef: allowed by policy
-├── GitRepository/tenant-a/app-config (input: config)
-│   └── url: https://github.com/tenant-a/app-config
-└── Kustomization/tenant-a/app-deploy (consumer)
-    └── path: ./deploy
+├── ExternalArtifact/tenant-a/multi-tenant-app
+└── ExternalArtifact/tenant-a/multi-tenant-config
+```
+
+For source references across namespaces, inspect `.spec.sources`:
+
+```bash
+kubectl get artifactgenerator multi-tenant-app -n tenant-a \
+  -o jsonpath='{range .spec.sources[*]}{.kind}/{.namespace}/{.name}{"\n"}{end}'
 ```
 
 ## Step 7: Build Monitoring Dashboards
 
-Use the JSON output to feed monitoring systems. Here is a script that generates Prometheus metrics from the tree data:
+Use the ArtifactGenerator resource status to feed monitoring systems. Here is a script that generates Prometheus metrics from Kubernetes API data:
 
 ```bash
 #!/bin/bash
 # generate-metrics.sh
 
-flux tree artifactgenerator -A -o json | jq -r '
-  .[] |
-  "flux_artifactgenerator_ready{name=\"\(.name)\",namespace=\"\(.namespace)\"} \(if .ready then 1 else 0 end)",
-  "flux_artifactgenerator_inputs_total{name=\"\(.name)\",namespace=\"\(.namespace)\"} \(.inputs | length)",
-  "flux_artifactgenerator_consumers_total{name=\"\(.name)\",namespace=\"\(.namespace)\"} \(.consumers | length)"
+kubectl get artifactgenerators.source.extensions.fluxcd.io -A -o json | jq -r '
+  .items[] |
+  . as $generator |
+  ($generator.status.conditions // [] | map(select(.type == "Ready")) | last | .status == "True") as $ready |
+  "flux_artifactgenerator_ready{name=\"\($generator.metadata.name)\",namespace=\"\($generator.metadata.namespace)\"} \(if $ready then 1 else 0 end)",
+  "flux_artifactgenerator_sources_total{name=\"\($generator.metadata.name)\",namespace=\"\($generator.metadata.namespace)\"} \(($generator.spec.sources // []) | length)",
+  "flux_artifactgenerator_inventory_total{name=\"\($generator.metadata.name)\",namespace=\"\($generator.metadata.namespace)\"} \(($generator.status.inventory // []) | length)"
 '
 ```
 
@@ -217,22 +210,26 @@ When a deployment is not updating, trace the full dependency chain:
 # 1. Check the Kustomization
 flux get kustomization app-deployment -n flux-system
 
-# 2. Check the ArtifactGenerator it references
-flux tree artifactgenerator app-production -n flux-system --verbose
+# 2. Check the ExternalArtifact it references
+kubectl get kustomization app-deployment -n flux-system \
+  -o jsonpath='{.spec.sourceRef.kind}/{.spec.sourceRef.name}{"\n"}'
 
-# 3. Check individual failing sources
-flux get source git platform-base -n flux-system
-flux get source git app-overlay -n flux-system
+# 3. Check the ArtifactGenerator inventory
+flux tree artifact generator app-production -n flux-system
+
+# 4. Check individual source references
+kubectl get artifactgenerator app-production -n flux-system \
+  -o jsonpath='{range .spec.sources[*]}{.kind}/{.name}{"\n"}{end}'
 ```
 
 When an ArtifactGenerator shows as ready but content seems stale:
 
 ```bash
-# Compare input revisions
-flux tree artifactgenerator app-production -n flux-system -o json | \
-  jq '.inputs[] | {name: .name, revision: .revision}'
+# Compare generated ExternalArtifacts
+flux tree artifact generator app-production -n flux-system -o json | \
+  jq -r '.resources[].resource | "\(.GroupKind.Kind) \(.Namespace)/\(.Name)"'
 ```
 
 ## Conclusion
 
-The `flux tree` command for ArtifactGenerator resources provides an essential view into your deployment dependency graph. By visualizing which sources feed into each generator and which Kustomizations consume the output, you can quickly identify the root cause of reconciliation failures, verify that all inputs are at the expected revisions, and understand the full deployment topology. Combined with JSON output and scripting, the tree data can feed into monitoring dashboards and automated health checks for your Flux infrastructure.
+The `flux tree artifact generator` command provides a useful view into the ExternalArtifacts managed by each ArtifactGenerator. By visualizing generated artifacts and combining the tree output with `flux get artifact generators`, `kubectl`, and `flux tree kustomization`, you can identify reconciliation failures, verify the generated artifact inventory, and understand how generated artifacts are consumed by your Flux infrastructure. Combined with JSON output and scripting, the data can feed into monitoring dashboards and automated health checks.
