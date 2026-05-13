@@ -12,7 +12,7 @@ Helm charts often require sensitive configuration values such as database passwo
 
 ## How Flux Handles Encrypted Helm Values
 
-Flux HelmReleases can reference values from ConfigMaps or Secrets. When combined with SOPS-encrypted Kubernetes Secrets, Flux decrypts the secret during reconciliation and passes the decrypted values to the Helm chart. The key mechanism is the `valuesFrom` field in the HelmRelease spec.
+Flux HelmReleases can reference values from ConfigMaps or Secrets in the same namespace as the HelmRelease. When combined with SOPS-encrypted Kubernetes Secrets, Flux decrypts the secret during reconciliation and the Helm controller reads the decrypted values for the Helm chart. The key mechanism is the `valuesFrom` field in the HelmRelease spec.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: myapp-helm-values
-  namespace: flux-system
+  namespace: default
 type: Opaque
 stringData:
   values.yaml: |
@@ -165,7 +165,7 @@ spec:
       valuesKey: values.yaml
 ```
 
-The `values` field contains non-sensitive configuration in plaintext, while `valuesFrom` pulls sensitive values from the decrypted secret. Values from `valuesFrom` override matching keys in `values`.
+The `values` field contains non-sensitive configuration in plaintext, while `valuesFrom` pulls sensitive values from the decrypted secret. Inline values from `values` override matching keys from `valuesFrom`.
 
 ## Multiple Values Secrets
 
@@ -243,7 +243,7 @@ flux get kustomizations myapp
 flux get helmreleases -n default myapp
 
 # Verify the secret exists in the cluster
-kubectl get secret myapp-helm-values -n flux-system
+kubectl get secret myapp-helm-values -n default
 
 # Check the HelmRelease applied values
 kubectl get helmrelease myapp -n default -o jsonpath='{.status.conditions}'
