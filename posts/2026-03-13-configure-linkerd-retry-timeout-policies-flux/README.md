@@ -10,7 +10,7 @@ Description: Manage Linkerd retry and timeout policies using Flux CD to build re
 
 ## Introduction
 
-Retries and timeouts are two of the most important reliability patterns in distributed systems. Linkerd provides both through ServiceProfile (per-route configuration) and HTTPRoute (with Linkerd policy API). When configured correctly, retries absorb transient failures and timeouts prevent slow upstream services from cascading into system-wide slowdowns.
+Retries and timeouts are two of the most important reliability patterns in distributed systems. Linkerd provides both through HTTPRoute (Gateway API configuration) and legacy ServiceProfile (per-route configuration). When configured correctly, retries absorb transient failures and timeouts prevent slow upstream services from cascading into system-wide slowdowns.
 
 Managing these policies through Flux CD ensures your resilience configuration is version-controlled and consistent across environments. Tuning retry budgets or timeout values for a service is a pull request that security and reliability teams can review.
 
@@ -20,7 +20,8 @@ This guide covers configuring comprehensive retry and timeout policies in Linker
 
 - Kubernetes cluster with Linkerd installed
 - Flux CD v2 bootstrapped to your Git repository
-- Linkerd ServiceProfile CRD available
+- Linkerd ServiceProfile CRD available for legacy ServiceProfile examples
+- Gateway API HTTPRoute CRDs available for HTTPRoute timeout examples
 
 ## Step 1: Configure Per-Route Retries in ServiceProfile
 
@@ -80,11 +81,11 @@ spec:
 
 ## Step 2: Configure HTTPRoute Timeouts
 
-Using the newer policy API for timeout configuration:
+Using Gateway API HTTPRoute for timeout configuration:
 
 ```yaml
 # clusters/my-cluster/linkerd-resilience/payment-httproute.yaml
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: payment-service-timeouts
@@ -104,8 +105,8 @@ spec:
       timeouts:
         # Total request timeout
         request: 10s
-        # Idle timeout (no data transfer)
-        idle: 5s
+        # Per-backend attempt timeout
+        backendRequest: 5s
       backendRefs:
         - name: payment-service
           port: 8080
@@ -121,9 +122,9 @@ spec:
           port: 8080
 ```
 
-## Step 3: Configure Circuit-Breaking-Like Behavior
+## Step 3: Configure Fail-Fast Behavior
 
-Linkerd does not have a traditional circuit breaker but uses latency-aware load balancing and retry budgets to achieve similar effects:
+Linkerd supports endpoint-level circuit breaking through failure accrual annotations, but circuit breaking is incompatible with ServiceProfiles. With ServiceProfiles, you can still use short route timeouts and retry budgets to fail fast and limit retry amplification:
 
 ```yaml
 # clusters/my-cluster/linkerd-resilience/resilience-profile.yaml
@@ -190,19 +191,23 @@ spec:
 # Apply Flux reconciliation
 flux reconcile kustomization linkerd-resilience
 
-# View per-route metrics including retry rates
+# View per-route metrics
 linkerd viz routes deployment/api-service -n production
+
+# For retries, compare effective and actual outbound requests from a caller
+linkerd viz routes deployment/api-client -n production --to svc/api-service -o wide
 
 # Expected output shows:
 # ROUTE                    SUCCESS    RPS   LATENCY_P50  LATENCY_P95  LATENCY_P99
 # GET /api/users           99.80%    50.0       12ms         25ms         45ms
 # POST /api/checkout       98.50%    10.0       80ms        150ms        300ms
 
-# Check actual retry counts from Prometheus
+# Check actual outbound request volume from Prometheus
 kubectl port-forward svc/prometheus 9090:9090 -n linkerd-viz
-# Query: sum(rate(response_total{classification="retry"}[1m])) by (authority)
+# Query outbound traffic to the service:
+# sum(rate(request_total{direction="outbound", dst_service="api-service"}[1m])) by (dst_service)
 
-# Run Linkerd's resilience checker
+# View aggregate traffic stats
 linkerd viz stat deploy/api-service -n production
 ```
 
@@ -212,8 +217,8 @@ linkerd viz stat deploy/api-service -n production
 - Use short timeouts (under 1 second) for fast internal services and reserve longer timeouts for operations that inherently require more time (report generation, batch processing).
 - Never mark POST, PUT, or DELETE routes as `isRetryable: true` unless you have verified the endpoint is idempotent - retried non-idempotent operations can cause duplicate transactions.
 - Set timeouts shorter at the calling service and longer at the called service to ensure the caller's timeout fires before the server's, giving clean error propagation.
-- Monitor per-route retry rates with Prometheus - a route retrying more than 10% of requests indicates a reliability problem that needs investigation, not just more retries.
+- Monitor retry behavior with `linkerd viz` effective versus actual metrics and Prometheus request volume - sustained retry amplification above your budget indicates a reliability problem that needs investigation, not just more retries.
 
 ## Conclusion
 
-Configuring Linkerd retry and timeout policies through Flux CD creates a resilient, GitOps-managed service communication layer. Retry budgets, per-route timeouts, and idempotency annotations are all tracked in Git, enabling reliability engineers to tune failure recovery behavior through code review - with the full history of every change available for post-incident analysis.
+Configuring Linkerd retry and timeout policies through Flux CD creates a resilient, GitOps-managed service communication layer. Retry budgets, per-route timeouts, and retryability settings are all tracked in Git, enabling reliability engineers to tune failure recovery behavior through code review - with the full history of every change available for post-incident analysis.
