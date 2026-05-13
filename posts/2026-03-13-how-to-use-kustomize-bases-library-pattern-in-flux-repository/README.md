@@ -142,7 +142,7 @@ spec:
   replicas: 2
 ```
 
-For production with higher resource allocations:
+For production with a higher replica count:
 
 ```yaml
 # environments/production/app-a/kustomization.yaml
@@ -178,8 +178,10 @@ kind: Kustomization
 resources:
   - app-a
   - app-b
-commonLabels:
-  environment: staging
+labels:
+  - pairs:
+      environment: staging
+    includeSelectors: true
 ```
 
 ```yaml
@@ -189,8 +191,10 @@ kind: Kustomization
 resources:
   - app-a
   - app-b
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 ```
 
 ## Flux Kustomization Per Environment
