@@ -10,38 +10,32 @@ Description: Debug Calico egress gateway policies to control and secure outbound
 
 ## Introduction
 
-Calico Egress Gateway Policies in Calico provides comprehensive network traffic controls using the `projectcalico.org/v3` API. This guide covers debug Egress Gateway with production-ready configurations.
+Calico Enterprise Egress Gateway Policies provide destination-based egress gateway selection using the `projectcalico.org/v3` API. This guide covers debugging Egress Gateway policy configuration with production-ready checks.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico Enterprise and egress gateway support enabled
 - `calicoctl` and `kubectl` installed
 
 ## Core Configuration
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: EgressGatewayPolicy
 metadata:
   name: debug-egress-gateway
 spec:
-  order: 100
-  selector: all()
-  ingress:
-    - action: Allow
-      source:
-        selector: app == 'authorized'
-  egress:
-    - action: Allow
-      protocol: UDP
-      destination:
-        ports: [53]
-    - action: Allow
-      destination:
-        selector: app == 'permitted-destination'
-  types:
-    - Ingress
-    - Egress
+  rules:
+    - destination:
+        cidr: 10.0.0.0/8
+      description: "Local: no gateway"
+    - destination:
+        cidr: 0.0.0.0/0
+      description: "Gateway to internet"
+      gateway:
+        namespaceSelector: "projectcalico.org/name == 'default'"
+        selector: "egress-code == 'red'"
+      gatewayPreference: PreferNodeLocal
 ```
 
 ## Implementation
@@ -52,7 +46,10 @@ spec:
 calicoctl apply -f debug-egress-gateway.yaml
 
 # Verify policy is active
-calicoctl get globalnetworkpolicies -o wide
+calicoctl get egressgatewaypolicies -o wide
+
+# Attach the policy to a namespace before testing
+kubectl annotate ns test egress.projectcalico.org/egressGatewayPolicy="debug-egress-gateway" --overwrite
 
 # Test connectivity
 kubectl exec -n test test-pod -- curl -s --max-time 5 http://target:8080
@@ -62,11 +59,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Check policy metrics in Prometheus
+curl -G -s 'http://localhost:9090/api/v1/query' --data-urlencode 'query=calico_denied_packets'
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Confirm the client has an egress gateway policy annotation
+kubectl get ns test -o jsonpath='{.metadata.annotations.egress\.projectcalico\.org/egressGatewayPolicy}{"\n"}'
 ```
 
 ## Architecture
@@ -74,11 +71,12 @@ tail -f /var/log/calico/felix.log | grep "DENY"
 ```mermaid
 flowchart TD
     A[Source Pod] -->|Traffic| B{Egress Gateway\nPolicy}
-    B -->|Allow Match| C[Destination]
-    B -->|No Match/Deny| D[Blocked]
-    E[Felix] -->|Enforces| B
+    B -->|Gateway Match| C[Egress Gateway]
+    B -->|Local Route| D[Destination]
+    C -->|SNAT and Forward| D
+    E[Felix] -->|Routes| B
 ```
 
 ## Conclusion
 
-Debug Egress Gateway in Calico ensures your network policies are properly configured, tested, and monitored. Follow the patterns in this guide, validate in staging first, and maintain comprehensive logging for security visibility. Regular policy audits help you keep your cluster's security posture aligned with evolving requirements.
+Debug Egress Gateway in Calico ensures your egress gateway policies are properly configured, tested, and monitored. Follow the patterns in this guide, validate in staging first, and maintain comprehensive logging for security visibility. Regular policy audits help you keep your cluster's security posture aligned with evolving requirements.
