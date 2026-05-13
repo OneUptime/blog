@@ -10,7 +10,7 @@ Description: Learn how to configure Flux 2.8 to post reconciliation status comme
 
 ## Introduction
 
-Flux 2.8 supports posting deployment status updates directly on GitLab merge requests. This feature allows developers to see whether their Kubernetes changes deployed successfully without leaving the merge request interface. The notification controller integrates with GitLab's commit status and notes API to provide real-time feedback on reconciliation outcomes.
+Flux 2.8 supports posting deployment status updates directly on GitLab merge requests. This feature allows developers to see whether their Kubernetes changes deployed successfully without leaving the merge request interface. The notification controller integrates with GitLab's merge request notes API to provide reconciliation feedback, and can also publish GitLab commit statuses with a separate provider.
 
 This guide covers the complete setup for GitLab merge request comment notifications, including token configuration, provider setup, and alert rules tailored for GitLab workflows.
 
@@ -39,18 +39,18 @@ kubectl create secret generic gitlab-mr-token \
 
 ## Step 2: Configure the GitLab Notification Provider
 
-Create a provider for GitLab commit status updates:
+Create a provider for GitLab merge request comments:
 
 ```yaml
 # gitlab-provider.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
-  name: gitlab-status
+  name: gitlab-mr-comment
   namespace: flux-system
 spec:
-  type: gitlab
+  type: gitlabmergerequestcomment
   address: https://gitlab.com/your-org/fleet-infra
   secretRef:
     name: gitlab-mr-token
@@ -60,13 +60,13 @@ For self-managed GitLab instances, use your instance URL:
 
 ```yaml
 # gitlab-self-managed-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
-  name: gitlab-status
+  name: gitlab-mr-comment
   namespace: flux-system
 spec:
-  type: gitlab
+  type: gitlabmergerequestcomment
   address: https://gitlab.example.com/your-org/fleet-infra
   secretRef:
     name: gitlab-mr-token
@@ -84,14 +84,14 @@ Configure alerts that post to GitLab on reconciliation events:
 
 ```yaml
 # gitlab-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: mr-deployment-status
   namespace: flux-system
 spec:
   providerRef:
-    name: gitlab-status
+    name: gitlab-mr-comment
   eventSeverity: info
   eventSources:
     - kind: Kustomization
@@ -101,14 +101,14 @@ spec:
       name: "*"
       namespace: flux-system
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: mr-error-notifications
   namespace: flux-system
 spec:
   providerRef:
-    name: gitlab-status
+    name: gitlab-mr-comment
   eventSeverity: error
   eventSources:
     - kind: Kustomization
@@ -125,9 +125,9 @@ Apply the alerts:
 kubectl apply -f gitlab-alerts.yaml
 ```
 
-## Step 4: Configure Kustomizations for Commit Tracking
+## Step 4: Configure Kustomizations for Merge Request Tracking
 
-Ensure your Kustomizations reference a GitRepository so Flux can associate commits with merge requests:
+Ensure your Kustomizations include the merge request IID so Flux can associate events with a GitLab merge request:
 
 ```yaml
 # kustomization.yaml
@@ -136,6 +136,8 @@ kind: Kustomization
 metadata:
   name: app-production
   namespace: flux-system
+  annotations:
+    event.toolkit.fluxcd.io/change_request: "123"
 spec:
   interval: 5m
   sourceRef:
@@ -147,7 +149,7 @@ spec:
   timeout: 5m
 ```
 
-When Flux processes a commit that originated from a merged MR, GitLab's commit status API updates the associated merge request.
+The `event.toolkit.fluxcd.io/change_request` annotation must be set to the merge request IID. Flux objects without this annotation are ignored by the GitLab merge request comment provider.
 
 ## Step 5: Set Up Pipeline Integration
 
@@ -155,18 +157,18 @@ GitLab displays commit statuses in the merge request pipeline view. Configure Fl
 
 ```yaml
 # gitlab-pipeline-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitlab-pipeline
   namespace: flux-system
 spec:
   type: gitlab
-  address: https://gitlab.com/your-org/fleet-infra
+  address: https://gitlab.com/12345678
   secretRef:
     name: gitlab-mr-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pipeline-status
@@ -181,8 +183,9 @@ spec:
       namespace: flux-system
   inclusionList:
     - ".*reconciliation.*"
-  summary: "Flux deployment: ${message}"
 ```
+
+For GitLab commit statuses, use the GitLab project ID in the provider address and add `event.toolkit.fluxcd.io/commit` with the commit SHA to the Flux object that emits the event.
 
 ## Step 6: Handle Multiple Environments
 
@@ -190,35 +193,37 @@ For multi-environment setups, create separate providers or use event metadata to
 
 ```yaml
 # multi-env-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-mr-status
   namespace: flux-system
 spec:
   providerRef:
-    name: gitlab-status
+    name: gitlab-mr-comment
   eventSeverity: info
   eventSources:
     - kind: Kustomization
       name: "staging-*"
       namespace: flux-system
-  summary: "[STAGING] ${message}"
+  eventMetadata:
+    environment: staging
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-mr-status
   namespace: flux-system
 spec:
   providerRef:
-    name: gitlab-status
+    name: gitlab-mr-comment
   eventSeverity: info
   eventSources:
     - kind: Kustomization
       name: "production-*"
       namespace: flux-system
-  summary: "[PRODUCTION] ${message}"
+  eventMetadata:
+    environment: production
 ```
 
 ## Step 7: Verify and Test
@@ -248,7 +253,7 @@ Common issues and their solutions:
 
 ```bash
 # Check provider status
-kubectl describe provider gitlab-status -n flux-system
+kubectl describe provider gitlab-mr-comment -n flux-system
 
 # Verify token validity
 kubectl get secret gitlab-mr-token -n flux-system -o jsonpath='{.data.token}' | base64 -d | head -c 10
@@ -259,8 +264,8 @@ kubectl run test-gitlab --rm -it --image=curlimages/curl -- \
   "https://gitlab.com/api/v4/projects/your-project-id"
 ```
 
-If statuses are not appearing, verify the project URL in the provider matches the GitLab project path exactly, including case sensitivity.
+If merge request comments are not appearing, verify the project URL in the provider matches the GitLab project path exactly and that the Flux object has the `event.toolkit.fluxcd.io/change_request` annotation set to the merge request IID.
 
 ## Conclusion
 
-GitLab merge request comment notifications in Flux 2.8 integrate deployment feedback directly into the merge request workflow. Developers receive immediate visibility into whether their changes deployed successfully, and the commit status integration works seamlessly with GitLab's pipeline views. By configuring environment-specific alerts, you can distinguish staging and production deployment outcomes on the same merge request, giving teams confidence in their GitOps workflow and reducing the time to identify deployment issues.
+GitLab merge request comment notifications in Flux 2.8 integrate deployment feedback directly into the merge request workflow. Developers receive visibility into whether their changes deployed successfully, and the separate commit status integration works with GitLab's pipeline views. By configuring environment-specific alerts, you can distinguish staging and production deployment outcomes on the same merge request, giving teams confidence in their GitOps workflow and reducing the time to identify deployment issues.
