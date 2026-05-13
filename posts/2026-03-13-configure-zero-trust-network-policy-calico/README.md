@@ -10,9 +10,9 @@ Description: Configure zero trust network policies in Calico to enforce the prin
 
 ## Introduction
 
-Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. Every connection is evaluated against explicit policy rules, and nothing is permitted by default. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
+Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. After default-deny policies are in place, every connection is evaluated against explicit policy rules, and traffic is permitted only by explicit allow rules. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
 
-Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and comprehensive logging of every traffic decision.
+Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and optional `Log` rules for validating and troubleshooting policy decisions.
 
 This guide covers configure zero trust network policies in Calico, including the full policy stack from global defaults to workload-specific microsegmentation.
 
@@ -34,36 +34,33 @@ metadata:
   name: zt-global-default-deny
 spec:
   order: 10000
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   selector: all()
   types:
     - Ingress
     - Egress
 ---
-# Layer 2: Required system traffic
+# Layer 2: Required baseline traffic
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: zt-allow-system-traffic
+  name: zt-allow-dns
 spec:
   order: 1
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   selector: all()
   egress:
     - action: Allow
       protocol: UDP
       destination:
+        selector: 'k8s-app == "kube-dns"'
         ports: [53]
     - action: Allow
       protocol: TCP
       destination:
+        selector: 'k8s-app == "kube-dns"'
         ports: [53]
-  ingress:
-    - action: Allow
-      source:
-        nets: ["10.0.0.0/8"]
-      destination:
-        ports: [10250]
   types:
-    - Ingress
     - Egress
 ---
 # Layer 3: Application-specific allow rules
@@ -89,7 +86,7 @@ spec:
 
 ```bash
 # Verify default deny is active
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://random-ip:8080
+kubectl exec -n production test-pod -- curl -s --max-time 5 http://backend-api:8080
 echo "Should timeout (default deny): $?"
 
 # Verify explicit allows work
@@ -105,9 +102,8 @@ echo "Should timeout (no frontend->DB allow): $?"
 
 ```mermaid
 flowchart TD
-    ALL[All Traffic] --> GD{GlobalNetworkPolicy\nDefault Deny\norder=10000}
+    ALL[Non-system Pod Traffic] --> GD{GlobalNetworkPolicy\nDefault Deny\norder=10000}
     GD -->|DNS Traffic| DNS[Allow DNS :53]
-    GD -->|Kubelet| KUB[Allow Kubelet :10250]
     GD -->|App Traffic| APP{Application\nNetworkPolicy}
     APP -->|Explicit Allow| PERMIT[Traffic Permitted]
     APP -->|No Match| DENY[DENIED - Zero Trust]
@@ -115,4 +111,4 @@ flowchart TD
 
 ## Conclusion
 
-Zero trust network policies in Calico require a layered approach: start with global default deny, add required system traffic, then incrementally add application-specific allow rules. The zero trust model is a journey - begin with monitoring mode to discover your traffic patterns, then progressively restrict traffic as you build your allow rule library. Comprehensive logging and monitoring are essential to detect gaps and anomalies in your zero trust posture.
+Zero trust network policies in Calico require a layered approach: start with global default deny for non-system pods, add required baseline traffic such as DNS, then incrementally add application-specific allow rules. The zero trust model is a journey - begin with `Log` rules or a staging environment to discover your traffic patterns, then progressively restrict traffic as you build your allow rule library. Comprehensive logging and monitoring are essential to detect gaps and anomalies in your zero trust posture.
