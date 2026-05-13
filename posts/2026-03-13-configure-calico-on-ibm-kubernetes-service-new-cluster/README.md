@@ -10,7 +10,7 @@ Description: Learn how to configure Calico on a new IBM Kubernetes Service clust
 
 ## Introduction
 
-IBM Kubernetes Service (IKS) ships with Calico pre-installed as the default CNI and network policy provider. This makes IKS one of the most Calico-friendly managed Kubernetes services - you get Calico's full feature set including GlobalNetworkPolicy, host endpoint protection, and BGP capabilities right out of the box.
+IBM Kubernetes Service (IKS) ships with Calico pre-installed as the default CNI and network policy provider. This makes IKS one of the most Calico-friendly managed Kubernetes services - you get Calico network policy features including GlobalNetworkPolicy and host endpoint protection right out of the box.
 
 IKS uses Calico with the Kubernetes datastore, meaning all Calico resources are stored as Kubernetes CRDs. The IBM Cloud console provides visibility into network policies, and `calicoctl` works seamlessly against IKS clusters with minimal configuration.
 
@@ -35,8 +35,8 @@ ibmcloud login -a https://cloud.ibm.com
 # Set your target region and resource group
 ibmcloud target -r us-south -g default
 
-# List available zones for your region
-ibmcloud ks zones --provider classic --region us-south
+# List available classic zones for your region
+ibmcloud ks zone ls --provider classic --region-only
 
 # Create a standard IKS cluster with Calico pre-installed
 ibmcloud ks cluster create classic \
@@ -62,16 +62,14 @@ ibmcloud ks cluster config --cluster calico-iks-cluster
 # Verify kubectl access
 kubectl get nodes
 
-# Download the Calico configuration from IKS
-# IKS provides a pre-configured calicoctl config file
+# Configure calicoctl to use the Kubernetes datastore
+export DATASTORE_TYPE=kubernetes
+
+# Optional: download Calico configuration files and certificates for calicoctl
 ibmcloud ks cluster config --cluster calico-iks-cluster --admin --network
 
-# The above command downloads a calicoctl.cfg file
-# Use it with calicoctl commands
-export CALICO_CONFIG_FILE=~/.kube/calicoctl.cfg
-
 # Verify calicoctl connectivity
-calicoctl get nodes --config=$CALICO_CONFIG_FILE
+calicoctl get nodes
 ```
 
 ## Step 3: View Pre-Installed Calico Configuration
@@ -80,16 +78,16 @@ IKS installs Calico with a default configuration - review it before making chang
 
 ```bash
 # View the default IP pool
-calicoctl get ippools -o yaml --config=$CALICO_CONFIG_FILE
+calicoctl get ippools -o yaml
 
 # Check existing global network policies (IKS pre-installs some)
-calicoctl get globalnetworkpolicies --config=$CALICO_CONFIG_FILE
+calicoctl get GlobalNetworkPolicy -o wide
 
-# View Calico node status
-calicoctl node status --config=$CALICO_CONFIG_FILE
+# View Calico host endpoints
+calicoctl get hostendpoint -o yaml
 
 # Check the FelixConfiguration
-calicoctl get felixconfiguration default -o yaml --config=$CALICO_CONFIG_FILE
+calicoctl get felixconfiguration default -o yaml
 ```
 
 ## Step 4: Apply Application Network Policies
@@ -107,7 +105,7 @@ metadata:
 spec:
   # Select all pods in the my-app namespace
   selector: all()
-  order: 100
+  order: 3000
   ingress:
   # Allow traffic from the same namespace
   - action: Allow
@@ -140,7 +138,7 @@ spec:
 ```bash
 # Apply the application policy
 kubectl create namespace my-app
-calicoctl apply -f iks-app-policy.yaml --config=$CALICO_CONFIG_FILE
+calicoctl apply -f iks-app-policy.yaml
 ```
 
 ## Step 5: Configure IKS-Specific Host Endpoint Policies
@@ -149,39 +147,39 @@ IKS allows host endpoint policies to protect worker node traffic.
 
 ```yaml
 # iks-host-protection.yaml
-# GlobalNetworkPolicy to protect worker nodes from unauthorized access
+# GlobalNetworkPolicy to allow trusted SSH access to public worker host endpoints
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: allow-ibm-worker-access
+  name: allow-trusted-worker-ssh
 spec:
-  order: 100
-  selector: ibm.role == "worker"
+  order: 900
+  selector: ibm.role == "worker_public"
+  types:
+  - Ingress
   ingress:
-  # Allow IBM Cloud internal management traffic
+  # Allow SSH only from a trusted operations network
   - action: Allow
+    protocol: TCP
     source:
       nets:
-      - 161.26.0.0/16
-  # Allow traffic from other cluster nodes
-  - action: Allow
-    source:
-      selector: ibm.role == "worker"
-  - action: Deny
+      - <trusted-operations-cidr>
+    destination:
+      ports: [22]
 ```
 
 ```bash
 # Apply the host protection policy
-calicoctl apply -f iks-host-protection.yaml --config=$CALICO_CONFIG_FILE
+calicoctl apply -f iks-host-protection.yaml
 
 # Verify all policies
-calicoctl get globalnetworkpolicies --config=$CALICO_CONFIG_FILE
-calicoctl get networkpolicies -n my-app --config=$CALICO_CONFIG_FILE
+calicoctl get GlobalNetworkPolicy -o wide
+calicoctl get NetworkPolicy -n my-app
 ```
 
 ## Best Practices
 
-- Use the `--admin --network` flag when downloading IKS cluster config - it provides the calicoctl config file
+- Set `DATASTORE_TYPE=kubernetes` when using `calicoctl` with current IKS clusters
 - Review IKS's pre-installed global network policies before adding your own to avoid conflicts
 - Use `order` values above 1000 for application policies to ensure IBM's system policies take precedence
 - Upgrade Calico only through IBM Cloud's managed update process on IKS
@@ -189,4 +187,4 @@ calicoctl get networkpolicies -n my-app --config=$CALICO_CONFIG_FILE
 
 ## Conclusion
 
-IBM Kubernetes Service's native Calico integration makes it one of the easiest managed Kubernetes platforms for Calico deployments. With Calico pre-installed and configured, you can focus immediately on writing network policies for your applications. The full Calico feature set - GlobalNetworkPolicy, host endpoint protection, and advanced IPAM - is available from day one on every IKS cluster.
+IBM Kubernetes Service's native Calico integration makes it one of the easiest managed Kubernetes platforms for Calico deployments. With Calico pre-installed and configured, you can focus immediately on writing network policies for your applications. Calico policy features such as GlobalNetworkPolicy, host endpoint protection, and IPAM are available from day one on IKS clusters.
