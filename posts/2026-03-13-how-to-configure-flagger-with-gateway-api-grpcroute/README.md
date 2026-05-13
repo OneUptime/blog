@@ -1,38 +1,38 @@
-# How to Configure Flagger with Gateway API GRPCRoute
+# How to Configure Flagger with Gateway API HTTPRoute for gRPC
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Gateway API, GRPCRoute, Kubernetes, gRPC, Canary Deployment
+Tags: Flagger, Gateway API, HTTPRoute, Kubernetes, gRPC, Canary Deployment
 
-Description: Learn how to configure Flagger with Kubernetes Gateway API GRPCRoute for progressive delivery of gRPC services.
+Description: Learn how to configure Flagger with Kubernetes Gateway API HTTPRoute for progressive delivery of gRPC services.
 
 ---
 
 ## Introduction
 
-gRPC is a high-performance remote procedure call framework widely used for microservices communication. When deploying gRPC services on Kubernetes, the Gateway API provides a dedicated GRPCRoute resource that handles gRPC-specific routing concerns such as service and method matching. Flagger supports GRPCRoute for progressive delivery, enabling automated canary deployments for gRPC workloads with traffic splitting and metric-based analysis.
+gRPC is a high-performance remote procedure call framework widely used for microservices communication. When deploying gRPC services on Kubernetes, the Gateway API provides HTTPRoute and GRPCRoute resources for routing HTTP/2-based gRPC traffic. Flagger's Gateway API integration manages HTTPRoute resources for progressive delivery, enabling automated canary deployments for gRPC workloads with traffic splitting and metric-based analysis.
 
-This guide covers setting up Flagger with Gateway API GRPCRoute to automate canary deployments for gRPC services. You will learn how to configure the Gateway, define GRPCRoute resources, and create Flagger Canary resources that manage traffic splitting for gRPC traffic.
+This guide covers setting up Flagger with Gateway API HTTPRoute to automate canary deployments for gRPC services. You will learn how to configure the Gateway and create Flagger Canary resources that manage HTTPRoute traffic splitting for gRPC traffic.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster running version 1.24 or later.
+- A Kubernetes cluster running version 1.27 or later.
 - `kubectl` installed and configured.
 - Helm 3 installed.
-- Gateway API CRDs installed, including the experimental channel for GRPCRoute support.
-- A Gateway API controller that supports GRPCRoute (such as Envoy Gateway or Istio).
+- Gateway API CRDs installed.
+- A Gateway API controller that supports HTTPRoute (such as Envoy Gateway or Istio).
 - Prometheus installed for metrics collection.
 
-## Installing Gateway API CRDs with GRPCRoute Support
+## Installing Gateway API CRDs
 
-GRPCRoute may require the experimental channel of the Gateway API CRDs. Install them as follows.
+Install the Gateway API CRDs as follows.
 
 ```bash
-# Install Gateway API CRDs including experimental resources
+# Install Gateway API CRDs
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/experimental-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
 ```
 
 ## Setting Up the Gateway
@@ -74,7 +74,8 @@ helm repo add flagger https://flagger.app
 helm install flagger flagger/flagger \
   --namespace flagger-system \
   --create-namespace \
-  --set meshProvider=gatewayapi \
+  --set prometheus.install=false \
+  --set meshProvider=gatewayapi:v1 \
   --set metricsServer=http://prometheus.monitoring:9090
 ```
 
@@ -143,53 +144,31 @@ Apply the resources.
 kubectl apply -f grpc-app.yaml
 ```
 
-## Creating the GRPCRoute
+## Configuring HTTPRoute Matching
 
-Define a GRPCRoute that routes gRPC traffic through the Gateway to your service. You can match on specific gRPC services and methods.
+Flagger creates the Gateway API HTTPRoute for the canary. You can configure HTTPRoute matching through the Canary service configuration. For gRPC, match the HTTP/2 path that gRPC uses for the service or method, such as `/myapp.v1.MyService/MyMethod`.
 
 ```yaml
-# grpcroute.yaml
-# Gateway API GRPCRoute for gRPC traffic routing
-apiVersion: gateway.networking.k8s.io/v1
-kind: GRPCRoute
-metadata:
-  name: grpc-service
-  namespace: test
-spec:
-  parentRefs:
-    - name: grpc-gateway
-      namespace: test
-  hostnames:
-    - grpc.example.com
-  rules:
-    - matches:
-        - method:
-            service: myapp.v1.MyService
-      backendRefs:
-        - name: grpc-service
-          port: 50051
-```
-
-Apply the GRPCRoute.
-
-```bash
-kubectl apply -f grpcroute.yaml
+# HTTPRoute match configuration used in the Canary service section
+match:
+  - uri:
+      prefix: /myapp.v1.MyService/
 ```
 
 ## Configuring the Flagger Canary Resource for gRPC
 
-Create a Canary resource that references the GRPCRoute for traffic management during canary analysis.
+Create a Canary resource that configures the HTTPRoute for traffic management during canary analysis.
 
 ```yaml
 # canary.yaml
-# Flagger Canary resource for Gateway API GRPCRoute
+# Flagger Canary resource for Gateway API HTTPRoute
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: grpc-service
   namespace: test
 spec:
-  provider: gatewayapi
+  provider: gatewayapi:v1
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -198,25 +177,35 @@ spec:
   service:
     port: 50051
     targetPort: 50051
+    portName: grpc
     appProtocol: grpc
+    hosts:
+      - grpc.example.com
+    match:
+      - uri:
+          prefix: /myapp.v1.MyService/
     gatewayRefs:
       - name: grpc-gateway
         namespace: test
-        group: gateway.networking.k8s.io
-        kind: Gateway
   analysis:
     interval: 30s
     threshold: 5
     maxWeight: 50
     stepWeight: 10
     metrics:
-      - name: request-success-rate
+      - name: grpc-success-rate
+        templateRef:
+          name: grpc-success-rate
+          namespace: test
         thresholdRange:
           min: 99
         interval: 1m
-      - name: request-duration
+      - name: grpc-request-duration
+        templateRef:
+          name: grpc-request-duration
+          namespace: test
         thresholdRange:
-          max: 500
+          max: 0.5
         interval: 1m
 ```
 
@@ -226,17 +215,18 @@ Apply the Canary resource.
 kubectl apply -f canary.yaml
 ```
 
-## How Flagger Manages GRPCRoute Traffic Splitting
+## How Flagger Manages HTTPRoute Traffic Splitting
 
-During canary analysis, Flagger updates the GRPCRoute backendRefs to split traffic between the primary and canary services using weights.
+During canary analysis, Flagger updates the generated HTTPRoute backendRefs to split traffic between the primary and canary services using weights.
 
 ```yaml
-# Example GRPCRoute during canary analysis (managed by Flagger)
+# Example HTTPRoute during canary analysis (managed by Flagger)
 spec:
   rules:
     - matches:
-        - method:
-            service: myapp.v1.MyService
+        - path:
+            type: PathPrefix
+            value: /myapp.v1.MyService/
       backendRefs:
         - name: grpc-service-primary
           port: 50051
@@ -276,6 +266,23 @@ spec:
       kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
     }[{{ interval }}]))
     * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: grpc-request-duration
+  namespace: test
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus.monitoring:9090
+  query: |
+    histogram_quantile(0.99,
+      sum(rate(grpc_server_handling_seconds_bucket{
+        kubernetes_namespace="{{ namespace }}",
+        kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
+      }[{{ interval }}])) by (le)
+    )
 ```
 
 Reference this custom metric in your Canary resource analysis section.
@@ -305,4 +312,4 @@ kubectl get canary grpc-service -n test -w
 
 ## Conclusion
 
-Configuring Flagger with Gateway API GRPCRoute enables automated progressive delivery for gRPC services using the Kubernetes-native Gateway API routing model. The GRPCRoute resource provides gRPC-aware routing with service and method matching, and Flagger's integration allows you to safely roll out new versions with automated metric analysis and traffic shifting. This approach is ideal for teams running gRPC workloads who want to adopt the Gateway API standard for traffic management.
+Configuring Flagger with Gateway API HTTPRoute enables automated progressive delivery for gRPC services using the Kubernetes-native Gateway API routing model. HTTPRoute can route gRPC traffic by matching the HTTP/2 path used by gRPC services and methods, and Flagger's integration allows you to safely roll out new versions with automated metric analysis and traffic shifting. This approach is ideal for teams running gRPC workloads who want to adopt the Gateway API standard for traffic management.
