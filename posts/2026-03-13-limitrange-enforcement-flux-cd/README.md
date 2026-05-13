@@ -10,9 +10,9 @@ Description: Learn how to enforce CPU and memory limits across Kubernetes namesp
 
 ## Introduction
 
-Kubernetes LimitRange resources set default and maximum CPU/memory constraints for containers, pods, and PersistentVolumeClaims within a namespace. Without LimitRanges, a single misconfigured pod can consume all available cluster resources and starve other workloads.
+Kubernetes LimitRange resources set default and maximum CPU/memory constraints for containers, pods, and PersistentVolumeClaims within a namespace. Without LimitRanges, a single misconfigured pod can consume far more resources than intended, or as much CPU and memory as any ResourceQuotas in the namespace allow.
 
-Managing LimitRanges through Flux CD ensures consistent resource governance across all namespaces. When a new namespace is created or an existing one is updated, Flux automatically applies the correct LimitRange without manual intervention-eliminating the risk of namespaces being created without resource constraints.
+Managing LimitRanges through Flux CD ensures consistent resource governance across the namespaces you manage in Git. When a new namespace is added to the GitOps configuration or an existing one is updated, Flux automatically applies the correct LimitRange without manual intervention-eliminating the risk of configured namespaces being created without resource constraints.
 
 This guide covers defining LimitRange resources, organizing them in Git with Kustomize overlays, and reconciling them with Flux CD so enforcement is automatic and auditable.
 
@@ -98,7 +98,7 @@ patches:
 
 ## Step 3: Apply LimitRanges to Multiple Namespaces
 
-Use a Kustomize namespace transformer or separate Kustomization resources to apply the same LimitRange across multiple namespaces.
+Use separate Flux Kustomization resources, or separate overlays, to apply the same LimitRange across multiple namespaces. Each Kustomization can target one namespace with `targetNamespace`.
 
 ```yaml
 # clusters/production/limitranges.yaml - Flux Kustomization applying limits to the app namespace
@@ -114,15 +114,8 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Override the namespace to apply the LimitRange to each target namespace
+  # Override the namespace for all namespaced resources in this Kustomization
   targetNamespace: app-production
-  patches:
-    - patch: |
-        - op: replace
-          path: /metadata/name
-          value: default-limits
-      target:
-        kind: LimitRange
 ```
 
 ## Step 4: Verify LimitRange Enforcement
