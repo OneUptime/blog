@@ -39,7 +39,7 @@ spec:
 ## Step 2: Deploy the Rook Operator
 
 ```yaml
-# infrastructure/storage/rook-ceph/namespace.yaml
+# infrastructure/storage/rook-ceph/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -47,7 +47,7 @@ metadata:
 ```
 
 ```yaml
-# infrastructure/storage/rook-ceph/operator.yaml
+# infrastructure/storage/rook-ceph/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -82,7 +82,7 @@ spec:
 ## Step 3: Create the Ceph Cluster
 
 ```yaml
-# infrastructure/storage/rook-ceph/ceph-cluster.yaml
+# infrastructure/storage/rook-ceph/cluster/ceph-cluster.yaml
 apiVersion: ceph.rook.io/v1
 kind: CephCluster
 metadata:
@@ -154,7 +154,7 @@ spec:
 ## Step 4: Create the Ceph Object Store
 
 ```yaml
-# infrastructure/storage/rook-ceph/object-store.yaml
+# infrastructure/storage/rook-ceph/cluster/object-store.yaml
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStore
 metadata:
@@ -183,15 +183,18 @@ spec:
     instances: 2
     priorityClassName: system-cluster-critical
   healthCheck:
-    bucket:
+    startupProbe:
       disabled: false
-      interval: 60s
+    readinessProbe:
+      disabled: false
+      periodSeconds: 5
+      failureThreshold: 2
 ```
 
 ## Step 5: Create a StorageClass for Object Buckets
 
 ```yaml
-# infrastructure/storage/rook-ceph/storageclass-bucket.yaml
+# infrastructure/storage/rook-ceph/cluster/storageclass-bucket.yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -234,6 +237,25 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: rook-ceph-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/storage/rook-ceph/operator
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: rook-ceph-operator
+      namespace: rook-ceph
+  timeout: 10m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: rook-ceph-storage
   namespace: flux-system
 spec:
@@ -241,7 +263,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/storage/rook-ceph
+  path: ./infrastructure/storage/rook-ceph/cluster
   prune: true
   dependsOn:
     - name: rook-ceph-operator
@@ -256,14 +278,19 @@ spec:
 ## Step 8: Verify the Object Store
 
 ```bash
+# Deploy the Rook toolbox if you want to run Ceph CLI commands
+kubectl create -f https://raw.githubusercontent.com/rook/rook/v1.14.9/deploy/examples/toolbox.yaml
+kubectl -n rook-ceph rollout status deploy/rook-ceph-tools
+
 # Check Ceph cluster health
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph status
 
 # Check object store is ready
 kubectl get cephobjectstore my-store -n rook-ceph
 
-# Get S3 endpoint and credentials
+# Get S3 endpoint, bucket details, and credentials
 kubectl get service rook-ceph-rgw-my-store -n rook-ceph
+kubectl get configmap my-app-bucket -n myapp -o yaml
 kubectl get secret my-app-bucket -n myapp -o yaml
 
 # Test S3 API access
@@ -273,7 +300,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ## Best Practices
 
-- Run 3 Ceph monitors (`mon.count: 3`) for quorum - never run 2 or 4.
+- Run 3 Ceph monitors (`mon.count: 3`) for quorum; Ceph recommends an odd number of monitors because 4 monitors tolerate no more failures than 3.
 - Use erasure coding (`erasureCoded: dataChunks: 2, codingChunks: 1`) for the data pool to reduce storage overhead compared to 3-way replication.
 - Use the Ceph dashboard for visual monitoring but configure Prometheus metrics via `monitoring.enabled: true` for alerting.
 - Apply node taints (`rook-ceph/cluster=my-cluster:NoSchedule`) to storage nodes to prevent application workloads from competing with Ceph for CPU and memory.
