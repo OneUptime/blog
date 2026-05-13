@@ -10,7 +10,7 @@ Description: How to create operational documentation for Calico networking on Az
 
 ## Introduction
 
-Calico networking on Azure has a tighter coupling with Azure platform resources than most other Calico deployments. IP Forwarding settings on VM NICs, NSG rules, Azure route tables, and VNet CIDR assignments all directly affect whether Calico can function. When operators are on call and pods stop communicating, they need documentation that clearly shows all the Azure dependencies and how to quickly verify and restore them.
+Calico networking on Azure has a tighter coupling with Azure platform resources than most other Calico deployments. IP Forwarding settings on VM NICs, NSG rules, Azure route tables for native routing, and VNet CIDR assignments all directly affect whether Calico can function. When operators are on call and pods stop communicating, they need documentation that clearly shows all the Azure dependencies and how to quickly verify and restore them.
 
 Good Azure Calico documentation serves as a quick reference during incidents and a guide for provisioning new nodes. It should be accessible to operators who are proficient in Kubernetes but may be less familiar with Azure networking specifics.
 
@@ -24,13 +24,13 @@ Good Azure Calico documentation serves as a quick reference during incidents and
 
 ```mermaid
 graph TD
-    subgraph Azure Resources Required by Calico
+    subgraph Azure Resources to Document for Calico
         A[VNet: 10.0.0.0/8] --> B[Worker Subnet: 10.240.0.0/16]
         B --> C[VM NICs - IP Forwarding: MUST be TRUE]
         B --> D[NSG: k8s-workers-nsg]
         D --> E[Rule: Allow UDP 4789 - VXLAN]
         D --> F[Rule: Allow TCP 10250 - Kubelet]
-        G[Route Table: k8s-pod-routes] --> H[One route per node pod CIDR]
+        G[Route Table: k8s-pod-routes - native routing only] --> H[One route per node pod CIDR]
     end
 ```
 
@@ -62,12 +62,12 @@ graph TD
 
 ### Before adding to Kubernetes
 - [ ] VM created in correct subnet (10.240.0.0/16)
-- [ ] VM size supports Accelerated Networking (D/E/F series)
+- [ ] VM size and OS image support Accelerated Networking
 - [ ] IP Forwarding enabled on primary NIC:
       az network nic update --ids <NIC_ID> --ip-forwarding true
-- [ ] NSG k8s-workers-nsg attached to NIC
+- [ ] NSG k8s-workers-nsg applied to the VM subnet or NIC
 - [ ] Verify accelerated networking enabled (optional but recommended):
-      az vm show -g k8s-rg -n <vm-name> --query "networkProfile"
+      az network nic show --ids <NIC_ID> --query enableAcceleratedNetworking
 
 ### After joining Kubernetes
 - [ ] Node appears in: kubectl get nodes
@@ -105,4 +105,4 @@ If not resolved in 30 minutes, escalate to Azure networking team and Calico plat
 
 ## Conclusion
 
-Azure Calico documentation must prominently feature Azure-specific configuration requirements that don't exist in other environments - IP Forwarding, NSG VXLAN rules, and route table management. A clear dependency map, provisioning checklist, and incident response runbook collectively reduce the mean time to resolution for Azure-specific Calico failures and ensure new team members can confidently provision and maintain cluster nodes.
+Azure Calico documentation must prominently feature Azure-specific configuration requirements that don't exist in other environments - IP Forwarding, NSG VXLAN rules, and route table management when native routing is used. A clear dependency map, provisioning checklist, and incident response runbook collectively reduce the mean time to resolution for Azure-specific Calico failures and ensure new team members can confidently provision and maintain cluster nodes.
