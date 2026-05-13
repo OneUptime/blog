@@ -10,9 +10,9 @@ Description: Migrate Calico forwarded traffic policies on hosts for migrate traf
 
 ## Introduction
 
-Forwarded Traffic Policies on Hosts in Calico provides host-level network security beyond standard pod-to-pod policies. Using the `projectcalico.org/v3` API, you can control traffic at the node level, protecting both pod traffic and the underlying host infrastructure.
+Forwarded Traffic Policies on Hosts in Calico provides host-level network security beyond standard pod-to-pod policies. Using the `projectcalico.org/v3` API, you can control traffic that transits a node, and complement workload policies with node-level enforcement.
 
-Calico's host endpoint functionality extends policy enforcement to the host network namespace, allowing you to protect host processes, control traffic to and from external networks, and implement node-level security controls that complement your pod policies.
+Calico's host endpoint functionality extends policy enforcement to interfaces in the host network namespace, allowing you to protect host processes, control traffic to and from external networks, and implement node-level security controls that complement your pod policies. For forwarded traffic, policies that select host endpoints must set `applyOnForward: true`.
 
 This guide covers how to migrate Forwarded Traffic effectively, with production-ready YAML configurations and operational commands.
 
@@ -50,6 +50,7 @@ spec:
   preDNAT: false
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -65,15 +66,14 @@ spec:
 ## Implementation
 
 ```bash
-# Create host endpoint
+# Apply host protection policy before creating the host endpoint
+calicoctl apply -f host-protection-policy.yaml
 
+# Create host endpoint
 calicoctl apply -f host-endpoint.yaml
 
 # Verify host endpoint is active
-calicoctl get hostendpoints -o wide
-
-# Apply host protection policy
-calicoctl apply -f host-protection-policy.yaml
+calicoctl get hostEndpoint -o wide
 
 # Test SSH access (should still work)
 ssh user@node01-ip "echo connected"
@@ -83,7 +83,7 @@ ssh user@node01-ip "echo connected"
 
 ```bash
 # List all host endpoints
-calicoctl get hostendpoints
+calicoctl get hostEndpoint
 
 # View host-level policy decisions
 sudo iptables -L -n | grep CALICO
@@ -107,4 +107,3 @@ flowchart TD
 ## Conclusion
 
 Forwarded Traffic Policies on Hosts with Calico provides a comprehensive security layer that extends beyond pod-to-pod policies to protect the underlying node infrastructure. Configure host endpoints carefully to avoid locking yourself out of the node, always test SSH and management access after applying host policies, and use staged policies to preview impact before enforcement. Host-level policies are powerful but require careful planning and testing.
-
