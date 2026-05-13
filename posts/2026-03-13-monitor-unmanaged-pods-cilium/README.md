@@ -101,8 +101,8 @@ spec:
       rules:
         - alert: CiliumUnmanagedPodsDetected
           expr: |
-            (count(kube_pod_status_phase{phase="Running"}) -
-             count(cilium_endpoint_state{endpoint_state="ready"})) > 0
+            (sum(kube_pod_status_phase{phase="Running"}) -
+             sum(cilium_endpoint_state{endpoint_state="ready"})) > 0
           for: 5m
           labels:
             severity: warning
