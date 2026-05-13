@@ -47,10 +47,11 @@ nodes:
 EOF
 
 kind create cluster --name "$CLUSTER_NAME" --config /tmp/kind-config.yaml
+kind export kubeconfig --name "$CLUSTER_NAME"
 kubectl cluster-info --context "kind-$CLUSTER_NAME"
 
 echo "DR test cluster created: $CLUSTER_NAME"
-echo "Run: export KUBECONFIG=$(kind get kubeconfig --name $CLUSTER_NAME)"
+echo "Run: kubectl config use-context kind-$CLUSTER_NAME"
 ```
 
 ## Step 2: Bootstrap Flux on the Test Cluster
@@ -59,17 +60,18 @@ Bootstrap Flux on the test cluster pointing at a test branch of your repository.
 
 ```bash
 # Create a test branch from the current production state
-git checkout -b "dr-test/$(date +%Y%m%d)"
-git push origin "dr-test/$(date +%Y%m%d)"
+DR_BRANCH="dr-test/$(date +%Y%m%d)"
+git checkout -b "$DR_BRANCH"
+git push origin "$DR_BRANCH"
 
 # Bootstrap Flux on the test cluster
-export KUBECONFIG=$(kind get kubeconfig --name "$CLUSTER_NAME" --internal)
+kubectl config use-context "kind-$CLUSTER_NAME"
+export GITHUB_TOKEN="your-github-token"
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
-  --branch="dr-test/$(date +%Y%m%d)" \
-  --path=clusters/dr-test \
-  --token-env=GITHUB_TOKEN
+  --branch="$DR_BRANCH" \
+  --path=clusters/dr-test
 
 # Verify Flux is reconciling
 flux get all -A --watch
@@ -195,22 +197,17 @@ echo "Passed: $PASS | Failed: $FAIL"
 Track RTO measurements over time to validate improvement.
 
 ```bash
-# Record test results to a metrics file in Git
-cat >> dr-test-results.json << EOF
-{
-  "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "cluster": "$CLUSTER_NAME",
-  "tests": {
-    "namespace_deletion_rto_minutes": $NAMESPACE_DELETION_RTO,
-    "crd_deletion_rto_minutes": $CRD_DELETION_RTO,
-    "full_rebuild_rto_minutes": $FULL_REBUILD_RTO
-  },
-  "passed": $PASS,
-  "failed": $FAIL
-}
-EOF
+# Record test results to a JSON Lines metrics file in Git
+printf '{"date":"%s","cluster":"%s","tests":{"namespace_deletion_rto_minutes":%s,"crd_deletion_rto_minutes":%s,"full_rebuild_rto_minutes":%s},"passed":%s,"failed":%s}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  "$CLUSTER_NAME" \
+  "$NAMESPACE_DELETION_RTO" \
+  "$CRD_DELETION_RTO" \
+  "$FULL_REBUILD_RTO" \
+  "$PASS" \
+  "$FAIL" >> dr-test-results.jsonl
 
-git add dr-test-results.json
+git add dr-test-results.jsonl
 git commit -m "test: DR results $(date +%Y-%m-%d)"
 git push
 ```
@@ -220,13 +217,14 @@ git push
 ```bash
 #!/bin/bash
 # cleanup-dr-test.sh
-CLUSTER_NAME="${1:?Usage: $0 <cluster-name>}"
+CLUSTER_NAME="${1:?Usage: $0 <cluster-name> <test-branch>}"
+TEST_BRANCH="${2:?Usage: $0 <cluster-name> <test-branch>}"
 
 echo "Destroying DR test cluster: $CLUSTER_NAME"
 kind delete cluster --name "$CLUSTER_NAME"
 
 # Delete the test branch
-git push origin --delete "dr-test/$(date +%Y%m%d)" || true
+git push origin --delete "$TEST_BRANCH" || true
 
 echo "Cleanup complete"
 ```
