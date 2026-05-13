@@ -10,9 +10,9 @@ Description: Learn how to configure the uninstall timeout for HelmRelease resour
 
 ## Introduction
 
-Timeouts are a critical aspect of managing Helm releases in a GitOps workflow. When Flux uninstalls a HelmRelease, Helm needs to delete all associated resources and optionally wait for them to be fully removed. If this process takes too long, the operation can hang indefinitely, blocking other reconciliations and leaving the cluster in an uncertain state.
+Timeouts are a critical aspect of managing Helm releases in a GitOps workflow. When Flux uninstalls a HelmRelease, Helm needs to delete all associated resources and optionally wait for them to be fully removed. If this process takes too long, the operation can fail and be retried, leaving the HelmRelease in a failed state until the underlying issue is resolved.
 
-Flux allows you to configure a specific timeout for the uninstall operation through the `spec.uninstall.timeout` field. This timeout controls how long Helm will wait for the uninstall to complete before considering it failed. Setting an appropriate timeout ensures that stuck uninstalls do not block your deployment pipeline indefinitely.
+Flux allows you to configure a specific timeout for the uninstall operation through the `spec.uninstall.timeout` field. This timeout controls how long Helm will wait for individual Kubernetes operations during uninstall before considering them failed. Setting an appropriate timeout ensures that stuck operations surface as failures instead of waiting longer than expected.
 
 This guide covers how to set the uninstall timeout, choose appropriate values for different workloads, and handle timeout failures.
 
@@ -27,14 +27,14 @@ Before proceeding, ensure you have:
 
 ## How Uninstall Timeout Works
 
-The uninstall timeout determines the maximum duration Helm will spend on the uninstall operation. This includes:
+The uninstall timeout determines how long Helm will wait for individual Kubernetes operations during the uninstall action. This includes:
 
 - Executing pre-delete hooks (if not disabled)
 - Sending delete requests for all release resources
 - Waiting for resources to be removed (if wait is enabled)
 - Executing post-delete hooks (if not disabled)
 
-If the total time exceeds the configured timeout, Helm marks the uninstall as failed. In Flux, this means the HelmRelease status reflects the failure, and Flux may retry based on its reconciliation settings.
+If a Kubernetes operation exceeds the configured timeout, Helm marks the uninstall as failed. In Flux, this means the HelmRelease status reflects the failure, and Flux retries the uninstall during subsequent reconciliations.
 
 ## Basic Uninstall Timeout Configuration
 
@@ -60,7 +60,7 @@ spec:
     timeout: 5m
 ```
 
-This gives Helm 5 minutes to complete the uninstall. If the operation exceeds this duration, it is marked as failed.
+This gives Helm 5 minutes for individual Kubernetes operations during uninstall. If an operation exceeds this duration, the uninstall is marked as failed.
 
 ## Choosing the Right Timeout Value
 
@@ -117,7 +117,7 @@ Databases and other stateful workloads may need time to flush data, close connec
 
 ## Timeout vs Global Timeout
 
-The HelmRelease also has a global `spec.timeout` that applies to all operations (install, upgrade, rollback, uninstall) unless overridden:
+The HelmRelease also has a global `spec.timeout` that is used by Helm actions (install, upgrade, rollback, uninstall) unless an action-specific timeout overrides it:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
