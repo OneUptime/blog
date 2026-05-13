@@ -30,7 +30,7 @@ By default, Calico advertises pod CIDRs from all IP pools. Verify the IP pool co
 calicoctl get ippools -o yaml
 ```
 
-Ensure `disabled: false` and check that no export filters are blocking advertisement. Create a pool specifically for workload advertisement if needed:
+Ensure `disabled: false` and `disableBGPExport: false`, and check that no BGP filters are blocking advertisement. Create a pool specifically for workload advertisement if needed:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -40,9 +40,9 @@ metadata:
 spec:
   cidr: 10.48.0.0/16
   ipipMode: Never
-  vxlanMode: Never
   natOutgoing: false
   disabled: false
+  disableBGPExport: false
 ```
 
 Setting `natOutgoing: false` ensures pods retain their original IP for return traffic when accessed externally.
@@ -60,7 +60,7 @@ protocol bgp calico_peer {
   neighbor 10.0.0.1 as 64512;
   ipv4 {
     import filter {
-      if net ~ 10.48.0.0/16+ then accept;
+      if net ~ [ 10.48.0.0/16+ ] then accept;
       reject;
     };
     export none;
@@ -68,7 +68,7 @@ protocol bgp calico_peer {
 }
 ```
 
-## Deploy a Test Workload with Fixed IP
+## Deploy a Test Workload with an Assigned IP
 
 Create a pod and verify it receives an IP from the advertised pool:
 
@@ -83,7 +83,7 @@ kubectl get pod bgp-test -o wide
 From the external router, verify the pod CIDR route is present:
 
 ```bash
-# On Linux router with ip command
+# On Linux router with ip command, if BIRD exports the route to the kernel
 ip route | grep 10.48
 
 # With bird/birdcl
