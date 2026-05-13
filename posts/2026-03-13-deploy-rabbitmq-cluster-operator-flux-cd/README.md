@@ -38,7 +38,7 @@ spec:
 ## Step 2: Deploy the RabbitMQ Cluster Operator
 
 ```yaml
-# infrastructure/messaging/rabbitmq/namespace.yaml
+# infrastructure/messaging/rabbitmq/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -46,7 +46,7 @@ metadata:
 ```
 
 ```yaml
-# infrastructure/messaging/rabbitmq/operator.yaml
+# infrastructure/messaging/rabbitmq/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -88,7 +88,15 @@ spec:
 ## Step 3: Create a RabbitMQ Cluster
 
 ```yaml
-# infrastructure/messaging/rabbitmq/rabbitmq-cluster.yaml
+# infrastructure/messaging/rabbitmq/cluster/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rabbitmq
+```
+
+```yaml
+# infrastructure/messaging/rabbitmq/cluster/rabbitmq-cluster.yaml
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
 metadata:
@@ -99,7 +107,7 @@ spec:
   replicas: 3
 
   # RabbitMQ image
-  image: rabbitmq:3.13.4-management
+  image: rabbitmq:4.2.5-management
 
   # Persistent storage
   persistence:
@@ -139,6 +147,11 @@ spec:
       # Default message TTL (not set by default)
       # x-message-ttl = 86400000  # 24 hours (set per queue)
 
+  # Use a pre-created Kubernetes Secret for the default admin user
+  secretBackend:
+    externalSecret:
+      name: production-default-user
+
   # TLS configuration
   tls:
     secretName: rabbitmq-tls-secret
@@ -149,7 +162,8 @@ spec:
     type: ClusterIP
     annotations:
       prometheus.io/scrape: "true"
-      prometheus.io/port: "15692"
+      prometheus.io/port: "15691"
+      prometheus.io/scheme: "https"
 
   # Anti-affinity: one RabbitMQ node per Kubernetes node
   affinity:
@@ -160,32 +174,14 @@ spec:
             matchLabels:
               app.kubernetes.io/name: production
 
-  override:
-    statefulSet:
-      spec:
-        template:
-          spec:
-            containers:
-              - name: rabbitmq
-                env:
-                  - name: RABBITMQ_DEFAULT_USER
-                    valueFrom:
-                      secretKeyRef:
-                        name: production-default-user
-                        key: username
-                  - name: RABBITMQ_DEFAULT_PASS
-                    valueFrom:
-                      secretKeyRef:
-                        name: production-default-user
-                        key: password
 ```
 
-## Step 4: The Operator Auto-Creates Default User Secret
+## Step 4: Create a Default User Secret
 
-The RabbitMQ Cluster Operator automatically creates a Secret named `<cluster-name>-default-user` with admin credentials. To customize the password:
+The RabbitMQ Cluster Operator automatically creates a Secret named `<cluster-name>-default-user` with admin credentials. To customize the password, create the Secret yourself and reference it with `spec.secretBackend.externalSecret`:
 
 ```yaml
-# infrastructure/messaging/rabbitmq/rabbitmq-secret.yaml (use SealedSecret)
+# infrastructure/messaging/rabbitmq/cluster/rabbitmq-secret.yaml (use SealedSecret)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -195,14 +191,18 @@ type: Opaque
 stringData:
   username: admin
   password: "RabbitMQPassword123!"
-  # Connection string (auto-used by applications)
-  host: "production.rabbitmq.svc.cluster.local"
+  default_user.conf: |
+    default_user = admin
+    default_pass = RabbitMQPassword123!
+  host: "production.rabbitmq.svc"
   port: "5672"
-  default_user: admin
-  default_pass: "RabbitMQPassword123!"
+  provider: rabbitmq
+  type: rabbitmq
 ```
 
 ## Step 5: Flux Kustomization
+
+The cluster Kustomization should depend on a separate operator Kustomization so the `RabbitmqCluster` CRD exists before Flux applies the cluster resource:
 
 ```yaml
 # clusters/production/rabbitmq-kustomization.yaml
@@ -216,14 +216,14 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/messaging/rabbitmq
+  path: ./infrastructure/messaging/rabbitmq/cluster
   prune: true
   dependsOn:
     - name: rabbitmq-operator
   healthChecks:
     - apiVersion: apps/v1
       kind: StatefulSet
-      name: production
+      name: production-server
       namespace: rabbitmq
 ```
 
@@ -248,7 +248,7 @@ kubectl port-forward svc/production 15672:15672 -n rabbitmq
 kubectl exec -n rabbitmq production-server-0 -- rabbitmqctl cluster_status
 
 # Check node health
-kubectl exec -n rabbitmq production-server-0 -- rabbitmqctl node_health_check
+kubectl exec -n rabbitmq production-server-0 -- rabbitmq-diagnostics -q ping
 ```
 
 ## Best Practices
