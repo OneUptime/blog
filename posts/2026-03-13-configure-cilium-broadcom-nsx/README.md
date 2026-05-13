@@ -33,8 +33,8 @@ Configure NSX components required for the Kubernetes cluster.
 # 1. Create a Logical Segment for Kubernetes nodes
 # 2. Create a Tier-1 Gateway for cluster traffic
 # 3. Configure NAT rules for pod egress (if using Cilium with NAT)
-# 4. Set MTU on the logical segment to accommodate VXLAN overhead
-#    Recommended: Set segment MTU to 1600+ to allow for overlay headers
+# 4. Set MTU on the NSX transport network/VDS to accommodate GENEVE overhead
+#    Recommended: Set transport network/VDS MTU to 1600+ to allow for overlay headers
 
 # Verify NSX logical segment is reachable from Kubernetes nodes
 ping <nsx-gateway-ip>
@@ -52,15 +52,14 @@ Deploy Cilium with settings appropriate for NSX-managed networks.
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
-# Install Cilium with VXLAN disabled (NSX provides L2 between nodes)
+# Install Cilium with Cilium tunneling disabled (NSX provides L2 between nodes)
 # and with appropriate MTU settings for NSX overlay networks
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set tunnel=disabled \
+  --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.244.0.0/16" \
-  --set mtu=1400 \
-  --set nativeRoutingCIDR="10.0.0.0/8"
+  --set mtu=1400
 ```
 
 ## Step 3: Configure Cilium for NSX Segment MTU
@@ -77,10 +76,12 @@ metadata:
   namespace: kube-system
 data:
   # Set MTU below NSX segment MTU to account for encapsulation headers
-  # NSX VXLAN adds ~50 bytes; set Cilium MTU conservatively
+  # NSX GENEVE adds overlay overhead; set Cilium MTU conservatively
   mtu: "1400"
   # Use native routing since NSX provides L2/L3 connectivity between nodes
-  tunnel: "disabled"
+  routing-mode: "native"
+  # Set this to the Kubernetes pod CIDR routed by Cilium
+  ipv4-native-routing-cidr: "10.244.0.0/16"
   # Enable native routing for pod-to-pod traffic
   auto-direct-node-routes: "true"
 ```
@@ -146,13 +147,14 @@ kubectl apply -f nsx-cilium-policy.yaml
 
 # Verify policy enforcement using Hubble
 cilium hubble enable
+cilium hubble port-forward &
 hubble observe --namespace production --follow
 ```
 
 ## Best Practices
 
 - Set Cilium's MTU to at least 100 bytes below the NSX segment's configured MTU to prevent fragmentation
-- Use native routing mode (tunnel=disabled) when NSX provides full L3 reachability between all nodes
+- Use native routing mode (`routingMode=native`) when NSX provides L2 adjacency for direct node routes or L3 reachability for pod CIDRs
 - Monitor both NSX flow data and Hubble flows to get a complete picture of traffic in hybrid environments
 - Coordinate MTU settings with the NSX network team - mismatched MTU causes silent packet drops
 - Test connectivity after every NSX segment or gateway configuration change before deploying workloads
