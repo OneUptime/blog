@@ -10,7 +10,7 @@ Description: Set up monitoring and alerting for BIRD not ready errors in Calico 
 
 ## Introduction
 
-Monitoring BIRD health in Calico is essential for detecting BGP routing failures before they impact application traffic. The calico-node pod exposes Prometheus metrics, emits Kubernetes events, and writes structured logs - all of which can be used to build comprehensive observability for BIRD state.
+Monitoring BIRD health in Calico is essential for detecting BGP routing failures before they impact application traffic. The calico-node pod exposes Felix Prometheus metrics, emits Kubernetes events, and writes structured logs - all of which can be used to build comprehensive observability around BIRD readiness.
 
 Without dedicated monitoring, BIRD failures often go unnoticed until users report intermittent connectivity issues. By the time the issue is escalated, the failure may have been occurring for hours. Proactive monitoring surfaces these problems within seconds and enables automated alerting to the on-call team.
 
@@ -33,16 +33,19 @@ This guide covers three monitoring layers: Prometheus metrics and alerts, Kubern
 ```bash
 # Verify calico-node metrics endpoint is accessible
 
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)
-kubectl exec $NODE_POD -n kube-system -- wget -qO- http://localhost:9091/metrics | grep -i "bird\|bgp" | head -20
+NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$NODE_POD" -- wget -qO- http://localhost:9091/metrics | head -20
+
+# Check BGP peer status on the node where calico-node is running
+sudo calicoctl node status
 
 # Check if Prometheus is scraping calico-node
-kubectl get servicemonitor,podmonitor -n kube-system | grep calico
+kubectl get servicemonitor -n kube-system | grep calico
 ```
 
 ## Solution
 
-**Step 1: Enable Calico metrics**
+**Step 1: Enable Calico Felix metrics**
 
 ```bash
 kubectl patch felixconfiguration default \
@@ -50,11 +53,27 @@ kubectl patch felixconfiguration default \
   --patch '{"spec":{"prometheusMetricsEnabled":true}}'
 ```
 
-**Step 2: Create a PodMonitor for calico-node**
+**Step 2: Create a ServiceMonitor for calico-node**
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: kube-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+  - name: metrics
+    port: 9091
+    targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+kind: ServiceMonitor
 metadata:
   name: calico-node-monitor
   namespace: kube-system
@@ -62,8 +81,8 @@ spec:
   selector:
     matchLabels:
       k8s-app: calico-node
-  podMetricsEndpoints:
-  - port: http-metrics
+  endpoints:
+  - port: metrics
     interval: 15s
     path: /metrics
 ```
@@ -81,13 +100,21 @@ spec:
   - name: calico.bird
     rules:
     - alert: CalicoNodeBIRDNotReady
-      expr: up{job="calico-node"} == 0
+      expr: kube_pod_container_status_ready{namespace="kube-system",container="calico-node",pod=~"calico-node-.*"} == 0
       for: 2m
       labels:
         severity: critical
       annotations:
         summary: "Calico BIRD not ready on {{ $labels.pod }}"
-        description: "calico-node pod {{ $labels.pod }} has been unreachable for 2 minutes"
+        description: "calico-node container {{ $labels.pod }} has failed its readiness check for 2 minutes"
+    - alert: CalicoNodeMetricsDown
+      expr: up{namespace="kube-system",service="felix-metrics-svc"} == 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Calico metrics scrape is failing on {{ $labels.pod }}"
+        description: "Prometheus has been unable to scrape Felix metrics for 2 minutes"
     - alert: CalicoNodePodRestarting
       expr: increase(kube_pod_container_status_restarts_total{namespace="kube-system",container="calico-node"}[15m]) > 2
       for: 5m
@@ -101,8 +128,8 @@ spec:
 
 ```bash
 # Continuous watch for calico-node events
-kubectl get events -n kube-system --watch \
-  --field-selector involvedObject.name=calico-node 2>/dev/null
+NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl events -n kube-system --for pod/"$NODE_POD" --watch
 
 # Or use a script in a CronJob
 kubectl get events -n kube-system \
@@ -125,7 +152,7 @@ flowchart LR
 
 - Include calico monitoring setup in your cluster provisioning checklist
 - Test alert rules in a staging cluster to confirm they fire correctly
-- Set up a synthetic BGP connectivity check using a periodic `calicoctl node status` CronJob
+- Set up a synthetic BGP connectivity check using `CalicoNodeStatus` resources or a host-level `calicoctl node status` check
 
 ## Conclusion
 
