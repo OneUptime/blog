@@ -59,7 +59,7 @@ Nodes will show as `NotReady` because no CNI is installed yet. This is expected.
 Apply the official Calico manifest:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 ```
 
 ## Step 4: Wait for Calico Pods to Become Ready
