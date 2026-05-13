@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, ArgoCD, Secrets Management, SOPS, Vault, External Secrets, GitOps, Kubernetes
 
-Description: Compare secret management approaches in Flux CD and ArgoCD, covering SOPS encryption, Sealed Secrets, and Vault integration patterns.
+Description: Compare secret management approaches in Flux CD and ArgoCD, covering SOPS encryption, External Secrets Operator, and Vault integration patterns.
 
 ---
 
@@ -75,26 +75,30 @@ kubectl create secret generic sops-age \
   --namespace=flux-system
 ```
 
-## Step 2: ArgoCD with SOPS (via argocd-vault-plugin or initContainers)
+## Step 2: ArgoCD with SOPS (via a Config Management Plugin)
 
-ArgoCD does not have native SOPS support. The recommended approach is the argocd-vault-plugin or a custom repo-server plugin:
+ArgoCD does not have native SOPS support. The recommended approach is a sidecar Config Management Plugin, using a tool such as KSOPS or a custom repo-server plugin:
 
 ```yaml
-# ArgoCD repo-server with sops plugin
+# ArgoCD sidecar Config Management Plugin for SOPS
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: kustomize-sops-plugin
   namespace: argocd
 data:
-  configManagementPlugins: |
-    - name: kustomize-sops
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: kustomize-sops
+    spec:
       generate:
-        command: ["sh", "-c"]
-        args: ["kustomize build --enable-alpha-plugins . | sops --decrypt /dev/stdin"]
+        command: ["kustomize"]
+        args: ["build", "--enable-alpha-plugins", "--enable-exec", "."]
 ```
 
-This requires the repo-server pod to have access to the decryption key and the sops binary, adding complexity to the ArgoCD setup.
+This requires the repo-server plugin sidecar to have access to the decryption key and the required binaries, adding complexity to the ArgoCD setup.
 
 ## Step 3: External Secrets Operator (Both Tools)
 
@@ -102,7 +106,7 @@ Both Flux CD and ArgoCD work well with External Secrets Operator, which syncs se
 
 ```yaml
 # ExternalSecret managed by Flux or ArgoCD
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -157,7 +161,7 @@ spec:
 | SOPS with KMS | Yes, first-class | Via repo-server plugin |
 | External Secrets Operator | Compatible | Compatible |
 | HashiCorp Vault | Via ESO or VSO | Via argocd-vault-plugin |
-| Secret rotation | Via ESO refresh | Via ESO refresh or plugin |
+| Secret rotation | Via ESO refresh | Via ESO refresh, or hard refresh/sync when using argocd-vault-plugin |
 
 ## Best Practices
 
