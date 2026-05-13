@@ -14,12 +14,13 @@ OpenFaaS (Functions as a Service) is a popular open-source serverless framework 
 
 Deploying OpenFaaS through Flux CD gives you a GitOps-managed serverless platform where both the OpenFaaS infrastructure and the functions running on it are version-controlled. Function updates become pull requests that are automatically applied to the cluster.
 
-This guide covers deploying OpenFaaS CE (Community Edition) using Flux CD HelmRelease and deploying a sample function.
+This guide covers deploying OpenFaaS Standard or Enterprise using Flux CD HelmRelease and deploying a sample function with the OpenFaaS Function CRD.
 
 ## Prerequisites
 
 - Kubernetes cluster (1.24+)
 - Flux CD v2 bootstrapped to your Git repository
+- An OpenFaaS Standard or Enterprise license stored in the `openfaas-license` Secret
 - A container registry for storing function images
 - Basic familiarity with serverless/FaaS concepts
 
@@ -82,6 +83,13 @@ spec:
         namespace: flux-system
       interval: 12h
   values:
+    # Enable OpenFaaS Standard/Enterprise features, including the Function CRD
+    openfaasPro: true
+    clusterRole: true
+    operator:
+      create: true
+      leaderElection:
+        enabled: false
     # Deploy OpenFaaS gateway
     gateway:
       replicas: 1
@@ -91,17 +99,17 @@ spec:
         requests:
           memory: "120Mi"
           cpu: "50m"
-    # Enable Prometheus scraping
+    # Enable Prometheus for metrics and autoscaling
     prometheus:
       create: true
-    # Enable Alertmanager for autoscaling triggers
+    # Alertmanager is only used by OpenFaaS CE
     alertmanager:
-      create: true
+      create: false
     # Namespace for functions
     functionNamespace: openfaas-fn
     # Set basic auth password (override with secret in production)
     generateBasicAuth: true
-    # Enable async function invocations with NATS
+    # Enable async function invocations with NATS JetStream
     nats:
       channel: "faas-request"
       external:
@@ -137,21 +145,21 @@ spec:
   name: figlet
   # Use a pre-built function image
   image: ghcr.io/openfaas/figlet:latest
-  # Scale from 0 to N replicas based on load
+  # Scale between the configured min and max replicas based on request load
   labels:
     com.openfaas.scale.min: "1"
     com.openfaas.scale.max: "5"
-    com.openfaas.scale.factor: "20"
+    com.openfaas.scale.target: "20"
+    com.openfaas.scale.type: "rps"
   # Environment variables for the function
   environment:
     write_debug: "true"
-  resources:
-    requests:
-      memory: "64Mi"
-      cpu: "50m"
-    limits:
-      memory: "128Mi"
-      cpu: "200m"
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"
 ---
 # clusters/my-cluster/flux-kustomization-openfaas-functions.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -194,7 +202,7 @@ echo "GitOps" | faas-cli invoke figlet --gateway http://localhost:8080
 - Use the `Function` CRD to manage all functions declaratively in Git, rather than using `faas-cli deploy` imperatively.
 - Set `com.openfaas.scale.min: "1"` for latency-sensitive functions to keep at least one replica warm, avoiding cold start delays.
 - Store the OpenFaaS basic auth credentials in a Kubernetes Secret managed by Flux's SOPS integration, not plain text in values.
-- Enable async invocations with NATS for long-running functions to avoid gateway timeouts.
+- Enable async invocations with NATS JetStream for long-running functions to avoid gateway timeouts.
 - Use Flux image update automation to automatically detect and deploy new function container image tags from your registry.
 
 ## Conclusion
