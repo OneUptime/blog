@@ -10,7 +10,7 @@ Description: A guide to configuring Calico on a new OpenShift Hosted Control Pla
 
 ## Introduction
 
-Configuring Calico on OpenShift Hosted Control Planes (HCP) has one key difference from standard OpenShift configuration: the pod CIDR must not overlap with the management cluster's pod CIDR or the hosted cluster's service CIDR. HCP clusters are multi-tenant - multiple hosted clusters run on the same management cluster - so CIDR planning requires coordination across all hosted clusters to avoid address space conflicts.
+Configuring Calico on OpenShift Hosted Control Planes (HCP) has one key difference from standard OpenShift configuration: the hosted cluster's pod CIDR must not overlap with the management cluster or any connected networks, and it must remain separate from the hosted cluster's service CIDR. HCP clusters are multi-tenant - multiple hosted clusters run on the same management cluster - so CIDR planning requires coordination across hosted clusters if their networks need to be routed together.
 
 Beyond CIDR planning, Calico configuration on HCP follows the same principles as standard OpenShift: align with OpenShift's network model, create permissive policies for system namespaces, and tune Felix for the workload pattern. This guide covers the HCP-specific CIDR considerations and the standard configuration steps.
 
@@ -22,7 +22,7 @@ Beyond CIDR planning, Calico configuration on HCP follows the same principles as
 
 ## Step 1: Verify Non-Overlapping CIDRs
 
-List all hosted clusters and their CIDRs to ensure there is no overlap.
+List all hosted clusters and their CIDRs to check for routing conflicts.
 
 ```bash
 # On the management cluster
@@ -30,7 +30,7 @@ List all hosted clusters and their CIDRs to ensure there is no overlap.
 oc get hostedcluster -A -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.networking.clusterNetwork[0].cidr}{"\n"}{end}'
 ```
 
-The hosted cluster's Calico IP pool must use a unique CIDR not used by any other hosted cluster.
+The hosted cluster's Calico IP pool should use the hosted cluster's pod CIDR. Use a unique CIDR across hosted clusters when those cluster networks need to communicate or be routed by shared infrastructure.
 
 ## Step 2: Configure the IP Pool
 
@@ -45,7 +45,7 @@ metadata:
 spec:
   cidr: 10.132.0.0/14
   blockSize: 26
-  encapsulation: VXLAN
+  vxlanMode: Always
   natOutgoing: true
   nodeSelector: all()
 EOF
@@ -94,7 +94,7 @@ kubectl get tigerastatus
 
 ## Step 6: Test Multi-Tenant Isolation
 
-Verify that pods in this hosted cluster cannot reach pods in other hosted clusters.
+If your environment routes hosted cluster pod networks, verify that pods in this hosted cluster cannot reach pods in other hosted clusters unless you explicitly allow that traffic.
 
 ```bash
 kubectl run test --image=busybox -- sleep 300
@@ -104,4 +104,4 @@ kubectl exec test -- ping -c3 <other-hosted-cluster-pod-ip> || echo "Isolated as
 
 ## Conclusion
 
-Configuring Calico on OpenShift Hosted Control Planes requires careful CIDR planning to avoid address space conflicts across multiple hosted clusters on the same management infrastructure. Beyond CIDR alignment, the configuration follows standard OpenShift Calico patterns: VXLAN encapsulation, permissive policies for system namespaces, and Felix tuning appropriate for the workload profile.
+Configuring Calico on OpenShift Hosted Control Planes requires careful CIDR planning to avoid address space conflicts with the management cluster and with any hosted cluster networks that share routing. Beyond CIDR alignment, the configuration follows standard OpenShift Calico patterns: VXLAN encapsulation, permissive policies for system namespaces, and Felix tuning appropriate for the workload profile.
