@@ -10,9 +10,9 @@ Description: A step-by-step guide to installing Calico on a self-managed Kuberne
 
 ## Introduction
 
-Running self-managed Kubernetes on AWS gives you full control over the cluster configuration, including the CNI plugin. Unlike EKS which manages the control plane, self-managed clusters let you choose and configure Calico without managed service constraints, including full Calico IPAM, BGP route advertisement to AWS VPC, and custom encapsulation settings.
+Running self-managed Kubernetes on AWS gives you full control over the cluster configuration, including the CNI plugin. Unlike EKS which manages the control plane, self-managed clusters let you choose and configure Calico without managed service constraints, including full Calico IPAM, Calico BGP between nodes or supported external routers, and custom encapsulation settings.
 
-Calico integrates well with AWS networking. You can run Calico with VXLAN or IP-in-IP encapsulation for overlay networking, or configure Calico to advertise pod routes via BGP to leverage AWS VPC routing without encapsulation overhead.
+Calico integrates well with AWS networking. You can run Calico with VXLAN or IP-in-IP encapsulation for overlay networking, or use non-overlay routing with Calico BGP plus the required AWS route table entries or supported external routing design.
 
 This guide covers deploying kubeadm-based Kubernetes on AWS EC2 with Calico as the CNI, with appropriate configuration for the AWS networking environment.
 
@@ -31,9 +31,14 @@ Initialize the cluster with a pod CIDR that doesn't overlap with the AWS VPC.
 # On the control plane node - initialize kubeadm with the pod CIDR
 
 # Use a CIDR that doesn't overlap with your VPC or other networks
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
 sudo kubeadm init \
   --pod-network-cidr=192.168.0.0/16 \
-  --apiserver-advertise-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+  --apiserver-advertise-address=$(curl -s \
+    -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/local-ipv4)
 
 # Set up kubectl for the admin user
 mkdir -p $HOME/.kube
@@ -73,6 +78,12 @@ spec:
       encapsulation: VXLANCrossSubnet
       natOutgoing: Enabled
       nodeSelector: all()
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
 ```
 
 ```bash
@@ -135,7 +146,7 @@ Confirm Calico is operating correctly.
 curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
   -o calicoctl && chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
-# Check node status and BGP peering
+# Check node status and BGP peering if BGP is enabled
 calicoctl node status
 
 # Verify IP pool configuration
@@ -147,7 +158,7 @@ kubectl run test-ping --image=busybox --rm -it -- ping -c 3 <another-pod-ip>
 
 ## Best Practices
 
-- Disable the AWS source/destination check on EC2 instances if using BGP route advertisement without encapsulation
+- Disable the AWS source/destination check on EC2 instances if using non-overlay routing that requires nodes to forward traffic on behalf of pods
 - Use `VXLANCrossSubnet` mode for hybrid environments where some nodes share a subnet and some do not
 - Configure Security Groups to allow all required Calico control plane ports before joining nodes
 - Use placement groups to co-locate nodes in the same subnet and reduce encapsulation overhead
@@ -155,4 +166,4 @@ kubectl run test-ping --image=busybox --rm -it -- ping -c 3 <another-pod-ip>
 
 ## Conclusion
 
-Self-managed Kubernetes on AWS with Calico gives you complete control over your networking stack. By configuring Calico with AWS-appropriate encapsulation settings and correct security group rules, you get a production-ready CNI that supports advanced network policies, multiple IP pools, and BGP integration with AWS routing infrastructure.
+Self-managed Kubernetes on AWS with Calico gives you complete control over your networking stack. By configuring Calico with AWS-appropriate encapsulation settings and correct security group rules, you get a production-ready CNI that supports advanced network policies, multiple IP pools, and BGP-based routing designs where the surrounding AWS routing is configured explicitly.
