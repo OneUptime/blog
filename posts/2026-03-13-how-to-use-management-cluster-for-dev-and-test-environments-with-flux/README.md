@@ -47,6 +47,7 @@ flux bootstrap github \
   --repository=fleet-repo \
   --branch=main \
   --path=clusters/management \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --personal
 ```
 
@@ -103,6 +104,9 @@ kubectl config use-context management
 
 for CLUSTER in dev-alpha dev-beta test-integration test-e2e; do
   SERVER=$(kubectl --context=$CLUSTER config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+  until kubectl --context=$CLUSTER -n flux-system get secret flux-reconciler-token -o jsonpath='{.data.token}' | grep -q .; do
+    sleep 1
+  done
   TOKEN=$(kubectl --context=$CLUSTER -n flux-system get secret flux-reconciler-token -o jsonpath='{.data.token}' | base64 -d)
   CA=$(kubectl --context=$CLUSTER -n flux-system get secret flux-reconciler-token -o jsonpath='{.data.ca\.crt}')
 
@@ -176,6 +180,8 @@ kind: Kustomization
 metadata:
   name: dev-alpha-infrastructure
   namespace: flux-system
+  labels:
+    environment: dev
 spec:
   interval: 2m
   retryInterval: 1m
@@ -194,6 +200,8 @@ kind: Kustomization
 metadata:
   name: dev-alpha-apps
   namespace: flux-system
+  labels:
+    environment: dev
 spec:
   interval: 2m
   retryInterval: 1m
@@ -219,6 +227,8 @@ kind: Kustomization
 metadata:
   name: test-integration-infrastructure
   namespace: flux-system
+  labels:
+    environment: test
 spec:
   interval: 5m
   sourceRef:
@@ -236,6 +246,8 @@ kind: Kustomization
 metadata:
   name: test-integration-apps
   namespace: flux-system
+  labels:
+    environment: test
 spec:
   interval: 5m
   dependsOn:
@@ -254,6 +266,8 @@ kind: Kustomization
 metadata:
   name: test-integration-fixtures
   namespace: flux-system
+  labels:
+    environment: test
 spec:
   interval: 5m
   dependsOn:
@@ -283,7 +297,7 @@ patches:
   - target:
       kind: Deployment
     patch: |
-      - op: replace
+      - op: add
         path: /spec/replicas
         value: 1
       - op: add
@@ -300,6 +314,8 @@ patches:
 ## Step 8: Enable Image Automation for Dev
 
 Let Flux automatically update dev environments when new images are pushed:
+
+Make sure the image fields in `./apps/overlays/dev-alpha` include Flux image policy markers such as `# {"$imagepolicy": "flux-system:frontend-dev"}` so the automation controller knows which images to update.
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -374,7 +390,7 @@ flux events --watch
 Set up notifications for failed reconciliations:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-dev
@@ -385,7 +401,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: dev-test-alerts
@@ -396,9 +412,13 @@ spec:
   eventSeverity: error
   eventSources:
     - kind: Kustomization
-      name: 'dev-*'
+      name: '*'
+      matchLabels:
+        environment: dev
     - kind: Kustomization
-      name: 'test-*'
+      name: '*'
+      matchLabels:
+        environment: test
 ```
 
 ## Ephemeral Test Clusters
@@ -410,6 +430,7 @@ For CI pipelines, you can dynamically create test clusters and register them wit
 kind create cluster --name test-pr-$PR_NUMBER
 
 # Register with management cluster
+# Ensure test-kubeconfig.yaml points to an API server reachable from the management cluster.
 kubectl --context=management create secret generic test-pr-${PR_NUMBER}-kubeconfig \
   --namespace=flux-system \
   --from-file=value=test-kubeconfig.yaml
