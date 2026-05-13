@@ -35,7 +35,7 @@ spec:
   url: https://charts.containeroo.ch
 ```
 
-Alternatively, deploy directly from the official manifests via GitRepository:
+Alternatively, source the official manifests via GitRepository for use in a Flux Kustomization:
 
 ```yaml
 # infrastructure/sources/local-path-git.yaml
@@ -48,7 +48,7 @@ spec:
   interval: 12h
   url: https://github.com/rancher/local-path-provisioner
   ref:
-    tag: v0.0.28
+    tag: v0.0.36
 ```
 
 ## Step 2: Deploy local-path-provisioner
@@ -59,13 +59,16 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: local-path-provisioner
-  namespace: local-path-storage
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: local-path-storage
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: local-path-provisioner
-      version: "0.0.28"
+      version: "0.0.36"
       sourceRef:
         kind: HelmRepository
         name: local-path-provisioner
@@ -74,13 +77,14 @@ spec:
     # Storage path on each node
     storageClass:
       name: local-path
+      provisionerName: rancher.io/local-path
       defaultClass: true          # set as default for dev/edge clusters
       reclaimPolicy: Delete
-      pathPattern: "{{ .node.name }}/{{ .claim.namespace }}-{{ .claim.name }}"
+      pathPattern: "{{ .PVC.Namespace }}/{{ .PVC.Name }}/{{ .PVName }}"
 
     # Configuration for the provisioner
     nodePathMap:
-      - node: DEFAULT
+      - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
         paths:
           - /opt/local-path-provisioner  # all nodes use this path
 
@@ -95,53 +99,35 @@ spec:
 
 ## Step 3: Custom Storage Path Configuration
 
-Override the default storage path with a ConfigMap:
+Override the default storage path in the HelmRelease values:
 
 ```yaml
-# infrastructure/storage/local-path/config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: local-path-config
-  namespace: local-path-storage
-data:
-  config.json: |
-    {
-      "nodePathMap": [
-        {
-          "node": "DEFAULT",
-          "paths": ["/opt/local-path-provisioner"]
-        },
-        {
-          "node": "storage-node-1",
-          "paths": ["/mnt/nvme/local-path"]
-        },
-        {
-          "node": "storage-node-2",
-          "paths": ["/mnt/nvme/local-path"]
-        }
-      ]
-    }
-  setup: |
-    #!/bin/sh
-    set -eu
-    mkdir -m 0777 -p "$VOL_DIR"
+# values section in infrastructure/storage/local-path/provisioner.yaml
+values:
+  nodePathMap:
+    - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+      paths:
+        - /opt/local-path-provisioner
+    - node: storage-node-1
+      paths:
+        - /mnt/nvme/local-path
+    - node: storage-node-2
+      paths:
+        - /mnt/nvme/local-path
 
-  teardown: |
-    #!/bin/sh
-    set -eu
-    rm -rf "$VOL_DIR"
+  configmap:
+    setup: |
+      #!/bin/sh
+      set -eu
+      mkdir -m 0777 -p "$VOL_DIR"
 
-  helperPod.yaml: |
-    apiVersion: v1
-    kind: Pod
-    metadata:
+    teardown: |
+      #!/bin/sh
+      set -eu
+      rm -rf "$VOL_DIR"
+
+    helperPod:
       name: helper-pod
-    spec:
-      containers:
-      - name: helper-pod
-        image: busybox
-        imagePullPolicy: IfNotPresent
 ```
 
 ## Step 4: Create Multiple StorageClasses for Different Paths
