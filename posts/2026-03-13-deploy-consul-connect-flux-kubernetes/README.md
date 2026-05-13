@@ -124,8 +124,12 @@ spec:
     # Consul Connect (service mesh) configuration
     connectInject:
       enabled: true
-      # Default to inject Connect sidecar in all namespaces
+      # Require workloads to opt in with the connect-inject annotation
       default: false
+      # Only allow injection in application namespaces you explicitly choose
+      k8sAllowNamespaces:
+        - production
+      k8sDenyNamespaces: []
       # Metrics via Envoy
       metrics:
         defaultEnabled: true
@@ -177,7 +181,7 @@ spec:
       namespace: consul
 ```
 
-## Step 4: Enable Connect Injection for Namespaces
+## Step 4: Create an Application Namespace
 
 ```yaml
 # clusters/my-cluster/apps/consul-injection.yaml
@@ -185,15 +189,31 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: production
-  labels:
-    # Enable Consul Connect sidecar injection
-    consul.hashicorp.com/connect-inject: "true"
 ```
 
 ## Step 5: Deploy a Consul-Meshed Service
 
 ```yaml
 # clusters/my-cluster/apps/meshed-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: production
+spec:
+  selector:
+    app: api-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-service
+  namespace: production
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -212,15 +232,20 @@ spec:
         # Enable Connect injection for this pod
         consul.hashicorp.com/connect-inject: "true"
         # Upstream services this pod needs to call
-        consul.hashicorp.com/connect-service-upstreams: "user-service:8080"
+        consul.hashicorp.com/connect-service-upstreams: "user-service:9090"
     spec:
+      # Required when ACLs are enabled: ServiceAccount must match the Consul service name
+      serviceAccountName: api-service
       containers:
         - name: api
           image: myregistry/api:v1.0.0
           env:
             # Connect to user-service via local Envoy proxy
             - name: USER_SERVICE_URL
-              value: "http://localhost:8080"
+              value: "http://localhost:9090"
+          ports:
+            - containerPort: 8080
+              name: http
           resources:
             requests:
               cpu: "250m"
@@ -240,12 +265,12 @@ kubectl get pods -n consul
 kubectl exec -n consul consul-server-0 -- consul members
 
 # Access the Consul UI
-kubectl port-forward svc/consul-ui 8500:80 -n consul
-# Open http://localhost:8500
+kubectl port-forward svc/consul-ui 8501:443 -n consul
+# Open https://localhost:8501
 
-# Verify mTLS is active between services
-kubectl exec -n production deploy/api-service -c consul-dataplane -- \
-  curl -sv http://localhost:8080/health
+# Verify upstream connectivity through the local service mesh proxy
+kubectl exec -n production deploy/api-service -c api -- \
+  curl -sv http://localhost:9090/health
 
 # Check service registrations
 kubectl exec -n consul consul-server-0 -- \
@@ -256,7 +281,7 @@ kubectl exec -n consul consul-server-0 -- \
 
 - Deploy 3 Consul server replicas with pod anti-affinity to distribute them across nodes, preventing a single node failure from losing Consul quorum.
 - Enable ACLs (`acls.manageSystemACLs: true`) from the start - adding ACLs to an existing Consul cluster with data in it is significantly more complex.
-- Use `connectInject.default: false` and enable injection per namespace with labels - this prevents accidental injection into system namespaces.
+- Use `connectInject.default: false`, restrict eligible namespaces with `connectInject.k8sAllowNamespaces`, and enable injection per workload with annotations - this prevents accidental injection into system namespaces.
 - Store the Consul gossip encryption key and root CA in Kubernetes Secrets managed by Flux's SOPS integration - never commit unencrypted secrets.
 - Use Consul's built-in health checks alongside Kubernetes readiness probes for comprehensive service health visibility across both platforms.
 
