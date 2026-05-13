@@ -10,7 +10,7 @@ Description: Safely migrate Calico workloads from deprecated IP pools to new poo
 
 ## Introduction
 
-Calico IP Pool Migration is a key part of Calico's IP address management capabilities. Understanding and properly configuring this feature ensures reliable, scalable pod networking in your Kubernetes cluster.
+Calico IP pool migration is a key part of Calico's IP address management capabilities. To migrate safely, create the new pool first, disable the old pool so it stops receiving new allocations, then restart pods so their replacement pods receive addresses from the new pool.
 
 ## Prerequisites
 
@@ -23,6 +23,8 @@ Calico IP Pool Migration is a key part of Calico's IP address management capabil
 ```bash
 calicoctl get ippools -o yaml
 calicoctl ipam show --show-blocks
+calicoctl apply -f new-pool.yaml
+calicoctl patch ippool old-pool -p '{"spec":{"disabled":true}}'
 ```
 
 ## Example
@@ -31,17 +33,25 @@ calicoctl ipam show --show-blocks
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: example-pool
+  name: new-pool
 spec:
   cidr: 10.48.0.0/16
   blockSize: 26
   natOutgoing: true
+  disabled: false
+```
+
+After disabling the old pool, restart workloads gradually so new pods receive addresses from the new pool:
+
+```bash
+kubectl rollout restart deployment -n <namespace> <deployment-name>
 ```
 
 ## Verification
 
 ```bash
 calicoctl ipam check -o ipam-report.json
+calicoctl ipam show --show-blocks
 kubectl get pods -A -o wide
 ```
 
@@ -55,4 +65,4 @@ graph LR
 
 ## Conclusion
 
-How to Migrate to Migrating Calico IP Pools Safely in Calico provides important IP address management capabilities. Use the configuration and verification steps above to ensure correct behavior in your environment.
+Migrating Calico IP pools safely depends on ordering: add the new pool, disable the old pool, restart workloads, verify new pod IPs, and only then delete the old pool. Use the configuration and verification steps above to ensure correct behavior in your environment.
