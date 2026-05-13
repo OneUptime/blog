@@ -8,7 +8,7 @@ Description: Secure internal communication between Flux controllers using Kubern
 
 ---
 
-Flux is built as a set of specialized controllers that work together. The source-controller fetches and serves artifacts. The kustomize-controller and helm-controller consume those artifacts and apply them to the cluster. The notification-controller handles alerts and webhook receivers. These controllers communicate over HTTP within the flux-system namespace. By default, any pod in the cluster can reach these internal endpoints. Applying fine-grained NetworkPolicies between Flux controllers enforces a zero-trust posture where each controller can only talk to the specific controllers it needs.
+Flux is built as a set of specialized controllers that work together. The source-controller fetches and serves artifacts. The kustomize-controller and helm-controller consume those artifacts and apply them to the cluster. The notification-controller handles alerts and webhook receivers. These controllers communicate over HTTP within the flux-system namespace. Kubernetes allows pod-to-pod traffic by default, although Flux installations created with the default `--network-policy=true` option already include baseline NetworkPolicies. Applying fine-grained NetworkPolicies between Flux controllers enforces a zero-trust posture where each controller can only talk to the specific controllers it needs.
 
 ## Prerequisites
 
@@ -39,20 +39,19 @@ Before writing policies, understand how the controllers interact:
 
 | Source | Destination | Port | Purpose |
 |---|---|---|---|
-| kustomize-controller | source-controller | 9090 | Download artifacts (tarballs) |
-| helm-controller | source-controller | 9090 | Download Helm charts |
-| notification-controller | source-controller | 9090 | Read artifact metadata for events |
-| kustomize-controller | notification-controller | 9090 | Send events for alerting |
-| helm-controller | notification-controller | 9090 | Send events for alerting |
-| source-controller | notification-controller | 9090 | Send events for alerting |
+| kustomize-controller | source-controller | 80 (Service) / 9090 (`http` container port) | Download artifacts (tarballs) |
+| helm-controller | source-controller | 80 (Service) / 9090 (`http` container port) | Download Helm charts |
+| kustomize-controller | notification-controller | 80 (Service) / 9090 (`http` container port) | Send events for alerting |
+| helm-controller | notification-controller | 80 (Service) / 9090 (`http` container port) | Send events for alerting |
+| source-controller | notification-controller | 80 (Service) / 9090 (`http` container port) | Send events for alerting |
 | All controllers | Kubernetes API server | 443/6443 | Reconciliation and status updates |
 | Prometheus | All controllers | 8080 | Metrics scraping |
 
-Each controller also exposes a health check endpoint on port 8080 and serves metrics on the same port.
+Each controller serves metrics on port 8080. The helm-controller, kustomize-controller, notification-controller, and source-controller expose health probes on port 9440; the source-controller readiness probe also checks its artifact HTTP endpoint.
 
 ## Step 1: Apply a Default Deny Policy
 
-Deny all ingress and egress within flux-system to start from a clean baseline:
+Deny all ingress to and egress from pods in `flux-system` to start from a clean baseline:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -105,7 +104,7 @@ kubectl apply -f allow-dns.yaml
 ## Step 3: Allow Kubernetes API Server Access
 
 ```bash
-KUBE_API_IP=$(kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}')
+KUBE_API_IP=$(kubectl get service kubernetes -n default -o jsonpath='{.spec.clusterIP}')
 
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
@@ -127,6 +126,31 @@ spec:
         - protocol: TCP
           port: 6443
 EOF
+```
+
+If you deny all egress, you must also allow Flux to reach its external dependencies. The exact destinations depend on your Git, Helm, OCI, cloud storage, and alert-provider endpoints. This broad example keeps Flux functional while you replace it with more specific CIDR and port rules for your environment:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 22
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
 ```
 
 ## Step 4: Allow Kustomize Controller to Source Controller
@@ -152,7 +176,7 @@ spec:
               app: source-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
 ```
 
 Create the corresponding ingress rule on the source-controller:
@@ -176,7 +200,7 @@ spec:
               app: kustomize-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
 ```
 
 ```bash
@@ -206,7 +230,7 @@ spec:
               app: source-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
 ```
 
 And the ingress counterpart:
@@ -230,7 +254,11 @@ spec:
               app: helm-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
+```
+
+```bash
+kubectl apply -f allow-helm-to-source.yaml
 ```
 
 ## Step 6: Allow Event Delivery to Notification Controller
@@ -261,7 +289,7 @@ spec:
               app: notification-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -286,7 +314,7 @@ spec:
                   - helm-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
 ```
 
 ```bash
@@ -381,10 +409,49 @@ spec:
                 values:
                   - kustomize-controller
                   - helm-controller
-                  - notification-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kustomize-to-source
+  namespace: flux-system
+spec:
+  podSelector:
+    matchLabels:
+      app: kustomize-controller
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: source-controller
+      ports:
+        - protocol: TCP
+          port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-helm-to-source
+  namespace: flux-system
+spec:
+  podSelector:
+    matchLabels:
+      app: helm-controller
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: source-controller
+      ports:
+        - protocol: TCP
+          port: http
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -409,9 +476,97 @@ spec:
                   - helm-controller
       ports:
         - protocol: TCP
-          port: 9090
+          port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-controllers-to-notification
+  namespace: flux-system
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - kustomize-controller
+          - helm-controller
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: notification-controller
+      ports:
+        - protocol: TCP
+          port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kube-api
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: ${KUBE_API_IP}/32
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 22
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
 EOF
 
+KUBE_API_IP=$(kubectl get service kubernetes -n default -o jsonpath='{.spec.clusterIP}')
+sed -i "s/\${KUBE_API_IP}/${KUBE_API_IP}/g" flux-inter-controller-policies.yaml
 kubectl apply -f flux-inter-controller-policies.yaml
 ```
 
@@ -477,16 +632,18 @@ kubectl get networkpolicy allow-notification-ingress -n flux-system -o yaml
 
 **Health checks fail after applying policies**
 
-If your liveness and readiness probes are failing, you may need to allow the kubelet to reach the health check port. The kubelet runs on the node, so its traffic comes from the node IP:
+Flux controller health probes use port 9440, and the source-controller readiness probe checks the artifact HTTP endpoint. Kubernetes NetworkPolicy does not block traffic from the node where the pod is running, so standard kubelet probes normally continue to work. If you use a CNI-specific host endpoint policy, allow node traffic to port 9440 and to the source-controller `http` port:
 
 ```yaml
 ingress:
   - ports:
       - protocol: TCP
-        port: 8080
+        port: 9440
+      - protocol: TCP
+        port: http
 ```
 
-Adding an ingress rule without a `from` clause allows all sources on that port, which covers kubelet health checks.
+Adding an ingress rule without a `from` clause allows all sources on those ports, so prefer a node-specific rule when your CNI supports one.
 
 **Helm releases fail but kustomizations work**
 
