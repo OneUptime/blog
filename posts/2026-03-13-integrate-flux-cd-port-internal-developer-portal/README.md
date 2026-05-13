@@ -46,17 +46,19 @@ spec:
         name: port
         namespace: flux-system
   values:
+    overwriteConfigurationOnRestart: true
+    stateKey: flux-k8s-exporter
     secret:
       secrets:
         portClientId: ${PORT_CLIENT_ID}
         portClientSecret: ${PORT_CLIENT_SECRET}
     configMap:
-      config:
+      config: |
         resources:
           # Sync Flux Kustomizations
           - kind: kustomize.toolkit.fluxcd.io/v1/kustomizations
             selector:
-              query: .metadata.namespace != "flux-system" or true
+              query: .metadata.namespace != "flux-system"
             port:
               entity:
                 mappings:
@@ -64,6 +66,7 @@ spec:
                     title: .metadata.name
                     blueprint: '"fluxKustomization"'
                     properties:
+                      name: .metadata.name
                       namespace: .metadata.namespace
                       sourceRef: .spec.sourceRef.name
                       path: .spec.path
@@ -86,7 +89,7 @@ spec:
                       chart: .spec.chart.spec.chart
                       chartVersion: .spec.chart.spec.version
                       ready: .status.conditions[] | select(.type == "Ready") | .status == "True"
-                      lastAppliedRevision: .status.lastAppliedRevision
+                      lastAttemptedRevision: .status.lastAttemptedRevision
 ```
 
 ## Step 2: Create Port Blueprints for Flux Objects
@@ -94,13 +97,16 @@ spec:
 In the Port UI, create blueprints (schema definitions) for Flux resources.
 
 ```json
-// Port Blueprint: fluxKustomization
 {
   "identifier": "fluxKustomization",
   "title": "Flux Kustomization",
-  "icon": "GitOps",
+  "icon": "Fluxcd",
   "schema": {
     "properties": {
+      "name": {
+        "type": "string",
+        "title": "Name"
+      },
       "namespace": {
         "type": "string",
         "title": "Namespace"
@@ -155,7 +161,6 @@ metadata:
   namespace: team-alpha
   labels:
     port.io/entity-identifier: my-service   # Links to Port service entity
-    port.io/blueprint: service
 spec:
   interval: 5m
   path: ./deploy
@@ -169,8 +174,7 @@ Update the exporter config to use this label for relations:
 
 ```yaml
 relations:
-  service:
-    value: .metadata.labels["port.io/entity-identifier"]
+  service: .metadata.labels["port.io/entity-identifier"]
 ```
 
 ## Step 4: Create Self-Service Actions
@@ -178,7 +182,6 @@ relations:
 Port actions let developers trigger Flux operations without kubectl access.
 
 ```json
-// Port Action: Force Reconciliation
 {
   "identifier": "flux_reconcile",
   "title": "Force Reconcile",
@@ -199,10 +202,10 @@ Port actions let developers trigger Flux operations without kubectl access.
     "synchronized": false,
     "method": "POST",
     "headers": {
-      "Authorization": "Bearer {{ secrets.PLATFORM_API_TOKEN }}"
+      "Authorization": "Bearer {{ .secrets.PLATFORM_API_TOKEN }}"
     },
     "body": {
-      "name": "{{ .entity.identifier }}",
+      "name": "{{ .entity.properties.name }}",
       "namespace": "{{ .entity.properties.namespace }}",
       "triggeredBy": "{{ .trigger.by.user.email }}"
     }
@@ -211,7 +214,6 @@ Port actions let developers trigger Flux operations without kubectl access.
 ```
 
 ```json
-// Port Action: Suspend Reconciliation
 {
   "identifier": "flux_suspend",
   "title": "Suspend Reconciliation",
@@ -235,7 +237,7 @@ Port actions let developers trigger Flux operations without kubectl access.
     "url": "https://platform-api.acme.example.com/api/v1/flux/suspend",
     "method": "POST",
     "body": {
-      "name": "{{ .entity.identifier }}",
+      "name": "{{ .entity.properties.name }}",
       "namespace": "{{ .entity.properties.namespace }}",
       "reason": "{{ .inputs.reason }}"
     }
@@ -245,10 +247,9 @@ Port actions let developers trigger Flux operations without kubectl access.
 
 ## Step 5: Build a Flux Deployment Scorecard
 
-Port scorecards let you define quality gates and track adoption of platform standards.
+Port scorecards let you define quality gates and track adoption of platform standards. Create this scorecard for the `fluxKustomization` blueprint.
 
 ```json
-// Port Scorecard: Flux Deployment Health
 {
   "identifier": "fluxDeploymentHealth",
   "title": "GitOps Deployment Health",
@@ -258,20 +259,6 @@ Port scorecards let you define quality gates and track adoption of platform stan
     { "color": "green", "title": "Gold" }
   ],
   "rules": [
-    {
-      "identifier": "kustomizationExists",
-      "title": "Has Flux Kustomization",
-      "level": "Basic",
-      "query": {
-        "combinator": "and",
-        "conditions": [
-          {
-            "operator": "relatedTo",
-            "blueprint": "fluxKustomization"
-          }
-        ]
-      }
-    },
     {
       "identifier": "kustomizationReady",
       "title": "Kustomization is Ready",
@@ -312,7 +299,7 @@ Port scorecards let you define quality gates and track adoption of platform stan
 - Restrict self-service actions (like suspend) to service owners using Port's ownership-based permissions
 - Surface Flux audit events in Port's activity log by posting to Port's audit API from Flux notifications
 - Build scorecards that incentivize teams to keep their Kustomizations healthy and up-to-date
-- Use Port's `ttl` feature to automatically expire entities for deleted Flux resources
+- Set a stable Kubernetes exporter `stateKey` so deleted Flux resources are removed from Port reliably
 - Combine the Kubernetes exporter with Port's GitHub integration to link commits to deployments
 
 ## Conclusion
