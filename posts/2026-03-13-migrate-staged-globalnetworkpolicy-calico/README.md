@@ -10,18 +10,18 @@ Description: Migrate existing network policies to Staged GlobalNetworkPolicy in 
 
 ## Introduction
 
-Staged GlobalNetworkPolicy is an advanced Calico feature that provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to migrate Staged GlobalNetworkPolicy effectively in your Kubernetes cluster.
+Staged GlobalNetworkPolicy is an advanced Calico feature that lets you preview global network security controls using the `projectcalico.org/v3` API before enforcing them. This guide covers how to migrate to Staged GlobalNetworkPolicy effectively in your Kubernetes cluster.
 
-Calico's `projectcalico.org/v3` API provides rich support for Staged GlobalNetworkPolicy through its `GlobalNetworkPolicy`, `NetworkPolicy`, and related resources. Proper configuration of Staged GlobalNetworkPolicy is essential for maintaining a secure, well-controlled network fabric.
+Calico's `projectcalico.org/v3` API provides rich support for Staged GlobalNetworkPolicy through its `StagedGlobalNetworkPolicy`, `GlobalNetworkPolicy`, and related resources. Proper configuration of Staged GlobalNetworkPolicy is essential for maintaining a secure, well-controlled network fabric.
 
 This guide provides production-tested patterns for migrate Staged GlobalNetworkPolicy, including YAML examples, CLI commands, and troubleshooting techniques.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
-- `calicoctl` and `kubectl` installed  
+- Kubernetes cluster with the `StagedGlobalNetworkPolicy` CRD installed
+- `kubectl` installed
 - Basic understanding of Calico network policy concepts
-- Calico v3.26+ for full Staged GlobalNetworkPolicy feature support
+- Calico Whisker and Goldmane enabled if you want to preview staged policy impact in flow logs
 
 ## Core Configuration
 
@@ -29,13 +29,12 @@ The following YAML demonstrates the key pattern for Staged GlobalNetworkPolicy:
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: NetworkPolicy
+kind: StagedGlobalNetworkPolicy
 metadata:
   name: migrate-staged-globalnetworkpolicy
-  namespace: production
 spec:
   order: 100
-  selector: all()
+  selector: projectcalico.org/namespace == 'production'
   ingress:
     - action: Allow
       source:
@@ -58,33 +57,34 @@ spec:
 ## Implementation Steps
 
 ```bash
-# 1. Apply the policy
+# 1. Validate and apply the staged policy
 
-calicoctl apply -f migrate-staged-globalnetworkpolicy.yaml
+kubectl apply --dry-run=server -f migrate-staged-globalnetworkpolicy.yaml
+kubectl apply -f migrate-staged-globalnetworkpolicy.yaml
 
-# 2. Verify it's active
-calicoctl get networkpolicies -n production -o wide
+# 2. Verify it's staged
+kubectl get stagedglobalnetworkpolicies.projectcalico.org -o wide
 
-# 3. Test connectivity
+# 3. Test connectivity; staged policies preview behavior and do not block traffic
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
 echo "Exit code: $?"
 
-# 4. Check policy hit counters (if Felix metrics enabled)
-curl -s http://localhost:9091/metrics | grep felix_denied
+# 4. Preview policy impact with Calico Whisker flow logs
+kubectl port-forward -n calico-system service/whisker 8081:8081
 ```
 
 ## Operational Commands
 
 ```bash
 # List all relevant policies
-calicoctl get networkpolicies --all-namespaces
-calicoctl get globalnetworkpolicies
+kubectl get stagedglobalnetworkpolicies.projectcalico.org
+kubectl get globalnetworkpolicies.projectcalico.org
 
 # View policy details
-calicoctl get networkpolicy migrate-policy -n production -o yaml
+kubectl get stagedglobalnetworkpolicy.projectcalico.org migrate-staged-globalnetworkpolicy -o yaml
 
 # Delete a policy if needed
-calicoctl delete networkpolicy migrate-policy -n production
+kubectl delete stagedglobalnetworkpolicy.projectcalico.org migrate-staged-globalnetworkpolicy
 ```
 
 ## Architecture
@@ -92,20 +92,20 @@ calicoctl delete networkpolicy migrate-policy -n production
 ```mermaid
 flowchart TD
     A[Workload Pods] -->|Traffic| B{Staged GlobalNetworkPolicy Policy}
-    B -->|Allow Rule| C[Target Service]
-    B -->|Default Deny| D[Blocked]
-    E[calicoctl] -->|Manages| B
-    F[Felix] -->|Enforces| B
-    G[Prometheus :9091] -->|Metrics from| F
+    B -->|Would Allow| C[Target Service]
+    B -->|Would Deny| D[Previewed Block]
+    E[kubectl] -->|Manages CRD| B
+    F[Felix] -->|Evaluates| B
+    G[Calico Whisker] -->|Flow logs from| F
 ```
 
 ## Common Issues
 
-1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
+1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `kubectl apply --dry-run=server` first
 2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
-3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
+3. **Order conflicts**: Run `kubectl get stagedglobalnetworkpolicies.projectcalico.org -o yaml` and compare the order field
 4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress
 
 ## Conclusion
 
-Migrate Staged GlobalNetworkPolicy in Calico requires careful attention to policy ordering, selector syntax, and bidirectional traffic rules. Use the patterns in this guide as a starting point, adapt them to your specific requirements, and always validate changes in a staging environment before applying to production. Consistent logging and monitoring will help you detect and resolve issues quickly when they occur.
+Migrating to Staged GlobalNetworkPolicy in Calico requires careful attention to policy ordering, selector syntax, and bidirectional traffic rules. Use the patterns in this guide as a starting point, adapt them to your specific requirements, and always validate changes in a staging environment before applying an equivalent enforcing policy to production. Consistent logging and monitoring will help you detect and resolve issues quickly when they occur.
