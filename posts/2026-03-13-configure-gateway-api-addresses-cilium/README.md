@@ -12,12 +12,12 @@ Description: Configure static IP address assignment and address pool management 
 
 Cilium's Gateway API addresses support allows operators to specify exactly which IP addresses are assigned to Gateway resources. This is useful for controlling ingress entry points, pre-registering DNS, and ensuring consistent IP addresses across deployments and upgrades.
 
-Addresses can be assigned statically (requesting a specific IP) or dynamically from a CiliumLoadBalancerIPPool. The Gateway controller creates a LoadBalancer Service for each Gateway and passes the address configuration to the cloud provider or MetalLB.
+Addresses can be assigned statically by requesting a specific IP, or dynamically by letting Cilium LB IPAM allocate an IP from a CiliumLoadBalancerIPPool. By default, the Gateway API controller creates a LoadBalancer Service for each Gateway, and Cilium LB IPAM assigns the Service address when a matching pool exists.
 
 ## Prerequisites
 
 - Cilium with Gateway API enabled
-- A load balancer IP source (cloud provider, MetalLB, or CiliumLoadBalancerIPPool)
+- Cilium LB IPAM with a CiliumLoadBalancerIPPool for address allocation
 
 ## Configure a Static IP Address
 
@@ -45,23 +45,20 @@ spec:
 Create a pool for dynamic allocation:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: gateway-pool
 spec:
-  cidrs:
+  blocks:
     - cidr: "203.0.113.0/28"
-  serviceSelector:
-    matchLabels:
-      cilium.io/gateway: "true"
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A[Gateway spec.addresses] --> B[Cilium Operator]
+    A[Gateway spec.addresses or generated Service] --> B[Cilium Operator]
     B --> C{Address type}
     C -->|Static IP| D[Request specific IP from pool]
     C -->|Dynamic| E[Allocate from CIDR range]
@@ -100,4 +97,4 @@ kubectl get ciliumloadbalancerippool gateway-pool \
 
 ## Conclusion
 
-Configuring Cilium Gateway API addresses support gives operators explicit control over ingress IP addresses. Static IPs enable predictable DNS and firewall rule management, while IP pools provide flexible dynamic allocation. Both approaches are managed through the Gateway spec and reflected in the status.
+Configuring Cilium Gateway API addresses support gives operators explicit control over ingress IP addresses. Static IPs enable predictable DNS and firewall rule management, while IP pools provide flexible dynamic allocation. Static address requests are managed through the Gateway spec, and assigned addresses are reflected in the Gateway status.
