@@ -12,19 +12,19 @@ Description: Learn how to configure FluxInstance sync settings with a Bucket sou
 
 Flux supports object storage buckets as a source type, allowing you to pull cluster manifests from Amazon S3, Google Cloud Storage, Azure Blob Storage, or any S3-compatible service like MinIO. This is useful when your deployment artifacts are produced by CI/CD systems that upload to object storage, or when you prefer object storage over Git for artifact distribution.
 
-The Flux Operator lets you configure Bucket-based sync directly in the FluxInstance spec. This guide covers how to set up FluxInstance sync settings for a Bucket source across different cloud providers and S3-compatible storage.
+The Flux Operator lets you configure Bucket-based sync directly in the FluxInstance spec. This guide covers how to set up FluxInstance sync settings for a Bucket source with S3-compatible storage, Amazon S3, and Google Cloud Storage.
 
 ## Prerequisites
 
 - A Kubernetes cluster (v1.28 or later)
 - kubectl configured to access your cluster
 - The Flux Operator installed in your cluster
-- An S3-compatible bucket, GCS bucket, or Azure Blob container with your manifests
+- An S3-compatible bucket, Amazon S3 bucket, or GCS bucket with your manifests
 - Appropriate cloud credentials
 
 ## Basic Bucket Sync Configuration
 
-Here is a minimal FluxInstance configuration that syncs from an S3 bucket:
+Here is a minimal FluxInstance configuration that syncs from an S3-compatible bucket:
 
 ```yaml
 apiVersion: fluxcd.controlplane.io/v1
@@ -43,8 +43,8 @@ spec:
     - notification-controller
   sync:
     kind: Bucket
-    url: s3://my-fleet-bucket
-    ref: us-east-1
+    url: minio.storage.svc.cluster.local:9000
+    ref: my-fleet-bucket
     path: clusters/production
     interval: 5m
     pullSecret: bucket-credentials
@@ -53,10 +53,11 @@ spec:
 For Bucket sync, the fields have specific meanings:
 
 - `kind`: Set to `Bucket`
-- `url`: The bucket URL with scheme (`s3://` for S3-compatible or `gcs://` for GCS)
-- `ref`: The bucket region or endpoint, depending on the provider
+- `url`: The object storage endpoint, which the operator maps to the generated Bucket source `spec.endpoint`
+- `ref`: The bucket name, which the operator maps to the generated Bucket source `spec.bucketName`
 - `path`: The directory within the bucket to sync
 - `pullSecret`: The Secret containing access credentials
+- `provider`: The optional Bucket provider, such as `aws`, `gcp`, or `generic`
 
 ## Understanding the Bucket Sync Flow
 
@@ -101,11 +102,21 @@ spec:
     - notification-controller
   sync:
     kind: Bucket
-    url: s3://fleet-manifests-prod
-    ref: us-west-2
+    provider: aws
+    url: s3.amazonaws.com
+    ref: fleet-manifests-prod
     path: clusters/production
     interval: 5m
     pullSecret: bucket-credentials
+  kustomize:
+    patches:
+      - target:
+          kind: Bucket
+          name: flux-system
+        patch: |
+          - op: add
+            path: /spec/region
+            value: us-west-2
 ```
 
 For IRSA-based authentication on EKS, you can skip the Secret and instead annotate the Flux service account. Use a Kustomize patch to add the annotation:
@@ -127,12 +138,20 @@ spec:
     - notification-controller
   sync:
     kind: Bucket
-    url: s3://fleet-manifests-prod
-    ref: us-west-2
+    provider: aws
+    url: s3.amazonaws.com
+    ref: fleet-manifests-prod
     path: clusters/production
     interval: 5m
   kustomize:
     patches:
+      - target:
+          kind: Bucket
+          name: flux-system
+        patch: |
+          - op: add
+            path: /spec/region
+            value: us-west-2
       - target:
           kind: ServiceAccount
           name: source-controller
@@ -172,10 +191,21 @@ spec:
     - notification-controller
   sync:
     kind: Bucket
-    url: gcs://fleet-manifests-prod
+    provider: gcp
+    url: storage.googleapis.com
+    ref: fleet-manifests-prod
     path: clusters/production
     interval: 5m
     pullSecret: bucket-credentials
+  kustomize:
+    patches:
+      - target:
+          kind: Bucket
+          name: flux-system
+        patch: |
+          - op: add
+            path: /spec/region
+            value: us
 ```
 
 ## Configuring MinIO or S3-Compatible Storage
@@ -208,8 +238,8 @@ spec:
     - notification-controller
   sync:
     kind: Bucket
-    url: s3://fleet-manifests
-    ref: minio.storage.svc.cluster.local
+    url: minio.storage.svc.cluster.local:9000
+    ref: fleet-manifests
     path: clusters/production
     interval: 5m
     pullSecret: bucket-credentials
@@ -256,4 +286,4 @@ Since buckets do not support webhooks for push-based notifications, Flux relies 
 
 ## Conclusion
 
-Bucket-based sync with FluxInstance provides a straightforward way to deliver cluster manifests through object storage. Whether you use AWS S3, GCS, Azure Blob Storage, or a self-hosted MinIO instance, the configuration follows the same pattern: create a credentials Secret, configure the bucket URL and path in the FluxInstance sync settings, and let the Flux Operator handle the rest. This approach is particularly effective when your CI/CD pipeline already produces artifacts in object storage.
+Bucket-based sync with FluxInstance provides a straightforward way to deliver cluster manifests through object storage. Whether you use AWS S3, GCS, or a self-hosted MinIO instance, the configuration follows the same pattern: create a credentials Secret, configure the bucket endpoint, bucket name, and path in the FluxInstance sync settings, and let the Flux Operator handle the rest. This approach is particularly effective when your CI/CD pipeline already produces artifacts in object storage.
