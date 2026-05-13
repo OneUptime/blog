@@ -30,6 +30,8 @@ kubectl get pods -A -o wide | head -10
 
 ## Configuration
 
+Set `blockSize` when creating an IP pool. For an existing IP pool, the field cannot be edited directly; create a replacement pool with the desired block size and migrate workloads to it.
+
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
@@ -48,7 +50,7 @@ spec:
 ```bash
 # Validate changes
 calicoctl ipam check
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u
+kubectl get pods -A -o wide | awk 'NR > 1 {print $7}' | sort -u
 ```
 
 ## Architecture
