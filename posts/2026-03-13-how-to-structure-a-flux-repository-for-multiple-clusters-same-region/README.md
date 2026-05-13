@@ -141,19 +141,20 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     replicaCount: 1
 ```
 
 ## Cluster-Specific Overlays
 
-The production overlay increases replicas and resource limits:
+The production overlay increases replicas and enables a disruption budget:
 
 ```yaml
 # infrastructure/production/kustomization.yaml
@@ -285,13 +286,19 @@ spec:
 For secrets that differ between clusters, use SOPS encryption with per-cluster keys:
 
 ```yaml
-# clusters/production/sops-config.yaml
+# clusters/production/apps.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: apps
   namespace: flux-system
 spec:
+  interval: 10m
+  path: ./apps/production
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
   decryption:
     provider: sops
     secretRef:
