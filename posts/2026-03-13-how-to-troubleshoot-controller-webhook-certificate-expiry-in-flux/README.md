@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Webhook, TLS Certificates, Certificate Expiry, Security
 
-Description: Learn how to diagnose and fix webhook certificate expiry issues in Flux controllers that cause admission webhook failures and blocked resource creation.
+Description: Learn how to diagnose and fix certificate expiry issues in custom admission webhooks that validate Flux resources and can block resource creation.
 
 ---
 
-Flux controllers use admission webhooks for validating and mutating custom resources. These webhooks rely on TLS certificates to secure communication between the Kubernetes API server and the webhook endpoint. When these certificates expire, the API server can no longer communicate with the webhook, blocking all create, update, and delete operations on Flux resources. This guide explains how to diagnose and fix webhook certificate expiry issues.
+Flux itself does not install admission webhooks for its controllers by default. Some clusters add their own validating or mutating admission webhooks around Flux custom resources, for example through platform policy tooling or an operator-managed extension. These webhooks rely on TLS certificates to secure communication between the Kubernetes API server and the webhook endpoint. When these certificates expire, the API server can no longer communicate with the webhook, blocking create, update, and delete operations covered by that webhook. This guide explains how to diagnose and fix certificate expiry issues for admission webhooks that affect Flux resources.
 
 ## Prerequisites
 
@@ -17,7 +17,8 @@ Before you begin, ensure you have the following:
 - A Kubernetes cluster with Flux installed
 - kubectl configured to access your cluster
 - openssl CLI tool (for certificate inspection)
-- Permissions to view and modify webhook configurations, secrets, and pods in the flux-system namespace
+- cmctl CLI tool if cert-manager manages the certificate
+- Permissions to view and modify webhook configurations, secrets, and the namespace where the webhook service runs
 
 ## Step 1: Identify Webhook Certificate Issues
 
@@ -37,8 +38,7 @@ The error message will typically contain:
 Check all validating and mutating webhook configurations:
 
 ```bash
-kubectl get validatingwebhookconfigurations | grep flux
-kubectl get mutatingwebhookconfigurations | grep flux
+kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations | grep -i 'flux\|toolkit'
 ```
 
 ## Step 2: Inspect Certificate Expiry
@@ -46,7 +46,9 @@ kubectl get mutatingwebhookconfigurations | grep flux
 Extract and inspect the webhook certificate:
 
 ```bash
-kubectl get secret -n flux-system webhook-server-cert -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
+WEBHOOK_SECRET_NAMESPACE=flux-system
+WEBHOOK_SECRET_NAME=webhook-server-cert
+kubectl get secret -n "$WEBHOOK_SECRET_NAMESPACE" "$WEBHOOK_SECRET_NAME" -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
 ```
 
 This shows the `notBefore` and `notAfter` dates. If `notAfter` is in the past, the certificate has expired.
@@ -54,32 +56,34 @@ This shows the `notBefore` and `notAfter` dates. If `notAfter` is in the past, t
 Check the full certificate details:
 
 ```bash
-kubectl get secret -n flux-system webhook-server-cert -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -text
+kubectl get secret -n "$WEBHOOK_SECRET_NAMESPACE" "$WEBHOOK_SECRET_NAME" -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -text
 ```
 
 Verify the certificate matches what the webhook configuration expects:
 
 ```bash
-kubectl get validatingwebhookconfiguration flux-system -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d | openssl x509 -noout -dates
+WEBHOOK_CONFIGURATION=example-flux-validating-webhook
+kubectl get validatingwebhookconfiguration "$WEBHOOK_CONFIGURATION" -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d | openssl x509 -noout -dates
 ```
 
 ## Step 3: Identify the Certificate Manager
 
-Flux webhook certificates can be managed by different mechanisms depending on your installation:
+Admission webhook certificates can be managed by different mechanisms depending on your installation:
 
 ### cert-manager
 
 If you are using cert-manager, check the Certificate resource:
 
 ```bash
-kubectl get certificates -n flux-system
-kubectl describe certificate -n flux-system webhook-server-cert
+CERTIFICATE_NAME=webhook-server-cert
+kubectl get certificates -n "$WEBHOOK_SECRET_NAMESPACE"
+kubectl describe certificate -n "$WEBHOOK_SECRET_NAMESPACE" "$CERTIFICATE_NAME"
 ```
 
 Check if the Certificate resource shows any issues:
 
 ```bash
-kubectl get certificates -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[0].type}{"\t"}{.status.conditions[0].status}{"\t"}{.status.conditions[0].message}{"\n"}{end}'
+kubectl get certificates -n "$WEBHOOK_SECRET_NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[0].type}{"\t"}{.status.conditions[0].status}{"\t"}{.status.conditions[0].message}{"\n"}{end}'
 ```
 
 If cert-manager is having trouble renewing, check its logs:
@@ -90,10 +94,10 @@ kubectl logs -n cert-manager deploy/cert-manager | grep -i "flux\|webhook\|error
 
 ### Self-Signed Certificates
 
-If Flux uses self-signed certificates generated during installation, they may have a fixed expiry period:
+If the webhook uses self-signed certificates generated during installation, they may have a fixed expiry period:
 
 ```bash
-kubectl get secret -n flux-system webhook-server-cert -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -issuer -subject
+kubectl get secret -n "$WEBHOOK_SECRET_NAMESPACE" "$WEBHOOK_SECRET_NAME" -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -issuer -subject
 ```
 
 If the issuer and subject are the same, it is self-signed.
@@ -105,13 +109,13 @@ If the issuer and subject are the same, it is self-signed.
 Trigger a certificate renewal:
 
 ```bash
-kubectl delete certificate -n flux-system webhook-server-cert
+cmctl renew -n "$WEBHOOK_SECRET_NAMESPACE" "$CERTIFICATE_NAME"
 ```
 
-cert-manager will automatically create a new certificate. Wait for it to become ready:
+cert-manager will create a new CertificateRequest. Wait for the certificate to become ready:
 
 ```bash
-kubectl get certificate -n flux-system webhook-server-cert -w
+kubectl get certificate -n "$WEBHOOK_SECRET_NAMESPACE" "$CERTIFICATE_NAME" -w
 ```
 
 If cert-manager itself is having issues, check its prerequisites:
@@ -126,52 +130,53 @@ kubectl get clusterissuers
 Generate a new self-signed certificate:
 
 ```bash
-# Generate a new CA and server certificate
+WEBHOOK_SERVICE_NAME=webhook-service
+WEBHOOK_SERVICE_NAMESPACE=flux-system
 
-openssl req -x509 -newkey rsa:4096 -keyout tls.key -out tls.crt -days 365 -nodes -subj "/CN=webhook-server" -addext "subjectAltName=DNS:source-controller.flux-system.svc,DNS:source-controller.flux-system.svc.cluster.local"
+openssl req -x509 -newkey rsa:4096 -keyout tls.key -out tls.crt -days 365 -nodes -subj "/CN=${WEBHOOK_SERVICE_NAME}.${WEBHOOK_SERVICE_NAMESPACE}.svc" -addext "subjectAltName=DNS:${WEBHOOK_SERVICE_NAME}.${WEBHOOK_SERVICE_NAMESPACE}.svc,DNS:${WEBHOOK_SERVICE_NAME}.${WEBHOOK_SERVICE_NAMESPACE}.svc.cluster.local"
 ```
 
 Update the webhook server secret:
 
 ```bash
-kubectl create secret tls webhook-server-cert -n flux-system --cert=tls.crt --key=tls.key --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret tls "$WEBHOOK_SECRET_NAME" -n "$WEBHOOK_SECRET_NAMESPACE" --cert=tls.crt --key=tls.key --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 Update the CA bundle in the webhook configuration:
 
 ```bash
 CA_BUNDLE=$(cat tls.crt | base64 | tr -d '\n')
-kubectl patch validatingwebhookconfiguration flux-system --type='json' -p="[{\"op\": \"replace\", \"path\": \"/webhooks/0/clientConfig/caBundle\", \"value\": \"$CA_BUNDLE\"}]"
+kubectl patch validatingwebhookconfiguration "$WEBHOOK_CONFIGURATION" --type='json' -p="[{\"op\": \"replace\", \"path\": \"/webhooks/0/clientConfig/caBundle\", \"value\": \"$CA_BUNDLE\"}]"
 ```
 
-### Reinstall Flux
+### Reinstall the Webhook
 
-The simplest approach to fix certificate issues is to reinstall Flux, which regenerates all certificates:
+If the webhook was installed by a Helm chart or operator, reinstalling or reconciling that webhook package may regenerate its certificates:
 
 ```bash
-flux install
+helm upgrade --install <release-name> <chart> -n <namespace>
 ```
 
-This will reinstall all Flux components with fresh certificates without affecting your existing Flux resources like GitRepository, Kustomization, or HelmRelease.
+Do not run `flux install` for this purpose unless the admission webhook is actually part of your own Flux installation manifests; the default Flux install does not create controller admission webhook certificates.
 
 ## Step 5: Restart Controllers
 
 After renewing certificates, restart the affected controllers to pick up the new certificates:
 
 ```bash
-kubectl rollout restart deployment -n flux-system -l app.kubernetes.io/part-of=flux
-kubectl rollout status deployment -n flux-system -l app.kubernetes.io/part-of=flux
+kubectl rollout restart deployment -n "$WEBHOOK_SERVICE_NAMESPACE" -l app.kubernetes.io/name=<webhook-app-label>
+kubectl rollout status deployment -n "$WEBHOOK_SERVICE_NAMESPACE" -l app.kubernetes.io/name=<webhook-app-label>
 ```
 
 ## Step 6: Verify the Fix
 
-Test that webhook validation works:
+Check that Flux itself is healthy:
 
 ```bash
 flux check
 ```
 
-Try creating or modifying a Flux resource:
+Try listing Flux resources:
 
 ```bash
 flux get sources all --all-namespaces
@@ -180,7 +185,7 @@ flux get sources all --all-namespaces
 Verify the new certificate expiry date:
 
 ```bash
-kubectl get secret -n flux-system webhook-server-cert -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
+kubectl get secret -n "$WEBHOOK_SECRET_NAMESPACE" "$WEBHOOK_SECRET_NAME" -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
 ```
 
 ## Temporary Workaround
@@ -189,13 +194,13 @@ If you need to unblock operations immediately while fixing certificates, you can
 
 ```bash
 # Set the failure policy to Ignore (allows resources through even if the webhook fails)
-kubectl patch validatingwebhookconfiguration flux-system --type='json' -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
+kubectl patch validatingwebhookconfiguration "$WEBHOOK_CONFIGURATION" --type='json' -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
 ```
 
 Revert this change after fixing the certificate:
 
 ```bash
-kubectl patch validatingwebhookconfiguration flux-system --type='json' -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Fail"}]'
+kubectl patch validatingwebhookconfiguration "$WEBHOOK_CONFIGURATION" --type='json' -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Fail"}]'
 ```
 
 ## Prevention Tips
@@ -211,4 +216,4 @@ kubectl patch validatingwebhookconfiguration flux-system --type='json' -p='[{"op
 
 ## Summary
 
-Webhook certificate expiry in Flux blocks all operations on Flux custom resources. The issue is diagnosed by inspecting the certificate dates in the webhook server secret. The fix depends on how certificates are managed: cert-manager handles automatic renewal, while manual setups require regenerating certificates and updating webhook configurations. Using cert-manager with automatic renewal and monitoring certificate expiry are the best prevention strategies.
+Certificate expiry in an admission webhook that targets Flux custom resources can block operations covered by that webhook. The issue is diagnosed by inspecting the certificate dates in the webhook server secret and the CA bundle in the webhook configuration. The fix depends on how certificates are managed: cert-manager handles automatic renewal, while manual setups require regenerating certificates and updating webhook configurations. Using cert-manager with automatic renewal and monitoring certificate expiry are the best prevention strategies.
