@@ -40,16 +40,16 @@ spec:
 # Create namespace for ExternalDNS
 kubectl create namespace external-dns
 
-# Create credentials secret (provider-specific)
+# Create credentials secret from a Google service account key file
 kubectl create secret generic gcp-credentials \
-  --from-literal=key=your-api-key-or-credentials \
+  --from-file=credentials.json=/local/path/to/credentials.json \
   --namespace=external-dns
 ```
 
 ## Step 3: Deploy ExternalDNS via Flux HelmRelease
 
 ```yaml
-# clusters/production/apps/external-dns.yaml
+# clusters/production/apps/external-dns/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -66,7 +66,8 @@ spec:
         name: external-dns
         namespace: flux-system
   values:
-    provider: google-cloud-dns
+    provider:
+      name: google
     # Domain filter: only manage records for these zones
     domainFilters:
       - your-domain.com
@@ -76,17 +77,24 @@ spec:
     sources:
       - service
       - ingress
-    # Annotation filter to only manage annotated resources
-    annotationFilter: "externaldns.alpha.kubernetes.io/external=true"
     # TXT record for ownership tracking
     txtOwnerId: "production-cluster"
     # Provider-specific configuration
+    extraArgs:
+      - --google-project=your-cloud-dns-project-id
+      # Annotation filter to only manage annotated resources
+      - --annotation-filter=externaldns.alpha.kubernetes.io/external=true
     env:
-      - name: PROVIDER_KEY
-        valueFrom:
-          secretKeyRef:
-            name: gcp-credentials
-            key: key
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/google/credentials.json
+    extraVolumes:
+      - name: google-credentials
+        secret:
+          secretName: gcp-credentials
+    extraVolumeMounts:
+      - name: google-credentials
+        mountPath: /etc/secrets/google
+        readOnly: true
     # RBAC
     serviceAccount:
       create: true
@@ -100,10 +108,8 @@ spec:
         cpu: 100m
         memory: 128Mi
     # Metrics
-    metrics:
+    serviceMonitor:
       enabled: true
-      serviceMonitor:
-        enabled: true
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -123,8 +129,8 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: external-dns
       namespace: external-dns
   timeout: 5m
@@ -199,7 +205,7 @@ dig _externaldns.myapp.your-domain.com TXT +short
 - Use `policy: upsert-only` initially during testing to prevent ExternalDNS from deleting existing records.
 - Always set `domainFilters` to limit ExternalDNS to managing only your cluster's domains.
 - Use `txtOwnerId` to uniquely identify each cluster; this prevents multi-cluster DNS record conflicts.
-- Use the `annotationFilter` to opt-in specific services rather than managing all LoadBalancer services automatically.
+- Use `--annotation-filter` to opt-in specific services rather than managing all LoadBalancer services automatically.
 - Store provider credentials in SOPS-encrypted secrets in your fleet repository.
 - Set up Prometheus alerts on ExternalDNS for failed DNS record operations.
 
