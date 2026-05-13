@@ -32,7 +32,7 @@ export default {
     adapter: adapter({
       pages: "build",
       assets: "build",
-      fallback: "index.html",  // SPA fallback for client-side routing
+      fallback: "200.html",  // SPA fallback for client-side routing
     }),
   },
 };
@@ -89,7 +89,7 @@ server {
 
     # SPA fallback for SvelteKit client-side routing
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ /200.html;
     }
 }
 ```
@@ -103,14 +103,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build   # Output in ./build (contains server.js)
+RUN npm run build   # Output in ./build (contains index.js and handler.js)
 
 FROM node:20-alpine AS runner
 WORKDIR /app
 RUN addgroup -S svelte && adduser -S svelte -G svelte
 COPY --from=builder --chown=svelte:svelte /app/build ./build
 COPY --from=builder --chown=svelte:svelte /app/package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 USER svelte
 EXPOSE 3000
 ENV HOST=0.0.0.0 PORT=3000 NODE_ENV=production
@@ -143,7 +143,7 @@ data:
   PUBLIC_API_BASE_URL: "https://api.example.com"
   BODY_SIZE_LIMIT: "1048576"
 ---
-# deploy/deployment.yaml
+# deploy/deployment.yaml - SSR example. For static Nginx, use port 80 here and in the Service targetPort/probes.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -307,7 +307,7 @@ spec:
       author:
         email: fluxbot@your-org.com
         name: Flux Bot
-      messageTemplate: "chore: update svelte app to {{range .Updated.Images}}{{.}}{{end}}"
+      messageTemplate: "chore: update svelte app{{range .Changed.Changes}} {{.OldValue}} -> {{.NewValue}}{{end}}"
     push:
       branch: main
   update:
@@ -327,7 +327,7 @@ kubectl port-forward -n my-svelte-app svc/my-svelte-app 8080:80
 
 ## Best Practices
 
-- For public-facing `PUBLIC_*` environment variables in SvelteKit SSR, pass them as environment variables to the Node.js process rather than baking them into the build - the Node adapter reads them at runtime.
+- For public-facing `PUBLIC_*` environment variables in SvelteKit SSR, use `$env/dynamic/public` and pass them as environment variables to the Node.js process rather than baking them into the build.
 - Use the `adapter-static` for pure content sites (documentation, marketing pages) and `adapter-node` for applications that need server-side logic, API routes, or per-request personalization.
 - Implement a `/api/health` server route in SvelteKit SSR for a meaningful liveness probe that checks database or backend API connectivity.
 - Use `npm ci` with a lockfile and pin the Node.js version in the Dockerfile to ensure reproducible builds.
