@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, k3s
 
-Description: A step-by-step guide to replacing K3s's default Flannel CNI with Calico for advanced network policy support.
+Description: A step-by-step guide to replacing K3s's default Flannel CNI with Calico for Calico network policy support.
 
 ---
 
 ## Introduction
 
-K3s is a lightweight Kubernetes distribution designed for resource-constrained environments, IoT, and edge computing. By default, K3s uses Flannel as its CNI plugin, which does not support Kubernetes NetworkPolicy enforcement. Installing Calico on K3s replaces Flannel with a fully featured CNI that supports network policies, Calico GlobalNetworkPolicy, and advanced IP management.
+K3s is a lightweight Kubernetes distribution designed for resource-constrained environments, IoT, and edge computing. By default, K3s uses Flannel as its CNI plugin and includes an embedded kube-router-based network policy controller. Installing Calico on K3s replaces Flannel with a fully featured CNI that supports Kubernetes NetworkPolicy, Calico GlobalNetworkPolicy, and advanced IP management.
 
 Replacing the default CNI in K3s requires starting K3s with Flannel disabled. You cannot switch CNIs on a running K3s cluster without destroying and recreating it. The `--flannel-backend=none` flag tells K3s to skip Flannel installation, leaving CNI configuration to your chosen plugin.
 
-This guide walks through creating a K3s cluster without Flannel and then installing Calico as the CNI. The process covers single-node and multi-node setups.
+This guide walks through creating a K3s cluster without Flannel and then installing Calico as the CNI. The process works for single-node and multi-node setups.
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ export KUBECONFIG=~/.kube/config
 Apply the Calico manifest:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 ```
 
 ## Step 4: Wait for Calico to Be Ready
@@ -91,10 +91,10 @@ kubectl exec test -- ping -c 4 8.8.8.8
 ## Step 8: Install calicoctl
 
 ```bash
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+sudo curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 \
   -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
-calicoctl node status
+sudo chmod +x /usr/local/bin/calicoctl
+sudo calicoctl node status
 ```
 
 ## Conclusion
