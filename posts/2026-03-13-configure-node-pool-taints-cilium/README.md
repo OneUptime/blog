@@ -12,7 +12,7 @@ Description: Learn how to configure Kubernetes node pool taints alongside Cilium
 
 Node pool taints are a Kubernetes mechanism for restricting which pods can be scheduled on certain nodes. They are commonly used to reserve node pools for specific workloads such as GPU jobs, high-memory applications, or nodes with specialized hardware. When you introduce taints, you must ensure that Cilium's DaemonSet pods can tolerate those taints, otherwise Cilium will not run on tainted nodes and pods scheduled there will have no networking.
 
-Cilium's DaemonSet automatically includes tolerations for common system taints, but custom taints introduced by your team or a managed Kubernetes provider may require explicit toleration configuration. This guide covers how to add custom taints to node pools and ensure Cilium is properly configured to tolerate them.
+Cilium's Helm chart defaults the agent DaemonSet to tolerate taints with `operator: Exists`, but custom values or managed Kubernetes distributions may override that default and require explicit toleration configuration. This guide covers how to add custom taints to node pools and ensure Cilium is properly configured to tolerate them.
 
 ## Prerequisites
 
@@ -47,17 +47,8 @@ Update Cilium's Helm values to add tolerations for your custom node pool taints.
 # cilium-values-tolerations.yaml - Cilium Helm values with custom tolerations
 # These tolerations ensure Cilium DaemonSet runs on ALL node pools including tainted ones
 tolerations:
-  # Default Cilium tolerations (keep these)
-  - key: node.kubernetes.io/not-ready
-    operator: Exists
-  - key: node.kubernetes.io/unreachable
-    operator: Exists
-  - key: node.kubernetes.io/disk-pressure
-    operator: Exists
-  - key: node.kubernetes.io/memory-pressure
-    operator: Exists
-  - key: node.kubernetes.io/unschedulable
-    operator: Exists
+  # Default Cilium agent toleration (keep this unless you intentionally restrict it)
+  - operator: Exists
 
   # Custom toleration for GPU node pool taint
   # This ensures Cilium runs on GPU nodes to provide networking
@@ -122,7 +113,7 @@ spec:
 kubectl apply -f cnp-gpu-workload.yaml
 
 # Verify Cilium is healthy on all nodes including tainted ones
-cilium status --all-nodes
+cilium status --wait
 ```
 
 ## Step 4: Test Pod Scheduling on Tainted Nodes
@@ -160,14 +151,17 @@ kubectl apply -f gpu-pod-test.yaml
 # Verify it schedules on a GPU node and has a Cilium-assigned IP
 kubectl get pod gpu-workload-test -n gpu-jobs -o wide
 
-# Check Cilium endpoint for the pod
-cilium endpoint list | grep gpu-workload-test
+# Check the Cilium endpoint from the Cilium agent running on the same node
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+  --field-selector spec.nodeName=$(kubectl get pod gpu-workload-test -n gpu-jobs -o jsonpath='{.spec.nodeName}') \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list | grep gpu-workload-test
 ```
 
 ## Best Practices
 
 - Always update Cilium tolerations before adding new node pool taints to prevent networking outages
-- Use `cilium status --all-nodes` after any taint/toleration change to verify all nodes have Cilium running
+- Use `cilium status --wait` after any taint/toleration change and verify the Cilium DaemonSet pods are running on every node
 - Test Cilium connectivity on new tainted nodes before scheduling production workloads
 - Document all node pool taints and their corresponding Cilium tolerations in your infrastructure repository
 - Monitor Cilium DaemonSet pod count; it should equal your total node count at all times
