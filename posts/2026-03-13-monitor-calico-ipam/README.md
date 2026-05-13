@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Networking, IP Management
 
-Description: Monitor Calico IPAM health with metrics on IP pool utilization, block allocations, and allocation failures to prevent pod scheduling issues.
+Description: Monitor Calico IPAM health with commands for IP pool utilization, block allocations, and allocation consistency to prevent pod scheduling issues.
 
 ---
 
@@ -28,10 +28,10 @@ The IPAM system tracks allocations in the Calico datastore (Kubernetes CRDs or e
 calicoctl ipam show --show-blocks
 
 # Check IP pool utilization
-calicoctl ipam show --show-configuration
+calicoctl ipam show
 
 # View node block assignments
-kubectl get ipamhandles -A
+kubectl get blockaffinities.crd.projectcalico.org
 
 # Check for leaked allocations
 calicoctl ipam check
@@ -74,11 +74,11 @@ graph TB
 # Run IPAM consistency check
 calicoctl ipam check -o ipam-report.json
 
-# List all allocated IPs
+# List all checked IPs
 calicoctl ipam check --show-all-ips
 
 # Check for orphaned allocations
-calicoctl ipam check --show-all-ips
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Conclusion
