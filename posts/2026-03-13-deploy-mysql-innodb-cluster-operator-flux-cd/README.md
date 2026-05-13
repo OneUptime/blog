@@ -43,6 +43,11 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: mysql-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: databases
 ```
 
 ```yaml
@@ -57,7 +62,7 @@ spec:
   chart:
     spec:
       chart: mysql-operator
-      version: "2.2.1"
+      version: "2.2.8"
       sourceRef:
         kind: HelmRepository
         name: mysql-operator
@@ -69,13 +74,14 @@ spec:
   values:
     image:
       pullPolicy: IfNotPresent
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "256Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+    deployment:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
 ```
 
 ## Step 3: Create a MySQL InnoDB Cluster
@@ -96,7 +102,7 @@ spec:
     instances: 2  # MySQL Router instances for connection routing
 
   # MySQL version and image
-  version: "8.0.36"
+  version: "9.7.0"
 
   # Pod spec for MySQL instances
   podSpec:
@@ -122,7 +128,7 @@ spec:
     max_connections=200
     max_allowed_packet=128M
     innodb_buffer_pool_size=512M
-    innodb_log_file_size=256M
+    innodb_redo_log_capacity=512M
     # Group Replication settings
     loose-group_replication_message_cache_size=128M
     # Slow query log
@@ -148,7 +154,6 @@ spec:
               bucketName: my-mysql-backups
               config: backup-s3-credentials
               prefix: mycluster/daily
-              region: us-east-1
 ```
 
 ## Step 4: Create Cluster Credentials
@@ -223,7 +228,7 @@ kubectl exec -n databases mycluster-0 -- \
 Update the MySQL version in Git:
 
 ```yaml
-# Change version: "8.0.36" to version: "8.0.37"
+# Change version: "9.7.0" to the next supported MySQL Server version you have tested.
 ```
 
 Commit and push. Flux reconciles the InnoDBCluster spec, and the operator performs a rolling upgrade of the MySQL instances with no downtime via Group Replication failover.
