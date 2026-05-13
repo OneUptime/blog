@@ -18,7 +18,7 @@ This guide covers Calico configuration for new Rancher-managed clusters using bo
 
 ## Prerequisites
 
-- Rancher v2.6+ with admin access
+- Rancher v2.6+ with admin access for RKE2 clusters, or a Rancher version earlier than v2.12 if you are still provisioning RKE1 clusters
 - New cluster being provisioned
 - Understanding of your network infrastructure (BGP routing, MTU, cloud provider)
 
@@ -27,28 +27,29 @@ This guide covers Calico configuration for new Rancher-managed clusters using bo
 In the Rancher UI cluster creation wizard, expand **Advanced Options** and set:
 - Network Plugin: Calico
 - Cloud Provider: (match your infrastructure)
-- Pod Security Policy: (choose appropriate policy)
+- Pod Security Admission: (choose appropriate policy for Kubernetes v1.25+; Pod Security Policy only applies to older Kubernetes versions)
 
 For `cluster.yml` (RKE1):
 
 ```yaml
 network:
   plugin: calico
-  calico_network_provider:
-    cloud_provider: none
   mtu: 0
-  options:
-    flannel_backend_type: vxlan
+  # For AWS or GCE only:
+  # calico_network_provider:
+  #   cloud_provider: aws
 ```
 
 ## Step 2: Set Custom Pod CIDR
 
-In the Rancher UI, under **Cluster Options** > **Pod Security**, set the pod CIDR to match your network planning:
+In the Rancher UI cluster options, or in the cluster configuration file, set the pod CIDR to match your network planning:
 
 For `cluster.yml`:
 
 ```yaml
 services:
+  kube-api:
+    service_cluster_ip_range: 10.96.0.0/12
   kube-controller:
     cluster_cidr: 10.244.0.0/16
     service_cluster_ip_range: 10.96.0.0/12
