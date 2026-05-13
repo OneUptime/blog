@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, VPP, DPDK, Uplink, Monitoring
 
-Description: Set up monitoring for Calico VPP uplink interfaces to track NIC health, DPDK driver stability, queue depth utilization, and uplink throughput metrics.
+Description: Set up monitoring for Calico VPP uplink interfaces to track NIC health, DPDK driver stability, packet drops, and uplink throughput metrics.
 
 ---
 
 ## Introduction
 
-Monitoring the Calico VPP uplink provides visibility into the physical network connection that underpins all pod networking. Unlike standard Kubernetes node network monitoring, VPP uplink monitoring requires accessing DPDK-level NIC statistics that are only available through VPP's own metrics system. Physical NIC errors, RX queue overflows, and DPDK driver resets are all conditions that must be detected early to prevent silent packet loss.
+Monitoring the Calico VPP uplink provides visibility into the physical network connection that underpins all pod networking. Unlike standard Kubernetes node network monitoring, VPP uplink monitoring requires accessing VPP interface statistics from VPP's own metrics system. Physical NIC errors, RX queue misses, and DPDK driver binding changes are all conditions that must be detected early to prevent silent packet loss.
 
 ## Prerequisites
 
 - Calico VPP with uplink configured and operational
 - Prometheus and Grafana deployed
-- VPP Prometheus exporter deployed
+- Calico VPP Prometheus metrics enabled or a VPP Prometheus exporter deployed
 
 ## Step 1: Configure VPP Interface Metrics Scraping
 
@@ -42,24 +42,24 @@ spec:
 
 ```mermaid
 graph TD
-    A[VPP DPDK Interface Stats] --> B[rx_packets/s - throughput]
+    A[VPP Interface Stats] --> B[rx_packets/s - throughput]
     A --> C[tx_packets/s - throughput]
-    A --> D[rx_missed_errors - queue overflow]
-    A --> E[rx_errors - hardware errors]
-    A --> F[link_status_changes - link flapping]
+    A --> D[rx_miss - receive misses]
+    A --> E[rx_error - receive errors]
+    A --> F[rx_no_buf - mbuf allocation failures]
     B --> G[Grafana Dashboard]
-    D --> H[Alert: Queue Overflow]
+    D --> H[Alert: Packet Loss]
     E --> H
     F --> H
 ```
 
 | Metric | Description | Alert |
 |--------|-------------|-------|
-| `vpp_interface_rx_packets` | Uplink RX packet rate | N/A (informational) |
-| `vpp_interface_rx_bytes` | Uplink throughput | Alert when approaching NIC max |
-| `vpp_dpdk_rx_missed_errors` | RX ring overflow | > 0 |
-| `vpp_dpdk_rx_errors` | Hardware NIC errors | > 0 |
-| `vpp_dpdk_link_status_changes` | NIC link flaps | > 1 in 5m |
+| `cni_projectcalico_vpp_rx_packets` | Uplink RX packet rate | N/A (informational) |
+| `cni_projectcalico_vpp_rx_bytes` | Uplink throughput | Alert when approaching NIC max |
+| `cni_projectcalico_vpp_rx_miss` | RX packets dropped because no buffer was available | > 0 |
+| `cni_projectcalico_vpp_rx_error` | Erroneous received packets | > 0 |
+| `cni_projectcalico_vpp_rx_no_buf` | RX mbuf allocation failures | > 0 |
 
 ## Step 3: Prometheus Alerts
 
@@ -68,31 +68,38 @@ groups:
   - name: calico-vpp-uplink
     rules:
       - alert: VPPUplinkRxOverflow
-        expr: rate(vpp_dpdk_rx_missed_errors[5m]) > 0
+        expr: |
+          sum by (instance, vppInterfaceName) (
+            increase(cni_projectcalico_vpp_rx_miss{vppInterfaceName="GigabitEthernet0/0/0"}[5m])
+          ) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "VPP uplink RX queue overflow on {{ $labels.node }}"
+          summary: "VPP uplink RX misses on {{ $labels.instance }}"
           description: "Increase num-rx-desc or add worker threads"
 
       - alert: VPPUplinkNearCapacity
         expr: |
-          rate(vpp_interface_rx_bytes{interface="GigabitEthernet0/0/0"}[5m]) * 8 /
-          vpp_interface_max_bandwidth > 0.8
+          sum by (instance, vppInterfaceName) (
+            rate(cni_projectcalico_vpp_rx_bytes{vppInterfaceName="GigabitEthernet0/0/0"}[5m])
+          ) * 8 / 10e9 > 0.8
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "VPP uplink is at {{ $value | humanizePercentage }} capacity"
 
-      - alert: VPPUplinkLinkFlapping
-        expr: increase(vpp_dpdk_link_status_changes[5m]) > 1
+      - alert: VPPUplinkRxErrors
+        expr: |
+          sum by (instance, vppInterfaceName) (
+            increase(cni_projectcalico_vpp_rx_error{vppInterfaceName="GigabitEthernet0/0/0"}[5m])
+          ) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "VPP uplink NIC link is flapping on {{ $labels.node }}"
+          summary: "VPP uplink RX errors on {{ $labels.instance }}"
 ```
 
 ## Step 4: Grafana Dashboard Panels
@@ -101,17 +108,27 @@ Create a dedicated uplink dashboard:
 
 ```plaintext
 # RX/TX Throughput
-rate(vpp_interface_rx_bytes{interface=~"GigabitEthernet.*"}[5m]) * 8 / 1e9
+sum by (instance, vppInterfaceName) (
+  rate(cni_projectcalico_vpp_rx_bytes{vppInterfaceName=~"GigabitEthernet.*"}[5m])
+) * 8 / 1e9
 
 # Packet rate
-rate(vpp_interface_rx_packets{interface=~"GigabitEthernet.*"}[5m])
+sum by (instance, vppInterfaceName) (
+  rate(cni_projectcalico_vpp_rx_packets{vppInterfaceName=~"GigabitEthernet.*"}[5m])
+)
 
-# Queue utilization (using DPDK stats)
-vpp_dpdk_queue_fill_ratio
+# Queue pressure indicators
+sum by (instance, vppInterfaceName) (
+  rate(cni_projectcalico_vpp_rx_miss{vppInterfaceName=~"GigabitEthernet.*"}[5m])
+)
+sum by (instance, vppInterfaceName) (
+  rate(cni_projectcalico_vpp_rx_no_buf{vppInterfaceName=~"GigabitEthernet.*"}[5m])
+)
 
 # Error counters
-rate(vpp_dpdk_rx_missed_errors[5m])
-rate(vpp_dpdk_rx_errors[5m])
+sum by (instance, vppInterfaceName) (
+  rate(cni_projectcalico_vpp_rx_error{vppInterfaceName=~"GigabitEthernet.*"}[5m])
+)
 ```
 
 ## Step 5: Uplink Driver Health Check
@@ -136,4 +153,4 @@ EOF
 
 ## Conclusion
 
-Monitoring Calico VPP uplink interfaces requires tracking DPDK-level NIC statistics including RX queue overflow rates, hardware error counts, and link stability metrics. RX queue overflow (rx_missed_errors) is the most important metric to alert on, as it indicates silent packet loss that may not be visible from the application layer. Uplink capacity monitoring ensures you can scale nodes or NIC capacity before reaching saturation.
+Monitoring Calico VPP uplink interfaces requires tracking VPP interface statistics including RX miss rates, receive error counts, and buffer allocation failures. RX misses (rx_miss) are the most important metric to alert on, as they indicate packet loss that may not be visible from the application layer. Uplink capacity monitoring ensures you can scale nodes or NIC capacity before reaching saturation.
