@@ -58,8 +58,11 @@ spec:
       messageTemplate: |
         chore: automated image update
 
-        {{ range .Changed.Changes -}}
-        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ range $resource, $changes := .Changed.Objects -}}
+        - {{ $resource.Kind }} {{ $resource.Name }}
+        {{- range $change := $changes }}
+          - {{ $change.OldValue }} -> {{ $change.NewValue }}
+        {{- end }}
         {{ end -}}
     push:
       branch: flux/image-updates
@@ -69,6 +72,8 @@ spec:
 ```
 
 Then use a GitHub Actions workflow to create a PR:
+
+Use a GitHub App installation token or a personal access token instead of `GITHUB_TOKEN` if the created PR needs to trigger other GitHub Actions workflows, such as required status checks.
 
 ```yaml
 name: Create Image Update PR
@@ -92,7 +97,7 @@ jobs:
 
       - name: Create Pull Request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.FLUX_PR_TOKEN }}
         run: |
           EXISTING_PR=$(gh pr list --head flux/image-updates --json number --jq '.[0].number')
           if [ -z "$EXISTING_PR" ]; then
@@ -207,9 +212,11 @@ spec:
 
 Add the public key to the bot's GitHub account so commits show as "Verified."
 
-## Strategy 4: GitHub App Token for PR Auto-Merge
+The referenced secret must contain the ASCII-armored PGP private key in the `git.asc` field, and a `passphrase` field if the private key is passphrase-protected.
 
-Using a GitHub App provides fine-grained permissions and can auto-merge PRs:
+## Strategy 4: Enable PR Auto-Merge
+
+After creating PRs with a token that has the required permissions, you can enable auto-merge so GitHub merges the PR after the branch protection requirements are satisfied:
 
 ```yaml
 name: Auto-Merge Image Updates
@@ -218,14 +225,18 @@ on:
     types: [opened, synchronize]
     branches: [main]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   auto-merge:
-    if: github.actor == 'flux-bot[bot]'
+    if: github.event.pull_request.head.ref == 'flux/image-updates'
     runs-on: ubuntu-latest
     steps:
       - name: Enable auto-merge
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.FLUX_PR_TOKEN }}
         run: |
           gh pr merge ${{ github.event.pull_request.number }} \
             --auto --squash
@@ -254,7 +265,7 @@ jobs:
           kustomize build clusters/production | conftest test -
 ```
 
-These checks will run on the Flux image update PR, satisfying the branch protection requirement.
+When the PR is created with a GitHub App installation token or personal access token, these checks will run on the Flux image update PR, satisfying the branch protection requirement.
 
 ## Troubleshooting
 
