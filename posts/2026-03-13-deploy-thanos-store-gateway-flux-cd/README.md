@@ -36,7 +36,7 @@ metadata:
 type: Opaque
 stringData:
   # S3 object store configuration - encrypt with SOPS before committing
-  objstore.yaml: |
+  objstore.yml: |
     type: S3
     config:
       bucket: my-thanos-metrics
@@ -68,23 +68,25 @@ spec:
         name: bitnami
         namespace: flux-system
   values:
+    # Mount the object store configuration from the Secret
+    existingObjstoreSecret: thanos-objstore-config
+    existingObjstoreSecretItems:
+      - key: objstore.yml
+        path: objstore.yml
+
+    # In-memory index cache reduces S3 reads for repeated queries
+    indexCacheConfig: |
+      type: IN-MEMORY
+      config:
+        max_size: 1GB
+
     # Enable only the Store Gateway component
     storegateway:
       enabled: true
       replicaCount: 2
 
-      # Mount the object store configuration from the Secret
-      existingObjstoreSecret: thanos-objstore-config
-      existingObjstoreSecretItems:
-        - key: objstore.yaml
-          path: objstore.yaml
-
       extraFlags:
-        # In-memory index cache reduces S3 reads for repeated queries
-        - --index-cache.config=type: IN-MEMORY
-          config:
-            max_size: 1GB
-        # Maximum time window for block queries per request
+        # Maximum number of concurrent Series calls
         - --store.grpc.series-max-concurrency=20
         # Sync the list of available blocks from S3 every 15 minutes
         - --sync-block-duration=15m
@@ -103,13 +105,15 @@ spec:
           cpu: "2"
           memory: "8Gi"
 
-      serviceMonitor:
-        enabled: true
-
       # Pod disruption budget to ensure availability during rolling updates
       pdb:
         create: true
         minAvailable: 1
+
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
 
     # Disable all other Thanos components
     query:
@@ -122,15 +126,17 @@ spec:
 
 ## Step 3: Configure Store Gateway Sharding for Large Buckets
 
-For large deployments with many blocks, shard the Store Gateway to distribute bucket scanning load.
+For large deployments with many blocks, shard the Store Gateway to distribute block ownership.
 
 ```yaml
-# Additional flags for Store Gateway sharding (add to extraFlags above)
-# Each replica handles a subset of blocks based on consistent hashing
-- --store.enable-index-header-lazy-reader
-- --experimental.enable-vertical-compaction-for-deduplication
-# Hash ring configuration for sharding
-- --store.grpc.series-download-concurrency=10
+# Additional values for Store Gateway sharding
+storegateway:
+  sharded:
+    enabled: true
+    hashPartitioning:
+      shards: 4
+  extraFlags:
+    - --store.enable-index-header-lazy-reader
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -152,8 +158,8 @@ spec:
   dependsOn:
     - name: thanos-compactor
   healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: thanos-storegateway
       namespace: monitoring
 ```
@@ -164,7 +170,7 @@ spec:
 - Deploy at least 2 Store Gateway replicas for HA; configure a PodDisruptionBudget to ensure at least 1 is always available.
 - Use SSDs for the persistent cache directory; the Store Gateway downloads block index headers that it reads frequently.
 - Monitor `thanos_store_bucket_operations_total` to track S3 API call rates and associated costs.
-- Use `dependsOn: thanos-compactor` so the compactor finishes compacting blocks before the Store Gateway syncs and serves them.
+- Use `dependsOn: thanos-compactor` only when you need Flux to apply the Store Gateway after the compactor Kustomization is ready; it does not wait for individual Thanos compaction cycles to finish.
 
 ## Conclusion
 
