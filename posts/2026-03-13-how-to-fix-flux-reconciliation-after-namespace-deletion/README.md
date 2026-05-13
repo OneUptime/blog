@@ -47,7 +47,7 @@ kubectl get namespace production -o jsonpath='{.spec.finalizers}'
 ### Check the Flux inventory for resources in the deleted namespace
 
 ```bash
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries}' | jq '.[] | select(.v | contains("production"))'
+kubectl get kustomization my-app -n flux-system -o json | jq '.status.inventory.entries[] | select(.id | startswith("production_"))'
 ```
 
 ### Look for orphaned resources
@@ -124,7 +124,7 @@ flux suspend kustomization my-app
 Edit the Kustomization to remove stale inventory entries:
 
 ```bash
-kubectl patch kustomization my-app -n flux-system --type=json -p='[{"op": "remove", "path": "/status/inventory"}]'
+kubectl patch kustomization my-app -n flux-system --subresource=status --type=json -p='[{"op": "remove", "path": "/status/inventory"}]'
 ```
 
 Resume and let Flux rebuild the inventory:
@@ -162,49 +162,41 @@ flux reconcile kustomization apps --with-source
 
 ## Prevention Strategies
 
-1. **Protect namespaces with RBAC** to prevent accidental deletion:
+1. **Limit namespace deletion with RBAC** to prevent accidental deletion. Kubernetes RBAC is additive and does not support deny rules, so avoid granting `delete` on critical namespaces to users who do not need it:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: deny-namespace-deletion
+  name: namespace-reader
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["delete"]
+    verbs: ["get"]
     resourceNames: ["production", "staging"]
 ```
 
-Bind this role with a deny policy using an admission controller.
+Use an admission controller if you need an explicit deny policy.
 
-2. **Use Kyverno or OPA Gatekeeper** to prevent deletion of critical namespaces:
+2. **Use Kyverno v1.18 or newer, or OPA Gatekeeper** to prevent deletion of critical namespaces:
 
 ```yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: protect-namespaces
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: block-namespace-deletion
-      match:
-        any:
-          - resources:
-              kinds:
-                - Namespace
-              selector:
-                matchLabels:
-                  protected: "true"
-      validate:
-        message: "This namespace is protected and cannot be deleted."
-        deny:
-          conditions:
-            any:
-              - key: "{{request.operation}}"
-                operator: Equals
-                value: DELETE
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["DELETE"]
+        resources: ["namespaces"]
+  validations:
+    - message: "This namespace is protected and cannot be deleted."
+      expression: "!('protected' in oldObject.metadata.?labels.orValue({})) || oldObject.metadata.labels['protected'] != 'true'"
 ```
 
 3. **Separate namespace creation** into its own Kustomization at the infrastructure layer so namespaces are created first and independently.
