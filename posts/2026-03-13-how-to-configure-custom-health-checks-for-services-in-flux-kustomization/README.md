@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, Health Check, Service, Kustomization
 
-Description: Learn how to configure custom health checks for Service resources in Flux Kustomization to verify network endpoints are properly established.
+Description: Learn how to include Service resources in Flux Kustomization health checks and pair them with workload checks for more complete readiness signals.
 
 ---
 
 ## Introduction
 
-Kubernetes Services provide stable network endpoints for accessing pods. While Services themselves are relatively simple resources, their health can be critical for application connectivity. A Service that exists but has no endpoints, or a LoadBalancer Service stuck in a pending state, can cause cascading failures. Flux Kustomization health checks let you verify that Services are properly configured and functional before dependent resources deploy.
+Kubernetes Services provide stable network endpoints for accessing pods. While Services themselves are relatively simple resources, their health can be critical for application connectivity. A Service that exists but has no endpoints, or a LoadBalancer Service stuck in a pending state, can cause cascading failures. Flux Kustomization health checks let you include Services in readiness assessment before dependent resources deploy, but the built-in Service check does not verify backing endpoints or external load balancer reachability.
 
 ## Prerequisites
 
@@ -22,11 +22,11 @@ Kubernetes Services provide stable network endpoints for accessing pods. While S
 
 ## How Flux Checks Service Health
 
-Flux evaluates Service health based on the Service type. For ClusterIP and NodePort Services, the check passes as soon as the resource is created since these types are immediately functional. For LoadBalancer Services, Flux waits for the external IP or hostname to be assigned, as the Service is not fully operational until the cloud provider provisions the load balancer.
+Flux evaluates Service health with its built-in kstatus-compatible Service check. For ClusterIP and NodePort Services, the check passes once the resource is accepted by the API server. For LoadBalancer Services, the built-in check verifies that the Service has a cluster IP, but it does not wait for the cloud provider to populate an external IP or hostname in `status.loadBalancer.ingress`.
 
 ## Basic Service Health Check
 
-Set up a health check for a LoadBalancer Service:
+Set up a health check that includes a LoadBalancer Service:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -49,7 +49,7 @@ spec:
       namespace: ingress-nginx
 ```
 
-For a LoadBalancer Service, Flux waits until the `status.loadBalancer.ingress` field is populated with an IP address or hostname.
+For a LoadBalancer Service, this built-in check does not wait until the `status.loadBalancer.ingress` field is populated with an IP address or hostname. Check that field separately when external load balancer provisioning is part of your rollout criteria.
 
 ## Health Checking Multiple Services
 
@@ -132,11 +132,11 @@ spec:
       namespace: production
 ```
 
-Set the timeout high enough to accommodate the cloud provider's load balancer provisioning time. On AWS, NLB provisioning typically takes 2-5 minutes.
+Set the timeout high enough to accommodate the workloads included in the health checks. If you also need to gate on the AWS NLB external address, verify `status.loadBalancer.ingress` separately because the built-in Service health check does not wait for it.
 
 ## Services as Dependencies for Applications
 
-Use Service health checks with Kustomization dependencies to ensure network infrastructure is ready:
+Use Service health checks with Kustomization dependencies to ensure the Service object and backing workload readiness checks pass first:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -180,7 +180,7 @@ spec:
   timeout: 5m
 ```
 
-The web applications only deploy after both the ingress controller Deployment and its LoadBalancer Service are healthy.
+The web applications only deploy after the ingress controller Deployment is healthy and the LoadBalancer Service passes Flux's built-in Service readiness check. This does not prove that the cloud load balancer has an external address yet.
 
 ## Checking ClusterIP Services with Deployments
 
@@ -240,11 +240,11 @@ spec:
   timeout: 10m
 ```
 
-With `wait: true`, Flux checks every resource applied by the Kustomization, including all Services, Deployments, ConfigMaps, and any other resources in the path.
+With `wait: true`, Flux performs health checks for all reconciled resources. Built-in resources such as Services, Deployments, and ConfigMaps use Flux's built-in health semantics, while custom resources need kstatus-compatible status or explicit health check expressions.
 
 ## Headless Services
 
-Headless Services (with `clusterIP: None`) are used with StatefulSets. Flux treats them like ClusterIP Services and considers them healthy once created:
+Headless Services (with `clusterIP: None`) are used with StatefulSets. Flux treats them like other non-LoadBalancer Services and considers them healthy once accepted by the API server:
 
 ```yaml
 apiVersion: v1
@@ -273,7 +273,7 @@ healthChecks:
 
 ## Debugging Service Health Check Failures
 
-When a Service health check fails:
+When a Service health check fails, or when Service connectivity does not work:
 
 ```bash
 # Check Kustomization status
@@ -286,21 +286,21 @@ kubectl get service api-gateway -n production
 # For LoadBalancer Services, check for pending state
 kubectl describe service api-gateway -n production
 
-# Check endpoints
-kubectl get endpoints api-gateway -n production
+# Check EndpointSlices for backing endpoints
+kubectl get endpointslice -n production -l kubernetes.io/service-name=api-gateway
 
 # Check events for provisioning issues
 kubectl get events -n production --field-selector involvedObject.name=api-gateway
 ```
 
-Common Service health check failure causes:
+Common Service and connectivity failure causes to investigate:
 
 - LoadBalancer quota exceeded on the cloud provider
 - Cloud provider integration not configured (no cloud controller manager)
 - Service annotation errors preventing load balancer provisioning
-- Network policy blocking the Service
-- No pods matching the Service selector (empty endpoints)
+- Network policy blocking traffic to the selected pods
+- No pods matching the Service selector (empty EndpointSlices)
 
 ## Conclusion
 
-Custom health checks for Services in Flux Kustomization are most valuable for LoadBalancer Services where provisioning takes time and the external endpoint must be available before dependent resources can function. For ClusterIP Services, combine the Service health check with the backing Deployment or StatefulSet check to get a complete picture of service readiness. Using Kustomization dependencies with Service health checks ensures that network infrastructure is fully operational before applications that depend on it are deployed.
+Health checks that include Services in Flux Kustomization are most useful when paired with Deployment or StatefulSet checks so dependent resources wait for both the Service object and the backing workload readiness signals. For ClusterIP Services, combine the Service health check with the backing Deployment or StatefulSet check to get a more complete picture of service readiness. For LoadBalancer Services, check external address provisioning separately if dependent applications require the cloud load balancer to be reachable before they deploy.
