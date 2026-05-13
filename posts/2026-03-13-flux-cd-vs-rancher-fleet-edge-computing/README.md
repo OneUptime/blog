@@ -24,7 +24,7 @@ This comparison helps architects and platform engineers choose the right GitOps 
 
 Flux CD's pull-based model is naturally suited for edge: each edge cluster independently pulls from Git, with no inbound connectivity required from the central site:
 
-```yaml
+```bash
 # Edge cluster bootstrap with limited resources
 
 flux install \
@@ -65,7 +65,7 @@ spec:
 
 ## Step 2: Rancher Fleet for Edge Deployments
 
-Rancher Fleet requires connectivity from the hub to Fleet Agents on edge clusters, or agent-initiated registration:
+Rancher Fleet uses a two-stage pull model: the Fleet controller pulls from Git, and Fleet Agents on edge clusters pull bundles from the Fleet controller. Agent-initiated registration avoids direct hub-to-edge API access; manager-initiated registration needs temporary access from the manager to the downstream cluster API server during registration:
 
 ```yaml
 # Fleet cluster group for edge sites
@@ -91,7 +91,7 @@ spec:
     - apps/edge
   targets:
     - clusterGroup: edge-sites
-  pollingInterval: 10m  # Reduced polling for edge
+  pollingInterval: 10m  # Reduce Git polling by the Fleet controller
 ```
 
 ## Step 3: Resource Comparison for Edge
@@ -101,7 +101,7 @@ spec:
 | Memory | ~80 MB | ~50 MB |
 | CPU | ~50m | ~25m |
 | Pods | 3 controllers | 1 fleet-agent |
-| Network requirement | Pull-only (Git access) | Pull + hub registration |
+| Network requirement | Pull-only (Git access) | Agent-to-hub API access after registration |
 
 For extremely resource-constrained devices, Rancher Fleet Agent has a smaller footprint.
 
@@ -119,7 +119,7 @@ spec:
   suspend: false
 ```
 
-**Rancher Fleet** agents queue changes locally and apply them when the hub connection is restored. The Fleet Manager tracks agent status per cluster.
+**Rancher Fleet** agents keep the last applied workloads running during outages and resume operation when they can reconnect to the Fleet controller. The Fleet Manager tracks agent status per cluster.
 
 ## Step 5: Site-Specific Configuration
 
