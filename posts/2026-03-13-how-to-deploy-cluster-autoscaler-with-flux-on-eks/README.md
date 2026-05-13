@@ -12,7 +12,7 @@ The Kubernetes Cluster Autoscaler automatically adjusts the size of your EKS nod
 
 ## Prerequisites
 
-- An existing EKS cluster (version 1.25 or later) with managed node groups
+- An existing EKS cluster with managed node groups. The HelmRelease example below uses Cluster Autoscaler 1.35 for EKS 1.35; choose a chart version whose `appVersion` matches your Kubernetes minor version for other clusters.
 - Flux CLI installed and bootstrapped on your cluster
 - AWS CLI configured with appropriate permissions
 - kubectl configured to access your EKS cluster
@@ -29,13 +29,25 @@ cat <<EOF > cluster-autoscaler-policy.json
     {
       "Effect": "Allow",
       "Action": [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled": "true",
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/my-cluster": "owned"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "autoscaling:DescribeAutoScalingGroups",
         "autoscaling:DescribeAutoScalingInstances",
         "autoscaling:DescribeLaunchConfigurations",
         "autoscaling:DescribeScalingActivities",
         "autoscaling:DescribeTags",
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
         "ec2:DescribeImages",
         "ec2:DescribeInstanceTypes",
         "ec2:DescribeLaunchTemplateVersions",
@@ -71,13 +83,13 @@ eksctl create iamserviceaccount \
 
 ## Step 3: Tag Your Auto Scaling Groups
 
-The Cluster Autoscaler discovers node groups using tags. Ensure your Auto Scaling Groups have the correct tags.
+The Cluster Autoscaler discovers node groups using tags. Ensure your Auto Scaling Groups have the correct tags. Use the Auto Scaling group name for `ResourceId`, not the EKS node group name.
 
 ```bash
 aws autoscaling create-or-update-tags \
   --tags \
-    "ResourceId=my-cluster-node-group,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/enabled,Value=true,PropagateAtLaunch=true" \
-    "ResourceId=my-cluster-node-group,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/my-cluster,Value=owned,PropagateAtLaunch=true"
+    "ResourceId=my-cluster-node-group-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/enabled,Value=true,PropagateAtLaunch=true" \
+    "ResourceId=my-cluster-node-group-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/my-cluster,Value=owned,PropagateAtLaunch=true"
 ```
 
 ## Step 4: Add the Helm Repository Source
@@ -113,7 +125,7 @@ spec:
   chart:
     spec:
       chart: cluster-autoscaler
-      version: "9.37.*"
+      version: "9.57.*"
       sourceRef:
         kind: HelmRepository
         name: autoscaler
@@ -151,7 +163,7 @@ spec:
 
 ## Step 6: Configure Multiple Node Groups (Optional)
 
-If you have multiple node groups with different instance types, configure the autoscaler to handle them properly with priority-based expansion.
+If you have multiple node groups with different instance types and Auto Scaling group names that identify their capacity type, configure the autoscaler to handle them properly with priority-based expansion.
 
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/priority-expander.yaml
