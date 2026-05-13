@@ -59,7 +59,7 @@ spec:
   chart:
     spec:
       chart: redis-operator
-      version: "0.15.1"
+      version: "0.24.0"
       sourceRef:
         kind: HelmRepository
         name: ot-helm
@@ -145,8 +145,8 @@ spec:
                 app: redis-replication
 
   # Sentinel configuration
-  redisSentinel:
-    replicas: 3
+  sentinel:
+    size: 3
     image: quay.io/opstree/redis-sentinel:v7.0.15
     resources:
       requests:
@@ -155,13 +155,9 @@ spec:
       limits:
         cpu: "200m"
         memory: "128Mi"
-    sentinelConfig:
-      masterGroupName: mymaster
-      redisPort: "6379"
-      quorum: "2"
-      downAfterMilliseconds: "5000"
-      failoverTimeout: "180000"
-      parallelSyncs: "1"
+    downAfterMilliseconds: "5000"
+    failoverTimeout: "180000"
+    parallelSyncs: "1"
 ```
 
 ## Step 5: Create the Additional Redis ConfigMap
@@ -174,7 +170,7 @@ metadata:
   name: redis-additional-config
   namespace: redis
 data:
-  redis-config: |
+  redis-additional.conf: |
     # Memory management
     maxmemory 384mb
     maxmemory-policy allkeys-lru
@@ -239,18 +235,17 @@ kubectl get pods -n redis
 kubectl exec -n redis redis-replication-0 -- redis-cli -a 'RedisPassword123!' ping
 
 # Check Sentinel info
-kubectl exec -n redis redis-replication-sentinel-0 -- \
+kubectl exec -n redis redis-replication-s-0 -- \
   redis-cli -p 26379 sentinel masters
 
 # Check master address
-kubectl exec -n redis redis-replication-sentinel-0 -- \
+kubectl exec -n redis redis-replication-s-0 -- \
   redis-cli -p 26379 sentinel get-master-addr-by-name mymaster
 ```
 
 ## Best Practices
 
-- Run 3 Sentinel instances (`redisSentinel.replicas: 3`) for a proper quorum - 2 Sentinels is the minimum but requires both to agree.
-- Set `quorum: "2"` to require agreement from 2 of 3 Sentinels before failing over, preventing split-brain.
+- Run 3 Sentinel instances (`sentinel.size: 3`) for a proper quorum; the operator configures a quorum of 2 for 3 Sentinel pods.
 - Enable AOF persistence (`appendonly yes`) for data durability alongside RDB snapshots.
 - Disable dangerous commands (`FLUSHALL`, `FLUSHDB`, `DEBUG`) in production via `rename-command`.
 - Set `maxmemory` and `maxmemory-policy` to prevent Redis from consuming all node memory.
