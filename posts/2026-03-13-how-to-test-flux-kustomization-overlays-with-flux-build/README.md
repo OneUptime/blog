@@ -35,11 +35,12 @@ spec:
     name: flux-system
 ```
 
-To build this locally, run:
+Save the Kustomization manifest locally, for example as `./clusters/production/apps.yaml`, then run:
 
 ```bash
 flux build kustomization apps \
   --path ./apps/production \
+  --kustomization-file ./clusters/production/apps.yaml \
   --dry-run
 ```
 
@@ -100,6 +101,7 @@ Build and verify the production overlay:
 ```bash
 flux build kustomization apps \
   --path ./apps/production \
+  --kustomization-file ./clusters/production/apps.yaml \
   --dry-run
 ```
 
@@ -112,10 +114,12 @@ You can compare what different environments will produce by building each overla
 ```bash
 flux build kustomization apps \
   --path ./apps/staging \
+  --kustomization-file ./clusters/staging/apps.yaml \
   --dry-run > /tmp/staging.yaml
 
 flux build kustomization apps \
   --path ./apps/production \
+  --kustomization-file ./clusters/production/apps.yaml \
   --dry-run > /tmp/production.yaml
 
 diff /tmp/staging.yaml /tmp/production.yaml
@@ -162,27 +166,27 @@ The `flux build` command will catch several types of errors:
 Missing resources referenced in kustomization.yaml:
 
 ```bash
-$ flux build kustomization apps --path ./apps/broken --dry-run
+$ flux build kustomization apps --path ./apps/broken --kustomization-file ./clusters/production/apps.yaml --dry-run
 Error: accumulating resources: accumulating resources from ...
 ```
 
 Invalid patch targets:
 
 ```bash
-$ flux build kustomization apps --path ./apps/bad-patch --dry-run
+$ flux build kustomization apps --path ./apps/bad-patch --kustomization-file ./clusters/production/apps.yaml --dry-run
 Error: no matches for Id ...
 ```
 
 YAML syntax errors:
 
 ```bash
-$ flux build kustomization apps --path ./apps/bad-yaml --dry-run
+$ flux build kustomization apps --path ./apps/bad-yaml --kustomization-file ./clusters/production/apps.yaml --dry-run
 Error: YAML parse error ...
 ```
 
 ## Integrating with Pre-Commit Hooks
 
-Add `flux build` to your pre-commit hooks so overlays are validated before every commit:
+Add `flux build` to your pre-commit hooks so overlays are validated before every commit. This example uses `yq` to find Flux Kustomization resources:
 
 ```yaml
 # .pre-commit-config.yaml
@@ -192,7 +196,14 @@ repos:
     hooks:
       - id: flux-build
         name: Validate Flux Kustomizations
-        entry: bash -c 'find . -path "*/kustomization.yaml" -not -path "./.git/*" -exec dirname {} \; | while read dir; do flux build kustomization test --path "$dir" --dry-run > /dev/null || exit 1; done'
+        entry: >-
+          bash -c 'set -euo pipefail;
+          while IFS= read -r file; do
+            while IFS=$'\''\t'\'' read -r name path; do
+              [ -n "$name" ] || continue;
+              flux build kustomization "$name" --path "$path" --kustomization-file "$file" --dry-run > /dev/null;
+            done < <(yq -r '\''select(.apiVersion == "kustomize.toolkit.fluxcd.io/v1" and .kind == "Kustomization") | [.metadata.name, .spec.path] | @tsv'\'' "$file");
+          done < <(find . -name "*.yaml" -not -path "./.git/*")'
         language: system
         pass_filenames: false
 ```
@@ -207,15 +218,19 @@ set -euo pipefail
 
 ERRORS=0
 
-for dir in $(find . -name 'kustomization.yaml' -not -path './.git/*' -exec dirname {} \;); do
-  echo -n "Building $dir ... "
-  if flux build kustomization test --path "$dir" --dry-run > /dev/null 2>&1; then
-    echo "OK"
-  else
-    echo "FAILED"
-    ERRORS=$((ERRORS + 1))
-  fi
-done
+while IFS= read -r file; do
+  while IFS=$'\t' read -r name path; do
+    [ -n "$name" ] || continue
+
+    echo -n "Building $name from $path ... "
+    if flux build kustomization "$name" --path "$path" --kustomization-file "$file" --dry-run > /dev/null 2>&1; then
+      echo "OK"
+    else
+      echo "FAILED"
+      ERRORS=$((ERRORS + 1))
+    fi
+  done < <(yq -r 'select(.apiVersion == "kustomize.toolkit.fluxcd.io/v1" and .kind == "Kustomization") | [.metadata.name, .spec.path] | @tsv' "$file")
+done < <(find . -name '*.yaml' -not -path './.git/*')
 
 if [ $ERRORS -gt 0 ]; then
   echo "$ERRORS overlay(s) failed validation"
