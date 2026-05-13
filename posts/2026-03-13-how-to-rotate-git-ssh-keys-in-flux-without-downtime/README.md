@@ -25,7 +25,7 @@ Flux uses an SSH key pair stored in a Kubernetes secret:
 
 1. The private key is stored in the `identity` field of the secret
 2. The public key is registered as a deploy key on the Git server
-3. The `known_hosts` field contains the Git server fingerprint
+3. The `known_hosts` field contains the Git server host key entries
 
 When you rotate keys, both the Kubernetes secret and the Git server deploy key must be updated.
 
@@ -103,7 +103,7 @@ GIT_SSH_COMMAND="ssh -i new-flux-key -o IdentitiesOnly=yes" git ls-remote git@gi
 
 ## Step 5: Get the Known Hosts Entry
 
-Fetch the SSH host key fingerprint for your Git server.
+Fetch the SSH host key entries for your Git server.
 
 ```bash
 # GitHub
@@ -134,7 +134,7 @@ kubectl create secret generic flux-system \
 Trigger Flux to pick up the new credentials immediately.
 
 ```bash
-# Reconcile all Git sources
+# Reconcile the bootstrap Git source
 flux reconcile source git flux-system
 
 # Or reconcile a specific source
@@ -157,7 +157,7 @@ kubectl events -n flux-system --for gitrepository/flux-system
 kubectl logs -n flux-system deploy/source-controller --tail=20 | grep -i "ssh\|auth\|fetch"
 ```
 
-All sources should show `Ready: True` with a recent `lastHandshakeTime`.
+All sources should show `Ready: True`, and the reconciled source should have a recent artifact revision or a recent `.status.lastHandledReconcileAt` value if you triggered reconciliation manually.
 
 ## Step 9: Remove the Old Deploy Key from the Git Server
 
