@@ -16,8 +16,8 @@ The replacement also enables Direct Server Return (DSR) for LoadBalancer service
 
 ## Prerequisites
 
-- Linux kernel 5.3+ (5.8+ for full features)
-- Calico v3.15+
+- Linux kernel 5.10+ (open-source Calico requires CO-RE support)
+- Calico v3.16+ (eBPF dataplane reached GA in v3.16)
 - kube-proxy can be safely disabled
 
 ## Configure kube-proxy Replacement
@@ -42,7 +42,7 @@ iptables -t nat -L | grep KUBE | wc -l
 ```bash
 # Check Calico BPF service map
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-nat-dump
+  calico-node -bpf nat dump
 
 # Verify service IP routes
 kubectl exec test-pod -- nslookup kubernetes.default.svc.cluster.local
