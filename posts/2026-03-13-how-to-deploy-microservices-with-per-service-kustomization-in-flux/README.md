@@ -72,7 +72,7 @@ spec:
 
 ## Step 3: Create Per-Service Kustomization Resources
 
-Create a separate Flux Kustomization for each microservice. Each can have its own interval, timeout, and health checks.
+Create a separate Flux Kustomization for each microservice. Each can have its own interval, timeout, and health checks. If you set `targetNamespace`, make sure that namespace already exists or is created by a manifest in the Kustomization path, because Flux does not create it automatically.
 
 ```yaml
 # clusters/production/apps/frontend-kustomization.yaml
@@ -90,7 +90,6 @@ spec:
     name: app-repo
   path: ./apps/frontend
   prune: true
-  wait: true
   targetNamespace: frontend
   # Health checks specific to the frontend
   healthChecks:
@@ -116,7 +115,6 @@ spec:
     name: app-repo
   path: ./apps/backend-api
   prune: true
-  wait: true
   targetNamespace: backend
   healthChecks:
     - apiVersion: apps/v1
@@ -188,13 +186,14 @@ Apply each Kustomization independently.
 
 ```bash
 # Apply all per-service Kustomization resources
+kubectl apply -f clusters/production/sources/app-repo.yaml
 kubectl apply -f clusters/production/apps/
 
 # Check status of each service independently
-flux get kustomization frontend
-flux get kustomization backend-api
-flux get kustomization auth-service
-flux get kustomization notification-service
+kubectl get kustomization frontend -n flux-system
+kubectl get kustomization backend-api -n flux-system
+kubectl get kustomization auth-service -n flux-system
+kubectl get kustomization notification-service -n flux-system
 
 # Get a summary of all Kustomizations
 flux get kustomizations
@@ -216,7 +215,7 @@ flux resume kustomization auth-service
 
 # Roll back a service by suspending and reverting the Git change
 flux suspend kustomization notification-service
-git revert HEAD~1  # Revert the bad commit
+git revert HEAD  # Revert the bad commit
 git push
 flux resume kustomization notification-service
 ```
@@ -225,7 +224,7 @@ flux resume kustomization notification-service
 
 ```bash
 # Watch health of a specific service
-flux get kustomization backend-api --watch
+kubectl get kustomization backend-api -n flux-system --watch
 
 # View events for a specific service
 flux events --for Kustomization/frontend
