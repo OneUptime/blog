@@ -29,12 +29,12 @@ Start with PERMISSIVE mode (allow both plain text and mTLS) and migrate to STRIC
 ```yaml
 # clusters/my-cluster/istio-mtls/mesh-peer-auth.yaml
 
-# Mesh-wide policy: applied to the istio-system namespace
+# Mesh-wide policy: applied to the Istio root namespace
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: istio-system  # Mesh-wide when in istio-system
+  namespace: istio-system  # Mesh-wide when istio-system is the configured root namespace
 spec:
   mtls:
     # STRICT: only mTLS traffic allowed (recommended for production)
@@ -69,9 +69,9 @@ spec:
     mode: PERMISSIVE
 ```
 
-## Step 3: Apply Service-Level mTLS Exceptions
+## Step 3: Apply Workload-Level mTLS Exceptions
 
-For specific services that cannot use mTLS (e.g., database healthchecks from external probers):
+For specific workloads that cannot use mTLS on a port (e.g., metrics or health checks from external probers):
 
 ```yaml
 # clusters/my-cluster/istio-mtls/service-exceptions.yaml
@@ -86,7 +86,7 @@ spec:
       app: external-db-proxy
   mtls:
     mode: PERMISSIVE
-  # Only allow plaintext on the metrics port
+  # Disable mTLS only on the workload metrics port
   portLevelMtls:
     "9090":
       mode: DISABLE
@@ -94,11 +94,12 @@ spec:
       mode: STRICT
 ```
 
-## Step 4: Validate mTLS is Active
+## Step 4: Configure Outbound mTLS Explicitly
 
 ```yaml
 # clusters/my-cluster/istio-mtls/destination-rule.yaml
-# DestinationRule to configure outbound mTLS from clients
+# Optional DestinationRule to configure outbound mTLS from clients.
+# Istio auto mTLS already sends mTLS between mesh workloads when possible.
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -149,25 +150,25 @@ flux reconcile kustomization istio-peer-auth
 # Check PeerAuthentication resources
 kubectl get peerauthentication --all-namespaces
 
-# Verify mTLS connections between pods
-istioctl experimental authz check <pod-name> -n production
+# Verify the mTLS policy applied to a pod
+istioctl experimental describe pod <pod-name> -n production
 
-# Check proxy status shows mTLS
+# Check that Envoy configuration has synced
 istioctl proxy-status
 
 # View the certificates used by a pod
 istioctl proxy-config secret <pod-name>.production
 
-# Test that plaintext is rejected in STRICT mode
-kubectl exec -n production deploy/client-app -- \
-  curl http://api-service:8080/health
+# Test that plaintext is rejected in STRICT mode from a pod without an Istio sidecar
+kubectl exec -n legacy-apps deploy/plaintext-client -- \
+  curl http://api-service.production.svc.cluster.local:8080/health
 # Should fail with: Connection refused or 000 (TLS required)
 ```
 
 ## Best Practices
 
 - Migrate to STRICT mTLS progressively: start with PERMISSIVE mesh-wide, enable STRICT per namespace, then enable mesh-wide STRICT only after all namespaces are confirmed working.
-- Check `istioctl analyze` before switching namespaces to STRICT mode - it reports services that will break due to missing sidecar injection or plaintext dependencies.
+- Check `istioctl analyze` before switching namespaces to STRICT mode - it reports configuration issues such as workloads without matching selectors, namespaces without injection labels, or pods missing sidecars.
 - Use `portLevelMtls` exceptions only for specific ports (e.g., Prometheus scraping on metrics ports if your scraper does not support mTLS) rather than disabling mTLS at the service level.
 - Commit the migration timeline as comments in the PeerAuthentication YAML so future operators understand why PERMISSIVE mode is in place for specific namespaces.
 - Combine PeerAuthentication STRICT mode with AuthorizationPolicy using `source.principals` for defense-in-depth: mTLS authenticates the identity, AuthorizationPolicy controls what that identity can do.
