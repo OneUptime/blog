@@ -55,7 +55,7 @@ Flux publishes its container images to the GitHub Container Registry and signs t
 
 ```bash
 cosign verify ghcr.io/fluxcd/source-controller:v1.2.0 \
-  --certificate-identity-regexp="https://github.com/fluxcd/.*" \
+  --certificate-identity-regexp="^https://github\.com/fluxcd/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
@@ -74,7 +74,7 @@ FLUX_IMAGES=$(kubectl get pods -n flux-system \
 for image in $FLUX_IMAGES; do
   echo "Verifying: $image"
   cosign verify "$image" \
-    --certificate-identity-regexp="https://github.com/fluxcd/.*" \
+    --certificate-identity-regexp="^https://github\.com/fluxcd/.*$" \
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
     2>&1
 
@@ -94,16 +94,14 @@ chmod +x verify-flux-images.sh
 ./verify-flux-images.sh
 ```
 
-## Step 4: Verify Signatures with a Specific Cosign Public Key
+## Step 4: Verify Signatures with a Specific Certificate Identity
 
-If your organization requires verification against a specific public key rather than keyless verification, you can download the Flux public key and use it:
+If your organization requires a stricter check than matching the Flux GitHub organization, verify against the exact GitHub Actions workflow identity for the controller and tag:
 
 ```bash
-# Download the Flux cosign public key
-curl -sSL https://raw.githubusercontent.com/fluxcd/flux2/main/cosign.pub -o flux-cosign.pub
-
-# Verify using the public key
-cosign verify --key flux-cosign.pub ghcr.io/fluxcd/source-controller:v1.2.0
+cosign verify ghcr.io/fluxcd/source-controller:v1.2.0 \
+  --certificate-identity="https://github.com/fluxcd/source-controller/.github/workflows/release.yml@refs/tags/v1.2.0" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
 ## Step 5: Inspect Signature Details
@@ -112,7 +110,7 @@ To view detailed information about the signature attached to an image:
 
 ```bash
 cosign verify ghcr.io/fluxcd/source-controller:v1.2.0 \
-  --certificate-identity-regexp="https://github.com/fluxcd/.*" \
+  --certificate-identity-regexp="^https://github\.com/fluxcd/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --output text
 ```
@@ -121,7 +119,7 @@ You can also view the signature payload in JSON format:
 
 ```bash
 cosign verify ghcr.io/fluxcd/source-controller:v1.2.0 \
-  --certificate-identity-regexp="https://github.com/fluxcd/.*" \
+  --certificate-identity-regexp="^https://github\.com/fluxcd/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --output json | jq .
 ```
@@ -135,7 +133,7 @@ After running the verification commands, confirm the following:
 3. The OIDC issuer matches the GitHub Actions token endpoint
 4. No error messages appear in the output
 
-A successful verification output will include details such as the certificate subject, issuer, and the transparency log entry.
+A successful verification output will include details such as the performed checks and the verified signature payload.
 
 ## Troubleshooting
 
