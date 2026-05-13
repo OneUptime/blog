@@ -12,7 +12,7 @@ Running multiple Kubernetes clusters without consistent monitoring is a recipe f
 
 ## Architecture Overview
 
-The monitoring stack uses a hub-and-spoke model where each cluster runs its own Prometheus instance for local metric collection, and a central cluster aggregates data via remote write or Thanos.
+The monitoring stack uses a hub-and-spoke model where each cluster runs its own Prometheus instance for local metric collection, and a central cluster aggregates data via remote write or a separately configured Thanos deployment.
 
 ```mermaid
 graph TD
@@ -22,12 +22,12 @@ graph TD
         D[Thanos Query]
     end
     subgraph "Staging Cluster"
-        E[Prometheus] --> F[Thanos Sidecar]
+        E[Prometheus] -. optional .-> F[Thanos Sidecar]
         G[Alertmanager]
         H[Node Exporter]
     end
     subgraph "Production Cluster"
-        I[Prometheus] --> J[Thanos Sidecar]
+        I[Prometheus] -. optional .-> J[Thanos Sidecar]
         K[Alertmanager]
         L[Node Exporter]
     end
@@ -89,7 +89,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "55.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -317,7 +317,7 @@ spec:
 
 ```yaml
 # infrastructure/monitoring/alertmanager-config.yaml
-apiVersion: monitoring.coreos.com/v1alpha1
+apiVersion: monitoring.coreos.com/v1beta1
 kind: AlertmanagerConfig
 metadata:
   name: cluster-alerts
@@ -402,20 +402,30 @@ metadata:
 data:
   flux-cluster.json: |
     {
-      "dashboard": {
-        "title": "Flux Cluster Overview",
-        "panels": [
-          {
-            "title": "Kustomization Reconciliation",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "gotk_reconcile_condition{type=\"Ready\",status=\"True\",kind=\"Kustomization\"}"
-              }
-            ]
+      "uid": "flux-cluster-overview",
+      "title": "Flux Cluster Overview",
+      "tags": ["flux", "kubernetes"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "panels": [
+        {
+          "id": 1,
+          "title": "Kustomization Reconciliation",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "gotk_reconcile_condition{type=\"Ready\",status=\"True\",kind=\"Kustomization\"}"
+            }
+          ],
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 0
           }
-        ]
-      }
+        }
+      ]
     }
 ```
 
