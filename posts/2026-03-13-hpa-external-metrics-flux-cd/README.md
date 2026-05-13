@@ -37,16 +37,20 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keda
-  namespace: keda
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: keda
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: keda
-      version: "2.14.x"
+      version: "2.19.x"
       sourceRef:
         kind: HelmRepository
         name: kedacore
+        namespace: flux-system
   values:
     operator:
       resources:
@@ -69,6 +73,15 @@ spec:
 ```yaml
 # apps/worker/keda-sqs-scaler.yaml
 apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: aws-sqs-auth
+  namespace: myapp
+spec:
+  podIdentity:
+    provider: aws  # Use pod's IRSA for AWS credentials
+---
+apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: worker-sqs-scaler
@@ -84,12 +97,13 @@ spec:
   cooldownPeriod: 300   # Wait 5 min after last message before scaling to 0
   triggers:
     - type: aws-sqs-queue
+      authenticationRef:
+        name: aws-sqs-auth
       metadata:
         queueURL: https://sqs.us-east-1.amazonaws.com/123456789/my-job-queue
         queueLength: "5"  # Target: 5 messages per worker pod
         awsRegion: us-east-1
-        # Scale based on approximate visible messages
-        identityOwner: pod  # Use pod's IRSA for AWS credentials
+        scaleOnInFlight: "false"  # Scale based on approximate visible messages only
 ```
 
 ## Step 3: Use Native HPA External Metrics (via Adapter)
@@ -146,7 +160,8 @@ spec:
         name: gcp-workload-identity
       metadata:
         subscriptionName: projects/your-project/subscriptions/my-subscription
-        subscriptionSize: "100"  # Scale when subscription backlog > 100
+        mode: "SubscriptionSize"
+        value: "100"  # Scale when subscription backlog > 100
 ```
 
 ## Step 5: Azure Service Bus with KEDA
