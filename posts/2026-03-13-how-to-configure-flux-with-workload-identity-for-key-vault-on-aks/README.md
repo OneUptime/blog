@@ -20,7 +20,8 @@ This guide demonstrates how to configure Flux on AKS with Workload Identity so t
 - Azure CLI version 2.47 or later
 - An AKS cluster with OIDC issuer and workload identity enabled
 - Flux CLI version 2.0 or later
-- An Azure Key Vault instance with secrets you want to access
+- An Azure Key Vault instance with Azure RBAC authorization enabled and secrets you want to access
+- The Azure Key Vault provider for Secrets Store CSI Driver enabled on your AKS cluster
 
 ## Step 1: Enable OIDC Issuer and Workload Identity on AKS
 
@@ -77,7 +78,8 @@ KV_RESOURCE_ID=$(az keyvault show \
 az role assignment create \
   --assignee-object-id "$IDENTITY_OBJECT_ID" \
   --role "Key Vault Secrets User" \
-  --scope "$KV_RESOURCE_ID"
+  --scope "$KV_RESOURCE_ID" \
+  --assignee-principal-type ServicePrincipal
 ```
 
 ## Step 4: Create a Federated Identity Credential
@@ -106,8 +108,6 @@ metadata:
   namespace: default
   annotations:
     azure.workload.identity/client-id: "${IDENTITY_CLIENT_ID}"
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
 Replace `${IDENTITY_CLIENT_ID}` with the actual client ID value. Commit this file to your Flux Git repository.
@@ -125,8 +125,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/my-flux-cluster \
-  --personal
+  --path=clusters/my-flux-cluster
 ```
 
 ## Step 7: Deploy an Application that Uses Key Vault Secrets
@@ -171,6 +170,7 @@ spec:
     metadata:
       labels:
         app: my-app
+        azure.workload.identity/use: "true"
     spec:
       serviceAccountName: workload-sa
       containers:
@@ -230,7 +230,7 @@ flux get kustomizations
 
 **Access denied on Key Vault**: Confirm the role assignment has propagated. Role assignments can take up to five minutes to become effective.
 
-**Workload identity webhook not injecting**: Check that the `azure.workload.identity/use: "true"` label is present on the service account and that the workload identity webhook is running in the kube-system namespace.
+**Workload identity webhook not injecting**: Check that the `azure.workload.identity/use: "true"` label is present on the pod template and that the workload identity webhook is running in the kube-system namespace.
 
 ## Conclusion
 
