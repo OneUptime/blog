@@ -10,24 +10,25 @@ Description: A guide to migrating OpenShift workloads from standard Calico to th
 
 ## Introduction
 
-Migrating OpenShift workloads from standard Calico to Calico VPP is a data plane migration - the Calico control plane, network policies, and IP addressing remain unchanged. The migration replaces the iptables or eBPF packet processing path with VPP's user-space processing pipeline. This is a lower-risk migration than a full CNI replacement because the network policy model, pod IPs, and service discovery are all preserved.
+Migrating OpenShift workloads from standard Calico to Calico VPP is a data plane migration - the Calico control plane, network policy model, and IPAM remain Calico-managed. The migration replaces the iptables or eBPF packet processing path with VPP's user-space processing pipeline. This is a lower-risk migration than a full CNI replacement because the network policy model and service discovery are preserved.
 
-On OpenShift, the migration requires additional preparation: configuring hugepages through MCO (which triggers node reboots), applying the VPP SCC, and deploying the VPP manifests alongside the existing Calico installation. The VPP components start processing traffic on each node as they become ready, with only brief connectivity disruption during the VPP handoff.
+On OpenShift, the migration requires additional preparation: applying the OpenShift-specific VPP namespace, RBAC, service account, VPP configuration, and VPP DaemonSet manifests alongside the existing Calico installation. Hugepages are only required when you choose a VPP driver that needs them, such as DPDK or a native device driver. The VPP components start processing traffic on each node as they become ready, with brief connectivity disruption possible during the VPP handoff.
 
 ## Prerequisites
 
 - OpenShift cluster with Calico installed (standard data plane)
 - `oc` CLI with cluster admin access
-- Maintenance window planned for MCO-induced node reboots
+- Maintenance window planned for the data plane rollout and any node reboots required by optional hugepage or driver changes
 
 ## Step 1: Document Pre-Migration Workload State
 
 ```bash
 oc get all -A -o yaml > pre-migration-workloads.yaml
 oc get networkpolicies -A -o yaml > pre-migration-policies.yaml
+oc get globalnetworkpolicies,networkpolicies.projectcalico.org,globalnetworksets,networksets.projectcalico.org -A -o yaml > pre-migration-calico-policies.yaml
 ```
 
-## Step 2: Configure Hugepages via MCO
+## Step 2: Configure Hugepages via MCO, If Your VPP Driver Requires Them
 
 ```yaml
 apiVersion: machineconfiguration.openshift.io/v1
@@ -49,22 +50,38 @@ oc get machineconfigpool worker -w
 
 ```
 
-## Step 3: Apply VPP SCC
+Skip this step if you are using the OpenShift `04-calico-vpp-nohuge.yaml` manifest with the default `af_packet` driver.
 
-```bash
-oc apply -f calico-vpp-scc.yaml
-```
-
-## Step 4: Deploy VPP Components
+## Step 3: Download the OpenShift VPP Manifests
 
 ```bash
 git clone https://github.com/projectcalico/vpp-dataplane.git
 cd vpp-dataplane
 
-# Set interface name
-sed -i 's/CALICOVPP_INTERFACE.*/CALICOVPP_INTERFACE: ens3/' yaml/calico-vpp.yaml
+cp yaml/platforms/openshift/00-namespace-calico-vpp-dataplane.yaml .
+cp yaml/platforms/openshift/03-configmap-calico-vpp-resources.yaml .
+cp yaml/platforms/openshift/03-role-calico-vpp-dataplane.yaml .
+cp yaml/platforms/openshift/03-rolebinding-calico-vpp-dataplane.yaml .
+cp yaml/platforms/openshift/03-serviceaccount-calico-vpp-dataplane.yaml .
+cp yaml/platforms/openshift/04-calico-vpp-nohuge.yaml .
+```
 
-oc apply -f yaml/calico-vpp.yaml
+## Step 4: Deploy VPP Components
+
+```bash
+SERVICE_CIDR=$(oc get network.config.openshift.io cluster -o jsonpath='{.spec.serviceNetwork[0]}')
+
+# Set service CIDR and primary interface name
+sed -i "s#SERVICE_PREFIX:.*#SERVICE_PREFIX: ${SERVICE_CIDR}#" 03-configmap-calico-vpp-resources.yaml
+sed -i 's/"interfaceName": "ens5"/"interfaceName": "ens3"/' 03-configmap-calico-vpp-resources.yaml
+
+oc apply -f 00-namespace-calico-vpp-dataplane.yaml
+oc apply -f 03-configmap-calico-vpp-resources.yaml
+oc apply -f 03-role-calico-vpp-dataplane.yaml
+oc apply -f 03-rolebinding-calico-vpp-dataplane.yaml
+oc apply -f 03-serviceaccount-calico-vpp-dataplane.yaml
+oc patch installation.operator.tigera.io default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"VPP"}}}'
+oc apply -f 04-calico-vpp-nohuge.yaml
 ```
 
 ## Step 5: Monitor VPP Rollout
@@ -98,4 +115,4 @@ kubectl exec iperf-a -- iperf3 -c $(kubectl get pod iperf-b -o jsonpath='{.statu
 
 ## Conclusion
 
-Migrating OpenShift workloads to Calico VPP requires MCO-managed hugepage configuration (with associated node reboots), VPP SCC creation, and VPP component deployment alongside the existing Calico installation. The data plane migration preserves all network policies, pod IPs, and Routes, making it transparent to workloads while delivering the throughput improvements that VPP provides.
+Migrating OpenShift workloads to Calico VPP requires the OpenShift-specific Calico VPP manifests and, only for drivers that require them, MCO-managed hugepage configuration with associated node reboots. The data plane migration preserves the Calico network policy model and Routes, making it mostly transparent to workloads while delivering the throughput improvements that VPP provides.
