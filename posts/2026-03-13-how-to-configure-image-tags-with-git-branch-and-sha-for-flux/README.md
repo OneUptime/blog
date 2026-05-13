@@ -18,8 +18,8 @@ Flux ImagePolicy supports this tagging pattern through its alphabetical and nume
 
 - A Kubernetes cluster with Flux v2 installed
 - The image-reflector-controller and image-automation-controller deployed
-- A CI pipeline that tags images with the format `{branch}-{sha}`
-- A GitRepository source configured in Flux
+- A CI pipeline that tags images with the format `{branch}-{sha}` or `{branch}-{timestamp}-{sha}`
+- A GitRepository source and ImageUpdateAutomation configured in Flux
 
 ## Understanding the Tag Format
 
@@ -46,7 +46,7 @@ spec:
 
 ## Configuring ImagePolicy for Branch-SHA Tags
 
-To track the latest image from the `main` branch:
+To track images from the `main` branch with alphabetical ordering:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -59,7 +59,6 @@ spec:
     name: my-app
   filterTags:
     pattern: '^main-[a-fA-F0-9]{7,40}$'
-    extract: '$ts'
   policy:
     alphabetical:
       order: asc
