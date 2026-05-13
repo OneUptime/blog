@@ -12,7 +12,7 @@ Description: Monitor for Calico pod CIDR conflicts using regular IPAM checks, po
 
 Monitoring for CIDR conflicts in Calico involves periodic IPAM audits and routing anomaly detection. While conflicts are typically created at provisioning time, they can also emerge when the node network changes (e.g., cluster expansion into a new subnet) or when a second IP pool is added that overlaps with existing infrastructure.
 
-The most direct monitoring approach is a scheduled `calicoctl ipam check` CronJob that runs regularly and alerts on any reported conflicts or unreachable addresses.
+The most direct monitoring approach is to combine a scheduled `calicoctl ipam check` CronJob with explicit node and pod address audits. The `ipam check` command validates Calico IPAM state against Kubernetes and can report leaked or incorrectly allocated pod addresses; node-network overlaps still need to be checked against the cluster's node and IP pool ranges.
 
 ## Symptoms
 
@@ -51,16 +51,21 @@ spec:
           containers:
           - name: checker
             image: calico/ctl:v3.27.0
+            env:
+            - name: DATASTORE_TYPE
+              value: kubernetes
             command:
             - /bin/sh
             - -c
             - |
-              calicoctl ipam check 2>&1
-              if calicoctl ipam check 2>&1 | grep -i "conflict\|overlap\|error"; then
-                echo "ALERT: IPAM conflict detected"
+              OUTPUT=$(calicoctl ipam check --show-problem-ips 2>&1)
+              STATUS=$?
+              echo "$OUTPUT"
+              if [ "$STATUS" -ne 0 ] || echo "$OUTPUT" | grep -Eiq "leaked|not allocated|problem|error"; then
+                echo "ALERT: IPAM integrity issue detected"
                 exit 1
               fi
-              echo "IPAM check: no conflicts found"
+              echo "IPAM check: no integrity issues found"
           restartPolicy: Never
 ```
 
@@ -75,7 +80,7 @@ POD_IPS=$(kubectl get pods --all-namespaces \
   -o jsonpath='{range .items[*]}{.status.podIP}{" "}{end}')
 
 for IP in $NODE_IPS; do
-  if echo "$POD_IPS" | grep -qw "$IP"; then
+  if printf '%s\n' $POD_IPS | grep -Fxq "$IP"; then
     echo "CONFLICT: Pod has same IP as node: $IP"
   fi
 done
@@ -84,16 +89,16 @@ done
 **Step 3: Monitor routing table for anomalies**
 
 ```bash
-# Watch for routes that should not exist (node IPs via pod tunnel)
-ip route show | grep tunl0 | while read ROUTE; do
+# Watch for unexpected IP-in-IP tunnel routes when Calico IP-in-IP is enabled
+ip route show dev tunl0 | while read ROUTE; do
   echo "Tunnel route: $ROUTE"
-  # Flag if this matches a known node IP
+  # Flag if the destination overlaps with known node or infrastructure ranges
 done
 ```
 
 ```mermaid
 flowchart LR
-    A[CronJob: calicoctl ipam check every 6h] --> B{Conflicts found?}
+    A[CronJob: calicoctl ipam check every 6h] --> B{Integrity issues found?}
     B -- Yes --> C[Job fails]
     C --> D[Alert fires]
     D --> E[On-call investigates CIDR overlap]
@@ -110,4 +115,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring Calico CIDR conflicts requires scheduled IPAM audits and cross-checking pod IPs against node IPs. A CronJob running `calicoctl ipam check` every 6 hours provides early detection of emerging conflicts before they cause production traffic issues.
+Monitoring Calico CIDR conflicts requires scheduled IPAM audits and cross-checking pod IPs against node IPs and infrastructure ranges. A CronJob running `calicoctl ipam check` every 6 hours helps detect IPAM integrity issues before they cause production traffic issues.
