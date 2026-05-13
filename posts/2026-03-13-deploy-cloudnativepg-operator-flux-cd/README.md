@@ -18,7 +18,7 @@ This post covers deploying the CNPG operator via Flux HelmRelease and creating a
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes v1.33-v1.35 with Flux CD bootstrapped for CloudNativePG 1.29.x
 - StorageClass supporting `ReadWriteOnce` PVCs
 - `kubectl` and `flux` CLIs installed
 - An S3-compatible object store for backups (optional but recommended)
@@ -52,7 +52,7 @@ spec:
   chart:
     spec:
       chart: cloudnative-pg
-      version: "0.21.6"
+      version: "0.28.2"
       sourceRef:
         kind: HelmRepository
         name: cnpg
@@ -105,6 +105,10 @@ spec:
   imageName: ghcr.io/cloudnative-pg/postgresql:16.3
 
   postgresql:
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: required
     parameters:
       max_connections: "200"
       shared_buffers: "256MB"
@@ -181,7 +185,7 @@ metadata:
   name: postgres-daily-backup
   namespace: databases
 spec:
-  schedule: "0 2 * * *"   # daily at 2 AM
+  schedule: "0 0 2 * * *"   # daily at 2 AM
   cluster:
     name: postgres-primary
   # Backup to S3
@@ -224,7 +228,7 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: cnpg-controller-manager
+      name: cloudnative-pg
       namespace: cnpg-system
 ```
 
@@ -241,10 +245,13 @@ kubectl get cluster postgres-primary -n databases
 kubectl get pods -n databases -l cnpg.io/cluster=postgres-primary
 
 # Connect to the primary
-kubectl exec -n databases -it postgres-primary-1 -- psql -U app app
+PRIMARY_POD=$(kubectl get pod -n databases \
+  -l cnpg.io/cluster=postgres-primary,cnpg.io/instanceRole=primary \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n databases -it "$PRIMARY_POD" -- psql -U app app
 
 # Check replication status
-kubectl exec -n databases -it postgres-primary-1 -- \
+kubectl exec -n databases -it "$PRIMARY_POD" -- \
   psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 ```
 
@@ -254,7 +261,7 @@ kubectl exec -n databases -it postgres-primary-1 -- \
 - Use separate PVCs for WAL storage (`walStorage`) to isolate write-intensive WAL I/O from data reads.
 - Enable Prometheus monitoring via `monitoring.enablePodMonitor: true` and import the CNPG Grafana dashboard.
 - Pin the `imageName` to a specific PostgreSQL patch version and use Flux image policies for automated upgrade PRs.
-- Configure `minSyncReplicas: 1` for production clusters to ensure at least one replica is always in sync before committing transactions.
+- Configure `postgresql.synchronous.method: any`, `postgresql.synchronous.number: 1`, and `postgresql.synchronous.dataDurability: required` for production clusters to ensure at least one replica is always in sync before committing transactions.
 
 ## Conclusion
 
