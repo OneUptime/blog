@@ -23,19 +23,21 @@ The most common FAQ topics cluster around three themes: installation and kernel 
 
 **Q: What Linux kernel version does Cilium require?**
 
-Cilium requires a minimum kernel version that varies by feature. The base requirement is 4.9.17+, but many important features require newer kernels:
+Cilium requires a minimum kernel version that varies by feature. For current Cilium releases, the base requirement is Linux 5.10+ or an equivalent distribution kernel such as RHEL 8.10's 4.18 kernel, but some important features require newer kernels:
 
 ```bash
 # Check your kernel version
 
 uname -r
 
-# Check Cilium kernel requirements for your version
-cilium status | grep -i kernel
+# Check the Cilium agent status from a Cilium pod
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status
 
-# BPF host routing requires 5.10+
-# WireGuard encryption requires 5.6+
-# Socket LB requires 4.19.57+
+# Multicast support requires 5.10+ on AMD64
+# IPv6 BIG TCP requires 5.19+
+# IPv4 BIG TCP requires 6.3+
+# WireGuard requires in-kernel WireGuard support on Linux 5.6+,
+# or an out-of-tree WireGuard module on older kernels
 ```
 
 **Why this comes up**: Cilium's eBPF programs depend on kernel features added over time. Unlike iptables-based CNIs that work on older kernels, Cilium's capabilities are gated by the available BPF hooks.
@@ -46,23 +48,20 @@ cilium status | grep -i kernel
 
 ```bash
 # When you select an endpoint with a CiliumNetworkPolicy,
-# it enters "policy-enforcement: always" mode
-# All traffic not explicitly allowed is dropped
+# it enters default-deny mode for the direction covered by the policy.
+# Traffic in that direction that is not explicitly allowed is dropped.
 
 # Check current policy enforcement mode
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep policy
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 
 # View what policy is applied to the endpoint
-kubectl exec -n kube-system ds/cilium -- cilium policy get
+kubectl get ciliumnetworkpolicies.cilium.io -A
 
-# Trace a specific flow
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod default:my-pod \
-  --dst-k8s-pod default:target-pod \
-  --dport 443
+# Inspect the realized policy for a specific endpoint
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get <endpoint-id>
 ```
 
-**Why this comes up**: The transition to "policy-enforcement: always" when a `CiliumNetworkPolicy` is applied surprises users who expect NetworkPolicy to only add rules, not change the default mode.
+**Why this comes up**: The transition to default-deny mode for a selected direction when a `CiliumNetworkPolicy` is applied surprises users who expect NetworkPolicy to only add rules, not change the default mode.
 
 ## FAQ Category 3: DNS Policy
 
@@ -79,6 +78,17 @@ spec:
     matchLabels:
       app: my-service
   egress:
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: ANY
+      rules:
+        dns:
+        - matchPattern: "*"
   - toFQDNs:
     - matchName: "api.example.com"
     toPorts:
@@ -89,7 +99,7 @@ spec:
 
 ```bash
 # Verify DNS policy is working
-kubectl exec -n kube-system ds/cilium -- cilium fqdn cache list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg fqdn cache list
 ```
 
 ## FAQ Category 4: Hubble and Observability
@@ -104,7 +114,7 @@ cilium hubble enable
 hubble observe --verdict DROPPED --follow
 
 # Or use cilium monitor
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop
 ```
 
 ## Conclusion
