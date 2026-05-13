@@ -40,21 +40,29 @@ fleet-infra/
     subscription-a/
       dev-cluster/
         flux-system/
+        kustomization.yaml
         infrastructure.yaml
         apps.yaml
+        cluster-config.yaml
       prod-cluster/
         flux-system/
+        kustomization.yaml
         infrastructure.yaml
         apps.yaml
+        cluster-config.yaml
     subscription-b/
       staging-cluster/
         flux-system/
+        kustomization.yaml
         infrastructure.yaml
         apps.yaml
+        cluster-config.yaml
       prod-cluster/
         flux-system/
+        kustomization.yaml
         infrastructure.yaml
         apps.yaml
+        cluster-config.yaml
   environments/
     dev/
       kustomization.yaml
@@ -66,12 +74,13 @@ fleet-infra/
 
 ## Step 2: Create AKS Clusters Across Subscriptions
 
-Create clusters in each subscription:
+Create or select resource groups, then create clusters in each subscription:
 
 ```bash
 # Subscription A - Development
 
 az account set --subscription "Subscription-A-ID"
+az group create --name rg-dev --location eastus
 
 az aks create \
   --resource-group rg-dev \
@@ -84,6 +93,8 @@ az aks create \
   --generate-ssh-keys
 
 # Subscription A - Production
+az group create --name rg-prod --location eastus
+
 az aks create \
   --resource-group rg-prod \
   --name prod-cluster-a \
@@ -96,6 +107,7 @@ az aks create \
 
 # Subscription B - Staging
 az account set --subscription "Subscription-B-ID"
+az group create --name rg-staging --location westus2
 
 az aks create \
   --resource-group rg-staging \
@@ -108,6 +120,8 @@ az aks create \
   --generate-ssh-keys
 
 # Subscription B - Production
+az group create --name rg-prod-b --location westus2
+
 az aks create \
   --resource-group rg-prod-b \
   --name prod-cluster-b \
@@ -132,8 +146,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/subscription-a/dev-cluster \
-  --personal
+  --path=clusters/subscription-a/dev-cluster
 
 # Staging cluster in Subscription B
 az account set --subscription "Subscription-B-ID"
@@ -143,8 +156,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/subscription-b/staging-cluster \
-  --personal
+  --path=clusters/subscription-b/staging-cluster
 ```
 
 Repeat for each cluster, changing the `--path` to match the cluster's directory.
@@ -233,7 +245,19 @@ patches:
 
 ## Step 6: Configure Cluster-Level Kustomizations
 
-Each cluster directory references the appropriate environment overlay:
+Each cluster directory includes the Flux-generated sync manifests and references the appropriate environment overlay:
+
+```yaml
+# clusters/subscription-a/dev-cluster/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system/gotk-components.yaml
+  - flux-system/gotk-sync.yaml
+  - infrastructure.yaml
+  - apps.yaml
+  - cluster-config.yaml
+```
 
 ```yaml
 # clusters/subscription-a/dev-cluster/infrastructure.yaml
@@ -302,6 +326,7 @@ spec:
 Create a cluster-specific ConfigMap with subscription details:
 
 ```yaml
+# clusters/subscription-a/prod-cluster/cluster-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -315,40 +340,71 @@ data:
 
 ## Step 8: Set Up Cross-Subscription Identity
 
-For workloads that need to access resources in a different subscription, configure cross-subscription role assignments:
+For workloads that need to access resources in a different subscription, assign Azure RBAC to the user-assigned managed identity used by the Kubernetes service account:
 
 ```bash
-# Grant Subscription A identity access to Subscription B resources
-SUB_A_IDENTITY=$(az aks show \
+# Grant the Subscription A workload identity access to Subscription B resources
+AKS_OIDC_ISSUER=$(az aks show \
   --subscription "Subscription-A-ID" \
   --resource-group rg-prod \
   --name prod-cluster-a \
-  --query identityProfile.kubeletidentity.objectId -o tsv)
+  --query oidcIssuerProfile.issuerUrl -o tsv)
+
+az identity create \
+  --subscription "Subscription-A-ID" \
+  --resource-group rg-prod \
+  --name prod-app-workload-identity \
+  --location eastus
+
+WORKLOAD_CLIENT_ID=$(az identity show \
+  --subscription "Subscription-A-ID" \
+  --resource-group rg-prod \
+  --name prod-app-workload-identity \
+  --query clientId -o tsv)
+
+WORKLOAD_PRINCIPAL_ID=$(az identity show \
+  --subscription "Subscription-A-ID" \
+  --resource-group rg-prod \
+  --name prod-app-workload-identity \
+  --query principalId -o tsv)
+
+az identity federated-credential create \
+  --subscription "Subscription-A-ID" \
+  --resource-group rg-prod \
+  --identity-name prod-app-workload-identity \
+  --name prod-app-sa \
+  --issuer "$AKS_OIDC_ISSUER" \
+  --subject system:serviceaccount:production:prod-app \
+  --audience api://AzureADTokenExchange
 
 az role assignment create \
   --subscription "Subscription-B-ID" \
-  --assignee-object-id "$SUB_A_IDENTITY" \
+  --assignee-object-id "$WORKLOAD_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "Reader" \
   --scope "/subscriptions/Subscription-B-ID/resourceGroups/shared-resources"
 ```
+
+Annotate the workload's Kubernetes service account with `azure.workload.identity/client-id: "$WORKLOAD_CLIENT_ID"` and run the pods with that service account.
 
 ## Step 9: Configure Flux Notifications Across Clusters
 
 Set up centralized alerting for all clusters:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: central-alerting
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: fleet-alerts
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: fleet-alerts
@@ -362,12 +418,15 @@ spec:
       name: "*"
     - kind: HelmRelease
       name: "*"
-  summary: "Alert from ${CLUSTER_NAME} in ${SUBSCRIPTION_NAME}"
+  eventMetadata:
+    summary: "Flux reconciliation failed"
+    cluster: "${CLUSTER_NAME}"
+    subscription: "${SUBSCRIPTION_NAME}"
 ```
 
 ## Step 10: Implement Progressive Delivery
 
-Use Flux dependencies to roll out changes progressively across environments:
+Use separate Git refs to roll out changes progressively across environments:
 
 ```yaml
 # In the dev cluster
