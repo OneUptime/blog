@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Canary, Kubernetes, DaemonSet, Progressive Delivery
 
-Description: Learn how to configure a Flagger Canary resource to automate progressive delivery for Kubernetes DaemonSets using node-level rollouts.
+Description: Learn how to configure a Flagger Canary resource to automate progressive delivery for Kubernetes DaemonSets.
 
 ---
 
@@ -18,7 +18,7 @@ Flagger supports DaemonSets as a target resource, allowing you to apply canary a
 
 - A running Kubernetes cluster (v1.22+) with multiple nodes
 - Flagger installed in your cluster (v1.30+)
-- A supported service mesh or ingress controller
+- A supported Flagger routing provider, such as a service mesh or ingress controller
 - kubectl configured to access your cluster
 - Familiarity with Kubernetes DaemonSets
 
@@ -143,12 +143,12 @@ kubectl apply -f canary-daemonset.yaml
 
 ## How DaemonSet Canary Analysis Works
 
-DaemonSet canary analysis differs from Deployment-based analysis in an important way. Because DaemonSets must run on every node, Flagger cannot use traffic-based weight shifting. Instead, it uses an iteration-based approach:
+With `iterations` configured, Flagger uses a blue/green-style analysis window for the DaemonSet. Flagger creates a primary DaemonSet named `<targetRef.name>-primary`, points the generated service at the primary workload, and scales the original target DaemonSet down. When it detects a change to the target DaemonSet, it scales the target back up, runs analysis checks, and promotes by copying the target pod spec to the primary DaemonSet:
 
 ```mermaid
 graph TD
     A[Update DaemonSet] --> B[Flagger detects change]
-    B --> C[Create canary DaemonSet]
+    B --> C[Scale up target DaemonSet]
     C --> D[Run analysis iteration 1]
     D --> E{Metrics OK?}
     E -->|Yes| F[Run next iteration]
@@ -158,10 +158,10 @@ graph TD
     H -->|No| D
     F --> J{All iterations done?}
     J -->|No| D
-    J -->|Yes| K[Promote to primary]
+    J -->|Yes| K[Copy target spec to primary]
 ```
 
-Instead of `maxWeight` and `stepWeight`, DaemonSet canaries use `iterations` to define how many successful analysis cycles must pass before promotion:
+When you choose iteration-based analysis, use `iterations` to define how many successful analysis cycles must pass before promotion:
 
 ```yaml
 analysis:
@@ -174,17 +174,17 @@ analysis:
 
 When targeting DaemonSets, keep these differences in mind:
 
-### No Traffic Splitting
+### Traffic Splitting Depends on the Provider
 
-DaemonSets do not support traffic-based canary analysis. You cannot use `maxWeight` and `stepWeight` fields. Instead, use `iterations` to define the analysis window.
+DaemonSets are not limited to iteration-based analysis by their workload kind. With a service mesh or ingress routing provider that supports traffic routing, Flagger can use `maxWeight` and `stepWeight` to shift traffic between the primary and canary services. If you use Flagger's `kubernetes` provider, progressive traffic shifting is not supported, so use `iterations` to define the analysis window.
 
-### Node-Level Rollout
+### Primary and Target DaemonSets
 
-Flagger manages the DaemonSet update at the node level. During analysis, both the primary and canary versions may run on the same nodes temporarily, depending on the update strategy.
+Flagger keeps a primary DaemonSet as the stable workload and uses the original target DaemonSet as the canary workload during analysis. During analysis, both the primary and canary DaemonSets may run on the same eligible nodes temporarily, depending on the update strategy.
 
 ### Update Strategy Configuration
 
-Make sure your DaemonSet uses the `RollingUpdate` strategy:
+Make sure your DaemonSet uses the `RollingUpdate` strategy, or leaves the strategy unset so Kubernetes defaults it to `RollingUpdate`:
 
 ```yaml
 spec:
@@ -219,7 +219,7 @@ kubectl set image daemonset/log-collector \
   -n monitoring
 ```
 
-Flagger will detect the change, begin analysis iterations, and either promote or rollback based on the metrics.
+Flagger will detect the change, run the configured analysis, and either promote or rollback based on the metrics.
 
 ## Adding Custom Metrics for DaemonSet Analysis
 
@@ -266,4 +266,4 @@ spec:
 
 ## Conclusion
 
-Configuring Flagger for DaemonSets follows the same pattern as Deployments, with the key difference being the use of iteration-based analysis instead of traffic weight shifting. By setting appropriate iteration counts and thresholds, you can safely validate DaemonSet updates before they roll out to every node in your cluster. This is especially valuable for infrastructure-critical workloads like log collectors, monitoring agents, and network components where a bad update can have cluster-wide impact.
+Configuring Flagger for DaemonSets follows the same pattern as Deployments, with the key difference that Flagger promotes changes into a primary DaemonSet. By setting appropriate iteration counts and thresholds, you can validate DaemonSet updates before promoting them to the stable workload in your cluster. This is especially valuable for infrastructure-critical workloads like log collectors, monitoring agents, and network components where a bad update can have cluster-wide impact.
