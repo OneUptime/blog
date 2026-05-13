@@ -20,7 +20,7 @@ The Flux Operator ResourceSet API, combined with its GitHub input source, makes 
 - kubectl configured to access your cluster
 - The Flux Operator installed with a FluxInstance
 - A GitHub repository with your application code
-- A GitHub personal access token with `repo` scope
+- A GitHub personal access token with read access to the repository and pull requests
 - An ingress controller installed (e.g., NGINX Ingress)
 
 ## Architecture Overview
@@ -40,14 +40,15 @@ graph TD
     C --> K[Deletes Preview Resources]
 ```
 
-## Creating the GitHub Token Secret
+## Creating the GitHub Auth Secret
 
-First, create a Secret with your GitHub token so the ResourceSet controller can query the GitHub API:
+First, create a basic-auth Secret with your GitHub token so the ResourceSet controller can query the GitHub API and Flux can read the repository:
 
 ```bash
-kubectl create secret generic github-token \
+kubectl create secret generic github-auth \
   --namespace=flux-system \
-  --from-literal=token=ghp_your_github_token_here
+  --from-literal=username=flux \
+  --from-literal=password=ghp_your_github_token_here
 ```
 
 ## Configuring the ResourceSet for PR Previews
@@ -66,7 +67,7 @@ spec:
   type: GitHubPullRequest
   url: https://github.com/my-org/my-app
   secretRef:
-    name: github-token
+    name: github-auth
   filter:
     labels:
       - preview
@@ -84,7 +85,8 @@ metadata:
   namespace: flux-system
 spec:
   inputsFrom:
-    - kind: ResourceSetInputProvider
+    - apiVersion: fluxcd.controlplane.io/v1
+      kind: ResourceSetInputProvider
       name: app-pull-requests
   resources:
     - apiVersion: v1
@@ -94,16 +96,26 @@ spec:
         labels:
           preview: "true"
           pr-number: "<< inputs.id >>"
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: github-auth
+        namespace: "pr-<< inputs.id >>"
+        annotations:
+          fluxcd.controlplane.io/copyFrom: "flux-system/github-auth"
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
       metadata:
         name: "pr-<< inputs.id >>"
         namespace: "pr-<< inputs.id >>"
       spec:
+        provider: generic
         interval: 1m
-        url: "https://github.com/my-org/my-app.git"
+        url: "https://github.com/my-org/my-app"
         ref:
-          branch: "<< inputs.branch >>"
+          commit: "<< inputs.sha >>"
+        secretRef:
+          name: github-auth
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
@@ -114,12 +126,13 @@ spec:
         sourceRef:
           kind: GitRepository
           name: "pr-<< inputs.id >>"
-        path: << inputs.deployPath >>
+        path: "<< inputs.deployPath >>"
         prune: true
         postBuild:
           substitute:
             PR_NUMBER: "<< inputs.id >>"
             PR_BRANCH: "<< inputs.branch >>"
+            PR_SHA: "<< inputs.sha >>"
             PREVIEW_HOST: "pr-<< inputs.id >>.preview.example.com"
     - apiVersion: networking.k8s.io/v1
       kind: Ingress
@@ -156,7 +169,7 @@ The ResourceSet controller performs the following actions:
 
 1. **Polls GitHub**: The `ResourceSetInputProvider` polls the GitHub API at its reconciliation interval for open pull requests with the `preview` label.
 2. **Generates Resources**: For each matching PR, the `ResourceSet` renders the resource templates using the PR metadata provided as inputs.
-3. **Creates Environments**: The generated resources are applied to the cluster, creating a namespace, GitRepository, Kustomization, and Ingress for each PR.
+3. **Creates Environments**: The generated resources are applied to the cluster, creating a namespace, Git authentication Secret, GitRepository, Kustomization, and Ingress for each PR.
 4. **Cleans Up**: When a PR is closed or merged (or the `preview` label is removed), the controller deletes the corresponding resources.
 
 ## Available Template Variables
@@ -167,6 +180,7 @@ The `ResourceSetInputProvider` for GitHub pull requests provides these variables
 - `<< inputs.branch >>`: The source branch name
 - `<< inputs.sha >>`: The latest commit SHA on the PR branch
 - `<< inputs.author >>`: The PR author's username
+- `<< inputs.title >>`: The PR title
 
 ## Configuring the Preview Application
 
@@ -184,14 +198,19 @@ patches:
       kind: Deployment
       name: app
     patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 1
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: PREVIEW_HOST
-          value: "${PREVIEW_HOST}"
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: app
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: app
+                env:
+                  - name: PREVIEW_HOST
+                    value: "${PREVIEW_HOST}"
 ```
 
 ## Adding Resource Limits for Preview Environments
