@@ -12,7 +12,7 @@ Description: Log Audit Calico ClusterIP service policies to secure internal Kube
 
 ClusterIP Service Policies in Calico gives you control over how traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure ClusterIP Services traffic effectively while maintaining service availability.
 
-Proper ClusterIP Services policy configuration is essential for clusters that expose services to external traffic. Without it, any source can reach your NodePort or ClusterIP services, creating significant attack surface.
+Proper ClusterIP Services policy configuration is essential for clusters that expose services to internal or advertised service traffic. Without it, any permitted in-cluster source, or any external source that can reach advertised ClusterIPs or NodePort services, can create a significant attack surface.
 
 This guide covers log audit ClusterIP Services policies in Calico with practical, production-tested configurations.
 
@@ -35,26 +35,30 @@ spec:
   selector: app == 'backend-service'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'frontend'
       destination:
         ports: [8080]
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'monitoring'
       destination:
         ports: [9090]
+    - action: Log
     - action: Deny
   egress:
     - action: Allow
+      protocol: TCP
       destination:
         selector: app == 'database'
-      destination:
         ports: [5432]
     - action: Allow
       protocol: UDP
       destination:
         ports: [53]
+    - action: Log
     - action: Deny
   types:
     - Ingress
