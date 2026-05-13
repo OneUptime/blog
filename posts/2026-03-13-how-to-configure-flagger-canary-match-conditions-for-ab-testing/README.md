@@ -17,7 +17,7 @@ Flagger supports A/B testing through the `match` field in the analysis spec. Mat
 ## Prerequisites
 
 - A running Kubernetes cluster with Flagger installed
-- Istio or another service mesh that supports header-based routing
+- Istio or another Flagger-supported traffic provider that supports header-based routing
 - kubectl access to your cluster
 - A Deployment and Service to target
 
@@ -38,7 +38,7 @@ graph TD
 
 ## Configuring Match Conditions
 
-Match conditions are defined in the `analysis.match` array. Each condition specifies an HTTP header and a matching rule:
+Match conditions are defined in the `analysis.match` array. Each header-based condition specifies an HTTP header and a matching rule:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
