@@ -14,13 +14,13 @@ Consul Intentions define which services are allowed to communicate with each oth
 
 Managing Intentions through Flux CD ensures your service communication policy is version-controlled. Adding a new service dependency or revoking an existing permission is a pull request, giving security teams a clear record of every authorization change.
 
-This guide covers configuring Consul Intentions using Flux CD, both with legacy config entries and the modern CRD-based approach.
+This guide covers configuring Consul Intentions using Flux CD with the Consul `ServiceIntentions` CRD.
 
 ## Prerequisites
 
 - Kubernetes cluster with Consul Connect installed
 - Flux CD v2 bootstrapped to your Git repository
-- Consul ACLs enabled (required for intention enforcement)
+- Consul service mesh mTLS enabled (required for L4 intention enforcement)
 - Services meshed with the Consul Connect sidecar
 
 ## Step 1: Apply Default Deny Intention
@@ -138,17 +138,19 @@ spec:
 
 ```yaml
 # clusters/my-cluster/consul-intentions/observability-intentions.yaml
-# Allow Prometheus to scrape metrics from all services
+# Allow Prometheus to scrape metrics from api-service
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceIntentions
 metadata:
-  name: prometheus-intentions
+  name: api-service-metrics-intentions
   namespace: consul
 spec:
   destination:
-    name: "*"
+    name: api-service
   sources:
-    # Allow Prometheus to reach all services for scraping
+    # Allow Prometheus to reach this service for scraping.
+    # Repeat this pattern per destination service because L7
+    # permissions are not supported with wildcard destinations.
     - name: prometheus
       permissions:
         - action: allow
@@ -200,7 +202,7 @@ kubectl exec -n production deploy/frontend-service \
   -c frontend -- curl -sv http://localhost:8080/api/health
 # (8080 is the upstream port defined in the Connect annotation)
 
-# Test denied connection (should fail with "Connection refused")
+# Test denied connection (should fail with an upstream authorization error)
 kubectl exec -n production deploy/payment-service \
   -c payment -- curl -sv http://localhost:8081/api/users
 # Expected: upstream connect error (denied by intention)
@@ -218,7 +220,7 @@ kubectl exec -n consul consul-server-0 -- \
 
 - Start with a `deny-all` wildcard intention and explicitly allow only the service-to-service paths you need - this enforces zero-trust from day one.
 - Use L7 intentions with HTTP permissions for sensitive endpoints like admin APIs, restricting by both source service and HTTP method/path.
-- Allow Prometheus scraping via intentions scoped to the `/metrics` path so your monitoring stack can function without opening broad access.
+- Allow Prometheus scraping via per-service intentions scoped to the `/metrics` path so your monitoring stack can function without opening broad access.
 - Name ServiceIntentions resources after the destination service (e.g., `api-service-intentions`) for clarity when listing with `kubectl get serviceintentions`.
 - Test intention changes in a staging namespace before applying to production - a missing intention can silently break service communication if ACLs are in `deny` mode.
 
