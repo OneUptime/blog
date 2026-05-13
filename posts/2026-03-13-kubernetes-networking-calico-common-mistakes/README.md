@@ -27,11 +27,11 @@ The most painful networking mistake is discovering your IP pool is full when a n
 **Prevention**: Monitor IPAM allocation proactively:
 ```bash
 calicoctl ipam show
-# Watch the "Utilization" column - alert at 80%
+# Watch the percentage in the "IPS IN USE" column - alert at 80%
 
 ```
 
-**Fix**: Add a new non-overlapping IP pool:
+**Fix**: Add a new non-overlapping IP pool that matches your cluster's encapsulation mode. For example, in an IP-in-IP cluster:
 ```bash
 calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
@@ -101,7 +101,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i "b
 
 ## Mistake 5: Not Configuring `natOutgoing` for Public Internet Access
 
-If `natOutgoing` is not enabled on the IP pool, pods with RFC 1918 IPs attempting to reach the public internet will send packets with their pod IP as the source. These packets will be dropped by the upstream router since pod IPs are not routable externally.
+If `natOutgoing` is not enabled on the IP pool, pods with RFC 1918 IPs attempting to reach the public internet will send packets with their pod IP as the source unless your network provides separate routing or NAT for the pod CIDR. Without that upstream routing or NAT, return traffic will not be routable back to the pod.
 
 **Symptom**: Pods cannot reach external services; internal connectivity works fine.
 
@@ -113,9 +113,9 @@ calicoctl patch ippool default-ipv4-ippool \
 
 ## Best Practices
 
-- Monitor IPAM utilization via Prometheus (Calico Felix exposes IPAM metrics) and alert at 75%
+- Monitor IPAM utilization via Prometheus (Calico kube-controllers exposes IPAM metrics) and alert at 75%
 - Document your pool CIDR, node CIDR, service CIDR, and all external CIDRs in a network diagram before cluster creation
-- Set MTU explicitly in your Calico installation manifest - never rely on auto-detection in production
+- Set MTU explicitly in your Calico installation manifest when your environment requires an override, and ensure unused encapsulation modes are disabled so auto-detection can choose the correct value
 - Test BGP session recovery by simulating a node restart in your lab before production rollout
 
 ## Conclusion
