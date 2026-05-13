@@ -174,15 +174,19 @@ sync:
   interval: 30m
 ```
 
-Track a specific semver range:
+The FluxInstance `sync.ref` field accepts a Git ref name, such as a branch or tag ref. If you need Flux GitRepository semver tag selection, configure a GitRepository with `.spec.ref.semver` directly instead of using `sync.ref`:
 
 ```yaml
-sync:
-  kind: GitRepository
-  url: https://github.com/org/fleet-repo.git
-  ref: refs/tags/v1.x
-  path: clusters/production
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
   interval: 30m
+  url: https://github.com/org/fleet-repo.git
+  ref:
+    semver: ">=1.0.0 <2.0.0"
 ```
 
 ## Configuring the Reconciliation Interval
