@@ -109,7 +109,7 @@ export INGRESS_HOST=app.staging.example.com
 kustomize build ./apps/my-app | flux envsubst
 ```
 
-This gives you the exact output that Flux would produce on the cluster.
+This gives you the same post-build substituted manifest that Flux would produce on the cluster, assuming the same input variables and compatible kustomize behavior.
 
 ## Using a Variables File
 
@@ -143,7 +143,7 @@ You can maintain separate env files for each cluster or environment:
 
 ## Using the strict Flag
 
-By default, `flux envsubst` leaves undefined variables as-is. To catch missing variables, use the `--strict` flag, which causes the command to fail if any variable is not defined:
+By default, `flux envsubst` substitutes undefined variables with an empty string unless the placeholder includes a default value. To catch missing variables, use the `--strict` flag, which causes the command to fail if a variable without a default value is not defined:
 
 ```bash
 export CLUSTER_NAME=production
@@ -213,11 +213,12 @@ for env_file in "$ENVS_DIR"/*.env; do
 
     echo -n "Testing $app_name with $env_name... "
 
-    set -a
-    source "$env_file"
-    set +a
-
-    if kustomize build "$app_dir" | flux envsubst --strict > /dev/null 2>&1; then
+    if (
+      set -a
+      source "$env_file"
+      set +a
+      kustomize build "$app_dir" | flux envsubst --strict
+    ) > /dev/null 2>&1; then
       echo "OK"
     else
       echo "FAILED"
@@ -263,11 +264,15 @@ jobs:
           for env_file in envs/*.env; do
             env_name=$(basename "$env_file" .env)
             echo "Testing environment: $env_name"
-            set -a && source "$env_file" && set +a
             for app_dir in apps/*/; do
               app_name=$(basename "$app_dir")
               echo "  Testing app: $app_name"
-              kustomize build "$app_dir" | flux envsubst --strict
+              (
+                set -a
+                source "$env_file"
+                set +a
+                kustomize build "$app_dir" | flux envsubst --strict
+              )
             done
           done
 ```
@@ -278,12 +283,20 @@ Use `flux envsubst` to generate and compare rendered manifests for different env
 
 ```bash
 # Generate production output
-set -a && source envs/production.env && set +a
-kustomize build apps/my-app | flux envsubst > /tmp/prod.yaml
+(
+  set -a
+  source envs/production.env
+  set +a
+  kustomize build apps/my-app | flux envsubst
+) > /tmp/prod.yaml
 
 # Generate staging output
-set -a && source envs/staging.env && set +a
-kustomize build apps/my-app | flux envsubst > /tmp/staging.yaml
+(
+  set -a
+  source envs/staging.env
+  set +a
+  kustomize build apps/my-app | flux envsubst
+) > /tmp/staging.yaml
 
 # Compare
 diff /tmp/prod.yaml /tmp/staging.yaml
