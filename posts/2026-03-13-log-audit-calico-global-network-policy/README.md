@@ -28,14 +28,24 @@ spec:
   order: 100
   selector: all()
   ingress:
+    - action: Log
+      source:
+        selector: app == 'authorized'
     - action: Allow
       source:
         selector: app == 'authorized'
   egress:
+    - action: Log
+      protocol: UDP
+      destination:
+        ports: [53]
     - action: Allow
       protocol: UDP
       destination:
         ports: [53]
+    - action: Log
+      destination:
+        selector: app == 'permitted-destination'
     - action: Allow
       destination:
         selector: app == 'permitted-destination'
@@ -62,11 +72,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Check Felix metrics endpoint if Prometheus metrics are enabled
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Review policy logs on nodes using the iptables data plane
+journalctl -k -f | grep calico-packet
 ```
 
 ## Architecture
