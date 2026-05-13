@@ -197,7 +197,7 @@ spec:
 
 ## Pre-Provisioning Storage
 
-For environments where you pre-provision PersistentVolumes, health check both the PV and PVC:
+For environments where you pre-provision PersistentVolumes, define both the PV and PVC, then health check the PVC:
 
 ```yaml
 apiVersion: v1
@@ -286,7 +286,7 @@ When a PVC health check fails:
 ```bash
 # Check Kustomization status
 
-flux get kustomization database-storage
+flux get kustomizations
 
 # Check PVC status
 kubectl get pvc -n database
