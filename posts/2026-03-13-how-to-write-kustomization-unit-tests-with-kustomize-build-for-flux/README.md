@@ -16,6 +16,8 @@ Flux Kustomizations apply kustomize overlays to your cluster. Before these overl
 
 - kustomize CLI installed (v5.0 or later)
 - kubectl installed
+- Flux CLI installed
+- yq installed
 - A Flux GitOps repository with kustomize overlays
 - Basic understanding of kustomize concepts (bases, overlays, patches)
 
@@ -105,7 +107,7 @@ OUTPUT=$(kustomize build "$OVERLAY")
 assert_resource() {
   local kind=$1
   local name=$2
-  if echo "$OUTPUT" | grep -q "kind: $kind" && echo "$OUTPUT" | grep -q "name: $name"; then
+  if echo "$OUTPUT" | yq eval "select(.kind == \"$kind\" and .metadata.name == \"$name\") | .kind" - | grep -q .; then
     echo "  PASS: Found $kind/$name"
   else
     echo "  FAIL: Missing $kind/$name"
@@ -155,7 +157,7 @@ fi
 
 ## Step 6: Test Variable Substitution
 
-Flux supports post-build variable substitution. Test these substitutions locally.
+Flux supports post-build variable substitution after `kustomize build`. Detect variables locally and optionally run the same substitution behavior with the Flux CLI.
 
 ```bash
 #!/bin/bash
@@ -166,8 +168,8 @@ OVERLAY="overlays/staging"
 OUTPUT=$(kustomize build "$OVERLAY")
 
 # Check that variables are defined (they will appear as ${VAR_NAME} in the output)
-# In a real Flux deployment, these get substituted at reconciliation time
-undefined_vars=$(echo "$OUTPUT" | grep -oP '\$\{[^}]+\}' | sort -u)
+# In a real Flux deployment, these get substituted at reconciliation time when postBuild substitution is configured
+undefined_vars=$(echo "$OUTPUT" | grep -Eo '\$\{[^}]+\}' | sort -u || true)
 
 if [ -n "$undefined_vars" ]; then
   echo "Variables found (will be substituted by Flux):"
@@ -186,6 +188,12 @@ if [ -n "$undefined_vars" ]; then
 else
   echo "No variable references found"
 fi
+
+# To test substitutions locally, export the same variables and run Flux envsubst
+export CLUSTER_NAME="staging"
+export ENVIRONMENT="staging"
+export APP_VERSION="1.0.0"
+echo "$OUTPUT" | flux envsubst --strict > /dev/null
 ```
 
 ## Step 7: Test Namespace Consistency
@@ -201,12 +209,12 @@ OVERLAY="overlays/production"
 EXPECTED_NS="production"
 OUTPUT=$(kustomize build "$OVERLAY")
 
-# Extract all namespaces from the output
-namespaces=$(echo "$OUTPUT" | yq eval '.metadata.namespace // "default"' - | sort -u)
+# Extract declared namespaces from the output
+namespaces=$(echo "$OUTPUT" | yq eval 'select(.metadata.namespace != null) | .metadata.namespace' - | sort -u)
 
 echo "Namespaces in build output:"
 for ns in $namespaces; do
-  if [ "$ns" == "$EXPECTED_NS" ] || [ "$ns" == "null" ]; then
+  if [ "$ns" == "$EXPECTED_NS" ]; then
     echo "  OK: $ns"
   else
     echo "  WARNING: Unexpected namespace $ns (expected $EXPECTED_NS)"
@@ -284,9 +292,6 @@ jobs:
       - name: Install kustomize
         uses: imranismail/setup-kustomize@v2
 
-      - name: Install yq
-        uses: mikefarah/yq@master
-
       - name: Build all overlays
         run: |
           for overlay in overlays/*/; do
@@ -305,7 +310,7 @@ jobs:
 ## Best Practices
 
 - Run `kustomize build` tests on every pull request that modifies kustomize files
-- Use `kubectl apply --dry-run=client` to validate the output against the Kubernetes API schema
+- Use `kubectl apply --dry-run=client` for basic client-side validation, or `--dry-run=server` when you have cluster access and want API server validation
 - Test both base and overlay directories independently
 - Verify that patches produce expected values, not just that the build succeeds
 - Keep test scripts in the same repository as your kustomize configurations
@@ -313,4 +318,4 @@ jobs:
 
 ## Conclusion
 
-Unit testing kustomize overlays with `kustomize build` catches configuration errors early in the development cycle. By validating builds, checking patch application, and running dry-run applies, you can be confident that your Flux Kustomizations will reconcile successfully when they reach the cluster. Integrating these tests into CI ensures every change is validated before it reaches your GitOps repository.
+Unit testing kustomize overlays with `kustomize build` catches configuration errors early in the development cycle. By validating builds, checking patch application, and running dry-run applies, you can increase confidence that your Flux Kustomizations will reconcile successfully when they reach the cluster. Integrating these tests into CI ensures every change is validated before it reaches your GitOps repository.
