@@ -91,7 +91,7 @@ spec:
         email: flux-bot@gitlab.example.com
 ```
 
-If using a GitLab service account, the email should match the account's primary email for proper attribution.
+If using a GitLab service account, the email should match an email configured for that account, such as its primary email or private commit email, for proper attribution.
 
 ## Using a Team or Group Email
 
@@ -110,7 +110,7 @@ This can be useful for compliance purposes where commits need to be traceable to
 
 ## Email for GPG Signing
 
-When using GPG-signed commits, the email in the commit author must match the email in the GPG key. If they do not match, the signature verification will fail:
+When using GPG-signed commits, use an email that is present in the GPG key identity. Git platforms such as GitHub also check that the signing identity matches a verified email on the account for the commit to appear as verified:
 
 ```yaml
 spec:
@@ -124,7 +124,7 @@ spec:
           name: gpg-signing-key
 ```
 
-Make sure the GPG key was generated with the User ID containing `flux-bot@example.com`:
+Make sure the GPG key was generated with a User ID containing `flux-bot@example.com`:
 
 ```bash
 gpg --list-keys flux-bot@example.com
@@ -155,12 +155,12 @@ spec:
 
 ## Email and Commit Verification on GitHub
 
-GitHub marks commits as "Verified" when the committer email matches a verified email on the account. To get verified badges on automated commits:
+GitHub marks commits as "Verified" when the commit has a cryptographically valid GPG, SSH, or S/MIME signature and the signing identity is associated with the account. To get verified badges on automated commits:
 
 1. Create a machine user account on GitHub
 2. Add and verify the email address on that account
 3. Use that email in the ImageUpdateAutomation
-4. Optionally add GPG signing for cryptographic verification
+4. Configure GPG signing for the ImageUpdateAutomation and add the public key to the GitHub account
 
 ```yaml
 spec:
@@ -183,7 +183,7 @@ git log --author="flux-staging@example.com" --oneline
 git log --author="flux.*@example.com" --oneline --perl-regexp
 
 # Exclude automated commits
-git log --invert-grep --author="flux" --oneline
+git log --perl-regexp --author="^(?!.*flux)" --oneline
 ```
 
 ## Complete Configuration Example
