@@ -23,7 +23,7 @@ This guide explains how to configure and use `skipAnalysis` in Flagger, includin
 
 ## How skipAnalysis Works
 
-When `skipAnalysis` is set to `true` in the Canary spec, Flagger skips all metric checks and webhook validations. Instead of gradually shifting traffic and evaluating metrics at each step, Flagger immediately promotes the canary to primary. The traffic is shifted from 0% to 100% in a single step.
+When `skipAnalysis` is set to `true` in the Canary spec, Flagger skips the normal analysis loop of metric checks and rollout validation. Instead of gradually shifting traffic and evaluating metrics at each step, Flagger checks that the canary deployment is healthy and then promotes it to primary. If an analysis is already underway, Flagger cancels it and runs the promotion.
 
 ```mermaid
 graph TD
@@ -96,7 +96,7 @@ Watch the canary status to see the immediate promotion:
 kubectl get canary my-app -n default -w
 ```
 
-You should see the canary transition directly from `Progressing` to `Succeeded` without going through the normal step-by-step analysis.
+You should see the canary reach `Succeeded` without going through the normal step-by-step analysis.
 
 ## Step 3: Toggle skipAnalysis Dynamically
 
@@ -198,8 +198,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - canary-patch.yaml
+patches:
+  - path: canary-patch.yaml
 ```
 
 ## Verifying the Promotion

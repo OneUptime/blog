@@ -10,7 +10,7 @@ Description: Learn how to set up Flux 2.8 to post reconciliation status comments
 
 ## Introduction
 
-Flux 2.8 introduced the ability to post reconciliation status updates as comments directly on GitHub pull requests. This feature gives developers immediate feedback on whether their Kubernetes manifest changes deploy successfully, without needing to check separate dashboards or logs. When a pull request triggers a Flux reconciliation, the notification controller can post comments showing the deployment status, applied resources, and any errors encountered.
+Flux 2.8 introduced the ability to post reconciliation status updates as comments directly on GitHub pull requests. This feature gives developers immediate feedback on whether their Kubernetes manifest changes deploy successfully, without needing to check separate dashboards or logs. When a pull request preview environment triggers a Flux reconciliation, the notification controller can post comments showing the deployment status and any errors encountered.
 
 This guide walks you through configuring GitHub pull request comment notifications in Flux 2.8, including authentication setup, provider configuration, and alert rules.
 
@@ -18,7 +18,7 @@ This guide walks you through configuring GitHub pull request comment notificatio
 
 - A Kubernetes cluster running Flux v2.8 or later
 - A GitHub repository used for Flux GitOps
-- A GitHub personal access token or GitHub App with pull request write permissions
+- A GitHub personal access token or GitHub App with permission to read and write pull request comments, and commit status write permission if you configure status checks
 - `kubectl` and `flux` CLI tools installed
 
 ## Step 1: Create a GitHub Authentication Secret
@@ -43,13 +43,15 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  appID: "123456"
-  installationID: "78901234"
-  privateKey: |
+  githubAppID: "123456"
+  githubAppInstallationID: "78901234"
+  githubAppPrivateKey: |
     -----BEGIN RSA PRIVATE KEY-----
     your-private-key-content
     -----END RSA PRIVATE KEY-----
 ```
+
+If you use this GitHub App secret, set the provider `secretRef.name` to `github-app-credentials`.
 
 ## Step 2: Configure the Notification Provider
 
@@ -57,23 +59,23 @@ Create a notification provider configured for GitHub pull request comments:
 
 ```yaml
 # github-pr-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-pr-comments
   namespace: flux-system
 spec:
-  type: githubdispatch
+  type: githubpullrequestcomment
   address: https://github.com/your-org/fleet-infra
   secretRef:
     name: github-pr-token
 ```
 
-For pull request-specific comments, use the `github` provider type with the commit status API:
+If you also want GitHub commit status checks, use a separate `github` provider:
 
 ```yaml
 # github-commit-status-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -85,22 +87,40 @@ spec:
     name: github-pr-token
 ```
 
-Apply the provider:
+Apply the providers:
 
 ```bash
+kubectl apply -f github-pr-provider.yaml
 kubectl apply -f github-commit-status-provider.yaml
 ```
 
 ## Step 3: Create Alert Rules for PR Events
 
-Configure alerts that trigger on reconciliation events and post to the GitHub provider:
+Configure alerts that trigger on reconciliation events and post to the GitHub providers:
 
 ```yaml
 # github-pr-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pr-deployment-status
+  namespace: flux-system
+spec:
+  providerRef:
+    name: github-pr-comments
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+    - kind: HelmRelease
+      name: "*"
+  inclusionList:
+    - ".*reconciliation.*"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: pr-commit-status
   namespace: flux-system
 spec:
   providerRef:
@@ -121,9 +141,9 @@ Apply the alert:
 kubectl apply -f github-pr-alert.yaml
 ```
 
-## Step 4: Enable Commit Status Reporting
+## Step 4: Annotate Flux Objects for PR Comments and Commit Status
 
-For Flux to associate deployments with specific pull requests, configure commit status reporting on your Kustomizations:
+For Flux to associate deployments with specific pull requests, add the standard event metadata annotations to the Flux objects created for the pull request preview environment:
 
 ```yaml
 # kustomization-with-status.yaml
@@ -132,6 +152,9 @@ kind: Kustomization
 metadata:
   name: app-deployment
   namespace: flux-system
+  annotations:
+    event.toolkit.fluxcd.io/change_request: "42"
+    event.toolkit.fluxcd.io/commit: "0123456789abcdef0123456789abcdef01234567"
 spec:
   interval: 5m
   sourceRef:
@@ -143,26 +166,26 @@ spec:
   timeout: 5m
 ```
 
-When Flux reconciles a commit from a pull request, it posts the status back to GitHub, which appears on the PR as a check status.
+When Flux reconciles this object, the `githubpullrequestcomment` provider uses the `change_request` annotation to find the pull request, and the `github` provider can use the `commit` annotation for commit status reporting.
 
 ## Step 5: Configure Detailed Comment Notifications
 
-For richer PR comments that include resource details, set up a dedicated comment provider:
+For PR comments that include additional event metadata, set up a dedicated comment provider:
 
 ```yaml
 # github-comment-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-comments
   namespace: flux-system
 spec:
-  type: github
+  type: githubpullrequestcomment
   address: https://github.com/your-org/fleet-infra
   secretRef:
     name: github-pr-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pr-detailed-status
@@ -178,7 +201,8 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: flux-system
-  summary: "Flux deployment status for commit ${revision}"
+  eventMetadata:
+    summary: "Flux deployment status"
 ```
 
 ## Step 6: Handle Error Notifications
@@ -187,14 +211,14 @@ Create a separate alert for deployment failures that posts error details to pull
 
 ```yaml
 # github-error-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pr-error-notifications
   namespace: flux-system
 spec:
   providerRef:
-    name: github-status
+    name: github-pr-comments
   eventSeverity: error
   eventSources:
     - kind: Kustomization
@@ -222,7 +246,7 @@ Check notification controller logs for delivery status:
 kubectl logs -n flux-system deploy/notification-controller --tail=50
 ```
 
-Create a test pull request with a manifest change and merge it. Watch for the commit status update on GitHub:
+Create a test pull request that provisions an annotated preview-environment Flux object. Watch for the reconciliation and the pull request comment on GitHub:
 
 ```bash
 flux get kustomizations -n flux-system -w
@@ -234,7 +258,7 @@ If comments are not appearing on pull requests, verify the following:
 
 ```bash
 # Check provider status
-kubectl describe provider github-status -n flux-system
+kubectl describe provider github-pr-comments -n flux-system
 
 # Check alert status
 kubectl describe alert pr-deployment-status -n flux-system
@@ -247,4 +271,4 @@ Common issues include expired tokens, incorrect repository URLs in the provider 
 
 ## Conclusion
 
-GitHub pull request comment notifications in Flux 2.8 create a tight feedback loop between GitOps deployments and the code review process. Developers see deployment results directly on their pull requests without context-switching to separate dashboards. By configuring both commit status checks and detailed comment notifications, you ensure that every manifest change gets immediate, visible feedback on its deployment outcome. This integration makes GitOps workflows more transparent and helps teams catch deployment issues before they reach production.
+GitHub pull request comment notifications in Flux 2.8 create a tight feedback loop between GitOps deployments and the code review process. Developers see preview-environment deployment results directly on their pull requests without context-switching to separate dashboards. By configuring both commit status checks and detailed comment notifications for annotated Flux objects, you ensure that every pull request preview gets immediate, visible feedback on its deployment outcome. This integration makes GitOps workflows more transparent and helps teams catch deployment issues before they reach production.
