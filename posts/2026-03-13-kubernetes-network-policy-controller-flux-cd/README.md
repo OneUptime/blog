@@ -45,10 +45,11 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.15.x"
+      version: "1.19.x"
       sourceRef:
         kind: HelmRepository
         name: cilium
+        namespace: flux-system
   values:
     # Enable Kubernetes NetworkPolicy enforcement
     policyEnforcementMode: default
@@ -59,7 +60,7 @@ spec:
         enabled: true
       ui:
         enabled: true
-    # Enable NetworkPolicy logging
+    # Enable the cilium-monitor sidecar for drop event inspection
     monitor:
       enabled: true
     # Resource limits
@@ -77,6 +78,11 @@ spec:
 For teams preferring Calico:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tigera-operator
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -89,20 +95,40 @@ spec:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: calico
+  name: calico-crds
   namespace: tigera-operator
 spec:
   interval: 1h
   chart:
     spec:
-      chart: tigera-operator
-      version: "v3.27.x"
+      chart: crd.projectcalico.org.v1
+      version: "v3.32.x"
       sourceRef:
         kind: HelmRepository
         name: projectcalico
+        namespace: flux-system
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: calico
+  namespace: tigera-operator
+spec:
+  interval: 1h
+  dependsOn:
+    - name: calico-crds
+  chart:
+    spec:
+      chart: tigera-operator
+      version: "v3.32.x"
+      sourceRef:
+        kind: HelmRepository
+        name: projectcalico
+        namespace: flux-system
   values:
     installation:
-      cniType: Calico
+      cni:
+        type: Calico
       calicoNetwork:
         bgp: Disabled
         ipPools:
@@ -148,7 +174,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ingress-nginx
-        - podSelector:
+          podSelector:
             matchLabels:
               app.kubernetes.io/name: ingress-nginx
       ports:
@@ -172,7 +198,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: database
-        - podSelector:
+          podSelector:
             matchLabels:
               app: postgresql
       ports:
@@ -216,7 +242,7 @@ resources:
 
 ```bash
 # Check Cilium is running
-kubectl get pods -n kube-system -l app.kubernetes.io/name=cilium
+kubectl get pods -n kube-system -l k8s-app=cilium
 
 # Test NetworkPolicy enforcement with Cilium CLI
 cilium connectivity test
@@ -226,8 +252,8 @@ kubectl run test-blocked --image=busybox:1.36 --rm -it --restart=Never \
   -n myapp -- wget -O- http://external-service --timeout=5
 # Should fail if egress is blocked
 
-# View Hubble flow logs for denied traffic
-kubectl -n kube-system exec -it ds/cilium -- cilium monitor --type drop
+# View Cilium drop events for denied traffic
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg monitor --type drop
 ```
 
 ## Best Practices
