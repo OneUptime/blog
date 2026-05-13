@@ -147,7 +147,7 @@ spec:
         summary: "Connection tracking table on {{ $labels.node }} is 80%+ full"
         description: "IPVS connection tracking exhaustion can cause packet drops"
     - alert: CalicoIPVSPolicyConflict
-      expr: rate(felix_int_dataplane_failures_total[5m]) > 0
+      expr: rate(felix_int_dataplane_failures[5m]) > 0
       for: 2m
       labels:
         severity: critical
