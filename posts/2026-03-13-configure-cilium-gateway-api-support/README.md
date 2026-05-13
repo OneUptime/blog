@@ -10,22 +10,28 @@ Description: Configure Cilium Gateway API support to replace traditional Ingress
 
 ## Introduction
 
-Cilium's Gateway API support provides a modern alternative to Kubernetes Ingress, implementing the Gateway API specification using eBPF for high-performance traffic management. It supports HTTP, HTTPS, and TLS passthrough routing, along with advanced features like traffic splitting, header manipulation, and TLS termination.
+Cilium's Gateway API support provides a modern alternative to Kubernetes Ingress, implementing the Gateway API specification with Cilium's eBPF datapath and Envoy integration for high-performance traffic management. It supports HTTP, HTTPS, and TLS passthrough routing when the TLSRoute CRD is installed, along with advanced features like traffic splitting, header manipulation, and TLS termination.
 
-Enabling Gateway API support in Cilium requires installing the Gateway API CRDs and configuring the Cilium Helm chart. Once enabled, Cilium's operator acts as the Gateway API controller, creating load balancer services and configuring eBPF programs for each Gateway.
+Enabling Gateway API support in Cilium requires installing the Gateway API CRDs and configuring the Cilium Helm chart. Once enabled, Cilium's operator watches Gateway API resources, creates the required load balancer services, and translates valid resources into Cilium Envoy configuration.
 
 This guide covers the complete setup from CRD installation to deploying your first Gateway.
 
 ## Prerequisites
 
 - Kubernetes 1.24+
-- Cilium 1.13+ installed via Helm
+- Cilium installed via Helm with kube-proxy replacement enabled
 - A cloud provider or MetalLB for load balancer IP assignment
 
 ## Install Gateway API CRDs
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
+```
+
+If you plan to use TLS passthrough with TLSRoute, install the experimental TLSRoute CRD as well:
+
+```bash
+kubectl apply --server-side -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/experimental/gateway.networking.k8s.io_tlsroutes.yaml
 ```
 
 ## Enable Gateway API in Cilium
@@ -34,7 +40,10 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/downloa
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
+  --set kubeProxyReplacement=true \
   --set gatewayAPI.enabled=true
+kubectl -n kube-system rollout restart deployment/cilium-operator
+kubectl -n kube-system rollout restart ds/cilium
 ```
 
 Verify the GatewayClass is created:
@@ -51,8 +60,8 @@ flowchart TD
     B --> C[Create LoadBalancer Service]
     C --> D[Cloud Provider / MetalLB]
     D --> E[Assign External IP]
-    B --> F[Configure eBPF Programs]
-    F --> G[Route to Backend Pods]
+    B --> F[Create Cilium Envoy Config]
+    F --> G[Envoy Routes to Backend Pods]
     A --> H[HTTPRoute / TLSRoute]
     H --> B
 ```
@@ -111,4 +120,4 @@ curl -H "Host: my-app.example.com" http://${GATEWAY_IP}/
 
 ## Conclusion
 
-Configuring Cilium Gateway API support enables standards-based ingress using the Kubernetes Gateway API. The eBPF-powered implementation delivers high performance without traditional proxy overhead, and the declarative configuration model supports advanced routing patterns from day one.
+Configuring Cilium Gateway API support enables standards-based ingress using the Kubernetes Gateway API. The implementation integrates Cilium's eBPF datapath with Envoy-based L7 routing, and the declarative configuration model supports advanced routing patterns from day one.
