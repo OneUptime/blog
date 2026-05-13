@@ -26,7 +26,7 @@ This post covers the environment variables that configure Typha itself and the `
 
 ## Step 1: Understand Typha Configuration Sources
 
-Typha is configured entirely through environment variables passed to the container. There is no separate configuration file. The key environment variable categories are:
+In manifest mode, Typha is commonly configured through environment variables passed to the container. Typha can also read a configuration file, but environment variables take precedence over values from the file. The key environment variable categories are:
 
 - `TYPHA_` prefix: Typha-specific settings
 - Logging, TLS, Prometheus metrics, connection management, and datastore access
@@ -35,7 +35,7 @@ Typha is configured entirely through environment variables passed to the contain
 
 ## Step 2: Configure Connection Limits
 
-Each Typha pod can serve many Felix clients. The default limit is 0 (unlimited), but setting an explicit cap prevents a single Typha pod from being overwhelmed.
+Each Typha pod can serve many Felix clients. In Calico v3.27, `TYPHA_MAXCONNECTIONSUPPERLIMIT` sets the per-Typha ceiling, and `TYPHA_MAXCONNECTIONSLOWERLIMIT` sets the minimum target used by Kubernetes connection rebalancing. Setting an explicit range helps prevent a single Typha pod from being overwhelmed while still allowing Typha to rebalance clients across replicas.
 
 ```yaml
 # typha-deployment-configured.yaml
@@ -58,6 +58,7 @@ spec:
       labels:
         k8s-app: calico-typha
     spec:
+      hostNetwork: true
       serviceAccountName: calico-typha
       containers:
         - name: calico-typha
@@ -84,14 +85,21 @@ spec:
               value: "info"
 
             # --- Connection management ---
-            # Maximum number of Felix clients this Typha pod will serve
-            # Set to roughly (total nodes / number of Typha replicas) * 1.2
+            # Enable Typha to watch its Service endpoints and rebalance clients
+            # across the available Typha replicas.
+            - name: TYPHA_CONNECTIONREBALANCINGMODE
+              value: "kubernetes"
+            # Minimum target connection count used by Kubernetes rebalancing.
             - name: TYPHA_MAXCONNECTIONSLOWERLIMIT
               value: "100"
-            # Typha disconnects a Felix client that falls this many seconds behind
-            # in reading updates. Increase if Felix clients are on slow nodes.
-            - name: TYPHA_CLIENTTIMEOUT
-              value: "90s"
+            # Maximum number of client connections this Typha pod will serve.
+            - name: TYPHA_MAXCONNECTIONSUPPERLIMIT
+              value: "500"
+            # Typha disconnects a client that falls this many seconds behind
+            # the latest cached datastore state. Increase if Felix clients are slow
+            # to consume large update streams.
+            - name: TYPHA_SERVERMAXFALLBEHINDSECS
+              value: "90"
 
             # --- Prometheus metrics ---
             # Enable Prometheus endpoint so you can monitor connection counts
@@ -135,19 +143,18 @@ metadata:
   name: default
 spec:
   # Name of the Kubernetes Service that fronts Typha
-  # Felix will watch this Service's endpoints and connect to any healthy one
+  # Felix looks up this Service's Endpoints and connects to one of them
   typhaK8sServiceName: calico-typha
 
   # Namespace where the Typha Service lives
   # This field is not always present in older Calico versions; default is kube-system
   # typhaK8sNamespace: kube-system
 
-  # How long Felix waits for a Typha connection before retrying
-  # Increase this on very large clusters where DNS resolution may be slow
+  # Read timeout for the Typha connection
+  # If Typha sends no data for this long, Felix exits and restarts
   typhaReadTimeout: 30s
 
-  # How frequently Felix sends keepalive messages to Typha
-  # Lower values detect connection failures faster but increase overhead
+  # Write timeout when Felix writes data to Typha
   typhaWriteTimeout: 10s
 ```
 
@@ -159,7 +166,7 @@ calicoctl apply -f felixconfiguration-full.yaml
 
 ## Step 4: Configure the Typha Service for Topology-Aware Routing
 
-On large clusters, you may want Felix agents to prefer a Typha pod on a nearby node. This is done with topology-aware hints on the Service:
+On large multi-zone clusters, you may want Felix agents to prefer a Typha pod in the same zone. This can be done with Kubernetes topology-aware routing hints on the Service, when the Service has enough ready endpoints in each zone for Kubernetes to allocate hints:
 
 ```yaml
 # typha-service-topology.yaml
@@ -172,7 +179,7 @@ metadata:
   labels:
     k8s-app: calico-typha
   annotations:
-    # Enable topology-aware routing so Felix prefers Typha in the same zone
+    # Ask Kubernetes to prefer same-zone routing when it can allocate hints
     service.kubernetes.io/topology-mode: "Auto"
 spec:
   selector:
@@ -207,10 +214,10 @@ calicoctl get felixconfiguration default -o yaml
 
 ## Best Practices
 
-- Set `TYPHA_MAXCONNECTIONSLOWERLIMIT` to roughly `(total_nodes / typha_replicas) * 1.2` to give each pod some headroom.
+- Set `TYPHA_MAXCONNECTIONSUPPERLIMIT` high enough for a Typha replica to absorb extra clients during a rollout or failure, and keep `TYPHA_MAXCONNECTIONSLOWERLIMIT` as a floor for Kubernetes connection rebalancing.
 - Never disable the health endpoint (`TYPHA_HEALTHENABLED`); liveness probes depend on it.
 - Use `TYPHA_LOGSEVERITYSCREEN=warning` in very high-throughput environments to reduce log volume, but revert to `info` when debugging.
-- Set `typhaReadTimeout` and `typhaWriteTimeout` in `FelixConfiguration` to values larger than your normal network latency plus one standard deviation.
+- Keep `typhaReadTimeout` comfortably larger than Typha's normal ping interval so Felix does not restart during brief delays, and keep `typhaWriteTimeout` large enough for normal Felix-to-Typha writes.
 - Always set `TYPHA_PROMETHEUSMETRICSENABLED=true` from day one - retroactively adding metrics after an incident is costly.
 
 ---
