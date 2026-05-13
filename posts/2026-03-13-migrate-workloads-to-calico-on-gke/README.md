@@ -4,24 +4,23 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, GKE, Google Cloud
 
-Description: Learn how to enable Calico network policy on Google Kubernetes Engine (GKE) and migrate workloads to benefit from advanced network policy enforcement beyond GKE's default Calico integration.
+Description: Learn how to enable Calico network policy on Google Kubernetes Engine (GKE) and migrate workloads to use Kubernetes NetworkPolicy enforcement.
 
 ---
 
 ## Introduction
 
-Google Kubernetes Engine offers Calico as a network policy provider through its "Network Policy" feature, which enables Kubernetes NetworkPolicy enforcement powered by Calico. While GKE's built-in Calico integration handles standard Kubernetes NetworkPolicy, teams requiring Calico's extended features - such as GlobalNetworkPolicy, FQDN-based policies, or Calico IPAM - need to carefully plan their approach.
+Google Kubernetes Engine offers Calico as a network policy provider through its "Network Policy" feature, which enables Kubernetes NetworkPolicy enforcement powered by Calico in Standard clusters. While GKE's built-in Calico integration handles standard Kubernetes NetworkPolicy, teams requiring Calico's extended features - such as GlobalNetworkPolicy or Calico IPAM - need to carefully plan a self-managed Calico or Calico Enterprise approach instead of assuming those APIs are available from the managed GKE add-on.
 
-For most GKE users, the recommended path is to enable GKE's built-in network policy support (which uses Calico under the hood) and then use standard Kubernetes NetworkPolicy objects alongside Calico CRDs where available. This gives you Calico's enforcement engine with GKE's managed upgrade path.
+For most GKE Standard users who want Calico-based enforcement, the recommended path is to enable GKE's built-in network policy support and then use standard Kubernetes NetworkPolicy objects. This gives you Calico's enforcement engine with GKE's managed upgrade path.
 
 This guide covers enabling and using Calico network policy on GKE, migrating existing workloads and policies, and validating enforcement across your cluster.
 
 ## Prerequisites
 
-- GKE cluster v1.27+ (Standard mode, not Autopilot)
+- Supported GKE Standard cluster (not Autopilot)
 - `gcloud` CLI authenticated with container.admin permissions
 - `kubectl` configured for the target GKE cluster
-- `calicoctl` v3.27+ installed
 - Existing workloads and NetworkPolicy objects to migrate
 
 ## Step 1: Enable Network Policy on GKE Cluster
@@ -37,9 +36,8 @@ gcloud container clusters update my-gke-cluster \
   --update-addons=NetworkPolicy=ENABLED \
   --zone=us-central1-a
 
-# Enable network policy enforcement on the default node pool
-gcloud container node-pools update default-pool \
-  --cluster=my-gke-cluster \
+# Enable network policy enforcement on the cluster's nodes
+gcloud container clusters update my-gke-cluster \
   --enable-network-policy \
   --zone=us-central1-a
 
@@ -51,17 +49,14 @@ gcloud container clusters get-credentials my-gke-cluster --zone=us-central1-a
 
 Confirm that Calico is active and enforcing policies on the cluster.
 
-Check the GKE Calico DaemonSet and verify node readiness:
+Check the GKE Calico node readiness label and verify the managed Calico Pods:
 
 ```bash
-# Check Calico node DaemonSet managed by GKE
-kubectl get daemonset calico-node -n kube-system
+# Verify that nodes have Calico network policy enforcement enabled
+kubectl get nodes -l projectcalico.org/ds-ready=true
 
 # Verify all calico-node pods are running
 kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
-
-# Check calico-typha for larger clusters
-kubectl get deployment calico-typha -n kube-system
 ```
 
 ## Step 3: Migrate Existing Network Policies
@@ -109,40 +104,40 @@ Apply the network policies to the cluster:
 kubectl apply -f gke-namespace-isolation.yaml
 ```
 
-## Step 4: Use Calico CRDs for Advanced Policies on GKE
+## Step 4: Use Kubernetes NetworkPolicy for Egress Controls on GKE
 
-Leverage Calico's CRD-based APIs for policies beyond standard Kubernetes NetworkPolicy.
+Use Kubernetes NetworkPolicy APIs for policies enforced by GKE's managed Calico integration. Calico CRDs such as GlobalNetworkPolicy are not installed by enabling GKE's managed network policy add-on.
 
-Create a Calico GlobalNetworkPolicy to restrict egress to known external services:
+Create an egress NetworkPolicy to restrict selected workloads to internal CIDR ranges and HTTPS:
 
 ```yaml
-# gke-calico-egress-policy.yaml - restrict egress using Calico GlobalNetworkPolicy
-apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+# gke-egress-policy.yaml - restrict egress using Kubernetes NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
   name: restrict-egress-to-approved-external
+  namespace: production
 spec:
-  selector: "environment == 'production'"
-  order: 200
+  podSelector:
+    matchLabels:
+      environment: production
   types:
   - Egress
   egress:
-  - action: Allow
-    destination:
-      nets:
-      - 10.0.0.0/8       # Internal VPC CIDR
-      - 172.16.0.0/12    # GKE pod and service CIDRs
-  - action: Allow
-    destination:
-      ports:
-      - 443              # Allow HTTPS to any external service
-  - action: Deny         # Block all other egress
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/8       # Internal VPC CIDR
+    - ipBlock:
+        cidr: 172.16.0.0/12    # Example private CIDR; replace with your cluster ranges
+  - ports:
+    - protocol: TCP
+      port: 443                # Allow HTTPS to any external service
 ```
 
-Apply the Calico-specific policy using calicoctl:
+Apply the policy using kubectl:
 
 ```bash
-calicoctl apply -f gke-calico-egress-policy.yaml
+kubectl apply -f gke-egress-policy.yaml
 ```
 
 ## Step 5: Validate Policy Enforcement
@@ -153,7 +148,8 @@ Run connectivity validation tests between pods in different namespaces:
 
 ```bash
 # Deploy a test pod in the production namespace
-kubectl run policy-test --image=curlimages/curl -n production -- sleep 3600
+kubectl run policy-test --image=curlimages/curl -n production \
+  --labels=app=frontend -- sleep 3600
 
 # Test allowed connection to the API service
 kubectl exec policy-test -n production -- \
@@ -170,11 +166,11 @@ kubectl exec external-test -n staging -- \
 ## Best Practices
 
 - Enable network policy at GKE cluster creation time to avoid node pool recreation
-- Use GKE Dataplane V2 (eBPF-based) for improved performance in GKE Standard clusters
+- Evaluate GKE Dataplane V2 for new clusters that prioritize GKE's recommended Cilium-based data plane; it is mutually exclusive with the Calico network policy plugin
 - Apply default-deny policies in all namespaces and add explicit allow rules
-- Store all NetworkPolicy and Calico policy YAML in version control for audit trails
+- Store all NetworkPolicy YAML in version control for audit trails
 - Configure OneUptime monitors for critical inter-service connectivity to detect policy regressions
 
 ## Conclusion
 
-GKE's integration with Calico provides a managed, upgrade-friendly way to enforce network policies in your Kubernetes cluster. By combining standard Kubernetes NetworkPolicy with Calico CRDs where needed, you can achieve comprehensive network segmentation without managing the Calico lifecycle manually. Use OneUptime to continuously validate service connectivity and receive immediate alerts when policy changes inadvertently break communication paths.
+GKE's integration with Calico provides a managed, upgrade-friendly way to enforce Kubernetes NetworkPolicy in your Standard cluster. By using standard Kubernetes NetworkPolicy objects, you can achieve practical network segmentation without managing the Calico lifecycle manually. Use OneUptime to continuously validate service connectivity and receive immediate alerts when policy changes inadvertently break communication paths.
