@@ -19,7 +19,7 @@ This guide covers the full installation process using the Tigera Operator on a k
 ## Prerequisites
 
 - A kubeadm-bootstrapped Kubernetes cluster with no CNI installed
-- All nodes running Linux with kernel 4.19 or later
+- All nodes running Linux with kernel 5.10 or later
 - Pod CIDR configured (e.g., `192.168.0.0/16`) during `kubeadm init`
 - `kubectl` with cluster admin access
 - Internet access or a local mirror for pulling Calico images
@@ -43,7 +43,8 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ## Step 2: Install the Tigera Operator
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 ```
 
 Wait for the operator to become ready:
@@ -78,7 +79,7 @@ kubectl apply -f calico-installation.yaml
 ## Step 4: Wait for Calico to Become Ready
 
 ```bash
-kubectl wait --for=condition=Ready tigerastatus/calico --timeout=300s
+kubectl wait --for=condition=Available tigerastatus/calico --timeout=300s
 kubectl get pods -n calico-system
 ```
 
@@ -95,7 +96,7 @@ All nodes should transition from `NotReady` to `Ready` once the `calico-node` Da
 ## Step 6: Install calicoctl
 
 ```bash
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
 chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 calicoctl version
 ```
