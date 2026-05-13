@@ -32,11 +32,11 @@ data:
         {
           "interfaceName": "eth0",
           "vppDriver": "dpdk",
-          "newDriverName": "vfio-pci",
-          "numRxQueues": 8,
-          "numTxQueues": 8,
-          "rxQueueSize": 4096,
-          "txQueueSize": 4096
+          "newDriver": "vfio-pci",
+          "rx": 8,
+          "tx": 8,
+          "rxqsz": 4096,
+          "txqsz": 4096
         }
       ]
     }
@@ -75,8 +75,9 @@ Verify RSS is distributing evenly:
 
 ```bash
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk statistics | grep -E "queue [0-9]"
-# Each queue should show roughly equal packet counts
+  vppctl show hardware-interfaces
+# Inspect per-queue rx/tx packet counters; each queue should show
+# roughly equal packet counts when RSS is distributing evenly.
 ```
 
 ## Optimization 3: Polling vs. Interrupt Mode
@@ -118,11 +119,16 @@ ethtool -k eth0 | grep checksum
 For networks with jumbo frame support (MTU 9000):
 
 ```yaml
-# Set uplink MTU
+# Set uplink MTU on the uplink interface spec
 data:
-  CALICOVPP_INITIAL_CONFIG: |
+  CALICOVPP_INTERFACES: |
     {
-      "uplinkMtu": 9000
+      "uplinkInterfaces": [
+        {
+          "interfaceName": "eth0",
+          "mtu": 9000
+        }
+      ]
     }
 ```
 
@@ -135,14 +141,12 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 ## Optimization 6: NIC Flow Director
 
-For Intel NICs, configure Flow Director for deterministic queue assignment:
+For Intel NICs, configure Flow Director for deterministic queue assignment via VPP's rte_flow CLI:
 
-```yaml
-dpdk {
-  dev 0000:00:0a.0 {
-    devargs "flow_type_rss_offloads=0xffffffff"
-  }
-}
+```bash
+# Steer flows matching a 5-tuple into a specific RX queue
+kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+  vppctl flow add GigabitEthernet0/0/0 proto tcp dst-port 443 redirect-to-queue 2
 ```
 
 ## Conclusion
