@@ -22,7 +22,7 @@ Understanding Calico ingress means understanding both which traffic flows are su
 
 ## The Default Ingress Posture
 
-Without any NetworkPolicy, Kubernetes allows all ingress to all pods. This means any pod can receive connections from any other pod or from external sources (depending on service type). Calico inherits this default - no policy means all traffic is allowed.
+Without any NetworkPolicy, Kubernetes allows all ingress to all pods. This means any pod can receive connections from any other pod or from external sources (depending on service type). Calico inherits this default for workload endpoints - no pod policy means all workload traffic is allowed.
 
 The correct production default is a deny-all ingress policy per namespace, with explicit allow rules for legitimate ingress:
 
@@ -65,14 +65,14 @@ spec:
 ```
 
 Key Calico extensions over standard NetworkPolicy:
-- **Explicit `action`**: `Allow`, `Deny`, or `Pass` (send to next tier)
+- **Explicit `action`**: `Allow`, `Deny`, `Log`, or `Pass` (continue policy evaluation in the next applicable tier or endpoint profiles)
 - **Ordered rules**: Rules are evaluated top-to-bottom; first match wins
 - **Cross-namespace selectors**: More expressive namespace matching
 - **Protocol and port flexibility**: ICMP, UDP, port ranges
 
 ## GlobalNetworkPolicy for Cluster-Wide Ingress Rules
 
-Calico's `GlobalNetworkPolicy` applies to all pods across all namespaces, enabling cluster-wide baseline rules:
+Calico's `GlobalNetworkPolicy` can apply to workload endpoints across all namespaces, enabling cluster-wide baseline rules:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -89,7 +89,7 @@ spec:
   - action: Pass
 ```
 
-This policy runs before namespace-level policies, blocking traffic from a malicious CIDR cluster-wide without requiring individual namespace policies.
+With `order: 100`, this policy is evaluated before policies in the same tier that have a higher order value or no explicit order, blocking traffic from a malicious CIDR cluster-wide without requiring individual namespace policies.
 
 ## HostEndpoint Ingress Policy
 
@@ -104,6 +104,7 @@ graph LR
 ```
 
 HostEndpoint policies protect the node itself from unwanted direct connections, separate from pod-level policy.
+Unlike workload endpoints, a configured HostEndpoint defaults to denying traffic to or from that endpoint unless policy, failsafe rules, or an allow profile permits it.
 
 ## Ingress from Services and Load Balancers
 
@@ -119,8 +120,8 @@ For Calico eBPF mode, source IP preservation works regardless of `externalTraffi
 - Apply a default-deny-ingress NetworkPolicy to every namespace at namespace creation
 - Use Calico GlobalNetworkPolicy (not Kubernetes NetworkPolicy) for cluster-wide baseline rules
 - Test ingress policy with explicit connectivity tests - a missing allow rule causes silent connection drops
-- Use `order` on GlobalNetworkPolicies to ensure they are evaluated before namespace-level policies
+- Use tiers and `order` on GlobalNetworkPolicies to ensure they are evaluated before namespace-level policies
 
 ## Conclusion
 
-Calico's ingress control model layers from cluster-wide GlobalNetworkPolicy through namespace-level NetworkPolicy to pod-level rules. Starting with a deny-all default and adding explicit allow rules for each legitimate ingress path is the most secure and auditable approach. Understanding the interaction between GlobalNetworkPolicy ordering, namespace policies, and HostEndpoint policies gives you full control over every ingress path in your cluster.
+Calico's ingress control model layers from cluster-wide GlobalNetworkPolicy through namespace-level NetworkPolicy to workload endpoint rules. Starting with a deny-all default and adding explicit allow rules for each legitimate ingress path is the most secure and auditable approach. Understanding the interaction between GlobalNetworkPolicy ordering, namespace policies, and HostEndpoint policies gives you full control over every ingress path in your cluster.
