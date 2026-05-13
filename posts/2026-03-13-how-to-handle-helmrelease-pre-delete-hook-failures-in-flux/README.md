@@ -106,7 +106,7 @@ kubectl logs job/my-app-pre-delete -n production
 kubectl delete job my-app-pre-delete -n production
 
 # Trigger a new reconciliation
-flux reconcile helmrelease my-app -n production
+flux reconcile helmrelease my-app -n production --reset
 ```
 
 ## Solution 3: Manually Delete Hook Resources and Uninstall
@@ -152,7 +152,7 @@ spec:
           command: ["/bin/sh", "-c", "cleanup.sh || true"]
 ```
 
-The `hook-delete-policy: hook-failed` ensures the hook Job is cleaned up even if it fails. The `|| true` in the command prevents a non-zero exit code from blocking the uninstall.
+The `hook-succeeded` and `hook-failed` delete policies ensure the hook Job is cleaned up after it completes. The `|| true` in the command prevents a non-zero exit code from blocking the uninstall, and should only be used when cleanup failures are non-critical.
 
 ## Comprehensive HelmRelease Configuration
 
