@@ -172,8 +172,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../base
-patchesStrategicMerge:
-  - patches/frontend-replicas.yaml
+patches:
+  - path: patches/frontend-replicas.yaml
+    target:
+      kind: Deployment
+      name: frontend
 ```
 
 ```yaml
@@ -370,11 +373,11 @@ for dir in apps/staging apps/production; do
   kustomize build $dir > /dev/null && echo "OK" || echo "FAILED"
 done
 
-# Check Flux resources are valid
-flux check --pre
+# Check the installed Flux controllers are healthy
+flux check
 
 # Dry-run a specific cluster's configuration
-flux diff kustomization infrastructure --path ./clusters/staging
+flux diff kustomization flux-system --path ./clusters/staging
 ```
 
 ## Conclusion
