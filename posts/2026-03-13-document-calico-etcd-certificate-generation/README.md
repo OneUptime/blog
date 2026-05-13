@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificate, Documentation, Operation
 
-Description: A guide to creating comprehensive operational documentation for Calico etcd TLS certificate generation and lifecycle management to support operator workflows.
+Description: A guide to creating comprehensive operational documentation for Calico etcd TLS certificate generation and lifecycle management to support workflows for deployments that use the etcd datastore.
 
 ---
 
@@ -16,7 +16,7 @@ Good certificate documentation covers the PKI architecture, the location and pur
 
 ## Prerequisites
 
-- Calico etcd TLS certificates deployed and working
+- A Calico deployment that uses the etcd datastore with TLS certificates deployed and working
 - A documentation system accessible to all operators
 - Version control for documentation and certificate configurations
 
@@ -107,7 +107,7 @@ Document each step for generating a new certificate from scratch:
 ### Time to Resolution: ~15 minutes
 
 ### Steps
-1. Confirm expiry: kubectl get secret calico-etcd-certs -n kube-system \
+1. Confirm expiry: kubectl get secret calico-etcd-secrets -n kube-system \
      -o jsonpath='{.data.etcd-cert}' | base64 -d | openssl x509 -noout -enddate
 2. Follow "Generate New Calico Client Certificate" procedure above
 3. Apply new secret
