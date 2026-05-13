@@ -164,7 +164,7 @@ If the path `./deploy/apps` contains child Kustomization definitions, those chil
 
 ## Combining Inline Variables with ConfigMap References
 
-Inline variables can be combined with ConfigMap and Secret references. The precedence order is: inline variables have the lowest priority, then ConfigMap values, then Secret values. However, when using `substitute` alongside `substituteFrom`, inline variables defined in `substitute` actually take the highest priority:
+Inline variables can be combined with ConfigMap and Secret references. When using `substitute` alongside `substituteFrom`, inline variables defined in `substitute` take precedence over values loaded from ConfigMaps and Secrets:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -205,6 +205,9 @@ spec:
     matchLabels:
       app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -214,7 +217,7 @@ spec:
               value: ${LOG_LEVEL:=info}
 ```
 
-If `REPLICAS` is not defined in the Kustomization's `postBuild.substitute`, the default value of `1` is used. If it is defined, the inline value takes precedence.
+If `REPLICAS` is not defined in the Kustomization's `postBuild.substitute`, the default value of `1` is used. If it is defined, the inline value takes precedence. Flux only performs substitution when at least one inline variable or `substituteFrom` reference is configured, so add a placeholder variable if your manifests only rely on default expressions.
 
 ## Practical Example: Multi-Environment Setup
 
@@ -228,6 +231,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  targetNamespace: staging
   sourceRef:
     kind: GitRepository
     name: my-repo
@@ -248,6 +252,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  targetNamespace: production
   sourceRef:
     kind: GitRepository
     name: my-repo
