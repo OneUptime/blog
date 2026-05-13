@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Nuclio, Serverless, High Performance, FaaS, Real-Time
 
-Description: Deploy Nuclio high-performance serverless platform using Flux CD to run real-time event-driven functions with nanosecond latency on Kubernetes.
+Description: Deploy Nuclio high-performance serverless platform using Flux CD to run real-time event-driven functions on Kubernetes.
 
 ---
 
 ## Introduction
 
-Nuclio is a high-performance serverless framework purpose-built for real-time event processing and data science. Unlike general-purpose serverless frameworks, Nuclio is designed for CPU-intensive and data-intensive workloads, offering advanced features like GPU support, NUMA-aware scheduling, and support for Kafka, Kinesis, and MQTT triggers natively.
+Nuclio is a high-performance serverless framework purpose-built for real-time event processing and data science. Unlike general-purpose serverless frameworks, Nuclio is designed for CPU-intensive and data-intensive workloads, offering advanced features like GPU support, Kubernetes placement controls, and support for Kafka, Kinesis, and MQTT triggers natively.
 
 Managing Nuclio through Flux CD provides a reproducible, version-controlled deployment of the Nuclio control plane and enables GitOps-driven function management. Platform teams can govern function resources, triggers, and scaling policies through pull requests.
 
@@ -60,7 +60,7 @@ spec:
   chart:
     spec:
       chart: nuclio
-      version: "0.15.*"
+      version: "0.21.*"
       sourceRef:
         kind: HelmRepository
         name: nuclio
@@ -70,9 +70,6 @@ spec:
     # Controller configuration
     controller:
       enabled: true
-      image:
-        repository: quay.io/nuclio/controller
-        tag: 1.13.0-amd64
       resources:
         requests:
           cpu: 250m
@@ -84,20 +81,13 @@ spec:
     dashboard:
       enabled: true
       replicas: 1
-      serviceType: ClusterIP
-      image:
-        repository: quay.io/nuclio/dashboard
-        tag: 1.13.0-amd64
+      containerBuilderKind: kaniko
     # Registry configuration for built function images
     registry:
-      defaultBaseRegistryURL: myregistry.io
-      defaultOnbuildRegistryURL: myregistry.io
+      pushPullUrl: myregistry.io
     # Autoscaler for scale-to-zero
     autoscaler:
       enabled: true
-      image:
-        repository: quay.io/nuclio/autoscaler
-        tag: 1.13.0-amd64
     # DLX (dead letter exchange) for event handling
     dlx:
       enabled: true
@@ -145,23 +135,11 @@ metadata:
   namespace: nuclio
 spec:
   # Runtime environment
-  runtime: python:3.9
-  # Inline function handler
+  runtime: python:3.12
+  handler: main:handler
+  # Function handler source, encoded as base64 as required by Nuclio
   build:
-    functionSourceCode: |
-      import json
-      import nuclio
-
-      def handler(context, event):
-          context.logger.info(f"Processing event: {event.body}")
-          data = json.loads(event.body)
-          # Process the event
-          result = {"processed": True, "input": data}
-          return nuclio.Response(
-              body=json.dumps(result),
-              content_type="application/json",
-              status_code=200
-          )
+    functionSourceCode: "aW1wb3J0IGpzb24KCgpkZWYgaGFuZGxlcihjb250ZXh0LCBldmVudCk6CiAgICBjb250ZXh0LmxvZ2dlci5pbmZvKGYiUHJvY2Vzc2luZyBldmVudDoge2V2ZW50LmJvZHl9IikKICAgIGRhdGEgPSBqc29uLmxvYWRzKGV2ZW50LmJvZHkpCiAgICByZXN1bHQgPSB7InByb2Nlc3NlZCI6IFRydWUsICJpbnB1dCI6IGRhdGF9CiAgICByZXR1cm4gY29udGV4dC5SZXNwb25zZSgKICAgICAgICBib2R5PWpzb24uZHVtcHMocmVzdWx0KSwKICAgICAgICBjb250ZW50X3R5cGU9ImFwcGxpY2F0aW9uL2pzb24iLAogICAgICAgIHN0YXR1c19jb2RlPTIwMCwKICAgICkK"
     # Dependencies
     commands:
       - pip install requests
@@ -170,14 +148,15 @@ spec:
   triggers:
     http:
       kind: http
-      maxWorkers: 4
+      numWorkers: 4
       attributes:
         port: 8080
     kafka-events:
       kind: kafka-cluster
-      maxWorkers: 8
-      url: kafka.kafka.svc.cluster.local:9092
+      numWorkers: 8
       attributes:
+        brokers:
+          - kafka.kafka.svc.cluster.local:9092
         topics:
           - raw-events
         consumerGroup: event-processor-group
@@ -222,17 +201,17 @@ spec:
 
 ```bash
 # Verify Nuclio deployment
-flux get kustomizations nuclio nuclio-functions
+flux get kustomizations
 
 # Check function status
 kubectl get nucliofunctions -n nuclio
 
 # Port-forward the dashboard
-kubectl port-forward svc/nuclio-dashboard 8070:8070 -n nuclio
+kubectl port-forward -n nuclio svc/nuclio-dashboard 8070:8070
 # Open http://localhost:8070 in your browser
 
 # Test HTTP trigger
-kubectl port-forward svc/event-processor 8080:8080 -n nuclio
+kubectl port-forward -n nuclio svc/nuclio-event-processor 8080:8080
 curl -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
   -d '{"eventType": "user.signup", "userId": "123"}'
@@ -244,8 +223,8 @@ curl -X POST http://localhost:8080 \
 - For GPU workloads, add `spec.resources.limits["nvidia.com/gpu"]` to functions running on GPU nodes.
 - Configure Kafka triggers directly in the function spec for high-throughput event processing - Nuclio handles consumer group management automatically.
 - Enable the Nuclio autoscaler for scale-to-zero on cost-sensitive functions that have bursty, intermittent traffic.
-- Use Nuclio's `preemptionEnabled` feature for batch functions to yield GPU resources to higher-priority inference functions during peak demand.
+- Use Kubernetes priority classes with Nuclio's `priorityClassName` and `preemptionPolicy` fields for batch functions that should yield resources to higher-priority inference functions during peak demand.
 
 ## Conclusion
 
-Nuclio deployed and managed by Flux CD provides a high-performance serverless platform for real-time event processing with full GitOps lifecycle management. Function definitions, triggers, and scaling policies are version-controlled, and Nuclio's advanced features - GPU support, native messaging triggers, and nanosecond-latency runtimes - make it an excellent choice for data-intensive serverless workloads.
+Nuclio deployed and managed by Flux CD provides a high-performance serverless platform for real-time event processing with full GitOps lifecycle management. Function definitions, triggers, and scaling policies are version-controlled, and Nuclio's advanced features - GPU support, native messaging triggers, and high-throughput runtimes - make it an excellent choice for data-intensive serverless workloads.
