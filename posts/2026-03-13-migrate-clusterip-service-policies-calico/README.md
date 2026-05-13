@@ -10,11 +10,11 @@ Description: Migrate Calico ClusterIP service policies to secure internal Kubern
 
 ## Introduction
 
-ClusterIP Service Policies in Calico gives you control over how traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure ClusterIP Services traffic effectively while maintaining service availability.
+ClusterIP Service Policies in Calico give you control over how traffic flows to the pods behind Kubernetes Services. The `projectcalico.org/v3` API provides the tools needed to secure ClusterIP Services traffic effectively while maintaining service availability.
 
-Proper ClusterIP Services policy configuration is essential for clusters that expose services to external traffic. Without it, any source can reach your NodePort or ClusterIP services, creating significant attack surface.
+Proper ClusterIP Services policy configuration is essential for clusters that rely on internal service-to-service communication. Without it, any allowed workload in the same network can reach your ClusterIP services, creating unnecessary attack surface.
 
-This guide covers migrate ClusterIP Services policies in Calico with practical, production-tested configurations.
+This guide covers migrating ClusterIP Services policies in Calico with practical, production-tested configurations.
 
 ## Prerequisites
 
@@ -35,11 +35,13 @@ spec:
   selector: app == 'backend-service'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'frontend'
       destination:
         ports: [8080]
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'monitoring'
       destination:
@@ -47,9 +49,9 @@ spec:
     - action: Deny
   egress:
     - action: Allow
+      protocol: TCP
       destination:
         selector: app == 'database'
-      destination:
         ports: [5432]
     - action: Allow
       protocol: UDP
