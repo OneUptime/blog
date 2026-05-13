@@ -44,7 +44,7 @@ kubectl get pod -n kube-system kube-apiserver-<node> -o yaml | grep service-clus
 Update Calico's BGPConfiguration to include the service cluster IP range for advertisement.
 
 ```yaml
-# bgpconfig-service-cidr.yaml - BGPConfiguration enabling service CIDR advertisement
+# BGPConfiguration fields enabling service CIDR advertisement
 apiVersion: projectcalico.org/v3
 kind: BGPConfiguration
 metadata:
@@ -65,8 +65,8 @@ spec:
 ```
 
 ```bash
-# Apply the BGP configuration
-calicoctl apply -f bgpconfig-service-cidr.yaml
+# Patch the BGP configuration without replacing other existing BGP settings
+calicoctl patch bgpconfiguration default --patch '{"spec":{"serviceClusterIPs":[{"cidr":"10.96.0.0/12"}],"serviceExternalIPs":[{"cidr":"203.0.113.0/24"}],"serviceLoadBalancerIPs":[{"cidr":"192.168.100.0/24"}]}}'
 
 # Verify the configuration was applied
 calicoctl get bgpconfiguration default -o yaml
@@ -77,8 +77,8 @@ calicoctl get bgpconfiguration default -o yaml
 Confirm that the service CIDR is being advertised to BGP peers.
 
 ```bash
-# Check BGP peer status and advertised routes
-calicoctl node status
+# Check BGP peer status on a Calico node
+sudo calicoctl node status
 
 # On a node, check the BGP routes being exported via bird
 sudo birdc show route export <peer-name>
@@ -87,10 +87,10 @@ sudo birdc show route export <peer-name>
 # (requires access to a BGP peer router or bird on the node)
 sudo birdc show route | grep "10.96"  # Replace with your service CIDR prefix
 
-# Test reachability of a ClusterIP from outside the cluster
+# Test TCP reachability of a ClusterIP from outside the cluster
 # On a machine connected to the BGP peer router:
 CLUSTER_IP=$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')
-ping -c 3 $CLUSTER_IP  # Should reach the API server
+curl -k https://$CLUSTER_IP:443/readyz  # Should reach the API server
 ```
 
 ## Step 4: Test Service Reachability from External Networks
