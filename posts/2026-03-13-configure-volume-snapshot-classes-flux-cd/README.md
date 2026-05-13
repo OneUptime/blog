@@ -43,6 +43,19 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: snapshot-crds
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: external-snapshotter
+  path: ./client/config/crd
+  prune: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: snapshot-controller
   namespace: flux-system
 spec:
@@ -52,6 +65,8 @@ spec:
     name: external-snapshotter
   path: ./deploy/kubernetes/snapshot-controller
   prune: true
+  dependsOn:
+    - name: snapshot-crds
 ```
 
 ## Step 2: Create VolumeSnapshotClasses for Different Backends
@@ -69,8 +84,8 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete   # delete snapshot when VolumeSnapshot is deleted
 parameters:
-  tagSpecification_1: "Key=Environment,Value=production"
-  tagSpecification_2: "Key=ManagedBy,Value=flux-cd"
+  tagSpecification_1: "Environment=production"
+  tagSpecification_2: "ManagedBy=flux-cd"
 ---
 # Rook-Ceph RBD Snapshot Class
 apiVersion: snapshot.storage.k8s.io/v1
@@ -81,9 +96,6 @@ driver: rook-ceph.rbd.csi.ceph.com
 deletionPolicy: Delete
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/name: "$(volumesnapshotnamespace)/$(volumesnapshotname)"
-  csi.storage.k8s.io/volumesnapshot/namespace: "$(volumesnapshotnamespace)"
-  csi.storage.k8s.io/volumesnapshot/contentname: "$(volumesnapshotcontentname)"
   csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ---
@@ -96,9 +108,6 @@ driver: rook-ceph.cephfs.csi.ceph.com
 deletionPolicy: Delete
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/name: "$(volumesnapshotnamespace)/$(volumesnapshotname)"
-  csi.storage.k8s.io/volumesnapshot/namespace: "$(volumesnapshotnamespace)"
-  csi.storage.k8s.io/volumesnapshot/contentname: "$(volumesnapshotcontentname)"
   csi.storage.k8s.io/snapshotter-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ---
