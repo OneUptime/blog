@@ -10,14 +10,15 @@ Description: Deploy OpenEBS cStor storage engine to Kubernetes using Flux CD for
 
 ## Introduction
 
-OpenEBS is a leading open-source container-native storage project that provides multiple storage engines for different use cases. The cStor engine is OpenEBS's enterprise storage engine offering copy-on-write (COW) snapshots, thin provisioning, and synchronous data replication across nodes. It uses ZFS-inspired concepts for data integrity and is well-suited for stateful workloads requiring advanced storage features.
+OpenEBS is a leading open-source container-native storage project that provides multiple storage engines for different use cases. The cStor engine is an OpenEBS 3.x replicated storage engine offering copy-on-write (COW) snapshots, thin provisioning, and synchronous data replication across nodes. It uses ZFS-inspired concepts for data integrity and is well-suited for stateful workloads requiring advanced storage features.
 
-Deploying OpenEBS cStor through Flux CD gives you GitOps control over storage pools, storage classes, and volume policies. The OpenEBS operator is available as a Helm chart that manages cStor through CRDs.
+Deploying OpenEBS cStor through Flux CD gives you GitOps control over storage pools, storage classes, and volume policies. The OpenEBS 3.10 chart is available from the legacy OpenEBS charts repository and manages cStor through CRDs.
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes supported by OpenEBS 3.10 with Flux CD bootstrapped
 - Worker nodes with available block devices (unformatted) for cStor pools
+- iSCSI utilities installed on worker nodes where cStor-backed workloads will run
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Add the OpenEBS HelmRepository
@@ -32,7 +33,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://openebs.github.io/openebs
+  url: https://openebs.github.io/charts
 ```
 
 ## Step 2: Deploy OpenEBS with cStor
@@ -70,13 +71,30 @@ spec:
     # Enable cStor engine
     cstor:
       enabled: true
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "128Mi"
-        limits:
-          cpu: "500m"
-          memory: "512Mi"
+      cspcOperator:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      cvcOperator:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+      csiController:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
     # Disable Local PV engines if not needed
     localprovisioner:
       enabled: false
@@ -184,7 +202,7 @@ deletionPolicy: Delete
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: openebs-cstor
+  name: openebs-operator
   namespace: flux-system
 spec:
   interval: 10m
@@ -193,8 +211,6 @@ spec:
     name: flux-system
   path: ./infrastructure/storage/openebs
   prune: true
-  dependsOn:
-    - name: openebs-operator
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
