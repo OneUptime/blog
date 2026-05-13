@@ -14,7 +14,7 @@ The Sigstore Policy Controller is a Kubernetes admission controller that enforce
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.25 or later)
+- A running Kubernetes cluster (v1.27 or later)
 - Flux CLI installed and bootstrapped on the cluster
 - kubectl configured to communicate with your cluster
 - A Git repository connected to Flux for managing cluster resources
@@ -56,13 +56,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: policy-controller
-  namespace: cosign-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: cosign-system
   chart:
     spec:
       chart: policy-controller
-      version: "0.9.x"
+      version: "0.10.x"
       sourceRef:
         kind: HelmRepository
         name: sigstore
@@ -99,7 +100,7 @@ Monitor the deployment through Flux:
 
 ```bash
 # Check the HelmRelease status
-flux get helmreleases -n cosign-system
+flux get helmreleases -n flux-system
 
 # Watch the pods
 kubectl get pods -n cosign-system -w
@@ -126,7 +127,7 @@ spec:
         url: https://fulcio.sigstore.dev
         identities:
           - issuer: https://token.actions.githubusercontent.com
-            subjectRegExp: "https://github.com/fluxcd/.*"
+            subjectRegExp: "^https://github\\.com/fluxcd/.*$"
       ctlog:
         url: https://rekor.sigstore.dev
 ```
@@ -183,7 +184,7 @@ kubectl run test-unsigned --image=docker.io/library/nginx:latest -n production
 
 # Expected output:
 # Error from server (BadRequest): admission webhook "policy.sigstore.dev" denied the request:
-# validation failed: no matching signatures
+# validation failed: no matching policy for image
 ```
 
 Test that signed images are accepted:
@@ -212,7 +213,7 @@ kubectl get clusterimagepolicies
 3. The webhook is active:
 
 ```bash
-kubectl get validatingwebhookconfigurations -l app.kubernetes.io/name=policy-controller
+kubectl get validatingwebhookconfiguration policy.sigstore.dev
 ```
 
 4. Policy enforcement is working by deploying a test workload in a labeled namespace.
@@ -224,8 +225,8 @@ kubectl get validatingwebhookconfigurations -l app.kubernetes.io/name=policy-con
 Check the HelmRelease status and events:
 
 ```bash
-flux get helmrelease policy-controller -n cosign-system
-kubectl describe helmrelease policy-controller -n cosign-system
+flux get helmrelease policy-controller -n flux-system
+kubectl describe helmrelease policy-controller -n flux-system
 kubectl get events -n cosign-system --sort-by='.lastTimestamp'
 ```
 
