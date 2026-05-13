@@ -27,8 +27,9 @@ Install Cosign if needed:
 brew install cosign
 
 # Linux
-curl -sSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign
-chmod +x /usr/local/bin/cosign
+curl -sSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o cosign-linux-amd64
+sudo install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign
+rm cosign-linux-amd64
 ```
 
 ## Step 1: Download the Flux CLI Binary and Checksums
@@ -40,7 +41,7 @@ Download the Flux CLI binary along with its checksum file and signature:
 FLUX_VERSION=2.2.0
 
 # Download the binary for your platform
-curl -sSL -o flux.tar.gz "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/flux_${FLUX_VERSION}_linux_amd64.tar.gz"
+curl -sSL -o "flux_${FLUX_VERSION}_linux_amd64.tar.gz" "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/flux_${FLUX_VERSION}_linux_amd64.tar.gz"
 
 # Download the checksums file
 curl -sSL -o checksums.txt "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/flux_${FLUX_VERSION}_checksums.txt"
@@ -94,7 +95,7 @@ After successful verification, extract and install the Flux CLI:
 
 ```bash
 # Extract the binary
-tar -xzf flux.tar.gz
+tar -xzf "flux_${FLUX_VERSION}_linux_amd64.tar.gz"
 
 # Move to a directory in your PATH
 sudo mv flux /usr/local/bin/flux
@@ -124,7 +125,7 @@ BASE_URL="https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}"
 BINARY="flux_${FLUX_VERSION}_${OS}_${ARCH}.tar.gz"
 
 echo "Downloading Flux CLI v${FLUX_VERSION} for ${OS}/${ARCH}..."
-curl -sSL -o flux.tar.gz "${BASE_URL}/${BINARY}"
+curl -sSL -o "${BINARY}" "${BASE_URL}/${BINARY}"
 curl -sSL -o checksums.txt "${BASE_URL}/flux_${FLUX_VERSION}_checksums.txt"
 curl -sSL -o checksums.txt.sig "${BASE_URL}/flux_${FLUX_VERSION}_checksums.txt.sig"
 curl -sSL -o checksums.txt.pem "${BASE_URL}/flux_${FLUX_VERSION}_checksums.txt.pem"
@@ -141,14 +142,14 @@ sha256sum -c checksums.txt --ignore-missing 2>/dev/null || \
   shasum -a 256 -c checksums.txt --ignore-missing
 
 echo "Installing Flux CLI..."
-tar -xzf flux.tar.gz
+tar -xzf "${BINARY}"
 sudo mv flux /usr/local/bin/flux
 
 echo "Flux CLI v${FLUX_VERSION} installed and verified successfully."
 flux version --client
 
 # Clean up
-rm -f flux.tar.gz checksums.txt checksums.txt.sig checksums.txt.pem
+rm -f "${BINARY}" checksums.txt checksums.txt.sig checksums.txt.pem
 ```
 
 ## Verification
@@ -166,8 +167,8 @@ After completing the steps above, confirm the following:
 If the checksum does not match, the download may be corrupted. Re-download the binary:
 
 ```bash
-rm flux.tar.gz
-curl -sSL -o flux.tar.gz "${BASE_URL}/${BINARY}"
+rm "${BINARY}"
+curl -sSL -o "${BINARY}" "${BASE_URL}/${BINARY}"
 sha256sum -c checksums.txt --ignore-missing
 ```
 
@@ -189,7 +190,7 @@ Make sure the certificate identity regexp matches the Flux GitHub organization:
 cosign verify-blob checksums.txt \
   --signature checksums.txt.sig \
   --certificate checksums.txt.pem \
-  --certificate-identity="https://github.com/fluxcd/flux2/.github/workflows/release.yml@refs/tags/v${FLUX_VERSION}" \
+  --certificate-identity="https://github.com/fluxcd/flux2/.github/workflows/release.yaml@refs/tags/v${FLUX_VERSION}" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
