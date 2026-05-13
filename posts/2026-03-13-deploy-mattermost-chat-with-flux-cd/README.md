@@ -14,7 +14,7 @@ Mattermost is an open-source, self-hosted messaging platform that gives teams th
 
 Deploying Mattermost on Kubernetes with Flux CD brings the same GitOps rigor you apply to your applications to your internal communications platform. The official Mattermost Helm chart configures the application server, connects it to a PostgreSQL database, and exposes it through an Ingress. Flux ensures that any drift between the declared configuration and the running cluster is corrected automatically.
 
-This guide uses the Mattermost Team Edition (free, open-source) Helm chart with PostgreSQL and persistent volume support.
+This guide uses the Mattermost Team Edition (free, open-source) Helm chart with PostgreSQL and persistent volume support. Mattermost now recommends the Mattermost Operator for new production deployments, but the Team Edition chart is still useful for a simple Helm-based GitOps example.
 
 ## Prerequisites
 
@@ -32,11 +32,10 @@ kubectl create namespace mattermost
 
 kubectl create secret generic mattermost-db-secret \
   --namespace mattermost \
-  --from-literal=DB_PASSWORD=mm_db_pass \
-  --from-literal=MM_SQLSETTINGS_DATASOURCE="postgres://mattermost:mm_db_pass@mattermost-postgresql:5432/mattermost?sslmode=disable"
+  --from-literal=DB_PASSWORD=mm_db_pass
 ```
 
-## Step 2: Register the Mattermost Helm Repository
+## Step 2: Register the Helm Repositories
 
 ```yaml
 # clusters/my-cluster/mattermost/helm-repository.yaml
@@ -47,6 +46,16 @@ metadata:
   namespace: flux-system
 spec:
   url: https://helm.mattermost.com
+  interval: 12h
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  type: oci
+  url: oci://registry-1.docker.io/bitnamicharts
   interval: 12h
 ```
 
@@ -64,13 +73,14 @@ spec:
   chart:
     spec:
       chart: postgresql
-      version: ">=13.0.0 <14.0.0"
+      version: ">=18.0.0 <19.0.0"
       sourceRef:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
   values:
     auth:
+      enablePostgresUser: false
       database: mattermost
       username: mattermost
       existingSecret: mattermost-db-secret
@@ -107,15 +117,16 @@ spec:
     mysql:
       enabled: false
 
-    # Use external PostgreSQL via secret
+    # Use external PostgreSQL
     externalDB:
       enabled: true
-      existingDatabaseUrlSecret: mattermost-db-secret
-      existingDatabaseUrlSecretKey: MM_SQLSETTINGS_DATASOURCE
+      externalDriverType: postgres
+      externalConnectionString: "mattermost:mm_db_pass@mattermost-postgresql:5432/mattermost?sslmode=disable&connect_timeout=10"
 
     # Mattermost application configuration
-    mattermostEnvs:
+    config:
       MM_SERVICESETTINGS_SITEURL: https://chat.example.com
+      MM_SERVICESETTINGS_ENABLELOCALMODE: "true"
       MM_TEAMSETTINGS_ENABLETEAMCREATION: "false"
       MM_EMAILSETTINGS_ENABLESIGNUPWITHEMAIL: "true"
       # File storage: use local (or switch to S3)
@@ -129,12 +140,10 @@ spec:
 
     ingress:
       enabled: true
-      ingressClassName: nginx
+      className: nginx
+      path: /
       hosts:
-        - host: chat.example.com
-          paths:
-            - path: /
-              pathType: Prefix
+        - chat.example.com
       tls:
         - secretName: mattermost-tls
           hosts:
@@ -183,7 +192,9 @@ kubectl get pods -n mattermost
 
 # Open a shell into the Mattermost pod for admin CLI operations
 kubectl exec -it -n mattermost \
-  $(kubectl get pod -n mattermost -l app=mattermost-team-edition -o name | head -1) \
+  $(kubectl get pod -n mattermost \
+     -l app.kubernetes.io/name=mattermost-team-edition,app.kubernetes.io/instance=mattermost \
+     -o name | head -1) \
   -- /mattermost/bin/mmctl --local user create \
      --email admin@example.com \
      --username admin \
@@ -196,9 +207,9 @@ Navigate to `https://chat.example.com` and log in as the admin user.
 ## Best Practices
 
 - Switch `MM_FILESETTINGS_DRIVERNAME` to `amazons3` (or compatible) and configure S3 settings to offload file storage from the pod volume.
-- Configure SMTP in `mattermostEnvs` for email notifications, password resets, and team invitations.
+- Configure SMTP in `config` for email notifications, password resets, and team invitations.
 - Enable push notifications by registering with the Mattermost push notification service or running the self-hosted push proxy.
-- Use `podAnnotations` to annotate the Mattermost pod for log shipping to your observability stack.
+- Use `extraPodAnnotations` to annotate the Mattermost pod for log shipping to your observability stack.
 - Enable database read replicas in the enterprise edition for high-traffic environments.
 
 ## Conclusion
