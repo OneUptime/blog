@@ -10,15 +10,15 @@ Description: Diagnose IP pool exhaustion in Calico IPAM by checking block utiliz
 
 ## Introduction
 
-IP pool exhaustion in Calico occurs when all IP addresses in the configured IP pools have been allocated and no free addresses remain for new pods. When this happens, new pod scheduling fails with IP allocation errors. The failure is not immediate - it builds gradually as pods are created and IPs are assigned, but is never returned when pods terminate improperly or when IPAM block garbage collection lags.
+IP pool exhaustion in Calico occurs when all IP addresses in the configured IP pools have been allocated and no free addresses remain for new pods. When this happens, pod startup fails with IP allocation errors from the network plugin. The failure is not immediate - it builds gradually as pods are created and IPs are assigned, and addresses may not be returned when pods terminate improperly or IPAM cleanup lags.
 
-Understanding Calico's IPAM model is key to diagnosing exhaustion. Calico allocates IPs in blocks (typically /26 subnets) to nodes. A node holds a block even when pods on it terminate, releasing the individual IPs within the block but not the block itself. When all blocks are allocated to nodes, new nodes cannot get blocks and new pods on those nodes fail.
+Understanding Calico's IPAM model is key to diagnosing exhaustion. Calico allocates IPs in blocks (typically /26 subnets) to nodes. A node can keep an associated block while pods on it terminate, releasing the individual IPs within the block, and Calico creates and destroys blocks as needed as the cluster changes. When no usable IPs remain in the eligible pools, new pods cannot get addresses and fail to start.
 
 ## Symptoms
 
 - New pods fail with `failed to allocate IP address` or `no IP addresses available in block`
 - `calicoctl ipam show` reports no free IPs
-- Pod stays in Pending with event `FailedScheduling: failed to allocate IP address`
+- Pod stays in Pending or ContainerCreating with an event such as `FailedCreatePodSandBox` from the kubelet
 - Specific nodes cannot get new pod IPs while others are fine
 
 ## Root Causes
@@ -35,7 +35,7 @@ Understanding Calico's IPAM model is key to diagnosing exhaustion. Calico alloca
 
 ```bash
 calicoctl ipam show
-# Shows: free blocks, allocated IPs, total capacity
+# Shows: total, in-use, and free IPs per IP pool
 
 ```
 
@@ -49,20 +49,20 @@ calicoctl ipam show --show-blocks
 
 ```bash
 calicoctl ipam check
-# Reports any allocations without corresponding workloads
+# Checks IPAM data against Kubernetes and reports leaked or inconsistent allocations
 ```
 
 **Step 4: Count allocated vs available IPs**
 
 ```bash
-calicoctl ipam show | grep -E "free|used|total"
+calicoctl ipam show | grep -Ei "free|in use|total"
 ```
 
 **Step 5: Check current pod count vs IP pool size**
 
 ```bash
 # Count running pods
-kubectl get pods --all-namespaces | grep Running | wc -l
+kubectl get pods --all-namespaces --field-selector=status.phase=Running --no-headers | wc -l
 
 # Check IP pool capacity
 calicoctl get ippool -o yaml | grep cidr:
