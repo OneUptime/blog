@@ -12,7 +12,7 @@ Description: Log Audit secure BGP sessions in Calico to prevent route injection 
 
 BGP (Border Gateway Protocol) sessions in Calico are used to distribute pod routes between nodes and to upstream routers. Unsecured BGP sessions are vulnerable to route injection attacks, where a malicious peer could inject false routes and redirect cluster traffic. Securing BGP sessions is an essential part of hardening a production Calico deployment.
 
-Calico supports BGP session authentication using MD5 passwords and can be configured to only peer with authorized BGP peers. The `projectcalico.org/v3` BGPPeer resource lets you configure per-peer authentication and encryption settings.
+Calico supports BGP session authentication using MD5 passwords and can be configured to only peer with authorized BGP peers. The `projectcalico.org/v3` BGPPeer resource lets you configure per-peer authentication settings.
 
 This guide covers log audit BGP sessions in Calico to prevent unauthorized route injection and BGP hijacking.
 
@@ -38,22 +38,53 @@ spec:
       key: router01-password
   node: "node01"
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bgp-peer-secrets-reader
+  namespace: calico-system # Use kube-system for manifest-based installs.
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["bgp-peer-secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calico-node-read-bgp-peer-secrets
+  namespace: calico-system # Use kube-system for manifest-based installs.
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bgp-peer-secrets-reader
+subjects:
+  - kind: ServiceAccount
+    name: calico-node
+    namespace: calico-system # Use kube-system for manifest-based installs.
+---
 apiVersion: v1
 kind: Secret
 metadata:
   name: bgp-peer-secrets
-  namespace: kube-system
+  namespace: calico-system # Must match the calico-node pod namespace.
 type: Opaque
 data:
   router01-password: <base64-encoded-password>
 ```
 
+Save the `BGPPeer` in `secure-bgp-peer.yaml` and the Role and RoleBinding in `bgp-secret-rbac.yaml`. The Secret can be created with `kubectl` so it is written in the same namespace as `calico-node`.
+
 ```bash
 # Create BGP password secret
+CALICO_NAMESPACE=calico-system # Use kube-system for manifest-based installs.
 
 kubectl create secret generic bgp-peer-secrets \
   --from-literal=router01-password="$(openssl rand -base64 32)" \
-  -n kube-system
+  -n "$CALICO_NAMESPACE"
+
+# Apply RBAC so calico-node can read the password secret
+kubectl apply -f bgp-secret-rbac.yaml
 
 # Apply BGP peer with authentication
 calicoctl apply -f secure-bgp-peer.yaml
@@ -66,13 +97,20 @@ calicoctl node status
 
 ```bash
 # Check BGP peer status
+CALICO_NAMESPACE=calico-system # Use kube-system for manifest-based installs.
 calicoctl node status | grep Established
 
-# Verify MD5 authentication is active
-bird cli <<< "show protocols all bgp_peer_router01" | grep auth
+# Inspect BIRD protocol details from a calico-node pod
+NODE_POD=$(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node \
+  --field-selector spec.nodeName=node01 \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n "$CALICO_NAMESPACE" "$NODE_POD" -- birdcl show protocols all
 
-# Check for unauthorized BGP connections
+# Review configured BGP peers
 calicoctl get bgppeers -o wide
+
+# Audit BGP-related calico-node logs for authentication or peering failures
+kubectl logs -n "$CALICO_NAMESPACE" "$NODE_POD" | grep -iE "bgp|bird|auth|md5|password"
 ```
 
 ## Architecture
