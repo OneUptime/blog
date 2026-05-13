@@ -14,7 +14,7 @@ Monorepos are popular for keeping related services, infrastructure code, and con
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
+- A Kubernetes cluster supported by Flux 2.8 (Kubernetes v1.33-v1.35)
 - Flux 2.8 installed on your cluster
 - A monorepo with multiple services or applications
 - kubectl configured to access your cluster
@@ -50,14 +50,19 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "services/user-service/**"
-      exclude:
-        - "services/user-service/docs/**"
-        - "services/user-service/**/*.md"
-        - "services/user-service/**/*_test.go"
+    - name: user-service
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/user-service/**"
+          to: "@artifact/"
+          exclude:
+            - "**/docs/**"
+            - "**/*.md"
+            - "**/*_test.go"
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -66,17 +71,22 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "services/order-service/**"
-      exclude:
-        - "services/order-service/docs/**"
-        - "services/order-service/**/*.md"
-        - "services/order-service/**/*_test.go"
+    - name: order-service
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/order-service/**"
+          to: "@artifact/"
+          exclude:
+            - "**/docs/**"
+            - "**/*.md"
+            - "**/*_test.go"
 ```
 
-Repeat this pattern for each service. Each ArtifactGenerator only triggers when its specific service files change.
+Repeat this pattern for each service. Each ArtifactGenerator creates an ExternalArtifact whose revision only changes when the copied content for that service changes.
 
 ## Strategy 2: Shared Dependencies with ArtifactGenerator
 
@@ -90,12 +100,19 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "services/user-service/**"
-    - path: "shared/k8s-base/**"
-    - path: "shared/monitoring/**"
+    - name: user-service
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/user-service/**"
+          to: "@artifact/"
+        - from: "@repo/shared/k8s-base/**"
+          to: "@artifact/shared/k8s-base/"
+        - from: "@repo/shared/monitoring/**"
+          to: "@artifact/shared/monitoring/"
 ```
 
 When files in `shared/k8s-base/` change, all ArtifactGenerators that include that path generate new artifacts, causing their downstream resources to reconcile. Services that do not depend on these shared paths remain unaffected.
@@ -112,10 +129,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "infrastructure/controllers/**"
+    - name: infra-controllers
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/infrastructure/controllers/**"
+          to: "@artifact/"
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -124,10 +146,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "infrastructure/networking/**"
+    - name: infra-networking
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/infrastructure/networking/**"
+          to: "@artifact/"
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -136,10 +163,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "apps/production/**"
+    - name: apps-production
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/apps/production/**"
+          to: "@artifact/"
 ```
 
 Infrastructure components typically change less frequently than applications. By separating them, you avoid reconciling infrastructure when only application code changes, and vice versa.
@@ -148,7 +180,7 @@ Infrastructure components typically change less frequently than applications. By
 
 To quantify the improvement, compare reconciliation metrics before and after implementing ArtifactGenerator.
 
-Check the number of reconciliation events per hour:
+Check the number of retained reconciliation events:
 
 ```bash
 kubectl get events --field-selector reason=ReconciliationSucceeded \
@@ -177,10 +209,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "services/api-gateway/**"
+    - name: api-gateway
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/api-gateway/**"
+          to: "@artifact/"
 ---
 # Infrastructure - same event-driven approach
 apiVersion: source.extensions.fluxcd.io/v1beta1
@@ -190,10 +227,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "infrastructure/cert-manager/**"
+    - name: cert-manager-config
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/infrastructure/cert-manager/**"
+          to: "@artifact/"
 ```
 
 ## Reducing Artifact Storage Overhead
@@ -203,18 +245,23 @@ Each ArtifactGenerator creates artifacts that consume storage. To minimize overh
 ```yaml
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform
   artifacts:
-    - path: "services/data-pipeline/**"
-      exclude:
-        - "services/data-pipeline/**/*.csv"
-        - "services/data-pipeline/**/*.parquet"
-        - "services/data-pipeline/fixtures/**"
-        - "services/data-pipeline/**/*.png"
-        - "services/data-pipeline/**/*.jpg"
+    - name: data-pipeline
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/data-pipeline/**"
+          to: "@artifact/"
+          exclude:
+            - "**/*.csv"
+            - "**/*.parquet"
+            - "**/fixtures/**"
+            - "**/*.png"
+            - "**/*.jpg"
 ```
 
 ## Conclusion
 
-ArtifactGenerator transforms monorepo performance in Flux by replacing the coarse-grained "reconcile everything on every commit" pattern with fine-grained, path-based triggering. By creating per-service ArtifactGenerators, properly handling shared dependencies, and tuning reconciliation intervals, you can achieve significant reductions in unnecessary reconciliation while maintaining the convenience of a single repository. The result is faster deployments, lower cluster resource consumption, and a more responsive GitOps pipeline.
+ArtifactGenerator transforms monorepo performance in Flux by replacing the coarse-grained "reconcile everything on every commit" pattern with fine-grained, content-based artifacts. By creating per-service ArtifactGenerators and properly handling shared dependencies, you can achieve significant reductions in unnecessary reconciliation while maintaining the convenience of a single repository. The result is faster deployments, lower cluster resource consumption, and a more responsive GitOps pipeline.
