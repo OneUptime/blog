@@ -21,7 +21,7 @@ This guide walks through deploying each ELK component as a Flux `HelmRelease`, c
 - Kubernetes cluster v1.26+ with Flux CD bootstrapped
 - `kubectl` and `flux` CLIs available locally
 - StorageClass supporting `ReadWriteOnce` PVCs
-- At least 6 GiB of available cluster memory for the stack
+- At least 9 GiB of available cluster memory for the stack
 
 ## Step 1: Add the Elastic HelmRepository
 
@@ -78,16 +78,16 @@ spec:
         memory: "2Gi"
     persistence:
       enabled: true
-      size: 50Gi
-    esConfig:
-      elasticsearch.yml: |
-        xpack.security.enabled: false
-        network.host: 0.0.0.0
+    volumeClaimTemplate:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 50Gi
 ```
 
 ## Step 3: Deploy Logstash with a Pipeline Configuration
 
-Logstash pipelines are defined in a ConfigMap referenced by the HelmRelease. This example accepts Beats input, parses JSON, and outputs to Elasticsearch.
+Logstash pipelines are defined in a ConfigMap referenced by the HelmRelease. This example accepts HTTP JSON input, parses JSON, and outputs to Elasticsearch.
 
 ```yaml
 # infrastructure/logging/logstash-pipeline-configmap.yaml
@@ -99,7 +99,7 @@ metadata:
 data:
   main.conf: |
     input {
-      beats {
+      http {
         port => 5044
       }
     }
@@ -116,7 +116,10 @@ data:
     }
     output {
       elasticsearch {
-        hosts => ["http://elasticsearch-master:9200"]
+        hosts => ["https://elasticsearch-master:9200"]
+        user => "${ELASTICSEARCH_USERNAME}"
+        password => "${ELASTICSEARCH_PASSWORD}"
+        ssl_certificate_authorities => ["/usr/share/logstash/config/certs/ca.crt"]
         index => "logs-%{+YYYY.MM.dd}"
       }
     }
@@ -149,18 +152,38 @@ spec:
         cpu: "500m"
         memory: "1536Mi"
     logstashJavaOpts: "-Xmx512m -Xms512m"
+    extraEnvs:
+      - name: ELASTICSEARCH_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: elasticsearch-master-credentials
+            key: username
+      - name: ELASTICSEARCH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: elasticsearch-master-credentials
+            key: password
     # Mount the pipeline ConfigMap
     extraVolumes:
       - name: pipeline-config
         configMap:
           name: logstash-pipeline
+      - name: elasticsearch-certs
+        secret:
+          secretName: elasticsearch-master-certs
     extraVolumeMounts:
       - name: pipeline-config
         mountPath: /usr/share/logstash/pipeline
+      - name: elasticsearch-certs
+        mountPath: /usr/share/logstash/config/certs
+        readOnly: true
+    extraPorts:
+      - name: http-events
+        containerPort: 5044
     service:
       type: ClusterIP
       ports:
-        - name: beats
+        - name: http-events
           port: 5044
           protocol: TCP
           targetPort: 5044
@@ -186,7 +209,7 @@ spec:
         name: elastic
         namespace: flux-system
   values:
-    elasticsearchHosts: "http://elasticsearch-master.logging.svc.cluster.local:9200"
+    elasticsearchHosts: "https://elasticsearch-master.logging.svc.cluster.local:9200"
     resources:
       requests:
         cpu: "200m"
@@ -196,8 +219,7 @@ spec:
         memory: "1Gi"
     ingress:
       enabled: true
-      annotations:
-        kubernetes.io/ingress.class: nginx
+      className: nginx
       hosts:
         - host: kibana.internal.example.com
           paths:
