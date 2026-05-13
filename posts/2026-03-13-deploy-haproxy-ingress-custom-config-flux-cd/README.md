@@ -38,36 +38,32 @@ spec:
   url: https://haproxy-ingress.github.io/charts
 ```
 
-## Step 2: Create the Custom ConfigMap
+## Step 2: Define the Custom ConfigMap Values
 
-Define global HAProxy defaults in a ConfigMap. These settings apply to all Ingress resources unless overridden by annotations.
+Define global HAProxy defaults through the chart-managed ConfigMap. These settings apply to all Ingress resources unless overridden by annotations.
 
 ```yaml
-# clusters/my-cluster/haproxy-ingress/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: haproxy-ingress
-  namespace: ingress-haproxy
-data:
-  # Global connection and request timeouts
-  timeout-connect: "5s"
-  timeout-client: "50s"
-  timeout-server: "50s"
-  timeout-tunnel: "1h"
+# values used in the HelmRelease below
+controller:
+  config:
+    # Global connection and request timeouts
+    timeout-connect: "5s"
+    timeout-client: "50s"
+    timeout-server: "50s"
+    timeout-tunnel: "1h"
 
-  # TLS hardening: disable old protocols and weak ciphers
-  ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
-  ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
+    # TLS hardening: disable old protocols and weak ciphers
+    ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
+    ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
 
-  # Enable HSTS header on all HTTPS responses
-  hsts: "true"
-  hsts-max-age: "15768000"
+    # Enable HSTS header on HTTPS responses
+    hsts: "true"
+    hsts-max-age: "15768000"
 
-  # Limit connections per IP to mitigate DDoS
-  limit-connections: "25"
-  limit-rps: "50"
-  limit-whitelist: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+    # Limit connections per IP to mitigate DDoS
+    limit-connections: "25"
+    limit-rps: "50"
+    limit-whitelist: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
 ## Step 3: Deploy HAProxy Ingress via HelmRelease
@@ -78,23 +74,41 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: haproxy-ingress
-  namespace: ingress-haproxy
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: ingress-haproxy
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: haproxy-ingress
-      version: ">=0.14.0 <1.0.0"
+      version: "~0.16.0"
       sourceRef:
         kind: HelmRepository
         name: haproxy-ingress
         namespace: flux-system
   values:
-    # Point the controller at the custom ConfigMap
     controller:
       config:
-        configMapNamespace: ingress-haproxy
-        configMapName: haproxy-ingress
+        # Global connection and request timeouts
+        timeout-connect: "5s"
+        timeout-client: "50s"
+        timeout-server: "50s"
+        timeout-tunnel: "1h"
+
+        # TLS hardening: disable old protocols and weak ciphers
+        ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
+        ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384"
+
+        # Enable HSTS header on HTTPS responses
+        hsts: "true"
+        hsts-max-age: "15768000"
+
+        # Limit connections per IP to mitigate DDoS
+        limit-connections: "25"
+        limit-rps: "50"
+        limit-whitelist: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
       # Expose via LoadBalancer
       service:
         type: LoadBalancer
@@ -103,12 +117,13 @@ spec:
         enabled: true
       metrics:
         enabled: true
-        serviceMonitor:
-          enabled: true
-      # Set the default IngressClass
+      serviceMonitor:
+        enabled: true
+      # Create and mark the HAProxy IngressClass as default
       ingressClass: haproxy
-      extraArgs:
-        - --watch-namespace=""
+      ingressClassResource:
+        enabled: true
+        default: true
 ```
 
 ## Step 4: Create a Sample Ingress with Per-Resource Annotations
@@ -123,14 +138,14 @@ metadata:
   name: my-app
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: haproxy
     # Override global timeout for this specific backend
     haproxy-ingress.github.io/timeout-server: "120s"
-    # Enable sticky sessions using a cookie
-    haproxy-ingress.github.io/load-balance: "leastconn"
+    # Use least connections and enable sticky sessions using a cookie
+    haproxy-ingress.github.io/balance-algorithm: "leastconn"
     haproxy-ingress.github.io/affinity: "cookie"
     haproxy-ingress.github.io/session-cookie-name: "SERVERID"
 spec:
+  ingressClassName: haproxy
   tls:
     - hosts:
         - app.example.com
@@ -167,14 +182,14 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: haproxy-ingress-controller
+      name: haproxy-ingress
       namespace: ingress-haproxy
 ```
 
 ## Best Practices
 
 - Always set `ssl-options` to disable TLS 1.0 and 1.1 in production.
-- Use `limit-connections` and `limit-rps` in the ConfigMap as baseline protection; fine-tune per-service with annotations.
+- Use `limit-connections` and `limit-rps` in the controller configuration as baseline protection; fine-tune per-service with annotations.
 - Enable `stats` and `metrics` with a ServiceMonitor so HAProxy's backend health is visible in Grafana.
 - Pin the chart version range to avoid unexpected upgrades that might change ConfigMap key names.
 - Test ConfigMap changes in a staging namespace before promoting to production.
