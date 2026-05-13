@@ -57,12 +57,6 @@ spec:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
-  valuesFrom:
-    # Separate alertmanager credentials from main config
-    - kind: Secret
-      name: alertmanager-config
-      valuesKey: config.yaml
-      targetPath: alertmanager.config
   values:
     # Prometheus configuration
     prometheus:
@@ -113,6 +107,9 @@ spec:
     # Alertmanager configuration
     alertmanager:
       alertmanagerSpec:
+        # Reference an external Secret containing alertmanager.yaml
+        # so credentials live outside this HelmRelease (see Step 5)
+        configSecret: alertmanager-config
         storage:
           volumeClaimTemplate:
             spec:
@@ -245,7 +242,8 @@ metadata:
   name: alertmanager-config
   namespace: monitoring
 stringData:
-  config.yaml: |
+  # Prometheus Operator mounts this key at /etc/alertmanager/config/alertmanager.yaml
+  alertmanager.yaml: |
     global:
       resolve_timeout: 5m
       slack_api_url: "https://hooks.slack.com/services/REPLACE_WITH_REAL_URL"
