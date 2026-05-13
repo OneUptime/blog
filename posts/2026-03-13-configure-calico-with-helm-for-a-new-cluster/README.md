@@ -25,6 +25,8 @@ This guide covers both Helm values customization and Installation CR configurati
 ## Step 1: Inspect Available Helm Values
 
 ```bash
+helm repo add projectcalico https://docs.tigera.io/calico/charts
+helm repo update
 helm show values projectcalico/tigera-operator --version v3.27.0 > calico-values.yaml
 ```
 
@@ -57,34 +59,30 @@ helm install calico projectcalico/tigera-operator \
   --values custom-calico-values.yaml
 ```
 
-## Step 4: View and Modify the Installation CR
+## Step 4: View the Installation CR
 
-After installation, the Operator creates an Installation CR:
+During installation, the Helm chart creates an Installation CR:
 
 ```bash
 kubectl get installation default -o yaml
 ```
 
-Modify it to change Calico settings:
+For a new cluster, configure IP pool settings before the first install through Helm values. After installation, modify the Calico IPPool resource directly instead of changing `spec.calicoNetwork.ipPools` in the Installation resource:
 
 ```bash
-kubectl patch installation default --type merge --patch '{
+kubectl patch ippool default-ipv4-ippool --type merge --patch '{
   "spec": {
-    "calicoNetwork": {
-      "ipPools": [{
-        "cidr": "192.168.0.0/16",
-        "encapsulation": "VXLANCrossSubnet",
-        "natOutgoing": "Enabled",
-        "nodeSelector": "all()"
-      }]
-    }
+    "vxlanMode": "CrossSubnet",
+    "ipipMode": "Never",
+    "natOutgoing": true,
+    "nodeSelector": "all()"
   }
 }'
 ```
 
 ## Step 5: Configure the APIServer CR
 
-Enable Calico's API server for calicoctl integration:
+The v3.27.0 Helm chart enables Calico's API server by default with `apiServer.enabled: true`. If you disabled it during installation, create the APIServer CR to enable Kubernetes API access to Calico `projectcalico.org/v3` resources:
 
 ```bash
 kubectl apply -f - <<EOF
