@@ -10,9 +10,11 @@ Description: Learn how to configure Flagger with NGINX Ingress canary annotation
 
 ## Introduction
 
-NGINX Ingress Controller is one of the most widely used ingress controllers in the Kubernetes ecosystem. It supports canary deployments through special annotations that control traffic splitting between different backend services. Flagger automates this process by managing the NGINX canary annotations during progressive delivery, gradually shifting traffic to a new version while analyzing metrics to determine whether the release is safe to promote.
+The community ingress-nginx controller has been one of the most widely used ingress controllers in the Kubernetes ecosystem. It supports canary deployments through special annotations that control traffic splitting between different backend services. Flagger automates this process by managing the NGINX canary annotations during progressive delivery, gradually shifting traffic to a new version while analyzing metrics to determine whether the release is safe to promote.
 
-This guide walks you through configuring Flagger with the NGINX Ingress Controller using canary annotations. You will learn how to set up the integration, define canary analysis rules, and run your first automated canary deployment.
+Note that this guide uses the Kubernetes community `kubernetes/ingress-nginx` controller, not the separate F5 NGINX Ingress Controller. The community ingress-nginx project was retired in March 2026, so this configuration is most appropriate for existing clusters or migration testing. For new production deployments, evaluate Gateway API or another actively maintained ingress controller.
+
+This guide walks you through configuring Flagger with ingress-nginx using canary annotations. You will learn how to set up the integration, define canary analysis rules, and run your first automated canary deployment.
 
 ## Prerequisites
 
@@ -21,12 +23,12 @@ Before you begin, ensure the following are in place:
 - A Kubernetes cluster running version 1.22 or later.
 - `kubectl` installed and configured.
 - Helm 3 installed.
-- NGINX Ingress Controller deployed in your cluster.
+- ingress-nginx controller deployed in your cluster.
 - Prometheus installed for metrics collection.
 
-## Installing NGINX Ingress Controller
+## Installing ingress-nginx
 
-If NGINX Ingress is not already installed, deploy it using Helm.
+If ingress-nginx is not already installed, deploy it using Helm.
 
 ```bash
 # Add the ingress-nginx Helm repository
@@ -34,12 +36,13 @@ If NGINX Ingress is not already installed, deploy it using Helm.
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-# Install the NGINX Ingress Controller
-helm install ingress-nginx ingress-nginx/ingress-nginx \
+# Install ingress-nginx
+helm upgrade -i ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --create-namespace \
   --set controller.metrics.enabled=true \
-  --set controller.metrics.serviceMonitor.enabled=true
+  --set controller.podAnnotations."prometheus\.io/scrape"=true \
+  --set controller.podAnnotations."prometheus\.io/port"=10254
 ```
 
 Enabling metrics is important because Flagger relies on NGINX metrics to evaluate canary health.
@@ -115,15 +118,14 @@ Create an Ingress resource that routes traffic to your application. Flagger will
 
 ```yaml
 # ingress.yaml
-# NGINX Ingress resource for the application
+# ingress-nginx Ingress resource for the application
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: podinfo
   namespace: test
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: app.example.com
       http:
@@ -140,6 +142,7 @@ spec:
 Apply the resources.
 
 ```bash
+kubectl create namespace test
 kubectl apply -f app.yaml
 kubectl apply -f ingress.yaml
 ```
@@ -251,4 +254,4 @@ As Flagger progresses through the analysis, you will see the canary weight incre
 
 ## Conclusion
 
-Configuring Flagger with NGINX Ingress canary annotations provides a straightforward way to implement progressive delivery without requiring a service mesh. NGINX Ingress is already present in many Kubernetes clusters, making this integration easy to adopt. Flagger automates the management of canary annotations, metric analysis, and traffic shifting, allowing you to deploy new versions with confidence and automatic rollback protection.
+Configuring Flagger with ingress-nginx canary annotations provides a straightforward way to implement progressive delivery without requiring a service mesh. If ingress-nginx is already present in your cluster, this integration can be useful while you plan migration from the retired community controller. Flagger automates the management of canary annotations, metric analysis, and traffic shifting, allowing you to deploy new versions with confidence and automatic rollback protection.
