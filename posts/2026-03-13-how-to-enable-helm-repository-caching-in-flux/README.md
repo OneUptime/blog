@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Performance, Caching, Helm, Source Controller
 
-Description: Enable Helm repository index caching in Flux to avoid redundant downloads and speed up HelmChart reconciliations.
+Description: Enable Helm repository index caching in Flux to avoid repeatedly loading repository indexes and speed up HelmChart reconciliations.
 
 ---
 
 ## The Problem with Uncached Helm Repositories
 
-Every time the source-controller reconciles a HelmRepository of type `default` (HTTP/HTTPS), it downloads the full repository index file. For popular Helm repositories with hundreds of charts, these index files can be several megabytes. Downloading the same index repeatedly wastes bandwidth and adds latency to each reconciliation cycle.
+Every time the source-controller reconciles a HelmRepository of type `default` (HTTP/HTTPS), it fetches the repository index file and stores it as an artifact. For popular Helm repositories with hundreds of charts, these index files can be several megabytes. HelmChart reconciliations that reference the same HelmRepository then need to load that index to resolve chart versions, which can add latency and memory pressure when repeated across many charts.
 
 ## What Helm Repository Caching Does
 
-When caching is enabled, the source-controller stores downloaded Helm repository index files in an in-memory cache. On subsequent reconciliations, the controller serves the index from cache if it has not expired, avoiding the network round-trip entirely. This is particularly effective when multiple HelmChart objects reference the same HelmRepository.
+When caching is enabled, the source-controller stores Helm repository indexes in an in-memory cache. On subsequent HelmChart reconciliations, the controller uses the cached index if it is available and has not expired, avoiding another load of the repository index artifact. This is particularly effective when multiple HelmChart objects reference the same HelmRepository.
 
 ## Enabling the Cache
 
@@ -25,27 +25,15 @@ Helm repository caching is controlled by the `--helm-cache-max-size` flag on the
 ```yaml
 # clusters/my-cluster/flux-system/source-controller-cache-patch.yaml
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            - --storage-addr=:9090
-            - --storage-adv-addr=source-controller.flux-system.svc.cluster.local.
-            - --helm-cache-max-size=16
-            - --helm-cache-ttl=15m
-            - --helm-cache-purge-interval=5m
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --helm-cache-max-size=16
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --helm-cache-ttl=15m
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --helm-cache-purge-interval=5m
 ```
 
 The three cache-related flags are:
@@ -108,4 +96,4 @@ spec:
 
 ## Summary
 
-Enabling Helm repository caching avoids redundant index downloads and speeds up HelmChart reconciliation. Set the `--helm-cache-max-size` flag on the source-controller, tune the TTL and purge interval for your needs, and consider switching to OCI-based repositories for an even more efficient approach.
+Enabling Helm repository caching avoids repeatedly loading repository indexes and speeds up HelmChart reconciliation. Set the `--helm-cache-max-size` flag on the source-controller, tune the TTL and purge interval for your needs, and consider switching to OCI-based repositories for an even more efficient approach.
