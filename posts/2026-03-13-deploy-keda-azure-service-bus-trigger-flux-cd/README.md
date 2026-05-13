@@ -20,7 +20,7 @@ This guide covers deploying KEDA with the Azure Service Bus trigger using Flux C
 
 - KEDA deployed on your cluster (AKS or other)
 - Azure Service Bus namespace with a queue or topic subscription
-- Azure identity with `Azure Service Bus Data Receiver` role on the namespace
+- Azure identity with `Azure Service Bus Data Owner` role on the namespace for KEDA scaling, plus receiver permissions for the worker if it consumes messages
 - Flux CD v2 bootstrapped to your Git repository
 
 ## Step 1: Configure Azure Workload Identity (AKS)
@@ -28,7 +28,7 @@ This guide covers deploying KEDA with the Azure Service Bus trigger using Flux C
 On AKS with Workload Identity enabled:
 
 ```bash
-# Create a managed identity for KEDA workers
+# Create a managed identity for KEDA and the workers
 
 az identity create \
   --name keda-sbus-identity \
@@ -38,18 +38,29 @@ az identity create \
 az role assignment create \
   --assignee $(az identity show --name keda-sbus-identity \
     --resource-group my-rg --query principalId -o tsv) \
-  --role "Azure Service Bus Data Receiver" \
+  --role "Azure Service Bus Data Owner" \
   --scope /subscriptions/<sub>/resourceGroups/my-rg/providers/Microsoft.ServiceBus/namespaces/my-sbus
 
-# Create Federated Credential for KEDA
+# Create Federated Credential for the KEDA operator
 az identity federated-credential create \
-  --name keda-sbus-fedcred \
+  --name keda-sbus-keda-fedcred \
+  --identity-name keda-sbus-identity \
+  --resource-group my-rg \
+  --issuer "$(az aks show --name my-aks --resource-group my-rg --query oidcIssuerProfile.issuerUrl -o tsv)" \
+  --subject "system:serviceaccount:keda:keda-operator" \
+  --audience api://AzureADTokenExchange
+
+# Create Federated Credential for the worker ServiceAccount
+az identity federated-credential create \
+  --name keda-sbus-worker-fedcred \
   --identity-name keda-sbus-identity \
   --resource-group my-rg \
   --issuer "$(az aks show --name my-aks --resource-group my-rg --query oidcIssuerProfile.issuerUrl -o tsv)" \
   --subject "system:serviceaccount:app:sbus-worker-sa" \
   --audience api://AzureADTokenExchange
 ```
+
+If your KEDA operator runs in a namespace other than `keda`, update the first federated credential subject to match its ServiceAccount, for example `system:serviceaccount:kube-system:keda-operator` when using the AKS KEDA add-on.
 
 ## Step 2: Create TriggerAuthentication
 
@@ -67,6 +78,8 @@ spec:
     provider: azure-workload
     identityId: <managed-identity-client-id>
 ```
+
+Make sure the KEDA operator is configured for Workload Identity with the `azure.workload.identity/use: "true"` pod label and the same managed identity client ID on its ServiceAccount annotation so the workload identity webhook can inject the Azure identity into the KEDA operator pods.
 
 Alternatively, using a connection string (with SOPS encryption):
 
@@ -115,7 +128,7 @@ spec:
     - type: azure-servicebus
       metadata:
         # Service Bus namespace
-        namespace: my-sbus.servicebus.windows.net
+        namespace: my-sbus
         # Queue name (or use topicName + subscriptionName for topics)
         queueName: task-queue
         # Scale 1 replica per N messages
@@ -145,7 +158,7 @@ spec:
   triggers:
     - type: azure-servicebus
       metadata:
-        namespace: my-sbus.servicebus.windows.net
+        namespace: my-sbus
         # Topic and subscription for topic-based scaling
         topicName: notifications
         subscriptionName: email-sender
@@ -158,6 +171,14 @@ spec:
 
 ```yaml
 # clusters/my-cluster/keda-sbus/worker-deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sbus-worker-sa
+  namespace: app
+  annotations:
+    azure.workload.identity/client-id: <managed-identity-client-id>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -172,10 +193,10 @@ spec:
     metadata:
       labels:
         app: sbus-worker
-      annotations:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: sbus-worker-sa
+      terminationGracePeriodSeconds: 60
       containers:
         - name: worker
           image: myregistry/sbus-worker:v1.0.0
@@ -191,7 +212,6 @@ spec:
             limits:
               cpu: "1"
               memory: "512Mi"
-          terminationGracePeriodSeconds: 60
 ```
 
 ## Step 6: Create the Flux Kustomization
