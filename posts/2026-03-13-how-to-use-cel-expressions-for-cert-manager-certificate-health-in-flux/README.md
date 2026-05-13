@@ -91,9 +91,11 @@ spec:
       kind: Certificate
       name: wildcard-tls
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
 ```
 
 ## Checking Certificate Is Not Currently Issuing
@@ -106,10 +108,12 @@ healthChecks:
     kind: Certificate
     name: wildcard-tls
     namespace: production
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-        && !status.conditions.exists(c, c.type == 'Issuing' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: cert-manager.io/v1
+    kind: Certificate
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+      && !status.conditions.exists(c, c.type == 'Issuing' && c.status == 'True')
 ```
 
 This expression requires the `Ready` condition to be `True` and the `Issuing` condition to not be `True`.
@@ -124,13 +128,15 @@ healthChecks:
     kind: Certificate
     name: api-tls
     namespace: production
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-        && has(status.revision)
+healthCheckExprs:
+  - apiVersion: cert-manager.io/v1
+    kind: Certificate
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+      && has(status.revision) && status.revision >= 2
 ```
 
-The `has()` function checks that the field exists, confirming the certificate has been issued at least once.
+The `has()` function checks that the field exists before comparing the current revision.
 
 ## Health Checking Multiple Certificates
 
@@ -155,23 +161,19 @@ spec:
       kind: Certificate
       name: frontend-tls
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
     - apiVersion: cert-manager.io/v1
       kind: Certificate
       name: api-tls
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
     - apiVersion: cert-manager.io/v1
       kind: Certificate
       name: internal-mtls
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
 ```
 
 ## Health Checking ClusterIssuers
@@ -192,7 +194,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```yaml
@@ -200,9 +202,11 @@ healthChecks:
   - apiVersion: cert-manager.io/v1
     kind: ClusterIssuer
     name: letsencrypt-prod
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    current: >-
+      status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
 ```
 
 ## Complete Certificate Pipeline with Dependencies
@@ -244,15 +248,14 @@ spec:
     - apiVersion: cert-manager.io/v1
       kind: ClusterIssuer
       name: letsencrypt-prod
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
     - apiVersion: cert-manager.io/v1
       kind: ClusterIssuer
       name: letsencrypt-staging
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -274,9 +277,11 @@ spec:
       kind: Certificate
       name: wildcard-tls
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      current: >-
+        status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
 ```
 
 ## Debugging Certificate Health Check Failures
