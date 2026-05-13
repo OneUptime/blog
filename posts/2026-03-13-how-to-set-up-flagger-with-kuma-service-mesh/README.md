@@ -33,8 +33,7 @@ helm repo update
 
 helm install kuma kuma/kuma \
   --namespace kuma-system \
-  --create-namespace \
-  --set controlPlane.mode=standalone
+  --create-namespace
 ```
 
 Verify the installation:
@@ -51,38 +50,34 @@ Kuma needs Prometheus metrics enabled for Flagger to evaluate canary health. Ena
 
 ```yaml
 apiVersion: kuma.io/v1alpha1
-kind: Mesh
+kind: MeshMetric
 metadata:
-  name: default
+  name: prometheus
+  namespace: kuma-system
+  labels:
+    kuma.io/mesh: default
 spec:
-  metrics:
-    enabledBackend: prometheus-1
+  default:
     backends:
-      - name: prometheus-1
-        type: prometheus
-        conf:
+      - type: Prometheus
+        prometheus:
           port: 5670
-          path: /metrics
-          skipMTLS: true
+          path: "/metrics"
 ```
 
-Apply this Mesh configuration:
+Apply this MeshMetric configuration:
 
 ```bash
-kubectl apply -f mesh.yaml
+kubectl apply -f meshmetric.yaml
 ```
 
 Deploy Prometheus to scrape Kuma metrics:
 
 ```bash
-helm install prometheus prometheus-community/prometheus \
-  --namespace monitoring \
-  --create-namespace \
-  --set server.persistentVolume.enabled=false \
-  --set alertmanager.enabled=false
+kumactl install observability --components "grafana,prometheus" | kubectl apply -f -
 ```
 
-Configure Prometheus to scrape Kuma's metrics endpoints by adding the appropriate scrape configuration for the mesh dataplane proxy metrics.
+This installs Kuma's demo observability stack in the `mesh-observability` namespace with Prometheus configured to use Kuma service discovery.
 
 ## Step 3: Install Flagger
 
@@ -94,7 +89,7 @@ helm repo add flagger https://flagger.app
 helm upgrade -i flagger flagger/flagger \
   --namespace kuma-system \
   --set meshProvider=kuma \
-  --set metricsServer=http://prometheus-server.monitoring:80
+  --set metricsServer=http://prometheus-server.mesh-observability:80
 ```
 
 The `meshProvider=kuma` flag configures Flagger to use Kuma's traffic management resources. The `metricsServer` points to your Prometheus instance.
@@ -174,6 +169,8 @@ kind: Canary
 metadata:
   name: podinfo
   namespace: demo
+  annotations:
+    kuma.io/mesh: default
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -182,6 +179,15 @@ spec:
   service:
     port: 9898
     targetPort: 9898
+    apex:
+      annotations:
+        9898.service.kuma.io/protocol: "http"
+    canary:
+      annotations:
+        9898.service.kuma.io/protocol: "http"
+    primary:
+      annotations:
+        9898.service.kuma.io/protocol: "http"
   analysis:
     interval: 30s
     threshold: 5
@@ -265,7 +271,7 @@ metadata:
 spec:
   provider:
     type: prometheus
-    address: http://prometheus-server.monitoring:80
+    address: http://prometheus-server.mesh-observability:80
   query: |
     sum(rate(
       envoy_cluster_upstream_rq{
