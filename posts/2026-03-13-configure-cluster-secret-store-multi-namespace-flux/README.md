@@ -60,7 +60,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/external-secrets/cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: platform-aws-secrets
@@ -113,7 +113,7 @@ Any namespace with the `secrets.platform.io/allowed: "true"` label can now refer
 
 ```yaml
 # clusters/my-cluster/apps/team-alpha/externalsecret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: shared-db-credentials
@@ -140,7 +140,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/team-beta/externalsecret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: shared-api-key
@@ -178,7 +178,7 @@ spec:
   dependsOn:
     - name: external-secrets
   healthChecks:
-    - apiVersion: external-secrets.io/v1beta1
+    - apiVersion: external-secrets.io/v1
       kind: ClusterSecretStore
       name: platform-aws-secrets
 ```
