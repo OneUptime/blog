@@ -12,18 +12,18 @@ Description: Deploy GitLab Runner on Kubernetes using Flux CD so your CI/CD jobs
 
 GitLab Runner is the open-source agent that picks up CI/CD jobs from a GitLab instance and executes them. Running runners inside Kubernetes is the modern approach: each job gets its own ephemeral pod, resources scale automatically, and there is no persistent runner host to maintain. Combined with Flux CD, the runner deployment itself becomes a GitOps artifact-every configuration change is a Git commit.
 
-Flux CD watches your fleet repository and reconciles the Kubernetes cluster to match. When you update the runner registration token (via a secret reference), change executor settings, or bump the chart version, Flux applies the change without manual `helm upgrade` commands. This makes GitLab Runner infrastructure as auditable and reproducible as the application code it builds.
+Flux CD watches your fleet repository and reconciles the Kubernetes cluster to match. When you update the runner authentication token secret, change executor settings, or bump the chart version, Flux applies the change without manual `helm upgrade` commands. This makes GitLab Runner infrastructure as auditable and reproducible as the application code it builds.
 
 This guide deploys the official GitLab Runner Helm chart using Flux CD's `HelmRelease`, registers it with a GitLab instance, and configures the Kubernetes executor for dynamic job pods.
 
 ## Prerequisites
 
 - Kubernetes cluster (v1.26+) with Flux CD bootstrapped
-- A GitLab instance (GitLab.com or self-hosted) with a project or group runner registration token
+- A GitLab instance (GitLab.com or self-hosted) with a project or group runner authentication token
 - `flux` and `kubectl` CLIs installed locally
 - Sealed Secrets or External Secrets Operator for secret management
 
-## Step 1: Store the Runner Registration Token Securely
+## Step 1: Store the Runner Authentication Token Securely
 
 Never commit the runner token to Git. Create the secret imperatively, or use Sealed Secrets.
 
@@ -35,7 +35,7 @@ kubectl create namespace gitlab-runner
 kubectl create secret generic gitlab-runner-secret \
   --namespace gitlab-runner \
   --from-literal=runner-registration-token="" \
-  --from-literal=runner-token=""
+  --from-literal=runner-token="glrt-REPLACE_WITH_RUNNER_AUTHENTICATION_TOKEN"
 ```
 
 If you use Sealed Secrets, seal the secret and commit the `SealedSecret` manifest instead.
@@ -68,7 +68,7 @@ spec:
   chart:
     spec:
       chart: gitlab-runner
-      version: ">=0.63.0 <0.64.0"
+      version: ">=0.88.0 <0.89.0"
       sourceRef:
         kind: HelmRepository
         name: gitlab
@@ -78,11 +78,11 @@ spec:
     gitlabUrl: https://gitlab.example.com
 
     # Reference the pre-created secret
-    runnerRegistrationToken: ""
-    existingSecret: gitlab-runner-secret
+    runnerToken: ""
 
     # Use Kubernetes executor (recommended for scalability)
     runners:
+      secret: gitlab-runner-secret
       executor: kubernetes
       config: |
         [[runners]]
@@ -178,11 +178,11 @@ Push the file and watch a pod appear in the `gitlab-runner` namespace while the 
 
 ## Best Practices
 
-- Use `runners.tags` in the Helm values to tag the runner (e.g., `kubernetes`, `production`) and target it explicitly in pipelines.
+- Configure runner tags when you create the runner in GitLab so pipelines can target it explicitly.
 - Enable `runners.cache` with an S3-compatible backend to speed up repeated jobs.
 - Set `terminationGracePeriodSeconds` high enough (300+) so in-flight jobs finish before a runner pod is evicted.
-- Rotate registration tokens periodically; the secret update propagates automatically via Flux.
-- Use `podAnnotations` to add Vault or IRSA annotations for jobs that need cloud credentials.
+- Rotate runner authentication tokens periodically; Flux applies the secret update, then restart or reconcile the runner pod so it reads the new token.
+- Use `[runners.kubernetes.pod_annotations]` in `runners.config` to add Vault or IRSA annotations for jobs that need cloud credentials.
 
 ## Conclusion
 
