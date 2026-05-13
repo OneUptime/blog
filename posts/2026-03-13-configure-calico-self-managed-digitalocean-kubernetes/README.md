@@ -57,20 +57,17 @@ sudo sysctl --system
 Allow the ports required for Kubernetes and Calico.
 
 ```bash
+# Tag all cluster Droplets
+doctl compute droplet tag k8s-control-plane --tag-name k8s-cluster
+doctl compute droplet tag k8s-worker-1 --tag-name k8s-cluster
+doctl compute droplet tag k8s-worker-2 --tag-name k8s-cluster
+
 # Create a firewall for the Kubernetes cluster
 doctl compute firewall create \
   --name k8s-cluster-firewall \
-  --inbound-rules "protocol:tcp,ports:6443,sources:tag:k8s-cluster" \
-  --inbound-rules "protocol:tcp,ports:2379-2380,sources:tag:k8s-cluster" \
-  --inbound-rules "protocol:tcp,ports:10250-10259,sources:tag:k8s-cluster" \
-  --inbound-rules "protocol:udp,ports:4789,sources:tag:k8s-cluster" \
-  --inbound-rules "protocol:tcp,ports:5473,sources:tag:k8s-cluster" \
-  --outbound-rules "protocol:tcp,ports:all,destinations:address:0.0.0.0/0" \
-  --outbound-rules "protocol:udp,ports:all,destinations:address:0.0.0.0/0"
-
-# Tag all cluster Droplets
-doctl compute droplet tag k8s-control-plane k8s-worker-1 k8s-worker-2 \
-  --tag-name k8s-cluster
+  --tag-names "k8s-cluster" \
+  --inbound-rules "protocol:tcp,ports:6443,tag:k8s-cluster protocol:tcp,ports:2379-2380,tag:k8s-cluster protocol:tcp,ports:10250-10259,tag:k8s-cluster protocol:udp,ports:4789,tag:k8s-cluster protocol:tcp,ports:5473,tag:k8s-cluster" \
+  --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0 protocol:udp,ports:all,address:0.0.0.0/0"
 ```
 
 ## Step 3: Initialize the Kubernetes Cluster
@@ -78,8 +75,8 @@ doctl compute droplet tag k8s-control-plane k8s-worker-1 k8s-worker-2 \
 Bootstrap the control plane.
 
 ```bash
-# On the control plane Droplet - get the private IP (DigitalOcean private network)
-PRIVATE_IP=$(ip -4 addr show eth1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+# On the control plane Droplet - get the private IP (DigitalOcean VPC network)
+PRIVATE_IP=$(curl -s http://169.254.169.254/metadata/v1/interfaces/private/0/ipv4/address)
 
 # Initialize kubeadm with the private IP and a non-overlapping pod CIDR
 sudo kubeadm init \
@@ -98,7 +95,7 @@ Deploy Calico configured for DigitalOcean's networking.
 
 ```bash
 # Install the Tigera operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 ```
 
 ```yaml
@@ -110,6 +107,7 @@ metadata:
   name: default
 spec:
   calicoNetwork:
+    bgp: Disabled
     ipPools:
     - name: default-ipv4-ippool
       cidr: 192.168.0.0/16
@@ -137,7 +135,8 @@ Confirm Calico is healthy and apply test policies.
 
 ```bash
 # Verify Calico status
-calicoctl node status
+kubectl get tigerastatus
+kubectl get pods -n calico-system -o wide
 calicoctl get ippools -o wide
 
 # Deploy a test workload and verify connectivity
@@ -152,7 +151,7 @@ kubectl exec -n demo client -- curl -s http://$WEB_IP
 
 ## Best Practices
 
-- Use DigitalOcean's private network (eth1) for all Kubernetes traffic - never use the public IP for inter-node communication
+- Use DigitalOcean's private network for all Kubernetes traffic - never use the public IP for inter-node communication
 - Combine DigitalOcean Cloud Firewalls with Calico NetworkPolicy for defense-in-depth
 - Use VXLAN encapsulation - DigitalOcean's VPC does not support user-managed routes needed for BGP mode
 - Enable DigitalOcean Spaces for storing cluster backups (etcd snapshots)
