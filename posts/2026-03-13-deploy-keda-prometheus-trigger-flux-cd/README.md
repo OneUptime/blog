@@ -33,14 +33,14 @@ KEDA's Prometheus scaler queries Prometheus directly. Verify the endpoint:
 kubectl get svc -n monitoring prometheus-operated
 
 # Test the query
-kubectl exec -n keda deployment/keda-operator -- \
-  wget -qO- 'http://prometheus-operated.monitoring.svc.cluster.local:9090/api/v1/query?query=up' \
+kubectl run prometheus-check -n keda --image=curlimages/curl --rm -i --restart=Never -- \
+  'http://prometheus-operated.monitoring.svc.cluster.local:9090/api/v1/query?query=up' \
   | python3 -m json.tool
 ```
 
 ## Step 2: Create the ScaledObject with Prometheus Trigger
 
-Scale based on HTTP request rate per pod:
+Scale based on total HTTP request rate, with KEDA's default `AverageValue` metric type treating the threshold as a per-replica target:
 
 ```yaml
 # clusters/my-cluster/keda-prometheus/http-rate-scaler.yaml
@@ -78,10 +78,9 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
-        # PromQL query - returns requests/second per pod
+        # PromQL query - returns total requests/second
         query: |
           sum(rate(http_requests_total{namespace="app",service="api-server"}[2m]))
-          / count(kube_pod_info{namespace="app", pod=~"api-server-.*"})
         # Target value per replica (requests/second)
         threshold: "100"
         # Namespace for metric context
@@ -154,6 +153,8 @@ spec:
 Then reference the auth in ScaledObject triggers:
 
 ```yaml
+        metadata:
+          authModes: "bearer"
       authenticationRef:
         name: prometheus-trigger-auth
 ```
@@ -165,6 +166,7 @@ Then reference the auth in ScaledObject triggers:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - trigger-auth-prometheus.yaml
   - http-rate-scaler.yaml
   - report-generator-scaler.yaml
 ---
@@ -208,7 +210,7 @@ kubectl get pods -n app -l app=api-server -w
 - Write PromQL queries that return a single scalar value - the threshold comparison is `metric_value / target_value = desired_replicas`. Test your query in the Prometheus UI first.
 - Use `activationThreshold` to prevent KEDA from waking a deployment from zero before the metric has meaningfully crossed baseline noise.
 - Set `stabilizationWindowSeconds` on scale-down to prevent thrashing when metrics oscillate around the threshold.
-- Use per-replica normalization in your PromQL (e.g., divide by pod count) for request-rate metrics so the threshold represents a per-pod target, not a total.
+- For request-rate metrics with KEDA's default `AverageValue` metric type, query the total rate so the threshold represents the per-replica target. If your PromQL already returns a per-pod average, set the trigger `metricType` to `Value`.
 - Combine Prometheus triggers with CPU triggers using KEDA's multi-trigger support to cover both metric-based and resource-based scaling signals.
 
 ## Conclusion
