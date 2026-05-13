@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Host Firewall, Security, eBPF, Node Security
 
-Description: Configure the Cilium Host Firewall to secure node-level network traffic using CiliumNetworkPolicies applied to host endpoints.
+Description: Configure the Cilium Host Firewall to secure node-level network traffic using CiliumClusterwideNetworkPolicies applied to host endpoints.
 
 ---
 
@@ -12,12 +12,12 @@ Description: Configure the Cilium Host Firewall to secure node-level network tra
 
 The Cilium Host Firewall extends Cilium's network policy enforcement to the node's own network stack, not just the pod network. This means you can apply the same eBPF-based policy enforcement to traffic entering or leaving the Kubernetes node itself-including SSH, API server, kubelet, and etcd traffic.
 
-Traditional node firewalls use iptables or nftables rules. The Cilium Host Firewall replaces these with eBPF programs, providing richer policy capabilities including identity-aware rules and L7 filtering for node traffic.
+Traditional node firewalls use iptables or nftables rules. The Cilium Host Firewall enforces node traffic policy with eBPF programs, providing richer policy capabilities including identity-aware rules and L7 DNS filtering for node traffic.
 
 ## Prerequisites
 
-- Cilium 1.10+
-- Kernel 5.3+ (for host endpoint policy)
+- A supported Cilium release with `hostFirewall.enabled=true`
+- Linux kernel 5.10+ or an equivalent supported distribution kernel
 - `kubectl` with kube-system access
 
 ## Enable the Host Firewall
@@ -47,10 +47,16 @@ flowchart TD
 Before enforcing, run in audit mode to understand current traffic:
 
 ```bash
-# Apply audit mode annotation to the node's host endpoint
+export NODE_NAME=<node-name>
+export CILIUM_NAMESPACE=kube-system
+export CILIUM_POD_NAME=$(kubectl -n $CILIUM_NAMESPACE get pods \
+  -l "k8s-app=cilium" \
+  -o jsonpath="{.items[?(@.spec.nodeName=='$NODE_NAME')].metadata.name}")
+export HOST_EP_ID=$(kubectl -n $CILIUM_NAMESPACE exec $CILIUM_POD_NAME -- \
+  cilium-dbg endpoint get -l reserved:host -o jsonpath='{[0].id}')
 
-kubectl annotate node <node-name> \
-  policy.cilium.io/host-firewall-mode=audit
+kubectl -n $CILIUM_NAMESPACE exec $CILIUM_POD_NAME -- \
+  cilium-dbg endpoint config $HOST_EP_ID PolicyAuditMode=Enabled
 ```
 
 ## Apply a Host Network Policy
@@ -88,14 +94,14 @@ spec:
 After verifying audit mode shows no unexpected drops:
 
 ```bash
-kubectl annotate node <node-name> \
-  policy.cilium.io/host-firewall-mode=policy
+kubectl -n $CILIUM_NAMESPACE exec $CILIUM_POD_NAME -- \
+  cilium-dbg endpoint config $HOST_EP_ID PolicyAuditMode=Disabled
 ```
 
 ## Verify Policy Enforcement
 
 ```bash
-kubectl exec -n kube-system ds/cilium -- \
+kubectl -n $CILIUM_NAMESPACE exec $CILIUM_POD_NAME -- \
   cilium-dbg endpoint list | grep -i "host"
 ```
 
@@ -104,11 +110,13 @@ kubectl exec -n kube-system ds/cilium -- \
 If locked out via SSH due to misconfigured host policy:
 
 ```bash
-# Disable enforcement on the node
-kubectl annotate node <node-name> \
-  policy.cilium.io/host-firewall-mode=disabled --overwrite
+# Delete or fix the offending policy, then temporarily put the host endpoint back in audit mode
+kubectl -n kube-system exec <cilium-pod-on-the-node> -- \
+  sh -c "cilium-dbg endpoint config \
+  \$(cilium-dbg endpoint get -l reserved:host -o 'jsonpath={\$[0].id}') \
+  PolicyAuditMode=Enabled"
 ```
 
 ## Conclusion
 
-The Cilium Host Firewall provides eBPF-based node-level traffic control using the same policy API as pod network policies. Always use audit mode before enforcement to prevent lockouts, and ensure SSH and critical infrastructure ports are explicitly allowed before switching to enforcement mode.
+The Cilium Host Firewall provides eBPF-based node-level traffic control using CiliumClusterwideNetworkPolicy resources with node selectors. Always use audit mode before enforcement to prevent lockouts, and ensure SSH and critical infrastructure ports are explicitly allowed before switching to enforcement mode.
