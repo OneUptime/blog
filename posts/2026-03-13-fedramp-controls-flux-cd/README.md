@@ -12,19 +12,19 @@ Description: Configure Flux CD to meet FedRAMP authorization requirements by imp
 
 FedRAMP (Federal Risk and Authorization Management Program) requires cloud service providers serving U.S. federal agencies to meet NIST SP 800-53 security control standards. For Kubernetes infrastructure teams, the most relevant control families are Configuration Management (CM), Change Control (CM-3, CM-4, CM-5), Audit and Accountability (AU), and Access Control (AC).
 
-Flux CD's GitOps model maps directly to many FedRAMP CM controls. The Git repository is your System Security Plan (SSP) artifact for baseline configuration (CM-2), every PR is a documented change (CM-3), branch protection enforces access restrictions for privileged functions (CM-5), and Git history provides the audit trail for AU controls. This guide maps FedRAMP controls to Flux configurations and shows how to structure evidence collection.
+Flux CD's GitOps model maps directly to many FedRAMP CM controls. The Git repository can provide evidence for baseline configuration (CM-2), every PR is a documented change (CM-3), branch protection enforces access restrictions for privileged functions (CM-5), and Git history contributes to the audit trail for AU controls. This guide maps FedRAMP controls to Flux configurations and shows how to structure evidence collection.
 
 ## Prerequisites
 
 - Flux CD bootstrapped on a FedRAMP-authorized cloud platform (AWS GovCloud, Azure Government, or Google Public Sector)
-- FIPS 140-2 compliant cryptographic modules where required
-- Log management system meeting FedRAMP retention requirements (3 years minimum)
+- FIPS 140-2 or FIPS 140-3 validated cryptographic modules where required
+- Log management system meeting FedRAMP AU-11 retention requirements, including at least 90 days of online retention and offline retention that aligns with NARA and agency requirements
 - A System Security Plan in progress or completed
 - `flux` CLI and `kubectl` installed
 
 ## Step 1: Establish the Configuration Baseline (CM-2)
 
-FedRAMP CM-2 requires a documented, controlled baseline configuration. Your Flux GitOps repository IS the baseline:
+FedRAMP CM-2 requires a documented, controlled baseline configuration. Your Flux GitOps repository can define and evidence the baseline:
 
 ```yaml
 # clusters/fedramp/flux-system/baseline-metadata.yaml
@@ -97,29 +97,29 @@ FedRAMP CM-5 requires explicit access restrictions for configuration changes. Im
 ```plaintext
 # .github/CODEOWNERS
 
-# FedRAMP system configuration requires ISSO and ISSO Deputy approval
+# FedRAMP system configuration requests ISSO and ISSO Deputy review
 /clusters/fedramp/                @your-org/isso @your-org/isso-deputy
 
-# Application changes require ISSO plus system owner
+# Application changes request ISSO and system owner review
 /apps/fedramp-apps/               @your-org/isso @your-org/system-owner
 
-# Flux system itself requires ISSO and two senior engineers
+# Flux system itself requests ISSO and senior engineering review
 /clusters/fedramp/flux-system/    @your-org/isso @your-org/senior-engineers
 ```
 
 Branch protection settings to document in your SSP:
 - Required reviewers: 2 (minimum)
-- Required: ISSO as mandatory Code Owner for all changes
+- Required: Code Owner review for FedRAMP-controlled paths
 - No bypass allowed for any user including administrators
 - Required status checks: `fedramp-validate`, `security-scan`
 
 ## Step 4: Implement Audit Logging (AU-2, AU-3, AU-12)
 
-FedRAMP requires comprehensive, tamper-evident audit logging. Configure Flux to send all events to your audit system:
+FedRAMP requires comprehensive, tamper-evident audit logging. Configure Flux to send events from the selected GitOps resources to your audit system:
 
 ```yaml
 # clusters/fedramp/monitoring/fedramp-audit.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: fedramp-audit-siem
@@ -128,32 +128,37 @@ metadata:
     fedramp.control: "AU-2 Event Logging, AU-12 Audit Record Generation"
 spec:
   type: generic
-  url: https://siem.fedramp-boundary.gov/api/events
+  address: https://siem.fedramp-boundary.gov/api/events
   secretRef:
     name: siem-webhook-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: fedramp-full-audit-trail
   namespace: flux-system
 spec:
-  summary: "FedRAMP Audit: Infrastructure change event"
+  eventMetadata:
+    summary: "FedRAMP Audit: Infrastructure change event"
   providerRef:
     name: fedramp-audit-siem
-  # Capture ALL events per AU-12 requirement for comprehensive audit records
+  # Capture info and error events from selected Flux resources for audit evidence
   eventSeverity: info
   eventSources:
     - kind: GitRepository
+      name: '*'
       namespace: flux-system
     - kind: Kustomization
+      name: '*'
       namespace: flux-system
     - kind: HelmRelease
+      name: '*'
+      namespace: flux-system
 ```
 
 ## Step 5: Enforce Configuration Integrity with Signature Verification (SI-7)
 
-FedRAMP SI-7 requires software and firmware integrity verification. Use Flux's OCI artifact signing to verify manifests:
+FedRAMP SI-7 requires software, firmware, and information integrity verification. Use Flux's Git commit signature verification to verify the source revision that produces your manifests:
 
 ```yaml
 # clusters/fedramp/flux-system/signed-source.yaml
@@ -194,7 +199,7 @@ FedRAMP requires continuous monitoring of system configuration. Configure drift 
 
 ```yaml
 # clusters/fedramp/monitoring/drift-detection.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: configuration-drift-alert
@@ -202,12 +207,15 @@ metadata:
   annotations:
     fedramp.control: "CA-7 Continuous Monitoring, SI-4 Information System Monitoring"
 spec:
-  summary: "FedRAMP ALERT: Configuration drift detected - immediate investigation required"
+  eventMetadata:
+    summary: "FedRAMP ALERT: Configuration drift detected - immediate investigation required"
   providerRef:
     name: fedramp-audit-siem
   eventSeverity: error
   eventSources:
     - kind: Kustomization
+      name: '*'
+      namespace: flux-system
   inclusionList:
     - ".*ReconciliationFailed.*"
     - ".*drift.*"
@@ -234,13 +242,13 @@ Current baseline: see clusters/fedramp/flux-system/baseline-metadata.yaml
 ## CM-3 Configuration Change Control
 All changes require:
 1. PR creation with FedRAMP change request template
-2. ISSO approval (enforced via CODEOWNERS + branch protection)
+2. Required reviewer approval (enforced via branch protection and Code Owner review)
 3. CI validation (kubeconform + security scan)
 4. Merge to protected main branch only
 
 ## CM-5 Access Restrictions for Change
 Branch protection settings prevent direct pushes.
-Only ISSO-approved team members can approve PRs.
+Only authorized reviewers can approve PRs.
 No bypass available for any user role.
 EOF
 
@@ -258,11 +266,11 @@ echo "SSP evidence generated: $OUTPUT"
 ## Best Practices
 
 - Work with your Third Party Assessment Organization (3PAO) before finalizing your Flux configuration to ensure your specific control implementation satisfies their assessment methodology.
-- Use FIPS 140-2 validated cryptographic libraries for all secrets management within the FedRAMP authorization boundary.
+- Use FIPS 140-2 or FIPS 140-3 validated cryptographic libraries for all secrets management within the FedRAMP authorization boundary.
 - Maintain a FedRAMP-specific branch in your GitOps repository if your system has multiple authorization boundaries.
 - Conduct monthly continuous monitoring reviews of Flux event logs and submit findings to your Authorizing Official.
 - Keep the System Security Plan updated whenever the Flux configuration that implements a control changes.
 
 ## Conclusion
 
-Flux CD GitOps provides a strong technical foundation for FedRAMP control implementation, particularly for CM (Configuration Management), AU (Audit and Accountability), and SI (System and Information Integrity) control families. The Git repository serves as the documented baseline configuration (CM-2), PR workflow as the change control process (CM-3), branch protection as access restriction (CM-5), and Flux events as audit records (AU-12). With the configurations in this guide, your team can implement FedRAMP controls in a way that is both technically sound and straightforward to evidence for your 3PAO assessment.
+Flux CD GitOps provides a strong technical foundation for FedRAMP control implementation, particularly for CM (Configuration Management), AU (Audit and Accountability), and SI (System and Information Integrity) control families. The Git repository can define and evidence the documented baseline configuration (CM-2), PR workflow as the change control process (CM-3), branch protection as access restriction (CM-5), and Flux events as part of audit record generation (AU-12). With the configurations in this guide, your team can implement FedRAMP controls in a way that is both technically sound and straightforward to evidence for your 3PAO assessment.
