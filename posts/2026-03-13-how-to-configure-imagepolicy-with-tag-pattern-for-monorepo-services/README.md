@@ -196,7 +196,7 @@ spec:
   imageRepositoryRef:
     name: monorepo
   filterTags:
-    pattern: '^api-(?P<ts>[0-9]{14})-[a-fA-F0-9]{7}$'
+    pattern: '^api-(?P<ts>[0-9]{14})$'
     extract: '$ts'
   policy:
     numerical:
@@ -215,7 +215,8 @@ jobs:
       api: ${{ steps.changes.outputs.api }}
       web: ${{ steps.changes.outputs.web }}
     steps:
-      - uses: dorny/paths-filter@v2
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
@@ -229,6 +230,11 @@ jobs:
     if: needs.detect-changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push
         run: |
           VERSION=$(cat services/api/VERSION)
