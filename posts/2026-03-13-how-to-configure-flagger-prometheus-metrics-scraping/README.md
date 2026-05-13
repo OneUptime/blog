@@ -146,10 +146,9 @@ controller:
   metrics:
     enabled: true
     port: 10254
-    service:
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "10254"
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "10254"
 ```
 
 Add a Prometheus scrape configuration for the NGINX controller.
