@@ -65,9 +65,9 @@ spec:
     retention.ms: "604800000"
     # 10 GiB max storage per partition
     retention.bytes: "10737418240"
-    # Compact old messages after 1 day (for event sourcing)
+    # Delete messages after the retention period
     cleanup.policy: delete
-    # Snappy compression reduces storage by ~50%
+    # Snappy compression reduces storage for many event workloads
     compression.type: snappy
     # Minimum in-sync replicas before producer gets acknowledgement
     min.insync.replicas: "2"
@@ -132,7 +132,7 @@ spec:
   partitions: 3
   replicas: 3
   config:
-    # Compacted topic: keep latest value per key (for audit trails)
+    # Compacted topic: keep latest value per key (for audit state snapshots)
     cleanup.policy: compact
     # Minimum time before compaction (1 day)
     min.compaction.lag.ms: "86400000"
@@ -201,7 +201,7 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./infrastructure/messaging/topics/production
-  prune: true   # deleting the YAML deletes the topic (use carefully!)
+  prune: true   # deleting the YAML deletes the topic when Kafka topic deletion is enabled (use carefully!)
   dependsOn:
     - name: strimzi-kafka
 ```
@@ -233,8 +233,8 @@ kubectl exec -n kafka production-kafka-0 -- \
 
 - Align `partitions` count with your maximum expected consumer parallelism - you cannot reduce partitions later.
 - Set `min.insync.replicas: "2"` for all production topics and pair it with producer `acks=all` for durability guarantees.
-- Use `cleanup.policy: compact` for topics used as event-sourced state stores, and `delete` for event streams.
-- Be careful with `prune: true` on the topics Kustomization - if a team accidentally deletes a YAML file, the topic (and its data) will be deleted.
+- Use `cleanup.policy: compact` for topics used as keyed state snapshots or changelogs, and `delete` for event streams.
+- Be careful with `prune: true` on the topics Kustomization - if a team accidentally deletes a YAML file, the topic (and its data) can be deleted when Kafka topic deletion is enabled.
 - Label topics with `team` and `app` labels for accountability and to enable team-specific RBAC on KafkaTopic resources.
 
 ## Conclusion
