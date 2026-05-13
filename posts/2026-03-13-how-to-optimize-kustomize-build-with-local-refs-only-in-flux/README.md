@@ -72,9 +72,9 @@ resources:
   - ../../bases/common-configs
 ```
 
-## Using Flux Source References Instead
+## Using Flux Source Includes Instead
 
-An alternative to copying files into your repository is to use Flux's built-in cross-source referencing. Create a separate GitRepository for the base and reference it from your Kustomization:
+An alternative to copying files into your repository is to use Flux's built-in source include support. Create a separate GitRepository for the base, include it in your application GitRepository artifact, and reference the included path locally from your `kustomization.yaml`:
 
 ```yaml
 # Source for the base configs
@@ -89,23 +89,34 @@ spec:
   ref:
     tag: v1.0.0
 ---
-# Kustomization that uses both sources
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+# Source for the application configs, with the base included
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
 metadata:
-  name: my-app
+  name: my-app-repo
   namespace: flux-system
 spec:
   interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: my-app-repo
-  path: ./deploy/overlays/production
-  dependsOn:
-    - name: base-configs
+  url: https://github.com/my-org/my-app-repo.git
+  ref:
+    branch: main
+  include:
+    - repository:
+        name: base-configs
+      fromPath: deploy
+      toPath: bases/common-configs
 ```
 
 This approach lets the source-controller handle fetching (with its own caching and optimization) instead of having Kustomize fetch during the build phase.
+
+Then reference the included base as a local path from your Kustomize overlay:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../bases/common-configs
+```
 
 ## Configuring the Kustomize Controller to Block Remote Refs
 
@@ -208,10 +219,10 @@ You should see a significant improvement, especially if the remote references we
 Using local refs only also improves security:
 
 - No external network access required during the build phase
-- All content is verified by the source-controller before the build runs
+- Content is fetched and packaged by the source-controller before the build runs, and Git sources can use its commit or tag signature verification
 - Reduces the attack surface by eliminating runtime dependency on external repositories
 - Makes builds deterministic and reproducible
 
 ## Summary
 
-Eliminating remote Kustomize references in favor of local paths or Flux source references is both a performance and security optimization. Use the `--no-remote-bases` flag to enforce this policy, restructure your repository to keep bases local, and use Flux cross-source references when you need to share configurations across repositories.
+Eliminating remote Kustomize references in favor of local paths or Flux source includes is both a performance and security optimization. Use the `--no-remote-bases` flag to enforce this policy, restructure your repository to keep bases local, and use Flux source includes when you need to share configurations across repositories.
