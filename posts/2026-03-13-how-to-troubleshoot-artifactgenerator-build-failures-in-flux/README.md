@@ -10,14 +10,14 @@ Description: A practical guide to diagnosing and fixing common ArtifactGenerator
 
 ## Introduction
 
-ArtifactGenerator in Flux 2.8 adds a layer between your source repositories and downstream resources. While this layer provides valuable path-based filtering, it also introduces potential failure points. When an ArtifactGenerator fails to build an artifact, downstream Kustomizations and HelmReleases stall. This guide covers the most common ArtifactGenerator build failures, how to diagnose them, and how to fix them.
+ArtifactGenerator in Flux 2.8 provides a layer between your Flux source resources and downstream resources. While this layer provides valuable path-based filtering, it also introduces potential failure points. When an ArtifactGenerator fails to build an artifact, downstream Kustomizations and HelmReleases that depend on the generated ExternalArtifacts stall. This guide covers the most common ArtifactGenerator build failures, how to diagnose them, and how to fix them.
 
 ## Prerequisites
 
-- A Kubernetes cluster running Flux 2.8
+- A Kubernetes cluster running Flux 2.8 with the `source-watcher` component enabled
 - kubectl configured to access your cluster
 - Familiarity with Flux ArtifactGenerator resources
-- Access to the Flux source controller logs
+- Access to the Flux source-watcher logs
 
 ## Step 1: Check ArtifactGenerator Status
 
@@ -31,7 +31,7 @@ A healthy ArtifactGenerator shows:
 
 ```text
 NAME              READY   STATUS                AGE
-my-app            True    Artifact generated    10m
+my-app            True    reconciliation succeeded, generated 1 artifact(s)    10m
 ```
 
 A failing one shows:
@@ -51,7 +51,7 @@ Look at the `Status.Conditions` section for specific error messages.
 
 ## Common Failure: Source Not Ready
 
-The most common failure is the referenced source not being ready.
+A common failure is the referenced source not being ready.
 
 **Symptoms:**
 
@@ -60,8 +60,8 @@ Status:
   Conditions:
     - type: Ready
       status: "False"
-      reason: ArtifactFailed
-      message: "source 'GitRepository/platform-repo' is not ready"
+      reason: SourceFetchFailed
+      message: "get sources failed: source 'GitRepository/flux-system/platform-repo' is not ready"
 ```
 
 **Diagnosis:**
@@ -84,7 +84,7 @@ Fix the GitRepository, and the ArtifactGenerator will recover on its next reconc
 
 ## Common Failure: No Files Match Path Patterns
 
-If no files in the source artifact match the configured include paths, the ArtifactGenerator may report a failure or generate an empty artifact.
+If no files in the source artifact match the configured copy patterns, the ArtifactGenerator reports a build failure.
 
 **Symptoms:**
 
@@ -94,12 +94,12 @@ Status:
     - type: Ready
       status: "False"
       reason: BuildFailed
-      message: "no files matched the configured path patterns"
+      message: "my-app build failed: no files match pattern 'apps/my-app/**' in source 'repo'"
 ```
 
 **Diagnosis:**
 
-Verify the directory structure in your repository matches the path patterns:
+Verify the directory structure in your repository matches the copy patterns:
 
 ```bash
 # Clone the repo locally and check
@@ -108,23 +108,31 @@ git clone https://github.com/my-org/platform-repo
 find platform-repo -type f | head -20
 ```
 
-Compare with your ArtifactGenerator paths:
+Compare with your ArtifactGenerator copy operations:
 
 ```bash
-kubectl get artifactgenerator my-app -n flux-system -o yaml | grep -A 10 artifacts
+kubectl get artifactgenerator my-app -n flux-system -o yaml | grep -A 20 copy
 ```
 
 **Fix:**
 
-Update the path patterns to match the actual directory structure:
+Update the copy patterns to match the actual directory structure:
 
 ```yaml
 spec:
+  sources:
+    - alias: repo
+      kind: GitRepository
+      name: platform-repo
   artifacts:
-    # Wrong: directory uses dashes not underscores
-    # - path: "apps/my_app/**"
-    # Correct:
-    - path: "apps/my-app/**"
+    - name: my-app
+      copy:
+        # Wrong: directory uses dashes not underscores
+        # - from: "@repo/apps/my_app/**"
+        #   to: "@artifact/"
+        # Correct:
+        - from: "@repo/apps/my-app/**"
+          to: "@artifact/"
 ```
 
 ## Common Failure: Glob Pattern Syntax Errors
@@ -148,40 +156,48 @@ Ensure your glob patterns are syntactically correct:
 
 ```yaml
 spec:
+  sources:
+    - alias: repo
+      kind: GitRepository
+      name: platform-repo
   artifacts:
-    # Wrong: unclosed bracket
-    # - path: "apps/[invalid/**"
-    # Correct:
-    - path: "apps/[a-z]*/**"
+    - name: my-app
+      copy:
+        # Wrong: unclosed bracket
+        # - from: "@repo/apps/[invalid/**"
+        #   to: "@artifact/"
+        # Correct:
+        - from: "@repo/apps/[a-z]*/**"
+          to: "@artifact/"
 ```
 
-## Common Failure: Source Controller Resource Limits
+## Common Failure: Source-Watcher Resource Limits
 
-If the source controller pod is resource-constrained, artifact generation may fail due to OOM (out of memory) or timeout.
+If the source-watcher pod is resource-constrained, artifact generation may fail due to OOM (out of memory) or timeout.
 
 **Symptoms:**
 
 The pod restarts or the build times out:
 
 ```bash
-kubectl get pods -n flux-system | grep source-controller
+kubectl get pods -n flux-system | grep source-watcher
 ```
 
 Check for OOM kills:
 
 ```bash
-kubectl describe pod -n flux-system -l app=source-controller | grep -A 5 "Last State"
+kubectl describe pod -n flux-system <source-watcher-pod> | grep -A 5 "Last State"
 ```
 
 **Fix:**
 
-Increase the source controller resource limits:
+Increase the source-watcher resource limits:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: source-controller
+  name: source-watcher
   namespace: flux-system
 spec:
   template:
@@ -197,9 +213,9 @@ spec:
               cpu: 100m
 ```
 
-## Common Failure: Artifact Size Limits
+## Common Failure: Artifact Storage Failures
 
-Very large repositories may produce artifacts that exceed storage limits.
+Very large repositories may produce artifacts that exhaust available storage or cause storage operations to fail.
 
 **Symptoms:**
 
@@ -208,8 +224,8 @@ Status:
   Conditions:
     - type: Ready
       status: "False"
-      reason: BuildFailed
-      message: "artifact size exceeds limit"
+      reason: ReconciliationFailed
+      message: "my-app reconcile failed: <storage error>"
 ```
 
 **Fix:**
@@ -218,26 +234,33 @@ Use exclude patterns to remove large files from the artifact:
 
 ```yaml
 spec:
+  sources:
+    - alias: repo
+      kind: GitRepository
+      name: platform-repo
   artifacts:
-    - path: "apps/data-service/**"
-      exclude:
-        - "apps/data-service/testdata/**"
-        - "apps/data-service/**/*.bin"
-        - "apps/data-service/**/*.tar.gz"
+    - name: data-service
+      copy:
+        - from: "@repo/apps/data-service/**"
+          to: "@artifact/"
+          exclude:
+            - "apps/data-service/testdata/**"
+            - "apps/data-service/**/*.bin"
+            - "apps/data-service/**/*.tar.gz"
 ```
 
-## Debugging with Source Controller Logs
+## Debugging with Source-Watcher Logs
 
-For deeper investigation, check the source controller logs:
+For deeper investigation, check the source-watcher logs:
 
 ```bash
-kubectl logs -n flux-system deploy/source-controller | grep artifactgenerator
+kubectl logs -n flux-system deploy/source-watcher | grep -i artifactgenerator
 ```
 
-Increase log verbosity for more detail:
+Filter recent log output for more detail:
 
 ```bash
-kubectl logs -n flux-system deploy/source-controller --tail=100 | grep -i "error\|fail\|my-app"
+kubectl logs -n flux-system deploy/source-watcher --tail=100 | grep -i "error\|fail\|my-app"
 ```
 
 ## Debugging with Events
@@ -255,7 +278,7 @@ This shows reconciliation attempts, successes, and failures in chronological ord
 When an ArtifactGenerator fails, check which downstream resources are affected:
 
 ```bash
-# Find Kustomizations referencing this ArtifactGenerator
+# Find Kustomizations referencing ExternalArtifacts generated by this ArtifactGenerator
 kubectl get kustomizations -n flux-system -o yaml | grep -B 5 "my-app"
 
 # Check their status
@@ -283,4 +306,4 @@ kubectl get artifactgenerators -n flux-system
 
 ## Conclusion
 
-ArtifactGenerator build failures in Flux are usually caused by source issues, path pattern mismatches, or resource constraints. The debugging workflow follows a consistent pattern: check the ArtifactGenerator status, examine the source status, review the path patterns, and inspect the source controller logs. By systematically working through these steps, you can quickly identify and resolve most ArtifactGenerator build failures and get your GitOps pipeline back on track.
+ArtifactGenerator build failures in Flux are usually caused by source issues, copy pattern mismatches, or resource constraints. The debugging workflow follows a consistent pattern: check the ArtifactGenerator status, examine the source status, review the copy patterns, and inspect the source-watcher logs. By systematically working through these steps, you can quickly identify and resolve most ArtifactGenerator build failures and get your GitOps pipeline back on track.
