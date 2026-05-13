@@ -38,11 +38,11 @@ export KUBECONFIG=~/.kube/config
 calicoctl get ippool default-ipv4-ippool -o yaml
 ```
 
-The default pool uses `192.168.0.0/16` with IPIP enabled.
+By default, `calico/node` creates an IPv4 pool if none exists. The CIDR is the first locally unused range from `192.168.0.0/16`, `172.16.0.0/16`, and the other `172.x.0.0/16` private ranges. In many Minikube installs this is `192.168.0.0/16`, with IPIP enabled by default.
 
 ## Step 3: Change the IP Pool CIDR (Optional)
 
-If you need a different CIDR to match production:
+If you need a different CIDR to match production, do this before deploying workloads. If pods are already using the old pool, recreate them after the change so they receive addresses from the new pool:
 
 ```bash
 calicoctl delete ippool default-ipv4-ippool
@@ -75,11 +75,10 @@ EOF
 
 ## Step 5: Disable IPv6 (if not needed)
 
-On Minikube, IPv6 is typically not configured. Explicitly disable it:
+On Minikube, IPv6 is typically not configured. Explicitly disable Felix IPv6 support:
 
 ```bash
-kubectl set env daemonset/calico-node -n kube-system IP6=none
-kubectl set env daemonset/calico-node -n kube-system CALICO_IPV6POOL_CIDR=""
+calicoctl patch felixconfiguration default -p '{"spec":{"ipv6Support":false}}'
 ```
 
 ## Step 6: Set IPIP Encapsulation Mode
@@ -87,8 +86,10 @@ kubectl set env daemonset/calico-node -n kube-system CALICO_IPV6POOL_CIDR=""
 For Minikube's single-node environment, IPIP may be unnecessary. Switch to no encapsulation:
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool -p '{"spec":{"ipipMode":"Never","vxlanMode":"Never"}}'
+calicoctl patch ippool custom-ipv4-ippool -p '{"spec":{"ipipMode":"Never"}}'
 ```
+
+If you skipped Step 3, use `default-ipv4-ippool` instead of `custom-ipv4-ippool`.
 
 ## Step 7: Verify All Changes
 
