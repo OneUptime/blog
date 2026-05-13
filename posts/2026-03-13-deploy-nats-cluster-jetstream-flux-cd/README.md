@@ -70,7 +70,8 @@ spec:
         enabled: true
         # 3-node NATS cluster for HA
         replicas: 3
-        name: production-nats
+        merge:
+          name: production-nats
 
       jetstream:
         enabled: true
@@ -91,49 +92,72 @@ spec:
         enabled: false   # use static accounts for simplicity
 
       # TLS configuration
-      tls:
-        enabled: true
-        secret:
-          name: nats-tls
-        ca: ca.crt
-        cert: tls.crt
-        key: tls.key
+      nats:
+        tls:
+          enabled: true
+          secretName: nats-tls
+          cert: tls.crt
+          key: tls.key
 
       # NATS server configuration inline
       merge:
         # Maximum message payload (1 MiB default)
-        max_payload: 1MB
+        max_payload: << 1MB >>
         # Maximum number of connections
-        max_connections: 64K
+        max_connections: << 64K >>
         # Ping interval
         ping_interval: 2m
         ping_max: 2
 
+    tlsCA:
+      enabled: true
+      secretName: nats-tls
+      key: ca.crt
+
     container:
-      resources:
-        requests:
-          cpu: "200m"
-          memory: "512Mi"
-        limits:
-          cpu: "1"
-          memory: "1Gi"
+      merge:
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
 
     reloader:
       enabled: true
-      resources:
-        requests:
-          cpu: "50m"
-          memory: "64Mi"
+      merge:
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
 
-    # Prometheus metrics via NATS Surveyor
-    natsbox:
+    # NATS CLI debug box for testing
+    natsBox:
       enabled: true   # debug box for testing
+      contexts:
+        default:
+          tls:
+            secretName: nats-tls
 
     # Anti-affinity for cluster HA
-    podAntiAffinity: true
+    podTemplate:
+      merge:
+        spec:
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: nats
+                        app.kubernetes.io/instance: nats
+                        app.kubernetes.io/component: nats
+                    topologyKey: kubernetes.io/hostname
 
     # Prometheus monitoring
-    prometheus:
+    promExporter:
       enabled: true
       port: 7777
 ```
@@ -186,17 +210,23 @@ spec:
       containers:
         - name: nats-cli
           image: natsio/nats-box:0.14.5
+          volumeMounts:
+            - name: nats-tls
+              mountPath: /etc/nats-certs/nats
+              readOnly: true
           command:
             - /bin/sh
             - -c
             - |
               until nats --server nats://nats.nats.svc.cluster.local:4222 \
+                --tlsca /etc/nats-certs/nats/ca.crt \
                 account info 2>/dev/null; do
                 echo "Waiting for NATS..."; sleep 5
               done
 
               # Create orders stream
               nats --server nats://nats.nats.svc.cluster.local:4222 \
+                --tlsca /etc/nats-certs/nats/ca.crt \
                 stream add orders \
                 --subjects "orders.>" \
                 --retention limits \
@@ -206,10 +236,11 @@ spec:
                 --max-msgs -1 \
                 --replicas 3 \
                 --dupe-window 2m \
-                --no-prompt
+                --defaults
 
               # Create a pull consumer for order processing
               nats --server nats://nats.nats.svc.cluster.local:4222 \
+                --tlsca /etc/nats-certs/nats/ca.crt \
                 consumer add orders order-processor \
                 --filter "orders.created" \
                 --pull \
@@ -217,9 +248,13 @@ spec:
                 --replay original \
                 --deliver all \
                 --max-deliver 5 \
-                --no-prompt
+                --defaults
 
               echo "JetStream setup complete"
+      volumes:
+        - name: nats-tls
+          secret:
+            secretName: nats-tls
 ```
 
 ## Step 6: Flux Kustomization
@@ -253,26 +288,25 @@ kubectl get pods -n nats
 
 # Connect with nats-box
 kubectl exec -n nats deploy/nats-box -- \
-  nats --server nats://nats.nats.svc.cluster.local:4222 server info
+  nats server info
 
 # Check JetStream status
 kubectl exec -n nats deploy/nats-box -- \
-  nats --server nats://nats.nats.svc.cluster.local:4222 account info
+  nats account info
 
 # List streams
 kubectl exec -n nats deploy/nats-box -- \
-  nats --server nats://nats.nats.svc.cluster.local:4222 stream ls
+  nats stream ls
 
 # Publish a test message
 kubectl exec -n nats deploy/nats-box -- \
-  nats --server nats://nats.nats.svc.cluster.local:4222 \
-  pub orders.created '{"order_id":"123","status":"created"}'
+  nats pub orders.created '{"order_id":"123","status":"created"}'
 ```
 
 ## Best Practices
 
 - Run 3 NATS cluster nodes with `replicas: 3` for Raft quorum in JetStream.
-- Set `--dupe-window 2m` on streams to prevent duplicate message delivery when producers retry.
+- Set `--dupe-window 2m` on streams to prevent duplicate message ingestion when producers retry with a consistent `Nats-Msg-Id`.
 - Use `--ack explicit` on consumers to ensure messages are only acknowledged after successful processing.
 - Enable TLS for all production NATS deployments - the nats-server supports mTLS for server and client authentication.
 - Monitor JetStream stream storage usage and consumer lag with the Prometheus metrics endpoint.
