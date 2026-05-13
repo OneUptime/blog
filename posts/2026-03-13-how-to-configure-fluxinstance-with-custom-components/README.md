@@ -32,6 +32,7 @@ Flux CD includes the following controllers:
 - **notification-controller**: Handles alerts and event notifications.
 - **image-reflector-controller**: Scans container registries for new image tags.
 - **image-automation-controller**: Automates image updates in Git repositories.
+- **source-watcher**: Implements the ArtifactGenerator API for source composition and decomposition, and requires Flux v2.7.0 or later.
 
 ## Minimal Component Selection
 
@@ -57,13 +58,13 @@ spec:
 
 This installs only the source controller for fetching manifests and the kustomize controller for applying them. No Helm or notification capabilities will be available.
 
-## Full Component Selection with Image Automation
+## Common Component Selection with Image Automation
 
-For clusters that need the full Flux feature set including automated image updates, install all components.
+For clusters that need the common Flux controllers including automated image updates, install the classic controller set plus the image automation controllers.
 
 ```yaml
 # flux-instance-full.yaml
-# FluxInstance with all Flux components including image automation
+# FluxInstance with the common Flux controllers including image automation
 apiVersion: fluxcd.controlplane.io/v1
 kind: FluxInstance
 metadata:
@@ -84,11 +85,11 @@ spec:
 
 ## Helm-Only Configuration
 
-For clusters managed entirely through Helm charts, include only the source and Helm controllers.
+For clusters managed entirely through Helm charts, include the source and Helm controllers. Add the notification controller if you want Flux events and alerts.
 
 ```yaml
 # flux-instance-helm-only.yaml
-# FluxInstance for Helm-only GitOps
+# FluxInstance for Helm-only GitOps with notifications
 apiVersion: fluxcd.controlplane.io/v1
 kind: FluxInstance
 metadata:
@@ -196,40 +197,19 @@ spec:
           kind: Deployment
           name: kustomize-controller
         patch: |
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: kustomize-controller
-          spec:
-            template:
-              spec:
-                containers:
-                  - name: manager
-                    args:
-                      - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-                      - --watch-all-namespaces=true
-                      - --log-level=info
-                      - --log-encoding=json
-                      - --concurrent=10
-                      - --requeue-dependency=10s
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=10
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --requeue-dependency=10s
       - target:
           kind: Deployment
           name: helm-controller
         patch: |
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: helm-controller
-          spec:
-            template:
-              spec:
-                containers:
-                  - name: manager
-                    args:
-                      - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-                      - --watch-all-namespaces=true
-                      - --log-level=info
-                      - --concurrent=8
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=8
 ```
 
 ## Configuring Node Affinity and Tolerations
