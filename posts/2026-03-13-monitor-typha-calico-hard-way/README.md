@@ -40,9 +40,9 @@ kubectl patch service calico-typha -n calico-system --patch '{
 | `typha_connections_active` | Current Felix connections | Should equal node count |
 | `typha_connections_accepted` | Total connections accepted | Rate should be stable |
 | `typha_connections_dropped` | Dropped connections | Alert if > 0 |
-| `typha_updates_sent` | Policy updates fanned out | Rate tracks policy change rate |
-| `typha_ping_latency` | Round-trip latency to Felix | Alert if p99 > 5s |
-| `typha_snapshot_send_latency_seconds` | Time to send initial snapshot | Alert if p99 > 10s |
+| `typha_updates_total` | Updates broadcast to clients | Rate tracks policy change rate |
+| `typha_ping_latency` | Round-trip latency to Felix (Summary) | Alert if p99 > 5s |
+| `typha_client_snapshot_send_secs` | Time to send initial snapshot (Summary) | Alert if p99 > 10s |
 
 ## Step 3: Configure Prometheus Scrape
 
@@ -79,7 +79,7 @@ If using Prometheus with scrape configs directly:
     namespaces:
       names: [calico-system]
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_label_app]
+  - source_labels: [__meta_kubernetes_pod_label_k8s_app]
     regex: calico-typha
     action: keep
   - source_labels: [__address__]
@@ -105,7 +105,7 @@ groups:
       description: "{{ $value }} Felix connections dropped in the last 5 minutes"
 
   - alert: TyphaConnectionCountLow
-    expr: typha_connections_active < (kube_node_info * 0.9)
+    expr: sum(typha_connections_active) < (count(kube_node_info) * 0.9)
     for: 5m
     labels:
       severity: critical
@@ -113,7 +113,7 @@ groups:
       summary: "Fewer Felix agents connected to Typha than expected"
 
   - alert: TyphaPingLatencyHigh
-    expr: histogram_quantile(0.99, rate(typha_ping_latency_seconds_bucket[5m])) > 5
+    expr: typha_ping_latency{quantile="0.99"} > 5
     for: 5m
     labels:
       severity: warning
@@ -140,7 +140,7 @@ typha_connections_active
 Query for update rate:
 
 ```promql
-rate(typha_updates_sent[5m])
+rate(typha_updates_total[5m])
 ```
 
 ## Step 6: Manual Health Check
