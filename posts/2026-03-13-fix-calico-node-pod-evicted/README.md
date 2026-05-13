@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix calico-node pod eviction by setting system-node-critical priority class, clearing node pressure, and adjusting resource limits to prevent re-eviction.
+Description: Fix calico-node pod eviction by setting system-node-critical priority class, clearing node pressure, and adjusting resource requests and limits to reduce re-eviction risk.
 
 ---
 
 ## Introduction
 
-Fixing calico-node pod eviction requires two steps: clearing the current pressure condition to allow the pod to reschedule, and then applying the `system-node-critical` priority class to prevent future evictions. Without the priority class change, calico-node will be evicted again the next time node pressure occurs.
+Fixing calico-node pod eviction requires two steps: clearing the current pressure condition to allow the pod to reschedule, and then applying the `system-node-critical` priority class to give the networking pod the highest built-in priority. This does not prevent every possible eviction, but it helps keep calico-node available and makes it less likely to be selected before lower-priority pods during node pressure.
 
 ## Symptoms
 
@@ -20,7 +20,7 @@ Fixing calico-node pod eviction requires two steps: clearing the current pressur
 ## Root Causes
 
 - Node disk or memory pressure
-- calico-node lacks system-node-critical priority class
+- calico-node lacks system-node-critical priority class, making it lower priority during eviction decisions
 
 ## Diagnosis Steps
 
@@ -44,10 +44,10 @@ ssh <node-name> << 'EOF'
 df -h
 du -sh /var/log/* | sort -rh | head -10
 
-# Clean Docker/container runtime logs
+# Clean systemd journal logs
 journalctl --vacuum-size=500M
 
-# Clean old container images
+# Clean unused container runtime data/images
 docker system prune -f 2>/dev/null || crictl rmi --prune 2>/dev/null
 
 # Verify disk freed
@@ -55,7 +55,7 @@ df -h
 EOF
 ```
 
-**Fix 2: Set system-node-critical priority class (prevents future eviction)**
+**Fix 2: Set system-node-critical priority class (improves eviction priority and rescheduling)**
 
 ```bash
 kubectl patch daemonset calico-node -n kube-system --type=json \
@@ -77,19 +77,14 @@ kubectl patch felixconfiguration default \
 kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
-**Fix 4: Set resource limits to control calico-node resource use**
+**Fix 4: Set resource requests and limits to control calico-node resource use**
 
 ```bash
-kubectl patch daemonset calico-node -n kube-system --type=json \
-  -p='[{
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources",
-    "value": {
-      "requests": {"cpu": "250m", "memory": "256Mi"},
-      "limits": {"cpu": "500m", "memory": "512Mi"}
-    }
-  }]'
+kubectl patch daemonset calico-node -n kube-system --type=strategic \
+  -p='{"spec":{"template":{"spec":{"containers":[{"name":"calico-node","resources":{"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"500m","memory":"512Mi"}}}]}}}}'
 ```
+
+Tune these values for your cluster. Limits that are too low can cause calico-node to be OOMKilled.
 
 **Verify fix**
 
@@ -97,7 +92,7 @@ kubectl patch daemonset calico-node -n kube-system --type=json \
 kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName=<node>
 # Expected: 1/1 Running
 kubectl describe node <node> | grep -i "pressure"
-# Expected: no pressure conditions
+# Expected: DiskPressure and MemoryPressure are False
 ```
 
 ```mermaid
@@ -107,7 +102,7 @@ flowchart TD
     C --> D{Disk pressure?}
     D -- Yes --> E[Clean logs and images]
     D -- No --> F{Memory pressure?}
-    F -- Yes --> G[Adjust resource limits]
+    F -- Yes --> G[Adjust resource requests and limits]
     E & G --> H[Set system-node-critical priority class]
     H --> I[Rollout restart DaemonSet]
     I --> J[Verify pod 1/1 Running]
@@ -115,10 +110,10 @@ flowchart TD
 
 ## Prevention
 
-- Set system-node-critical priority class in initial Calico installation
+- Set system-node-critical priority class in initial Calico installation when calico-node is a critical node-level add-on
 - Monitor node disk and memory pressure
 - Configure log rotation for calico-node verbosity
 
 ## Conclusion
 
-Fixing calico-node eviction requires clearing the pressure condition, deleting the evicted pod to trigger rescheduling, and setting system-node-critical priority class to prevent future evictions. Address the root pressure cause to prevent immediate re-eviction.
+Fixing calico-node eviction requires clearing the pressure condition, deleting the evicted pod to trigger rescheduling, and setting system-node-critical priority class to improve eviction priority and rescheduling. Address the root pressure cause to prevent immediate re-eviction.
