@@ -12,14 +12,14 @@ Description: Explore the different types of GAMMA configuration patterns availab
 
 GAMMA (Gateway API for Mesh Management and Administration) defines multiple configuration types depending on whether the routing policy is owned by the service producer, the consumer, or both. Understanding these types is essential for correctly placing HTTPRoutes and avoiding policy conflicts.
 
-Cilium implements GAMMA using the same Gateway API HTTPRoute resource, but the meaning and placement of the route differs by configuration type. Producer routes are applied at the Service level and affect all consumers; consumer routes are applied by the client namespace and only affect that consumer's traffic.
+Cilium implements GAMMA using the same Gateway API HTTPRoute resource, but currently supports only producer routes. Producer routes are applied at the Service level and affect all consumers.
 
-This guide explains each GAMMA configuration type and how to implement them in Cilium.
+This guide explains the GAMMA configuration types and which ones can be implemented in Cilium today.
 
 ## Prerequisites
 
-- Cilium with GAMMA enabled
-- Gateway API experimental CRDs installed
+- Cilium with Gateway API enabled, `kubeProxyReplacement=true`, and the L7 proxy enabled
+- Gateway API CRDs installed
 - Multiple namespaces representing services and consumers
 
 ## Producer Configuration
@@ -64,7 +64,7 @@ flowchart TD
 
 ## Consumer Configuration
 
-The consumer controls routing from their own namespace. Requires a `ReferenceGrant` from the target namespace:
+In Gateway API GAMMA, a consumer route is an HTTPRoute in the consumer namespace that attaches to a Service in another namespace. This model requires mesh implementation support for consumer routes; Cilium currently does not support consumer HTTPRoutes, so the following example is not valid for Cilium today.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -92,8 +92,10 @@ spec:
 
 ## ReferenceGrant for Cross-Namespace Routes
 
+ReferenceGrant resources allow cross-namespace backend references. They do not make Cilium accept cross-namespace Service parentRefs for consumer routes.
+
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-consumer-route
@@ -119,4 +121,4 @@ kubectl describe httproute -n backend-ns producer-route | grep -A5 Conditions
 
 ## Conclusion
 
-Cilium's GAMMA implementation supports producer, consumer, and mixed routing configuration models. Choosing the right model depends on who owns the routing policy and whether cross-namespace routing is required. ReferenceGrant resources enable safe cross-namespace configuration.
+Cilium's GAMMA implementation currently supports producer routing configuration. Gateway API GAMMA also defines consumer routing, but Cilium does not currently support consumer HTTPRoutes or mixed producer-consumer routing. ReferenceGrant resources enable safe cross-namespace backend references, but they do not add consumer route support to Cilium.
