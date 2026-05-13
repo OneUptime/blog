@@ -29,7 +29,7 @@ Use templates to combine individual secret fields into a PostgreSQL connection s
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-template-connstr.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-db-connection
@@ -85,7 +85,7 @@ Use templates to render a complete application config file from multiple secret 
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-template-configfile.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-config-file
@@ -144,7 +144,7 @@ Use the `type` field in the template to create typed Kubernetes Secrets for TLS:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-template-tls.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-tls-cert
@@ -177,11 +177,11 @@ spec:
 
 ## Step 4: Apply Conditional Logic in Templates
 
-Use Go template conditionals to handle optional fields:
+Use Go template conditionals to handle empty fields:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-template-conditional.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-smtp-config
