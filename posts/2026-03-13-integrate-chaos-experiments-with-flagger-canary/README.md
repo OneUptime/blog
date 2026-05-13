@@ -53,41 +53,7 @@ spec:
 
 ## Step 2: Create a Chaos Webhook Service
 
-Flagger calls webhook URLs during analysis gates. Create a small service that triggers a Chaos Mesh experiment when called.
-
-```yaml
-# clusters/my-cluster/flagger/chaos-webhook/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chaos-gate
-  namespace: flagger-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: chaos-gate
-  template:
-    metadata:
-      labels:
-        app: chaos-gate
-    spec:
-      serviceAccountName: chaos-gate
-      containers:
-        - name: chaos-gate
-          # A simple webhook server that applies a PodChaos manifest
-          image: curlimages/curl:latest
-          command:
-            - sh
-            - -c
-            - |
-              while true; do
-                nc -l -p 8080 -e sh -c \
-                  'read req; kubectl apply -f /experiments/pod-kill.yaml && echo "HTTP/1.1 200 OK\r\n\r\n"'
-              done
-```
-
-In practice, use a purpose-built webhook adapter or the Flagger load tester with a chaos gate:
+Flagger calls webhook URLs during analysis gates. Use a purpose-built webhook adapter or the Flagger load tester with a chaos gate. The load tester can run `bash` commands, including `kubectl`, when its service account has permission to manage the target Chaos Mesh resources:
 
 ```yaml
 # clusters/my-cluster/flagger/loadtester-helmrelease.yaml
@@ -107,6 +73,14 @@ spec:
         kind: HelmRepository
         name: flagger
         namespace: flux-system
+  values:
+    rbac:
+      create: true
+      scope: cluster
+      rules:
+        - apiGroups: ["chaos-mesh.org"]
+          resources: ["podchaos"]
+          verbs: ["get", "create", "patch", "update", "delete"]
 ```
 
 ## Step 3: Configure the Canary with Chaos Webhooks
@@ -136,15 +110,16 @@ spec:
         thresholdRange:
           min: 99
         interval: 1m
-    # Chaos gate: run pod kill experiment before each promotion step
+    # Chaos gate: run a pod-kill experiment during each analysis iteration
     webhooks:
       - name: chaos-pod-kill
-        type: pre-rollout
+        type: rollout
         url: http://flagger-loadtester.flagger-system/
-        timeout: 30s
+        timeout: 60s
         metadata:
           type: bash
           cmd: |
+            kubectl delete podchaos canary-pod-kill -n chaos-mesh --ignore-not-found
             kubectl apply -f - <<EOF
             apiVersion: chaos-mesh.org/v1alpha1
             kind: PodChaos
@@ -158,9 +133,10 @@ spec:
                 namespaces: [default]
                 labelSelectors:
                   app: myapp
-              duration: "30s"
+              gracePeriod: 0
             EOF
       - name: load-test
+        type: rollout
         url: http://flagger-loadtester.flagger-system/
         timeout: 5s
         metadata:
@@ -182,7 +158,7 @@ sequenceDiagram
     Flux->>Flagger: Apply updated Deployment
     Flagger->>Flagger: Start canary (10% traffic)
     Flagger->>ChaosMesh: Trigger pod-kill webhook
-    ChaosMesh->>Flagger: Chaos experiment complete
+    ChaosMesh->>Flagger: Chaos experiment accepted
     Flagger->>Prometheus: Check success-rate metric
     Prometheus->>Flagger: 99.8% success rate (pass)
     Flagger->>Flagger: Promote to 20% traffic
@@ -211,9 +187,9 @@ spec:
 
 ## Best Practices
 
-- Use `type: pre-rollout` webhooks for chaos gates so experiments run before traffic is shifted, not during.
+- Use `type: pre-rollout` webhooks for one-time gates before canary traffic is shifted, and `type: rollout` webhooks for chaos checks that should run during analysis iterations before metric checks.
 - Set `threshold` in the canary analysis to allow a small number of failures before rolling back, preventing flappy promotions.
-- Keep chaos experiment duration shorter than the Flagger analysis `interval` to ensure the experiment completes before the next metric check.
+- Keep long-running chaos experiment duration shorter than the Flagger analysis `interval` to ensure the experiment completes before the next metric check.
 - Use the Flagger load tester for simple webhook commands rather than building custom webhook services.
 - Version both the Canary resource and the chaos experiment parameters in Git so changes are reviewed together.
 
