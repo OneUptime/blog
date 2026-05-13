@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Karpenter, AWS, Kubernetes, Node Provisioning, Autoscaling, GitOps
 
-Description: Manage Karpenter provisioner configurations declaratively with Flux CD, enabling GitOps-driven node autoscaling for diverse workload types.
+Description: Manage Karpenter NodePool configurations declaratively with Flux CD, enabling GitOps-driven node autoscaling for diverse workload types.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Manage Karpenter provisioner configurations declaratively with Flux
 
 Karpenter's `NodePool` (formerly `Provisioner`) resources define what kinds of nodes Karpenter can launch. Managing these through Flux CD gives platform teams version-controlled, auditable node provisioning configurations that can be reviewed through pull requests and rolled back if provisioning behavior causes issues.
 
-This post focuses on designing and managing NodePool configurations for common enterprise workload patterns - web applications, batch jobs, machine learning, and development environments.
+This post focuses on designing and managing NodePool configurations for common enterprise workload patterns - web applications, batch jobs, and machine learning.
 
 ## Prerequisites
 
@@ -34,8 +34,7 @@ fleet-infra/
         ├── ec2nodeclass-spot.yaml
         ├── nodepool-web.yaml
         ├── nodepool-batch.yaml
-        ├── nodepool-ml.yaml
-        └── nodepool-dev.yaml
+        └── nodepool-ml.yaml
 ```
 
 ```yaml
@@ -57,7 +56,7 @@ Optimized for latency-sensitive, stateless web workloads:
 
 ```yaml
 # nodepool-web.yaml - NodePool for web application workloads
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: web
@@ -71,7 +70,7 @@ spec:
         node-type: web
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
       requirements:
@@ -92,7 +91,7 @@ spec:
     cpu: 500
     memory: 2000Gi
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 10m
 ```
 
@@ -102,7 +101,7 @@ Optimized for cost-sensitive, interruption-tolerant batch jobs:
 
 ```yaml
 # nodepool-batch.yaml - NodePool for batch processing workloads
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: batch
@@ -113,7 +112,7 @@ spec:
         node-type: batch
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: spot
       taints:
@@ -150,7 +149,7 @@ Dedicated GPU instances for ML training and inference:
 
 ```yaml
 # nodepool-ml.yaml - NodePool for machine learning GPU workloads
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: ml-gpu
@@ -161,7 +160,7 @@ spec:
         node-type: ml-gpu
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
       taints:
@@ -212,7 +211,7 @@ Staging overlay with reduced limits:
 
 ```yaml
 # overlays/staging/karpenter-limits-patch.yaml - Reduce limits for staging
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: web
