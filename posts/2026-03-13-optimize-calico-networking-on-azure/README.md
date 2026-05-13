@@ -90,10 +90,10 @@ function add_node_route() {
 Azure VNet supports jumbo frames (9000 bytes). With Accelerated Networking and VXLAN:
 
 ```bash
-# Without VXLAN (native routing): set MTU to 1500 or jumbo frame size
+# Without VXLAN (native routing): set MTU to host MTU (typically 1500)
 kubectl patch felixconfiguration default \
   --type=merge \
-  --patch='{"spec":{"mtu":1450}}'
+  --patch='{"spec":{"mtu":1500}}'
 
 # With VXLAN: account for 50-byte VXLAN overhead
 # If Azure VNet MTU = 1500: set Calico MTU to 1450
