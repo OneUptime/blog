@@ -10,25 +10,25 @@ Description: Diagnose UFW firewall conflicts with Calico and Kubernetes networki
 
 ## Introduction
 
-UFW (Uncomplicated Firewall) and Calico both manage iptables rules on Kubernetes nodes, and their interaction can cause subtle but severe networking problems. UFW's default FORWARD policy of DROP conflicts directly with Kubernetes's requirement to forward pod traffic between nodes. When UFW is enabled on a Kubernetes node running Calico, it can silently block inter-pod communication and even prevent CNI traffic from flowing.
+UFW (Uncomplicated Firewall) and Calico both manage iptables rules on Kubernetes nodes, and their interaction can cause subtle but severe networking problems. UFW's default routed policy is deny, which commonly results in a DROP policy or DROP rules for forwarded traffic and can conflict with Kubernetes's requirement to forward pod traffic between nodes. When UFW is enabled on a Kubernetes node running Calico, it can silently block inter-pod communication and even prevent CNI traffic from flowing.
 
-The conflict is not always obvious because UFW and Calico each insert rules into different iptables chains. UFW inserts rules early in the INPUT and FORWARD chains, while Calico inserts its rules in custom chains (cali-*) that are jumped to from the standard chains. If UFW's FORWARD DROP rule is evaluated before Calico's FORWARD ACCEPT rule, Calico traffic is blocked.
+The conflict is not always obvious because UFW and Calico each insert rules into different iptables chains. UFW inserts rules into the INPUT and FORWARD paths, while Calico inserts its rules in custom chains (cali-*) that are jumped to from the standard chains. If UFW's routed DROP policy or DROP rules are evaluated before Calico accepts the traffic, Calico traffic is blocked.
 
 This guide provides a systematic approach to diagnosing UFW-Calico conflicts.
 
 ## Symptoms
 
 - Cross-node pod communication fails after UFW is enabled
-- calico-node pods are running but BGP route advertisements are blocked
-- `iptables -L FORWARD -n` shows `DROP all` as the default policy
+- calico-node pods are running but BGP peering or route advertisements are blocked
+- `iptables -L FORWARD -n` shows `Chain FORWARD (policy DROP)` or UFW DROP rules before Calico accepts
 - Calico's encapsulation traffic (IPIP, VXLAN) is blocked at the node level
 
 ## Root Causes
 
-- UFW default FORWARD policy is DROP, blocking Calico pod traffic forwarding
+- UFW default routed policy is deny, blocking Calico pod traffic forwarding
 - UFW is blocking Calico's IPIP traffic (protocol 4) or VXLAN (UDP 4789)
 - UFW INPUT rules blocking BGP port 179 between nodes
-- UFW rules added after Calico, overriding Calico's ACCEPT rules
+- UFW rules or policies evaluated before Calico's accepts, dropping traffic first
 
 ## Diagnosis Steps
 
@@ -38,13 +38,14 @@ This guide provides a systematic approach to diagnosing UFW-Calico conflicts.
 # On the affected node
 
 sudo ufw status verbose
+# Check the "Default" line for deny (routed)
 ```
 
 **Step 2: Check iptables FORWARD chain default policy**
 
 ```bash
 sudo iptables -L FORWARD -n | head -5
-# If policy is DROP: UFW is likely the cause
+# If the chain policy is DROP: UFW is a likely cause
 ```
 
 **Step 3: Check if IPIP/VXLAN is blocked**
@@ -68,13 +69,12 @@ sudo iptables -L INPUT -n | grep "179"
 # From node-a to node-b
 ping -c 3 <node-b-ip>
 
-# Test IPIP: if IPIP is used, try sending encapsulated traffic
-# First, check the Calico tunnel interface
+# If IPIP is used, check the Calico tunnel interface
 ip link show tunl0
 ip addr show tunl0
 ```
 
-**Step 6: Check kernel FORWARD policy**
+**Step 6: Check kernel IP forwarding**
 
 ```bash
 sysctl net.ipv4.ip_forward
@@ -90,8 +90,8 @@ flowchart TD
     E --> F{Policy is DROP?}
     F -- Yes --> G[UFW FORWARD policy blocking Calico traffic]
     F -- No --> H[Check specific UFW rules for IPIP/BGP ports]
-    G --> I[Configure UFW to allow FORWARD]
-    H --> J[Add UFW rules for protocol 4 and port 179]
+    G --> I[Configure UFW to allow routed traffic]
+    H --> J[Allow required Calico protocols and ports]
 ```
 
 ## Solution
@@ -106,4 +106,4 @@ After diagnosing the specific UFW conflict, apply the targeted fix (see companio
 
 ## Conclusion
 
-Diagnosing UFW-Calico conflicts starts with checking UFW status and the iptables FORWARD chain default policy. A DROP FORWARD policy from UFW is the most common cause. Verify IPIP/VXLAN port allows and BGP port 179 accessibility to cover all potential blocking points.
+Diagnosing UFW-Calico conflicts starts with checking UFW status and the iptables FORWARD chain policy. A deny routed policy or DROP rules from UFW are common causes. Verify IPIP/VXLAN allows and BGP port 179 accessibility to cover all potential blocking points.
