@@ -30,8 +30,10 @@ Align with OpenShift's pod CIDR:
 
 ```bash
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"cidr":"10.128.0.0/14","encapsulation":"VXLAN","natOutgoing":true}}'
+  --patch '{"spec":{"ipipMode":"Never","vxlanMode":"Always","natOutgoing":true}}'
 ```
+
+For a new cluster, make sure `spec.cidr` is set to the OpenShift pod CIDR, such as `10.128.0.0/14`, before the IP pool is created. The IPPool `cidr` field cannot be changed in place after creation.
 
 ## Step 2: Apply OpenShift System Namespace Policy
 
@@ -59,13 +61,13 @@ OpenShift worker nodes often use specific NIC names. Update the VPP manager Conf
 
 ```bash
 oc patch configmap calico-vpp-config -n calico-vpp-dataplane \
-  --patch '{"data":{
-    "CALICOVPP_INTERFACE": "ens3",
-    "CALICOVPP_NATIVE_DRIVER": "af_packet"
-  }}'
+  --type merge \
+  --patch '{"data":{"CALICOVPP_INTERFACES":"{\"uplinkInterfaces\":[{\"interfaceName\":\"ens3\",\"vppDriver\":\"af_packet\"}]}"}}'
 ```
 
 ## Step 4: Configure Hugepages via MCO (Persistent)
+
+Hugepages are not required for the `af_packet` driver, but they are required for DPDK and some native VPP drivers.
 
 ```yaml
 apiVersion: machineconfiguration.openshift.io/v1
@@ -78,13 +80,6 @@ spec:
   kernelArguments:
     - hugepagesz=2M
     - hugepages=512
-  config:
-    ignition:
-      version: 3.2.0
-    systemd:
-      units:
-        - name: dev-hugepages.mount
-          enabled: true
 ```
 
 ```bash
