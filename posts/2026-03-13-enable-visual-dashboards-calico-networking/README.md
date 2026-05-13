@@ -10,7 +10,7 @@ Description: Configure Calico observability capabilities for network visibility,
 
 ## Introduction
 
-Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), flow logs for connection-level visibility, and integration with Grafana for dashboards. This guide covers how to configure and use these capabilities effectively.
+Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), flow logs for connection-level visibility, and integration with Grafana for dashboards. In Calico Open Source, flow logs are viewed through Goldmane and Whisker; in Calico Cloud and Calico Enterprise, file-based flow logs can also be configured through Felix. This guide covers how to configure and use these capabilities effectively.
 
 ## Key Commands
 
@@ -21,7 +21,7 @@ kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
-# Enable flow logs
+# Enable file-based flow logs in Calico Cloud or Calico Enterprise
 kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"flowLogsFlushInterval":"15s","flowLogsFileEnabled":true}}'
@@ -61,7 +61,7 @@ spec:
     - name: calico.network
       rules:
         - alert: CalicoHighDenyRate
-          expr: rate(felix_int_dataplane_failures[5m]) > 0
+          expr: rate(calico_denied_packets[5m]) > 0
           for: 5m
           annotations:
             summary: "High Calico policy deny rate on {{ $labels.instance }}"
