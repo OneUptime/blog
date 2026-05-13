@@ -8,7 +8,7 @@ Description: Use Cilium CiliumNetworkPolicy resources to secure Flux controllers
 
 ---
 
-Cilium provides advanced network security capabilities beyond what standard Kubernetes NetworkPolicies offer. With Cilium, you can write policies that filter traffic based on DNS names, HTTP methods, and paths. You can also use Cilium identities instead of IP-based rules, which is more resilient to IP address changes. This guide shows how to secure Flux controllers using Cilium-native CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy resources.
+Cilium provides advanced network security capabilities beyond what standard Kubernetes NetworkPolicies offer. With Cilium, you can write policies that filter traffic based on DNS names, HTTP methods, and paths. You can also use label, entity, and service-based rules instead of IP-based rules, which is more resilient to IP address changes. This guide shows how to secure Flux controllers using Cilium-native CiliumNetworkPolicy resources.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ Standard Kubernetes NetworkPolicies work at L3/L4, meaning you can filter by IP 
 
 - DNS-based policies: Allow traffic to `github.com` without hardcoding IPs
 - L7 filtering: Allow only GET requests to specific HTTP paths
-- Identity-based rules: Reference pods by Cilium identity instead of labels
+- Identity-based enforcement: Cilium derives identities from endpoint labels and enforces policies without hardcoding pod IPs
 - Cluster-wide policies: Apply rules across all namespaces without repetition
 - Policy enforcement visibility: Hubble provides real-time policy verdict monitoring
 
@@ -63,7 +63,7 @@ spec:
     - {}
 ```
 
-Wait, that would allow all traffic. For Cilium, the default deny works differently. Apply explicit deny rules:
+The empty rule items put selected endpoints into default-deny mode without whitelisting any peers. Do not use empty lists for this:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -76,6 +76,8 @@ spec:
   ingress: []
   egress: []
 ```
+
+If `ingress` or `egress` is omitted or set to an empty list, that direction is not applied by the rule.
 
 ```bash
 kubectl apply -f cilium-default-deny.yaml
@@ -98,7 +100,7 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            k8s:io.cilium.k8s.namespace.labels.kubernetes.io/metadata.name: kube-system
+            k8s:io.kubernetes.pod.namespace: kube-system
             k8s:k8s-app: kube-dns
       toPorts:
         - ports:
@@ -162,6 +164,25 @@ spec:
     # Allow access to Kubernetes API server
     - toEntities:
         - kube-apiserver
+    # Allow source-controller to send events to notification-controller
+    - toEndpoints:
+        - matchLabels:
+            app: notification-controller
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+  ingress:
+    # Allow other Flux controllers to fetch artifacts from source-controller
+    - fromEndpoints:
+        - matchLabels:
+            app: kustomize-controller
+        - matchLabels:
+            app: helm-controller
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
 ```
 
 ```bash
@@ -172,7 +193,7 @@ The `toEntities: kube-apiserver` rule is a Cilium shorthand that automatically a
 
 ## Step 4: Allow Other Controllers API Server Access
 
-The kustomize-controller and helm-controller only need API server access:
+The kustomize-controller and helm-controller need API server access, artifact access from source-controller, and event delivery to notification-controller:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -199,7 +220,7 @@ spec:
             app: notification-controller
       toPorts:
         - ports:
-            - port: "9292"
+            - port: "9090"
               protocol: TCP
 ---
 apiVersion: cilium.io/v2
@@ -226,7 +247,7 @@ spec:
             app: notification-controller
       toPorts:
         - ports:
-            - port: "9292"
+            - port: "9090"
               protocol: TCP
 ```
 
@@ -272,6 +293,19 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+  ingress:
+    # Flux controllers send events to notification-controller on its event server
+    - fromEndpoints:
+        - matchLabels:
+            app: source-controller
+        - matchLabels:
+            app: kustomize-controller
+        - matchLabels:
+            app: helm-controller
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
 ```
 
 ## Step 6: Add L7 HTTP Filtering for Webhook Receiver
@@ -291,7 +325,7 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            k8s:io.cilium.k8s.namespace.labels.kubernetes.io/metadata.name: ingress-nginx
+            k8s:io.kubernetes.pod.namespace: ingress-nginx
             k8s:app.kubernetes.io/name: ingress-nginx
       toPorts:
         - ports:
@@ -310,8 +344,7 @@ This ensures that even if an attacker reaches the webhook port, only POST reques
 Cilium includes Hubble, an observability platform that shows policy verdicts in real time:
 
 ```bash
-# Install Hubble CLI if not present
-
+# Enable Hubble if it is not already enabled
 cilium hubble enable
 
 # Watch policy verdicts for flux-system
@@ -324,7 +357,7 @@ To see all traffic for a specific controller:
 hubble observe --namespace flux-system --pod source-controller --follow
 ```
 
-Export policy verdicts as Prometheus metrics:
+Print policy verdicts as JSON for ad hoc analysis:
 
 ```bash
 hubble observe --namespace flux-system -o json | jq '.verdict'
@@ -376,10 +409,10 @@ kubectl rollout restart daemonset/cilium -n kube-system
 
 **toEntities kube-apiserver not matching**
 
-Verify Cilium recognizes the API server:
+Review dropped flows to confirm whether the destination is being classified as the Kubernetes API server:
 
 ```bash
-cilium status | grep KubeApiServer
+hubble observe --namespace flux-system --verdict DROPPED --to-label reserved:kube-apiserver
 ```
 
 If the API server is not detected, you may need to specify the API server IP explicitly using `toCIDR` instead.
