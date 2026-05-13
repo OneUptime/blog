@@ -23,7 +23,7 @@ This guide shows you how to configure custom Git author names for Flux image aut
 
 ## Setting the Git Author Name
 
-The author name is configured in the `commit.author` section of the ImageUpdateAutomation spec:
+The author name is configured in the `spec.git.commit.author` section of the ImageUpdateAutomation spec:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -130,10 +130,10 @@ spec:
     commit:
       author:
         name: myorg-flux-bot
-        email: myorg-flux-bot@users.noreply.github.com
+        email: 12345678+myorg-flux-bot@users.noreply.github.com
 ```
 
-Using the `noreply` email from GitHub associates the commit with the bot account and shows the bot's avatar in the Git log.
+Using the exact `noreply` email shown in the bot account's GitHub email settings associates the commit with the bot account and shows the bot's avatar in the Git log.
 
 ## Filtering Commits by Author
 
@@ -145,7 +145,7 @@ Having a consistent author name lets you filter commits in the Git log:
 git log --author="Flux Bot" --oneline
 
 # Show only human commits
-git log --invert-grep --author="Flux Bot" --oneline
+git log --format="%h %an <%ae> %s" | grep -v "Flux Bot <flux@example.com>"
 
 # Count automated commits in the last month
 git log --author="Flux Bot" --since="1 month ago" --oneline | wc -l
@@ -169,7 +169,7 @@ This prevents CI from running on automated image update commits, avoiding unnece
 
 ## Author Name with GPG Signing
 
-When using GPG-signed commits, the author email must match the email in the GPG key:
+When using GPG-signed commits on GitHub, use an email address that GitHub can verify against the GPG key and bot account:
 
 ```yaml
 spec:
@@ -183,7 +183,7 @@ spec:
           name: gpg-signing-key
 ```
 
-Make sure the GPG key was generated with the same email address (`flux@example.com` in this case).
+For GitHub's verified signature badge, the commit email must match an identity on the GPG key and be verified on the bot account.
 
 ## Multiple Automation Resources with Different Authors
 
