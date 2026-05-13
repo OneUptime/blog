@@ -60,7 +60,6 @@ spec:
     name: flux-system
   path: ./infrastructure/csi-drivers
   prune: true
-  wait: true
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
