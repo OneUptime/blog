@@ -22,10 +22,10 @@ This guide provides practical techniques for log audit ICMP Rules in your Kubern
 - `calicoctl` and `kubectl` installed
 - Basic understanding of Calico network policy concepts
 
-## Step 1: Enable Flow Logging
+## Step 1: Enable Policy Logging to Syslog
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"flowLogsEnabled":true}}'
+kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logSeveritySys":"Info"}}'
 ```
 
 ## Step 2: Add Log Actions to Policy
@@ -41,25 +41,43 @@ spec:
   selector: all()
   ingress:
     - action: Log
+      protocol: ICMP
+      icmp:
+        type: 8
+        code: 0
+      source:
+        selector: app == 'authorized'
     - action: Allow
+      protocol: ICMP
+      icmp:
+        type: 8
+        code: 0
       source:
         selector: app == 'authorized'
     - action: Log
+      protocol: ICMP
+      icmp:
+        type: 8
+        code: 0
     - action: Deny
+      protocol: ICMP
+      icmp:
+        type: 8
+        code: 0
   types:
     - Ingress
 ```
 
-## Step 3: Ship Logs to Central Store
+## Step 3: Monitor Policy Logs
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logSeveritySys":"info"}}'
+journalctl -k -f | grep "calico-packet:.*PROTO=ICMP"
 ```
 
 ## Step 4: Query and Alert
 
 ```bash
-grep "CALICO.*DENY" /var/log/calico/flow-logs/*.log | tail -20
+journalctl -k | grep "calico-packet:.*PROTO=ICMP" | tail -20
 ```
 
 ## Architecture
