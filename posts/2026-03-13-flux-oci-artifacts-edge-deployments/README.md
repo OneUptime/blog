@@ -25,15 +25,15 @@ This guide covers the complete workflow: packaging manifests as OCI artifacts in
 
 ## Step 1: Understand OCI Artifact Structure for Flux
 
-Flux OCI artifacts follow a specific layer structure:
+Flux OCI artifacts produced by `flux push artifact` use Flux-specific media types:
 
 ```plaintext
 OCI Artifact (my-registry/fleet/edge-apps:v1.2.3)
-├── Layer 1: Manifest metadata (annotations)
-│   ├── source URL
-│   ├── revision/commit SHA
-│   └── author
-└── Layer 2: Compressed manifest bundle
+├── Manifest annotations
+│   ├── org.opencontainers.image.source
+│   └── org.opencontainers.image.revision
+├── Config: application/vnd.cncf.flux.config.v1+json
+└── Layer: application/vnd.cncf.flux.content.v1.tar+gzip
     ├── apps/
     │   ├── deployment.yaml
     │   ├── service.yaml
@@ -120,10 +120,10 @@ spec:
   interval: 30m
   url: oci://ghcr.io/my-org/fleet/edge-apps
   ref:
-    # Use semver to auto-update within a release channel
-    semver: ">=1.0.0 <2.0.0"
+    # Use semver to auto-update within a release channel if you publish semver tags:
+    # semver: ">=1.0.0 <2.0.0"
     # Or pin to latest:
-    # tag: latest
+    tag: latest
     # Or pin to a specific SHA for maximum stability:
     # digest: sha256:abc123...
   secretRef:
@@ -184,7 +184,7 @@ For security, sign artifacts in CI and verify signatures on edge clusters.
 ```bash
 # In CI: Sign the artifact with cosign
 cosign sign \
-  --key cosign.key \
+  --key gcpkms://projects/my-project/locations/us/keyRings/flux/cryptoKeys/cosign \
   "ghcr.io/my-org/fleet/edge-apps:latest"
 
 # Generate cosign key pair (do once)
@@ -272,7 +272,7 @@ spec:
 - Tag every OCI artifact with both `latest` and the Git commit SHA for traceability.
 - Use artifact signing with cosign to prevent unauthorized manifest injection.
 - Split infrastructure and application manifests into separate artifacts with different update frequencies.
-- Pin edge clusters to a `semver` range rather than `latest` for controlled rollouts.
+- If you publish semantic version tags, pin edge clusters to a `semver` range rather than `latest` for controlled rollouts.
 - Monitor artifact pull success rates - a failed pull does not break the cluster but delays updates.
 - Use a local pull-through cache for sites with very limited internet bandwidth.
 
