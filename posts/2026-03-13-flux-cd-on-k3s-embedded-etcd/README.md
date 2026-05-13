@@ -21,6 +21,7 @@ This guide covers deploying a k3s cluster with embedded etcd, configuring a high
 - Three Linux nodes (2 CPU, 4GB RAM each minimum) for the HA k3s control plane
 - A load balancer or virtual IP for the k3s API server (e.g., kube-vip)
 - `kubectl` and `flux` CLI installed on your workstation
+- Docker and `jq` on the first node if generating the kube-vip DaemonSet manifest with the commands below
 - A GitHub/GitLab repository for Flux CD bootstrap
 
 ## Step 1: Initialize the First k3s Server with Embedded etcd
@@ -31,13 +32,17 @@ This guide covers deploying a k3s cluster with embedded etcd, configuring a high
 # K3S_TOKEN is a shared secret for cluster joining
 export K3S_TOKEN="my-shared-cluster-secret"
 
+# 192.168.1.100 is the load balancer or VIP address.
+# k3s.example.com is an optional DNS name for the VIP.
+# Traefik is disabled here if you plan to use a different ingress controller.
+# etcd metrics are exposed for Prometheus scraping.
 curl -sfL https://get.k3s.io | sh -s - server \
   --cluster-init \
-  --tls-san=192.168.1.100 \    # Load balancer or VIP address
-  --tls-san=k3s.example.com \  # Optional DNS name for the VIP
-  --disable=traefik \          # Disable built-in traefik if using nginx
+  --tls-san=192.168.1.100 \
+  --tls-san=k3s.example.com \
+  --disable=traefik \
   --flannel-backend=vxlan \
-  --etcd-expose-metrics=true   # Expose etcd metrics for Prometheus
+  --etcd-expose-metrics=true
 ```
 
 ## Step 2: Join Additional Control Plane Nodes
@@ -46,27 +51,37 @@ curl -sfL https://get.k3s.io | sh -s - server \
 # On the second and third control plane nodes
 export K3S_TOKEN="my-shared-cluster-secret"
 
+# 192.168.1.101 is the first node's IP.
 curl -sfL https://get.k3s.io | sh -s - server \
-  --server=https://192.168.1.101:6443 \  # First node's IP
+  --server=https://192.168.1.101:6443 \
   --tls-san=192.168.1.100 \
   --tls-san=k3s.example.com \
-  --disable=traefik
+  --disable=traefik \
+  --flannel-backend=vxlan \
+  --etcd-expose-metrics=true
 ```
 
 ## Step 3: Deploy kube-vip for Virtual IP (Optional but Recommended)
 
 ```bash
-# On the first node, deploy kube-vip as a static pod for HA
+# On the first node, deploy kube-vip as a DaemonSet for HA
 export VIP=192.168.1.100
 export INTERFACE=eth0
+KVVERSION=$(curl -sL https://api.github.com/repos/kube-vip/kube-vip/releases | jq -r ".[0].name")
 
 kubectl apply -f https://kube-vip.io/manifests/rbac.yaml
 
-# Apply kube-vip DaemonSet
-curl -s https://kube-vip.io/manifests/daemonset | \
-  sed "s/INTERFACE/${INTERFACE}/g" | \
-  sed "s/VIP/${VIP}/g" | \
-  kubectl apply -f -
+# Generate and apply the kube-vip DaemonSet
+docker run --network host --rm "ghcr.io/kube-vip/kube-vip:${KVVERSION}" \
+  manifest daemonset \
+  --interface "${INTERFACE}" \
+  --address "${VIP}" \
+  --inCluster \
+  --taint \
+  --controlplane \
+  --services \
+  --arp \
+  --leaderElection | kubectl apply -f -
 ```
 
 ## Step 4: Configure kubectl Access
@@ -151,18 +166,19 @@ kubectl get pods -n default
 ## Step 7: Verify etcd Health
 
 ```bash
-# Check etcd cluster health
-kubectl exec -n kube-system etcd-node1 -- \
-  etcdctl --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
-    --cert=/var/lib/rancher/k3s/server/tls/etcd/server-client.crt \
-    --key=/var/lib/rancher/k3s/server/tls/etcd/server-client.key \
-    endpoint health --cluster
+# Run on a k3s server node with etcdctl installed
+sudo etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
+  endpoint health --cluster
 ```
 
 ## Best Practices
 
 - Always use an odd number of k3s server nodes (3 or 5) when using embedded etcd to maintain quorum.
-- Place a load balancer or kube-vip in front of the control plane nodes so the Flux `GitRepository` source uses a stable endpoint.
+- Place a load balancer or kube-vip in front of the control plane nodes so kubeconfig access, bootstrap, and node registration use a stable endpoint.
 - Disable k3s components you do not need (`--disable=traefik`, `--disable=servicelb`) to reduce control plane resource consumption and leave more capacity for Flux controllers.
 - Set resource limits on Flux controllers in the `flux-system` namespace to prevent them from consuming the k3s node's limited resources during large reconciliation bursts.
 - Configure etcd snapshots (`--etcd-snapshot-schedule-cron`) for automated backups of cluster state.
