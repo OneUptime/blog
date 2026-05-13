@@ -114,7 +114,7 @@ kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name | \
 while read node; do
   # Count running pods on this node
   pod_count=$(kubectl get pods -A -o wide --no-headers 2>/dev/null | \
-    awk -v n="$node" '$8==n && $5~/Running/{count++} END{print count+0}')
+    awk -v n="$node" '$8==n && $4~/Running/{count++} END{print count+0}')
   
   # Count allocated blocks (capacity)
   block_count=$(calicoctl get blockaffinities -o yaml 2>/dev/null | \
@@ -141,7 +141,7 @@ Verify that kubelet max-pods setting matches IP pool capacity:
 
 ```bash
 # Check max pods configuration per node
-kubectl get nodes -o yaml | grep -A2 "capacity:" | grep "pods:"
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.capacity.pods}{"\n"}{end}'
 
 # Check FelixConfiguration for any per-node limits
 calicoctl get felixconfiguration default -o yaml | grep -i "maxIpset\|maxPolicy"
