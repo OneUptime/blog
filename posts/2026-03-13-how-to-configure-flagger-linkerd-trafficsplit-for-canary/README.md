@@ -12,16 +12,18 @@ Description: Learn how Flagger manages Linkerd TrafficSplit resources for progre
 
 Linkerd uses the Service Mesh Interface (SMI) TrafficSplit resource to control traffic distribution between services. When Flagger operates with Linkerd as its mesh provider, it automatically creates and manages TrafficSplit resources to shift traffic between primary and canary workloads during progressive delivery.
 
-The TrafficSplit resource is a Kubernetes custom resource defined by the SMI specification. It works by intercepting traffic to a root service and distributing it to backend services based on configured weights. Flagger updates these weights at each analysis step, gradually increasing canary traffic while monitoring health metrics.
+The TrafficSplit resource is a Kubernetes custom resource defined by the SMI specification. It works by configuring Linkerd's client-side routing for traffic sent to a root service and distributing it to backend services based on configured weights. Flagger updates these weights at each analysis step, gradually increasing canary traffic while monitoring health metrics.
 
 This guide explains how Flagger creates and manages TrafficSplit resources with Linkerd, how the traffic routing works, and how to inspect and troubleshoot the configuration.
 
 ## Prerequisites
 
-- A running Kubernetes cluster with Linkerd installed (including the Viz extension)
+- A running Kubernetes cluster with Linkerd installed (including the Viz and SMI extensions)
 - Flagger installed with `meshProvider=linkerd`
 - kubectl access to your cluster
 - A Deployment with Linkerd sidecar injection enabled
+
+TrafficSplit and the `linkerd-smi` extension are deprecated in current Linkerd releases, but they are still required for Flagger's Linkerd TrafficSplit integration. New Linkerd routing designs should evaluate Gateway API HTTPRoute-based routing.
 
 ## How Flagger Uses TrafficSplit
 
@@ -107,16 +109,18 @@ With Linkerd, the `service` section is simpler than with Istio because there are
 
 ## Understanding Traffic Flow
 
-When a client sends a request to `my-app.default.svc.cluster.local`, the Linkerd proxy intercepts the request and checks the TrafficSplit resource. Based on the configured weights, it routes the request to either `my-app-primary` or `my-app-canary`.
+When a meshed client sends a request to `my-app.default.svc.cluster.local`, the Linkerd proxy applies the TrafficSplit configuration on the client side. Based on the configured weights, it routes the request to either `my-app-primary` or `my-app-canary`.
 
 The traffic flow is:
 
 1. Client sends request to `my-app` service
-2. Linkerd proxy evaluates TrafficSplit for `my-app`
+2. The client's Linkerd proxy evaluates TrafficSplit for `my-app`
 3. Request is routed to either `my-app-primary` or `my-app-canary` based on weight
 4. The destination service forwards the request to the appropriate pods
 
 This is transparent to the client. It always sends requests to the `my-app` service and the mesh handles the distribution.
+
+Requests from outside the mesh are not shifted by TrafficSplit unless they enter through a meshed ingress or gateway.
 
 ## Step Weight Configuration
 
@@ -135,7 +139,7 @@ This produces the following progression:
 - Step 3: primary 70%, canary 30%
 - Step 4: primary 60%, canary 40%
 - Step 5: primary 50%, canary 50%
-- Promotion: primary 0%, canary 100% (then Flagger updates primary to new version)
+- Promotion: Flagger copies the canary spec to the primary deployment, routes all traffic back to the primary service, and scales down the canary deployment
 
 ## Custom Step Weights
 
@@ -189,13 +193,13 @@ If your service exposes multiple ports, the TrafficSplit applies to all traffic 
     portDiscovery: true
 ```
 
-The `portDiscovery: true` flag tells Flagger to copy all ports from the target Deployment's containers to the generated services.
+The `portDiscovery: true` flag tells Flagger to discover additional container ports from the target workload and add them to the generated services, excluding the main canary service port and service mesh sidecar ports.
 
 ## Linkerd Metrics for Analysis
 
 When using Linkerd, Flagger queries the Linkerd Viz Prometheus instance for built-in metrics. The built-in metric names `request-success-rate` and `request-duration` automatically use Linkerd-specific Prometheus queries:
 
-- `request-success-rate` queries `response_total` metrics with `classification="success"`
+- `request-success-rate` queries `response_total` metrics and treats responses where `classification!="failure"` as successful
 - `request-duration` queries `response_latency_ms_bucket` histogram
 
 These work without any MetricTemplate configuration when the mesh provider is set to `linkerd`.
