@@ -32,10 +32,10 @@ apps/
     edge-stack/
       mqtt-broker/
         helmrelease.yaml
-        configmap.yaml
       node-red/
         deployment.yaml
         configmap.yaml
+        pvc.yaml
       influxdb/
         helmrelease.yaml
         pvc.yaml
@@ -71,10 +71,10 @@ spec:
   chart:
     spec:
       chart: mosquitto
-      version: "4.x"
+      version: "0.6.x"
       sourceRef:
         kind: HelmRepository
-        name: edge-charts
+        name: bdclark-charts
         namespace: flux-system
   values:
     persistence:
@@ -83,36 +83,18 @@ spec:
       size: 2Gi
     config:
       # MQTT broker configuration
-      persistence: "true"
-      persistence_location: "/mosquitto/data/"
-      log_dest: "stdout"
-      listener: "1883"
-      allow_anonymous: "false"
-      password_file: "/mosquitto/config/passwd"
-    existingSecretRef:
-      name: mosquitto-credentials
-```
-
-```yaml
-# apps/base/edge-stack/mqtt-broker/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mosquitto-config
-  namespace: edge-stack
-data:
-  mosquitto.conf: |
-    persistence true
-    persistence_location /mosquitto/data/
-    log_dest stdout
-    listener 1883
-    allow_anonymous false
-    password_file /mosquitto/config/passwd
-    # TLS for production
-    listener 8883
-    cafile /mosquitto/certs/ca.crt
-    certfile /mosquitto/certs/server.crt
-    keyfile /mosquitto/certs/server.key
+      allowAnonymous: false
+      logLevel: information
+    auth:
+      secretRef:
+        name: mosquitto-credentials
+        key: passwd
+    service:
+      ports:
+        mqttTls:
+          enabled: true
+          tls:
+            secretName: mosquitto-tls
 ```
 
 ## Step 3: Deploy InfluxDB for Time-Series Storage
@@ -141,6 +123,9 @@ spec:
       enabled: true
       storageClass: local-path
       size: "${INFLUXDB_STORAGE_SIZE}"   # Substituted per site
+    service:
+      port: 8086
+      targetPort: 8086
     resources:
       requests:
         cpu: 200m
@@ -154,6 +139,22 @@ spec:
 ```
 
 ## Step 4: Deploy Node-RED for Edge Data Processing
+
+```yaml
+# apps/base/edge-stack/node-red/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: node-red-pvc
+  namespace: edge-stack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+```
 
 ```yaml
 # apps/base/edge-stack/node-red/deployment.yaml
@@ -180,7 +181,7 @@ spec:
             - containerPort: 1880
           env:
             - name: FLOWS
-              value: /data/flows.json
+              value: flows.json
             - name: MQTT_BROKER
               value: mosquitto.edge-stack.svc.cluster.local
             - name: INFLUXDB_URL
