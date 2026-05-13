@@ -187,7 +187,12 @@ metadata:
   name: app-one
   namespace: flux-system
 spec:
+  interval: 10m
   path: ./apps/app-one/overlays/production
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
   dependsOn:
     - name: infrastructure
     - name: app-two  # app-one needs app-two running first
