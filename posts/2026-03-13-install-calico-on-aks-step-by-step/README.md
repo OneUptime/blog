@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, AKS, Azure
 
-Description: A step-by-step guide to installing Calico network policy enforcement on Azure Kubernetes Service, covering both Calico policy-only mode and full CNI installation.
+Description: A step-by-step guide to installing Calico network policy enforcement on Azure Kubernetes Service with Azure CNI.
 
 ---
 
 ## Introduction
 
-Azure Kubernetes Service supports Calico for network policy enforcement. AKS can run Calico in two modes: as a network policy engine alongside Azure CNI (policy-only mode), or as a full CNI replacement. Most AKS users choose the policy-only mode, which uses Calico for network policy while retaining Azure's networking plane.
+Azure Kubernetes Service supports Calico for network policy enforcement. With Azure CNI, Calico runs as the network policy engine while Azure provides the networking plane. AKS also supports Calico policies with kubenet, where Calico is used as both a CNI and network policy engine, but kubenet is a legacy networking option scheduled for retirement on March 31, 2028.
 
-This guide walks through installing Calico on AKS using the recommended approach for each mode.
+This guide walks through installing Calico on AKS using Azure CNI.
 
 ## Prerequisites
 
 - Azure CLI installed and authenticated
 - `kubectl` installed and configured
-- `calicoctl` installed (`curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 -o calicoctl`)
+- `calicoctl` installed with a version that matches the Calico version running in your cluster (`curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl && chmod +x calicoctl`)
 - AKS cluster (for existing clusters) or ability to create a new one
 
 ## Step 1: Create AKS Cluster with Calico Policy Engine
@@ -27,12 +27,12 @@ For new clusters, enable Calico at cluster creation time:
 
 ```bash
 # Create AKS cluster with Calico network policy enabled
+# Enable Calico as the network policy provider
 
 az aks create \
   --resource-group my-resource-group \
   --name my-aks-cluster \
   --network-plugin azure \
-  # Enable Calico as the network policy provider
   --network-policy calico \
   --node-count 3 \
   --node-vm-size Standard_D4s_v3 \
@@ -54,18 +54,25 @@ az aks update \
   --network-policy calico
 ```
 
+Installing Calico on an existing cluster reimages node pools, so plan for the same kind of disruption you would expect during a node image upgrade.
+
 ## Step 2: Verify Calico Installation
 
 ```bash
 # Check that Calico pods are running
 kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l k8s-app=calico-typha
+kubectl rollout status daemonset/calico-node -n kube-system
 
-# Verify Calico node status
-kubectl exec -n kube-system ds/calico-node -- calicoctl node status
+# Verify the cluster network policy setting
+az aks show \
+  --resource-group my-resource-group \
+  --name my-aks-cluster \
+  --query networkProfile.networkPolicy \
+  --output tsv
 
-# Check Calico version
-kubectl exec -n kube-system ds/calico-node -- calico-node --version
+# Check the Calico node image version
+kubectl get daemonset calico-node -n kube-system \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="calico-node")].image}{"\n"}'
 ```
 
 ## Step 3: Configure calicoctl for AKS
@@ -78,8 +85,8 @@ export CALICO_KUBECONFIG=~/.kube/config
 # Verify calicoctl can connect to the cluster
 calicoctl get nodes
 
-# List existing IPPools
-calicoctl get ippools -o wide
+# List existing Calico NetworkPolicies
+calicoctl get networkpolicy --all-namespaces -o wide
 ```
 
 ## Step 4: Apply Calico Network Policies
