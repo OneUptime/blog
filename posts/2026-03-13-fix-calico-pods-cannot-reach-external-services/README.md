@@ -54,7 +54,7 @@ spec:
   order: 200
   selector: all()
   egress:
-    # Allow DNS to CoreDNS
+    # Allow DNS queries
     - action: Allow
       protocol: UDP
       destination:
@@ -63,7 +63,7 @@ spec:
       protocol: TCP
       destination:
         ports: [53]
-    # Allow HTTPS to external services
+    # Allow HTTP and HTTPS to external services
     - action: Allow
       protocol: TCP
       destination:
@@ -104,17 +104,20 @@ If Felix was restarted or iptables rules were flushed, force Felix to reprogram 
 ```bash
 # Restart the calico-node pod on the affected node to force Felix rule reprogramming
 NODE="worker-01"
-CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+CALICO_NS=$(kubectl get pods -A -l k8s-app=calico-node \
+  --field-selector spec.nodeName=${NODE} \
+  -o jsonpath='{.items[0].metadata.namespace}')
+CALICO_POD=$(kubectl get pods -n "${CALICO_NS}" -l k8s-app=calico-node \
   --field-selector spec.nodeName=${NODE} -o name | head -1)
 
-kubectl delete "${CALICO_POD}" -n calico-system
+kubectl delete "${CALICO_POD}" -n "${CALICO_NS}"
 
 # Wait for calico-node to restart and reprogram rules
-kubectl rollout status daemonset calico-node -n calico-system
+kubectl rollout status daemonset calico-node -n "${CALICO_NS}"
 
 # Verify NAT rules are back
-kubectl exec -n calico-system \
-  "$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+kubectl exec -n "${CALICO_NS}" \
+  "$(kubectl get pods -n "${CALICO_NS}" -l k8s-app=calico-node \
     --field-selector spec.nodeName=${NODE} -o name | head -1)" -- \
   iptables -t nat -L cali-nat-outgoing -n 2>/dev/null
 ```
