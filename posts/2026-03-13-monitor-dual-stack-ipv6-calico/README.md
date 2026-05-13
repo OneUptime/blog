@@ -31,9 +31,17 @@ calicoctl get bgpconfiguration -o yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: example-pool
+  name: example-ipv4-pool
 spec:
   cidr: 10.48.0.0/16
+  natOutgoing: true
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: example-ipv6-pool
+spec:
+  cidr: fd00:10:48::/64
   natOutgoing: true
 ```
 
@@ -41,6 +49,7 @@ spec:
 
 ```bash
 kubectl get svc -A
+calicoctl ipam show --show-blocks
 calicoctl ipam check
 ```
 
@@ -48,10 +57,11 @@ calicoctl ipam check
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> SERVICE[Service IP]
-    SERVICE --> POD[Pod]
+    POOL[Calico IP Pool] --> POD[Pod IP]
+    SERVICE[Service CIDR] --> SVCIP[Service IP]
+    SVCIP --> POD
 ```
 
 ## Conclusion
 
-How to Monitor Dual-Stack IPv6 with Calico in Calico provides reliable IP addressing for Kubernetes services and workloads. Follow the configuration and verification steps to ensure correct behavior.
+How to Monitor Dual-Stack IPv6 with Calico in Calico provides reliable IP addressing for Kubernetes workloads while Kubernetes allocates service addresses. Follow the configuration and verification steps to ensure correct behavior.
