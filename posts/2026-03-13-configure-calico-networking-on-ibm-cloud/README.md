@@ -10,7 +10,7 @@ Description: A guide to configuring Calico networking on IBM Cloud Kubernetes Se
 
 ## Introduction
 
-IBM Cloud Kubernetes Service (IKS) ships with Calico as its default CNI. For standard IKS clusters, Calico is pre-configured, but platform engineers often need to customize network policies, BGP configurations, and IP pool settings to meet enterprise networking requirements. For self-managed Kubernetes on IBM Cloud VPC, Calico requires explicit configuration similar to other cloud providers.
+IBM Cloud Kubernetes Service (IKS) ships with Calico for cluster networking and network policy. For standard IKS clusters, Calico is pre-configured, but platform engineers often need to customize network policies to meet enterprise networking requirements. For self-managed Kubernetes on IBM Cloud VPC, Calico requires explicit configuration similar to other cloud providers.
 
 IBM Cloud VPC provides predictable networking with security groups acting similarly to AWS security groups. IBM Cloud's classic infrastructure uses VLAN-based networking that requires different Calico configuration from VPC-based deployments.
 
@@ -54,18 +54,18 @@ ibmcloud ks cluster config --cluster my-cluster \
   --admin --network
 ```
 
-## Step 2: Configure IP Pools for IKS
+## Step 2: Review Calico Configuration on IKS
 
-IKS pre-configures Calico IP pools. To customize:
+IKS pre-configures and manages Calico components, including the default `IPPool` resources. IBM does not support modifying the default Calico `IPPool`, Calico components, or Calico node daemon sets in IKS clusters. Instead, use `calicoctl` to view the managed configuration and apply supported Calico network policies:
 
 ```bash
-# View existing pools
-calicoctl get ippools -o wide
+# View Calico nodes and policies
+calicoctl get nodes
+calicoctl get NetworkPolicy --all-namespaces -o wide
+calicoctl get GlobalNetworkPolicies -o wide
 
-# Modify the default pool
-calicoctl get ippool default-ipv4-ippool -o yaml > pool.yaml
-# Edit pool.yaml to adjust cidr, blockSize, etc.
-calicoctl apply -f pool.yaml
+# Apply a supported Calico network policy
+calicoctl apply -f policy.yaml
 ```
 
 ## Step 3: Self-Managed Kubernetes on IBM Cloud VPC
@@ -75,23 +75,29 @@ For self-managed clusters on IBM Cloud VPC:
 ```bash
 # Install Calico
 helm repo add projectcalico https://docs.tigera.io/calico/charts
+kubectl create namespace tigera-operator
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 \
+  --version v3.32.0 | kubectl apply --server-side -f -
 helm install calico projectcalico/tigera-operator \
-  --namespace tigera-operator --create-namespace
+  --version v3.32.0 \
+  --namespace tigera-operator
 ```
 
-Configure the IP pool:
+Configure the default IP pool during installation by using an operator `Installation` resource:
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
+apiVersion: operator.tigera.io/v1
+kind: Installation
 metadata:
-  name: ibm-vpc-pod-pool
+  name: default
 spec:
-  cidr: 172.30.0.0/16
-  ipipMode: Never
-  vxlanMode: Always
-  natOutgoing: true
-  blockSize: 24
+  calicoNetwork:
+    bgp: Disabled
+    ipPools:
+      - cidr: 172.30.0.0/16
+        encapsulation: VXLAN
+        natOutgoing: Enabled
+        blockSize: 24
 ```
 
 ## Step 4: Configure IBM Cloud VPC Security Groups
@@ -112,7 +118,7 @@ ibmcloud is security-group-rule-add <sg-id> \
 
 ## Step 5: Configure Calico for IBM Classic Infrastructure
 
-For clusters on IBM Classic Infrastructure (VLAN-based):
+For self-managed clusters on IBM Classic Infrastructure (VLAN-based), use IP-in-IP only when the underlay network does not route pod CIDRs directly:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -126,7 +132,7 @@ spec:
   natOutgoing: true
 ```
 
-Classic Infrastructure requires IP-in-IP encapsulation as VLANs don't support arbitrary pod CIDR routing.
+IBM Cloud manages Calico networking for IKS classic clusters. For self-managed classic deployments, IP-in-IP encapsulation is a common option when VLAN routing does not carry pod CIDRs directly.
 
 ## Step 6: Verify Configuration
 
@@ -141,4 +147,4 @@ kubectl run test --image=busybox --rm -it -- ping 172.30.1.5
 
 ## Conclusion
 
-Configuring Calico on IBM Cloud differs between IKS (where Calico is pre-installed and managed) and self-managed clusters. For IKS, the focus is on customizing the pre-existing configuration; for self-managed clusters on IBM Cloud VPC, configuration mirrors other cloud providers with VXLAN overlay and VPC security group rules. IBM Classic Infrastructure requires IP-in-IP encapsulation rather than VXLAN due to VLAN-based networking constraints.
+Configuring Calico on IBM Cloud differs between IKS (where Calico is pre-installed and managed) and self-managed clusters. For IKS, the focus is on reviewing the managed configuration and applying supported network policies; for self-managed clusters on IBM Cloud VPC, configuration mirrors other cloud providers with VXLAN overlay and VPC security group rules. For self-managed IBM Classic Infrastructure deployments, IP-in-IP encapsulation is an option when the VLAN-based underlay does not route pod CIDRs directly.
