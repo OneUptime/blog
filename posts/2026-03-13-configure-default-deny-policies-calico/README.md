@@ -14,7 +14,7 @@ Default deny policies are the cornerstone of a zero-trust network architecture i
 
 Calico extends the standard Kubernetes `NetworkPolicy` with its own `NetworkPolicy` and `GlobalNetworkPolicy` CRDs under the `projectcalico.org/v3` API group. This gives you fine-grained control over ingress and egress at every layer, including host-level traffic. Configuring default deny at the global level ensures no workload is accidentally left open.
 
-This guide walks you through implementing default deny policies in Calico step by step, covering both namespace-scoped and global approaches, so you can build a solid security foundation for your cluster.
+This guide walks you through implementing default deny policies in Calico step by step with a global approach, so you can build a solid security foundation for your cluster.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ Document which pods communicate with each other and which external endpoints the
 
 ## Step 2: Apply a Global Default Deny Policy
 
-Create a `GlobalNetworkPolicy` with a low order value so it matches last (higher-priority policies take precedence when order is lower):
+Create a `GlobalNetworkPolicy` with a higher order value so it matches after higher-priority policies (Calico applies policies with lower `order` values first):
 
 ```yaml
 apiVersion: projectcalico.org/v3
