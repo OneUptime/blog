@@ -14,7 +14,7 @@ Google Anthos for Bare Metal (ABM) allows you to run Google Cloud's managed Kube
 
 Flux CD on Anthos Bare Metal provides an additional GitOps layer on top of Anthos's built-in configuration management. While Anthos Config Management (ACM) is the Google-native option, many teams prefer Flux for its flexibility, rich ecosystem, and upstream CNCF standing. Flux and ACM can coexist, with Flux handling application-level GitOps and ACM handling policy enforcement.
 
-This guide covers deploying Flux CD on an Anthos Bare Metal cluster, configuring Workload Identity for GCP service access, and integrating with Google Artifact Registry.
+This guide covers deploying Flux CD on an Anthos Bare Metal cluster, configuring Workload Identity Federation for GCP service access, and integrating with Google Artifact Registry.
 
 ## Prerequisites
 
@@ -22,7 +22,8 @@ This guide covers deploying Flux CD on an Anthos Bare Metal cluster, configuring
 - `kubectl` configured with the ABM cluster kubeconfig
 - `flux` CLI on your workstation
 - A Git repository for Flux CD bootstrap
-- Google Cloud project with Anthos and Artifact Registry APIs enabled
+- Google Cloud project with GKE Enterprise and Artifact Registry APIs enabled
+- Workload Identity Federation configured for the Anthos Bare Metal cluster
 
 ## Step 1: Verify Anthos Bare Metal Cluster Access
 
@@ -45,9 +46,9 @@ kubectl get nodes
 kubectl get pods -n kube-system | grep -E "anthos|gke"
 ```
 
-## Step 2: Configure Workload Identity for Flux (GCP Service Account Integration)
+## Step 2: Configure Workload Identity Federation for Flux (GCP Service Account Integration)
 
-Anthos Bare Metal supports Workload Identity for authenticating pods to GCP services. Configure it for Flux's image reflector controller to access Artifact Registry:
+Anthos Bare Metal supports Workload Identity Federation for authenticating workloads to GCP services without long-lived service account keys. Configure it for Flux's image reflector controller and source controller to access Artifact Registry:
 
 ```bash
 # Create a GCP service account for Flux
@@ -64,7 +65,12 @@ gcloud projects add-iam-policy-binding my-gcp-project \
 gcloud iam service-accounts add-iam-policy-binding \
   flux-abm@my-gcp-project.iam.gserviceaccount.com \
   --role roles/iam.workloadIdentityUser \
-  --member "serviceAccount:my-gcp-project.svc.id.goog[flux-system/image-reflector-controller]"
+  --member "principal://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/subject/system:serviceaccount:flux-system:image-reflector-controller"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  flux-abm@my-gcp-project.iam.gserviceaccount.com \
+  --role roles/iam.workloadIdentityUser \
+  --member "principal://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/subject/system:serviceaccount:flux-system:source-controller"
 ```
 
 ## Step 3: Bootstrap Flux CD on Anthos Bare Metal
@@ -73,6 +79,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 export GITHUB_TOKEN=ghp_your_github_token
 
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=my-org \
   --repository=anthos-fleet \
   --branch=main \
@@ -86,15 +93,51 @@ kubectl get pods -n flux-system
 ## Step 4: Configure Image Reflector for GCP Artifact Registry
 
 ```yaml
-# clusters/anthos-bare-metal/flux-system/image-reflector-sa.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: image-reflector-controller
-  namespace: flux-system
-  annotations:
-    # Workload Identity binding for Artifact Registry access
-    iam.gke.io/gcp-service-account: flux-abm@my-gcp-project.iam.gserviceaccount.com
+# clusters/anthos-bare-metal/flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: ServiceAccount
+      name: image-reflector-controller
+    patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: image-reflector-controller
+        namespace: flux-system
+        annotations:
+          iam.gke.io/gcp-service-account: flux-abm@my-gcp-project.iam.gserviceaccount.com
+          gcp.auth.fluxcd.io/workload-identity-provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
+  - target:
+      kind: Deployment
+      name: image-reflector-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --feature-gates=ObjectLevelWorkloadIdentity=true
+  - target:
+      kind: ServiceAccount
+      name: source-controller
+    patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        annotations:
+          iam.gke.io/gcp-service-account: flux-abm@my-gcp-project.iam.gserviceaccount.com
+          gcp.auth.fluxcd.io/workload-identity-provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
+  - target:
+      kind: Deployment
+      name: source-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --feature-gates=ObjectLevelWorkloadIdentity=true
 ```
 
 ```yaml
@@ -109,6 +152,7 @@ spec:
   image: us-central1-docker.pkg.dev/my-gcp-project/my-repo/myapp
   interval: 5m
   provider: gcp  # Use GCP Workload Identity for authentication
+  serviceAccountName: image-reflector-controller
 ```
 
 ## Step 5: Deploy Applications via Flux on ABM
@@ -125,6 +169,7 @@ spec:
   type: oci
   interval: 10m
   provider: gcp
+  serviceAccountName: source-controller
 ```
 
 ```yaml
@@ -153,7 +198,7 @@ spec:
 
 ## Step 6: Integrate with Google Cloud Monitoring
 
-Deploy the GCP Managed Prometheus stack to monitor Flux controllers on ABM:
+After Google Cloud Managed Service for Prometheus managed collection is installed on the ABM cluster, add a `PodMonitoring` resource to scrape Flux controller metrics:
 
 ```yaml
 # clusters/anthos-bare-metal/monitoring/flux-podmonitoring.yaml
@@ -193,11 +238,11 @@ gcloud logging read \
 
 ## Best Practices
 
-- Use Workload Identity on Anthos Bare Metal for all GCP service integrations (Artifact Registry, Secret Manager, GCS) to avoid service account key files on nodes.
+- Use Workload Identity Federation on Anthos Bare Metal for all GCP service integrations (Artifact Registry, Secret Manager, GCS) to avoid service account key files on nodes.
 - Separate Flux from Anthos Config Management by having Flux own application-layer resources and ACM own cluster-layer policies (NetworkPolicy, ResourceQuota, PodSecurity).
 - Use Google Artifact Registry with OCI HelmRepository sources in Flux for a seamless GCP-native chart distribution workflow.
 - Enable Anthos Service Mesh for mTLS between Flux-managed services on ABM to meet data-in-transit encryption requirements.
-- Register all ABM clusters in a Google Cloud Fleet and use Fleet-level policies to enforce consistent Flux version and configuration across all clusters.
+- Register all ABM clusters in a Google Cloud Fleet and use fleet-level policy tooling for consistent cluster policy across all clusters.
 
 ## Conclusion
 
