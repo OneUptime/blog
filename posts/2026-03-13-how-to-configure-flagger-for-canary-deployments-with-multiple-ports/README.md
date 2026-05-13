@@ -10,7 +10,7 @@ Description: Learn how to configure Flagger canary deployments for services that
 
 ## Introduction
 
-Many production Kubernetes services expose more than one port. A typical microservice might serve HTTP traffic on port 8080, expose Prometheus metrics on port 9090, and provide an admin or health-check interface on port 8081. When you set up Flagger for canary deployments on such services, you need to ensure that all ports are properly defined in both your Deployment and Canary resource so that traffic shifting and analysis work correctly.
+Many production Kubernetes services expose more than one port. A typical microservice might serve HTTP traffic on port 8080, expose Prometheus metrics on port 9090, and provide an admin or health-check interface on port 8081. When you set up Flagger for canary deployments on such services, you need to ensure that the ports are properly defined in your Deployment and exposed through the Canary service configuration so that traffic shifting and analysis work correctly.
 
 This guide walks you through configuring Flagger to handle canary deployments for services with multiple ports, using Istio as the service mesh provider.
 
@@ -67,7 +67,7 @@ spec:
 
 ## Step 2: Create the Canary Resource with Multiple Ports
 
-The Flagger Canary resource supports a `service.portDiscovery` field and allows you to define additional ports via `service.port` for the primary port and `service.additionalPorts` (or through the generated service) for the remaining ports. You specify the primary analysis port in `service.port` and list additional ports under `service.portDiscovery` or by letting Flagger auto-discover them from the Deployment spec.
+The Flagger Canary resource supports a `service.portDiscovery` field. You specify the primary analysis port in `service.port`, set `service.targetPort` to the matching container port name or number, and let Flagger auto-discover the remaining container ports from the Deployment spec.
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -83,7 +83,7 @@ spec:
   service:
     port: 8080
     targetPort: http
-    name: http
+    portName: http
     portDiscovery: true
     trafficPolicy:
       tls:
@@ -104,7 +104,7 @@ spec:
         interval: 1m
 ```
 
-Setting `portDiscovery: true` tells Flagger to scan the Deployment's container ports and automatically create ClusterIP services for each discovered port. Flagger will generate the primary service on port 8080 and additional services for ports 9090 and 8081.
+Setting `portDiscovery: true` tells Flagger to scan the Deployment's container ports and add the discovered ports to the generated ClusterIP services. Flagger will include the primary service port 8080 and the additional ports 9090 and 8081 on the apex, primary, and canary services.
 
 ## Step 3: Verify the Generated Services
 
@@ -125,36 +125,9 @@ multi-port-app-primary    ClusterIP   10.96.100.3      8080/TCP,9090/TCP,8081/TC
 
 Flagger creates a primary service (serving stable traffic), a canary service (serving new-version traffic), and the apex service (used for routing).
 
-## Step 4: Manually Specifying Additional Ports
+## Step 4: Controlling Port Discovery
 
-If you prefer explicit control rather than auto-discovery, you can disable `portDiscovery` and define the ports manually. Flagger supports specifying the primary port and appending additional port definitions through the generated VirtualService. However, the recommended approach is to use `portDiscovery: true` for simplicity.
-
-For service meshes that need explicit port mapping in the VirtualService, you can combine the Canary resource with a custom VirtualService:
-
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: multi-port-app
-  namespace: default
-spec:
-  hosts:
-    - multi-port-app
-  http:
-    - route:
-        - destination:
-            host: multi-port-app-primary
-            port:
-              number: 8080
-          weight: 100
-        - destination:
-            host: multi-port-app-canary
-            port:
-              number: 8080
-          weight: 0
-```
-
-Note that Flagger manages the VirtualService weights automatically during a canary rollout. The above is the initial state before any canary analysis begins.
+If you prefer explicit control rather than auto-discovery, you can disable `portDiscovery` and expose only the primary port defined in the Canary service spec. Flagger keeps the generated VirtualService and DestinationRules in sync with the Canary service spec, and direct edits to those generated resources will be overwritten.
 
 ## Step 5: Validate the Canary Configuration
 
