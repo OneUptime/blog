@@ -17,9 +17,9 @@ This guide covers deploying and configuring the Azure Disk CSI Driver on AKS usi
 ## Prerequisites
 
 - An Azure subscription
-- An AKS cluster running Kubernetes 1.24 or later
+- An AKS cluster running a currently supported Kubernetes version
 - Flux CLI version 2.0 or later bootstrapped on the cluster
-- Azure CLI version 2.40 or later
+- Azure CLI version 2.42 or later
 
 ## Step 1: Understand the Built-in CSI Driver
 
@@ -161,7 +161,7 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: azuredisk-csi-driver-controller
+      name: csi-azuredisk-controller
       namespace: kube-system
 ```
 
@@ -244,7 +244,7 @@ kubectl get volumesnapshots -A
 
 **Snapshot creation fails**: Ensure the snapshot controller is running and the VolumeSnapshotClass references the correct driver name.
 
-**Driver conflicts**: If you deploy a custom CSI driver alongside the built-in one, you may encounter conflicts. Consider disabling the AKS-managed driver with `--disable-disk-driver` on cluster creation.
+**Driver conflicts**: If you deploy a custom CSI driver alongside the built-in one, you may encounter conflicts. Consider disabling the AKS-managed driver with `az aks update --disable-disk-driver` before deploying the custom driver.
 
 ## Conclusion
 
