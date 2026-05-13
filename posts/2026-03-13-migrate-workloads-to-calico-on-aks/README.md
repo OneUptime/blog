@@ -10,9 +10,9 @@ Description: Migrate existing AKS workloads to Calico network policy enforcement
 
 ## Introduction
 
-Azure Kubernetes Service supports two network policy engines: Azure Network Policy Manager and Calico. While Azure's built-in policy manager covers basic use cases, Calico provides a richer policy language, support for GlobalNetworkPolicy, namespace-level isolation, and fine-grained egress controls that enterprise teams require.
+Azure Kubernetes Service supports three network policy engines: Cilium, Azure Network Policy Manager, and Calico. Azure Network Policy Manager is a legacy option, while Azure-managed Calico provides standard Kubernetes NetworkPolicy enforcement for teams that need Calico-based policy enforcement on AKS.
 
-Enabling Calico on AKS is done at cluster creation time since AKS does not support in-place CNI migration. However, you can create a new node pool with Calico enabled and migrate workloads from your existing cluster or node pool, enabling a safe cutover with minimal downtime.
+For a controlled migration, you can create a new AKS cluster with Calico enabled and migrate workloads from your existing cluster, enabling a safe cutover with minimal downtime.
 
 This guide covers enabling Calico on a new AKS cluster, migrating workloads from an existing cluster, and applying Calico network policies to enforce zero-trust networking on AKS.
 
@@ -20,7 +20,6 @@ This guide covers enabling Calico on a new AKS cluster, migrating workloads from
 
 - Azure CLI (`az`) v2.40+ authenticated
 - `kubectl` with access to both source and target clusters
-- `calicoctl` v3.27+ installed
 - Existing AKS workloads to migrate
 - Azure subscription with AKS quota available
 - Velero or similar tool for workload backup (recommended)
@@ -65,26 +64,27 @@ kubectl get daemonset calico-node -n kube-system
 # Check that all calico-node pods are in Running state
 kubectl get pods -n kube-system -l k8s-app=calico-node
 
-# Validate IP pools configured by AKS
-calicoctl get ippools -o wide
+# Confirm the target cluster is configured for Calico network policy
+az aks show \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --query "networkProfile.networkPolicy" \
+  --output tsv
 ```
 
 ## Step 3: Migrate Workload Manifests
 
-Export and apply workload definitions to the new Calico-enabled cluster.
+Apply workload definitions to the new Calico-enabled cluster.
 
-Export all workload resources from the source cluster and apply to the target:
+Apply source-controlled manifests to the target cluster. If the source cluster has live-only state, use Velero or another migration tool instead of applying raw `kubectl get all` output, which includes generated resources and cluster-managed metadata.
 
 ```bash
-# Export all namespace resources from the source cluster
-kubectl --context=source-cluster get all -n production -o yaml > production-workloads.yaml
+# Create the production namespace if it does not already exist
+kubectl --context=myAKSCluster create namespace production --dry-run=client -o yaml | \
+  kubectl --context=myAKSCluster apply -f -
 
-# Export ConfigMaps and Secrets (sanitize secrets before committing to git)
-kubectl --context=source-cluster get configmaps,secrets -n production -o yaml > production-config.yaml
-
-# Apply workloads to the new Calico-enabled cluster
-kubectl --context=myAKSCluster apply -f production-workloads.yaml
-kubectl --context=myAKSCluster apply -f production-config.yaml
+# Apply workloads and configuration to the new Calico-enabled cluster
+kubectl --context=myAKSCluster apply -f ./manifests/production/
 ```
 
 ## Step 4: Apply Calico Network Policies
@@ -94,39 +94,42 @@ Define and apply Calico network policies to enforce traffic rules in the new clu
 Create a default-deny policy with explicit allow rules for your application tiers:
 
 ```yaml
-# production-network-policy.yaml - tiered network policy for production namespace
-apiVersion: projectcalico.org/v3
+# production-network-policy.yaml - network policy for production namespace
+apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
   namespace: production
 spec:
-  selector: all()
-  types:
+  podSelector: {}
+  policyTypes:
   - Ingress
 ---
-apiVersion: projectcalico.org/v3
+apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-frontend-to-backend
   namespace: production
 spec:
-  selector: "app == 'backend'"
-  types:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
   - Ingress
   ingress:
-  - action: Allow
-    source:
-      selector: "app == 'frontend'"
-    destination:
-      ports:
-      - 8080
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
 ```
 
-Apply the network policies using calicoctl:
+Apply the network policies using kubectl:
 
 ```bash
-calicoctl apply -f production-network-policy.yaml
+kubectl --context=myAKSCluster apply -f production-network-policy.yaml
 ```
 
 ## Step 5: Validate and Cut Over Traffic
@@ -137,24 +140,24 @@ Verify that application endpoints are responding correctly before switching traf
 
 ```bash
 # Check all pods are running in production namespace
-kubectl get pods -n production
+kubectl --context=myAKSCluster get pods -n production
 
 # Test internal service connectivity
-kubectl run test --image=curlimages/curl --rm -it -- \
+kubectl --context=myAKSCluster run test --image=curlimages/curl --rm -it -- \
   curl http://backend.production.svc.cluster.local:8080/health
 
 # Verify Calico policy is enforcing rules
-calicoctl get networkpolicies -n production -o wide
+kubectl --context=myAKSCluster get networkpolicy -n production -o wide
 ```
 
 ## Best Practices
 
-- Enable Calico tier-based policies to logically separate platform and application policies
+- Use namespace- and label-based policies to logically separate platform and application traffic
 - Use AKS node taints to ensure workloads are scheduled only on intended node pools
-- Integrate Calico with Azure Monitor for network flow logging and anomaly detection
-- Test all Calico network policies in a staging cluster before applying to production
+- Monitor cluster and workload health with Azure Monitor, and use a supported Calico or Tigera observability option if you need Calico-specific flow visibility
+- Test all Kubernetes network policies in a staging cluster before applying to production
 - Monitor pod connectivity with OneUptime synthetic checks post-migration to catch regressions
 
 ## Conclusion
 
-Migrating workloads to Calico on AKS provides enterprise-grade network policy enforcement with a rich policy language that scales across namespaces and workload types. By provisioning a new Calico-enabled cluster and migrating workloads systematically, you can achieve a zero-downtime cutover. Combine Calico's policy enforcement with OneUptime's monitoring to maintain full visibility into network health and security compliance after migration.
+Migrating workloads to Calico on AKS provides Kubernetes NetworkPolicy enforcement that scales across namespaces and workload types. By provisioning a new Calico-enabled cluster and migrating workloads systematically, you can minimize downtime during cutover. Combine Calico's policy enforcement with OneUptime's monitoring to maintain full visibility into network health and security compliance after migration.
