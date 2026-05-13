@@ -26,13 +26,13 @@ This guide covers the most common Flux Operator installation issues, their root 
 The first thing to check is whether the operator pod itself is running.
 
 ```bash
-kubectl get pods -n flux-operator-system
+kubectl get pods -n flux-system
 ```
 
 If the pod is in `CrashLoopBackOff` or `ImagePullBackOff`, inspect the events:
 
 ```bash
-kubectl describe pod -n flux-operator-system -l app.kubernetes.io/name=flux-operator
+kubectl describe pod -n flux-system -l app.kubernetes.io/name=flux-operator
 ```
 
 ### Image Pull Errors
@@ -45,17 +45,17 @@ If you see `ImagePullBackOff`, the cluster cannot pull the operator image. Commo
 # Verify the Helm values for the correct image reference
 image:
   repository: ghcr.io/controlplaneio-fluxcd/flux-operator
-  tag: "latest"
-  pullPolicy: IfNotPresent
-imagePullSecrets:
-  - name: ghcr-credentials
+  tag: ""
+  imagePullPolicy: IfNotPresent
+  pullSecrets:
+    - name: ghcr-credentials
 ```
 
 Create the pull secret if needed:
 
 ```bash
 kubectl create secret docker-registry ghcr-credentials \
-  -n flux-operator-system \
+  -n flux-system \
   --docker-server=ghcr.io \
   --docker-username=your-user \
   --docker-password=your-token
@@ -66,14 +66,14 @@ kubectl create secret docker-registry ghcr-credentials \
 If the pod starts but crashes, check the logs for RBAC errors:
 
 ```bash
-kubectl logs -n flux-operator-system -l app.kubernetes.io/name=flux-operator --tail=50
+kubectl logs -n flux-system -l app.kubernetes.io/name=flux-operator --tail=50
 ```
 
 If you see permission denied errors, ensure the operator's ServiceAccount has the required ClusterRole bindings:
 
 ```bash
 kubectl get clusterrolebinding | grep flux-operator
-kubectl describe clusterrolebinding flux-operator-manager-rolebinding
+kubectl describe clusterrolebinding -l app.kubernetes.io/name=flux-operator
 ```
 
 ## Issue 2: FluxInstance Stuck in Not Ready State
@@ -124,14 +124,13 @@ When migrating from Flux Bootstrap, CRD ownership conflicts can occur:
 kubectl get crds | grep fluxcd
 ```
 
-If the operator reports conflicts, you need to adopt the existing CRDs. Label them for the operator:
+If you are migrating from an existing Flux bootstrap, install the Flux Operator in the same namespace where Flux is deployed and create a `FluxInstance` named `flux` in that namespace. The operator will then take over management of the Flux components, GitRepository, and Kustomization.
 
 ```bash
-for crd in $(kubectl get crds -o name | grep fluxcd.io); do
-  kubectl label "$crd" app.kubernetes.io/managed-by=flux-operator --overwrite
-  kubectl annotate "$crd" meta.helm.sh/release-name=flux-operator --overwrite
-  kubectl annotate "$crd" meta.helm.sh/release-namespace=flux-operator-system --overwrite
-done
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
+  --namespace flux-system
+kubectl apply -f flux-instance.yaml
+kubectl -n flux-system get fluxinstance flux
 ```
 
 ## Issue 4: Component Pods Not Starting After FluxInstance Reconciliation
@@ -221,7 +220,6 @@ For SSH-based Git repositories, ensure the deploy key is correctly configured:
 kubectl create secret generic flux-system \
   -n flux-system \
   --from-file=identity=./deploy-key \
-  --from-file=identity.pub=./deploy-key.pub \
   --from-file=known_hosts=./known_hosts
 ```
 
@@ -231,7 +229,7 @@ Use these commands as part of your standard troubleshooting workflow:
 
 ```bash
 # Check operator logs
-kubectl logs -n flux-operator-system deploy/flux-operator --tail=100
+kubectl logs -n flux-system deploy/flux-operator --tail=100
 
 # Check FluxInstance status
 kubectl get fluxinstance -n flux-system -o yaml
