@@ -68,7 +68,7 @@ Configure etcd to support TLS session tickets, allowing clients to resume sessio
 # Ensure TLS 1.3 is enabled
 etcd --auto-tls=false \
      --cipher-suites="TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384" \
-     --tls-min-version=VersionTLS12
+     --tls-min-version=TLS1.2
 ```
 
 ## Optimization 4: Tune Certificate Validity for Renewal Frequency
