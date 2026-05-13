@@ -27,12 +27,12 @@ Before starting, ensure you have:
 
 ## Bitbucket Cloud vs Bitbucket Server
 
-Flux supports both Bitbucket Cloud and Bitbucket Server (Data Center) through different receiver types:
+Flux supports Bitbucket Server (Data Center) with the Bitbucket receiver type. Bitbucket Cloud webhooks should use a generic receiver:
 
 - **Bitbucket Server/Data Center**: Use `type: bitbucket`
-- **Bitbucket Cloud**: Use `type: bitbucketserver` is not used; instead Bitbucket Cloud webhooks work with `type: generic` or `type: bitbucket` depending on your Flux version
+- **Bitbucket Cloud**: Use `type: generic`
 
-For this guide, we will focus on the standard Bitbucket receiver type that works with Bitbucket Server and Cloud.
+For this guide, we will use the Bitbucket receiver type for Bitbucket Server/Data Center and a generic receiver for Bitbucket Cloud.
 
 ## Creating the Webhook Secret
 
@@ -82,7 +82,7 @@ The `repo:refs_changed` event fires whenever references (branches, tags) change 
 
 ## Configuring the Receiver for Bitbucket Cloud
 
-For Bitbucket Cloud, the event format is slightly different:
+For Bitbucket Cloud, use a generic Receiver. Generic receivers do not filter on Bitbucket event names, so select the Repository push trigger in Bitbucket Cloud:
 
 ```yaml
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -91,9 +91,7 @@ metadata:
   name: bitbucket-cloud-receiver
   namespace: flux-system
 spec:
-  type: bitbucket
-  events:
-    - "repo:push"
+  type: generic
   secretRef:
     name: bitbucket-webhook-token
   resources:
@@ -101,7 +99,7 @@ spec:
       name: app-repo
 ```
 
-Bitbucket Cloud uses `repo:push` as the event key for push events.
+Flux generates a token-derived webhook path for the generic Receiver, but the generic Receiver does not validate Bitbucket Cloud's HMAC signature.
 
 ## Applying and Getting the Webhook URL
 
@@ -141,7 +139,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -168,10 +166,11 @@ For Bitbucket Cloud, navigate to your repository:
 3. Configure:
    - **Title**: Flux Reconciliation Trigger
    - **URL**: Your full webhook URL
+   - **Secret**: Leave empty because Flux's generic receiver does not validate Bitbucket Cloud's signature
    - **Triggers**: Choose "Repository push" or select specific triggers
 4. Click "Save"
 
-Note that Bitbucket Cloud does not natively support webhook secrets in the same way as GitHub or GitLab. The token validation relies on the Flux Receiver's built-in verification.
+Note that Bitbucket Cloud can sign webhook requests, but Flux's generic receiver does not validate those signatures. Protect the exposed endpoint with normal ingress controls, such as TLS, source restrictions, or rate limiting.
 
 ## Triggering Multiple Resources
 
@@ -289,7 +288,7 @@ Check the Receiver status:
 kubectl describe receiver bitbucket-push-receiver -n flux-system
 ```
 
-Verify the event name matches exactly. Bitbucket Server uses `repo:refs_changed` while Bitbucket Cloud uses `repo:push`. Using the wrong event name causes silent failures.
+Verify the event name matches exactly for Bitbucket Server. Bitbucket Server uses `repo:refs_changed`; Bitbucket Cloud should use a generic Receiver without an `events` filter.
 
 Check notification controller logs for authentication or parsing errors:
 
@@ -299,4 +298,4 @@ kubectl logs -n flux-system deployment/notification-controller | grep -i "error\
 
 ## Conclusion
 
-Configuring a Flux Receiver for Bitbucket push events brings event-driven reconciliation to teams using Bitbucket for their Git repositories. Whether you are on Bitbucket Cloud or Bitbucket Server, the setup follows the same pattern: create a shared secret, define a Receiver with the appropriate type and event, expose the notification controller, and configure the webhook in Bitbucket. The integration eliminates polling delays, giving you immediate deployments when code is pushed to your tracked branches.
+Configuring a Flux Receiver for Bitbucket push events brings event-driven reconciliation to teams using Bitbucket for their Git repositories. Whether you are on Bitbucket Cloud or Bitbucket Server, the setup follows the same pattern: create a shared secret, define a Receiver with the appropriate type, expose the webhook receiver, and configure the webhook in Bitbucket. The integration eliminates polling delays, giving you immediate deployments when code is pushed to your tracked branches.
