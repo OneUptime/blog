@@ -10,7 +10,7 @@ Description: Configure Kubernetes NetworkPolicy basics using Calico as the netwo
 
 ## Introduction
 
-Kubernetes NetworkPolicy Basics with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle kubernetes networkpolicy basics while maintaining strict access controls.
+Kubernetes NetworkPolicy Basics with Calico requires careful policy design in Calico to balance security with performance and availability. The `networking.k8s.io/v1` NetworkPolicy API provides the standard Kubernetes policy model that Calico enforces while maintaining strict access controls.
 
 This guide covers configure Kubernetes NetworkPolicy Basics in Calico with production-ready configurations.
 
@@ -61,7 +61,7 @@ spec:
 # Apply Kubernetes NetworkPolicy
 kubectl apply -f basic-network-policy.yaml
 
-# Verify policy is enforced by Calico
+# Verify the NetworkPolicy was created
 kubectl describe networkpolicy allow-frontend-to-backend -n production
 
 # Test connectivity
