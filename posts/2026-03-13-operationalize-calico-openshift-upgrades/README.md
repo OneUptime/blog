@@ -40,8 +40,8 @@ gantt
 ## Additional OCP Steps for Calico Upgrade Runbook
 
 ### Before Starting (OCP-Specific)
-1. Check Red Hat Customer Portal for active OCP issues:
-   https://access.redhat.com/articles/open-cluster-management-supportability
+1. Check Red Hat OpenShift release notes for known issues:
+   https://docs.openshift.com/container-platform/latest/release_notes/
 
 2. Verify no pending MachineConfig changes:
    `oc get mc | head -5`
