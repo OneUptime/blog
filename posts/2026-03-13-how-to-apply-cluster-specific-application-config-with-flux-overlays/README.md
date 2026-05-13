@@ -8,7 +8,7 @@ Description: Learn how to use Kustomize overlays with Flux CD to apply cluster-s
 
 ---
 
-When running the same application across multiple clusters, each cluster often needs slightly different configuration: different replica counts, resource limits, environment variables, ingress hostnames, or feature flags. Kustomize overlays integrated with Flux CD let you maintain a single base definition and layer cluster-specific customizations on top.
+When running the same application across multiple clusters, each cluster often needs slightly different configuration: different autoscaling bounds, resource limits, environment variables, ingress hostnames, or feature flags. Kustomize overlays integrated with Flux CD let you maintain a single base definition and layer cluster-specific customizations on top.
 
 ## How Overlays Work with Flux
 
@@ -20,9 +20,9 @@ graph LR
     BASE --> |inherited by| OV2[apps/overlays/cluster-2]
     BASE --> |inherited by| OV3[apps/overlays/cluster-3]
 
-    OV1 --> |replicas: 1, dev config| C1[Cluster 1 - Dev]
-    OV2 --> |replicas: 3, staging config| C2[Cluster 2 - Staging]
-    OV3 --> |replicas: 5, prod config| C3[Cluster 3 - Production]
+    OV1 --> |HPA: 1-2, dev config| C1[Cluster 1 - Dev]
+    OV2 --> |HPA: 2-10, staging config| C2[Cluster 2 - Staging]
+    OV3 --> |HPA: 5-50, prod config| C3[Cluster 3 - Production]
 ```
 
 ## Repository Structure
@@ -40,14 +40,11 @@ fleet-repo/
 │   │   └── configmap.yaml
 │   └── overlays/
 │       ├── dev/
-│       │   ├── kustomization.yaml
-│       │   └── config.env
+│       │   └── kustomization.yaml
 │       ├── staging/
-│       │   ├── kustomization.yaml
-│       │   └── config.env
+│       │   └── kustomization.yaml
 │       └── production/
 │           ├── kustomization.yaml
-│           ├── config.env
 │           └── pdb.yaml
 └── clusters/
     ├── dev/
@@ -85,7 +82,6 @@ metadata:
   labels:
     app: webapp
 spec:
-  replicas: 2
   selector:
     matchLabels:
       app: webapp
@@ -206,9 +202,6 @@ patches:
       name: webapp
     patch: |
       - op: replace
-        path: /spec/replicas
-        value: 1
-      - op: replace
         path: /spec/template/spec/containers/0/resources
         value:
           requests:
@@ -267,9 +260,6 @@ patches:
       name: webapp
     patch: |
       - op: replace
-        path: /spec/replicas
-        value: 2
-      - op: replace
         path: /spec/template/spec/containers/0/resources
         value:
           requests:
@@ -321,9 +311,6 @@ patches:
       kind: Deployment
       name: webapp
     patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 5
       - op: replace
         path: /spec/template/spec/containers/0/resources
         value:
@@ -424,7 +411,6 @@ spec:
     name: flux-system
   path: ./apps/overlays/production
   prune: true
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
@@ -525,9 +511,10 @@ images:
 **Adding environment-specific labels:**
 
 ```yaml
-commonLabels:
-  environment: production
-  team: platform
+labels:
+  - pairs:
+      environment: production
+      team: platform
 ```
 
 ## Summary
