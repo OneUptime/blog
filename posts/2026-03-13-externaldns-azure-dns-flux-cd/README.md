@@ -15,8 +15,9 @@ ExternalDNS automates DNS record management for Kubernetes Services and Ingresse
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD bootstrapped
-- A Azure DNS account with DNS management access
+- An Azure subscription with DNS management access
 - A domain hosted in Azure DNS
+- Azure Workload Identity configured for ExternalDNS with permissions to manage the Azure DNS zone
 - kubectl and flux CLI installed
 
 ## Step 1: Add the ExternalDNS Helm Repository
@@ -40,16 +41,26 @@ spec:
 # Create namespace for ExternalDNS
 kubectl create namespace external-dns
 
-# Create credentials secret (provider-specific)
-kubectl create secret generic azure-config \
-  --from-literal=key=your-api-key-or-credentials \
+# Create an azure.json configuration file for Azure DNS
+cat > azure.json <<'EOF'
+{
+  "tenantId": "<TENANT_ID>",
+  "subscriptionId": "<SUBSCRIPTION_ID>",
+  "resourceGroup": "<AZURE_DNS_ZONE_RESOURCE_GROUP>",
+  "useWorkloadIdentityExtension": true
+}
+EOF
+
+# Create credentials secret
+kubectl create secret generic external-dns-azure \
+  --from-file=azure.json=azure.json \
   --namespace=external-dns
 ```
 
 ## Step 3: Deploy ExternalDNS via Flux HelmRelease
 
 ```yaml
-# clusters/production/apps/external-dns.yaml
+# clusters/production/apps/external-dns/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -60,13 +71,14 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
         namespace: flux-system
   values:
-    provider: azure-dns
+    provider:
+      name: azure
     # Domain filter: only manage records for these zones
     domainFilters:
       - your-domain.com
@@ -81,16 +93,24 @@ spec:
     # TXT record for ownership tracking
     txtOwnerId: "production-cluster"
     # Provider-specific configuration
-    env:
-      - name: PROVIDER_KEY
-        valueFrom:
-          secretKeyRef:
-            name: azure-config
-            key: key
+    extraVolumes:
+      - name: azure-config-file
+        secret:
+          secretName: external-dns-azure
+    extraVolumeMounts:
+      - name: azure-config-file
+        mountPath: /etc/kubernetes
+        readOnly: true
     # RBAC
     serviceAccount:
       create: true
       name: external-dns
+      labels:
+        azure.workload.identity/use: "true"
+      annotations:
+        azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
+    podLabels:
+      azure.workload.identity/use: "true"
     # Resources
     resources:
       requests:
@@ -100,10 +120,8 @@ spec:
         cpu: 100m
         memory: 128Mi
     # Metrics
-    metrics:
+    serviceMonitor:
       enabled: true
-      serviceMonitor:
-        enabled: true
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -123,8 +141,8 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: external-dns
       namespace: external-dns
   timeout: 5m
