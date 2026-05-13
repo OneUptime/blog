@@ -17,12 +17,12 @@ A secondary but equally important fix is completing interrupted upgrades. When c
 ## Symptoms
 
 - Pods cannot reach external IPs after Calico upgrade
-- `curl` from pod to external service times out or connection refused
+- `curl` from pod to external service times out or reports a network error
 - iptables MASQUERADE rules missing for pod CIDR on nodes
 
 ## Root Causes
 
-- natOutgoing disabled or set to `Disabled` in IP pool after upgrade
+- `natOutgoing` disabled or set to `false` in IP pool after upgrade
 - Mixed calico-node versions across cluster nodes
 - iptables rules not rebuilt after upgrade
 
@@ -35,10 +35,9 @@ A secondary but equally important fix is completing interrupted upgrades. When c
 
 calicoctl get ippool -o yaml > /tmp/ippool-backup.yaml
 
-# Edit to re-enable natOutgoing
-calicoctl get ippool default-ipv4-ippool -o yaml | \
-  sed 's/natOutgoing: false/natOutgoing: true/' | \
-  calicoctl apply -f -
+# Patch the pool to re-enable natOutgoing
+calicoctl patch ippool default-ipv4-ippool \
+  -p '{"spec":{"natOutgoing": true}}'
 
 # Verify change applied
 calicoctl get ippool default-ipv4-ippool -o yaml | grep natOutgoing
@@ -52,7 +51,8 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep natOutgoing
 kubectl get pods -n kube-system -l k8s-app=calico-node \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
 
-# If images differ, force a rolling restart to pull consistent image
+# If images differ, apply the intended Calico upgrade manifest/operator change first,
+# then restart so all nodes are recreated from the same desired version
 kubectl rollout restart daemonset calico-node -n kube-system
 kubectl rollout status daemonset calico-node -n kube-system --timeout=300s
 ```
@@ -63,9 +63,9 @@ kubectl rollout status daemonset calico-node -n kube-system --timeout=300s
 # Restart calico-node to force iptables rebuild
 kubectl rollout restart daemonset calico-node -n kube-system
 
-# After rollout completes, verify MASQUERADE rule exists on a node
+# After rollout completes, verify Calico NAT rules exist on a node
 ssh <node-name> "sudo iptables -t nat -L POSTROUTING -n | grep -E 'MASQUERADE|cali'"
-# Expected: at least one MASQUERADE rule for pod CIDR
+# Expected: Calico NAT chains or a MASQUERADE rule for outgoing pod traffic
 ```
 
 **Fix 4: Fix encapsulation mode if changed during upgrade**
@@ -120,4 +120,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing external connectivity broken by a Calico upgrade most commonly requires re-enabling `natOutgoing` on the IP pool or completing a mixed-version upgrade. After any configuration change, restart calico-node to rebuild iptables rules and verify external connectivity from a test pod.
+Fixing external connectivity broken by a Calico upgrade most commonly requires re-enabling `natOutgoing` on the IP pool or completing a mixed-version upgrade. After the fix, verify that Calico has rebuilt the NAT rules and test external connectivity from a test pod.
