@@ -20,7 +20,7 @@ This guide covers how to configure a ResourceSet that watches GitLab merge reque
 - kubectl configured to access your cluster
 - The Flux Operator installed with a FluxInstance
 - A GitLab project with your application code
-- A GitLab personal access token or project access token with `read_api` scope
+- A GitLab personal access token or project access token with `read_api` scope, and `read_repository` if it is also used for private repository clones
 - An ingress controller installed in your cluster
 
 ## Architecture Overview
@@ -47,7 +47,8 @@ Create a Secret containing your GitLab access token:
 ```bash
 kubectl create secret generic gitlab-token \
   --namespace=flux-system \
-  --from-literal=token=glpat-xxxxxxxxxxxxxxxxxxxx
+  --from-literal=username=flux \
+  --from-literal=password=glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
 ## Configuring the ResourceSet for GitLab MR Environments
@@ -147,16 +148,7 @@ spec:
 
 ## Setting Up GitLab Repository Credentials
 
-Since GitLab repositories often require authentication, create a Secret for the source-controller to use:
-
-```bash
-kubectl create secret generic gitlab-credentials \
-  --namespace=flux-system \
-  --from-literal=username=gitlab-ci-token \
-  --from-literal=password=glpat-xxxxxxxxxxxxxxxxxxxx
-```
-
-You will need to copy this Secret into each MR namespace. Add a resource template to the ResourceSet:
+Since GitLab repositories often require authentication, create a Secret for the source-controller to use. The Secret must be in the same namespace as the `GitRepository`, so add it as a resource template in the ResourceSet:
 
 ```yaml
 # Add to the resources array
@@ -168,8 +160,8 @@ You will need to copy this Secret into each MR namespace. Add a resource templat
     namespace: "mr-<< inputs.id >>"
   type: Opaque
   stringData:
-    username: gitlab-ci-token
-    password: "<< inputs.provider.token >>"
+    username: flux
+    password: glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
 Alternatively, use an ExternalSecret operator or a Kustomize patch to handle credential distribution.
