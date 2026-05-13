@@ -12,7 +12,7 @@ Description: Learn how to configure Calico on a new single-node Kubernetes clust
 
 A newly installed Calico on a single-node Kubernetes cluster uses default settings that may not align with your development requirements or production configuration targets. Proper configuration of IP pools, Felix parameters, and encapsulation modes on a single-node cluster ensures consistency with what you will deploy in production multi-node environments.
 
-Single-node Kubernetes clusters do not require BGP peering between nodes, but the IP pool CIDR, encapsulation mode, and Felix settings all apply equally. You can disable unnecessary multi-node features while maintaining the configuration structure that scales to production. This reduces confusion when promoting configurations from development to production.
+Single-node Kubernetes clusters do not require BGP peering between nodes, but the IP pool CIDR, encapsulation mode, and Felix settings all apply equally. You can disable unnecessary multi-node features while maintaining the configuration structure you will revisit for production. This reduces confusion when promoting configurations from development to production.
 
 This guide covers essential Calico configuration steps for a single-node Kubernetes cluster, using calicoctl and kubectl to manage Calico custom resources.
 
@@ -26,8 +26,9 @@ This guide covers essential Calico configuration steps for a single-node Kuberne
 
 ```bash
 curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
-  -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
+  -o calicoctl
+chmod +x calicoctl
+sudo mv calicoctl /usr/local/bin/
 export DATASTORE_TYPE=kubernetes
 export KUBECONFIG=~/.kube/config
 calicoctl version
@@ -38,12 +39,12 @@ calicoctl version
 ```bash
 calicoctl get ippool -o yaml
 calicoctl get felixconfiguration -o yaml
-calicoctl get node -o yaml
+calicoctl get nodes -o yaml
 ```
 
 ## Step 3: Set IP Pool for Single-Node
 
-On a single-node cluster, disable IPIP since all traffic is local:
+On a single-node cluster, pod-to-pod traffic on the single node does not need an overlay, so disable IPIP and VXLAN. Re-enable the encapsulation mode or BGP routing model required by your production network before scaling beyond one node:
 
 ```bash
 calicoctl apply -f - <<EOF
