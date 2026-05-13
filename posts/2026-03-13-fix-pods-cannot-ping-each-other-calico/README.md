@@ -44,6 +44,8 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep ipipMode
 
 **Fix 1: Allow ICMP in NetworkPolicy**
 
+Kubernetes NetworkPolicy does not have an ICMP-specific protocol match. To allow ICMP with Kubernetes NetworkPolicy, allow all traffic for the selected pods. To allow only ICMP, use Calico NetworkPolicy.
+
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -56,9 +58,6 @@ spec:
   - Ingress
   - Egress
   ingress:
-  - ports:
-    - protocol: SCTP   # ICMP is handled implicitly when no ports are specified
-  # For ICMP, omit ports entirely in the rule:
   - {}   # Allow all ingress including ICMP
   egress:
   - {}   # Allow all egress including ICMP
@@ -100,12 +99,13 @@ calicoctl patch ippool default-ipv4-ippool \
 
 ```bash
 # Restart BIRD to re-establish BGP sessions and re-advertise routes
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
+CALICO_NAMESPACE=calico-system   # Use kube-system for manifest-based installs
+NODE_POD=$(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node \
   --field-selector spec.nodeName=<affected-node> -o name)
-kubectl delete pod $NODE_POD -n kube-system
+kubectl delete "$NODE_POD" -n "$CALICO_NAMESPACE"
 
 # Wait for pod recovery
-kubectl wait pods -n kube-system -l k8s-app=calico-node \
+kubectl wait pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node \
   --for=condition=Ready --timeout=120s
 
 # Verify routes restored
