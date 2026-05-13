@@ -14,7 +14,7 @@ OpenSearch Dashboards is the open-source visualization frontend for OpenSearch, 
 
 Deploying OpenSearch Dashboards via Flux CD ensures that connection settings, authentication configuration, and Ingress rules are version-controlled alongside the OpenSearch cluster itself. Changes to the Dashboards configuration - such as adding SAML integration or updating the OpenSearch endpoint - go through a standard pull request workflow.
 
-This guide deploys OpenSearch Dashboards as a Flux HelmRelease, configures its connection to an OpenSearch cluster, enables OIDC authentication, and exposes it through an Ingress.
+This guide deploys OpenSearch Dashboards as a Flux HelmRelease, configures its connection to an OpenSearch cluster, shows optional SAML authentication, and exposes it through an Ingress.
 
 ## Prerequisites
 
@@ -37,10 +37,10 @@ metadata:
   namespace: search
 type: Opaque
 stringData:
-  opensearch.username: admin
-  opensearch.password: "MyStr0ngP@ssword!"
-  cookie.secure: "true"
-  cookie.password: "a-32-character-random-string-here!"
+  OPENSEARCH_USERNAME: admin
+  OPENSEARCH_PASSWORD: "MyStr0ngP@ssword!"
+  COOKIE_SECURE: "true"
+  COOKIE_PASSWORD: "a-32-character-random-string-here!"
 ```
 
 ## Step 2: Deploy OpenSearch Dashboards via HelmRelease
@@ -91,11 +91,10 @@ spec:
 
         # OpenSearch connection
         opensearch.hosts: ["https://opensearch-cluster-master.search.svc.cluster.local:9200"]
-        opensearch.username: "${opensearch.username}"
-        opensearch.password: "${opensearch.password}"
-        opensearch.ssl.verificationMode: certificate
-        opensearch.ssl.certificateAuthorities: ["/usr/share/opensearch-dashboards/config/root-ca.pem"]
-        opensearch.requestHeadersWhitelist: [Authorization, security_tenant]
+        opensearch.username: "${OPENSEARCH_USERNAME}"
+        opensearch.password: "${OPENSEARCH_PASSWORD}"
+        opensearch.ssl.verificationMode: none
+        opensearch.requestHeadersAllowlist: [authorization, securitytenant]
 
         # Security plugin UI settings
         opensearch_security.multitenancy.enabled: true
@@ -105,8 +104,8 @@ spec:
         opensearch_security.readonly_mode.roles: ["kibana_read_only"]
 
         # Cookie settings
-        opensearch_security.cookie.secure: ${cookie.secure}
-        opensearch_security.cookie.password: "${cookie.password}"
+        opensearch_security.cookie.secure: ${COOKIE_SECURE}
+        opensearch_security.cookie.password: "${COOKIE_PASSWORD}"
 
         # Logging
         logging.verbose: false
@@ -139,14 +138,14 @@ For SSO integration, add SAML settings to the Dashboards configuration:
 
         # SAML SSO settings
         opensearch_security.auth.type: "saml"
-        server.xsrf.whitelist: ["/_opendistro/_security/saml/acs", "/_opendistro/_security/saml/logout"]
+        server.xsrf.allowlist: ["/_opendistro/_security/saml/acs", "/_opendistro/_security/saml/logout"]
 ```
 
 And configure the OpenSearch backend Security plugin with your IdP metadata.
 
-## Step 4: Pre-Load Saved Searches via ConfigMap
+## Step 4: Pre-Load Saved Searches via Job
 
-Store Dashboards saved objects (index patterns, dashboards) as a ConfigMap and import them on startup:
+Import Dashboards saved objects (index patterns, dashboards) on startup:
 
 ```yaml
 # infrastructure/search/dashboards-objects-job.yaml
@@ -162,15 +161,19 @@ spec:
       containers:
         - name: import
           image: curlimages/curl:8.7.1
+          envFrom:
+            - secretRef:
+                name: opensearch-dashboards-config
           command:
             - /bin/sh
             - -c
             - |
-              until curl -s http://opensearch-dashboards.search:5601/api/status | grep -q '"level":"available"'; do
+              until curl -s -u "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD" http://opensearch-dashboards.search:5601/api/status | grep -q '"level":"available"'; do
                 echo "Waiting for Dashboards..."; sleep 5
               done
               # Import default index pattern
               curl -XPOST \
+                -u "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD" \
                 -H "osd-xsrf: true" \
                 -H "Content-Type: application/json" \
                 http://opensearch-dashboards.search:5601/api/saved_objects/index-pattern \
