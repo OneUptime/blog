@@ -31,7 +31,7 @@ Flatcar uses Ignition for first-boot configuration. Butane (the human-readable f
 # flatcar-config.bu (Butane format - compile with: butane < flatcar-config.bu > ignition.json)
 
 variant: flatcar
-version: 1.0.0
+version: 1.1.0
 
 passwd:
   users:
@@ -40,9 +40,10 @@ passwd:
         - "ssh-ed25519 AAAA...your-public-key"
       groups:
         - wheel
-        - sudo
 
 storage:
+  directories:
+    - path: /etc/kubernetes
   files:
     # Install kubeadm prerequisites
     - path: /etc/modules-load.d/k8s.conf
@@ -61,9 +62,9 @@ storage:
     - path: /etc/kubernetes/kubeadm-config.yaml
       contents:
         inline: |
-          apiVersion: kubeadm.k8s.io/v1beta3
+          apiVersion: kubeadm.k8s.io/v1beta4
           kind: ClusterConfiguration
-          kubernetesVersion: "1.29.0"
+          kubernetesVersion: "v1.33.2"
           controlPlaneEndpoint: "192.168.1.100:6443"
           networking:
             podSubnet: "10.244.0.0/16"
@@ -74,11 +75,11 @@ systemd:
     # Configure containerd as the container runtime
     - name: containerd.service
       enabled: true
-    # Disable automatic updates during initial cluster setup
+    # Prepare Flatcar Linux Update Operator to coordinate reboots
     - name: update-engine.service
-      mask: false
+      enabled: true
     - name: locksmithd.service
-      mask: false
+      mask: true
 ```
 
 ## Step 2: Compile Ignition Configuration
@@ -86,8 +87,8 @@ systemd:
 ```bash
 # Install butane
 curl -L https://github.com/coreos/butane/releases/latest/download/butane-x86_64-unknown-linux-gnu \
-  -o /usr/local/bin/butane
-chmod +x /usr/local/bin/butane
+  -o /tmp/butane
+sudo install -m 0755 /tmp/butane /usr/local/bin/butane
 
 # Compile Butane to Ignition JSON
 butane --strict < flatcar-config.bu > ignition.json
@@ -103,15 +104,16 @@ Pass the Ignition config to your nodes via the hypervisor or cloud provider:
 ```bash
 # For libvirt/QEMU:
 virt-install --name flatcar-control1 \
+  --import \
   --os-variant=linux2022 \
   --ram=4096 --vcpus=2 \
-  --disk path=/var/lib/libvirt/images/flatcar-control1.qcow2,size=50 \
-  --cdrom flatcar_production_qemu_image.img \
+  --disk size=50,backing_store=/var/lib/libvirt/images/flatcar_production_qemu_image.img \
   --qemu-commandline="-fw_cfg name=opt/org.flatcar-linux/config,file=$(pwd)/ignition.json"
 
 # For cloud providers (AWS):
+# Replace the image ID with the latest Flatcar Stable AMI for your region.
 aws ec2 run-instances \
-  --image-id ami-flatcar-linux-stable \
+  --image-id ami-0123456789abcdef0 \
   --instance-type t3.medium \
   --user-data file://ignition.json
 ```
@@ -122,8 +124,8 @@ aws ec2 run-instances \
 # SSH into the first control plane node
 ssh core@192.168.1.101
 
-# Install kubeadm, kubelet, kubectl via the OEM partition scripts
-# Flatcar ships with containerd; install kubelet via systemd-sysext or OEM channel
+# Install kubeadm, kubelet, and kubectl before initialization
+# Flatcar ships with containerd; install Kubernetes binaries via systemd-sysext or pinned plain binaries
 
 # Initialize the cluster
 sudo kubeadm init \
@@ -163,8 +165,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=flatcar-fleet \
   --branch=main \
-  --path=clusters/flatcar-prod \
-  --personal
+  --path=clusters/flatcar-prod
 
 # Verify Flux is running
 kubectl get pods -n flux-system -w
@@ -172,40 +173,41 @@ kubectl get pods -n flux-system -w
 
 ## Step 7: Configure Flatcar Updates via Flux
 
-Manage the Flatcar update locksmith strategy through a DaemonSet deployed by Flux:
+Manage Flatcar update reboots through the Flatcar Linux Update Operator deployed by Flux:
 
 ```yaml
 # clusters/flatcar-prod/system/update-operator.yaml
-apiVersion: apps/v1
-kind: DaemonSet
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
 metadata:
-  name: flatcar-update-agent
-  namespace: kube-system
+  name: flatcar-linux-update-operator
+  namespace: flux-system
 spec:
-  selector:
-    matchLabels:
-      app: flatcar-update-agent
-  template:
-    metadata:
-      labels:
-        app: flatcar-update-agent
-    spec:
-      hostPID: true
-      hostNetwork: true
-      tolerations:
-        - operator: Exists
-      containers:
-        - name: update-agent
-          image: ghcr.io/flatcar/flatcar-linux-update-operator:latest
-          securityContext:
-            privileged: true
+  interval: 1h
+  url: https://github.com/flatcar/flatcar-linux-update-operator
+  ref:
+    tag: v0.9.0
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flatcar-linux-update-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  sourceRef:
+    kind: GitRepository
+    name: flatcar-linux-update-operator
+  path: ./examples/deploy
+  prune: true
+  wait: true
 ```
 
 ## Best Practices
 
 - Use Ignition for all first-boot node configuration; avoid post-boot mutation of Flatcar nodes to preserve immutability guarantees.
 - Enable Flatcar's automatic updates and use the Flatcar Linux Update Operator (managed by Flux) to coordinate rolling node reboots without Kubernetes workload disruption.
-- Use Flatcar's OEM partition for cluster-specific configuration that survives OS updates.
+- Use Ignition-managed `/etc` files, systemd units, or systemd-sysext extensions for cluster-specific configuration that survives OS updates.
 - Avoid installing packages via `emerge` on Flatcar nodes; instead, run any additional tooling as containers or use systemd-sysext extensions.
 - Store Ignition configurations in Git alongside Flux manifests to maintain a fully reproducible cluster definition.
 
