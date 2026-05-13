@@ -43,7 +43,12 @@ spec:
       containers:
       - name: backend
         image: hashicorp/http-echo
-        args: ["-text=hello-from-$(hostname)"]
+        args: ["-text=hello-from-$(POD_NAME)"]
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 5678
 EOF
@@ -92,7 +97,8 @@ kubectl expose deployment backend --type=NodePort --name=backend-nodeport \
 
 NODE_PORT=$(kubectl get svc backend-nodeport \
   -o jsonpath='{.spec.ports[0].nodePort}')
-NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+NODE_IP=$(kubectl get nodes \
+  -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 
 # Access via NodePort
 kubectl exec client -- wget -qO- http://$NODE_IP:$NODE_PORT
@@ -152,7 +158,7 @@ kubectl exec client -- wget --timeout=10 -qO- http://backend-svc
 ## Validation 6: Headless Service Resolution
 
 ```bash
-kubectl expose deployment backend --clusterIP=None --name=backend-headless \
+kubectl expose deployment backend --cluster-ip=None --name=backend-headless \
   --port=80 --target-port=5678
 
 kubectl exec client -- nslookup backend-headless.default.svc.cluster.local
@@ -174,7 +180,7 @@ kubectl exec client -- nslookup backend-headless.default.svc.cluster.local
 ## Best Practices
 
 - Validate service connectivity from pods, not from the node - node connectivity bypasses Calico pod policy
-- Use `kubectl get endpoints backend-svc` to verify that backend pods are in the service endpoints list
+- Use `kubectl get endpointslices -l kubernetes.io/service-name=backend-svc` to verify that backend pods are in the service endpoints list
 - Test headless services separately - they bypass kube-proxy entirely and have different DNS behavior
 
 ## Conclusion
