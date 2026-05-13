@@ -21,7 +21,7 @@ In this guide you will deploy the Flink Kubernetes Operator using Flux CD HelmRe
 - A Kubernetes cluster with Flux CD installed (minimum 8 CPUs, 16GB RAM for Flink workloads)
 - `kubectl` and `flux` CLI tools installed
 - A container registry with your Flink application JAR bundled in a Docker image
-- An S3-compatible object store for checkpoint and savepoint storage
+- An S3-compatible object store for checkpoint and savepoint storage, and a Flink image with the S3 filesystem plugin enabled
 - Basic understanding of Apache Flink concepts (jobs, task managers, checkpoints)
 
 ## Step 1: Add the Flink Operator HelmRepository
@@ -36,7 +36,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://downloads.apache.org/flink/flink-kubernetes-operator-1.9.0/
+  url: https://downloads.apache.org/flink/flink-kubernetes-operator-1.13.0/
 ```
 
 ## Step 2: Deploy the Flink Kubernetes Operator
@@ -55,7 +55,7 @@ spec:
   chart:
     spec:
       chart: flink-kubernetes-operator
-      version: "1.9.x"
+      version: "1.13.x"
       sourceRef:
         kind: HelmRepository
         name: flink-operator
@@ -65,27 +65,29 @@ spec:
       - flink-jobs
 
     # Operator configuration
-    operatorConfiguration:
+    defaultConfiguration:
       create: true
-      append:
+      append: true
+      flink-conf.yaml: |+
         # Default checkpoint storage backend
-        kubernetes.operator.checkpoint.cleanup.enabled: "true"
+        kubernetes.operator.savepoint.cleanup.enabled: "true"
         # Metrics reporting
-        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-        metrics.reporter.prom.port: "9249"
+        kubernetes.operator.metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        kubernetes.operator.metrics.reporter.prom.port: "9249"
 
     # Webhook for FlinkDeployment validation
     webhook:
       create: true
 
     # Operator pod resources
-    resources:
-      requests:
-        cpu: 200m
-        memory: 512Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
+    operatorPod:
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
 ```
 
 ## Step 3: Configure Checkpoint Storage
@@ -102,10 +104,11 @@ metadata:
 data:
   flink-conf.yaml: |
     # Checkpoint storage using S3
-    state.backend: rocksdb
-    state.backend.incremental: true
-    state.checkpoints.dir: s3a://my-flink-bucket/checkpoints
-    state.savepoints.dir: s3a://my-flink-bucket/savepoints
+    state.backend.type: rocksdb
+    execution.checkpointing.storage: filesystem
+    execution.checkpointing.incremental: true
+    execution.checkpointing.dir: s3a://my-flink-bucket/checkpoints
+    execution.checkpointing.savepoint-dir: s3a://my-flink-bucket/savepoints
 
     # Checkpoint interval and timeout
     execution.checkpointing.interval: 60000
@@ -116,8 +119,7 @@ data:
     execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
 
     # S3 configuration
-    fs.s3a.endpoint: s3.amazonaws.com
-    fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
+    s3.endpoint: s3.amazonaws.com
 ```
 
 ## Step 4: Create a FlinkDeployment for a Streaming Job
@@ -131,15 +133,18 @@ metadata:
   namespace: flink-jobs
 spec:
   image: myregistry/flink-event-processor:v2.1.0
-  flinkVersion: v1_18
+  flinkVersion: v1_20
   flinkConfiguration:
     # High availability using Kubernetes
-    high-availability: org.apache.flink.kubernetes.highavailability.KubernetesHaServicesFactory
+    high-availability.type: KUBERNETES
     high-availability.storageDir: s3a://my-flink-bucket/ha/event-processor
 
     # Checkpoint settings
-    state.checkpoints.dir: s3a://my-flink-bucket/checkpoints/event-processor
-    state.savepoints.dir: s3a://my-flink-bucket/savepoints/event-processor
+    state.backend.type: rocksdb
+    execution.checkpointing.storage: filesystem
+    execution.checkpointing.incremental: "true"
+    execution.checkpointing.dir: s3a://my-flink-bucket/checkpoints/event-processor
+    execution.checkpointing.savepoint-dir: s3a://my-flink-bucket/savepoints/event-processor
     execution.checkpointing.interval: "60000"
     execution.checkpointing.timeout: "300000"
 
@@ -147,7 +152,7 @@ spec:
     kafka.bootstrap.servers: kafka.infrastructure:9092
     kafka.consumer.group.id: event-processor-group
 
-  serviceAccount: flink-service-account
+  serviceAccount: flink
 
   # Job Manager configuration
   jobManager:
@@ -173,10 +178,9 @@ spec:
       - "--output-topic=processed-events"
       - "--parallelism=6"
     parallelism: 6
-    # Upgrade mode: stateful - takes savepoint before upgrade
-    upgradeMode: stateful
-    # Restore from savepoint on restart
-    savepointTriggerNonce: 0
+    # Upgrade mode: savepoint - takes a savepoint before upgrade
+    upgradeMode: savepoint
+    state: running
 
   # Pod template for custom configuration
   podTemplate:
@@ -215,12 +219,13 @@ spec:
   wait: true
   timeout: 10m
   dependsOn:
-    - name: flink-kubernetes-operator
+    # This must be the Flux Kustomization that applies the operator HelmRelease.
+    - name: infrastructure
 ```
 
 ## Step 6: Trigger Stateful Job Upgrades
 
-When you push a new Flink job image tag to Git, Flux reconciles the FlinkDeployment. With `upgradeMode: stateful`, the operator takes a savepoint before upgrading.
+When you push a new Flink job image tag to Git, Flux reconciles the FlinkDeployment. With `upgradeMode: savepoint`, the operator takes a savepoint before upgrading.
 
 ```bash
 # Check FlinkDeployment status
@@ -247,12 +252,26 @@ curl http://localhost:8081/jobs/{job-id}/checkpoints
 ## Step 7: Manage Savepoints
 
 ```bash
-# Trigger a manual savepoint by updating savepointTriggerNonce in Git
-# The operator will capture a savepoint and update the status with the path
+# Trigger a manual savepoint by committing a FlinkStateSnapshot resource to Git
+cat <<'EOF' > apps/flink-jobs/event-processor-savepoint.yaml
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkStateSnapshot
+metadata:
+  name: event-processor-savepoint
+  namespace: flink-jobs
+spec:
+  backoffLimit: 1
+  jobReference:
+    kind: FlinkDeployment
+    name: event-processor
+  savepoint:
+    formatType: CANONICAL
+    path: s3a://my-flink-bucket/savepoints/event-processor
+EOF
 
-# View savepoint location from FlinkDeployment status
-kubectl get flinkdeployment event-processor -n flink-jobs \
-  -o jsonpath='{.status.jobStatus.savepointInfo.lastSavepoint.location}'
+# View savepoint location from the FlinkStateSnapshot status
+kubectl get flinkstatesnapshot event-processor-savepoint -n flink-jobs \
+  -o jsonpath='{.status.path}'
 
 # Cancel job with savepoint (for planned maintenance)
 kubectl patch flinkdeployment event-processor -n flink-jobs \
@@ -262,9 +281,9 @@ kubectl patch flinkdeployment event-processor -n flink-jobs \
 
 ## Best Practices
 
-- Use `upgradeMode: stateful` for production streaming jobs to prevent state loss during upgrades
+- Use `upgradeMode: savepoint` for production streaming jobs to prevent state loss during upgrades
 - Always configure S3 or GCS for checkpoint storage - do not rely on local disk
-- Store `flinkConfiguration` in a separate ConfigMap and reference it in FlinkDeployment for reuse
+- Store common `flinkConfiguration` values in shared manifests or overlays for reuse
 - Set `execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION` to recover from failures
 - Monitor checkpoint duration and size to detect performance degradation early
 - Use Flink HA with Kubernetes backend for production deployments to survive job manager failures
