@@ -163,6 +163,8 @@ spec:
         name: cluster-vars
 ```
 
+The referenced ConfigMap or Secret must exist in the same namespace as the Flux Kustomization resource. In this example, make sure `cluster-vars` is applied to the `flux-system` namespace before this Kustomization reconciles.
+
 For production, you might also add inline variables that override or supplement ConfigMap values:
 
 ```yaml
@@ -223,7 +225,7 @@ Flux processes variables in a specific order. Understanding this is critical whe
 
 1. Inline `substitute` values have the highest priority.
 2. `substituteFrom` entries are processed in order, with later entries overriding earlier ones.
-3. If a variable is not found in any source, the literal `${var}` string remains in the manifest, which will likely cause an apply error.
+3. If a variable is not found in any source, Flux substitutes it with an empty string unless a default value is provided.
 
 ## Setting Default Values
 
@@ -250,8 +252,8 @@ Before deploying, verify that your variable substitution works correctly:
 # Check the Flux Kustomization status
 kubectl get kustomization my-app -n flux-system
 
-# View the last applied configuration with variables resolved
-flux get kustomization my-app -n flux-system
+# Check Flux Kustomization status with the Flux CLI
+flux get kustomizations -n flux-system
 
 # Force a reconciliation to test changes
 flux reconcile kustomization my-app -n flux-system
@@ -262,15 +264,10 @@ kubectl logs -n flux-system deploy/kustomize-controller | grep "substitution"
 
 ## Restricting Variable Substitution
 
-For security, you can use a strict substitution mode that fails if any variable is missing rather than leaving placeholders:
+For stricter validation, configure the kustomize-controller with the `--feature-gates=StrictPostBuildSubstitutions=true` flag so reconciliation fails when a variable without a default value is missing from the input vars. You can also use `flux envsubst --strict` when testing substitutions locally:
 
-```yaml
-postBuild:
-  substitute:
-    cluster_env: "staging"
-  substituteFrom:
-    - kind: ConfigMap
-      name: cluster-vars
+```bash
+kustomize build ./base/app | flux envsubst --strict
 ```
 
 To prevent accidental substitution in manifests that contain literal `${}` patterns (such as shell scripts in ConfigMaps), escape them by using `$${var}` which Flux will convert to the literal `${var}`.
