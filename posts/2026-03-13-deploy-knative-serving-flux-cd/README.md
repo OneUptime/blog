@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Knative, Serverless, Knative Serving, HelmRelease
+Tags: Flux CD, Kubernetes, GitOps, Knative, Serverless, Knative Serving, Kustomization
 
-Description: Deploy Knative Serving for serverless workloads using Flux CD HelmRelease to enable scale-to-zero and traffic-splitting for containerized applications.
+Description: Deploy Knative Serving for serverless workloads using Flux CD Kustomization to enable scale-to-zero and traffic-splitting for containerized applications.
 
 ---
 
@@ -14,15 +14,15 @@ Knative Serving is a Kubernetes extension that adds serverless capabilities incl
 
 Managing Knative through Flux CD ensures the platform components - CRDs, controller, and networking layer - are consistently deployed and version-controlled. Application teams can then deploy Knative Services through the same GitOps pipeline, giving you end-to-end auditability from platform to workload.
 
-This guide covers deploying Knative Serving with Kourier as the networking layer using Flux CD HelmRelease.
+This guide covers deploying Knative Serving with Kourier as the networking layer using Flux CD Kustomization.
 
 ## Prerequisites
 
-- Kubernetes cluster (1.28+)
+- Kubernetes cluster (1.33+)
 - Flux CD v2 bootstrapped to your Git repository
-- A domain name or wildcard DNS for Knative routes (or use Magic DNS with sslip.io for testing)
+- A domain name or wildcard DNS for Knative routes (or use `<external-ip>.sslip.io` for testing)
 
-## Step 1: Create the Namespace and HelmRepository
+## Step 1: Create the Namespace
 
 ```yaml
 # clusters/my-cluster/knative/namespace.yaml
@@ -33,51 +33,11 @@ metadata:
   name: knative-serving
   labels:
     app.kubernetes.io/managed-by: flux
----
-# clusters/my-cluster/knative/helmrepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: knative
-  namespace: flux-system
-spec:
-  interval: 12h
-  url: https://charts.konghq.com  # Using Knative via operator Helm chart
 ```
 
-## Step 2: Deploy Knative Serving Operator via HelmRelease
+## Step 2: Create GitRepositories for Knative Manifests
 
-For Knative, the recommended GitOps approach is to apply the official YAML manifests via a Flux Kustomization from an OCIRepository:
-
-```yaml
-# clusters/my-cluster/knative/ocirepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: knative-serving
-  namespace: flux-system
-spec:
-  interval: 12h
-  url: oci://gcr.io/knative-releases/serving/serving-core
-  ref:
-    tag: v1.14.0
----
-# clusters/my-cluster/knative/flux-kustomization-knative-crds.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: knative-crds
-  namespace: flux-system
-spec:
-  interval: 1h
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./clusters/my-cluster/knative/crds
-  prune: false   # Never prune CRDs
-```
-
-For a simpler approach using the upstream manifests:
+For Knative, the recommended GitOps approach is to apply the official YAML manifests via Flux Kustomizations:
 
 ```yaml
 # clusters/my-cluster/knative/gitrepository-knative.yaml
@@ -90,12 +50,24 @@ spec:
   interval: 12h
   url: https://github.com/knative/serving
   ref:
-    tag: knative-v1.14.0
-  ignore: |
-    # Ignore everything except the config directory
-    /*
-    !/config/core/
-    !/config/post-install/
+    tag: knative-v1.22.0
+  sparseCheckout:
+    - config/core
+    - config/post-install
+---
+# clusters/my-cluster/knative/gitrepository-kourier.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: knative-net-kourier
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://github.com/knative-extensions/net-kourier
+  ref:
+    tag: knative-v1.22.0
+  sparseCheckout:
+    - config
 ```
 
 ## Step 3: Apply Knative Serving Core
@@ -123,28 +95,28 @@ spec:
           name: config-domain
           namespace: knative-serving
         data:
-          # Use sslip.io for magic DNS in testing
-          "sslip.io": ""
+          # Use your wildcard DNS domain, or <external-ip>.sslip.io for testing
+          "<your-domain>": ""
       target:
         kind: ConfigMap
         name: config-domain
+    # Configure Kourier as the default ingress class
+    - patch: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: config-network
+          namespace: knative-serving
+        data:
+          ingress-class: kourier.ingress.networking.knative.dev
+      target:
+        kind: ConfigMap
+        name: config-network
 ```
 
 ## Step 4: Deploy Kourier as the Networking Layer
 
 ```yaml
-# clusters/my-cluster/knative/gitrepository-kourier.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: knative-net-kourier
-  namespace: flux-system
-spec:
-  interval: 12h
-  url: https://github.com/knative-extensions/net-kourier
-  ref:
-    tag: knative-v1.14.0
----
 # clusters/my-cluster/knative/kustomization-kourier.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -160,18 +132,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: knative-net-kourier
-  patches:
-    - patch: |
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: config-network
-          namespace: knative-serving
-        data:
-          ingress-class: kourier.ingress.networking.knative.dev
-      target:
-        kind: ConfigMap
-        name: config-network
 ```
 
 ## Step 5: Deploy a Knative Service
@@ -187,9 +147,9 @@ spec:
   template:
     metadata:
       annotations:
-        # Scale to zero after 60 seconds of inactivity
+        # Wait 60 seconds before applying scale-down decisions
         autoscaling.knative.dev/scale-down-delay: "60s"
-        # Maximum 10 concurrent requests per pod before scaling
+        # Target 10 concurrent requests per pod before scaling
         autoscaling.knative.dev/target: "10"
     spec:
       containers:
@@ -225,11 +185,11 @@ curl http://hello-world.default.<your-domain>
 
 ## Best Practices
 
-- Use `dependsOn` in Flux Kustomizations to ensure CRDs are applied before the operator and services that depend on them.
-- Set `prune: false` for CRD Kustomizations - Flux should never delete CRDs as that would destroy all custom resources.
+- Use `dependsOn` in Flux Kustomizations to ensure Knative Serving is applied before networking and services that depend on it.
+- Set `prune: false` for Kustomizations that include CRDs - Flux should never delete CRDs as that would destroy all custom resources.
 - Configure the Knative autoscaler targets per-service rather than globally to tune scale-to-zero behavior for each workload's latency requirements.
 - Use traffic splitting in Knative Services for canary rollouts: define named revisions and set traffic weights in your Git-managed Service spec.
-- Monitor cold start latency with Prometheus and configure `minScale: 1` for latency-sensitive services that cannot tolerate scale-from-zero delays.
+- Monitor cold start latency with Prometheus and configure `autoscaling.knative.dev/min-scale: "1"` for latency-sensitive services that cannot tolerate scale-from-zero delays.
 
 ## Conclusion
 
