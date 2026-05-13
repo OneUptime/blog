@@ -35,7 +35,7 @@ metadata:
   namespace: flux-system
 spec:
   # Official Tofu Controller Helm chart repository
-  url: https://weaveworks.github.io/tf-controller/
+  url: https://flux-iac.github.io/tofu-controller/
   interval: 10m
 ```
 
@@ -59,10 +59,14 @@ spec:
         kind: HelmRepository
         name: tofu-controller
         namespace: flux-system
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
   values:
     # Number of concurrent Terraform reconciliations
     concurrency: 4
-    # Log verbosity (0=error, 1=warn, 2=info, 4=debug)
+    # Log verbosity
     logLevel: info
     # Resource requests and limits for the controller pod
     resources:
@@ -75,16 +79,11 @@ spec:
     # Runner pods execute Terraform plans and applies
     runner:
       image:
-        repository: ghcr.io/flux-iac/tofu-controller
+        repository: ghcr.io/flux-iac/tf-runner
         tag: ""  # Inherits from chart appVersion
-      # Resource limits for runner pods
-      resources:
-        limits:
-          cpu: 500m
-          memory: 512Mi
-        requests:
-          cpu: 100m
-          memory: 128Mi
+      serviceAccount:
+        allowedNamespaces:
+          - flux-system
     # Enable branch planner for PR-based plan previews
     branchPlanner:
       enabled: false  # Enable if you want plans on pull requests
@@ -154,7 +153,7 @@ spec:
 ```
 
 ```yaml
-# Test a simple Terraform resource (plan-only, no apply)
+# Test a simple Terraform resource (auto-apply)
 # infrastructure/tofu-controller/test-terraform.yaml
 apiVersion: infra.contrib.fluxcd.io/v1alpha2
 kind: Terraform
@@ -169,7 +168,7 @@ spec:
     kind: GitRepository
     name: terraform-modules
     namespace: flux-system
-  # approvePlan: auto means auto-apply; set to manual for approval workflow
+  # approvePlan: auto means auto-apply; omit it or leave it empty for manual approval
   approvePlan: "auto"
   # Workspace name (defaults to "default")
   workspace: hello-world
@@ -194,8 +193,8 @@ kubectl describe terraform hello-world -n flux-system
 
 - Set `concurrency` based on your cluster capacity. Each concurrent reconciliation spawns a runner pod that runs `terraform plan` or `terraform apply`.
 - Use `version: "0.16.x"` with a patch wildcard to receive bug fixes automatically while avoiding minor version changes that could include breaking changes.
-- Start with `approvePlan: manual` in staging environments to review plans before they are applied. Switch to `approvePlan: auto` in lower environments for faster iteration.
-- Configure runner resource limits conservatively. Terraform operations that download large provider plugins can temporarily spike memory usage.
+- Omit `approvePlan` or leave it empty in staging environments to review plans before they are applied. Switch to `approvePlan: auto` in lower environments for faster iteration.
+- Configure controller resource limits conservatively. Terraform operations that download large provider plugins can temporarily spike memory usage in runner pods.
 - Enable the branch planner if your team uses pull requests for infrastructure changes. It posts plan output as PR comments, enabling review before merge.
 
 ## Conclusion
