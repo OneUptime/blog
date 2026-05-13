@@ -10,13 +10,15 @@ Description: Learn how to set the Helm repository cache maximum size in Flux to 
 
 ## What Helm Cache Max Size Controls
 
-The `--helm-cache-max-size` flag on the Flux source-controller determines the maximum number of Helm repository index entries that can be stored in the in-memory cache. When this value is zero (the default), caching is disabled and every HelmRepository reconciliation downloads the index from the remote server.
+The `--helm-cache-max-size` flag on the Flux source-controller determines the maximum number of Helm repository indexes that can be stored in the in-memory cache. When this value is zero (the default), caching is disabled and HelmChart reconciliations load the repository index from the stored HelmRepository artifact when needed.
 
 ## Why It Matters
 
-Helm repository index files can be large. The Bitnami Helm repository index, for example, is several megabytes. Every time the source-controller reconciles a HelmRepository, it downloads this index to look up chart versions. If you have multiple HelmChart objects pointing to the same HelmRepository, the index may be downloaded multiple times within a single reconciliation cycle.
+Helm repository index files can be large. The Bitnami Helm repository index, for example, is several megabytes. Every time the source-controller reconciles a HelmRepository, it downloads this index to refresh the stored artifact.
 
-Setting an appropriate cache max size prevents these redundant downloads and can cut reconciliation time significantly.
+The HelmRepository reconciliation still fetches the remote index on its interval, but HelmChart reconciliations also need to load and parse that repository index to resolve chart versions. If you have multiple HelmChart objects pointing to the same HelmRepository, the index may be loaded multiple times within a single reconciliation cycle.
+
+Setting an appropriate cache max size prevents these redundant loads and can cut reconciliation time significantly.
 
 ## Configuring the Value
 
@@ -25,25 +27,9 @@ Setting an appropriate cache max size prevents these redundant downloads and can
 ```yaml
 # clusters/my-cluster/flux-system/source-controller-patch.yaml
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            - --storage-addr=:9090
-            - --storage-adv-addr=source-controller.flux-system.svc.cluster.local.
-            - --helm-cache-max-size=32
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --helm-cache-max-size=32
 ```
 
 ### Apply via Kustomization
@@ -70,7 +56,7 @@ git push
 
 ## How to Choose the Right Size
 
-The cache max size should be at least equal to the number of HelmRepository objects in your cluster. Each HelmRepository has its index cached independently.
+The cache max size should be at least equal to the number of HTTP/S HelmRepository objects in your cluster whose indexes are used by HelmCharts. Each HelmRepository has its index cached independently.
 
 To find out how many HelmRepository objects you have:
 
@@ -110,7 +96,7 @@ spec:
 
 ## What Happens When the Cache is Full
 
-When the cache reaches its maximum size, no more items can be added. The source-controller will report a warning event indicating that the cache is full, and subsequent reconciliations that require a cache miss will download the index directly from the remote server without caching it. To avoid this, set the cache size to at least the number of HelmRepository objects in your cluster.
+When the cache reaches its maximum size, no more items can be added. The source-controller logs the failed cache operation, and subsequent reconciliations that require a cache miss read the index from the stored artifact file without caching it. To avoid this, set the cache size to at least the number of HTTP/S HelmRepository objects whose indexes are used by HelmCharts.
 
 ## Verifying the Configuration
 
@@ -121,4 +107,4 @@ kubectl get deployment source-controller -n flux-system \
 
 ## Summary
 
-Setting `--helm-cache-max-size` enables the Helm repository index cache and controls its capacity. Size it to match the number of HelmRepository objects in your cluster, account for the additional memory usage, and monitor cache evictions through the source-controller logs.
+Setting `--helm-cache-max-size` enables the Helm repository index cache and controls its capacity. Size it to match the number of HTTP/S HelmRepository indexes used by HelmCharts, account for the additional memory usage, and monitor cache hits, misses, and failed cache operations through the source-controller metrics and logs.
