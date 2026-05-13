@@ -10,21 +10,21 @@ Description: Diagnose calico-node pod eviction events by examining node pressure
 
 ## Introduction
 
-calico-node pod eviction is a particularly damaging event because it deprives the node of its CNI and BGP daemon simultaneously. When the kubelet evicts calico-node due to resource pressure (disk, memory, or CPU), the node's networking degraded immediately: no new pods can receive IPs, existing pod routes may become stale, and BGP sessions are withdrawn.
+calico-node pod eviction is a particularly damaging event because it can deprive the node of its CNI and, when BGP is enabled, its BGP daemon simultaneously. When the kubelet evicts calico-node due to node pressure such as disk, memory, or PID pressure, the node's networking degrades immediately: no new pods can receive IPs, existing pod routes may become stale, and BGP sessions can be withdrawn.
 
 The challenge is that eviction is a normal Kubernetes mechanism that indicates resource pressure on the node. Fixing calico-node eviction requires both restoring the pod and addressing the underlying resource pressure to prevent immediate re-eviction.
 
 ## Symptoms
 
 - calico-node pod shows `Evicted` status in `kubectl get pods`
-- Node shows DiskPressure, MemoryPressure, or similar conditions
+- Node shows DiskPressure, MemoryPressure, or PIDPressure conditions
 - Eviction events visible in `kubectl describe node <node>`
-- Node transitions to NotReady after calico-node is evicted
+- Node may transition to NotReady or show network-related readiness issues after calico-node is evicted
 
 ## Root Causes
 
-- Insufficient disk space (most common) - calico-node logs filling disk
-- Node memory pressure causing low-priority pod evictions
+- Insufficient disk space or inodes, sometimes from excessive container logs
+- Node memory pressure causing lower-priority or over-request pods to be evicted
 - calico-node does not have system-node-critical priority class
 - Node ephemeral storage limits hit by calico-node
 
@@ -33,7 +33,7 @@ The challenge is that eviction is a normal Kubernetes mechanism that indicates r
 **Step 1: Check calico-node pod status**
 
 ```bash
-kubectl get pods -n kube-system -l k8s-app=calico-node -o wide | grep -E "Evicted|Error"
+kubectl get pods -A -l k8s-app=calico-node -o wide | grep -E "Evicted|Error"
 ```
 
 **Step 2: Check node pressure conditions**
@@ -54,17 +54,17 @@ ssh <node-name> "df -h && free -h"
 **Step 4: Check calico-node resource configuration**
 
 ```bash
-kubectl get daemonset calico-node -n kube-system \
+kubectl get daemonset calico-node -n <calico-namespace> \
   -o jsonpath='{.spec.template.spec.containers[0].resources}'
 echo ""
-kubectl get daemonset calico-node -n kube-system \
+kubectl get daemonset calico-node -n <calico-namespace> \
   -o jsonpath='{.spec.template.spec.priorityClassName}'
 ```
 
 **Step 5: Check node eviction events**
 
 ```bash
-kubectl get events -n kube-system | grep -i "evict\|oom\|pressure"
+kubectl get events -A --field-selector involvedObject.name=<node-name> | grep -i "evict\|oom\|pressure"
 kubectl describe node <node-name> | grep -A 5 "Events:"
 ```
 
@@ -82,7 +82,7 @@ flowchart TD
     B --> C{Pressure type?}
     C -- DiskPressure --> D[Check disk usage on node]
     C -- MemoryPressure --> E[Check memory usage on node]
-    C -- Both --> F[Address both disk and memory]
+    C -- PIDPressure --> F[Check process usage on node]
     D --> G[Identify disk usage source]
     G --> H{calico-node logs filling disk?}
     H -- Yes --> I[Reduce calico-node log verbosity]
@@ -97,9 +97,9 @@ After identifying the pressure type and source, apply the targeted fix. See the 
 ## Prevention
 
 - Set `system-node-critical` priority class on calico-node DaemonSet
-- Set appropriate resource limits to prevent excessive resource use
+- Set appropriate resource requests and limits to reduce eviction risk and prevent excessive resource use
 - Monitor node disk and memory pressure metrics with alerts
 
 ## Conclusion
 
-Diagnosing calico-node eviction requires checking node pressure conditions, resource utilization, and calico-node's priority class and resource configuration. Disk pressure is the most common cause, often from verbose logging filling node disk space.
+Diagnosing calico-node eviction requires checking node pressure conditions, resource utilization, and calico-node's priority class and resource configuration. Disk pressure is a common cause, including from verbose logging or other consumers filling node disk space.
