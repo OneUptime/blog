@@ -12,17 +12,17 @@ Description: Learn how to install and manage Calico using the official Helm char
 
 Helm is the de facto package manager for Kubernetes, and Calico provides an official Helm chart through the Tigera operator chart. Using Helm to install Calico brings several advantages: version-controlled configuration via `values.yaml`, easy upgrades through `helm upgrade`, and seamless integration with GitOps pipelines using Flux or Argo CD.
 
-Migrating an existing Calico installation to Helm management - or performing a fresh Calico install via Helm - enables teams to manage Calico configuration as code alongside their other Helm-based workloads. This is particularly valuable in organizations that standardize on Helm for all cluster component management.
+Installing Calico through Helm enables teams to manage Calico configuration as code alongside their other Helm-based workloads. This is particularly valuable in organizations that standardize on Helm for all cluster component management.
 
 This guide covers adding the Calico Helm repository, installing Calico via Helm, configuring IP pools and encapsulation through Helm values, and integrating with GitOps workflows for ongoing management.
 
 ## Prerequisites
 
-- Kubernetes cluster v1.27+ without an existing CNI, or with an existing CNI to replace
+- Kubernetes cluster v1.27+ installed without a CNI plugin, or running a compatible CNI for Calico policy-only mode
 - Helm v3.10+ installed
 - `kubectl` with cluster-admin access
-- `calicoctl` v3.27+ installed for post-install validation
-- Helm repository access to `projectcalico.org`
+- `calicoctl` v3.32+ installed for post-install validation
+- Helm repository access to `https://docs.tigera.io/calico/charts`
 
 ## Step 1: Add the Calico Helm Repository
 
@@ -52,12 +52,11 @@ Create a values file with your cluster-specific settings:
 # calico-values.yaml - Helm values for Calico installation
 # This file should be stored in version control
 
-tigera-operator:
-  # Resource requests for the Tigera operator
-  resources:
-    requests:
-      cpu: 150m
-      memory: 128Mi
+# Resource requests for the Tigera operator
+resources:
+  requests:
+    cpu: 150m
+    memory: 128Mi
 
 installation:
   enabled: true
@@ -65,13 +64,13 @@ installation:
     bgp: Disabled                 # Set to Enabled if BGP peering is needed
     ipPools:
     - blockSize: 26
-      cidr: 192.168.0.0/16        # Must match --cluster-cidr in kubelet config
-      encapsulation: VXLAN        # VXLAN, IPIP, or None
+      cidr: 192.168.0.0/16        # Must match your cluster pod CIDR
+      encapsulation: VXLAN        # VXLAN, IPIP, IPIPCrossSubnet, VXLANCrossSubnet, or None
       natOutgoing: Enabled
       nodeSelector: all()
   # Enable eBPF for improved performance (optional)
-  # calicoNetwork:
-  #   linuxDataplane: BPF
+  # Add under calicoNetwork:
+  # linuxDataplane: BPF
 ```
 
 ## Step 3: Install Calico via Helm
@@ -84,11 +83,16 @@ Install the Tigera operator and Calico using Helm:
 # Create the tigera-operator namespace
 kubectl create namespace tigera-operator
 
-# Install Calico using the Helm chart and custom values
+# Install the Calico CRDs
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 \
+  --namespace tigera-operator \
+  --version v3.32.0 | kubectl apply --server-side -f -
+
+# Install Calico using the Tigera operator Helm chart and custom values
 helm install calico projectcalico/tigera-operator \
   --namespace tigera-operator \
   --values calico-values.yaml \
-  --version v3.27.0 \
+  --version v3.32.0 \
   --wait \
   --timeout 5m
 
@@ -100,7 +104,7 @@ helm list -n tigera-operator
 
 Manage the Calico Helm chart through Flux for continuous reconciliation.
 
-Create a Flux HelmRelease for the Calico Tigera operator:
+Create Flux HelmRelease resources for the Calico CRDs and Tigera operator:
 
 ```yaml
 # calico-helmrelease.yaml - Flux HelmRelease for Calico management
@@ -116,19 +120,41 @@ spec:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: calico
+  name: calico-crds
   namespace: tigera-operator
 spec:
   interval: 30m
   chart:
     spec:
+      chart: crd.projectcalico.org.v1
+      version: "v3.32.0"
+      sourceRef:
+        kind: HelmRepository
+        name: calico
+        namespace: flux-system
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: calico
+  namespace: tigera-operator
+spec:
+  interval: 30m
+  dependsOn:
+  - name: calico-crds
+  chart:
+    spec:
       chart: tigera-operator
-      version: "3.27.*"
+      version: "v3.32.0"
       sourceRef:
         kind: HelmRepository
         name: calico
         namespace: flux-system
   values:
+    resources:
+      requests:
+        cpu: 150m
+        memory: 128Mi
     installation:
       calicoNetwork:
         ipPools:
@@ -160,7 +186,7 @@ kubectl get pods -n calico-system
 # Validate IP pool configuration via calicoctl
 calicoctl get ippools -o wide
 
-# Test pod-to-pod connectivity
+# Test in-cluster service connectivity
 kubectl run test --image=curlimages/curl --rm -it -- curl http://kubernetes.default.svc
 ```
 
