@@ -12,11 +12,11 @@ Description: Deploy the Crossplane GCP provider using Flux CD GitOps to manage G
 
 The Crossplane GCP provider transforms your Kubernetes cluster into a Google Cloud control plane. Once deployed, you can create Cloud SQL instances, GCS buckets, GKE clusters, and VPCs by applying YAML manifests-the same way you deploy applications. Flux CD manages the provider lifecycle, ensuring the desired state is always reconciled against the live state of your cluster.
 
-Google Cloud Platform offers robust workload identity features that eliminate the need to manage service account key files. When running Crossplane on GKE, you can configure the provider to use Workload Identity, which binds a Kubernetes service account to a GCP service account automatically. This guide covers both approaches: service account key files for non-GKE environments and Workload Identity for GKE.
+Google Cloud Platform offers robust workload identity features that eliminate the need to manage service account key files. When running Crossplane on GKE, you can configure the provider to use Workload Identity by granting the Kubernetes service account permission to impersonate a Google Cloud service account. This guide uses service account key files for non-GKE environments and notes the Workload Identity option for GKE.
 
 ## Prerequisites
 
-- Crossplane installed and running on the cluster
+- Crossplane 2.0 or later installed and running on the cluster
 - Flux CD bootstrapped
 - A GCP project with billing enabled
 - `gcloud` CLI, `kubectl`, and `flux` CLIs installed
@@ -66,7 +66,7 @@ metadata:
   name: provider-family-gcp
 spec:
   # Upbound's GCP provider family package
-  package: xpkg.upbound.io/upbound/provider-family-gcp:v1.3.0
+  package: xpkg.upbound.io/upbound/provider-family-gcp:v2
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
   revisionHistoryLimit: 3
@@ -81,7 +81,7 @@ kind: Provider
 metadata:
   name: provider-gcp-sql
 spec:
-  package: xpkg.upbound.io/upbound/provider-gcp-sql:v1.3.0
+  package: xpkg.upbound.io/upbound/provider-gcp-sql:v2
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
 
@@ -92,7 +92,7 @@ kind: Provider
 metadata:
   name: provider-gcp-storage
 spec:
-  package: xpkg.upbound.io/upbound/provider-gcp-storage:v1.3.0
+  package: xpkg.upbound.io/upbound/provider-gcp-storage:v2
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
 
@@ -103,7 +103,7 @@ kind: Provider
 metadata:
   name: provider-gcp-container
 spec:
-  package: xpkg.upbound.io/upbound/provider-gcp-container:v1.3.0
+  package: xpkg.upbound.io/upbound/provider-gcp-container:v2
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
 ```
@@ -171,7 +171,7 @@ kubectl get providerconfig.gcp.upbound.io/default
 
 ## Best Practices
 
-- Use Workload Identity when running Crossplane on GKE to avoid managing service account key files entirely. Annotate the Crossplane service account with `iam.gke.io/gcp-service-account` to enable automatic credential injection.
+- Use Workload Identity when running the provider on GKE to avoid managing service account key files entirely. Configure the provider's Kubernetes service account with a Crossplane `DeploymentRuntimeConfig`, grant it `roles/iam.workloadIdentityUser` on the IAM service account, annotate it with `iam.gke.io/gcp-service-account`, and set the ProviderConfig credentials source to `InjectedIdentity`.
 - Apply the principle of least privilege: grant only the specific GCP roles needed for the resources you plan to provision. Use custom IAM roles for fine-grained control.
 - Rotate service account keys every 90 days and store them using SOPS or External Secrets Operator rather than committing them to Git.
 - Enable GCP audit logging for the service account to track all API calls made by Crossplane.
