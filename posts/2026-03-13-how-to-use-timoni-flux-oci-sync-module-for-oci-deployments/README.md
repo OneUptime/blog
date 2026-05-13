@@ -26,10 +26,11 @@ This guide walks through deploying applications from OCI repositories using the 
 The flux-oci-sync module generates two Flux resources: an OCIRepository source and a Kustomization that deploys from that source. Inspect the module to see its available values:
 
 ```bash
-timoni mod values oci://ghcr.io/stefanprodan/modules/flux-oci-sync
+timoni mod pull oci://ghcr.io/stefanprodan/modules/flux-oci-sync \
+  --output ./flux-oci-sync
 ```
 
-This shows the CUE schema with all configurable parameters including the OCI URL, tag, interval, target namespace, and Kustomize options.
+The module README and `templates/config.cue` file show the CUE schema with all configurable parameters including the OCI URL, tag, interval, target namespace, and Kustomize options.
 
 ## Step 2: Create a Basic OCI Sync Configuration
 
@@ -39,16 +40,16 @@ Create a values file for a basic OCI deployment:
 # oci-sync-values.yaml
 
 values:
-  oci:
+  artifact:
     url: "oci://ghcr.io/your-org/app-manifests"
     tag: "latest"
-    interval: "10m"
+    interval: 10
+  auth:
     provider: "generic"
   sync:
     path: "./"
     prune: true
     wait: true
-    interval: "10m"
     targetNamespace: "production"
 ```
 
@@ -83,7 +84,9 @@ metadata:
   name: app-sync
   namespace: flux-system
 spec:
-  interval: 10m
+  interval: 60m
+  retryInterval: 5m
+  timeout: 3m
   sourceRef:
     kind: OCIRepository
     name: app-sync
@@ -123,30 +126,22 @@ For private OCI registries, add authentication credentials:
 ```yaml
 # oci-sync-private.yaml
 values:
-  oci:
+  artifact:
     url: "oci://my-registry.example.com/apps/frontend"
     tag: "v1.5.0"
-    interval: "10m"
+    interval: 10
+  auth:
     provider: "generic"
-    secretRef:
-      name: "oci-registry-creds"
+    credentials:
+      username: "your-user"
+      password: "your-token"
   sync:
     path: "./"
     prune: true
     targetNamespace: "production"
 ```
 
-Create the registry credentials secret before applying:
-
-```bash
-kubectl create secret docker-registry oci-registry-creds \
-  -n flux-system \
-  --docker-server=my-registry.example.com \
-  --docker-username=your-user \
-  --docker-password=your-token
-```
-
-Then apply the module:
+The module creates the registry credentials secret for the OCIRepository. Then apply the module:
 
 ```bash
 timoni apply app-sync oci://ghcr.io/stefanprodan/modules/flux-oci-sync \
@@ -161,10 +156,11 @@ For cloud-hosted registries, use the built-in provider authentication:
 ```yaml
 # oci-sync-aws.yaml
 values:
-  oci:
+  artifact:
     url: "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/app-manifests"
     tag: "latest"
-    interval: "10m"
+    interval: 10
+  auth:
     provider: "aws"
   sync:
     path: "./"
@@ -176,21 +172,22 @@ Supported providers include `aws`, `azure`, `gcp`, and `generic`.
 
 ## Step 6: Pin to Specific Versions
 
-For production deployments, pin to a specific semver tag or digest:
+For production deployments, pin to a specific tag or semver range:
 
 ```yaml
 # oci-sync-pinned.yaml
 values:
-  oci:
+  artifact:
     url: "oci://ghcr.io/your-org/app-manifests"
     tag: "v2.1.0"
-    interval: "30m"
+    interval: 30
+  auth:
     provider: "generic"
   sync:
     path: "./"
     prune: true
     wait: true
-    timeout: "5m"
+    timeout: 5
     targetNamespace: "production"
 ```
 
@@ -198,36 +195,35 @@ Using semver ranges:
 
 ```yaml
 values:
-  oci:
+  artifact:
     url: "oci://ghcr.io/your-org/app-manifests"
     semver: ">=2.0.0 <3.0.0"
-    interval: "10m"
+    interval: 10
 ```
 
-## Step 7: Add Health Checks and Substitution
+## Step 7: Add Readiness Waiting and Substitution
 
-Configure post-build substitution and health checks:
+Configure post-build substitution and readiness waiting:
 
 ```yaml
 # oci-sync-advanced.yaml
 values:
-  oci:
+  artifact:
     url: "oci://ghcr.io/your-org/app-manifests"
     tag: "v2.1.0"
-    interval: "10m"
+    interval: 10
   sync:
     path: "./production"
     prune: true
     wait: true
-    timeout: "10m"
+    timeout: 10
     targetNamespace: "production"
-    postBuild:
-      substitute:
-        CLUSTER_NAME: "prod-us-east"
-        ENVIRONMENT: "production"
-      substituteFrom:
-        - kind: ConfigMap
-          name: cluster-vars
+  substitute:
+    CLUSTER_NAME: "prod-us-east"
+    ENVIRONMENT: "production"
+  substituteFrom:
+    - kind: ConfigMap
+      name: cluster-vars
 ```
 
 ## Step 8: Manage Multiple OCI Syncs
