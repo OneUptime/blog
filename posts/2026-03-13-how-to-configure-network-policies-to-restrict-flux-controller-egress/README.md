@@ -16,13 +16,13 @@ This guide walks through creating egress-restricted NetworkPolicies for every Fl
 
 Before you begin, make sure you have the following in place:
 
-- A Kubernetes cluster running version 1.24 or later
+- A Kubernetes cluster version supported by your installed Flux release
 - A CNI plugin that supports NetworkPolicy enforcement (Calico, Cilium, Weave Net, or similar)
 - Flux installed in the flux-system namespace
 - kubectl configured with cluster-admin access
 - Familiarity with Kubernetes NetworkPolicy resources
 
-Verify that your CNI supports NetworkPolicies by creating a test policy:
+Verify that the Kubernetes API accepts NetworkPolicy resources by creating a test policy:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -39,7 +39,7 @@ spec:
 EOF
 ```
 
-If the resource is created without errors, your CNI supports NetworkPolicies. Clean up with:
+If the resource is created without errors, the NetworkPolicy API is available. This does not prove that your CNI enforces NetworkPolicies; confirm enforcement in your CNI documentation or by running a connectivity test. Clean up with:
 
 ```bash
 kubectl delete networkpolicy test-policy -n default
@@ -51,12 +51,12 @@ Each Flux controller has different egress needs:
 
 | Controller | Required Egress Destinations |
 |---|---|
-| source-controller | Git hosts, container registries, Helm repositories, Kubernetes API server |
-| kustomize-controller | Kubernetes API server |
-| helm-controller | Kubernetes API server |
+| source-controller | Git hosts, container registries, Helm repositories, Kubernetes API server, notification-controller service |
+| kustomize-controller | Kubernetes API server, source-controller artifact service, notification-controller service |
+| helm-controller | Kubernetes API server, source-controller artifact service, notification-controller service |
 | notification-controller | External webhook endpoints (Slack, Teams, etc.), Kubernetes API server |
 
-The Kubernetes API server is required by all controllers for reconciliation and status updates.
+The Kubernetes API server is required by all controllers for reconciliation and status updates. Several controllers also talk to Flux services inside the `flux-system` namespace to fetch artifacts and send events.
 
 ## Step 1: Create a Default Deny Egress Policy
 
@@ -175,9 +175,37 @@ spec:
 EOF
 ```
 
+Also allow the controllers to reach Flux services inside the `flux-system` namespace. The kustomize-controller and helm-controller fetch artifacts from the source-controller service, and controllers with `--events-addr` send events to the notification-controller service:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-flux-system-internal
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 9090
+```
+
+Apply it:
+
+```bash
+kubectl apply -f allow-flux-system-internal.yaml
+```
+
 ## Step 4: Allow Source Controller Egress to Git and Registries
 
-The source-controller needs access to external Git hosts and container registries. Create a policy that allows HTTPS egress only for the source-controller:
+The source-controller needs access to external Git hosts and container registries. Create a policy that allows HTTPS and SSH egress for the source-controller:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -199,6 +227,7 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16
       ports:
         - protocol: TCP
           port: 443
@@ -206,7 +235,7 @@ spec:
           port: 22
 ```
 
-This allows the source-controller to reach any external IP on ports 443 (HTTPS) and 22 (SSH for Git). Private network ranges are excluded. If you know the specific IPs of your Git server and registries, narrow the `cidr` to those addresses for tighter security.
+This allows the source-controller to reach any external IP on ports 443 (HTTPS) and 22 (SSH for Git). Private network ranges and the link-local metadata address range are excluded. If you know the specific IPs of your Git server and registries, narrow the `cidr` to those addresses for tighter security.
 
 ## Step 5: Allow Notification Controller Egress
 
@@ -232,6 +261,7 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16
       ports:
         - protocol: TCP
           port: 443
@@ -242,7 +272,9 @@ spec:
 Combine all policies into a single file for easier management:
 
 ```bash
-cat <<'EOF' > flux-egress-policies.yaml
+KUBE_API_IP=$(kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}')
+
+cat <<EOF > flux-egress-policies.yaml
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -279,6 +311,43 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-kube-api
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: ${KUBE_API_IP}/32
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-flux-system-internal
+  namespace: flux-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-source-controller-egress
   namespace: flux-system
 spec:
@@ -295,6 +364,7 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16
       ports:
         - protocol: TCP
           port: 443
@@ -320,6 +390,7 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16
       ports:
         - protocol: TCP
           port: 443
