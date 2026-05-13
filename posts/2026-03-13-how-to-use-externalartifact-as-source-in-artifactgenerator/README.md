@@ -21,21 +21,29 @@ While most Flux workflows use GitRepository or OCIRepository as sources, there a
 
 ## What is ExternalArtifact?
 
-ExternalArtifact is a Flux source type that represents an artifact whose lifecycle is managed outside of Flux. Instead of Flux pulling from a Git repo or OCI registry, an external process (such as a CI pipeline) creates the artifact and updates the ExternalArtifact status with the artifact's location and checksum.
+ExternalArtifact is a Flux source type that represents an artifact whose lifecycle is managed outside of Flux. Instead of Flux pulling from a Git repo or OCI registry, an external process (such as a CI pipeline or custom controller) creates the artifact and updates the ExternalArtifact status with the artifact's location and checksum.
 
-A basic ExternalArtifact looks like this:
+A basic ExternalArtifact looks like this after the external controller has produced an artifact:
 
 ```yaml
-apiVersion: source.extensions.fluxcd.io/v1beta1
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: ExternalArtifact
 metadata:
   name: ci-built-manifests
   namespace: flux-system
 spec:
+  sourceRef:
+    apiVersion: ci.example.com/v1
+    kind: Build
+    name: ci-built-manifests
+status:
   artifact:
-    url: http://source-controller.flux-system.svc/externalartifact/flux-system/ci-built-manifests/latest.tar.gz
-    revision: "sha256:abc123def456789"
     digest: "sha256:abc123def456789"
+    lastUpdateTime: "2026-03-13T12:00:00Z"
+    path: ci/flux-system/ci-built-manifests/abc123def456789.tar.gz
+    revision: "build-1234@sha256:abc123def456789"
+    size: 20914
+    url: http://artifact-server.flux-system.svc.cluster.local/ci/flux-system/ci-built-manifests/abc123def456789.tar.gz
 ```
 
 The external process updates this resource when new artifacts are available, and Flux picks up the changes.
@@ -54,16 +62,24 @@ Using ExternalArtifact directly with a Kustomization or HelmRelease works for si
 Here is how to set up ArtifactGenerator to consume an ExternalArtifact:
 
 ```yaml
-apiVersion: source.extensions.fluxcd.io/v1beta1
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: ExternalArtifact
 metadata:
   name: build-output
   namespace: flux-system
 spec:
+  sourceRef:
+    apiVersion: ci.example.com/v1
+    kind: Build
+    name: build-output
+status:
   artifact:
-    url: http://source-controller.flux-system.svc/externalartifact/flux-system/build-output/latest.tar.gz
-    revision: "build-1234"
     digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    lastUpdateTime: "2026-03-13T12:00:00Z"
+    path: ci/flux-system/build-output/e3b0c442.tar.gz
+    revision: "build-1234@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    size: 1024
+    url: http://artifact-server.flux-system.svc.cluster.local/ci/flux-system/build-output/e3b0c442.tar.gz
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -72,15 +88,20 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: ExternalArtifact
+    - alias: build
+      kind: ExternalArtifact
       name: build-output
   artifacts:
-    - path: "deploy/production/**"
-      exclude:
-        - "deploy/production/tests/**"
+    - name: production-manifests
+      originRevision: "@build"
+      copy:
+        - from: "@build/deploy/production/**"
+          to: "@artifact/deploy/production/"
+          exclude:
+            - "**/tests/**"
 ```
 
-The ArtifactGenerator references the ExternalArtifact as its source and applies path filtering to extract only production deployment manifests.
+The ArtifactGenerator references the ExternalArtifact as its source and generates a new ExternalArtifact named `production-manifests` containing only the production deployment manifests.
 
 ## CI Pipeline Integration
 
@@ -115,17 +136,17 @@ jobs:
           DIGEST=$(sha256sum manifests.tar.gz | cut -d' ' -f1)
           echo "DIGEST=${DIGEST}" >> $GITHUB_ENV
 
-      - name: Upload to Flux source controller
+      - name: Upload artifact
         run: |
-          kubectl -n flux-system port-forward svc/source-controller 8080:80 &
-          curl -X POST http://localhost:8080/externalartifact/flux-system/build-output \
-            -F "file=@output/manifests.tar.gz"
+          curl -X PUT "https://artifacts.example.com/flux-system/build-output/${GITHUB_SHA}.tar.gz" \
+            --upload-file output/manifests.tar.gz
 
-      - name: Update ExternalArtifact
+      - name: Update ExternalArtifact status
         run: |
           kubectl patch externalartifact build-output -n flux-system \
+            --subresource=status \
             --type=merge \
-            -p "{\"spec\":{\"artifact\":{\"revision\":\"${{ github.sha }}\",\"digest\":\"sha256:${DIGEST}\"}}}"
+            -p "{\"status\":{\"artifact\":{\"url\":\"https://artifacts.example.com/flux-system/build-output/${{ github.sha }}.tar.gz\",\"revision\":\"${{ github.sha }}@sha256:${DIGEST}\",\"digest\":\"sha256:${DIGEST}\",\"path\":\"flux-system/build-output/${{ github.sha }}.tar.gz\",\"lastUpdateTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}"
 ```
 
 ## Multi-Environment Extraction
@@ -140,10 +161,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: ExternalArtifact
+    - alias: build
+      kind: ExternalArtifact
       name: build-output
   artifacts:
-    - path: "deploy/staging/**"
+    - name: staging-manifests
+      originRevision: "@build"
+      copy:
+        - from: "@build/deploy/staging/**"
+          to: "@artifact/deploy/staging/"
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -152,10 +178,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: ExternalArtifact
+    - alias: build
+      kind: ExternalArtifact
       name: build-output
   artifacts:
-    - path: "deploy/production/**"
+    - name: production-manifests
+      originRevision: "@build"
+      copy:
+        - from: "@build/deploy/production/**"
+          to: "@artifact/deploy/production/"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -165,8 +196,8 @@ metadata:
 spec:
   interval: 10m
   sourceRef:
-    kind: ArtifactGenerator
-    name: staging-from-ci
+    kind: ExternalArtifact
+    name: staging-manifests
   path: ./deploy/staging
   prune: true
   targetNamespace: staging
@@ -179,8 +210,8 @@ metadata:
 spec:
   interval: 10m
   sourceRef:
-    kind: ArtifactGenerator
-    name: production-from-ci
+    kind: ExternalArtifact
+    name: production-manifests
   path: ./deploy/production
   prune: true
   targetNamespace: production
@@ -211,9 +242,9 @@ kubectl events --for artifactgenerator/production-from-ci -n flux-system
 
 Common issues when using ExternalArtifact with ArtifactGenerator:
 
-- **Artifact not found**: The URL in the ExternalArtifact spec must be accessible from the source-controller pod. Verify network connectivity.
-- **Digest mismatch**: The digest in the spec must match the actual artifact. Ensure your CI pipeline computes the correct SHA256.
-- **Path not found**: If the ArtifactGenerator's include paths do not match any files in the artifact, no output artifact is generated. Verify the directory structure inside the tarball.
+- **Artifact not found**: The URL in the ExternalArtifact status must be accessible from the controller pod that fetches the artifact. Verify network connectivity.
+- **Digest mismatch**: The digest in the status must match the actual artifact. Ensure your CI pipeline computes the correct SHA256.
+- **Path not found**: If the ArtifactGenerator's copy paths do not match any files in the artifact, the build can fail. Verify the directory structure inside the tarball.
 
 ## Conclusion
 
