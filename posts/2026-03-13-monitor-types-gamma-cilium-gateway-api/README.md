@@ -61,9 +61,11 @@ Track requests per source namespace to monitor per-consumer traffic patterns:
 
 ```promql
 sum by (source_namespace, destination_workload) (
-  rate(cilium_forward_count_total{destination_workload=~"api-.*"}[1m])
+  rate(hubble_flows_processed_total{destination_workload=~"api-.*"}[1m])
 )
 ```
+
+This requires Hubble's flow metric to be configured with a `labelsContext` that includes `source_namespace` and `destination_workload`, for example via Helm: `hubble.metrics.enabled={"flow:labelsContext=source_namespace,destination_workload"}`.
 
 ## Create Dashboard Panels
 
@@ -81,7 +83,7 @@ groups:
     rules:
       - alert: ConsumerRouteBypassDetected
         expr: |
-          sum(rate(cilium_forward_count_total{
+          sum(rate(hubble_flows_processed_total{
             source_namespace="consumer-ns",
             destination_workload="api-service-v1"
           }[5m])) > 0
