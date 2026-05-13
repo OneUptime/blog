@@ -10,7 +10,7 @@ Description: A guide to migrating existing Minikube workloads from the default C
 
 ## Introduction
 
-If you have existing workloads running on a Minikube cluster using the default kindnet CNI, migrating to Calico requires recreating the cluster since Minikube does not support in-place CNI replacement. The migration process involves exporting workload definitions, creating a new Calico-enabled cluster, and redeploying workloads.
+If you have existing workloads running on a Minikube cluster using the default kindnet CNI, migrating to Calico is easiest and least error-prone by recreating the cluster with Calico enabled. The migration process involves exporting workload definitions, creating a new Calico-enabled cluster, and redeploying workloads.
 
 The key challenge in this migration is ensuring that your workloads do not have hardcoded IP addresses (which will change) and that any ConfigMaps or environment variables referencing pod IPs are updated to use service DNS names instead. Minikube's single-node nature simplifies some aspects of migration while the local PersistentVolume handling may need attention for stateful workloads.
 
@@ -51,9 +51,8 @@ minikube delete
 ## Step 4: Create a New Minikube Cluster with Calico
 
 ```bash
-minikube start --network-plugin=cni --cni=false --kubernetes-version=v1.28.0
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-kubectl wait --namespace kube-system \
+minikube start --cni=calico
+kubectl wait --all-namespaces \
   --for=condition=ready pod \
   --selector=k8s-app=calico-node \
   --timeout=120s
@@ -71,7 +70,7 @@ kubectl apply -f network-policies.yaml
 ## Step 6: Restore Persistent Volume Data
 
 ```bash
-kubectl exec -n <namespace> <new-pod-name> -- tar xzf - /data < data-backup.tar.gz
+kubectl exec -i -n <namespace> <new-pod-name> -- tar xzf - -C / < data-backup.tar.gz
 ```
 
 ## Step 7: Validate All Workloads
