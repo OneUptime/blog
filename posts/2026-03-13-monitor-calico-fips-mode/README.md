@@ -23,6 +23,8 @@ The monitoring strategy for Calico FIPS must be proactive: alert before a certif
 
 ## Monitor 1: Certificate Expiry Alerts
 
+Expose certificate `NotAfter` values as `calico_cert_expiry_timestamp` with a small certificate checker or your existing certificate exporter, then alert on the actual expiry timestamp:
+
 ```yaml
 # prometheus-rules-fips-certs.yaml
 
@@ -37,8 +39,7 @@ spec:
       rules:
         - alert: CalicoCertExpiringSoon
           expr: |
-            (kube_secret_created{namespace="calico-system", secret=~"calico.*tls.*"} +
-             (365 * 24 * 3600)) - time() < (30 * 24 * 3600)
+            calico_cert_expiry_timestamp{namespace="calico-system", secret=~"calico.*tls.*"} - time() < (30 * 24 * 3600)
           for: 1h
           labels:
             severity: warning
@@ -48,8 +49,7 @@ spec:
 
         - alert: CalicoCertExpired
           expr: |
-            (kube_secret_created{namespace="calico-system", secret=~"calico.*tls.*"} +
-             (365 * 24 * 3600)) - time() < 0
+            calico_cert_expiry_timestamp{namespace="calico-system", secret=~"calico.*tls.*"} - time() < 0
           labels:
             severity: critical
           annotations:
@@ -64,17 +64,28 @@ spec:
 # monitor-fips-drift.sh - Run as CronJob every 15 minutes
 set -euo pipefail
 
-ALERTMANAGER_URL="${ALERTMANAGER_URL:-http://alertmanager.monitoring.svc:9093}"
+ALERTMANAGER_URL="${ALERTMANAGER_URL:-http://alertmanager.monitoring.svc:9093/api/v2/alerts}"
+PUSHGATEWAY_URL="${PUSHGATEWAY_URL:-http://pushgateway.monitoring.svc:9091}"
 
 check_fips_mode() {
-  fips_mode=$(kubectl get installation default \
+  fips_mode=$(kubectl get installation.operator.tigera.io default \
     -o jsonpath='{.spec.fipsMode}' 2>/dev/null)
+  fips_enabled=0
+
+  if [[ "${fips_mode}" == "Enabled" ]]; then
+    fips_enabled=1
+  fi
+
+  cat <<EOF | curl -sS --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/calico_fips_installation" || true
+# TYPE calico_installation_fips_mode_enabled gauge
+calico_installation_fips_mode_enabled ${fips_enabled}
+EOF
 
   if [[ "${fips_mode}" != "Enabled" ]]; then
     echo "FIPS DRIFT: Installation fipsMode is '${fips_mode}', expected 'Enabled'"
 
     # Send alert
-    curl -s -X POST "${ALERTMANAGER_URL}/api/v1/alerts" \
+    curl -s -X POST "${ALERTMANAGER_URL}" \
       -H "Content-Type: application/json" \
       -d '[{
         "labels": {
@@ -100,51 +111,68 @@ check_fips_mode
 ## Monitor 3: OS-Level FIPS Compliance Check
 
 ```yaml
-# calico-fips-node-monitor-cronjob.yaml
-apiVersion: batch/v1
-kind: CronJob
+# calico-fips-node-monitor-daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
 metadata:
   name: calico-fips-os-monitor
   namespace: calico-system
 spec:
-  schedule: "*/30 * * * *"
-  jobTemplate:
+  selector:
+    matchLabels:
+      app: calico-fips-os-monitor
+  template:
+    metadata:
+      labels:
+        app: calico-fips-os-monitor
     spec:
-      template:
-        spec:
-          hostPID: true
-          tolerations:
-            - operator: Exists
-          nodeSelector: {}
-          containers:
-            - name: fips-checker
-              image: registry.internal.example.com/tools/ubi8:latest
-              command:
-                - /bin/bash
-                - -c
-                - |
-                  fips_val=$(cat /proc/sys/crypto/fips_enabled)
-                  if [[ "${fips_val}" != "1" ]]; then
-                    echo "ALERT: Node $(hostname) has FIPS disabled!"
-                    exit 1
-                  fi
-                  echo "OK: Node $(hostname) FIPS enabled"
-              volumeMounts:
-                - name: proc
-                  mountPath: /proc
-                  readOnly: true
-          volumes:
-            - name: proc
-              hostPath:
-                path: /proc
-          restartPolicy: OnFailure
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: fips-checker
+          image: registry.internal.example.com/tools/ubi8:latest
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: PUSHGATEWAY_URL
+              value: http://pushgateway.monitoring.svc:9091
+          command:
+            - /bin/bash
+            - -c
+            - |
+              while true; do
+                fips_val=$(cat /host/proc/sys/crypto/fips_enabled 2>/dev/null || echo 0)
+                if [[ "${fips_val}" != "1" ]]; then
+                  echo "ALERT: Node ${NODE_NAME} has FIPS disabled!"
+                  fips_val=0
+                else
+                  echo "OK: Node ${NODE_NAME} FIPS enabled"
+                fi
+
+                cat <<EOF | curl -sS --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/calico_fips_os/instance/${NODE_NAME}"
+              # TYPE calico_fips_node_enabled gauge
+              calico_fips_node_enabled{node="${NODE_NAME}"} ${fips_val}
+              EOF
+
+                sleep 1800
+              done
+          volumeMounts:
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+      volumes:
+        - name: host-proc
+          hostPath:
+            path: /proc
 ```
 
 ## Monitor 4: Grafana FIPS Compliance Dashboard
 
 ```mermaid
 flowchart LR
-    A[CronJob: OS FIPS Check] -->|results| B[Prometheus Pushgateway]
+    A[DaemonSet: OS FIPS Check] -->|results| B[Prometheus Pushgateway]
     C[Prometheus Rules] -->|alerts| D[Alertmanager]
     B -->|metrics| E[Prometheus]
     E --> F[Grafana Dashboard]
@@ -155,6 +183,8 @@ flowchart LR
 ```
 
 Key Grafana panels for FIPS compliance:
+
+These panels assume the OS monitor, certificate checker, and Installation configuration checker export the custom metrics shown below.
 
 ```promql
 # Panel 1: FIPS mode enabled across all nodes
@@ -176,7 +206,7 @@ kubectl get events -A --field-selector reason=Updated | \
   grep installation
 
 # Watch for any change to Installation spec.fipsMode
-kubectl get installation default -w -o jsonpath='{.spec.fipsMode}'
+kubectl get installation.operator.tigera.io default -w -o jsonpath='{.spec.fipsMode}'
 ```
 
 ## Conclusion
