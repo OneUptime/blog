@@ -79,10 +79,10 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
 ```
 
-Verify DNS works from the controller pod:
+Verify DNS works from a debug pod in the `flux-system` namespace, since controller images may not include DNS debugging tools:
 
 ```bash
-kubectl exec -n flux-system deploy/source-controller -- nslookup github.com
+kubectl exec -n flux-system netdebug -- nslookup github.com
 ```
 
 If DNS is failing, check CoreDNS for issues:
@@ -96,7 +96,7 @@ kubectl rollout restart deployment/coredns -n kube-system
 In corporate environments, outbound traffic often requires a proxy. Flux controllers need proxy environment variables:
 
 ```bash
-kubectl get deploy -n flux-system source-controller -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
+kubectl get deploy -n flux-system source-controller -o jsonpath-as-json='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
 ```
 
 If proxy variables are not set, add them:
@@ -152,8 +152,7 @@ spec:
   policyTypes:
   - Egress
   egress:
-  - to: []
-    ports:
+  - ports:
     - protocol: TCP
       port: 443
     - protocol: TCP
@@ -211,13 +210,14 @@ spec:
 For Git repositories accessed over SSH, verify SSH connectivity:
 
 ```bash
-kubectl exec -n flux-system deploy/source-controller -- ssh -T git@github.com -o StrictHostKeyChecking=no 2>&1 || true
+kubectl exec -n flux-system netdebug -- ssh -T git@github.com -o StrictHostKeyChecking=no 2>&1 || true
 ```
 
-Check known hosts configuration:
+Check the known hosts configuration in the Secret referenced by the GitRepository:
 
 ```bash
-kubectl get secret -n flux-system flux-system -o jsonpath='{.data.known_hosts}' | base64 -d
+kubectl get gitrepository -n flux-system my-repo -o jsonpath='{.spec.secretRef.name}'
+kubectl get secret -n flux-system <secret-name> -o jsonpath='{.data.known_hosts}' | base64 -d
 ```
 
 ### Registry Rate Limiting
