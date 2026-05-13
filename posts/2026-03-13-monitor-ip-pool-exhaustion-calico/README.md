@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitor Calico IP pool utilization using calicoctl metrics, Prometheus alerts, and automated utilization checks to prevent exhaustion before it causes pod failures.
+Description: Monitor Calico IP pool utilization using calicoctl IPAM output, Prometheus alerts, and automated utilization checks to prevent exhaustion before it causes pod failures.
 
 ---
 
@@ -22,7 +22,7 @@ Calico does not natively expose IP pool utilization as Prometheus metrics in all
 ## Root Causes
 
 - No IPAM utilization monitoring configured
-- calicoctl metrics not integrated with Prometheus
+- calicoctl IPAM output not integrated with Prometheus
 
 ## Diagnosis Steps
 
@@ -60,11 +60,22 @@ spec:
             - /bin/sh
             - -c
             - |
-              RESULT=$(calicoctl ipam show 2>/dev/null)
-              FREE=$(echo "$RESULT" | grep -i "free" | grep -oP '\d+' | head -1 || echo "0")
-              USED=$(echo "$RESULT" | grep -i "allocat" | grep -oP '\d+' | head -1 || echo "0")
-              TOTAL=$((FREE + USED))
-              if [ "$TOTAL" -gt 0 ]; then
+              read USED FREE <<EOF
+              $(calicoctl ipam show 2>/dev/null | awk -F'|' '
+                $2 ~ /IP Pool/ {
+                  inuse=$5
+                  free=$6
+                  gsub(/^[ \t]+|[ \t]+$/, "", inuse)
+                  gsub(/^[ \t]+|[ \t]+$/, "", free)
+                  split(inuse, used_parts, " ")
+                  split(free, free_parts, " ")
+                  used_total += used_parts[1] + 0
+                  free_total += free_parts[1] + 0
+                }
+                END { print used_total + 0, free_total + 0 }
+              ')
+              EOF
+              if awk "BEGIN { exit !(($USED + $FREE) > 0) }"; then
                 cat <<METRICS | curl -s --data-binary @- $PUSHGATEWAY_URL/metrics/job/calico_ipam
               # HELP calico_ipam_free_addresses Number of free IP addresses in Calico pools
               # TYPE calico_ipam_free_addresses gauge
