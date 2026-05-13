@@ -10,7 +10,7 @@ Description: How to configure a no-proxy list in Flux CD to bypass the proxy for
 
 ## Introduction
 
-When using a proxy with Flux CD, certain destinations should bypass the proxy entirely. Internal Git servers, private Helm repositories hosted within your network, and cluster-internal services do not need to go through an external proxy. Flux supports a no-proxy configuration within the proxy secret that lets you specify hosts and domains that should be accessed directly. This guide explains how to set up a no-proxy list.
+When using a proxy with Flux CD, certain destinations should bypass the proxy entirely. Internal Git servers, private Helm repositories hosted within your network, and cluster-internal services do not need to go through an external proxy. Flux supports a no-proxy configuration through controller-level environment variables that lets you specify hosts and domains that should be accessed directly. This guide explains how to set up a no-proxy list.
 
 ## Prerequisites
 
@@ -87,7 +87,7 @@ patches:
 
 ## Step 3: Understanding the No-Proxy Format
 
-The `no_proxy` value is a comma-separated list of hosts, domains, and CIDR ranges. Here is a breakdown of common entries:
+The `NO_PROXY` value is a comma-separated list of hosts, domains, and CIDR ranges. Here is a breakdown of common entries:
 
 | Entry | Effect |
 |-------|--------|
@@ -204,7 +204,7 @@ NO_PROXY=".corp.example.com,.internal.example.com,10.0.0.0/8,172.16.0.0/12,192.1
 
 ### Internal Host Still Going Through Proxy
 
-Check that the domain or IP in the `NO_PROXY` variable matches exactly. A leading dot (`.example.com`) matches all subdomains, while `example.com` without the dot matches only the exact host.
+Check that the domain or IP in the `NO_PROXY` variable matches as intended. In Go's proxy handling, `example.com` matches both `example.com` and its subdomains, while a leading dot (`.example.com`) matches subdomains only.
 
 ```bash
 # View the NO_PROXY value on the source-controller
