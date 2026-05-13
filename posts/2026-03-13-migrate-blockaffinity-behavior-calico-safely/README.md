@@ -10,9 +10,9 @@ Description: Learn how to safely migrate and manage Calico's BlockAffinity behav
 
 ## Introduction
 
-Calico's IPAM system allocates IP addresses to pods using blocks-subnets carved from IP pools and assigned to specific nodes. The BlockAffinity resource represents the relationship between a node and its assigned IP blocks. When migrating IPAM configurations, changing block sizes, or moving between IP pools, understanding and correctly managing BlockAffinity is essential to prevent IP address conflicts and routing failures.
+Calico's IPAM system allocates IP addresses to pods using blocks-subnets carved from IP pools and assigned to specific nodes. The BlockAffinity resource represents the affinity for an IPAM block. When migrating IPAM configurations, changing block sizes, or moving between IP pools, understanding BlockAffinity is essential to prevent wasted address space and routing failures.
 
-Misconfigured or stale BlockAffinity resources can cause pods to receive duplicate IPs, routes to be advertised incorrectly, or IPAM to run out of allocatable addresses prematurely. A systematic migration approach ensures block affinities are consistent with actual allocations.
+Misconfigured or stale BlockAffinity resources can waste IP space, cause routes to be advertised incorrectly, or make IPAM run out of allocatable addresses prematurely. A systematic migration approach ensures block affinities are consistent with actual allocations.
 
 This guide covers auditing existing BlockAffinity resources, safely migrating block assignments when changing IPAM configuration, and validating consistency after migration.
 
@@ -35,8 +35,8 @@ calicoctl get blockaffinity -o yaml
 # List all IP allocations to cross-reference with block affinities
 calicoctl ipam show --show-blocks
 
-# Show detailed IPAM utilization per block
-calicoctl ipam show --show-blocks --ip=10.244.0.0/16
+# Check whether a specific IP address is assigned
+calicoctl ipam show --ip=10.244.0.10
 ```
 
 ## Step 2: Identify Stale or Orphaned Block Affinities
@@ -51,8 +51,8 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | s
 # Find BlockAffinity resources for nodes that no longer exist
 comm -23 /tmp/blocks-nodes.txt /tmp/current-nodes.txt
 
-# Release blocks for deleted nodes - replace NODE_NAME with the stale node name
-calicoctl ipam release-leaked-ips --dry-run  # Preview what would be released
+# Generate a report of leaked IPAM allocations before releasing anything
+calicoctl ipam check --show-problem-ips -o /tmp/ipam-report.json
 ```
 
 ## Step 3: Configure a New IP Pool Before Migration
@@ -73,17 +73,13 @@ spec:
   natOutgoing: true
   # Enable the new pool for new allocations
   disabled: false
----
-# Disable the old pool to prevent new allocations while keeping existing ones alive
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: old-pool-24
-spec:
-  cidr: 10.244.0.0/16
-  blockSize: 24
-  # Disabling prevents new pods from getting IPs from this pool
-  disabled: true
+```
+
+After applying and verifying the new pool, disable the old pool to prevent new allocations while keeping existing workloads alive:
+
+```bash
+calicoctl apply -f calico-ipam/new-ip-pool.yaml
+calicoctl patch ippool old-pool-24 -p '{"spec": {"disabled": true}}'
 ```
 
 ## Step 4: Migrate Workloads to the New Block
@@ -94,10 +90,10 @@ Roll pods over to the new pool by node, allowing Calico to allocate new blocks f
 # Drain a node to trigger pod rescheduling on new IP pool blocks
 kubectl drain NODE_NAME --ignore-daemonsets --delete-emptydir-data
 
-# Verify the node receives a new block from the new IP pool after uncordoning
+# Allow workloads to be scheduled on the node again
 kubectl uncordon NODE_NAME
 
-# Check that new pods get IPs from the new pool
+# Check that new pods scheduled on the node get IPs from the new pool
 kubectl get pods -o wide -n default | grep NODE_NAME
 
 # Verify new BlockAffinity for the migrated node
@@ -106,17 +102,17 @@ calicoctl get blockaffinity | grep NODE_NAME
 
 ## Step 5: Clean Up Old Block Affinities
 
-After all workloads have migrated, release the old IP blocks and remove stale BlockAffinity resources.
+After all workloads have migrated, verify there are no leaked allocations from the old pool and let Calico clean up unused block affinities.
 
 ```bash
 # Show blocks still allocated from old pool
 calicoctl ipam show --show-blocks | grep "10.244"
 
-# After all pods have migrated, check for unreleased IPs in old pool
-calicoctl ipam check
+# After all pods have migrated, generate a report of leaked IPs
+calicoctl ipam check --show-problem-ips -o /tmp/ipam-report.json
 
-# Release any leaked IPs from the old pool
-calicoctl ipam release-leaked-ips
+# Release leaked IPs from the reviewed report, if any
+calicoctl ipam release --from-report=/tmp/ipam-report.json
 
 # Delete the old pool once all blocks are released
 calicoctl delete ippool old-pool-24
@@ -125,9 +121,9 @@ calicoctl delete ippool old-pool-24
 ## Best Practices
 
 - Always take a snapshot of BlockAffinity resources before making IPAM changes (`calicoctl get blockaffinity -o yaml > backup.yaml`)
-- Use `--dry-run` with any release commands before executing them in production
+- Review the `calicoctl ipam check` report before releasing leaked IPs in production
 - Migrate nodes one at a time rather than draining all nodes simultaneously
-- Keep both old and new IP pools active during migration to avoid pod scheduling failures
+- Keep the old pool present until all existing pods have migrated, but disable it after the new pool is verified so new allocations use the new pool
 - Run `calicoctl ipam check` after migration to verify consistency between IPAM records and actual allocations
 - Monitor Calico IPAM metrics for signs of allocation failures during migration
 
