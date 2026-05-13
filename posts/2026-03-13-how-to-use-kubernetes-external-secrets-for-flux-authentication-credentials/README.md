@@ -56,7 +56,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: ">=0.9.0"
+      version: ">=1.0.0"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -83,7 +83,7 @@ A `SecretStore` (or `ClusterSecretStore`) defines the connection to your externa
 ### HashiCorp Vault
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -105,7 +105,7 @@ spec:
 ### AWS Secrets Manager
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -117,14 +117,14 @@ spec:
       auth:
         jwt:
           serviceAccountRef:
-            name: external-secrets-sa
+            name: external-secrets
             namespace: external-secrets
 ```
 
 ### Azure Key Vault
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-keyvault
@@ -135,14 +135,14 @@ spec:
       vaultUrl: "https://my-keyvault.vault.azure.net"
       authType: WorkloadIdentity
       serviceAccountRef:
-        name: external-secrets-sa
+        name: external-secrets
         namespace: external-secrets
 ```
 
 ### Google Secret Manager
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -156,7 +156,7 @@ spec:
           clusterName: my-cluster
           clusterProjectID: my-gcp-project
           serviceAccountRef:
-            name: external-secrets-sa
+            name: external-secrets
             namespace: external-secrets
 ```
 
@@ -208,7 +208,7 @@ aws secretsmanager create-secret \
 ### Git HTTPS Credentials
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: flux-git-credentials
@@ -224,18 +224,18 @@ spec:
   data:
   - secretKey: username
     remoteRef:
-      key: secret/flux/git-credentials
+      key: flux/git-credentials
       property: username
   - secretKey: password
     remoteRef:
-      key: secret/flux/git-credentials
+      key: flux/git-credentials
       property: password
 ```
 
 ### Git SSH Credentials
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: flux-ssh-credentials
@@ -251,22 +251,22 @@ spec:
   data:
   - secretKey: identity
     remoteRef:
-      key: secret/flux/ssh-credentials
+      key: flux/ssh-credentials
       property: identity
   - secretKey: identity.pub
     remoteRef:
-      key: secret/flux/ssh-credentials
+      key: flux/ssh-credentials
       property: identity.pub
   - secretKey: known_hosts
     remoteRef:
-      key: secret/flux/ssh-credentials
+      key: flux/ssh-credentials
       property: known_hosts
 ```
 
 ### OCI Registry Credentials
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: flux-oci-credentials
@@ -284,14 +284,14 @@ spec:
   data:
   - secretKey: .dockerconfigjson
     remoteRef:
-      key: secret/flux/oci-credentials
+      key: flux/oci-credentials
       property: .dockerconfigjson
 ```
 
 ### Helm Repository Credentials
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: flux-helm-credentials
@@ -307,11 +307,11 @@ spec:
   data:
   - secretKey: username
     remoteRef:
-      key: secret/flux/helm-credentials
+      key: flux/helm-credentials
       property: username
   - secretKey: password
     remoteRef:
-      key: secret/flux/helm-credentials
+      key: flux/helm-credentials
       property: password
 ```
 
@@ -327,8 +327,8 @@ kubectl apply -f external-secrets/
 # Check ExternalSecret status
 kubectl get externalsecret -n flux-system
 
-# All should show SecretSynced
-kubectl get externalsecret -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[0].type}{"\t"}{.status.conditions[0].status}{"\n"}{end}'
+# All should show Ready=True with reason SecretSynced
+kubectl get externalsecret -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[0].type}{"\t"}{.status.conditions[0].status}{"\t"}{.status.conditions[0].reason}{"\n"}{end}'
 
 # Verify the Kubernetes secrets were created
 kubectl get secrets -n flux-system | grep flux-
@@ -390,10 +390,10 @@ kubectl get externalsecret -n flux-system flux-git-credentials \
 
 ## Step 8: Set Up Alerts for Sync Failures
 
-Create a Flux alert to notify you if credential syncing fails.
+Create a Flux alert to notify you if Flux sources start failing reconciliation because synced credentials are invalid or unavailable.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: external-secrets-alert
