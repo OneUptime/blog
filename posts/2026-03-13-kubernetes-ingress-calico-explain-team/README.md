@@ -12,7 +12,7 @@ Description: Practical approaches for teaching ingress traffic control and Calic
 
 Ingress policy is the most discussed aspect of Kubernetes network security, yet it remains poorly understood in most organizations. Teams apply NetworkPolicy without a clear mental model of how rules are evaluated, leading to policies that accidentally block legitimate traffic or leave gaps that allow unintended connections.
 
-Explaining ingress to your team requires establishing the right mental model (deny-all with explicit allows), demonstrating the rule evaluation order, and connecting policy decisions to observable behavior. This post gives you the tools to run that training session effectively.
+Explaining ingress to your team requires establishing the right mental model (deny-all with explicit allows), demonstrating the rule matching model, and connecting policy decisions to observable behavior. This post gives you the tools to run that training session effectively.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ The most effective way to introduce ingress policy to developers is the firewall
 
 > "Think of each pod as having its own personal firewall. By default, that firewall allows all inbound connections. We can configure it to only allow connections from specific sources. Calico NetworkPolicy is how we configure that per-pod firewall."
 
-This analogy works because developers already understand firewalls. The key extension: unlike traditional firewalls that use IP addresses, Calico's firewall uses Kubernetes labels - so you can write rules like "allow connections from pods with label `app=frontend`" instead of specifying IPs that change as pods restart.
+This analogy works because developers already understand firewalls. The key extension: instead of relying only on IP addresses, Calico's firewall can use Kubernetes labels - so you can write rules like "allow connections from pods with label `app=frontend`" instead of specifying IPs that change as pods restart.
 
 ## Live Demo: From Open to Controlled
 
@@ -60,17 +60,16 @@ This sequence makes the policy model tangible.
 
 ## Explaining Rule Evaluation to Developers
 
-Developers often struggle with why their policy "isn't working." The key concept to explain:
+Developers often struggle with why their policy "isn't working." For standard Kubernetes NetworkPolicy, the key concept to explain is additive allow-list behavior:
 
 ```mermaid
 graph TD
     Packet[Ingress Packet] --> ANY{Any NetworkPolicy\nselects this pod?}
     ANY -->|No| ALLOW[Allow all ingress\ndefault behavior]
-    ANY -->|Yes| RULES[Evaluate ingress rules\nTop to bottom]
-    RULES --> MATCH{First matching rule}
-    MATCH -->|Allow rule matches| ALLOW2[Allow packet]
-    MATCH -->|Deny rule matches| DENY[Deny packet]
-    MATCH -->|No rule matches| DENY2[Deny packet\nimplicit deny]
+    ANY -->|Yes| RULES[Check allowed ingress\nacross all matching policies]
+    RULES --> MATCH{Any allow rule matches?}
+    MATCH -->|Yes| ALLOW2[Allow packet]
+    MATCH -->|No| DENY2[Deny packet\nimplicit deny]
 ```
 
 Key insight for developers: **once any NetworkPolicy selects your pod, the default changes from allow-all to deny-all**. You must explicitly allow every legitimate ingress path, including health check ports.
@@ -87,12 +86,12 @@ For engineers who will write policies, explain what Calico adds over standard Ku
 | Global scope | No | Yes (GlobalNetworkPolicy) |
 | Service account selector | No | Yes |
 
-The most commonly needed extension is explicit deny - Calico's `action: Deny` lets you write policies that explicitly reject traffic and log the denial, rather than relying on implicit drop.
+The most commonly needed extension is explicit deny - Calico's `action: Deny` lets you write policies that explicitly drop traffic, rather than relying on implicit deny. If you need records of matching traffic, use Calico `Log` rules or your platform's policy logging alongside the deny behavior.
 
 ## Common Questions and Answers
 
 **Q: What happens if I have two NetworkPolicies that select the same pod?**
-A: They are merged. Ingress is allowed if *any* policy allows it. This is union semantics, not intersection.
+A: For standard Kubernetes NetworkPolicy, they are additive. Ingress is allowed if *any* policy allows it. This is union semantics, not intersection. Calico policies can also use ordered rules and explicit deny actions, so be clear which policy API you are explaining.
 
 **Q: Can I write a policy that applies to all namespaces?**
 A: Use Calico's `GlobalNetworkPolicy` (not standard Kubernetes NetworkPolicy). It applies cluster-wide.
@@ -105,4 +104,4 @@ A: Use Calico's `GlobalNetworkPolicy` (not standard Kubernetes NetworkPolicy). I
 
 ## Conclusion
 
-Explaining Calico ingress to your team is most effective when you start with the firewall analogy, demonstrate the deny-all behavior live, explain rule evaluation order, and show what Calico adds over standard Kubernetes NetworkPolicy. The combination of correct mental model and observable behavior eliminates most ingress policy confusion.
+Explaining Calico ingress to your team is most effective when you start with the firewall analogy, demonstrate the deny-all behavior live, explain rule matching behavior, and show what Calico adds over standard Kubernetes NetworkPolicy. The combination of correct mental model and observable behavior eliminates most ingress policy confusion.
