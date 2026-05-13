@@ -16,7 +16,7 @@ This guide walks through exposing the Flux Receiver behind an NGINX Ingress cont
 
 Before you begin, make sure you have the following in place:
 
-- A Kubernetes cluster running version 1.24 or later.
+- A Kubernetes cluster running a version supported by your Flux release.
 - Flux CD installed and bootstrapped on the cluster.
 - An NGINX Ingress controller deployed in the cluster.
 - `kubectl` configured to communicate with your cluster.
@@ -106,11 +106,6 @@ metadata:
   annotations:
     # Force SSL redirect for security
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Only allow POST requests to the webhook endpoint
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      if ($request_method != POST) {
-        return 405;
-      }
 spec:
   ingressClassName: nginx
   tls:
@@ -125,7 +120,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -151,10 +146,6 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      if ($request_method != POST) {
-        return 405;
-      }
 spec:
   ingressClassName: nginx
   tls:
@@ -169,7 +160,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -204,7 +195,8 @@ Send a test request to verify end-to-end connectivity:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Hub-Signature-256: sha256=$(echo -n '{}' | openssl dgst -sha256 -hmac "$TOKEN" | awk '{print $2}')" \
+  -H "X-GitHub-Event: ping" \
+  -H "X-Hub-Signature: sha1=$(printf '{}' | openssl dgst -sha1 -hmac "$TOKEN" | awk '{print $2}')" \
   -d '{}' \
   https://flux-webhook.example.com/<webhook-path>
 ```
@@ -225,10 +217,10 @@ Make sure the path in the Ingress matches the webhook path prefix. The notificat
 
 ### Ingress returns 502
 
-The notification-controller pod may not be running or the service port may be wrong. Verify:
+The notification-controller pod may not be running or the webhook service port may be wrong. Verify:
 
 ```bash
-kubectl -n flux-system get svc notification-controller
+kubectl -n flux-system get svc webhook-receiver
 kubectl -n flux-system get pods -l app=notification-controller
 ```
 
@@ -259,4 +251,4 @@ In your GitHub webhook settings, click **Recent Deliveries** to inspect the HTTP
 
 ## Summary
 
-Exposing the Flux Receiver behind an Ingress controller enables external services to trigger immediate reconciliation in your cluster. The key steps are creating a token secret, defining a Receiver resource, setting up an Ingress with TLS, and configuring the upstream webhook provider with the correct URL and token. Combined with proper TLS termination and request-method filtering, this setup keeps your webhook endpoint both reachable and secure.
+Exposing the Flux Receiver behind an Ingress controller enables external services to trigger immediate reconciliation in your cluster. The key steps are creating a token secret, defining a Receiver resource, setting up an Ingress with TLS, and configuring the upstream webhook provider with the correct URL and token. Combined with proper TLS termination, this setup keeps your webhook endpoint both reachable and secure.
