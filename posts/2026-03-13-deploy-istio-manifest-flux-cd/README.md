@@ -18,7 +18,7 @@ This guide covers generating Istio manifests with istioctl and managing them wit
 
 ## Prerequisites
 
-- Kubernetes cluster (1.26+)
+- Kubernetes cluster supported by the Istio version you want to deploy
 - Flux CD v2 bootstrapped to your Git repository
 - `istioctl` CLI installed locally (matching the Istio version you want to deploy)
 
@@ -84,15 +84,8 @@ istioctl manifest generate \
 # Verify the output
 wc -l clusters/my-cluster/istio/istio-manifest.yaml
 
-# Split into logical files (optional, for readability)
-istioctl manifest generate -f istio-config/istio-operator.yaml \
-  --component Base > clusters/my-cluster/istio/base.yaml
-
-istioctl manifest generate -f istio-config/istio-operator.yaml \
-  --component Pilot > clusters/my-cluster/istio/istiod.yaml
-
-istioctl manifest generate -f istio-config/istio-operator.yaml \
-  --component IngressGateways > clusters/my-cluster/istio/gateway.yaml
+# Keep the generated output as one file so the exact istioctl output is committed
+git diff clusters/my-cluster/istio/istio-manifest.yaml
 ```
 
 ## Step 2: Organize Manifests in Git
@@ -101,9 +94,7 @@ istioctl manifest generate -f istio-config/istio-operator.yaml \
 clusters/my-cluster/istio/
 ├── kustomization.yaml
 ├── namespace.yaml
-├── base.yaml          # CRDs and cluster-level resources
-├── istiod.yaml        # Istiod control plane
-└── gateway.yaml       # Ingress gateway
+└── istio-manifest.yaml # Generated Istio resources
 ```
 
 ```yaml
@@ -112,9 +103,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - base.yaml
-  - istiod.yaml
-  - gateway.yaml
+  - istio-manifest.yaml
 ```
 
 ## Step 3: Create the Namespace
@@ -164,8 +153,8 @@ When upgrading Istio:
 
 ```bash
 # Install the new istioctl version
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-export PATH=$PWD/istio-1.22.0/bin:$PATH
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 sh -
+export PATH=$PWD/istio-1.29.2/bin:$PATH
 
 # Regenerate manifests with the new version
 istioctl manifest generate \
@@ -177,7 +166,7 @@ git diff clusters/my-cluster/istio/
 
 # Commit and push - Flux handles the upgrade
 git add clusters/my-cluster/istio/
-git commit -m "chore: upgrade Istio from 1.21.x to 1.22.0"
+git commit -m "chore: upgrade Istio to 1.29.2"
 git push
 ```
 
@@ -191,10 +180,9 @@ flux get kustomizations istio
 kubectl get pods -n istio-system
 kubectl get svc -n istio-system
 
-# Check manifest differences between running and desired
-istioctl manifest diff \
-  <(istioctl manifest generate -f istio-config/istio-operator.yaml) \
-  <(kubectl get all -n istio-system -o yaml)
+# Confirm the committed manifest still matches the IstioOperator config
+istioctl manifest generate -f istio-config/istio-operator.yaml \
+  | diff -u clusters/my-cluster/istio/istio-manifest.yaml -
 
 # Run Istio analysis
 istioctl analyze --all-namespaces
@@ -203,8 +191,8 @@ istioctl analyze --all-namespaces
 ## Best Practices
 
 - Commit the `istio-operator.yaml` source config alongside the generated manifests so future operators know how the manifests were produced.
-- Run `istioctl manifest diff` as part of your CI pipeline to detect any drift between the generated manifests and the running cluster state.
-- Set `prune: false` on the Flux Kustomization for Istio - CRDs and cluster-level resources should not be pruned automatically.
+- Run `istioctl manifest generate` and compare it with the committed manifest as part of your CI pipeline to detect uncommitted generation changes.
+- Set `prune: false` on the Flux Kustomization for Istio - CRDs and cluster-level resources should not be pruned automatically. If an Istio configuration change removes a resource, delete that resource manually after reviewing the diff.
 - Use Flux's `timeout` field on the Kustomization to allow for longer Istio reconciliation time, as some components take minutes to become healthy.
 - Test manifest upgrades in a staging cluster before committing to the production branch, using Flux's environment-per-branch pattern.
 
