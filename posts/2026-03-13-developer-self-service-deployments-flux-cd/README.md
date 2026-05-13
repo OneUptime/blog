@@ -21,6 +21,7 @@ In this guide you will configure Flux image reflector and automation controllers
 - Flux CD v2 with image-reflector-controller and image-automation-controller installed
 - A container registry (Docker Hub, GHCR, ECR, or GCR)
 - A developer application repository with Kubernetes manifests or Helm charts
+- A Flux `GitRepository` source for the application repository configured with write credentials
 - CI/CD pipeline that builds and pushes images on commit
 
 ## Step 1: Install Flux with Image Automation
@@ -33,7 +34,8 @@ flux bootstrap github \
   --repository=platform-gitops \
   --branch=main \
   --path=clusters/production \
-  --components-extra=image-reflector-controller,image-automation-controller
+  --components-extra=image-reflector-controller,image-automation-controller \
+  --read-write-key
 ```
 
 Verify the controllers are running:
@@ -126,7 +128,10 @@ spec:
         name: Flux Bot
         email: flux@acme.com
       messageTemplate: |
-        chore(auto): update {{range .Updated.Images}}{{.}}{{end}} image tag
+        chore(auto): update image tag
+
+        {{range .Changed.Changes}}{{.OldValue}} -> {{.NewValue}}
+        {{end}}
 
         Updated by Flux image automation controller.
     push:
@@ -152,8 +157,7 @@ spec:
     spec:
       containers:
         - name: my-service
-          # {"$imagepolicy": "team-alpha:my-service"}
-          image: ghcr.io/acme/my-service:v1.2.3
+          image: ghcr.io/acme/my-service:v1.2.3 # {"$imagepolicy": "team-alpha:my-service"}
 ```
 
 When Flux detects a new matching image tag, it replaces the tag in-place and commits to Git, triggering a Kustomization reconciliation.
@@ -183,7 +187,7 @@ sequenceDiagram
 
 ## Step 7: Allow Developers to Check Deployment Status
 
-Give developers read access to Flux status without kubectl cluster access using the Flux CLI with a scoped kubeconfig.
+Give developers read access to Flux status without broad kubectl cluster access using the Flux CLI with a scoped kubeconfig.
 
 ```bash
 # Developer checks the status of their deployment
@@ -200,10 +204,10 @@ flux get images policy my-service -n team-alpha
 ## Best Practices
 
 - Use semantic versioning for image tags and pin the ImagePolicy range to a major version to prevent accidental breaking deployments
-- Protect the `main` branch with required status checks so CI must pass before Flux automation can commit
+- If the `main` branch is protected, have Flux push updates to a separate branch and use CI automation to open a pull request
 - Configure separate ImagePolicies for dev (latest), staging (release candidates), and production (stable semver range)
 - Alert on ImageUpdateAutomation failures so broken CI pipelines don't silently block deployments
-- Keep image automation commits signed using SSH key automation support in Flux
+- Keep image automation commits signed using Flux's PGP signing key support
 
 ## Conclusion
 
