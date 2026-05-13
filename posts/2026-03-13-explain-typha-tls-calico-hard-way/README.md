@@ -14,13 +14,13 @@ Explaining Typha TLS to teammates requires translating the abstract concept of m
 
 ## The Core Security Concern
 
-Without authentication between Felix and Typha, the following attack is possible: a process running on a compromised worker node could connect to the Typha service and receive the complete state of all Calico network policies. This gives the attacker knowledge of which network policies are enforced, which pods are isolated, and potentially where security-critical workloads are running.
+Without authentication between Felix and Typha, the following attack is possible: a process that can reach the Typha service could connect and receive the Calico datastore updates that Typha fans out to per-node daemons, including network policy state. This gives the attacker knowledge of which network policies are enforced, which pods are isolated, and potentially where security-critical workloads are running.
 
-mTLS closes this attack surface: only processes holding certificates signed by the cluster's Calico CA can connect to Typha.
+mTLS closes this attack surface for unauthenticated clients: only processes holding certificates signed by the Calico Typha CA and matching Typha's configured client identity can connect to Typha.
 
 ## Analogy for Security Teams
 
-> "Typha mTLS is equivalent to a corporate VPN with client certificate authentication. The VPN server (Typha) has a server certificate that clients verify. Each VPN client (Felix) has a unique client certificate that the server verifies. Without a valid certificate from the corporate CA, the VPN server rejects the connection."
+> "Typha mTLS is equivalent to a corporate VPN with client certificate authentication. The VPN server (Typha) has a server certificate that clients verify. Each VPN client (Felix) has a client certificate that the server verifies. Without a valid certificate from the corporate CA and the expected client identity, the VPN server rejects the connection."
 
 ## Explaining to Platform Engineers
 
@@ -28,32 +28,35 @@ For engineers who understand Kubernetes but not Typha specifics:
 
 ```plaintext
 The setup is equivalent to other mTLS systems in Kubernetes:
-- etcd uses client certificates to authenticate kubeadm
+- etcd uses client certificates to authenticate kube-apiserver
 - The Kubernetes API server uses client certificates for control plane components
 - Typha uses the same pattern for Felix authentication
 ```
 
-The certificates are just X.509 standard certificates. The only Typha-specific aspect is that both Felix and Typha reference the same CA certificate.
+The certificates are just X.509 standard certificates. The Typha-specific aspects are that both Felix and Typha reference the same CA certificate and that Typha checks the client certificate identity using `TYPHA_CLIENTCN` or `TYPHA_CLIENTURISAN`.
 
 ## How to Show the Current Security Posture
 
 ```bash
 # Is TLS enabled on Typha?
 
-kubectl get deployment calico-typha -n calico-system -o yaml | grep -c "TYPHA_CAFILE"
+kubectl get deployment calico-typha -n kube-system -o yaml | grep -E "TYPHA_CAFILE|TYPHA_SERVERCERTFILE|TYPHA_CLIENTCN"
 
 # What CA is Typha using?
-kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}' | \
+kubectl get configmap calico-typha-ca -n kube-system -o jsonpath='{.data.typhaca\.crt}' | \
+  openssl x509 -noout -subject -issuer
+
+# What certificate is Typha presenting?
+kubectl get secret calico-typha-certs -n kube-system -o jsonpath='{.data.typha\.crt}' | \
   base64 -d | openssl x509 -noout -subject -issuer
 
-# What CA is Felix using?
-kubectl get secret calico-felix-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}' | \
+# What client certificate is calico/node using for Felix-to-Typha?
+kubectl get secret calico-node-certs -n kube-system -o jsonpath='{.data.calico-node\.crt}' | \
   base64 -d | openssl x509 -noout -subject -issuer
 
-# Are the CAs identical?
-TYPHA_CA=$(kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
-FELIX_CA=$(kubectl get secret calico-felix-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
-[ "$TYPHA_CA" = "$FELIX_CA" ] && echo "CA match: SECURE" || echo "CA mismatch: INSECURE"
+# Are Typha and calico/node using the same CA bundle?
+kubectl get deployment calico-typha -n kube-system -o yaml | grep /calico-typha-ca/typhaca.crt
+kubectl get daemonset calico-node -n kube-system -o yaml | grep /calico-typha-ca/typhaca.crt
 ```
 
 ## What Auditors Will Ask
@@ -70,20 +73,20 @@ Answers to prepare:
 
 ```bash
 # CA storage location
-ls /etc/calico/typha-ca.key  # Should exist only on the control plane
+ls typhaca.key  # Should exist only in your secured certificate-generation location
 
 # Certificate validity
-kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.tls\.crt}' | \
+kubectl get secret calico-typha-certs -n kube-system -o jsonpath='{.data.typha\.crt}' | \
   base64 -d | openssl x509 -noout -dates
 
 # TLS enforcement check
-kubectl get deployment calico-typha -n calico-system -o yaml | grep TYPHA_REQUIREDCN
+kubectl get deployment calico-typha -n kube-system -o yaml | grep TYPHA_CLIENTCN
 ```
 
 ## Certificate Revocation
 
-Typha does not support CRL (Certificate Revocation Lists). Revocation is handled by deleting the Felix client certificate Secret and restarting the affected Felix agents, which forces them to use new certificates.
+Typha does not document CRL (Certificate Revocation List) checking for Felix-to-Typha client certificates. In a hard-way installation, revocation is handled operationally: issue a new client certificate, update the `calico-node-certs` Secret, and restart the affected `calico/node` pods so Felix uses the new certificate. If the CA itself is no longer trusted, rotate the Typha CA and both the Typha and calico/node certificates together.
 
 ## Conclusion
 
-Explaining Typha TLS to different audiences requires adjusting the level of detail: security teams need the threat model and audit evidence, platform engineers need the operational mechanics, and new team members need the conceptual analogy. The core message is consistent across all audiences: Typha mTLS ensures that only authorized Felix agents - those with certificates signed by the cluster CA - can connect to the policy fan-out layer, closing a meaningful attack surface in the Calico architecture.
+Explaining Typha TLS to different audiences requires adjusting the level of detail: security teams need the threat model and audit evidence, platform engineers need the operational mechanics, and new team members need the conceptual analogy. The core message is consistent across all audiences: Typha mTLS ensures that only authorized Felix agents - those with certificates signed by the Calico Typha CA and matching Typha's configured client identity - can connect to the policy fan-out layer, closing a meaningful attack surface in the Calico architecture.
