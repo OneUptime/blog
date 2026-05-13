@@ -12,9 +12,9 @@ Description: Deploy Backstage internal developer portal to Kubernetes using Flux
 
 Backstage is an open-source platform for building internal developer portals, created by Spotify and now a CNCF incubating project. It centralizes your software catalog, technical documentation, scaffolding templates, and third-party tool integrations into a single developer-facing UI. Platform engineering teams use Backstage to reduce cognitive load on developers by providing a consistent "single pane of glass" for navigating services, APIs, and infrastructure.
 
-Deploying Backstage on Kubernetes with Flux CD means your developer portal infrastructure is managed with the same GitOps discipline that Backstage itself promotes for software development. The official Backstage Helm chart packages the built application, a PostgreSQL database, and all required configuration into a single, declarative release.
+Deploying Backstage on Kubernetes with Flux CD means your developer portal infrastructure is managed with the same GitOps discipline that Backstage itself promotes for software development. The official Backstage Helm chart packages the built application, a PostgreSQL database, and application configuration into a single, declarative release.
 
-This guide deploys Backstage using the official Helm chart with PostgreSQL and GitHub-based authentication.
+This guide deploys Backstage using the official Helm chart with PostgreSQL and GitHub-based authentication. The custom Backstage image should include the GitHub auth provider, GitHub sign-in page, and GitHub catalog backend module.
 
 ## Prerequisites
 
@@ -79,7 +79,13 @@ data:
           host: backstage-postgresql
           port: 5432
           user: backstage
+          password: ${POSTGRES_PASSWORD}
           database: backstage
+
+    integrations:
+      github:
+        - host: github.com
+          token: ${GITHUB_TOKEN}
 
     auth:
       environment: production
@@ -102,9 +108,9 @@ data:
               timeout: { minutes: 3 }
 
     techdocs:
-      builder: external
+      builder: local
       generator:
-        runIn: docker
+        runIn: local
       publisher:
         type: local
 ```
@@ -123,7 +129,7 @@ spec:
   chart:
     spec:
       chart: backstage
-      version: ">=1.9.0 <2.0.0"
+      version: ">=2.0.0 <3.0.0"
       sourceRef:
         kind: HelmRepository
         name: backstage
@@ -181,7 +187,7 @@ spec:
 ## Step 5: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/backstage/kustomization.yaml
+# clusters/my-cluster/flux-system/backstage-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
