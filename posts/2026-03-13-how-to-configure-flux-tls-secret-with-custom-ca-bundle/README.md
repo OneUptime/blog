@@ -32,16 +32,16 @@ You need a custom CA bundle when:
 
 Get the CA certificate that signed your server's TLS certificate. This is typically available from your security or infrastructure team.
 
-You can also extract it from the server:
+You can also inspect the certificate chain presented by the server:
 
 ```bash
-# Extract the CA certificate from a running server
+# Inspect the certificate chain from a running server
 
 openssl s_client -showcerts -connect git.internal.example.com:443 </dev/null 2>/dev/null \
-  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{print}' > ca-bundle.crt
+  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{print}' > server-chain.crt
 ```
 
-If there is a certificate chain, save all intermediate and root certificates into a single file:
+Use this output to identify the issuing CA certificates, then save the root CA and any required intermediate CA certificates into a single file:
 
 ```bash
 # Verify the certificate
