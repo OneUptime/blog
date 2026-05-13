@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Apache Beam, Dataflow, Data Pipeline, HelmRelease, Kustomization
 
-Description: Learn how to deploy Apache Beam pipelines on Kubernetes using the Portable Runner managed by Flux CD for GitOps-driven data pipeline execution.
+Description: Learn how to deploy Apache Beam pipelines on Kubernetes using the Flink Runner managed by Flux CD for GitOps-driven data pipeline execution.
 
 ---
 
 ## Introduction
 
-Apache Beam provides a unified programming model for batch and streaming data pipelines that can run on multiple execution engines (runners): Apache Flink, Apache Spark, Google Dataflow, and the Direct Runner. The Kubernetes-based Portable Runner allows you to execute Beam pipelines directly on Kubernetes without requiring a separate cluster manager like Flink or Spark.
+Apache Beam provides a unified programming model for batch and streaming data pipelines that can run on multiple execution engines (runners): Apache Flink, Apache Spark, Google Dataflow, and the Direct Runner. On Kubernetes, a common production pattern is to run a Beam-supported execution engine such as Apache Flink in the cluster and submit Beam pipelines to it.
 
 Deploying Beam pipeline infrastructure with Flux CD gives you version-controlled pipeline configurations, reproducible job submissions, and automated infrastructure provisioning. By storing Beam job specs as Kubernetes Job or CronJob resources in Git, every pipeline execution is tied to a specific Git commit, making debugging and rollbacks straightforward.
 
@@ -21,12 +21,12 @@ In this guide you will deploy the Apache Beam Flink runner on Kubernetes via Flu
 - A Kubernetes cluster with Flux CD installed
 - Apache Flink deployed via Flux CD (see the Flink post in this series)
 - `kubectl` and `flux` CLI tools installed
-- A Docker image with your Beam pipeline JAR/Python dependencies
+- A Docker image with your Beam pipeline Python dependencies and Beam SDK harness bootloader available to Flink TaskManagers
 - Basic understanding of Apache Beam concepts (pipelines, transforms, runners)
 
 ## Step 1: Deploy Flink as the Beam Runner Backend
 
-Apache Beam uses Flink as the backend runner for production Kubernetes deployments.
+Apache Beam can use Flink as a production-grade backend runner for Kubernetes deployments.
 
 ```yaml
 # clusters/production/infrastructure/beam-flink-session-helmrelease.yaml
@@ -43,13 +43,13 @@ spec:
   chart:
     spec:
       chart: flink-kubernetes-operator
-      version: "1.9.x"
+      version: "1.14.x"
       sourceRef:
         kind: HelmRepository
         name: flink-operator
   values:
     watchNamespaces:
-      - beam-jobs
+      - beam-infrastructure
 ```
 
 ## Step 2: Create a Flink Session Cluster for Beam
@@ -64,7 +64,7 @@ metadata:
   name: beam-session-cluster
   namespace: beam-infrastructure
 spec:
-  image: flink:1.18-scala_2.12-java11
+  image: myregistry/flink-beam-python:1.18
   flinkVersion: v1_18
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "4"
@@ -72,7 +72,7 @@ spec:
     state.checkpoints.dir: s3a://my-beam-bucket/flink-checkpoints
     state.savepoints.dir: s3a://my-beam-bucket/flink-savepoints
 
-  serviceAccount: flink-service-account
+  serviceAccount: flink
 
   jobManager:
     resource:
@@ -85,14 +85,11 @@ spec:
       memory: 4096m
       cpu: 2
     replicas: 3
-
-  # Session mode: no job spec - accepts submitted jobs
-  mode: session
 ```
 
 ## Step 3: Create a Beam Pipeline Kubernetes Job
 
-Submit a Python Beam pipeline as a Kubernetes Job.
+Submit a Python Beam pipeline as a Kubernetes Job. The Flink TaskManager image should include Python, `apache_beam`, your worker dependencies, and the Beam SDK harness bootloader used by the `PROCESS` environment.
 
 ```yaml
 # apps/beam-jobs/customer-etl-job.yaml
@@ -118,20 +115,19 @@ spec:
         - name: beam-pipeline
           image: myregistry/beam-pipelines:v1.4.0
           command:
-            - python
-            - -m
-            - pipelines.customer_etl
+            - /bin/sh
+            - -c
           args:
-            # Use the Flink runner via the Portable Runner API
-            - "--runner=FlinkRunner"
-            - "--flink_master=beam-session-cluster-rest.beam-infrastructure.svc.cluster.local:8081"
-            - "--environment_type=EXTERNAL"
-            - "--environment_config=beam-job-runner:50000"
-            # Pipeline-specific arguments
-            - "--input=gs://my-data-bucket/raw/customers/*.parquet"
-            - "--output=gs://my-data-bucket/processed/customers/"
-            - "--date=$(date +%Y-%m-%d)"
-            - "--parallelism=8"
+            - |
+              exec python -m pipelines.customer_etl \
+                --runner=FlinkRunner \
+                --flink_master=beam-session-cluster-rest.beam-infrastructure.svc.cluster.local:8081 \
+                --environment_type=PROCESS \
+                --environment_config='{"os":"linux","arch":"amd64","command":"/opt/apache/beam/boot"}' \
+                --input='gs://my-data-bucket/raw/customers/*.parquet' \
+                --output=gs://my-data-bucket/processed/customers/ \
+                --date="$(date +%Y-%m-%d)" \
+                --parallelism=8
           env:
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: /var/secrets/google/key.json
@@ -199,16 +195,17 @@ spec:
             - name: revenue-pipeline
               image: myregistry/beam-pipelines:v1.4.0
               command:
-                - python
-                - -m
-                - pipelines.revenue_report
+                - /bin/sh
+                - -c
               args:
-                - "--runner=FlinkRunner"
-                - "--flink_master=beam-session-cluster-rest.beam-infrastructure:8081"
-                - "--environment_type=EXTERNAL"
-                - "--environment_config=beam-job-runner:50000"
-                - "--report-date=$(date -d yesterday +%Y-%m-%d)"
-                - "--output=s3://reports-bucket/revenue/"
+                - |
+                  exec python -m pipelines.revenue_report \
+                    --runner=FlinkRunner \
+                    --flink_master=beam-session-cluster-rest.beam-infrastructure:8081 \
+                    --environment_type=PROCESS \
+                    --environment_config='{"os":"linux","arch":"amd64","command":"/opt/apache/beam/boot"}' \
+                    --report-date="$(date -d yesterday +%Y-%m-%d)" \
+                    --output=s3://reports-bucket/revenue/
               resources:
                 requests:
                   cpu: 1000m
@@ -274,8 +271,6 @@ spec:
   prune: true
   wait: true
   timeout: 15m
-  dependsOn:
-    - name: beam-flink-session
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
