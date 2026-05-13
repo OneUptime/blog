@@ -14,7 +14,7 @@ Deploying the OpenTelemetry Collector as a DaemonSet ensures that one collector 
 
 Managing the DaemonSet collector configuration via Flux CD means your pipeline configuration-receivers, processors, exporters-is version-controlled. When you add a new backend or enable a new receiver, the change flows through a pull request and Flux automatically reconciles every node's collector.
 
-This guide uses the OpenTelemetry Operator and a `Collector` custom resource to deploy the DaemonSet.
+This guide uses the OpenTelemetry Operator and an `OpenTelemetryCollector` custom resource to deploy the DaemonSet.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ This guide uses the OpenTelemetry Operator and a `Collector` custom resource to 
 ## Step 1: Deploy the OpenTelemetry Operator
 
 ```yaml
-# clusters/my-cluster/otel/otel-operator-helmrepository.yaml
+# clusters/my-cluster/otel-operator/otel-operator-helmrepository.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -37,14 +37,17 @@ spec:
   interval: 12h
   url: https://open-telemetry.github.io/opentelemetry-helm-charts
 ---
-# clusters/my-cluster/otel/otel-operator-helmrelease.yaml
+# clusters/my-cluster/otel-operator/otel-operator-helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: opentelemetry-operator
-  namespace: opentelemetry-operator-system
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: opentelemetry-operator-system
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: opentelemetry-operator
@@ -59,9 +62,10 @@ spec:
       certManager:
         enabled: true
     manager:
-      # Enable feature gates for target allocator and collector management
-      extraArgs:
-        - --enable-leader-election
+      collectorImage:
+        repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+      # Let the operator create collector RBAC needed by processors such as k8sattributes
+      createRbacPermissions: true
 ```
 
 ## Step 2: Create the DaemonSet OpenTelemetry Collector
@@ -69,8 +73,8 @@ spec:
 Define a `OpenTelemetryCollector` CR with `mode: daemonset` to run one pod per node.
 
 ```yaml
-# clusters/my-cluster/otel/otel-daemonset-collector.yaml
-apiVersion: opentelemetry.io/v1alpha1
+# clusters/my-cluster/otel-collector/otel-daemonset-collector.yaml
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-daemonset
@@ -87,6 +91,9 @@ spec:
     - name: varlibdockercontainers
       mountPath: /var/lib/docker/containers
       readOnly: true
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
 
   volumes:
     - name: varlogpods
@@ -95,8 +102,11 @@ spec:
     - name: varlibdockercontainers
       hostPath:
         path: /var/lib/docker/containers
+    - name: hostfs
+      hostPath:
+        path: /
 
-  # Expose OTLP port on the host so applications can send to 127.0.0.1:4317
+  # Expose OTLP ports on the host so applications can send to their node IP
   hostNetwork: false
   ports:
     - name: otlp-grpc
@@ -106,7 +116,7 @@ spec:
       port: 4318
       hostPort: 4318
 
-  config: |
+  config:
     receivers:
       # Receive OTLP telemetry from applications on this node
       otlp:
@@ -118,6 +128,7 @@ spec:
 
       # Collect host metrics from every node
       hostmetrics:
+        root_path: /hostfs
         collection_interval: 30s
         scrapers:
           cpu: {}
@@ -157,9 +168,9 @@ spec:
       # Export metrics to Prometheus-compatible remote_write endpoint
       prometheusremotewrite:
         endpoint: http://mimir-distributor.monitoring.svc:8080/api/v1/push
-      # Export logs to Loki
-      loki:
-        endpoint: http://loki-gateway.monitoring.svc/loki/api/v1/push
+      # Export logs to Loki's OTLP ingestion endpoint
+      otlphttp/loki:
+        endpoint: http://loki-gateway.monitoring.svc/otlp
       # Export traces to Tempo
       otlp/tempo:
         endpoint: tempo-distributor.monitoring.svc:4317
@@ -175,7 +186,7 @@ spec:
         logs:
           receivers: [otlp, filelog]
           processors: [k8sattributes, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
         traces:
           receivers: [otlp]
           processors: [k8sattributes, batch]
@@ -185,7 +196,23 @@ spec:
 ## Step 3: Create the Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/otel/kustomization.yaml
+# clusters/my-cluster/flux-system/otel-operator-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: opentelemetry-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/my-cluster/otel-operator
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: cert-manager
+---
+# clusters/my-cluster/flux-system/otel-collector-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -193,14 +220,13 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./clusters/my-cluster/otel
+  path: ./clusters/my-cluster/otel-collector
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
   dependsOn:
     - name: opentelemetry-operator
-    - name: cert-manager
 ```
 
 ## Best Practices
