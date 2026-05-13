@@ -10,9 +10,9 @@ Description: Set up comprehensive monitoring for Calico eBPF mode, tracking BPF 
 
 ## Introduction
 
-Monitoring Calico eBPF mode requires new observability strategies compared to iptables-based monitoring. The key metrics to track are: BPF program loading status (did all programs load successfully on all nodes?), BPF map utilization (are maps approaching their size limits?), network performance metrics (is the expected latency reduction materializing?), and eBPF-mode-specific error counters (BPF program execution failures).
+Monitoring Calico eBPF mode requires new observability strategies compared to iptables-based monitoring. The key metrics to track are: BPF endpoint programming status (are endpoints successfully programmed on all nodes?), BPF data plane activity (are BPF-specific metrics present from Felix?), network performance metrics (is the expected latency reduction materializing?), and eBPF-mode-specific troubleshooting signals such as dirty BPF endpoints.
 
-Felix exposes Prometheus metrics that include eBPF-specific counters when running in eBPF mode. These metrics provide insight into the BPF data plane's health that is not available through standard Kubernetes monitoring.
+Felix exposes Prometheus metrics that include BPF data plane metrics when running in eBPF mode. These metrics provide insight into the BPF data plane's health that is not available through standard Kubernetes monitoring.
 
 ## Prerequisites
 
@@ -37,7 +37,22 @@ spec:
 ```
 
 ```yaml
-# Prometheus ServiceMonitor for Felix
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    app: calico-felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -46,7 +61,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
+      app: calico-felix-metrics
   namespaceSelector:
     matchNames: [calico-system]
   endpoints:
@@ -57,20 +72,20 @@ spec:
 ## Key eBPF Prometheus Metrics
 
 ```promql
-# Felix BPF data plane active (1 = eBPF, 0 = iptables)
-felix_bpf_enabled
+# BPF endpoints managed by Felix
+felix_bpf_dataplane_endpoints
 
-# BPF map utilization (warn at 80%)
-felix_bpf_map_size_used / felix_bpf_map_size_capacity
+# BPF endpoints successfully programmed
+felix_bpf_happy_dataplane_endpoints
 
-# BPF program execution errors
-rate(felix_bpf_prog_execution_failures_total[5m])
+# BPF endpoints left dirty after a programming failure
+felix_bpf_dirty_dataplane_endpoints
 
-# NAT entries in BPF (service entries)
-felix_bpf_nat_entries
+# BPF IP sets managed by Felix
+felix_bpf_num_ip_sets
 
-# Conntrack entries
-felix_bpf_conntrack_entries
+# Maglev entries in the BPF conntrack table
+felix_bpf_conntrack_maglev_entries_total
 ```
 
 ## Alert Rules for eBPF Monitoring
@@ -87,32 +102,32 @@ spec:
     - name: calico.ebpf
       rules:
         - alert: CalicoEBPFNotActive
-          expr: felix_bpf_enabled == 0
+          expr: absent_over_time(felix_bpf_dataplane_endpoints[5m])
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Calico eBPF mode not active on node {{ $labels.instance }}"
-            description: "Felix is running in iptables mode despite eBPF being configured"
+            summary: "Calico BPF data plane metrics are missing"
+            description: "Felix is not exporting BPF data plane metrics. Verify that eBPF mode is enabled and Felix metrics are being scraped."
 
-        - alert: CalicoEBPFMapNearCapacity
+        - alert: CalicoEBPFEndpointsNotProgrammed
           expr: |
-            (felix_bpf_map_size_used / felix_bpf_map_size_capacity) > 0.8
+            felix_bpf_dataplane_endpoints > felix_bpf_happy_dataplane_endpoints
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Calico BPF map {{ $labels.map }} is at {{ $value | humanizePercentage }} capacity"
-            description: "BPF map approaching limit. Consider increasing map size or reducing connections."
+            summary: "Calico BPF endpoints are not fully programmed on {{ $labels.instance }}"
+            description: "Felix reports fewer happy BPF endpoints than total BPF endpoints."
 
-        - alert: CalicoEBPFProgErrors
-          expr: rate(felix_bpf_prog_execution_failures_total[5m]) > 0
+        - alert: CalicoEBPFDirtyEndpoints
+          expr: felix_bpf_dirty_dataplane_endpoints > 0
           for: 2m
           labels:
             severity: critical
           annotations:
-            summary: "Calico BPF program execution failures detected"
-            description: "BPF programs failing to execute - network policy may be partially enforced"
+            summary: "Calico BPF dirty endpoints detected on {{ $labels.instance }}"
+            description: "Felix reports BPF endpoints left dirty after a programming failure. Check calico-node logs and BPF counters."
 ```
 
 ## Grafana Dashboard Layout
@@ -121,15 +136,15 @@ spec:
 flowchart TD
     A[Grafana eBPF Dashboard] --> B[Row 1: eBPF Status]
     A --> C[Row 2: Performance]
-    A --> D[Row 3: BPF Maps]
+    A --> D[Row 3: BPF Data Plane]
     A --> E[Row 4: Errors]
-    B --> B1[eBPF active per node]
-    B --> B2[BPF programs loaded]
+    B --> B1[BPF metrics present per node]
+    B --> B2[Happy vs total endpoints]
     C --> C1[Network throughput]
     C --> C2[Latency p50/p99]
-    D --> D1[Map utilization %]
-    D --> D2[NAT/conntrack entries]
-    E --> E1[Program errors rate]
+    D --> D1[BPF endpoints]
+    D --> D2[IP sets and Maglev conntrack entries]
+    E --> E1[Dirty BPF endpoints]
     E --> E2[Felix restart rate]
 ```
 
@@ -157,4 +172,4 @@ chmod +x monitor-ebpf-latency.sh
 
 ## Conclusion
 
-Monitoring Calico eBPF mode requires tracking both the operational status of BPF programs (are they loaded and running on every node?) and the health metrics exposed via Felix Prometheus metrics (map utilization, execution errors, NAT table sizes). The `felix_bpf_enabled` metric is your primary health indicator - if it drops to 0 on any node, Felix has fallen back to iptables mode and you've lost the performance benefits of eBPF. Set up alerts for BPF mode transitions and BPF map capacity to detect issues before they impact production workloads.
+Monitoring Calico eBPF mode requires tracking both the operational status of the BPF data plane (are BPF metrics present from every node?) and the health metrics exposed via Felix Prometheus metrics (endpoint programming status, dirty endpoints, IP sets, and Maglev conntrack entries). The `felix_bpf_happy_dataplane_endpoints` and `felix_bpf_dirty_dataplane_endpoints` metrics are key health indicators: if endpoints are not happy or are left dirty, Felix could not fully program the BPF data plane. Set up alerts for missing BPF metrics and endpoint programming failures to detect issues before they impact production workloads.
