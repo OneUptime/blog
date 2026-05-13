@@ -10,15 +10,16 @@ Description: Migrate Calico NodePort traffic policies to secure Kubernetes NodeP
 
 ## Introduction
 
-NodePort Traffic Policies in Calico gives you control over how traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure NodePort Traffic traffic effectively while maintaining service availability.
+NodePort traffic policies in Calico give you control over how traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure NodePort traffic effectively while maintaining service availability.
 
-Proper NodePort Traffic policy configuration is essential for clusters that expose services to external traffic. Without it, any source can reach your NodePort or ClusterIP services, creating significant attack surface.
+Proper NodePort traffic policy configuration is essential for clusters that expose services to external traffic. Without it, any source that can reach your nodes can reach exposed NodePort services, creating significant attack surface.
 
-This guide covers migrate NodePort Traffic policies in Calico with practical, production-tested configurations.
+This guide covers migrating NodePort traffic policies in Calico with practical, production-tested configurations.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
+- Calico host endpoints for the nodes receiving NodePort traffic
 - `calicoctl` and `kubectl` installed
 - Understanding of Kubernetes service networking
 
@@ -41,10 +42,10 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
       destination:
-        ports: [30000-32767]
+        ports: ['30000:32767']
     - action: Deny
       destination:
-        ports: [30000-32767]
+        ports: ['30000:32767']
   types:
     - Ingress
 ```
@@ -59,7 +60,7 @@ spec:
 calicoctl apply -f migrate-nodeport-traffic.yaml
 
 # Verify traffic behavior
-kubectl exec -n test test-pod -- curl -s --max-time 5 http://service-name:8080
+curl -s --max-time 5 http://<node-ip>:<node-port>
 echo "Result: $?"
 ```
 
@@ -75,4 +76,4 @@ flowchart TD
 
 ## Conclusion
 
-NodePort Traffic Policies policies in Calico provide essential security controls for Kubernetes service traffic. Configure them carefully, test bidirectional traffic flows, and use staged policies to preview impact before enforcement. Regular monitoring of denial rates helps you detect misconfigurations and unauthorized access attempts before they impact service availability.
+NodePort traffic policies in Calico provide essential security controls for Kubernetes service traffic. Configure them carefully, test traffic flows from allowed and denied sources, and use staged policies to preview impact before enforcement. Regular monitoring of denial rates helps you detect misconfigurations and unauthorized access attempts before they impact service availability.
