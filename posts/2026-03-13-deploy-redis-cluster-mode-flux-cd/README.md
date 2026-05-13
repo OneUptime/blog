@@ -10,7 +10,7 @@ Description: Deploy Redis Cluster for horizontal sharding and high throughput on
 
 ## Introduction
 
-Redis Cluster extends Redis's single-node capacity by partitioning data across multiple shards using consistent hashing. Each shard is a primary with one or more replicas, providing both horizontal scaling and high availability. Redis Cluster is the right choice when your dataset exceeds a single node's memory capacity or when you need to distribute read/write throughput across multiple primaries.
+Redis Cluster extends Redis's single-node capacity by partitioning data across multiple shards using 16,384 hash slots. Each shard is a primary with one or more replicas, providing both horizontal scaling and high availability. Redis Cluster is the right choice when your dataset exceeds a single node's memory capacity or when you need to distribute read/write throughput across multiple primaries.
 
 The OpsTree Redis Operator provides a `RedisCluster` CRD for deploying Redis Cluster on Kubernetes with automated slot assignment and shard management. Deploying through Flux CD ensures that cluster size, replication factor, and Redis parameters are all version-controlled.
 
@@ -69,7 +69,7 @@ spec:
   # Number of master shards (each with replicas)
   clusterSize: 3   # 3 primaries
 
-  # Replicas per primary shard
+  # Redis major version
   clusterVersion: v7
 
   kubernetesConfig:
@@ -95,14 +95,20 @@ spec:
         resources:
           requests:
             storage: 10Gi
-
-  # Redis configuration
-  redisConfig:
-    additionalRedisConfig: redis-cluster-config
+    nodeConfVolume: true
+    nodeConfVolumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
 
   # Leader shard settings
   redisLeader:
     replicas: 3   # 3 primary shards
+    redisConfig:
+      additionalRedisConfig: redis-cluster-config
     pdb:
       enabled: true
       minAvailable: 2
@@ -117,6 +123,8 @@ spec:
   # Follower (replica) settings
   redisFollower:
     replicas: 3   # 1 replica per primary shard
+    redisConfig:
+      additionalRedisConfig: redis-cluster-config
     pdb:
       enabled: true
       minAvailable: 2
@@ -199,7 +207,7 @@ spec:
 kubectl get rediscluster redis-cluster -n redis
 
 # Check all pods (3 leaders + 3 followers)
-kubectl get pods -n redis -l app=redis-cluster
+kubectl get pods -n redis -l cluster=redis-cluster
 
 # Connect to cluster and check shard distribution
 kubectl exec -n redis redis-cluster-leader-0 -- \
