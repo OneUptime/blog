@@ -10,7 +10,7 @@ Description: Manage automatic secret rotation with the External Secrets Operator
 
 ## Introduction
 
-Secret rotation is a critical security practice that reduces the blast radius of credential compromise. Rotating database passwords, API keys, and TLS certificates on a regular cadence means any leaked credential has a limited useful lifetime. The challenge in Kubernetes is ensuring that when secrets rotate in the external store, the applications consuming them pick up the new values without requiring redeployments or pod restarts.
+Secret rotation is a critical security practice that reduces the blast radius of credential compromise. Rotating database passwords, API keys, and TLS certificates on a regular cadence means any leaked credential has a limited useful lifetime. The challenge in Kubernetes is ensuring that when secrets rotate in the external store, the applications consuming them pick up the new values without requiring manual redeployments.
 
 The External Secrets Operator, when configured correctly, handles the synchronization side of rotation automatically. But application-level rotation - ensuring pods reload the new credentials - requires additional coordination. Flux CD plays a role by managing the `ExternalSecret` configuration, but Kubernetes mechanisms like secret volume mounts with automatic propagation and Reloader-style controllers handle the application side.
 
@@ -30,7 +30,7 @@ The first step in supporting rotation is ensuring ESO checks for new values freq
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-rotating-db.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-rotating-db-credentials
@@ -62,7 +62,7 @@ spec:
 
 ## Step 2: Deploy Reloader for Automatic Pod Restarts
 
-When ESO updates a Kubernetes Secret, pods that mount it as a volume receive the new value automatically via kubelet's secret syncing (within 60-90 seconds). However, pods using secrets as environment variables require a restart. Deploy Reloader to handle this automatically.
+When ESO updates a Kubernetes Secret, pods that mount it as a volume receive the new value automatically via kubelet's secret syncing after the kubelet sync period and cache propagation delay. This does not apply to Secret mounts that use `subPath`. Pods using secrets as environment variables require a restart. Deploy Reloader to handle this automatically.
 
 ```yaml
 # clusters/my-cluster/reloader/helmrepository.yaml
@@ -86,6 +86,8 @@ metadata:
 spec:
   interval: 15m
   targetNamespace: reloader
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: reloader
@@ -139,7 +141,7 @@ Configure AWS Secrets Manager to rotate secrets automatically, then align ESO's 
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-aws-auto-rotate.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-aws-auto-rotating
@@ -161,13 +163,13 @@ spec:
         key: myapp/rds-password
         property: password
         # Use AWSCURRENT version label for the active secret
-        version: AWSCURRENT
+        version: "AWSCURRENT"
     - secretKey: db-password-previous
       remoteRef:
         key: myapp/rds-password
         property: password
         # Also sync the previous version for dual-write during rotation
-        version: AWSPREVIOUS
+        version: "AWSPREVIOUS"
 ```
 
 ## Step 5: Force Rotation Pickup Immediately
@@ -207,10 +209,10 @@ spec:
 ## Best Practices
 
 - Align the ESO `refreshInterval` with the rotation window: if secrets rotate every 24h, refresh at least every 2h.
-- Always use volume mounts over environment variables for secrets that rotate; volumes update automatically without a pod restart.
+- Prefer volume mounts over environment variables for applications that can re-read secret files; volumes update automatically without a pod restart as long as they are not mounted with `subPath`.
 - Use Reloader for environment-variable-based secrets to ensure pods restart after rotation without requiring manual intervention.
 - Sync both `AWSCURRENT` and `AWSPREVIOUS` versions during dual-write rotation windows to allow existing connections to complete.
-- Set up Prometheus alerts on the `externalsecret_sync_calls_error_total` metric to detect rotation failures immediately.
+- Set up Prometheus alerts on ESO sync error metrics such as `externalsecret_sync_calls_error` to detect rotation failures immediately.
 
 ## Conclusion
 
