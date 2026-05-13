@@ -16,7 +16,7 @@ This guide explains how to create a Docker config JSON Secret and configure Flux
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster supported by your Flux release
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - A private container registry (Docker Hub, GitHub Container Registry, Harbor, etc.)
@@ -219,7 +219,7 @@ kubectl get secret oci-registry-credentials -n flux-system \
   -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
 ```
 
-3. Ensure the registry URL in the Secret matches the URL in the OCI resource.
+3. Ensure the registry host in the Secret matches the host in the OCI resource URL.
 
 ### Wrong Secret Type
 
