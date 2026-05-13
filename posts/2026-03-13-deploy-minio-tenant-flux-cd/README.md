@@ -17,7 +17,7 @@ Managing MinIO Tenants through Flux CD means application teams can request stora
 ## Prerequisites
 
 - MinIO Operator deployed via Flux CD (see previous post)
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes v1.30+ with Flux CD bootstrapped
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Organize Tenant Directory Structure
@@ -30,11 +30,14 @@ infrastructure/
       tenants/
         production/      # Production tenant
           namespace.yaml
+          credentials.yaml
           tenant.yaml
           policies.yaml
           ingress.yaml
+          init-job.yaml
         staging/         # Staging tenant
           namespace.yaml
+          credentials.yaml
           tenant.yaml
 ```
 
@@ -83,14 +86,18 @@ kind: Tenant
 metadata:
   name: minio-production
   namespace: minio-production
-  annotations:
-    flux.weave.works/automated: "false"  # don't auto-update image
 spec:
   image: minio/minio:RELEASE.2024-06-13T22-53-53Z
   imagePullPolicy: IfNotPresent
 
   configuration:
     name: minio-credentials
+
+  features:
+    domains:
+      minio:
+        - "https://s3.example.com"
+      console: "https://console.s3.example.com"
 
   # Production pool: 4 servers × 4 drives × 100 GiB = 1.6 TiB raw
   pools:
@@ -138,10 +145,6 @@ spec:
 
   subPath: /data
 
-  serviceMetadata:
-    minioServiceAnnotations:
-      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-
   # Prometheus monitoring
   prometheusOperator: true
 
@@ -150,14 +153,9 @@ spec:
     anonymous: false
     json: true
     quiet: false
-
-  # Lifecycle management
-  lifecycle:
-    expiry:
-      days: 0   # no default expiry; set per bucket
 ```
 
-## Step 5: Configure MinIO Bucket Policies as ConfigMap
+## Step 5: Store MinIO Bucket Policies as ConfigMap
 
 ```yaml
 # infrastructure/storage/minio/tenants/production/policies.yaml
@@ -175,13 +173,20 @@ data:
         {
           "Effect": "Allow",
           "Action": [
-            "s3:GetObject",
-            "s3:PutObject",
-            "s3:DeleteObject",
             "s3:ListBucket"
           ],
           "Resource": [
-            "arn:aws:s3:::app-team-bucket",
+            "arn:aws:s3:::app-team-bucket"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject"
+          ],
+          "Resource": [
             "arn:aws:s3:::app-team-bucket/*"
           ]
         }
@@ -217,9 +222,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: minio-production-hl
+                name: minio
                 port:
-                  number: 9000
+                  number: 443
 ---
 # Console Ingress
 apiVersion: networking.k8s.io/v1
@@ -229,8 +234,13 @@ metadata:
   namespace: minio-production
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - console.s3.example.com
+      secretName: minio-production-console-tls
   rules:
     - host: console.s3.example.com
       http:
@@ -241,7 +251,7 @@ spec:
               service:
                 name: minio-production-console
                 port:
-                  number: 9090
+                  number: 9443
 ```
 
 ## Step 7: Initialize Tenant via Job
@@ -261,31 +271,40 @@ spec:
       containers:
         - name: mc-init
           image: minio/mc:latest
+          volumeMounts:
+            - name: bucket-policies
+              mountPath: /policies
           command:
             - /bin/sh
             - -c
             - |
-              until mc alias set prod \
-                https://minio-production-hl.minio-production.svc.cluster.local:9000 \
-                minio-admin SecureRootPassword123! \
-                --insecure; do
+              until mc --insecure alias set prod \
+                https://minio.minio-production.svc.cluster.local:443 \
+                minio-admin SecureRootPassword123!; do
                 echo "Waiting for MinIO..."; sleep 10
               done
 
               # Create default buckets
-              mc mb prod/application-data --insecure 2>/dev/null || true
-              mc mb prod/backups --insecure 2>/dev/null || true
-              mc mb prod/logs --insecure 2>/dev/null || true
+              mc --insecure mb --ignore-existing prod/application-data
+              mc --insecure mb --ignore-existing prod/backups
+              mc --insecure mb --ignore-existing prod/logs
 
               # Set versioning on backups bucket
-              mc version enable prod/backups --insecure
+              mc --insecure version enable prod/backups
+
+              # Create IAM policy from ConfigMap
+              mc --insecure admin policy create prod app-team-policy /policies/app-team-policy.json
 
               # Set lifecycle: delete logs older than 90 days
-              mc ilm import prod/logs --insecure <<LIFECYCLE
+              mc --insecure ilm rule import prod/logs <<LIFECYCLE
               {"Rules":[{"ID":"delete-old-logs","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":90}}]}
               LIFECYCLE
 
               echo "MinIO initialization complete"
+      volumes:
+        - name: bucket-policies
+          configMap:
+            name: minio-bucket-policies
 ```
 
 ## Step 8: Flux Kustomization
