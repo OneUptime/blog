@@ -31,7 +31,9 @@ gcloud container clusters create my-cluster \
   --num-nodes 3 \
   --machine-type n1-standard-4 \
   --enable-ip-alias \
+  --enable-intra-node-visibility \
   --no-enable-network-policy \
+  --no-enable-dataplane-v2 \
   --workload-pool=my-project.svc.id.goog
 
 # Get credentials for kubectl
@@ -59,6 +61,7 @@ kind: Installation
 metadata:
   name: default
 spec:
+  kubernetesProvider: GKE
   # Preserve GKE's CNI for pod networking
   cni:
     type: GKE
@@ -66,8 +69,14 @@ spec:
     # Disable BGP as GKE uses its own routing
     bgp: Disabled
     ipPools: []
-  # Use VXLAN encapsulation for cross-node Calico traffic
+  # Enable Prometheus metrics for calico/node
   nodeMetricsPort: 9091
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
 ```
 
 Apply and verify:
@@ -78,9 +87,11 @@ kubectl apply -f calico-installation-gke.yaml
 
 # Wait for all Calico components to be ready
 kubectl wait --for=condition=Ready tigerastatus/calico --timeout=300s
+kubectl wait --for=condition=Ready tigerastatus/apiserver --timeout=300s
 
 # Verify pods are running
 kubectl get pods -n calico-system
+kubectl get pods -n calico-apiserver
 ```
 
 ## Step 3: Configure calicoctl for GKE
@@ -105,6 +116,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: default-deny-all-namespaces
 spec:
+  order: 1000
   # Apply to all pods except those in kube-system and calico-system
   selector: projectcalico.org/namespace not in {'kube-system', 'calico-system', 'calico-apiserver', 'tigera-operator'}
   types:
@@ -119,6 +131,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-kube-dns
 spec:
+  order: 100
   selector: all()
   egress:
     - action: Allow
@@ -137,11 +150,19 @@ spec:
     - Egress
 ```
 
+Apply the baseline policies:
+
+```bash
+kubectl apply -f global-deny-all.yaml
+```
+
 ## Step 5: Test Policy Enforcement
 
 ```bash
 # Deploy test workloads
+kubectl create namespace production
 kubectl run nginx --image=nginx -n production
+kubectl expose pod nginx --port=80 -n production
 kubectl run curl-test --image=curlimages/curl:latest -n production \
   --command -- sleep 3600
 
@@ -163,6 +184,20 @@ spec:
         selector: run == 'curl-test'
   types:
     - Ingress
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-curl-egress-to-nginx
+  namespace: production
+spec:
+  selector: run == 'curl-test'
+  egress:
+    - action: Allow
+      destination:
+        selector: run == 'nginx'
+  types:
+    - Egress
 EOF
 
 # Verify traffic is now allowed
@@ -172,9 +207,9 @@ kubectl exec curl-test -n production -- curl --max-time 5 http://nginx
 ## Best Practices
 
 - Use `GlobalNetworkPolicy` for cluster-wide baseline rules to reduce per-namespace configuration
-- Enable GKE's Workload Identity with Calico's tier-based policies for microservice-level access control
+- Use Kubernetes service accounts with Calico's tier-based policies for microservice-level access control
 - Monitor Calico node agent health on GKE using Cloud Monitoring with custom metrics
-- Test all network policies in GKE autopilot before applying to standard GKE clusters
+- Test all network policies in a non-production Standard GKE cluster before applying them to production
 - Keep Calico versions aligned with GKE's Kubernetes version support matrix
 
 ## Conclusion
