@@ -1,18 +1,18 @@
-# How to Filter Flux Alerts by Event Reason ProgressingWithRetry
+# How to Filter Flux Alerts for Messages Containing ProgressingWithRetry
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Alert, Event Filtering
 
-Description: Learn how to filter Flux alerts by the ProgressingWithRetry event reason to reduce noise and focus on actionable reconciliation issues.
+Description: Learn how to filter Flux alerts for messages containing ProgressingWithRetry to reduce noise and focus on actionable reconciliation issues.
 
 ---
 
 ## Introduction
 
-When running Flux in a production Kubernetes cluster, the notification system can generate a large volume of events. Among these, the `ProgressingWithRetry` reason indicates that a reconciliation is still in progress but has encountered a transient error and is retrying. While this information can be valuable for debugging, it often creates noise in alert channels if left unfiltered.
+When running Flux in a production Kubernetes cluster, the notification system can generate a large volume of events. Among these, messages that include `ProgressingWithRetry` usually indicate that a reconciliation is still in progress but has encountered a transient error and is retrying. While this information can be valuable for debugging, it often creates noise in alert channels if left unfiltered.
 
-This guide walks you through configuring a Flux Alert resource that specifically filters events by the `ProgressingWithRetry` reason. By the end, you will have a targeted alerting setup that either isolates or excludes these retry events depending on your operational needs.
+This guide walks you through configuring a Flux Alert resource that specifically filters event messages containing `ProgressingWithRetry`. By the end, you will have a targeted alerting setup that either isolates or excludes these retry messages depending on your operational needs.
 
 ## Prerequisites
 
@@ -24,9 +24,9 @@ Before you begin, make sure you have the following in place:
 - A Provider resource already configured (such as Slack, Microsoft Teams, or a generic webhook)
 - kubectl access with permissions to create resources in the flux-system namespace
 
-## Understanding the ProgressingWithRetry Event Reason
+## Understanding ProgressingWithRetry in Flux Events
 
-Flux controllers emit Kubernetes events during reconciliation. Each event carries a `reason` field that describes what triggered it. The `ProgressingWithRetry` reason appears when a controller encounters a recoverable error during reconciliation and schedules a retry attempt. Common scenarios include temporary network failures when pulling Helm charts, brief API server unavailability, or transient image registry errors.
+Flux controllers emit events during reconciliation. Each notification event carries fields such as `reason`, `severity`, and `message`, but Flux Alert `inclusionList` and `exclusionList` filters are applied to the event message content. The `ProgressingWithRetry` value is commonly seen as a `Reconciling` condition reason on Flux objects when a controller encounters a recoverable error during reconciliation and schedules a retry attempt. Common scenarios include temporary network failures when pulling Helm charts, brief API server unavailability, or transient image registry errors.
 
 These events are normal in dynamic environments but can flood notification channels if every retry triggers an alert. Filtering them allows your team to focus on persistent failures rather than transient blips.
 
@@ -35,7 +35,7 @@ These events are normal in dynamic environments but can flood notification chann
 If you have not yet created a Provider, here is a basic Slack example that your Alert will reference:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -66,12 +66,12 @@ kubectl apply -f provider.yaml
 kubectl apply -f secret.yaml
 ```
 
-## Filtering Alerts to Only Include ProgressingWithRetry
+## Filtering Alerts to Only Include ProgressingWithRetry Messages
 
-To receive alerts exclusively for `ProgressingWithRetry` events, configure the Alert resource with the `inclusionList` field using a regex pattern that matches this reason:
+To receive alerts exclusively for events whose message contains `ProgressingWithRetry`, configure the Alert resource with the `inclusionList` field using a regex pattern that matches that text:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: progressing-retry-alerts
@@ -91,14 +91,14 @@ spec:
       name: "*"
 ```
 
-In this configuration, the `inclusionList` field accepts a list of regex patterns. Only events whose message or reason matches one of these patterns will be forwarded to the provider. The wildcard `name: "*"` ensures all resources of each kind are monitored.
+In this configuration, the `inclusionList` field accepts a list of Go regex patterns. Only events whose message matches one of these patterns will be forwarded to the provider. The wildcard `name: "*"` ensures all resources of each kind are monitored.
 
-## Filtering Alerts to Exclude ProgressingWithRetry
+## Filtering Alerts to Exclude ProgressingWithRetry Messages
 
-In many production environments, the opposite approach is more useful. You want all alerts except the noisy retry events. Use the `exclusionList` field for this:
+In many production environments, the opposite approach is more useful. You want all alerts except noisy retry messages. Use the `exclusionList` field for this:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-except-retry-alerts
@@ -118,14 +118,14 @@ spec:
       name: "*"
 ```
 
-This configuration forwards every event to Slack unless the event message or reason contains `ProgressingWithRetry`. This is the recommended approach for teams that want comprehensive visibility without retry noise.
+This configuration forwards every event to Slack unless the event message contains `ProgressingWithRetry`. This is the recommended approach for teams that want comprehensive visibility without retry noise.
 
 ## Combining Filters with Event Severity
 
-You can further refine your alerts by combining the reason filter with severity levels. For example, to only see error-level events that are not retries:
+You can further refine your alerts by combining the message filter with severity levels. For example, to only see error-level events that are not retries:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: errors-no-retry
@@ -150,7 +150,7 @@ Setting `eventSeverity` to `error` limits the alert to error events only. Combin
 Rather than monitoring all resources, you can narrow the scope to specific event sources:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: specific-resource-retry-alert
@@ -168,7 +168,7 @@ spec:
       name: production-stack
 ```
 
-This setup only watches for retry events on the `my-critical-app` HelmRelease and the `production-stack` Kustomization, which is useful when you want to track retries for specific workloads without affecting the broader alerting pipeline.
+This setup only watches for matching retry messages on the `my-critical-app` HelmRelease and the `production-stack` Kustomization, which is useful when you want to track retries for specific workloads without affecting the broader alerting pipeline.
 
 ## Verifying the Alert Configuration
 
@@ -204,4 +204,4 @@ Common issues include an incorrect provider reference, a malformed regex pattern
 
 ## Conclusion
 
-Filtering Flux alerts by event reason gives you precise control over what reaches your notification channels. The `ProgressingWithRetry` reason is a common source of alert fatigue, and using the `inclusionList` or `exclusionList` fields in the Alert resource lets you either isolate or suppress these events as needed. Combined with severity filtering and targeted event sources, you can build a notification pipeline that surfaces actionable information without drowning your team in transient retry noise. Apply these patterns to other event reasons as well to keep your alerting strategy clean and effective.
+Filtering Flux alerts by event message gives you precise control over what reaches your notification channels. Messages containing `ProgressingWithRetry` can be a common source of alert fatigue, and using the `inclusionList` or `exclusionList` fields in the Alert resource lets you either isolate or suppress these messages as needed. Combined with severity filtering and targeted event sources, you can build a notification pipeline that surfaces actionable information without drowning your team in transient retry noise. Apply these patterns to other event message text as well to keep your alerting strategy clean and effective.
