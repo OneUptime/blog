@@ -12,7 +12,7 @@ Description: Configure a backup container registry mirror for Flux CD to ensure 
 
 Container registry availability is a hidden dependency in most Kubernetes deployments. When Docker Hub rate-limits your pulls, AWS ECR tokens expire, or GCR experiences an outage, newly scheduled pods fail to start and rolling updates halt. For Flux CD environments, this means deployments triggered by image automation or Kustomization reconciliation can stall mid-rollout.
 
-A backup container registry mirror solves this by providing a local copy of your container images. When the primary registry is unreachable, Kubernetes nodes pull from the local mirror instead, and Flux image automation falls back to scanning the mirror. The mirror acts as both a cache and an independent source of truth for your production images.
+A backup container registry mirror solves this by providing a local copy of your container images. When the primary registry is unreachable, Kubernetes nodes can pull cached images from the local mirror instead, and Flux image automation can scan the mirror directly. The mirror acts as both a cache and an independent source of truth for your production images.
 
 This guide covers setting up Harbor as a pull-through cache and standalone registry mirror, configuring Flux image automation to use it, and handling automatic failover at the node level.
 
@@ -22,7 +22,7 @@ This guide covers setting up Harbor as a pull-through cache and standalone regis
 - Storage available for Harbor (at least 100GB for a meaningful cache)
 - DNS for the internal registry (e.g., `harbor.internal.example.com`)
 - TLS certificate for the registry (cert-manager recommended)
-- `flux` and `kubectl` CLI tools
+- `flux`, `kubectl`, `curl`, `jq`, and Docker CLI tools
 
 ## Step 1: Deploy Harbor as a Registry Mirror
 
@@ -66,8 +66,8 @@ spec:
           size: 10Gi
         redis:
           size: 5Gi
-    harborAdminPassword:
-      existingSecret: harbor-admin-secret
+    existingSecretAdminPassword: harbor-admin-secret
+    existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
 ```
 
 ```yaml
@@ -87,7 +87,7 @@ spec:
 Configure Harbor proxy cache projects for each upstream registry your cluster uses.
 
 ```bash
-# Using Harbor API to create proxy projects
+# Using Harbor API to create registry endpoints and proxy projects
 # Docker Hub proxy
 curl -u "admin:$HARBOR_PASSWORD" \
   -X POST "https://harbor.internal.example.com/api/v2.0/registries" \
@@ -101,6 +101,23 @@ curl -u "admin:$HARBOR_PASSWORD" \
       "access_key": "'"$DOCKERHUB_USER"'",
       "access_secret": "'"$DOCKERHUB_TOKEN"'"
     }
+  }'
+
+DOCKERHUB_REGISTRY_ID=$(
+  curl -s -u "admin:$HARBOR_PASSWORD" \
+    "https://harbor.internal.example.com/api/v2.0/registries?q=name%3Ddockerhub-proxy" |
+    jq -r '.[0].id'
+)
+
+curl -u "admin:$HARBOR_PASSWORD" \
+  -X POST "https://harbor.internal.example.com/api/v2.0/projects" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_name": "dockerhub-proxy",
+    "metadata": {
+      "public": "false"
+    },
+    "registry_id": '"$DOCKERHUB_REGISTRY_ID"'
   }'
 
 # ECR proxy
@@ -117,11 +134,28 @@ curl -u "admin:$HARBOR_PASSWORD" \
       "access_secret": "'"$AWS_SECRET_ACCESS_KEY"'"
     }
   }'
+
+ECR_REGISTRY_ID=$(
+  curl -s -u "admin:$HARBOR_PASSWORD" \
+    "https://harbor.internal.example.com/api/v2.0/registries?q=name%3Decr-proxy" |
+    jq -r '.[0].id'
+)
+
+curl -u "admin:$HARBOR_PASSWORD" \
+  -X POST "https://harbor.internal.example.com/api/v2.0/projects" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_name": "ecr-proxy",
+    "metadata": {
+      "public": "false"
+    },
+    "registry_id": '"$ECR_REGISTRY_ID"'
+  }'
 ```
 
 ## Step 3: Configure containerd to Use the Mirror
 
-Update the containerd configuration on each node to use Harbor as a mirror. On managed Kubernetes clusters, use a DaemonSet.
+Update the containerd configuration on each node to use Harbor as a mirror. Ensure containerd's CRI registry configuration has `config_path = "/etc/containerd/certs.d"` set under `[plugins."io.containerd.grpc.v1.cri".registry]` for containerd 1.x, or `[plugins."io.containerd.cri.v1.images".registry]` for containerd 2.x. On managed Kubernetes clusters, use a DaemonSet to write the host configuration.
 
 ```yaml
 # DaemonSet to configure containerd mirror settings
@@ -157,13 +191,14 @@ spec:
               [host."https://harbor.internal.example.com/v2/dockerhub-proxy"]
                 capabilities = ["pull", "resolve"]
                 skip_verify = false
+                override_path = true
               EOF
           volumeMounts:
             - name: etc-containerd
               mountPath: /host/etc/containerd
       containers:
         - name: pause
-          image: gcr.io/google-containers/pause:3.9
+          image: registry.k8s.io/pause:3.9
       volumes:
         - name: etc-containerd
           hostPath:
@@ -256,7 +291,7 @@ spec:
 - Use Harbor's replication rules to proactively sync critical images from upstreams on a schedule.
 - Store Harbor on a separate storage class with redundancy (RAID or cloud managed disk).
 - Automate Harbor credential rotation and store credentials in your secret manager.
-- Configure Harbor rate limiting to prevent exhausting upstream registries during cache warming.
+- Limit cache-warming concurrency or proxy speed to prevent exhausting upstream registries during cache warming.
 - Monitor Harbor disk usage - a full cache disk will cause pull failures, not fallback to upstream.
 - Test the mirror path by temporarily blocking access to the primary registry in a staging environment.
 
