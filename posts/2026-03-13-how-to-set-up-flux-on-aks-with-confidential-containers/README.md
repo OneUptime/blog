@@ -18,6 +18,7 @@ Deploying confidential workloads through Flux brings GitOps automation to this s
 
 - An Azure subscription with access to confidential computing resources
 - Azure CLI version 2.48 or later
+- The Azure CLI `aks-preview` and `confcom` extensions
 - Flux CLI version 2.0 or later
 - A region that supports AMD SEV-SNP confidential VMs (such as East US, West Europe)
 
@@ -26,6 +27,21 @@ Deploying confidential workloads through Flux brings GitOps automation to this s
 Create a cluster with a standard system node pool and a confidential user node pool:
 
 ```bash
+az extension add --name aks-preview
+az extension add --name confcom
+
+az feature register \
+  --namespace Microsoft.ContainerService \
+  --name KataCcIsolationPreview
+
+az feature show \
+  --namespace Microsoft.ContainerService \
+  --name KataCcIsolationPreview \
+  --query properties.state
+
+# Continue after the feature state is Registered.
+az provider register --namespace Microsoft.ContainerService
+
 az aks create \
   --resource-group my-resource-group \
   --name my-confidential-cluster \
@@ -33,6 +49,8 @@ az aks create \
   --node-count 2 \
   --node-vm-size Standard_D4s_v5 \
   --enable-managed-identity \
+  --enable-oidc-issuer \
+  --enable-workload-identity \
   --generate-ssh-keys
 
 az aks nodepool add \
@@ -42,10 +60,15 @@ az aks nodepool add \
   --node-count 2 \
   --node-vm-size Standard_DC4as_cc_v5 \
   --os-type Linux \
+  --os-sku AzureLinux \
   --workload-runtime KataCcIsolation
+
+az aks update \
+  --resource-group my-resource-group \
+  --name my-confidential-cluster
 ```
 
-The `Standard_DC4as_cc_v5` VM size supports AMD SEV-SNP, and `KataCcIsolation` enables the Kata Containers runtime with confidential computing support.
+The `Standard_DC4as_cc_v5` VM size supports AMD SEV-SNP protected child VMs, and `KataCcIsolation` enables the Kata Containers runtime with confidential computing support.
 
 ## Step 2: Get Cluster Credentials
 
@@ -57,7 +80,7 @@ az aks get-credentials \
 kubectl get nodes -o wide
 ```
 
-You should see nodes from both pools. The confidential node pool nodes will show the `KataCcIsolation` runtime class.
+You should see nodes from both pools. The confidential node pool nodes should have the `agentpool=confpool` label.
 
 ## Step 3: Verify the Runtime Class
 
@@ -67,7 +90,7 @@ Check that the Kata confidential runtime class is available:
 kubectl get runtimeclasses
 ```
 
-You should see a runtime class named `kata-cc-isolation` or similar.
+You should see a runtime class named `kata-cc-isolation`.
 
 ## Step 4: Bootstrap Flux
 
@@ -85,28 +108,22 @@ flux bootstrap github \
 Ensure Flux pods run on the standard node pool by adding node selectors:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
+apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-metadata:
-  name: flux-system
-  namespace: flux-system
-spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./clusters/my-confidential-cluster
-  prune: true
-  patches:
-    - target:
-        kind: Deployment
-        namespace: flux-system
-      patch: |
-        - op: add
-          path: /spec/template/spec/nodeSelector
-          value:
-            kubernetes.io/os: linux
-            agentpool: nodepool1
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      namespace: flux-system
+      labelSelector: app.kubernetes.io/part-of=flux
+    patch: |
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value:
+          kubernetes.io/os: linux
+          agentpool: nodepool1
 ```
 
 ## Step 5: Deploy a Confidential Workload Through Flux
@@ -151,42 +168,14 @@ spec:
 
 ## Step 6: Configure a Security Policy
 
-Confidential containers use security policies to define what the container is allowed to do inside the TEE. Create a policy through Flux:
+Confidential containers use security policies to define what the container is allowed to do inside the TEE. Generate the Kata agent policy for the workload manifest before committing it to the Flux repository:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: confidential-policy
-  namespace: default
-data:
-  policy.rego: |
-    package policy
-
-    default allow_all := false
-
-    allow_all {
-      input.containerID != ""
-      input.layers != null
-    }
-
-    default allow_properties_access := false
-
-    allow_properties_access {
-      input.containerID != ""
-    }
-
-    default allow_env_list := false
-
-    allow_env_list {
-      not contains_sensitive_env(input.envList)
-    }
-
-    contains_sensitive_env(envList) {
-      env := envList[_]
-      startswith(env, "AZURE_")
-    }
+```bash
+az confcom katapolicygen \
+  --yaml ./apps/confidential/confidential-app.yaml
 ```
+
+The command injects a base64-encoded policy annotation into the pod template, which is how AKS passes the policy to the Kata agent during pod startup. Commit the generated manifest so Flux reconciles both the workload and its matching policy.
 
 ## Step 7: Deploy a Service to Expose the Confidential Workload
 
@@ -210,9 +199,9 @@ metadata:
   name: confidential-app
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - confidential.example.com
@@ -232,7 +221,7 @@ spec:
 
 ## Step 8: Set Up Attestation Verification
 
-Configure remote attestation to verify that your workloads are running in a genuine TEE:
+Configure remote attestation with a verifier image that retrieves AMD SEV-SNP evidence from inside the confidential pod and submits it to Microsoft Azure Attestation:
 
 ```yaml
 apiVersion: batch/v1
