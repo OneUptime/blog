@@ -10,9 +10,9 @@ Description: A complete guide to configuring Calico networking on Azure self-man
 
 ## Introduction
 
-Configuring Calico networking on Azure requires understanding Azure's Virtual Network (VNet) constraints and how they interact with Calico's routing model. Azure VMs do not support arbitrary forwarding of packets with source IPs that don't belong to the VM - unlike AWS where you disable source/destination check, Azure enforces this at the platform level. This means Calico must use overlay networking (VXLAN) by default on Azure, unless you configure Azure route tables manually for each node's pod CIDR.
+Configuring Calico networking on Azure requires understanding Azure's Virtual Network (VNet) constraints and how they interact with Calico's routing model. Azure VM NICs do not forward traffic for IPs that are not assigned to the NIC unless Azure IP Forwarding is enabled, and Azure must also have routes for any non-overlay pod CIDRs. This means Calico should use VXLAN overlay networking on Azure by default, unless you configure Azure route tables for the pod CIDRs.
 
-Azure also provides IP Forwarding as a VM NIC setting that must be enabled for Calico's overlay traffic to function correctly on self-managed clusters. This guide covers configuring Calico for both VXLAN overlay mode and native routing mode on Azure.
+Azure also provides IP Forwarding as a VM NIC setting that must be enabled when nodes forward pod traffic using Azure user-defined routes. This guide covers configuring Calico for both VXLAN overlay mode and Azure user-defined route mode.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ graph TD
         C --> D[192.168.0.0/24 -> VM1 NIC]
         C --> E[192.168.1.0/24 -> VM2 NIC]
     end
-    F[VXLAN Overlay<br/>Default mode] -.->|Alternative| G[Native Routing<br/>Requires route table]
+    F[VXLAN Overlay<br/>Default mode] -.->|Alternative| G[Azure UDR<br/>Requires route table]
 ```
 
 ## Step 1: Enable IP Forwarding on Azure VMs
@@ -60,22 +60,23 @@ VXLAN overlay works without Azure route table changes:
 
 ```bash
 helm repo add projectcalico https://docs.tigera.io/calico/charts
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 | kubectl apply --server-side -f -
+
+cat > values.yaml <<EOF
+installation:
+  calicoNetwork:
+    bgp: Disabled
+    ipPools:
+    - cidr: 192.168.0.0/16
+      encapsulation: VXLAN
+      natOutgoing: Enabled
+      blockSize: 24
+EOF
+
 helm install calico projectcalico/tigera-operator \
+  -f values.yaml \
   --namespace tigera-operator \
   --create-namespace
-```
-
-```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: azure-pod-pool
-spec:
-  cidr: 192.168.0.0/16
-  ipipMode: Never
-  vxlanMode: Always
-  natOutgoing: true
-  blockSize: 24
 ```
 
 ## Step 3: Configure Azure NSG Rules
@@ -95,9 +96,9 @@ az network nsg rule create \
   --access Allow
 ```
 
-## Step 4: (Optional) Native Routing via Azure Route Tables
+## Step 4: (Optional) Azure User-Defined Routes
 
-For native routing without VXLAN, add routes for each node's pod CIDR:
+For networking without VXLAN, use Azure user-defined routes and add routes for each node's pod CIDR. The pod CIDR must be part of your Azure VNet address space:
 
 ```bash
 # Create/update route for each node
@@ -110,12 +111,12 @@ az network route-table route create \
   --next-hop-ip-address 10.240.0.10
 ```
 
-Set the IP pool to use no encapsulation:
+In this mode, disable Calico networking and let Azure routing provide the pod network:
 
 ```yaml
-spec:
-  ipipMode: Never
-  vxlanMode: Never
+env:
+- name: CALICO_NETWORKING_BACKEND
+  value: "none"
 ```
 
 ## Step 5: Verify Calico Deployment
@@ -128,4 +129,4 @@ calicoctl ipam show --show-blocks
 
 ## Conclusion
 
-Configuring Calico on Azure requires enabling IP Forwarding on VM NICs, choosing between VXLAN overlay (simpler, works out of the box with NSG rules for UDP 4789) and native routing (better performance, requires Azure route table entries per node). VXLAN is recommended for most Azure deployments due to its operational simplicity and compatibility with Azure's platform networking constraints.
+Configuring Calico on Azure requires choosing between VXLAN overlay (simpler, works without pod-CIDR route table entries, with NSG rules for UDP 4789) and Azure user-defined routes (requires IP Forwarding and Azure route table entries per node). VXLAN is recommended for most Azure deployments due to its operational simplicity and compatibility with Azure's platform networking constraints.
