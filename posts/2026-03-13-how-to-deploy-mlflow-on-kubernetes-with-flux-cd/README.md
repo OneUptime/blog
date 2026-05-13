@@ -21,7 +21,7 @@ In this guide you will deploy MLflow with PostgreSQL backend and S3-compatible a
 - A Kubernetes cluster with Flux CD installed
 - `kubectl` and `flux` CLI tools installed
 - A StorageClass supporting PersistentVolumeClaims
-- An S3-compatible object store (AWS S3, GCS, MinIO) for artifact storage
+- An S3-compatible object store (AWS S3 or MinIO) for artifact storage
 - Basic understanding of MLflow concepts (experiments, runs, model registry)
 
 ## Step 1: Add the Bitnami HelmRepository
@@ -36,7 +36,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://charts.bitnami.com/bitnami
+  type: oci
+  url: oci://registry-1.docker.io/bitnamicharts
 ```
 
 ## Step 2: Create MLflow Secrets
@@ -45,6 +46,11 @@ spec:
 # clusters/production/secrets/mlflow-secrets.yaml
 # Encrypt with SOPS before committing
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: mlflow
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: mlflow-secrets
@@ -52,12 +58,15 @@ metadata:
 type: Opaque
 stringData:
   # PostgreSQL connection
-  postgresql-password: "change-me-in-production"
+  postgres-password: "change-me-in-production"
+  password: "change-me-in-production"
   # S3 credentials for artifact storage
   aws-access-key-id: "your-access-key"
   aws-secret-access-key: "your-secret-key"
   # MLflow basic auth
+  admin-user: "admin"
   admin-password: "change-me-in-production"
+  flask-server-secret-key: "replace-with-a-long-random-string"
 ```
 
 ## Step 3: Deploy MLflow with Flux HelmRelease
@@ -72,15 +81,15 @@ metadata:
 spec:
   interval: 1h
   targetNamespace: mlflow
-  createNamespace: true
   chart:
     spec:
       chart: mlflow
-      version: "1.x"
+      version: "5.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
   install:
+    createNamespace: true
     timeout: 10m
   upgrade:
     timeout: 10m
@@ -91,10 +100,14 @@ spec:
         enabled: true
         username: admin
         existingSecret: mlflow-secrets
+        existingSecretUserKey: admin-user
         existingSecretPasswordKey: admin-password
+        existingSecretFlaskServerSecretKey: flask-server-secret-key
 
       # Number of tracking server replicas
       replicaCount: 2
+      persistence:
+        enabled: false
 
       resources:
         requests:
@@ -110,26 +123,22 @@ spec:
         hostname: mlflow.myorg.com
         annotations:
           cert-manager.io/cluster-issuer: letsencrypt-prod
-          nginx.ingress.kubernetes.io/auth-type: basic
-          nginx.ingress.kubernetes.io/auth-secret: mlflow-basic-auth
         tls: true
 
-      # Extra environment variables for S3 artifact access
-      extraEnvVars:
-        - name: MLFLOW_S3_ENDPOINT_URL
-          value: "https://s3.amazonaws.com"
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: mlflow-secrets
-              key: aws-access-key-id
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: mlflow-secrets
-              key: aws-secret-access-key
-        - name: MLFLOW_DEFAULT_ARTIFACT_ROOT
-          value: "s3://my-mlflow-bucket/artifacts"
+    # Disable the example "run" deployment; this guide only needs the tracking server
+    run:
+      enabled: false
+
+    # External S3-compatible artifact storage
+    externalS3:
+      host: s3.amazonaws.com
+      port: 443
+      protocol: https
+      bucket: my-mlflow-bucket
+      existingSecret: mlflow-secrets
+      existingSecretAccessKeyIDKey: aws-access-key-id
+      existingSecretKeySecretKey: aws-secret-access-key
+      serveArtifacts: true
 
     # PostgreSQL backend for metadata storage
     postgresql:
@@ -138,9 +147,6 @@ spec:
         database: mlflow
         username: mlflow
         existingSecret: mlflow-secrets
-        secretKeys:
-          adminPasswordKey: postgresql-password
-          userPasswordKey: postgresql-password
       primary:
         persistence:
           enabled: true
@@ -160,35 +166,18 @@ spec:
 
 ## Step 4: Configure Artifact Storage with MinIO (Local S3 Alternative)
 
-If you prefer to run MinIO in-cluster for artifact storage:
+If you prefer to run the chart's bundled MinIO in-cluster for artifact storage, enable the MinIO subchart in the MLflow HelmRelease instead of configuring `externalS3`:
 
 ```yaml
-# clusters/production/apps/minio-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: minio
-  namespace: flux-system
-spec:
-  interval: 1h
-  targetNamespace: mlflow
-  chart:
-    spec:
-      chart: minio
-      version: "14.x"
-      sourceRef:
-        kind: HelmRepository
-        name: bitnami
-  values:
-    mode: standalone
+# clusters/production/apps/mlflow-helmrelease.yaml
+values:
+  minio:
+    enabled: true
     defaultBuckets: "mlflow-artifacts"
     auth:
-      rootUser: minio-admin
-      rootPassword:
-        valueFrom:
-          secretKeyRef:
-            name: minio-secret
-            key: root-password
+      existingSecret: minio-secret
+      rootUserSecretKey: root-user
+      rootPasswordSecretKey: root-password
     persistence:
       enabled: true
       size: 100Gi
@@ -196,6 +185,9 @@ spec:
       requests:
         cpu: 100m
         memory: 512Mi
+
+  externalS3:
+    host: ""
 ```
 
 ## Step 5: Create the Flux Kustomization
@@ -223,10 +215,14 @@ spec:
 After deployment, configure your ML training scripts to use the hosted server.
 
 ```python
+import os
 import mlflow
 import mlflow.sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
+
+os.environ["MLFLOW_TRACKING_USERNAME"] = "admin"
+os.environ["MLFLOW_TRACKING_PASSWORD"] = "change-me-in-production"
 
 # Point to your Kubernetes-hosted MLflow server
 mlflow.set_tracking_uri("https://mlflow.myorg.com")
@@ -247,8 +243,11 @@ with mlflow.start_run():
     mlflow.log_metric("accuracy", accuracy)
 
     # Log model to registry
-    mlflow.sklearn.log_model(model, "random-forest-model",
-                             registered_model_name="CustomerChurnModel")
+    mlflow.sklearn.log_model(
+        model,
+        name="random-forest-model",
+        registered_model_name="CustomerChurnModel",
+    )
 ```
 
 ## Step 7: Verify and Monitor
@@ -258,7 +257,7 @@ with mlflow.start_run():
 kubectl get pods -n mlflow
 
 # View MLflow server logs
-kubectl logs -n mlflow -l app.kubernetes.io/name=mlflow-tracking -f
+kubectl logs -n mlflow -l app.kubernetes.io/component=tracking -f
 
 # Check PostgreSQL is healthy
 kubectl get pods -n mlflow -l app.kubernetes.io/name=postgresql
