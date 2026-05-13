@@ -10,9 +10,9 @@ Description: An in-depth look at the technical configuration details of Calico V
 
 ## Introduction
 
-Understanding Calico VPP's technical details enables more precise configuration and better troubleshooting. VPP's node graph architecture - where packets flow through a directed acyclic graph of processing nodes - is fundamentally different from the Linux kernel's networking stack. Each VPP node performs a specific operation (IP lookup, ACL check, NAT, etc.) and passes processed packet vectors to the next node.
+Understanding Calico VPP's technical details enables more precise configuration and better troubleshooting. VPP's node graph architecture - where packets flow through a directed graph of processing nodes - is fundamentally different from the Linux kernel's networking stack. Each VPP node performs a specific operation (IP lookup, ACL check, NAT, etc.) and passes processed packet vectors to the next node.
 
-Calico VPP adds specific graph nodes for Calico's policy model, IPAM integration, and Kubernetes service load balancing. Configuring these nodes correctly requires understanding their interdependencies and the startup configuration parameters that control their behavior.
+Calico VPP configures VPP through `vpp-manager`, `calico-vpp-agent`, and Calico-specific VPP plugins for policy and Kubernetes service load balancing. Configuring these components correctly requires understanding their interdependencies and the startup configuration parameters that control their behavior.
 
 ## Prerequisites
 
@@ -26,11 +26,13 @@ Calico VPP adds specific graph nodes for Calico's policy model, IPAM integration
 graph LR
     A[dpdk-input] --> B[ethernet-input]
     B --> C[ip4-input]
-    C --> D[calico-policy-forward]
-    D --> E[ip4-lookup]
+    C --> D[ip4-unicast feature arc]
+    D --> P[Calico policy feature]
+    P --> S[cnat service feature]
+    S --> E[ip4-lookup]
     E --> F[ip4-rewrite]
     F --> G[dpdk-output]
-    D -->|Deny| H[error-drop]
+    P -->|Deny| H[error-drop]
     I[tap-input pod] --> J[ip4-input-not-checksum]
     J --> D
 ```
@@ -43,12 +45,11 @@ graph LR
 # /etc/vpp/startup.conf
 
 buffers {
-  # Total packet buffer memory
-  # Rule of thumb: NIC line rate (bits/s) / 8 * 0.001 (1ms buffer depth)
-  # For 10G: 10e9/8 * 0.001 = 1.25MB per worker
-  buffers-per-numa 2097152      # 2M buffers per NUMA node
+  # Number of packet buffers allocated per NUMA node
+  # Increase this for large numbers of interfaces or worker threads
+  buffers-per-numa 128000
   page-size 2m                  # Use 2MB hugepages
-  default data-size 2048        # Max packet size + headroom
+  default data-size 2048        # Buffer data area size
 }
 ```
 
@@ -79,7 +80,6 @@ dpdk {
 cpu {
   main-core 0                  # Core for VPP main thread
   corelist-workers 2-5         # Cores for packet processing workers
-  skip-cores 1                 # Skip core 1 (OS use)
 }
 ```
 
@@ -89,14 +89,32 @@ cpu {
 data:
   CALICOVPP_INTERFACES: |
     {
+      "defaultPodIfSpec": {
+        "rx": 1,
+        "tx": 1,
+        "rxqsz": 1024,
+        "txqsz": 1024,
+        "isl3": true,
+        "rxMode": "polling"
+      },
+      "vppHostTapSpec": {
+        "rx": 1,
+        "tx": 1,
+        "rxqsz": 1024,
+        "txqsz": 1024,
+        "isl3": false,
+        "rxMode": "polling"
+      },
       "uplinkInterfaces": [
         {
           "interfaceName": "eth0",
           "vppDriver": "dpdk",
-          "newDriverName": "vfio-pci",
+          "newDriver": "vfio-pci",
           "rxMode": "polling",
-          "numRxQueues": 4,
-          "numTxQueues": 4
+          "rx": 4,
+          "tx": 4,
+          "rxqsz": 1024,
+          "txqsz": 1024
         }
       ]
     }
@@ -104,22 +122,19 @@ data:
     {
       "multinetEnabled": false,
       "srv6Enabled": false,
-      "wireguardEnabled": false,
-      "ipsecEnabled": false
+      "ipsecEnabled": false,
+      "prometheusEnabled": false
     }
   CALICOVPP_INITIAL_CONFIG: |
     {
       "vppStartupSleepSeconds": 2,
-      "corePattern": "/var/log/vpp/core-%e-%p-%t",
-      "rxMode": "polling",
-      "tapRxQueueSize": 1024,
-      "tapTxQueueSize": 1024
+      "corePattern": "/var/log/vpp/core-%e-%p-%t"
     }
 ```
 
 ## Calico VPP Tap Interface Configuration
 
-Each pod gets a tap interface connecting it to VPP:
+Each pod gets a VPP tapv2 interface, configured as a tun interface by default, connecting it to VPP:
 
 ```bash
 # View tap interface parameters
@@ -128,23 +143,23 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 # Output shows:
 # Interface: tap0
-#   Linux interface name: vpp0 (in pod netns)
+#   Linux interface name: eth0 (in pod netns)
 #   RX queue size: 1024
 #   TX queue size: 1024
 ```
 
 ## NAT and Service Load Balancing
 
-Calico VPP implements Kubernetes service load balancing natively:
+Calico VPP implements Kubernetes service load balancing natively using VPP's CNAT plugin:
 
 ```bash
-# View NAT44 configuration
+# View service translations
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show nat44 summary
+  vppctl show cnat translation
 
-# View service mappings
+# View active service sessions
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show nat44 static mappings
+  vppctl show cnat session verbose
 ```
 
 ## Conclusion
