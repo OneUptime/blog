@@ -64,7 +64,9 @@ spec:
         - operation:
             methods: ["GET", "POST"]
             paths: ["/api/*"]
----
+```
+
+```yaml
 # clusters/my-cluster/istio-policies/allow-api-to-db.yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -115,6 +117,19 @@ spec:
 
 ```yaml
 # clusters/my-cluster/istio-policies/jwt-auth-policy.yaml
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: admin-api-jwt
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: admin-api
+  jwtRules:
+    - issuer: "https://auth.example.com"
+      jwksUri: "https://auth.example.com/.well-known/jwks.json"
+---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
