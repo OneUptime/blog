@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Labels, Monitoring
 
-Description: Monitor the effectiveness and impact of Calico label-based network policies using metrics, label coverage reports, and traffic analytics.
+Description: Monitor the effectiveness and impact of Calico label-based network policies using metrics, label coverage reports, and selector analytics.
 
 ---
 
@@ -12,15 +12,15 @@ Description: Monitor the effectiveness and impact of Calico label-based network 
 
 Monitoring label-based network policies means tracking two interrelated dimensions: the health of your label taxonomy (are all pods correctly labeled?) and the effectiveness of your policies (are they matching the right pods and making the right traffic decisions?). Both require ongoing attention because Kubernetes is dynamic - deployments update, new services are added, and labels can drift from their intended state.
 
-Calico's Prometheus metrics expose policy evaluation data, and Kubernetes provides pod label metrics through kube-state-metrics. Together, you can build dashboards that show label coverage, policy match rates, and traffic trends over time.
+Calico's Prometheus metrics expose active policy and selector evaluation data, and Kubernetes provides pod label metrics through kube-state-metrics. Together, you can build dashboards that show label coverage, selector match rates, and selector evaluation trends over time.
 
-This guide shows you how to set up monitoring for label-based Calico policies, including label coverage tracking, policy match rate alerts, and traffic anomaly detection.
+This guide shows you how to set up monitoring for label-based Calico policies, including label coverage tracking, selector match rate alerts, and selector evaluation anomaly detection.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
 - Prometheus and Grafana deployed
-- kube-state-metrics installed
+- kube-state-metrics installed and configured to expose the required pod labels, such as `--metric-labels-allowlist=pods=[tier,environment]`
 - `calicoctl` and `kubectl` installed
 
 ## Step 1: Track Label Coverage with kube-state-metrics
@@ -34,17 +34,17 @@ count(kube_pod_info) - count(kube_pod_labels{label_tier!=""})
 100 * count(kube_pod_labels{label_tier!="",label_environment!=""}) / count(kube_pod_info)
 ```
 
-## Step 2: Monitor Policy Evaluation Rate
+## Step 2: Monitor Policy Selector Metrics
 
 ```promql
-# Policy evaluations per second
-rate(felix_policy_evaluation_total[5m])
+# Active policies that match local endpoints
+felix_active_local_policies
 
-# Denied packets - indicates policy blocks
-rate(felix_denied_packets_total[5m])
+# Active rule selectors on this node
+felix_active_local_selectors
 
-# Policy match rate (allow vs deny ratio)
-rate(felix_active_network_policies[5m])
+# Selector match rate
+sum(rate(felix_label_index_selector_evals{result="true"}[5m])) / sum(rate(felix_label_index_selector_evals[5m]))
 ```
 
 ## Step 3: Create a Grafana Dashboard
@@ -61,11 +61,11 @@ rate(felix_active_network_policies[5m])
       }]
     },
     {
-      "title": "Denial Rate",
-      "type": "graph",
+      "title": "Selector Match Rate",
+      "type": "timeseries",
       "targets": [{
-        "expr": "rate(felix_denied_packets_total[5m])",
-        "legendFormat": "Denials/s"
+        "expr": "sum(rate(felix_label_index_selector_evals{result=\"true\"}[5m])) / sum(rate(felix_label_index_selector_evals[5m]))",
+        "legendFormat": "Selector Matches"
       }]
     }
   ]
@@ -92,13 +92,15 @@ spec:
             severity: warning
           annotations:
             summary: "Pod label coverage dropped below 95%"
-        - alert: SuddenDenialSpike
-          expr: rate(felix_denied_packets_total[5m]) > 50
+        - alert: SelectorNoMatchSpike
+          expr: |
+            sum(rate(felix_label_index_selector_evals{result="false"}[5m])) > 10 * sum(rate(felix_label_index_selector_evals{result="true"}[5m]))
+            and sum(rate(felix_label_index_selector_evals{result="true"}[5m])) > 0
           for: 2m
           labels:
             severity: critical
           annotations:
-            summary: "High packet denial rate - possible label misconfiguration"
+            summary: "High selector no-match rate - possible label or selector misconfiguration"
 ```
 
 ## Step 5: Weekly Label Audit Report
@@ -128,4 +130,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring label-based Calico policies requires visibility into both the label state of your pods and the policy evaluation metrics from Calico Felix. Track label coverage as a percentage and alert when it drops, monitor denial rates for sudden spikes that indicate label misconfigurations, and run weekly audit reports to catch drift early. Good monitoring turns your label taxonomy from a one-time configuration into an actively maintained security control.
+Monitoring label-based Calico policies requires visibility into both the label state of your pods and the selector evaluation metrics from Calico Felix. Track label coverage as a percentage and alert when it drops, monitor selector no-match rates for sudden spikes that indicate label misconfigurations, and run weekly audit reports to catch drift early. Good monitoring turns your label taxonomy from a one-time configuration into an actively maintained security control.
