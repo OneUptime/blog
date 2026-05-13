@@ -25,8 +25,9 @@ Install Notation:
 
 ```bash
 # Install Notation on Linux
+NOTATION_VERSION=1.3.2
 
-curl -sSL https://github.com/notaryproject/notation/releases/latest/download/notation_linux_amd64.tar.gz | tar -xz -C /usr/local/bin notation
+curl -sSL "https://github.com/notaryproject/notation/releases/download/v${NOTATION_VERSION}/notation_${NOTATION_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin notation
 
 # Install on macOS
 brew install notation
@@ -54,7 +55,7 @@ For production environments, use a certificate from a trusted Certificate Author
 
 ```bash
 # Import a certificate from a CA
-notation key add --name production-key \
+notation key add production-key \
   --plugin azure-kv \
   --id https://myvault.vault.azure.net/keys/signing-key/abc123 \
   --default
@@ -85,7 +86,7 @@ Create a Notation trust policy document:
   "trustPolicies": [
     {
       "name": "flux-verification-policy",
-      "registryScopes": ["myregistry.example.com/myapp"],
+      "registryScopes": ["myregistry.example.com/myapp-manifests"],
       "signatureVerification": {
         "level": "strict"
       },
@@ -100,16 +101,12 @@ Save this as `trustpolicy.json`.
 
 ## Step 4: Store the Trust Policy and Certificate in Kubernetes
 
-Create Kubernetes secrets for the Notation trust policy and CA certificate:
+Create a Kubernetes secret for the Notation trust policy and CA certificate:
 
 ```bash
-# Create a secret for the trust policy
-kubectl create secret generic notation-trust-policy \
+# Create a secret for the trust policy and CA certificate
+kubectl create secret generic notation-config \
   --from-file=trustpolicy.json=trustpolicy.json \
-  -n flux-system
-
-# Create a secret for the CA certificate
-kubectl create secret generic notation-ca-cert \
   --from-file=ca.crt=/path/to/your/ca-certificate.crt \
   -n flux-system
 ```
@@ -121,17 +118,21 @@ Or define them as YAML:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: notation-trust-policy
+  name: notation-config
   namespace: flux-system
 type: Opaque
 stringData:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
   trustpolicy.json: |
     {
       "version": "1.0",
       "trustPolicies": [
         {
           "name": "flux-verification-policy",
-          "registryScopes": ["myregistry.example.com/myapp"],
+          "registryScopes": ["myregistry.example.com/myapp-manifests"],
           "signatureVerification": {
             "level": "strict"
           },
@@ -155,13 +156,13 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: oci://myregistry.example.com/myapp
+  url: oci://myregistry.example.com/myapp-manifests
   ref:
     tag: v1.0.0
   verify:
     provider: notation
     secretRef:
-      name: notation-ca-cert
+      name: notation-config
 ```
 
 Create the Kustomization to deploy the verified artifacts:
@@ -247,7 +248,7 @@ notation verify myregistry.example.com/myapp:v1.0.0
 Ensure the trust policy secret is correctly mounted and the JSON is valid:
 
 ```bash
-kubectl get secret notation-trust-policy -n flux-system -o jsonpath='{.data.trustpolicy\.json}' | base64 -d | jq .
+kubectl get secret notation-config -n flux-system -o jsonpath='{.data.trustpolicy\.json}' | base64 -d | jq .
 ```
 
 ### Error: Certificate not trusted
