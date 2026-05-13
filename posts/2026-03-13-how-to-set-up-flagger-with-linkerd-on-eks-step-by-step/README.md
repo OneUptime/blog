@@ -28,7 +28,7 @@ Linkerd is a lightweight, security-focused service mesh that pairs well with Fla
 eksctl create cluster \
   --name flagger-linkerd \
   --region us-west-2 \
-  --version 1.29 \
+  --version 1.34 \
   --nodegroup-name workers \
   --node-type m5.large \
   --nodes 3 \
@@ -58,6 +58,13 @@ linkerd viz install | kubectl apply -f -
 
 # Verify Viz extension
 linkerd viz check
+
+# Install the Linkerd SMI extension for TrafficSplit support
+curl -sL https://linkerd.github.io/linkerd-smi/install | sh
+linkerd smi install | kubectl apply -f -
+
+# Verify SMI extension
+linkerd smi check
 ```
 
 ## Step 3: Install Flagger
@@ -178,6 +185,12 @@ kubectl get canary podinfo -n default -w
 # Update the image
 kubectl set image deployment/podinfo podinfo=ghcr.io/stefanprodan/podinfo:6.5.1 -n default
 
+# Generate requests so Linkerd and Flagger have metrics during the analysis
+kubectl run podinfo-load \
+  --image=curlimages/curl:8.7.1 \
+  --restart=Never \
+  -- /bin/sh -c 'while true; do curl -s http://podinfo:9898/ >/dev/null; sleep 1; done'
+
 # Monitor the rollout
 kubectl get canary podinfo -n default -w
 
@@ -221,7 +234,9 @@ linkerd viz dashboard &
 ```bash
 kubectl delete canary podinfo -n default
 kubectl delete deployment podinfo -n default
+kubectl delete pod podinfo-load -n default --ignore-not-found
 helm uninstall flagger -n linkerd-viz
+kubectl delete namespace linkerd-smi --ignore-not-found
 linkerd viz uninstall | kubectl delete -f -
 linkerd uninstall | kubectl delete -f -
 eksctl delete cluster --name flagger-linkerd --region us-west-2
