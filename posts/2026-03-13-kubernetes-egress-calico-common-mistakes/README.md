@@ -30,15 +30,15 @@ This is the most common egress mistake. When a deny-all egress policy is applied
 
 ```yaml
 egress:
-- ports:
-  - port: 53
-    protocol: UDP
-  - port: 53
-    protocol: TCP
 - to:
   - namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: kube-system
+  ports:
+  - port: 53
+    protocol: UDP
+  - port: 53
+    protocol: TCP
 ```
 
 ## Mistake 2: IP-Based Policies for Dynamic External APIs
@@ -55,7 +55,7 @@ kubectl exec test-pod -- nslookup api.stripe.com
 # Compare the resolved IPs against your NetworkPolicy CIDR list
 ```
 
-**Fix**: Use FQDN-based policies (Calico Cloud/Enterprise) for external SaaS endpoints, or switch to Open Source and accept that IP-based policies require active maintenance for dynamic endpoints.
+**Fix**: Use FQDN-based policies (Calico Cloud/Enterprise) for external SaaS endpoints. If you use Calico Open Source, accept that IP-based policies require active maintenance for dynamic endpoints.
 
 ## Mistake 3: Egress Policy Missing ICMP
 
@@ -93,8 +93,8 @@ Applying a deny-all egress policy without first auditing what external endpoints
 5. Roll out namespace by namespace
 
 ```bash
-# Observe current egress with calicoctl (Enterprise)
-calicoctl get flowlogs --output=json | jq '.[] | select(.action=="allow") | .destName'
+# If Calico flow logs are enabled to files, inspect the node flow log output
+sudo jq 'select(.action=="allow") | .dest_name' /var/log/calico/flowlogs/*.log
 ```
 
 ## Best Practices
