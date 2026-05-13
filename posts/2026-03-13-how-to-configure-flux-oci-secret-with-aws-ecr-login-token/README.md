@@ -16,7 +16,7 @@ This guide covers two approaches: using short-lived ECR tokens with manual or au
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster version supported by your Flux release
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - AWS CLI configured with appropriate IAM permissions
@@ -138,7 +138,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  url: oci://123456789012.dkr.ecr.us-east-1.amazonaws.com
+  url: oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/charts
   type: oci
   provider: aws
 ```
@@ -182,7 +182,7 @@ spec:
 
 ### Step 4: Automate Token Rotation
 
-Since ECR tokens expire every 12 hours, set up a CronJob to rotate the token:
+Since ECR tokens expire every 12 hours, set up a CronJob to rotate the token. The container image used by the job must include both the AWS CLI and `kubectl`:
 
 ```yaml
 apiVersion: v1
@@ -229,7 +229,7 @@ spec:
           serviceAccountName: ecr-token-rotator
           containers:
           - name: refresh
-            image: amazon/aws-cli:latest
+            image: your-registry/aws-cli-kubectl:latest
             command:
             - /bin/sh
             - -c
