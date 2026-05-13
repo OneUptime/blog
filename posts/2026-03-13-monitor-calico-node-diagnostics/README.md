@@ -10,12 +10,36 @@ Description: Monitor per-node Calico health using Felix Prometheus metrics, Daem
 
 ## Introduction
 
-Monitoring Calico at the node level requires tracking Felix health metrics per node, alerting when a calico-node pod is not Running on any node, and detecting BGP peer failures on individual nodes. Node-level monitoring complements cluster-wide TigeraStatus monitoring by catching issues that affect only a subset of nodes.
+Monitoring Calico at the node level requires tracking Felix health metrics per node, alerting when a calico-node pod is not Running on any node, and detecting dataplane programming failures on individual nodes. Node-level monitoring complements cluster-wide TigeraStatus monitoring by catching issues that affect only a subset of nodes.
 
 ## Felix Prometheus Metrics for Node Monitoring
 
 ```yaml
-# ServiceMonitor for Felix per-node metrics
+# Enable Felix metrics and expose them through a ServiceMonitor
+
+apiVersion: projectcalico.org/v3
+kind: FelixConfiguration
+metadata:
+  name: default
+spec:
+  prometheusMetricsEnabled: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: felix-metrics
+      port: 9091
+      targetPort: 9091
+---
 
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -27,7 +51,7 @@ spec:
     matchLabels:
       k8s-app: calico-node
   endpoints:
-    - port: http-metrics
+    - port: felix-metrics
       path: /metrics
       interval: 30s
   namespaceSelector:
@@ -54,18 +78,18 @@ spec:
           annotations:
             summary: "{{ $value }} calico-node pods are not ready"
 
-        - alert: CalicoFelixHighDropCount
+        - alert: CalicoFelixDataplaneFailuresIncreasing
           expr: |
             increase(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High Felix policy drop count on {{ $labels.instance }}"
+            summary: "Felix dataplane failures increased on {{ $labels.instance }}"
 
         - alert: CalicoFelixDataplaneErrors
           expr: |
-            rate(felix_int_dataplane_failures_total[5m]) > 0
+            rate(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           annotations:
             summary: "Felix dataplane failures on node {{ $labels.instance }}"
@@ -85,8 +109,8 @@ spec:
       }]
     },
     {
-      "title": "Felix Policy Drops by Node",
-      "type": "graph",
+      "title": "Felix Dataplane Failures by Node",
+      "type": "timeseries",
       "targets": [{
         "expr": "rate(felix_int_dataplane_failures[5m])",
         "legendFormat": "{{instance}}"
@@ -105,9 +129,9 @@ flowchart LR
     B --> D[Grafana per-node dashboard]
     B --> E[Alertmanager]
     E -->|Node pod not ready| F[PagerDuty]
-    E -->|High drop count| G[Slack Warning]
+    E -->|Dataplane failures| G[Slack Warning]
 ```
 
 ## Conclusion
 
-Node-level Calico monitoring requires two data sources: Felix Prometheus metrics for per-node health signals and kube-state-metrics for DaemonSet pod readiness. The most critical alert is `CalicoNodePodNotRunning` - a missing calico-node pod means one node has no network policy enforcement and pods on that node may have connectivity issues. Combine this with the Felix dataplane failures alert to catch iptables programming errors before they cause visible outages.
+Node-level Calico monitoring requires two data sources: Felix Prometheus metrics for per-node health signals and kube-state-metrics for DaemonSet pod readiness. The most critical alert is `CalicoNodePodNotRunning` - a missing calico-node pod means one node is not receiving current network policy or dataplane updates and pods on that node may have connectivity issues. Combine this with the Felix dataplane failures alert to catch iptables programming errors before they cause visible outages.
