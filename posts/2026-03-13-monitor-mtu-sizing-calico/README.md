@@ -31,9 +31,7 @@ The correct pod MTU depends on the physical network MTU minus encapsulation over
 
 ```bash
 # Check current MTU configuration in Calico
-
-cilium config view 2>/dev/null || \
-  kubectl get configmap calico-config -n kube-system -o yaml | grep "^  veth_mtu"
+kubectl get configmap calico-config -n calico-system -o yaml | grep "^  veth_mtu"
 
 # Check the physical network interface MTU on a node
 kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
@@ -165,9 +163,10 @@ echo "Pod interface MTU: $POD_MTU"
 # Test large payload transmission (should not fragment with correct MTU)
 kubectl run large-payload-test --image=nicolaka/netshoot --rm -it -- \
   python3 -c "
-import socket, time
+import socket
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.setsockopt(socket.IPPROTO_IP, socket.IP_DONTFRAG, 1)
+# Set the DF (Don't Fragment) flag on Linux via IP_MTU_DISCOVER
+s.setsockopt(socket.IPPROTO_IP, socket.IP_MTU_DISCOVER, socket.IP_PMTUDISC_DO)
 # Try sending exactly the pod MTU size
 payload = b'x' * ($POD_MTU - 28)  # Subtract UDP + IP header size
 s.sendto(payload, ('<target-ip>', 9999))
