@@ -61,8 +61,8 @@ This generates 20 requests per second (10 QPS per worker times 2 workers) for 1 
 
 Understanding the `hey` flags helps you tune load generation:
 
-- `-z duration`: Run for the specified duration (e.g., `1m`, `30s`, `2m`). Mutually exclusive with `-n`.
-- `-n count`: Send a specific number of requests. Mutually exclusive with `-z`.
+- `-z duration`: Run for the specified duration (e.g., `1m`, `30s`, `2m`). If specified, `-n` is ignored.
+- `-n count`: Send a specific number of requests. Ignored when `-z` is specified.
 - `-q rate`: Rate limit per worker (queries per second per concurrent worker).
 - `-c concurrency`: Number of concurrent workers sending requests.
 - `-m method`: HTTP method (GET, POST, PUT, DELETE). Defaults to GET.
@@ -70,7 +70,7 @@ Understanding the `hey` flags helps you tune load generation:
 - `-d body`: HTTP request body for POST/PUT requests.
 - `-D file`: Read HTTP request body from file.
 - `-T content-type`: Content-Type header value.
-- `-t timeout`: Timeout per request in seconds.
+- `-t timeout`: Timeout per request in seconds. Defaults to 20 seconds.
 
 ## Duration-Based Load Testing
 
@@ -86,7 +86,7 @@ For canary analysis, duration-based testing with `-z` is preferred because it al
           cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.default:80/"
 ```
 
-Set the duration to match your analysis interval. If the interval is `1m`, use `-z 1m`. The load tester starts a new `hey` instance on each webhook call, so each analysis step gets its own load generation.
+Set the duration to match your analysis interval. If the interval is `1m`, use `-z 1m`. The load tester runs the `hey` command in the background when the webhook is called, if it is not already running, so each analysis step has load generation available.
 
 ## Adjusting Request Rate
 
@@ -177,7 +177,7 @@ To test multiple endpoints, define separate webhook entries:
           cmd: "hey -z 1m -q 5 -c 1 http://my-app-canary.default:80/healthz"
 ```
 
-Both commands run in parallel during each analysis step, generating traffic to different endpoints simultaneously.
+The load tester runs these commands in the background, if they are not already running, generating traffic to different endpoints during the analysis.
 
 ## Setting Request Timeouts
 
