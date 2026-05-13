@@ -33,7 +33,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "58.x.x"
+      version: "84.x.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -65,7 +65,7 @@ spec:
   chart:
     spec:
       chart: prometheus-adapter
-      version: "4.10.x"
+      version: "5.x.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -76,7 +76,7 @@ spec:
     rules:
       # HTTP request rate metric (from Istio or application)
       custom:
-        - seriesQuery: 'istio_requests_total{destination_workload_namespace!="",destination_workload!=""}'
+        - seriesQuery: 'istio_requests_total{reporter="destination",destination_workload_namespace!="",destination_workload!=""}'
           resources:
             overrides:
               destination_workload_namespace:
@@ -87,10 +87,10 @@ spec:
             matches: "istio_requests_total"
             as: "http_request_rate"
           metricsQuery: |
-            rate(istio_requests_total{<<.LabelMatchers>>}[2m])
+            sum(rate(istio_requests_total{reporter="destination",<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
 
         # HTTP error rate
-        - seriesQuery: 'istio_requests_total{response_code=~"5..",destination_workload!=""}'
+        - seriesQuery: 'istio_requests_total{reporter="destination",response_code=~"5..",destination_workload_namespace!="",destination_workload!=""}'
           resources:
             overrides:
               destination_workload_namespace:
@@ -100,10 +100,10 @@ spec:
           name:
             as: "http_error_rate"
           metricsQuery: |
-            rate(istio_requests_total{response_code=~"5..",<<.LabelMatchers>>}[2m])
+            sum(rate(istio_requests_total{reporter="destination",response_code=~"5..",<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
 
         # P99 latency
-        - seriesQuery: 'istio_request_duration_milliseconds_bucket{destination_workload!=""}'
+        - seriesQuery: 'istio_request_duration_milliseconds_bucket{reporter="destination",destination_workload_namespace!="",destination_workload!=""}'
           resources:
             overrides:
               destination_workload_namespace:
@@ -113,7 +113,7 @@ spec:
           name:
             as: "http_p99_latency_ms"
           metricsQuery: |
-            histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{<<.LabelMatchers>>}[2m]))
+            histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>, le))
 ```
 
 ## Step 3: Create HPA Based on Request Rate
@@ -143,8 +143,8 @@ spec:
           kind: Deployment
           name: myapp
         target:
-          type: Value
-          value: "100"  # Scale to handle 100 RPS per pod
+          type: AverageValue
+          averageValue: "100"  # Scale to handle 100 RPS per pod
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 60
@@ -206,8 +206,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   dependsOn:
-    - name: prometheus-adapter
-    - name: kube-prometheus-stack
+    - name: infrastructure  # Flux Kustomization that reconciles the monitoring HelmReleases
 ```
 
 ```bash
