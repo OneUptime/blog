@@ -147,7 +147,7 @@ spec:
 
         Objects:
         {{ range $resource, $changes := .Changed.Objects -}}
-        - {{ $resource.Resource.Kind }}/{{ $resource.Resource.Name }}
+        - {{ $resource.Kind }}/{{ $resource.Name }}
         {{ end -}}
 ```
 
@@ -186,7 +186,7 @@ When Flux pushes a commit to the same branch, it may encounter conflicts if anot
 Check the automation status:
 
 ```bash
-flux get image update image-updates
+flux get image update
 ```
 
 Watch for recent commits:
