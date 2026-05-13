@@ -31,7 +31,7 @@ for node in $(kubectl get nodes -o name | cut -d/ -f2); do
   POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=${node} -o name | head -1)
   echo "=== $node ==="
-  kubectl exec -n calico-system ${POD} -- birdcl show route export BGP_<peer_ip> | grep "10.96"
+  kubectl exec -n calico-system ${POD} -- birdcl show route | grep "10.96"
 done
 ```
 
