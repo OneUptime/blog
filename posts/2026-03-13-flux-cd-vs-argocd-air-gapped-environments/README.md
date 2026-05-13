@@ -55,6 +55,8 @@ done
 ```bash
 # Bootstrap Flux pointing to local Gitea instance
 flux bootstrap git \
+  --registry=registry.internal.example.com/fluxcd \
+  --image-pull-secret=internal-registry-secret \
   --url=https://gitea.internal.example.com/your-org/fleet-repo \
   --branch=main \
   --path=clusters/airgapped \
@@ -85,9 +87,7 @@ spec:
     branch: main
   secretRef:
     name: gitea-credentials
-  # Trust the internal CA
-  certSecretRef:
-    name: internal-ca-cert
+  # Include ca.crt in the gitea-credentials Secret to trust the internal CA
 ---
 # Use local Harbor registry for Helm charts
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -100,6 +100,8 @@ spec:
   url: https://harbor.internal.example.com/chartrepo/production
   secretRef:
     name: harbor-credentials
+  certSecretRef:
+    name: internal-ca-cert
 ```
 
 ## Step 4: Mirror ArgoCD Images and Configure for Air-Gapped Use
@@ -110,7 +112,7 @@ ARGOCD_VERSION="v2.10.0"
 ARGOCD_IMAGES=(
   "quay.io/argoproj/argocd:$ARGOCD_VERSION"
   "redis:7.0.11-alpine"
-  "ghcr.io/dex/dex:v2.38.0"
+  "ghcr.io/dexidp/dex:v2.38.0"
 )
 
 for image in "${ARGOCD_IMAGES[@]}"; do
@@ -129,7 +131,8 @@ global:
   image:
     repository: registry.internal.example.com/argoproj/argocd
     tag: v2.10.0
-    imagePullSecret: internal-registry-secret
+  imagePullSecrets:
+    - name: internal-registry-secret
 
 redis:
   image:
@@ -138,27 +141,29 @@ redis:
 
 dex:
   image:
-    repository: registry.internal.example.com/dex/dex
+    repository: registry.internal.example.com/dexidp/dex
     tag: v2.38.0
 ```
 
 ## Step 5: Configure ArgoCD to Use Local Git Repository
 
 ```bash
+# Trust the internal Git server CA
+argocd cert add-tls gitea.internal.example.com --from /path/to/internal-ca.crt
+
 # Add local Git repository to ArgoCD
 argocd repo add https://gitea.internal.example.com/your-org/fleet-repo \
   --username git \
-  --password $GITEA_PASSWORD \
-  --insecure-skip-server-verification # or use --tls-client-cert-path
+  --password $GITEA_PASSWORD
 ```
 
 ## Comparison for Air-Gapped Environments
 
 | Dimension | Flux CD | ArgoCD |
 |---|---|---|
-| External dependencies | Git + container registry | Git + container registry + ArgoCD API |
-| Image count to mirror | 6 images | 4+ images (Redis, Dex, etc.) |
-| Internal CA support | Yes, native via certSecretRef | Yes, via argocd-cm configmap |
+| External dependencies | Git + container registry | Git + container registry + access from ArgoCD to target cluster APIs |
+| Image count to mirror | 4 default images, plus 2 optional image automation images | 3+ images (ArgoCD, Redis, Dex, etc.) |
+| Internal CA support | Yes, via Secret references | Yes, via ArgoCD TLS certificate configuration |
 | Offline Git operation | Yes, uses local Git server | Yes, uses local Git server |
 | UI accessibility | N/A (no UI) | UI requires ArgoCD server connectivity |
 | Registry mirroring | Supported for source types | Supported for app images |
@@ -173,4 +178,4 @@ argocd repo add https://gitea.internal.example.com/your-org/fleet-repo \
 
 ## Conclusion
 
-Both Flux CD and ArgoCD can operate in air-gapped environments with appropriate configuration. Flux CD has a slight operational advantage due to its smaller image footprint and no dependency on a central API server for cluster management. ArgoCD's centralized architecture means the control plane must be accessible from all managed clusters, which can be a challenge in strict air-gap scenarios. For edge or classified environments, Flux CD's distributed model is typically the preferred choice.
+Both Flux CD and ArgoCD can operate in air-gapped environments with appropriate configuration. Flux CD has a slight operational advantage due to its smaller default image footprint and no dependency on a central API server for cluster management. ArgoCD's centralized architecture means the control plane must be able to reach the Kubernetes APIs of all managed clusters, which can be a challenge in strict air-gap scenarios. For edge or classified environments, Flux CD's distributed model is typically the preferred choice.
