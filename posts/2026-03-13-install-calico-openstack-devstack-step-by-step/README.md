@@ -16,7 +16,7 @@ The DevStack approach is ideal for feature testing, development, and learning Ca
 
 ## Prerequisites
 
-- Ubuntu 22.04 or 20.04 (or a VM with these specs)
+- Ubuntu 24.04 or 22.04 (or a VM with these specs)
 - At least 8GB RAM and 40GB disk
 - Python 3.8+ installed
 - A non-root user with sudo access (DevStack should not be run as root)
@@ -25,6 +25,7 @@ The DevStack approach is ideal for feature testing, development, and learning Ca
 
 ```bash
 sudo useradd -s /bin/bash -d /opt/stack -m stack
+sudo chmod +x /opt/stack
 echo "stack ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/stack
 sudo -u stack -i
 ```
@@ -34,7 +35,6 @@ sudo -u stack -i
 ```bash
 git clone https://opendev.org/openstack/devstack.git /opt/stack/devstack
 cd /opt/stack/devstack
-git checkout stable/yoga  # Use a stable branch
 ```
 
 ## Step 3: Configure DevStack with Calico
@@ -50,21 +50,8 @@ DATABASE_PASSWORD=secret
 RABBIT_PASSWORD=secret
 SERVICE_PASSWORD=secret
 
-# Use Calico instead of OVS
-
-Q_PLUGIN=calico
-enable_plugin networking-calico https://opendev.org/openstack/networking-calico.git stable/yoga
-
-# Basic services
-enable_service key,n-api,n-cond,n-sch,n-crt
-enable_service g-api,g-reg
-enable_service c-api,c-vol,c-sch
-enable_service neutron,q-svc,q-dhcp,q-meta
-
-# Calico services
-enable_service calico-etcd
-enable_service calico-felix
-enable_service calico-bird
+# Use Calico instead of the default Neutron agents
+enable_plugin calico https://github.com/projectcalico/calico master
 EOF
 ```
 
@@ -83,17 +70,23 @@ DevStack will install all dependencies, clone OpenStack projects, configure the 
 source /opt/stack/devstack/openrc admin admin
 openstack network list
 openstack server list
-calicoctl node status
+ip route
 ```
 
 ## Step 6: Create a Test Network and VM
 
 ```bash
-openstack network create calico-test-net
-openstack subnet create --network calico-test-net \
-  --subnet-range 10.65.1.0/24 test-subnet
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+openstack network create --share --provider-network-type local calico-test-net
+openstack subnet create --network calico-test-net --gateway 10.65.0.1 \
+  --dhcp --ip-version 4 --subnet-range 10.65.0.0/24 test-subnet
+
+IMAGE_ID=$(openstack image list -f value -c ID -c Name | awk '/cirros/ {print $1; exit}')
+FLAVOR_ID=$(openstack flavor list -f value -c ID -c Name | awk '$2 == "m1.tiny" {print $1; exit}')
 openstack server create --network calico-test-net \
-  --image cirros --flavor cirros256 test-vm
+  --image "$IMAGE_ID" --flavor "$FLAVOR_ID" test-vm
 openstack server list
 ```
 
