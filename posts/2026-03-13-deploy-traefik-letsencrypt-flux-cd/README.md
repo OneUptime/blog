@@ -14,7 +14,7 @@ Traefik is a cloud-native reverse proxy and ingress controller that was built wi
 
 Deploying Traefik through Flux CD gives you a reproducible, version-controlled ingress layer that automatically manages TLS for all your services. When you add a new service to your cluster, a simple Ingress or IngressRoute resource is all you need - Traefik handles certificate provisioning, renewal, and HTTPS termination automatically.
 
-This guide deploys Traefik using Flux CD HelmRelease with Let's Encrypt ACME certificate provisioning using both HTTP-01 and DNS-01 challenges, configuring it for production use with proper resource limits and high availability.
+This guide deploys Traefik using Flux CD HelmRelease with Let's Encrypt ACME certificate provisioning using the HTTP-01 challenge, configuring it for production use with proper resource limits and persistent certificate storage.
 
 ## Prerequisites
 
@@ -41,11 +41,17 @@ spec:
   url: https://traefik.github.io/charts
 ```
 
-## Step 2: Create a PersistentVolumeClaim for ACME Data
+## Step 2: Create the Namespace and PersistentVolumeClaim for ACME Data
 
 Traefik stores Let's Encrypt certificate data on disk. Persist it to survive pod restarts.
 
 ```yaml
+# infrastructure/traefik/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik
+---
 # infrastructure/traefik/acme-pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -89,29 +95,28 @@ spec:
     # Entry points configuration
     ports:
       web:
-        port: 80
+        port: 8000
         exposedPort: 80
         # Redirect all HTTP to HTTPS
         redirectTo:
           port: websecure
       websecure:
-        port: 443
+        port: 8443
         exposedPort: 443
         tls:
           enabled: true
 
     # Let's Encrypt ACME configuration
-    certificatesResolvers:
+    certResolvers:
       letsencrypt:
-        acme:
-          # Use staging for testing, change to production when ready
-          # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
-          caServer: https://acme-v02.api.letsencrypt.org/directory
-          email: platform-team@example.com
-          storage: /data/acme.json
-          # HTTP-01 challenge (requires port 80 accessible from internet)
-          httpChallenge:
-            entryPoint: web
+        # Use staging for testing, change to production when ready
+        # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+        caServer: https://acme-v02.api.letsencrypt.org/directory
+        email: platform-team@example.com
+        storage: /data/acme.json
+        # HTTP-01 challenge (requires port 80 accessible from internet)
+        httpChallenge:
+          entryPoint: web
 
     # Persist ACME certificate data
     persistence:
@@ -142,9 +147,20 @@ spec:
         cpu: "1"
         memory: 512Mi
 
-    # Single replica when using ReadWriteOnce PVC
-    # For HA, use ReadWriteMany PVC or external certificate storage
-    replicaCount: 1
+    # Single replica when using Traefik Proxy's file-based ACME storage
+    deployment:
+      replicas: 1
+      initContainers:
+        - name: volume-permissions
+          image: busybox:latest
+          command: ["sh", "-c", "touch /data/acme.json; chmod -v 600 /data/acme.json"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+
+    podSecurityContext:
+      fsGroup: 65532
+      fsGroupChangePolicy: OnRootMismatch
 
     # ServiceAccount permissions
     rbac:
@@ -170,8 +186,8 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: traefik
       namespace: traefik
   timeout: 10m
@@ -193,6 +209,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
     # Enable TLS on this ingress
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   ingressClassName: traefik
   rules:
@@ -206,11 +223,6 @@ spec:
                 name: api-server
                 port:
                   number: 8080
-  tls:
-    - hosts:
-        - api.example.com
-      # Traefik manages this secret automatically
-      secretName: api-example-tls
 ```
 
 ## Step 6: Verify TLS is Working
@@ -234,7 +246,7 @@ curl -I https://api.example.com/health
 echo | openssl s_client -servername api.example.com -connect api.example.com:443 2>/dev/null | openssl x509 -noout -dates
 
 # Access Traefik dashboard (temporary port-forward)
-kubectl port-forward -n traefik svc/traefik 9000:9000 &
+kubectl port-forward -n traefik deployment/traefik 9000:9000 &
 curl http://localhost:9000/dashboard/
 ```
 
@@ -242,7 +254,7 @@ curl http://localhost:9000/dashboard/
 
 - Always test with Let's Encrypt staging first to avoid hitting production rate limits; switch `caServer` to the production URL only when everything works correctly.
 - Store ACME data in a persistent volume and back it up regularly; losing the ACME account data means re-registering and waiting for rate limit windows.
-- For high availability deployments, switch to DNS-01 challenges with a shared storage backend (Redis or a shared filesystem) to avoid certificate issuance conflicts between replicas.
+- For high availability deployments with Let's Encrypt, use cert-manager or Traefik Enterprise; Traefik Proxy's file-based ACME storage is intended for a single active instance.
 - Enable Traefik's access logs in JSON format and ship to your log aggregation system for detailed request tracking.
 - Use Traefik Middleware resources for security headers, basic authentication, and rate limiting rather than handling these in application code.
 - Monitor certificate expiration through Traefik's Prometheus metrics and set alerts for certificates expiring within 30 days.
