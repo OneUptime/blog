@@ -18,14 +18,15 @@ This guide walks through containerizing a FastAPI application with Uvicorn, writ
 
 ## Prerequisites
 
-- A FastAPI application (`main.py` with an `app` or `create_app` function)
+- A FastAPI application (`main.py` with an `app` object; if you use an application factory, adjust the Gunicorn target accordingly)
 - A Kubernetes cluster with Flux CD bootstrapped
 - A container registry
 - `kubectl` and `flux` CLIs installed
+- A Kubernetes Secret named `fastapi-secrets` in the `my-fastapi-app` namespace with a `DATABASE_URL` key, or a GitOps-friendly secret management tool such as SOPS
 
 ## Step 1: Containerize FastAPI with Uvicorn
 
-FastAPI is served by Uvicorn, an ASGI server. For production, run multiple Uvicorn workers under Gunicorn using the `uvicorn.workers.UvicornWorker` worker class.
+FastAPI is served by Uvicorn, an ASGI server. For production, run multiple Uvicorn workers under Gunicorn using the `uvicorn-worker` package's `uvicorn_worker.UvicornWorker` worker class.
 
 ```dockerfile
 # Dockerfile
@@ -48,7 +49,7 @@ USER apiuser
 EXPOSE 8000
 # Use Gunicorn with Uvicorn workers for production multi-process setup
 CMD ["gunicorn", "main:app", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--worker-class", "uvicorn_worker.UvicornWorker", \
      "--workers", "4", \
      "--bind", "0.0.0.0:8000", \
      "--access-logfile", "-", \
@@ -58,10 +59,11 @@ CMD ["gunicorn", "main:app", \
 A minimal `requirements.txt`:
 
 ```plaintext
-fastapi==0.111.0
-uvicorn[standard]==0.30.0
-gunicorn==22.0.0
-pydantic==2.7.0
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+uvicorn-worker==0.4.0
+gunicorn==26.0.0
+pydantic==2.13.4
 ```
 
 ```bash
@@ -78,8 +80,8 @@ from fastapi import FastAPI
 app = FastAPI(
     title="My FastAPI Service",
     version="1.0.0",
-    # Disable docs in production if not needed (security hardening)
-    docs_url="/docs" if not False else None,
+    # Set docs_url=None in production if interactive docs are not needed
+    docs_url="/docs",
 )
 
 @app.get("/health", tags=["Monitoring"])
@@ -121,11 +123,6 @@ spec:
     metadata:
       labels:
         app: my-fastapi-app
-      annotations:
-        # Prometheus scraping annotations
-        prometheus.io/scrape: "true"
-        prometheus.io/path: "/metrics"
-        prometheus.io/port: "8000"
     spec:
       containers:
         - name: my-fastapi-app
@@ -293,7 +290,7 @@ spec:
       author:
         email: fluxbot@your-org.com
         name: Flux Bot
-      messageTemplate: "chore: update fastapi app to {{range .Updated.Images}}{{.}}{{end}}"
+      messageTemplate: "chore: update fastapi app {{range .Changed.Changes}}{{.OldValue}} -> {{.NewValue}}{{end}}"
     push:
       branch: main
   update:
@@ -318,7 +315,7 @@ kubectl port-forward -n my-fastapi-app svc/my-fastapi-app 8000:80
 ## Best Practices
 
 - Disable the interactive `/docs` and `/redoc` endpoints in production if the API is internal, or protect them with authentication middleware.
-- Use Pydantic `BaseSettings` to load configuration from environment variables with type validation and default values.
+- Use `pydantic-settings` with `BaseSettings` to load configuration from environment variables with type validation and default values.
 - For CPU-bound workloads (e.g., ML inference), prefer multiple single-worker Uvicorn pods over multi-worker Gunicorn, so Kubernetes can scale and schedule them independently.
 - Add `prometheus-fastapi-instrumentator` for out-of-the-box Prometheus metrics on all routes.
 - Use `asyncpg` or `databases` for async database access to take full advantage of FastAPI's async request handling.
