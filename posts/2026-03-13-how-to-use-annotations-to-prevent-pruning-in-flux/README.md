@@ -235,14 +235,14 @@ With this setup, the Namespace and PVC are protected from pruning, while the Dep
 Confirm that annotations are correctly applied after reconciliation:
 
 ```bash
-kubectl get namespace monitoring -o jsonpath='{.metadata.annotations}' | jq .
+kubectl get namespace monitoring -o jsonpath='{.metadata.annotations.kustomize\.toolkit\.fluxcd\.io/prune}{"\n"}'
 ```
 
 ```bash
-kubectl get pvc grafana-data -n monitoring -o jsonpath='{.metadata.annotations}' | jq .
+kubectl get pvc grafana-data -n monitoring -o jsonpath='{.metadata.annotations.kustomize\.toolkit\.fluxcd\.io/prune}{"\n"}'
 ```
 
-Both should include the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation.
+Both should return `disabled`.
 
 ## Conclusion
 
