@@ -10,7 +10,7 @@ Description: Learn how to configure a FluxInstance custom resource with persiste
 
 ## Introduction
 
-When running Flux in production Kubernetes clusters, one challenge you may encounter is the loss of downloaded source artifacts when Flux controller pods restart. By default, Flux stores artifacts in ephemeral storage, which means every restart triggers a full re-download of all sources. This can cause delays in reconciliation, increased network traffic, and temporary disruptions to your GitOps workflow.
+When running Flux in production Kubernetes clusters, one challenge you may encounter is the loss of downloaded source artifacts when the source-controller pod restarts. By default, Flux stores artifacts in ephemeral storage, which means source-controller restarts can trigger re-downloads of source artifacts. This can cause delays in reconciliation, increased network traffic, and temporary disruptions to your GitOps workflow.
 
 The Flux Operator solves this problem by allowing you to configure persistent storage for your FluxInstance. With persistent volumes, source artifacts survive pod restarts, enabling faster recovery and more reliable continuous delivery. In this guide, you will learn how to configure a FluxInstance with persistent storage using PersistentVolumeClaims.
 
@@ -20,7 +20,7 @@ The Flux Operator solves this problem by allowing you to configure persistent st
 - kubectl configured to access your cluster
 - Helm v3 installed
 - The Flux Operator installed in your cluster
-- A StorageClass available in your cluster that supports ReadWriteOnce access
+- A StorageClass available in your cluster that can provision ReadWriteOnce volumes
 
 ## Installing the Flux Operator
 
@@ -79,9 +79,9 @@ Save this file as `fluxinstance.yaml` and apply it:
 kubectl apply -f fluxinstance.yaml
 ```
 
-The `storage` field accepts the following sub-fields:
+The `storage` field accepts the following required sub-fields:
 
-- `class`: The StorageClass name to use for the PVC. If omitted, the cluster default StorageClass is used.
+- `class`: The StorageClass name to use for the PVC.
 - `size`: The requested storage capacity. Choose a size based on the total size of your source artifacts.
 
 ## Verifying the Persistent Volume
@@ -95,8 +95,8 @@ kubectl get pvc -n flux-system
 You should see output similar to:
 
 ```bash
-NAME                    STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-flux-source-artifacts   Bound    pvc-a1b2c3d4-e5f6-7890-abcd-ef1234567890   10Gi       RWO            standard       2m
+NAME                STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+source-controller   Bound    pvc-a1b2c3d4-e5f6-7890-abcd-ef1234567890   10Gi       RWO            standard       2m
 ```
 
 Confirm the source-controller pod has the volume mounted:
@@ -109,7 +109,7 @@ Look for the volume mount in the output:
 
 ```text
 Mounts:
-  /data from source-artifacts (rw)
+  /data from persistent-data (rw)
 ```
 
 ## Using a Specific StorageClass
@@ -190,16 +190,16 @@ spec:
       rules:
         - alert: FluxStorageNearlyFull
           expr: |
-            kubelet_volume_stats_used_bytes{namespace="flux-system", persistentvolumeclaim="flux-source-artifacts"}
+            kubelet_volume_stats_used_bytes{namespace="flux-system", persistentvolumeclaim="source-controller"}
             /
-            kubelet_volume_stats_capacity_bytes{namespace="flux-system", persistentvolumeclaim="flux-source-artifacts"}
+            kubelet_volume_stats_capacity_bytes{namespace="flux-system", persistentvolumeclaim="source-controller"}
             > 0.85
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Flux source artifact storage is nearly full"
-            description: "The PVC flux-source-artifacts is over 85% full."
+            description: "The PVC source-controller is over 85% full."
 ```
 
 ## Conclusion
