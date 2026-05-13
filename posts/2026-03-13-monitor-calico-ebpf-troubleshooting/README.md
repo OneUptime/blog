@@ -10,7 +10,7 @@ Description: Set up proactive monitoring to automatically detect Calico eBPF iss
 
 ## Introduction
 
-The goal of monitoring Calico eBPF in the context of troubleshooting is to detect issues before they become incidents requiring manual diagnosis. When your monitoring can automatically identify the type of eBPF failure - BPF map exhaustion, program loading failure, or mode regression - your on-call engineer starts with context instead of having to collect it.
+The goal of monitoring Calico eBPF in the context of troubleshooting is to detect issues before they become incidents requiring manual diagnosis. When your monitoring can automatically identify the type of eBPF failure - missing BPF dataplane activity, endpoint programming failure, or restart loops - your on-call engineer starts with context instead of having to collect it.
 
 ## Prerequisites
 
@@ -31,34 +31,35 @@ spec:
   groups:
     - name: calico.ebpf.troubleshooting
       rules:
-        # Detect eBPF mode regression
-        - alert: CalicoEBPFModeRegression
-          expr: felix_bpf_enabled == 0
+        # Detect nodes with local endpoints but no successfully programmed BPF endpoints
+        - alert: CalicoEBPFDataplaneInactive
+          expr: |
+            (felix_active_local_endpoints > 0)
+            and on(instance) (felix_bpf_happy_dataplane_endpoints == 0)
           for: 2m
           labels:
             severity: critical
             runbook: "https://wiki.example.com/runbooks/calico-ebpf-mode-regression"
           annotations:
-            summary: "Calico eBPF mode disabled on {{ $labels.instance }}"
+            summary: "Calico eBPF dataplane not programming endpoints on {{ $labels.instance }}"
             description: |
-              Felix is running in iptables mode on node {{ $labels.instance }}.
+              Felix has local endpoints but no successfully programmed BPF endpoints on node {{ $labels.instance }}.
               Possible causes:
               - Kernel too old for eBPF
               - BPF filesystem not mounted
               - Installation changed to non-BPF mode
               First step: kubectl logs -n calico-system ds/calico-node -c calico-node | grep -i bpf
 
-        # Detect BPF map near exhaustion
-        - alert: CalicoEBPFMapExhaustion
-          expr: |
-            (felix_bpf_conntrack_entries / felix_bpf_conntrack_max_entries) > 0.9
+        # Detect BPF endpoint programming failures
+        - alert: CalicoEBPFDirtyEndpoints
+          expr: felix_bpf_dirty_dataplane_endpoints > 0
           for: 5m
           labels:
             severity: warning
-            runbook: "https://wiki.example.com/runbooks/calico-bpf-map-exhaustion"
+            runbook: "https://wiki.example.com/runbooks/calico-bpf-endpoint-programming"
           annotations:
-            summary: "Calico BPF conntrack map at {{ $value | humanizePercentage }} capacity"
-            description: "BPF conntrack map approaching limit. New connections may fail."
+            summary: "Calico BPF has {{ $value }} dirty dataplane endpoints"
+            description: "Felix reports BPF endpoints left dirty after a dataplane programming failure."
 
         # Detect calico-node frequent restarts (usually indicates BPF init failure)
         - alert: CalicoNodeFrequentRestarts
@@ -90,7 +91,7 @@ receivers:
 ```bash
 #!/bin/bash
 # webhook-pre-collect-context.sh
-# Called by Alertmanager webhook when alert fires
+# Example handler logic run by the service that receives the Alertmanager webhook
 
 ALERT_NAME="${1}"
 NODE="${2}"
@@ -112,11 +113,11 @@ curl -X POST "${PAGERDUTY_WEBHOOK}" \
 ```mermaid
 flowchart TD
     A[Grafana: eBPF Health] --> B[Row 1: Current Status\neBPF active/iptables mode per node]
-    A --> C[Row 2: BPF Map Usage\nConntrack/NAT/Route table fill levels]
+    A --> C[Row 2: BPF Endpoint Health\nManaged/happy/dirty endpoint counts and IP set count]
     A --> D[Row 3: Recent Alerts\nLast 24h alert history]
     A --> E[Row 4: calico-node Restarts\nRestart frequency per pod]
 ```
 
 ## Conclusion
 
-Proactive monitoring for eBPF issues transforms troubleshooting from reactive (detect via user complaints) to proactive (detect via metrics before impact). The key alert types - eBPF mode regression, BPF map exhaustion, and frequent calico-node restarts - cover the most common eBPF failure categories. By including runbook URLs in alerts and pre-collecting diagnostic context automatically, you significantly reduce the time from alert to resolution. A well-configured monitoring setup means your on-call engineer receives an alert with the diagnostic bundle already attached, ready to start root cause analysis immediately.
+Proactive monitoring for eBPF issues transforms troubleshooting from reactive (detect via user complaints) to proactive (detect via metrics before impact). The key alert types - missing BPF dataplane activity, dirty BPF dataplane endpoints, and frequent calico-node restarts - cover the most common eBPF failure categories exposed by Felix metrics. By including runbook URLs in alerts and pre-collecting diagnostic context automatically, you significantly reduce the time from alert to resolution. A well-configured monitoring setup means your on-call engineer receives an alert with the diagnostic bundle already attached, ready to start root cause analysis immediately.
