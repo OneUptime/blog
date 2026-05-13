@@ -14,7 +14,7 @@ Running the same application across multiple environments like staging and produ
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
+- A Kubernetes cluster version supported by your Flux release. Flux v2.3 supports Kubernetes 1.28, 1.29, and 1.30.
 - Flux v2.3 or later installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
@@ -33,6 +33,16 @@ Post-build substitution lets you use a single set of base manifests and swap out
 ## Setting Up the Base Manifests
 
 Start by creating your application manifests with variable placeholders in a shared directory:
+
+```yaml
+# apps/my-app/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${APP_NAMESPACE}
+  labels:
+    environment: ${ENVIRONMENT}
+```
 
 ```yaml
 # apps/my-app/deployment.yaml
