@@ -98,41 +98,31 @@ spec:
 
 ## Isolating Force Apply to Specific Resources
 
-Sometimes you do not want to force apply all resources in a Kustomization, only specific ones. In these cases, split your deployment into multiple Kustomizations:
+Sometimes you do not want to force apply all resources in a Kustomization, only specific ones. In these cases, annotate or label the specific resources with `kustomize.toolkit.fluxcd.io/force: enabled`:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: my-app-mutable
-  namespace: flux-system
+  name: my-app
+  namespace: default
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: my-repo
-  path: ./deploy/my-app/base
-  prune: true
-  force: false
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: my-app-immutable
-  namespace: flux-system
-spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: my-repo
-  path: ./deploy/my-app/immutable
-  prune: true
-  force: true
-  dependsOn:
-    - name: my-app-mutable
+  selector:
+    matchLabels:
+      app: my-app-v2
+  template:
+    metadata:
+      labels:
+        app: my-app-v2
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.25
 ```
 
-This approach limits the blast radius of force apply to only the resources that actually need it.
+This approach limits the blast radius of force apply to only the resources that actually need it. Remove the annotation after the immutable field change has been applied.
 
 ## Force Apply for Immutable ConfigMaps and Secrets
 
@@ -156,7 +146,7 @@ With `force: true` on the Kustomization, Flux will delete the existing immutable
 
 ## Force Apply for Jobs
 
-Kubernetes Jobs have immutable spec fields once created. If you manage Jobs through Flux and need to update their specifications, force apply is essential:
+Kubernetes Jobs have immutable fields, especially the pod template for normal Jobs. If you manage Jobs through Flux and need to update immutable parts of their specifications, force apply is essential:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -180,7 +170,7 @@ This ensures that updated Job definitions replace the old ones cleanly.
 
 ## Important Considerations
 
-Force apply causes a brief period of downtime for the affected resources because the resource is deleted before being recreated. For stateless workloads behind a Service with multiple replicas, this is generally acceptable. For stateful workloads or single-replica Deployments, plan accordingly.
+Force apply can cause a brief period of downtime for the affected resources because the resource is deleted before being recreated. For stateless workloads behind a Service with multiple replicas, this is generally acceptable. For stateful workloads or single-replica Deployments, plan accordingly.
 
 When force is enabled and pruning is also enabled, be aware that Flux will delete resources that are removed from the source. The combination of force and prune means Flux has full lifecycle control over the resources.
 
