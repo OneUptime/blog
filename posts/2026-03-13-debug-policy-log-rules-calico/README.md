@@ -10,11 +10,11 @@ Description: Diagnose and fix Calico Policy Log Rules failures in Calico when tr
 
 ## Introduction
 
-Calico Policy Log Rules in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to debug Policy Logging effectively.
+Calico Policy Log Rules in Calico provide diagnostic visibility into traffic that matches policy rules using the `projectcalico.org/v3` API. This guide covers how to debug Policy Logging effectively.
 
-Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Policy Logging criteria.
+Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped visibility into traffic that matches your Policy Logging criteria.
 
-This guide provides practical techniques for debug Policy Logging in your Kubernetes cluster, following security best practices and production-tested patterns.
+This guide provides practical techniques for debugging Policy Logging in your Kubernetes cluster, following security best practices and production-tested patterns.
 
 ## Prerequisites
 
@@ -37,6 +37,8 @@ calicoctl get globalnetworkpolicies -o wide
 
 ## Step 3: Add a Temporary Log Rule
 
+This rule logs traffic that has not already been handled by lower-order policies. If you are debugging a known `Deny` rule, add an equivalent `Log` rule immediately before that `Deny` rule instead, because Calico continues after `Log` actions but stops evaluation after `Allow` and `Deny` actions.
+
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
@@ -44,7 +46,7 @@ metadata:
   name: debug-log
   namespace: my-namespace
 spec:
-  order: 999
+  order: 100001
   selector: all()
   ingress:
     - action: Log
@@ -55,8 +57,8 @@ spec:
 ## Step 4: Review Logs and Fix
 
 ```bash
-sudo journalctl | grep "CALICO" | tail -30
-# Identify the blocking rule, fix selector or order
+sudo journalctl -k | grep "calico-packet" | tail -30
+# Identify the source, destination, and protocol, then fix selector or order
 
 calicoctl delete networkpolicy debug-log -n my-namespace
 ```
