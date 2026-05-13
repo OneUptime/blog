@@ -10,7 +10,7 @@ Description: Deploy Jaeger with Elasticsearch as a persistent storage backend on
 
 ## Introduction
 
-Elasticsearch is one of the most popular storage backends for Jaeger in production environments, providing full-text search over span tags, rich aggregation for dependency graphs, and well-understood operational tooling. Jaeger uses daily index rollover to manage storage growth and supports index lifecycle management (ILM) for automatic retention enforcement.
+Elasticsearch is one of the most popular storage backends for Jaeger in production environments, providing full-text search over span tags, rich aggregation for dependency graphs, and well-understood operational tooling. Jaeger uses daily indices by default to manage storage growth and supports Elasticsearch rollover when `es.use-aliases` is enabled. ILM can also be used with custom index templates and aliases.
 
 Deploying both Elasticsearch and Jaeger via Flux CD ensures your entire tracing stack-from index templates to collector scaling-is managed declaratively. Storage configuration changes, retention updates, and scaling events all flow through Git.
 
@@ -19,6 +19,7 @@ This guide deploys Elasticsearch using the Elastic Helm chart and Jaeger using t
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD bootstrapped
+- An `observability` namespace created in the cluster
 - Sufficient cluster storage for Elasticsearch PVCs (SSDs strongly recommended)
 - cert-manager installed (required by Jaeger Operator)
 - `flux` and `kubectl` CLIs installed
@@ -26,7 +27,7 @@ This guide deploys Elasticsearch using the Elastic Helm chart and Jaeger using t
 ## Step 1: Add the Elastic HelmRepository
 
 ```yaml
-# clusters/my-cluster/jaeger/elastic-helmrepository.yaml
+# clusters/my-cluster/elasticsearch/elastic-helmrepository.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -43,7 +44,7 @@ spec:
 Deploy a 3-node Elasticsearch cluster with persistent SSD-backed storage.
 
 ```yaml
-# clusters/my-cluster/jaeger/elasticsearch-helmrelease.yaml
+# clusters/my-cluster/elasticsearch/elasticsearch-helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -54,7 +55,7 @@ spec:
   chart:
     spec:
       chart: elasticsearch
-      version: ">=8.5.0 <9.0.0"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -79,12 +80,13 @@ spec:
       resources:
         requests:
           storage: 200Gi
-    # Enable built-in security (requires Elasticsearch 8+)
+    # The Elastic 8.5.1 chart enables security and generates TLS certs by default
+    createCert: true
     protocol: https
-    esConfig:
-      elasticsearch.yml: |
-        xpack.security.enabled: true
-        xpack.security.transport.ssl.enabled: true
+    secret:
+      enabled: true
+      # Store this with SOPS instead of committing plaintext in production
+      password: "changeme-in-production"
 ```
 
 ## Step 3: Create the Elasticsearch Credentials Secret
@@ -98,8 +100,8 @@ metadata:
   namespace: observability
 type: Opaque
 stringData:
-  # Elasticsearch username and password for Jaeger - encrypt with SOPS
-  ES_USERNAME: "jaeger"
+  # Match the Elastic Helm chart's built-in elastic user and configured password - encrypt with SOPS
+  ES_USERNAME: "elastic"
   ES_PASSWORD: "changeme-in-production"
 ```
 
@@ -121,7 +123,7 @@ spec:
       es:
         # Elasticsearch service endpoint
         server-urls: https://elasticsearch-master.observability.svc:9200
-        # Use daily index rollover for span data
+        # Prefix the daily Jaeger indices
         index-prefix: jaeger
         num-shards: 3
         num-replicas: 1
@@ -135,11 +137,20 @@ spec:
       enabled: true
       schedule: "55 23 * * *"
 
-    # Enable Elasticsearch Index Lifecycle Management
+    # Enable the Elasticsearch index cleaner job
     esIndexCleaner:
       enabled: true
       numberOfDays: 14
       schedule: "55 23 * * *"
+
+  volumeMounts:
+    - name: elasticsearch-certs
+      mountPath: /es/certificates/
+      readOnly: true
+  volumes:
+    - name: elasticsearch-certs
+      secret:
+        secretName: elasticsearch-master-certs
 
   collector:
     replicas: 2
@@ -152,10 +163,28 @@ spec:
     replicas: 1
 ```
 
-## Step 5: Create the Flux Kustomization with Dependencies
+## Step 5: Create the Flux Kustomizations with Dependencies
 
 ```yaml
-# clusters/my-cluster/jaeger/kustomization.yaml
+# clusters/my-cluster/flux-kustomizations/jaeger-stack.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: elasticsearch
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/my-cluster/elasticsearch
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: elasticsearch
+      namespace: observability
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -179,7 +208,7 @@ spec:
 - Set `numberOfDays: 14` in the index cleaner CronJob to enforce retention; old indices consume significant disk if left uncleaned.
 - Use `num-replicas: 1` for span indices to halve storage cost; span data is regenerable from traces.
 - Enable TLS between Jaeger and Elasticsearch in production; plain HTTP exposes trace data on the network.
-- Monitor Elasticsearch disk watermarks; at 85% disk usage, Elasticsearch stops accepting new shards.
+- Monitor Elasticsearch disk watermarks; by default the low watermark is 85%, the high watermark is 90%, and flood stage is 95%, where affected indices can be made read-only.
 - Use `dependsOn` to prevent Jaeger from starting before Elasticsearch is fully initialized.
 
 ## Conclusion
