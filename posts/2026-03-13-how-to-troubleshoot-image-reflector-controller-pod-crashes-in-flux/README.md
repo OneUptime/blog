@@ -83,7 +83,7 @@ spec:
 
 ### Registry Authentication Failures
 
-If registry credentials are missing, expired, or misconfigured, the controller may crash during scanning:
+If registry credentials are missing, expired, or misconfigured, the controller usually reports reconciliation failures on the affected ImageRepository. Check for these errors before assuming the pod itself is crashing:
 
 ```bash
 kubectl logs -n flux-system deploy/image-reflector-controller | grep -i "auth\|unauthorized\|forbidden\|401\|403"
@@ -131,7 +131,7 @@ The Image Reflector Controller uses an internal database to cache scan results. 
 kubectl logs -n flux-system deploy/image-reflector-controller | grep -i "database\|badger\|corrupt"
 ```
 
-To recover from database corruption, delete the controller pod and its persistent storage so a fresh database is created:
+With the default Flux manifests, the controller database is stored on an `emptyDir` volume. To recover from database corruption, delete the controller pod so a fresh database is created:
 
 ```bash
 kubectl delete pod -n flux-system -l app=image-reflector-controller
@@ -139,7 +139,7 @@ kubectl delete pod -n flux-system -l app=image-reflector-controller
 
 ### Rate Limiting by Container Registries
 
-Container registries like Docker Hub impose rate limits. If the controller hits these limits, it may crash or enter a crash loop:
+Container registries like Docker Hub impose rate limits. If the controller hits these limits, it usually reports scan failures on the affected ImageRepository:
 
 ```bash
 kubectl logs -n flux-system deploy/image-reflector-controller | grep -i "rate limit\|429\|too many requests"
@@ -195,4 +195,4 @@ flux get image repository --all-namespaces
 
 ## Summary
 
-Image Reflector Controller pod crashes are commonly caused by memory exhaustion from large tag lists, registry authentication failures, rate limiting, or database corruption. Using tag filters to narrow scan scope, authenticating with registries, and properly sizing memory limits will resolve most crash scenarios. Regular monitoring and appropriate scan intervals are the best preventive measures.
+Image Reflector Controller pod crashes are commonly caused by memory exhaustion from large tag lists or database corruption. Registry authentication failures and rate limiting usually appear as ImageRepository scan failures that stop image automation from progressing. Using tag filters to narrow scan scope, authenticating with registries, and properly sizing memory limits will resolve most crash scenarios. Regular monitoring and appropriate scan intervals are the best preventive measures.
