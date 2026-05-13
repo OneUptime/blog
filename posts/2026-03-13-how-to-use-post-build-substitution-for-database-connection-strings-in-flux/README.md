@@ -33,7 +33,7 @@ Each of these has components that vary by environment: the host, port, credentia
 
 ## Storing Connection Components in Secrets
 
-Break your connection string into individual components and store them in a Kubernetes Secret:
+Break your connection string into individual components and store them in a Kubernetes Secret. For URI-based connection strings, store username and password values already percent-encoded so reserved characters such as `@`, `/`, `?`, and `#` do not break the URI:
 
 ```yaml
 apiVersion: v1
@@ -46,7 +46,7 @@ stringData:
   DB_HOST: "prod-postgres.internal.example.com"
   DB_PORT: "5432"
   DB_USER: "app_service"
-  DB_PASSWORD: "s3cur3-pr0d-p@ssw0rd"
+  DB_PASSWORD_URL_ENCODED: "s3cur3-pr0d-p%40ssw0rd"
   DB_NAME: "myapp_production"
   DB_SSL_MODE: "require"
 ```
@@ -63,7 +63,7 @@ type: Opaque
 stringData:
   REDIS_HOST: "prod-redis.internal.example.com"
   REDIS_PORT: "6379"
-  REDIS_PASSWORD: "r3d1s-pr0d-p@ss"
+  REDIS_PASSWORD_URL_ENCODED: "r3d1s-pr0d-p%40ss"
   REDIS_DB: "0"
 ```
 
@@ -92,11 +92,11 @@ spec:
           image: myregistry/api-server:${IMAGE_TAG}
           env:
             - name: DATABASE_URL
-              value: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSL_MODE}"
+              value: "postgresql://${DB_USER}:${DB_PASSWORD_URL_ENCODED}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSL_MODE}"
             - name: REDIS_URL
-              value: "redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}"
+              value: "redis://:${REDIS_PASSWORD_URL_ENCODED}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}"
             - name: MONGODB_URI
-              value: "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin"
+              value: "mongodb://${MONGO_USER}:${MONGO_PASSWORD_URL_ENCODED}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DB}?authSource=admin"
 ```
 
 ## Configuring the Kustomization
@@ -142,9 +142,9 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  DATABASE_URL: "postgresql://app_service:s3cur3-p@ss@prod-db:5432/myapp?sslmode=require"
-  REDIS_URL: "redis://:r3d1s-p@ss@prod-redis:6379/0"
-  MONGODB_URI: "mongodb://admin:m0ng0-p@ss@prod-mongo:27017/myapp?authSource=admin"
+  DATABASE_URL: "postgresql://app_service:s3cur3-p%40ss@prod-db:5432/myapp?sslmode=require"
+  REDIS_URL: "redis://:r3d1s-p%40ss@prod-redis:6379/0"
+  MONGODB_URI: "mongodb://admin:m0ng0-p%40ss@prod-mongo:27017/myapp?authSource=admin"
 ```
 
 Then reference them directly in your manifest:
@@ -178,7 +178,7 @@ stringData:
   DB_HOST: "staging-postgres.internal.example.com"
   DB_PORT: "5432"
   DB_USER: "app_staging"
-  DB_PASSWORD: "staging-password"
+  DB_PASSWORD_URL_ENCODED: "staging-password"
   DB_NAME: "myapp_staging"
   DB_SSL_MODE: "prefer"
 ```
@@ -192,7 +192,7 @@ Some connection parameters may not apply to all environments. Use defaults to ha
 ```yaml
 env:
   - name: DATABASE_URL
-    value: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:=5432}/${DB_NAME}?sslmode=${DB_SSL_MODE:=prefer}&connect_timeout=${DB_CONNECT_TIMEOUT:=10}"
+    value: "postgresql://${DB_USER}:${DB_PASSWORD_URL_ENCODED}@${DB_HOST}:${DB_PORT:=5432}/${DB_NAME}?sslmode=${DB_SSL_MODE:=prefer}&connect_timeout=${DB_CONNECT_TIMEOUT:=10}"
   - name: DB_POOL_SIZE
     value: "${DB_POOL_SIZE:=10}"
   - name: DB_IDLE_TIMEOUT
@@ -213,8 +213,8 @@ metadata:
   namespace: ${APP_NAMESPACE}
 type: Opaque
 stringData:
-  database-url: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSL_MODE}"
-  redis-url: "redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}"
+  DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD_URL_ENCODED}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSL_MODE}"
+  REDIS_URL: "redis://:${REDIS_PASSWORD_URL_ENCODED}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}"
 ```
 
 Then reference this secret in your Deployment using `envFrom`:
@@ -242,7 +242,7 @@ flux get kustomization api-server
 Check the generated secret:
 
 ```bash
-kubectl get secret app-database-secrets -n production -o jsonpath='{.data.database-url}' | base64 -d
+kubectl get secret app-database-secrets -n production -o jsonpath='{.data.DATABASE_URL}' | base64 -d
 ```
 
 ## Conclusion
