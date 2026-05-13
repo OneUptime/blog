@@ -10,7 +10,7 @@ Description: Configure tolerations for Windows node taints in Flux CD deployment
 
 ## Introduction
 
-Kubernetes node taints work in conjunction with tolerations to prevent workloads from scheduling on inappropriate nodes. Windows nodes in a Kubernetes cluster are typically tainted to prevent Linux containers from being scheduled on them - a Linux container cannot run on a Windows host OS. Without tolerations in your Windows workload manifests, pods will be stuck in `Pending` state indefinitely.
+Kubernetes node taints work in conjunction with tolerations to prevent workloads from scheduling on inappropriate nodes. Windows nodes in a Kubernetes cluster are often tainted to prevent Linux containers from being scheduled on them - a Linux container cannot run on a Windows host OS. Without tolerations in your Windows workload manifests, pods will be stuck in `Pending` state indefinitely when the matching Windows nodes are tainted.
 
 The taint system serves a critical purpose in mixed clusters: Linux nodes should be the default for most workloads, and Windows nodes should only accept pods that explicitly declare they are Windows-compatible. Understanding and correctly configuring taints and tolerations is essential for stable mixed-cluster operation.
 
@@ -33,7 +33,7 @@ Different Kubernetes platforms apply different taints to Windows nodes.
 kubectl describe node windows-worker-1 | grep Taints
 
 # Common Windows node taints:
-# AKS-managed Windows nodes:
+# Kubernetes-documented example / AKS Windows node pools if configured with this taint:
 #   Taints: os=windows:NoSchedule
 # Self-managed Windows nodes (common convention):
 #   Taints: node.kubernetes.io/os=windows:NoSchedule
@@ -44,27 +44,39 @@ kubectl describe node windows-worker-1 | grep Taints
 kubectl taint nodes windows-worker-1 workload-type=windows:NoSchedule
 ```
 
-## Step 2: Standard Toleration for AKS Windows Nodes
+## Step 2: Standard Toleration for Windows Nodes
 
 ```yaml
-# Standard toleration for AKS Windows node taint: os=windows:NoSchedule
+# Standard toleration for a Windows node taint: os=windows:NoSchedule
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: windows-app
   namespace: windows-workloads
 spec:
+  selector:
+    matchLabels:
+      app: windows-app
   template:
+    metadata:
+      labels:
+        app: windows-app
     spec:
       nodeSelector:
         kubernetes.io/os: windows
 
       tolerations:
-        # Tolerate the standard AKS Windows node taint
+        # Tolerate the Windows node taint
         - key: os
           value: windows
           operator: Equal
           effect: NoSchedule
+
+      containers:
+        - name: windows-app
+          image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
+          ports:
+            - containerPort: 80
 ```
 
 ## Step 3: Multiple Toleration Scenarios
@@ -77,7 +89,7 @@ spec:
   template:
     spec:
       tolerations:
-        # AKS standard taint
+        # Common Windows node taint
         - key: os
           value: windows
           operator: Equal
@@ -118,7 +130,7 @@ spec:
           operator: Equal
           effect: NoSchedule
 
-        # NVIDIA GPU taint (applied by NVIDIA device plugin)
+        # Common NVIDIA GPU node taint
         - key: nvidia.com/gpu
           operator: Exists
           effect: NoSchedule
@@ -129,13 +141,13 @@ spec:
           effect: NoSchedule
 ```
 
-## Step 5: Kustomize Strategic Merge for Tolerations
+## Step 5: Kustomize Patch for Tolerations
 
-Use strategic merge patches to add tolerations to existing deployments without duplicating the full manifest.
+Use a Kustomize patch to set tolerations on existing deployments without duplicating the full manifest. For Pod specs, a strategic merge patch replaces the `tolerations` list, so include any existing tolerations that must be preserved.
 
 ```yaml
 # overlays/production/windows-tolerations-patch.yaml
-# Strategic merge patch adds tolerations to existing spec
+# Strategic merge patch sets the tolerations list on the existing spec
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -144,7 +156,7 @@ metadata:
 spec:
   template:
     spec:
-      # Strategic merge will ADD these tolerations to any existing ones
+      # Include all tolerations that should remain after the patch
       tolerations:
         - key: os
           value: windows
@@ -163,6 +175,7 @@ patches:
   - path: windows-tolerations-patch.yaml
     target:
       kind: Deployment
+      name: windows-app
       namespace: windows-workloads
 ```
 
@@ -172,6 +185,7 @@ Configure Linux workloads to explicitly avoid Windows nodes, and add a NoSchedul
 
 ```bash
 # Add taint to all Windows nodes (prevents all pods without toleration)
+# For managed node pools, prefer the provider's node-pool taint settings so taints survive scaling and replacement.
 kubectl taint nodes -l "kubernetes.io/os=windows" \
   os=windows:NoSchedule
 
@@ -180,7 +194,7 @@ kubectl get nodes -l "kubernetes.io/os=windows" -o json | \
   jq '.items[] | {name: .metadata.name, taints: .spec.taints}'
 ```
 
-```yaml
+```bash
 # Optionally add NoExecute taint to evict any misscheduled Linux pods
 # (use with caution - will evict pods that don't have the toleration)
 # kubectl taint nodes windows-worker-1 os=windows:NoExecute
@@ -195,12 +209,21 @@ metadata:
   name: linux-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: linux-app
   template:
+    metadata:
+      labels:
+        app: linux-app
     spec:
       # Explicit Linux targeting prevents accidental scheduling on Windows
       nodeSelector:
         kubernetes.io/os: linux
       # NO Windows tolerations on Linux workloads
+      containers:
+        - name: linux-app
+          image: nginx:1.27
 ```
 
 ## Step 7: Validate Toleration Configuration
@@ -208,7 +231,7 @@ spec:
 ```bash
 # Check which pods are running on Windows vs Linux nodes
 kubectl get pods -A -o wide | \
-  awk '{print $1, $2, $8}' | \
+  awk 'NR > 1 {print $1, $2, $8}' | \
   while read ns pod node; do
     OS=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.kubernetes\.io/os}' 2>/dev/null || echo "unknown")
     echo "$ns/$pod -> $node (OS: $OS)"
@@ -231,4 +254,4 @@ kubectl describe pod <pending-pod> -n <namespace> | grep -A 10 Events
 
 ## Conclusion
 
-Tolerations are the other half of the Windows scheduling equation, complementing node selectors. Without the correct toleration, even a deployment with the perfect node selector cannot schedule on a tainted Windows node. By standardizing tolerations through Kustomize components, validating in CI, and enforcing via admission policies, you ensure that every Windows workload in your Flux-managed cluster can reliably schedule on the appropriate nodes.
+Tolerations are the other half of the Windows scheduling equation, complementing node selectors. Without the correct toleration, even a deployment with the perfect node selector cannot schedule on a tainted Windows node. By standardizing tolerations through Kustomize overlays, validating in CI, and enforcing via admission policies, you ensure that every Windows workload in your Flux-managed cluster can reliably schedule on the appropriate nodes.
