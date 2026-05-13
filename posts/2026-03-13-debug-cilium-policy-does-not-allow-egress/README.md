@@ -10,9 +10,9 @@ Description: Debug Cilium egress policies that silently block expected traffic b
 
 ## Introduction
 
-One of the most frustrating problems in Cilium is when a network policy appears to be correct but traffic is still blocked. This occurs because Cilium's policy model is additive and default-deny when any policy applies to an endpoint. A missing allow rule-even for unrelated traffic-can cause unexpected drops.
+One of the most frustrating problems in Cilium is when a network policy appears to be correct but traffic is still blocked. This occurs because Cilium's policy model is additive and default-deny per direction when a policy with an ingress or egress section selects an endpoint. A missing allow rule in that enforced direction can cause unexpected drops.
 
-Debugging these situations requires tracing the path from the policy definition through the compiled eBPF rules to the actual packet drop. Hubble makes this process much faster by showing exactly which policy rule caused the drop.
+Debugging these situations requires tracing the path from the policy definition through the realized endpoint policy to the actual packet drop. Hubble makes this process much faster by showing when traffic is dropped by policy.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ hubble observe --namespace default \
   --verdict DROPPED
 ```
 
-Note the destination IP, port, and the `drop_reason` field.
+Note the destination IP, port, and the drop reason.
 
 ## Step 2: Check What Policies Apply to the Pod
 
@@ -52,19 +52,22 @@ flowchart TD
     A[Pod attempts egress] --> B{Cilium Policy Check}
     B -->|Matching allow rule| C[FORWARDED]
     B -->|No matching rule| D[DROPPED]
-    D --> E[Hubble flow: reason=PolicyDenied]
+    D --> E[Hubble flow: Policy denied]
     E --> F[Inspect endpoint policy]
     F --> G[Find missing rule]
     G --> H[Add correct allow rule]
     H --> B
 ```
 
-## Step 3: View Resolved Policy for Endpoint
+## Step 3: View Policy Rules for Endpoint
 
 ```bash
 kubectl exec -n kube-system ds/cilium -- \
-  cilium-dbg policy get --resolve --from-label "app=my-app" \
-  --to-cidr <destination-cidr> --dport <port>
+  cilium-dbg endpoint get <endpoint-id> \
+  -o jsonpath='{range ..status.policy.realized.l4.egress[*].derived-from-rules}{@}{"\n"}{end}' \
+  | tr -d '][' \
+  | xargs -r -I{} kubectl exec -n kube-system ds/cilium -- \
+      cilium-dbg policy get {}
 ```
 
 ## Step 4: Check for Policy Scope Issues
@@ -80,12 +83,18 @@ kubectl get cnp,netpol -n default -o yaml | grep -A5 "endpointSelector"
 Temporarily allow all egress to isolate whether the issue is egress or another layer:
 
 ```yaml
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: temp-allow-all-egress
+  namespace: default
 spec:
   endpointSelector:
     matchLabels:
       app: my-app
   egress:
-    - {}
+    - toEntities:
+        - all
 ```
 
 ```bash
@@ -103,4 +112,4 @@ If traffic now flows, the issue is in the original egress rules.
 
 ## Conclusion
 
-Debugging Cilium egress policy issues requires using Hubble to identify the specific drop reason, inspecting which policies apply to the endpoint, and using `cilium-dbg policy get` to trace the resolved policy. Systematic elimination narrows the problem to the specific missing or incorrect allow rule.
+Debugging Cilium egress policy issues requires using Hubble to identify the specific drop reason, inspecting which policies apply to the endpoint, and using `cilium-dbg endpoint get` with `cilium-dbg policy get` to trace the applied policy rules. Systematic elimination narrows the problem to the specific missing or incorrect allow rule.
