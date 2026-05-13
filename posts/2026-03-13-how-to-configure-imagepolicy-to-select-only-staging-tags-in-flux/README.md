@@ -78,7 +78,7 @@ The semver range `>=1.0.0-rc.0` ensures that pre-release versions with the `rc` 
 
 ## Approach 3: Branch-Based Staging Tags
 
-If images built from a `release` branch are tagged like `release-20260313-abc1234`:
+If images built from a `release` branch are tagged like `release-20260313153000-abc1234`:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -90,7 +90,7 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^release-(?P<ts>\d{8})-[a-f0-9]+$'
+    pattern: '^release-(?P<ts>\d{14})-[a-f0-9]+$'
     extract: '$ts'
   policy:
     numerical:
