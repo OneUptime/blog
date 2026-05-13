@@ -96,6 +96,8 @@ metadata:
 spec:
   imageRepositoryRef:
     name: api
+  filterTags:
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+-.*$'
   policy:
     semver:
       range: ">=1.0.0-0"
@@ -140,6 +142,8 @@ metadata:
 spec:
   imageRepositoryRef:
     name: web
+  filterTags:
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+-.*$'
   policy:
     semver:
       range: ">=1.0.0-0"
@@ -293,8 +297,8 @@ The version flow across environments follows this pattern:
 4. After testing, the team creates a pre-release tag like `1.2.0-rc.1`
 5. Staging automation picks up the pre-release
 6. After staging validation, the team creates a stable release `1.2.0`
-7. Production automation creates a PR with the update
-8. A team member reviews and merges the PR
+7. Production automation pushes the update to the `flux/production-images` branch
+8. A team member opens, reviews, and merges a PR from that branch
 
 ## Verifying Multi-Environment Setup
 
