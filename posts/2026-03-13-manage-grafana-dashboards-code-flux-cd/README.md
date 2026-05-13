@@ -40,7 +40,7 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: "7.*"
+      version: "10.*"
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -99,14 +99,16 @@ resources:
   - kubernetes-overview.yaml
   - application-performance.yaml
   - database-metrics.yaml
-commonLabels:
-  # Ensure all ConfigMaps in this directory are picked up by the Grafana sidecar
-  grafana_dashboard: "1"
+labels:
+  - pairs:
+      # Ensure all ConfigMaps in this directory are picked up by the Grafana sidecar
+      grafana_dashboard: "1"
+    includeSelectors: false
 ```
 
 ## Step 4: Create a Flux Kustomization for Dashboards
 
-Reconcile the dashboard ConfigMaps from Git using a dedicated Flux Kustomization so Grafana stays synchronized with Git.
+Reconcile the dashboard ConfigMaps from Git using a dedicated Flux Kustomization so Grafana stays synchronized with Git. If Grafana itself is deployed by a separate Flux Kustomization named `grafana`, use `dependsOn` so dashboards are applied after Grafana is ready.
 
 ```yaml
 # clusters/my-cluster/grafana-dashboards.yaml - Flux Kustomization reconciling all Grafana dashboards
@@ -123,7 +125,7 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
-    - name: grafana  # Ensure Grafana is running before pushing dashboards
+    - name: grafana  # Ensure the Flux Kustomization that deploys Grafana is ready first
 ```
 
 ## Best Practices
