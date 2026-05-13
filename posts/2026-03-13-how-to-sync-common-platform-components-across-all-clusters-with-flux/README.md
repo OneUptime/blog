@@ -83,12 +83,15 @@ fleet-repo/
 └── clusters/
     ├── cluster-1/
     │   ├── flux-system/
+    │   ├── sources.yaml
     │   └── infrastructure.yaml
     ├── cluster-2/
     │   ├── flux-system/
+    │   ├── sources.yaml
     │   └── infrastructure.yaml
     └── cluster-3/
         ├── flux-system/
+        ├── sources.yaml
         └── infrastructure.yaml
 ```
 
@@ -267,9 +270,9 @@ spec:
       enabled: true
 ```
 
-## Step 3: Create the Base Kustomization
+## Step 3: Create the Component Kustomizations
 
-Tie all base components together with dependency ordering. In `infrastructure/base/kustomization.yaml` is not needed because each overlay references individual components.
+An `infrastructure/base/kustomization.yaml` is not needed because each overlay references individual components.
 
 For each component, create its own `kustomization.yaml`. For example, `infrastructure/base/cert-manager/kustomization.yaml`:
 
@@ -299,7 +302,6 @@ Each cluster overlay selects which base components to include and can customize 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/sources
   - ../../base/cert-manager
   - ../../base/ingress-nginx
   - ../../base/monitoring
@@ -380,7 +382,6 @@ Some clusters may need different settings for shared components. Use JSON patche
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/sources
   - ../../base/cert-manager
   - ../../base/ingress-nginx
   - ../../base/monitoring
