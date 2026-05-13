@@ -1,16 +1,16 @@
-# How to Configure Custom Health Checks for Deployments in Flux Kustomization
+# How to Configure Health Checks for Deployments in Flux Kustomization
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, Health Check, Deployment, Kustomization
 
-Description: Learn how to configure custom health checks for Deployment resources in Flux Kustomization to ensure reliable rollouts and automated rollback.
+Description: Learn how to configure health checks for Deployment resources in Flux Kustomization to ensure reliable rollouts.
 
 ---
 
 ## Introduction
 
-Flux Kustomization performs health checks on applied resources to determine whether a reconciliation was successful. By default, Flux knows how to assess the health of standard Kubernetes resources like Deployments. However, the default checks may not be sufficient for your specific requirements. Custom health checks let you define exactly what conditions must be met for Flux to consider a Deployment healthy, giving you finer control over your GitOps pipeline.
+Flux Kustomization can perform health checks on applied resources to determine whether a reconciliation was successful. Flux knows how to assess the health of standard Kubernetes resources like Deployments. The `healthChecks` field lets you choose exactly which resources Flux should wait on, giving you finer control over your GitOps pipeline.
 
 ## Prerequisites
 
@@ -49,9 +49,9 @@ spec:
 
 With `wait: true`, Flux monitors all resources applied by this Kustomization and waits for them to become ready. The `timeout` field defines how long Flux waits before marking the reconciliation as failed.
 
-## Defining Custom Health Checks
+## Defining Explicit Health Checks
 
-For more control, use the `healthChecks` field to specify exactly which resources to monitor and what conditions to check:
+For more control, use the `healthChecks` field to specify exactly which resources to monitor. For Deployments, Flux uses its built-in readiness assessment:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -123,9 +123,9 @@ spec:
 
 Flux waits for all listed Deployments to become ready. If any single Deployment fails to become healthy within the timeout, the entire Kustomization reconciliation is marked as failed.
 
-## Combining wait with healthChecks
+## Choosing Between wait and healthChecks
 
-When you use both `wait` and `healthChecks`, Flux performs health checks on all applied resources (due to `wait: true`) and additionally checks the resources listed in `healthChecks`. This is useful when you want general health checking plus specific attention to critical Deployments:
+When you set `wait: true`, Flux performs health checks on all reconciled resources and ignores `healthChecks`. Use `wait: true` when you want Flux to wait for everything it applies, or use `healthChecks` when you only want Flux to wait for specific resources:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -140,7 +140,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -177,7 +176,7 @@ If your Deployment pulls large images or runs lengthy init containers, increase 
 Check the Kustomization status to see health check results:
 
 ```bash
-flux get kustomization my-app
+flux get kustomizations my-app
 ```
 
 For more detail:
@@ -186,10 +185,10 @@ For more detail:
 kubectl get kustomization my-app -n flux-system -o yaml
 ```
 
-The status section shows the health of each checked resource:
+The status section shows the Kustomization conditions and any health check failure messages:
 
 ```bash
-flux get kustomization my-app -o json | jq '.status.conditions'
+kubectl get kustomization my-app -n flux-system -o json | jq '.status.conditions'
 ```
 
 ## Handling Health Check Failures
@@ -199,7 +198,7 @@ When a health check fails, Flux marks the Kustomization as not ready and reports
 ```bash
 # Check Kustomization status
 
-flux get kustomization my-app
+flux get kustomizations my-app
 
 # Check the Deployment status
 kubectl rollout status deployment/api-server -n production
@@ -236,7 +235,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
@@ -262,8 +260,8 @@ spec:
   timeout: 5m
 ```
 
-The `api-server` Kustomization waits for the `database` Kustomization to become healthy before applying its resources, ensuring the database is available before the API server starts.
+The `api-server` Kustomization waits for the `database` Kustomization to become healthy before applying its resources, helping ensure the database Deployment has rolled out before the API server starts.
 
 ## Conclusion
 
-Custom health checks for Deployments in Flux Kustomization give you precise control over what constitutes a successful reconciliation. By listing specific Deployments in the `healthChecks` field and setting appropriate timeouts, you ensure that Flux only considers a reconciliation complete when your application is truly ready. Combined with dependencies between Kustomizations, health checks create a reliable deployment pipeline that respects the startup order of your services.
+Health checks for Deployments in Flux Kustomization give you precise control over which resources must be ready for a successful reconciliation. By listing specific Deployments in the `healthChecks` field and setting appropriate timeouts, you ensure that Flux only considers a reconciliation complete when those Deployments are ready. Combined with dependencies between Kustomizations, health checks create a reliable deployment pipeline that respects the startup order of your services.
