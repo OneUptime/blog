@@ -17,7 +17,7 @@ This post provides a systematic approach to diagnosing why Flux pruned resources
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD v2.x installed
-- `kubectl` and `flux` CLI tools installed
+- `kubectl`, `flux`, and `kustomize` CLI tools installed
 - Access to the Git repository connected to Flux
 - Basic understanding of Flux Kustomization and garbage collection
 
@@ -105,7 +105,7 @@ resources:
 Verify that the GitRepository is pointing to the correct branch and has the latest revision:
 
 ```bash
-flux get source git flux-system
+flux get sources git flux-system
 ```
 
 ```bash
@@ -146,7 +146,7 @@ Then verify this path exists in your repository and contains the expected files:
 ls -la apps/production/
 ```
 
-A trailing slash mismatch, case sensitivity issue, or symlink problem can cause Flux to see an empty directory and prune everything.
+An incorrect path, case sensitivity issue, or symlink problem can cause Flux to see an empty directory and prune everything.
 
 ## Recovering Deleted Resources
 
@@ -200,7 +200,7 @@ Set up monitoring and alerts on Flux Kustomization events to catch pruning early
 
 ```bash
 # Example: watch for pruning events
-kubectl events -n flux-system --watch --field-selector reason=Prune
+flux events --for Kustomization/my-app --watch | grep -i prune
 ```
 
 Use branch protection rules in Git to prevent accidental deletions of critical manifest directories. Require code reviews for changes to infrastructure paths.
@@ -220,7 +220,7 @@ kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.lastApplie
 kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries[*].id}' | tr ' ' '\n'
 
 # 4. Check GitRepository status
-flux get source git flux-system
+flux get sources git flux-system
 
 # 5. Build kustomize locally
 kustomize build apps/production/
