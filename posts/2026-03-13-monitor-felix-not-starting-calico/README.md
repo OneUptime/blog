@@ -10,7 +10,7 @@ Description: Monitor for Felix startup and runtime failures in Calico using read
 
 ## Introduction
 
-Monitoring for Felix failures requires tracking the calico-node pod's readiness state (which reflects Felix health) and watching Felix-specific log patterns that indicate startup or runtime errors. Felix exposes a readiness endpoint at `/readiness` on port 9099 that returns 200 when healthy - this is the most direct health signal.
+Monitoring for Felix failures requires tracking the calico-node pod's readiness state (which reflects Felix health) and watching Felix-specific log patterns that indicate startup or runtime errors. When Felix health checks are enabled, Felix exposes a readiness endpoint at `/readiness` on port 9099 that returns HTTP 200 when healthy - this is the most direct health signal.
 
 ## Symptoms
 
@@ -28,7 +28,7 @@ Monitoring for Felix failures requires tracking the calico-node pod's readiness 
 NODE_POD=<calico-node-pod>
 kubectl exec $NODE_POD -n kube-system -- \
   wget -qO- http://localhost:9099/readiness 2>/dev/null
-# Returns 200 if healthy
+# Exits successfully if the endpoint returns HTTP 200
 
 ```
 
@@ -60,7 +60,7 @@ spec:
         summary: "Felix unhealthy on {{ $labels.pod }}"
     - alert: FelixIptablesErrors
       expr: |
-        rate(felix_iptables_restore_errors_total[5m]) > 0
+        rate(felix_iptables_restore_errors[5m]) > 0
       for: 2m
       labels:
         severity: warning
@@ -84,11 +84,11 @@ kubectl exec $NODE_POD -n kube-system -- \
 
 ```mermaid
 flowchart LR
-    A[Felix readiness endpoint] --> B[Prometheus scrapes via PodMonitor]
-    B --> C{readiness != 200?}
+    A[calico-node readiness probes] --> B[kube-state-metrics exposes pod readiness]
+    B --> C{pod ready == 0?}
     C -- Yes --> D[Alert: FelixNotHealthy]
     D --> E[On-call checks Felix logs]
-    F[Felix iptables error counter] --> G{Rate > 0?}
+    F[Felix iptables error metric] --> G{Rate > 0?}
     G -- Yes --> H[Alert: FelixIptablesErrors]
 ```
 
@@ -100,4 +100,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring Felix health requires tracking calico-node pod readiness (which reflects Felix health via readiness probes) and Felix iptables error counters from the Prometheus metrics endpoint. These two signals cover both startup and runtime Felix failures.
+Monitoring Felix health requires tracking calico-node pod readiness (which reflects Felix health via readiness probes) and Felix iptables error metrics from the Prometheus metrics endpoint. These two signals cover both startup and runtime Felix failures.
