@@ -12,9 +12,9 @@ Description: Set up a manual plan approval workflow for Terraform resources with
 
 Running `terraform apply` automatically on every commit is powerful but risky for production infrastructure. The Tofu Controller's manual approval workflow gives teams the best of both worlds: Terraform plans are generated automatically whenever code changes, but a human must explicitly approve the plan before it is applied to real infrastructure.
 
-This approval model mirrors standard engineering change control processes. A developer opens a pull request, the Tofu Controller generates a plan against the production environment, a senior engineer reviews the plan diff, and-only after approval-the apply runs. The plan is cryptographically tied to the specific code revision that generated it, so what was reviewed is exactly what gets applied.
+This approval model mirrors standard engineering change control processes. A developer opens a pull request, the Tofu Controller generates a plan against the production environment, a senior engineer reviews the plan diff, and-only after approval-the apply runs. The generated plan is saved in the cluster and identified by a plan ID derived from the source revision, so the reviewed pending plan is the one that gets applied.
 
-This guide walks through configuring manual plan approval, reviewing plans in the cluster, and approving them via `kubectl` annotations.
+This guide walks through configuring manual plan approval, reviewing plans in the cluster, and approving them by updating the `Terraform` resource's `spec.approvePlan` field.
 
 ## Prerequisites
 
@@ -41,9 +41,9 @@ spec:
   path: ./modules/rds
   workspace: production-rds
 
-  # "manual" means: generate the plan automatically but DO NOT apply
-  # until a human annotates the resource with the plan ID
-  approvePlan: "manual"
+  # Empty or omitted approvePlan means: generate the plan automatically
+  # but DO NOT apply until a human sets this field to the plan ID
+  approvePlan: ""
 
   # Store a human-readable plan for review
   storeReadablePlan: human
@@ -78,9 +78,9 @@ When you commit a change to the Terraform module, Flux detects the change and th
 # After committing changes, watch for the plan to be generated
 kubectl get terraform production-database -n flux-system --watch
 
-# The STATUS column will show "Plan generated" when ready
-# NAME                   READY   STATUS            AGE
-# production-database    False   Plan generated    5m
+# The STATUS column will show the approvePlan value when a plan is ready
+# NAME                   READY     STATUS                                                           AGE
+# production-database    Unknown   Plan generated: set approvePlan: "plan-main-b8e362c206" ...       5m
 ```
 
 ## Step 3: Review the Generated Plan
@@ -89,22 +89,22 @@ kubectl get terraform production-database -n flux-system --watch
 # Get the plan ID from the resource status
 PLAN_ID=$(kubectl get terraform production-database \
   -n flux-system \
-  -o jsonpath='{.status.plan.lastApplied}')
+  -o jsonpath='{.status.plan.pending}')
 
-# Read the human-readable plan output
-kubectl get secret production-database-tfplan-human \
+# Read the human-readable plan output from the ConfigMap created by storeReadablePlan: human
+kubectl get configmap tfplan-production-rds-production-database \
   -n flux-system \
-  -o jsonpath='{.data.plan}' | base64 -d
+  -o jsonpath='{.data.tfplan}'
 
-# Alternatively, review the JSON plan for programmatic analysis
+# Alternatively, if you configure storeReadablePlan: json, review the JSON plan
+kubectl get configmap tfplan-production-rds-production-database \
+  -n flux-system \
+  -o jsonpath='{.data.tfplan}' | jq .
+
+# Check the pending plan ID that must be approved
 kubectl get terraform production-database \
   -n flux-system \
-  -o jsonpath='{.status.plan.planJSON}' | jq .
-
-# Check what the plan would change
-kubectl get terraform production-database \
-  -n flux-system \
-  -o jsonpath='{.status.plan.summary}'
+  -o jsonpath='{.status.plan.pending}'
 ```
 
 Example plan summary output:
@@ -114,20 +114,21 @@ Plan: 2 to add, 1 to change, 0 to destroy.
 
 ## Step 4: Approve the Plan
 
-After reviewing the plan, approve it by annotating the resource with the plan ID. This creates a cryptographic binding between the reviewed plan and the apply operation.
+After reviewing the plan, approve it by setting `spec.approvePlan` to the plan ID shown in status. In a strict GitOps workflow, make this change in Git and let Flux reconcile it. For an imperative approval, patch the resource directly:
 
 ```bash
 # Get the current plan ID
 PLAN_ID=$(kubectl get terraform production-database \
   -n flux-system \
-  -o jsonpath='{.status.plan.planId}')
+  -o jsonpath='{.status.plan.pending}')
 
 echo "Approving plan: ${PLAN_ID}"
 
-# Approve the plan by annotating the resource
-kubectl annotate terraform production-database \
+# Approve the plan by setting spec.approvePlan
+kubectl patch terraform production-database \
   -n flux-system \
-  infra.contrib.fluxcd.io/approvePlan="${PLAN_ID}"
+  --type=merge \
+  -p "{\"spec\":{\"approvePlan\":\"${PLAN_ID}\"}}"
 
 # Watch the apply progress
 kubectl get terraform production-database -n flux-system --watch
@@ -135,15 +136,16 @@ kubectl get terraform production-database -n flux-system --watch
 
 ## Step 5: Reject a Plan
 
-If you identify issues in the plan, discard it and the Tofu Controller will generate a fresh plan on the next reconciliation.
+If you identify issues in the plan, leave `spec.approvePlan` empty and commit the corrected Terraform change. When the source revision changes, the Tofu Controller clears the stale pending plan and generates a fresh one.
 
 ```bash
-# To discard a plan, remove the approvePlan annotation
-kubectl annotate terraform production-database \
+# Keep manual approval mode enabled
+kubectl patch terraform production-database \
   -n flux-system \
-  infra.contrib.fluxcd.io/approvePlan-
+  --type=merge \
+  -p '{"spec":{"approvePlan":""}}'
 
-# Force a new reconciliation to generate a fresh plan
+# Force Flux to check for a new source revision after you push the fix
 kubectl annotate terraform production-database \
   -n flux-system \
   reconcile.fluxcd.io/requestedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -153,7 +155,7 @@ kubectl annotate terraform production-database \
 
 ```yaml
 # clusters/my-cluster/notifications/plan-ready-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: plan-ready-notification
@@ -161,6 +163,8 @@ metadata:
 spec:
   providerRef:
     name: slack-infrastructure
+  # Terraform is a third-party kind; patch the Flux Alert CRD to allow
+  # Terraform event sources before applying this Alert.
   # Alert when a plan is generated and waiting for approval
   eventSeverity: info
   eventSources:
@@ -191,7 +195,8 @@ rules:
       - get
       - list
       - watch
-  # Only allow patching annotations (for plan approval)
+  # Allow patching only the named Terraform resources for plan approval.
+  # Kubernetes RBAC cannot restrict this permission to only spec.approvePlan.
   - apiGroups:
       - infra.contrib.fluxcd.io
     resources:
@@ -220,12 +225,12 @@ roleRef:
 
 ## Best Practices
 
-- Always use `approvePlan: "manual"` for production Terraform resources. The cost of a brief review step is far less than the cost of an unreviewed destructive change.
+- Always leave `approvePlan` empty or omit it for production Terraform resources that require manual approval. The cost of a brief review step is far less than the cost of an unreviewed destructive change.
 - Include a link to the cluster and resource name in your Slack alert message so approvers can quickly navigate to the plan.
 - Implement RBAC to restrict plan approval to senior engineers or a dedicated platform team. Not every developer should be able to approve production infrastructure changes.
-- Archive plan outputs (the human-readable secret) to an external audit log before approving. This provides an immutable audit trail outside the cluster.
+- Archive plan outputs (the human-readable ConfigMap) to an external audit log before approving. This provides an immutable audit trail outside the cluster.
 - Set a policy for how long a plan can sit waiting for approval before it is automatically discarded and regenerated. Plans older than the module version they are based on are invalid.
 
 ## Conclusion
 
-The manual plan approval workflow gives your team full control over when Terraform changes are applied to production infrastructure. Plans are generated automatically on every code change but require explicit human approval before execution. The cryptographic binding between the reviewed plan ID and the apply operation ensures exactly what was reviewed is what gets applied, eliminating surprise changes.
+The manual plan approval workflow gives your team full control over when Terraform changes are applied to production infrastructure. Plans are generated automatically on every code change but require explicit human approval before execution. The saved pending plan and the reviewed plan ID ensure the reviewed plan is what gets applied, eliminating surprise changes.
