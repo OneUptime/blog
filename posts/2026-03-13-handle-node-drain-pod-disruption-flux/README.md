@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, Node Drain, PodDisruptionBudget, Cluster Operations
 
-Description: Manage node drains and pod disruptions in Flux-managed clusters to ensure workloads move gracefully without triggering unwanted Flux reconciliations.
+Description: Manage node drains and pod disruptions in Flux-managed clusters to ensure workloads move gracefully while Flux continues normal reconciliation.
 
 ---
 
 ## Introduction
 
-Node draining is a routine operation in Kubernetes: before maintenance, upgrades, or decommissioning, nodes are drained to move workloads to other nodes gracefully. In Flux-managed clusters, draining introduces interactions that can cause confusion: Flux may try to reconcile resources while pods are being disrupted, PodDisruptionBudgets may conflict with Flux-managed replica counts, and the drain process itself needs to be sequenced with Flux's reconciliation loop.
+Node draining is a routine operation in Kubernetes: before maintenance, upgrades, or decommissioning, nodes are drained to move workloads to other nodes gracefully. In Flux-managed clusters, draining introduces interactions that can cause confusion: Flux may reconcile resources while pods are being disrupted, PodDisruptionBudgets may block evictions if they are too restrictive for the current replica counts, and the drain process should start from a healthy GitOps state.
 
-Understanding these interactions lets you perform node drains safely and efficiently. The key is ensuring PodDisruptionBudgets are correctly configured in Git and deployed by Flux before they are needed, and knowing how Flux's reconciliation behavior changes when pods are disrupted and rescheduled.
+Understanding these interactions lets you perform node drains safely and efficiently. The key is ensuring PodDisruptionBudgets are correctly configured in Git and deployed by Flux before they are needed, and knowing how Flux health checks can report workload readiness during reconciliation.
 
 This guide covers the complete workflow for draining nodes in a Flux-managed cluster, including pre-drain preparation, the drain process, post-drain verification, and uncordoning.
 
@@ -20,7 +20,7 @@ This guide covers the complete workflow for draining nodes in a Flux-managed clu
 
 - Flux CD v2 managing Deployments and PodDisruptionBudgets
 - kubectl with cluster-admin access
-- At least N+1 nodes available (where N is your minimum pod count)
+- Enough schedulable capacity on other nodes for the pods being evicted
 - PodDisruptionBudgets deployed via Flux for all critical workloads
 
 ## Step 1: Ensure PodDisruptionBudgets Are in Git
@@ -51,7 +51,7 @@ Verify PDBs are deployed:
 # Check all PDBs across the cluster
 kubectl get pdb --all-namespaces
 
-# Check which deployments lack PDBs (risky workloads)
+# Heuristic: check which deployments lack same-named PDBs (review selectors too)
 kubectl get deployments --all-namespaces -o json | \
   jq -r '.items[] | select(.spec.replicas > 1) | .metadata.namespace + "/" + .metadata.name' | \
   sort > /tmp/deployments.txt
@@ -66,7 +66,7 @@ comm -23 /tmp/deployments.txt /tmp/pdbs.txt
 
 ## Step 2: Pre-Drain Preparation
 
-Before draining, ensure Flux has fully reconciled the target node's pods.
+Before draining, ensure Flux Kustomizations are healthy and inspect the pods currently placed on the target node.
 
 ```bash
 NODE=worker-node-3.acme.example.com
@@ -77,10 +77,10 @@ kubectl get pods --all-namespaces \
   -o wide
 
 # Verify all Flux Kustomizations are ready before draining
-UNHEALTHY=$(flux get kustomizations --all-namespaces | grep "False" | wc -l)
+UNHEALTHY=$(flux get kustomizations --all-namespaces --status-selector ready=false --no-header | wc -l)
 if [ "$UNHEALTHY" -gt 0 ]; then
   echo "WARNING: $UNHEALTHY Kustomizations are unhealthy. Resolve before draining."
-  flux get kustomizations --all-namespaces | grep "False"
+  flux get kustomizations --all-namespaces --status-selector ready=false
   exit 1
 fi
 
@@ -99,7 +99,7 @@ kubectl cordon $NODE
 kubectl get node $NODE
 # STATUS: Ready,SchedulingDisabled
 
-# Flux continues to reconcile, but new pods go to other nodes
+# Flux continues to reconcile, and ordinary new pods are scheduled to other nodes
 # This is the safe state to be in while preparing for the drain
 ```
 
@@ -107,12 +107,18 @@ kubectl get node $NODE
 
 ```bash
 # Drain with grace period and PDB respect
+# DaemonSet pods cannot be moved; pods with emptyDir data may lose that data.
 kubectl drain $NODE \
-  --ignore-daemonsets \    # DaemonSet pods cannot be moved
-  --delete-emptydir-data \ # Allow deletion of pods using emptyDir volumes
-  --grace-period=60 \      # Give pods 60 seconds for graceful shutdown
-  --timeout=10m \          # Fail if drain takes more than 10 minutes
-  --pod-selector='app.kubernetes.io/managed-by notin (flux)' # Optional: skip Flux-managed pods
+  --ignore-daemonsets \
+  --delete-emptydir-data \
+  --grace-period=60 \
+  --timeout=10m
+
+# Optional: drain only pods matching a label selector
+kubectl drain $NODE \
+  --ignore-daemonsets \
+  --delete-emptydir-data \
+  --pod-selector='app.kubernetes.io/managed-by notin (flux)'
 
 # Watch pods evacuating
 kubectl get pods --all-namespaces \
@@ -125,14 +131,14 @@ kubectl get pods --all-namespaces \
 # Watch Flux reconciliation while drain is in progress
 flux get kustomizations --all-namespaces -w &
 
-# Flux will detect pod disruptions and may show reconciling status
-# This is normal - Flux is waiting for the deployment to stabilize
+# If a reconcile happens during the drain, Flux may run configured health checks
+# and report workload readiness while Kubernetes reschedules pods
 
 # Check if any Kustomization is stuck waiting for health checks
-flux get kustomizations --all-namespaces | grep -v "True"
+flux get kustomizations --all-namespaces --status-selector ready=false
 
-# If a Kustomization is stuck, check the health check condition
-kubectl describe kustomization my-service -n team-alpha | grep -A5 "Health Check"
+# If a Kustomization is stuck, check its status and events
+kubectl describe kustomization my-service -n team-alpha
 ```
 
 ## Step 6: Verify Pods Rescheduled Successfully
@@ -148,11 +154,11 @@ kubectl get pods --all-namespaces \
 kubectl get pods -n team-alpha -o wide | grep -v $NODE
 
 # Check all deployments are at their desired replica count
-kubectl get deployments --all-namespaces | \
-  awk 'NR>1 && $3 != $4 {print "NOT READY:", $0}'
+kubectl get deployments --all-namespaces -o json | \
+  jq -r '.items[] | select((.status.readyReplicas // 0) != .spec.replicas) | "NOT READY: " + .metadata.namespace + "/" + .metadata.name + " " + ((.status.readyReplicas // 0)|tostring) + "/" + (.spec.replicas|tostring)'
 
 # Verify all Flux Kustomizations are still healthy
-flux get kustomizations --all-namespaces | grep "False"
+flux get kustomizations --all-namespaces --status-selector ready=false
 ```
 
 ## Step 7: Uncordon After Maintenance
@@ -179,7 +185,8 @@ flux reconcile kustomization infrastructure -n flux-system --with-source
 # If drain is stuck, identify which pods are blocking it
 kubectl get pods --all-namespaces \
   --field-selector spec.nodeName=$NODE \
-  -o wide | grep -v DaemonSet
+  -o json | \
+  jq -r '.items[] | select([.metadata.ownerReferences[]?.kind] | index("DaemonSet") | not) | .metadata.namespace + "/" + .metadata.name'
 
 # Check PDB status - a PDB might be preventing eviction
 kubectl get pdb --all-namespaces -o wide
@@ -190,7 +197,7 @@ flux suspend kustomization my-service -n team-alpha
 kubectl scale deployment my-service -n team-alpha --replicas=4
 
 # Retry the drain
-kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data --force
+kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data
 
 # After drain, restore original replica count via Flux
 flux resume kustomization my-service -n team-alpha
@@ -202,7 +209,7 @@ flux reconcile kustomization my-service -n team-alpha
 - Always add PDBs to production Deployments in Git before you ever need to drain nodes
 - Use `maxUnavailable: 1` rather than `minAvailable: N` when possible - it automatically adapts to replica count changes
 - Cordon before draining to prevent scheduling new pods that would immediately be disrupted
-- Monitor Flux health checks during drain - if a Kustomization goes unhealthy during drain, investigate before proceeding
+- Monitor configured Flux health checks during drain - if a Kustomization goes unhealthy during drain, investigate before proceeding
 - For clusters with many nodes, drain one node at a time, verifying health between each drain
 - Use the Kubernetes Descheduler after maintenance to rebalance pods across nodes
 
