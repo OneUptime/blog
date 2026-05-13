@@ -12,7 +12,7 @@ Description: Enable Terraform drift detection using the Tofu Controller with Flu
 
 Infrastructure drift occurs when the actual state of cloud resources diverges from their desired configuration. This happens when engineers make emergency changes directly in the cloud console, when cloud provider updates modify resource attributes, or when automated processes modify resource tags or settings. Without drift detection, these changes accumulate silently and eventually cause incidents.
 
-The Tofu Controller provides continuous drift detection as a core feature. On each reconciliation interval, it runs `terraform plan` against the actual cloud state and compares the result to the Terraform state file. If drift is detected, it generates a plan and-depending on the `approvePlan` setting-either notifies the team or corrects the drift automatically.
+The Tofu Controller provides continuous drift detection as a core feature. On each reconciliation interval, it runs `terraform plan` against the actual cloud state and compares the result to the Terraform state file. If drift is detected, it generates a plan and-depending on the `approvePlan` setting-either waits for a manual plan approval or corrects the drift automatically.
 
 This guide covers configuring drift detection, setting appropriate intervals, alerting on drift, and making exceptions for intended drift.
 
@@ -93,7 +93,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m   # Check every 30 minutes
-  approvePlan: "manual"   # Alert on drift, require approval to fix
+  approvePlan: ""   # Generate a plan and require approval to fix
   disableDriftDetection: false
   sourceRef:
     kind: GitRepository
@@ -165,7 +165,7 @@ kubectl patch terraform production-rds \
 
 ```yaml
 # clusters/my-cluster/notifications/drift-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: terraform-drift-alert
@@ -173,7 +173,7 @@ metadata:
 spec:
   providerRef:
     name: slack-infrastructure
-  eventSeverity: warning
+  eventSeverity: info
   eventSources:
     - kind: Terraform
       name: "*"
@@ -191,22 +191,22 @@ spec:
 # Check drift status across all Terraform resources
 kubectl get terraform -n flux-system \
   -o custom-columns=\
-'NAME:.metadata.name,READY:.status.conditions[0].status,REASON:.status.conditions[0].reason,LAST_APPLIED:.status.lastAppliedRevision'
+'NAME:.metadata.name,READY:.status.conditions[0].status,REASON:.status.conditions[0].reason,LAST_DRIFT:.status.lastDriftDetectedAt,LAST_APPLIED:.status.lastAppliedRevision'
 
 # Find resources with pending plans (potential drift)
 kubectl get terraform -n flux-system \
-  -o json | jq -r '.items[] | select(.status.plan.planId != .status.lastApplied) | .metadata.name'
+  -o json | jq -r '.items[] | select(.status.plan.pending != null and .status.plan.pending != "") | .metadata.name'
 
-# View the last plan for a specific resource
+# View plan status for a specific resource
 kubectl get terraform production-iam-policies \
   -n flux-system \
-  -o jsonpath='{.status.plan.summary}'
+  -o jsonpath='{.status.plan}'
 ```
 
 ## Best Practices
 
 - Set drift detection intervals based on the risk profile of the resource. IAM policies and security groups warrant short intervals (5 minutes) because unauthorized changes are high-risk. Databases and compute resources can use longer intervals (30-60 minutes).
-- Use `approvePlan: "auto"` for drift correction on stateless resources (IAM policies, S3 bucket configurations, DNS records). Use `approvePlan: "manual"` for stateful resources (databases, compute instances) so drift is flagged but not automatically corrected.
+- Use `approvePlan: "auto"` for drift correction on stateless resources (IAM policies, S3 bucket configurations, DNS records). Omit `approvePlan` or set it to an empty string for stateful resources (databases, compute instances) so drift is flagged but not automatically corrected.
 - Use Terraform `lifecycle.ignore_changes` to document and exclude attributes that are intentionally managed outside Terraform (e.g., autoscaler-managed replica counts, cloud-managed version patches).
 - Send drift detection alerts to the infrastructure on-call channel, not the general engineering channel. Drift in production is an operational event that requires immediate investigation.
 - Review the drift alert to determine whether it represents an unauthorized change (requiring immediate correction) or a legitimate change made outside Git (requiring the module to be updated to match).
