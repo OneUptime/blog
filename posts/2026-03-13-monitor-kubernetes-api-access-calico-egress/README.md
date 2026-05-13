@@ -110,10 +110,10 @@ spec:
 # Enable Felix policy logging to see drops to API server IP
 KUBE_IP=$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')
 
-# Watch Felix metrics for drops to this IP
+# Watch Felix iptables metrics (chains/rules updates correlate with policy changes)
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec $NODE_POD -n kube-system -- \
-  watch -n5 'wget -qO- http://localhost:9091/metrics | grep felix_iptables_dropped'
+  watch -n5 'wget -qO- http://localhost:9091/metrics | grep felix_iptables'
 ```
 
 ```mermaid
