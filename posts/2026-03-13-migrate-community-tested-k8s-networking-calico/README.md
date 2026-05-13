@@ -45,7 +45,9 @@ git clone https://github.com/projectcalico/calico.git
 cd calico
 
 # Run e2e tests against your cluster
-make e2e-tests
+cd e2e
+make build
+KUBECONFIG=<path-to-kubeconfig> ./bin/k8s/e2e.test --ginkgo.focus="sig-calico.*Conformance"
 ```
 
 ## Community-Recommended Configuration
@@ -59,7 +61,7 @@ metadata:
 spec:
   logSeverityScreen: Warning
   reportingInterval: 0s
-  mtu: 1480  # Conservative MTU for IP-in-IP
+  ipipMTU: 1480  # Conservative MTU for IP-in-IP
   prometheusMetricsEnabled: true
 ```
 
