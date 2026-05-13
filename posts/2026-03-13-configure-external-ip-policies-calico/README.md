@@ -12,7 +12,7 @@ Description: A step-by-step guide to configuring External IP Policies in Calico.
 
 External IP Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to configure External IP effectively.
 
-Calico's extensible policy model supports External IP through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
+Calico's extensible policy model supports external IP and CIDR matching through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
 
 This guide provides practical techniques for configure External IP in your Kubernetes cluster, following security best practices and production-tested patterns.
 
@@ -39,11 +39,18 @@ spec:
   selector: all()
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        selector: app == 'authorized'
+        nets:
+          - 203.0.113.0/24
+      destination:
+        ports: [8080]
   egress:
     - action: Allow
+      protocol: TCP
       destination:
+        nets:
+          - 192.0.2.0/24
         ports: [443, 80]
   types:
     - Ingress
@@ -60,7 +67,7 @@ calicoctl get networkpolicies -n production -o wide
 ## Step 4: Test the Policy
 
 ```bash
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://target-service:8080
+kubectl exec -n production test-pod -- curl -s --max-time 5 https://approved-external-host.example.com
 echo "Result: $?"
 ```
 
