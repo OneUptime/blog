@@ -30,6 +30,10 @@ calicoctl ipam show --show-blocks
 # View IP pool configuration
 calicoctl get ippools -o yaml
 
+# Label nodes with topology information
+kubectl label nodes worker-a topology.kubernetes.io/zone=zone-a
+kubectl label nodes worker-b topology.kubernetes.io/zone=zone-b
+
 # Check IPAM allocations
 calicoctl ipam check
 ```
@@ -40,21 +44,31 @@ calicoctl ipam check
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: pool-example
+  name: pool-zone-a
 spec:
-  cidr: 10.48.0.0/16
+  cidr: 10.48.0.0/17
   blockSize: 26
-  ipipMode: Never
-  vxlanMode: VXLAN
+  vxlanMode: Always
   natOutgoing: true
-  nodeSelector: all()
+  nodeSelector: topology.kubernetes.io/zone == "zone-a"
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: pool-zone-b
+spec:
+  cidr: 10.48.128.0/17
+  blockSize: 26
+  vxlanMode: Always
+  natOutgoing: true
+  nodeSelector: topology.kubernetes.io/zone == "zone-b"
 ```
 
 ## Verification
 
 ```bash
 # Verify allocations
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u | head -20
+kubectl get pods -A -o wide --no-headers | awk '{print $7}' | sort -u | head -20
 
 # Check pool utilization
 calicoctl ipam show --show-configuration
