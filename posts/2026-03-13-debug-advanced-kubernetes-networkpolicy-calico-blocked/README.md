@@ -10,7 +10,7 @@ Description: Debug advanced Kubernetes NetworkPolicy patterns using Calico for c
 
 ## Introduction
 
-Debug Advanced Kubernetes NetworkPolicy with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle advanced k8s networkpolicy while maintaining strict access controls.
+Debug Advanced Kubernetes NetworkPolicy with Calico requires careful policy design in Calico to balance security with performance and availability. Calico enforces the Kubernetes `networking.k8s.io/v1` NetworkPolicy API, and its `projectcalico.org/v3` API provides additional policy controls when you need behavior beyond standard Kubernetes NetworkPolicy.
 
 This guide covers debug Advanced K8s NetworkPolicy in Calico with production-ready configurations.
 
@@ -75,7 +75,7 @@ spec:
 # Apply advanced policy
 kubectl apply -f advanced-cross-namespace-policy.yaml
 
-# Test cross-namespace access (production frontend -> production API)
+# Test same-namespace access (production frontend -> production API)
 kubectl exec -n production frontend-pod -- curl -s http://api-server.production.svc.cluster.local:8080
 echo "Production frontend to API (should pass): $?"
 
