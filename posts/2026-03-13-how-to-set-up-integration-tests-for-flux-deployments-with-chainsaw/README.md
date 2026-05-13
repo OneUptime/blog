@@ -44,7 +44,7 @@ flux install
 Create a test configuration file at `.chainsaw.yaml`:
 
 ```yaml
-apiVersion: chainsaw.kyverno.io/v1alpha1
+apiVersion: chainsaw.kyverno.io/v1alpha2
 kind: Configuration
 metadata:
   name: flux-tests
@@ -53,8 +53,9 @@ spec:
     apply: 30s
     assert: 120s
     delete: 30s
-  failFast: true
-  parallel: 1
+  execution:
+    failFast: true
+    parallel: 1
 ```
 
 The longer assert timeout accounts for Flux reconciliation time.
@@ -161,7 +162,6 @@ tests/
     chainsaw-test.yaml
     00-install.yaml
     01-assert.yaml
-    02-cleanup.yaml
 ```
 
 The `00-install.yaml`:
@@ -269,17 +269,17 @@ spec:
       try:
         - apply:
             file: 00-install.yaml
+      cleanup:
+        - delete:
+            ref:
+              apiVersion: kustomize.toolkit.fluxcd.io/v1
+              kind: Kustomization
+              name: test-app
+              namespace: flux-system
     - name: Assert
       try:
         - assert:
             file: 01-assert.yaml
-  cleanup:
-    - delete:
-        ref:
-          apiVersion: kustomize.toolkit.fluxcd.io/v1
-          kind: Kustomization
-          name: test-app
-          namespace: flux-system
 ```
 
 ## CI Integration
