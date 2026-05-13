@@ -86,7 +86,7 @@ spec:
               - job_name: otel-collector
                 scrape_interval: 30s
                 static_configs:
-                  - targets: ['0.0.0.0:8888']
+                  - targets: ['${env:MY_POD_IP}:8888']
 
       # --- Processors: Transform data before export ---
       processors:
@@ -121,7 +121,7 @@ spec:
 
 ## Step 3: Add a Logs Pipeline
 
-Extend the Collector configuration with a logs pipeline using a ConfigMap patch.
+Extend the Collector configuration with a logs pipeline using a Kustomize patch.
 
 ```yaml
 # infrastructure/otel-collector/logs-pipeline-patch.yaml
@@ -134,33 +134,24 @@ metadata:
 spec:
   values:
     config:
-      receivers:
-        filelog:
-          include: [/var/log/pods/*/*/*.log]
-          include_file_path: true
-          operators:
-            - type: json_parser
-              timestamp:
-                parse_from: attributes.time
-                layout: '%Y-%m-%dT%H:%M:%S.%LZ'
       exporters:
-        loki:
-          endpoint: http://loki:3100/loki/api/v1/push
+        otlphttp/loki:
+          endpoint: http://loki:3100/otlp
       service:
         pipelines:
           logs:
-            receivers: [filelog]
+            receivers: [otlp]
             processors: [memory_limiter, batch]
-            exporters: [loki]
+            exporters: [otlphttp/loki]
 ```
 
 ## Step 4: Create Flux Kustomization for the Observability Stack
 
-Manage the full observability stack deployment order with Flux Kustomizations.
+Manage the observability stack reconciliation and readiness checks with Flux Kustomizations.
 
 ```yaml
 # clusters/production/observability-kustomization.yaml
-# Flux Kustomization deploying the full observability stack in order
+# Flux Kustomization reconciling the observability stack
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -173,10 +164,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Health check: wait for the Collector deployment to be ready
+  # Health check: wait for the Collector Helm release to be ready
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: otel-collector
       namespace: observability
 ```
