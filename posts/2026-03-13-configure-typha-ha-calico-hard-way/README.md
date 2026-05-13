@@ -17,7 +17,7 @@ After deploying multiple Typha replicas, configuring HA parameters ensures that 
 Topology spread constraints offer more fine-grained control than pod anti-affinity. Use them to ensure Typha replicas are spread across zones and hosts.
 
 ```bash
-kubectl patch deployment calico-typha -n calico-system --patch '{
+kubectl patch deployment calico-typha -n kube-system --patch '{
   "spec": {
     "template": {
       "spec": {
@@ -27,7 +27,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
             "topologyKey": "topology.kubernetes.io/zone",
             "whenUnsatisfiable": "ScheduleAnyway",
             "labelSelector": {
-              "matchLabels": {"app": "calico-typha"}
+              "matchLabels": {"k8s-app": "calico-typha"}
             }
           },
           {
@@ -35,7 +35,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
             "topologyKey": "kubernetes.io/hostname",
             "whenUnsatisfiable": "DoNotSchedule",
             "labelSelector": {
-              "matchLabels": {"app": "calico-typha"}
+              "matchLabels": {"k8s-app": "calico-typha"}
             }
           }
         ]
@@ -45,38 +45,41 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 }'
 ```
 
-`DoNotSchedule` for hostname prevents two replicas on the same host. `ScheduleAnyway` for zone allows multi-zone distribution to be best-effort.
+`DoNotSchedule` for hostname prevents host-level skew greater than 1, which keeps one replica per host when there are at least as many eligible hosts as Typha replicas. `ScheduleAnyway` for zone allows multi-zone distribution to be best-effort.
 
 ## Step 2: Configure Connection Rebalancing
 
 When a Typha replica restarts after a failure, Felix agents that were connecting to it reconnect to the surviving replicas, creating an imbalance. Connection rebalancing gradually moves connections to the restarted replica.
 
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
-  TYPHA_CONNECTIONREBALANCINGMODE=auto
+kubectl set env deployment/calico-typha -n kube-system \
+  TYPHA_CONNECTIONREBALANCINGMODE=kubernetes \
+  TYPHA_PROMETHEUSMETRICSENABLED=true \
+  TYPHA_PROMETHEUSMETRICSPORT=9091
 ```
 
-`auto` mode enables Typha to shed connections gradually to allow other replicas to take them, achieving an even distribution over time.
+`kubernetes` mode enables Typha to monitor the Kubernetes API for the number of running Typha instances and shed connections gradually to allow other replicas to take them, achieving an even distribution over time. The Prometheus settings expose the Typha metrics used later to verify connection balance.
 
 ## Step 3: Configure Felix Reconnect Parameters
 
 Felix should reconnect quickly after a Typha replica failure.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{
-    "typhaReadTimeout": "30s"
-  }}'
+kubectl set env daemonset/calico-node -n kube-system \
+  FELIX_TYPHAREADTIMEOUT=30
 ```
 
-A 30-second timeout means Felix will detect a failed Typha connection within 30 seconds and begin reconnecting.
+A 30-second timeout means Felix will detect a stalled Typha connection within 30 seconds, exit, and restart so it can reconnect.
 
 ## Step 4: Configure Graceful Connection Shutdown
 
 When scaling down Typha or during rolling updates, Typha should gracefully shed connections rather than dropping them abruptly.
 
 ```bash
-kubectl patch deployment calico-typha -n calico-system --patch '{
+kubectl set env deployment/calico-typha -n kube-system \
+  TYPHA_SHUTDOWNTIMEOUTSECS=60
+
+kubectl patch deployment calico-typha -n kube-system --patch '{
   "spec": {
     "template": {
       "spec": {
@@ -87,14 +90,14 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 }'
 ```
 
-The 60-second grace period allows Typha to shed connections gracefully, giving Felix time to reconnect to other replicas before the pod terminates.
+The matching Typha shutdown timeout and Kubernetes grace period allow Typha to shed connections gracefully, giving Felix time to reconnect to other replicas before the pod terminates.
 
 ## Step 5: Configure Replica Update Strategy
 
 During rolling updates (e.g., Typha version upgrades), ensure at least one replica is always running.
 
 ```bash
-kubectl patch deployment calico-typha -n calico-system --patch '{
+kubectl patch deployment calico-typha -n kube-system --patch '{
   "spec": {
     "strategy": {
       "type": "RollingUpdate",
@@ -114,7 +117,7 @@ With 3 replicas: 1 old replica can go down, 1 new replica comes up, and 2 replic
 Inconsistent resource requests can cause the Kubernetes scheduler to place Typha pods suboptimally. Set consistent requests and limits.
 
 ```bash
-kubectl patch deployment calico-typha -n calico-system --patch '{
+kubectl patch deployment calico-typha -n kube-system --patch '{
   "spec": {
     "template": {
       "spec": {
@@ -136,14 +139,15 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 ```bash
 # Check topology spread
 
-kubectl get pods -n calico-system -l k8s-app=calico-typha -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone'
+kubectl get pods -n kube-system -l k8s-app=calico-typha -o wide
+kubectl get nodes -L topology.kubernetes.io/zone
 
-# Check PDB
-kubectl get pdb calico-typha-pdb -n calico-system
+# Check PDB if you configured one separately
+kubectl get pdb -n kube-system | grep calico-typha || true
 
 # Check connection balance across replicas
-for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
-  COUNT=$(kubectl exec -n calico-system $pod -- wget -qO- http://localhost:9093/metrics | grep typha_connections_active | awk '{print $2}')
+for pod in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
+  COUNT=$(kubectl exec -n kube-system $pod -- wget -qO- http://localhost:9091/metrics | awk '$1 == "typha_connections_active" {print $2}')
   echo "$pod: $COUNT connections"
 done
 ```
