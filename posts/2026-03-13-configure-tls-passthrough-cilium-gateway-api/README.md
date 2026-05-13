@@ -16,8 +16,8 @@ In TLS passthrough mode, Cilium routes traffic based on the SNI (Server Name Ind
 
 ## Prerequisites
 
-- Cilium with Gateway API enabled
-- TLSRoute experimental CRD installed
+- Cilium with Gateway API enabled, kube-proxy replacement enabled, and the L7 proxy enabled
+- TLSRoute CRD installed
 - Backend pods with TLS configured
 
 ## Configure TLS Passthrough Gateway
@@ -46,7 +46,7 @@ spec:
 flowchart TD
     A[Client TLS request] --> B[Gateway - port 443]
     B --> C{SNI match from TLSRoute}
-    C -->|SNI: service.example.com| D[Backend pod handles TLS]
+    C -->|SNI: secure.example.com| D[Backend pod handles TLS]
     D --> E[mTLS or cert pinning]
     Note[No TLS termination<br/>at gateway]
 ```
@@ -54,7 +54,7 @@ flowchart TD
 ## Create a TLSRoute
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: tls-passthrough-route
@@ -87,19 +87,13 @@ The certificate subject should show the backend's certificate, not a gateway-man
 
 ## Source IP Visibility with TLS Passthrough
 
-Since TLS is not terminated at the gateway, the backend sees the gateway's cluster IP unless `externalTrafficPolicy: Local` is set:
-
-```bash
-kubectl patch svc -n default $(kubectl get svc -n default \
-  -l cilium.io/gateway-name=tls-passthrough-gateway -o name) \
-  -p '{"spec":{"externalTrafficPolicy":"Local"}}'
-```
+With Cilium TLS passthrough, Envoy inspects the SNI value and then opens a new TCP connection to the backend. The backend sees Cilium Envoy's IP address, often the node IP depending on your configuration, rather than the original client IP. Setting `externalTrafficPolicy: Local` on the generated Service does not make the backend see the original client IP for TLS passthrough traffic.
 
 ## Monitor TLS Passthrough Traffic
 
 ```bash
 hubble observe --to-label app=tls-backend --protocol tcp \
-  --port 443 --follow
+  --to-port 443 --follow
 ```
 
 ## Tradeoffs vs TLS Termination
@@ -108,7 +102,7 @@ hubble observe --to-label app=tls-backend --protocol tcp \
 |--------|-----------------|-----------------|
 | Certificate management | Backend team | Platform team |
 | HTTP routing capability | No | Yes |
-| Source IP visibility | Direct | Depends on policy |
+| Source IP visibility | Backend sees Cilium Envoy IP | HTTP headers can carry client IP |
 | mTLS support | Yes | Requires re-encrypt |
 
 ## Conclusion
