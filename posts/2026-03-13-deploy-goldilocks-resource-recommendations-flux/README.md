@@ -18,7 +18,7 @@ This guide covers deploying both the VPA and Goldilocks using Flux CD HelmReleas
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD bootstrapped
+- A Kubernetes 1.24+ cluster with Flux CD bootstrapped
 - kubectl with cluster-admin access
 - A Git repository connected to Flux CD
 - Cluster metrics server running (required by VPA)
@@ -47,9 +47,12 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa
-  namespace: vpa
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: vpa
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: vpa
@@ -80,13 +83,16 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: goldilocks
-  namespace: goldilocks
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: goldilocks
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: goldilocks
-      version: ">=8.0.0 <9.0.0"
+      version: ">=10.0.0 <11.0.0"
       sourceRef:
         kind: HelmRepository
         name: fairwinds-stable
@@ -139,7 +145,7 @@ metadata:
     app.kubernetes.io/managed-by: flux
 ```
 
-Apply the label to existing namespaces without recreating them using a Flux patch.
+Apply the label to existing namespaces without pruning unmanaged namespace resources by using a Flux Kustomization with pruning disabled.
 
 ```yaml
 # infrastructure/goldilocks/namespace-labels-kustomization.yaml
@@ -215,7 +221,7 @@ The dashboard shows "Guaranteed" and "Burstable" QoS recommendations. Copy the B
 
 - Wait at least 24 hours after enabling Goldilocks before acting on recommendations - VPA needs enough data across different traffic patterns to give accurate suggestions.
 - Apply recommendations to staging environments first and monitor for instability before promoting changes to production.
-- Set `updateMode: "Off"` on all VPA objects created by Goldilocks to ensure recommendations never automatically change running pods.
+- Keep Goldilocks-created VPAs in the default update mode of `Off`; if you override it, use the `goldilocks.fairwinds.com/vpa-update-mode: "off"` namespace or workload label to preserve recommendation-only behavior.
 - Use the Goldilocks dashboard's "QoS" toggle to choose between Guaranteed (same requests and limits) and Burstable (lower requests, higher limits) based on workload type.
 - Re-review recommendations quarterly, especially after major traffic changes - workload profiles change over time.
 - Track the diff between recommended and current settings in Git commit messages to build an optimization history.
