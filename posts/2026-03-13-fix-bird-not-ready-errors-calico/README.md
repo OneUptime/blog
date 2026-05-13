@@ -20,7 +20,7 @@ Always test fixes on a non-production node first. BGP configuration changes can 
 
 - calico-node pod stuck in `0/1 Ready` state
 - `calicoctl node status` reports peers in `Idle` or `Connect`
-- Felix logs: `BIRDv4 is not ready`, `BIRDv6 is not ready`
+- calico-node readiness or log output: `BIRDv4 is not ready`, `BIRDv6 is not ready`
 - Missing routes in node routing table for remote pod CIDRs
 
 ## Root Causes
@@ -67,7 +67,8 @@ calicoctl get ippool -o yaml
 # Delete the conflicting pool (drain pods first)
 calicoctl delete ippool <pool-name>
 
-# Create a replacement pool with a non-overlapping CIDR
+# Create a replacement pool with a CIDR inside the Kubernetes pod CIDR
+# that does not overlap node host subnets or existing IP pools
 cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: IPPool
@@ -102,10 +103,10 @@ kubectl wait pod -n kube-system -l k8s-app=calico-node \
   --for=condition=Ready --timeout=120s
 ```
 
-**Fix 5: Repair datastore connection**
+**Fix 5: Repair datastore connection for etcd-backed installs**
 
 ```bash
-# Verify the calico-config ConfigMap
+# Verify the calico-config ConfigMap used by manifest-based, etcd-backed installs
 kubectl get configmap calico-config -n kube-system -o yaml
 
 # Update etcd_endpoints if needed
@@ -122,7 +123,7 @@ flowchart TD
     B -- Bad BGP peer --> C[calicoctl edit bgppeer]
     B -- CIDR overlap --> D[Delete and recreate IPPool]
     B -- Resource limit --> E[Edit DaemonSet resource limits]
-    B -- Datastore issue --> F[Fix calico-config ConfigMap]
+    B -- etcd-backed datastore issue --> F[Fix calico-config ConfigMap]
     C --> G[Restart calico-node pod]
     D --> G
     E --> G
@@ -133,7 +134,7 @@ flowchart TD
 
 ## Prevention
 
-- Use `calicoctl ipam check` regularly to catch CIDR conflicts early
+- Use `calicoctl ipam check` regularly to catch IPAM allocation inconsistencies early
 - Set resource requests/limits based on node count and BGP peer count
 - Pin BGP peer configuration in version-controlled manifests to avoid drift
 
