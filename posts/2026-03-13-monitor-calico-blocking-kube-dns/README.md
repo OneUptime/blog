@@ -10,7 +10,7 @@ Description: Monitor for Calico policies blocking kube-dns using CoreDNS metrics
 
 ## Introduction
 
-Monitoring for Calico blocking kube-dns requires cluster-wide DNS availability as a primary service level indicator. When kube-dns is blocked, DNS fails for every namespace simultaneously - this pattern is detectable by monitoring DNS success rates from multiple test points.
+Monitoring for Calico blocking kube-dns requires cluster-wide DNS availability as a primary service level indicator. When kube-dns is blocked by a cluster-wide policy, DNS can fail for many or all namespaces simultaneously - this pattern is detectable by monitoring DNS success rates from multiple test points.
 
 ## Symptoms
 
@@ -25,24 +25,32 @@ Monitoring for Calico blocking kube-dns requires cluster-wide DNS availability a
 ## Diagnosis Steps
 
 ```bash
-# Check CoreDNS error rate
+# Check CoreDNS request and response metrics
 
-kubectl exec -n kube-system \
+kubectl port-forward -n kube-system \
   $(kubectl get pods -n kube-system -l k8s-app=kube-dns -o name | head -1) \
-  -- wget -qO- http://localhost:9153/metrics | grep -E "responses_total|requests_total"
+  9153:9153
+
+curl -s http://localhost:9153/metrics | grep -E "coredns_dns_(responses|requests)_total"
 ```
 
 ## Solution
 
-**Multi-namespace DNS probe DaemonSet**
+**DNS probe Deployment applied in each monitored namespace**
 
 ```yaml
-apiVersion: apps/v1
-kind: DaemonSet
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: dns-probe-all-ns
-  namespace: kube-system
+  name: dns-probe-apps
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dns-probe
+  namespace: dns-probe-apps
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: dns-probe
@@ -53,7 +61,7 @@ spec:
     spec:
       containers:
       - name: probe
-        image: busybox
+        image: busybox:1.36
         command:
         - /bin/sh
         - -c
@@ -81,7 +89,7 @@ spec:
       expr: |
         absent(up{job="coredns"})
         OR
-        rate(coredns_dns_requests_total[5m]) == 0
+        sum(rate(coredns_dns_requests_total[5m])) == 0
       for: 2m
       labels:
         severity: critical
@@ -94,7 +102,7 @@ flowchart LR
     A[CoreDNS metrics] --> B[Prometheus scrapes every 15s]
     B --> C{Request rate drops to 0?}
     C -- Yes --> D[Alert: CoreDNSUnavailable]
-    E[DNS probe DaemonSet] --> F{nslookup fails?}
+    E[DNS probe Deployments] --> F{nslookup fails?}
     F -- Yes --> G[Log DNS failure]
     G --> H[Alert via log-based alerting]
     D & H --> I[Immediate on-call response]
@@ -104,8 +112,8 @@ flowchart LR
 
 - Set up CoreDNS availability monitoring before enabling any kube-system policies
 - Define cluster-wide DNS availability as an SLI with alerting
-- Monitor DNS request rate as a proxy for DNS health
+- Monitor aggregate DNS request rate as a proxy for DNS health
 
 ## Conclusion
 
-Monitoring kube-dns availability requires tracking CoreDNS request rate (drops to zero when blocked), SERVFAIL rates, and DNS probe results. The combination detects kube-dns blocking within 2 minutes of onset and enables rapid response to cluster-wide DNS outages.
+Monitoring kube-dns availability requires tracking aggregate CoreDNS request rate (which may drop sharply when DNS access is blocked cluster-wide), SERVFAIL rates, and DNS probe results. The combination detects kube-dns blocking within 2 minutes of onset and enables rapid response to cluster-wide DNS outages.
