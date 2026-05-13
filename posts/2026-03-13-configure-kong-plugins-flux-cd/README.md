@@ -26,7 +26,7 @@ This guide covers configuring the most commonly needed Kong plugins - rate limit
 
 ## Step 1: Verify Kong CRDs Are Installed
 
-Kong Ingress Controller installs the plugin CRDs automatically. Verify they are present.
+Kong Ingress Controller installation manifests and Helm charts include the plugin CRDs. Verify they are present.
 
 ```bash
 # Check Kong CRDs are available
@@ -37,7 +37,6 @@ kubectl get crd | grep konghq.com
 # kongplugins.configuration.konghq.com
 # kongclusterplugins.configuration.konghq.com
 # kongconsumers.configuration.konghq.com
-# kongingresses.configuration.konghq.com
 ```
 
 ## Step 2: Configure Rate Limiting Plugin
@@ -62,8 +61,6 @@ config:
   # Use the remote IP as the rate limit key
   policy: local
   limit_by: ip
-  # Return headers showing rate limit status
-  header_name: X-RateLimit-Limit
   hide_client_headers: false
 ---
 # Stricter rate limit for authentication endpoints
@@ -174,10 +171,10 @@ metadata:
   name: api-server
   namespace: backend
   annotations:
-    kubernetes.io/ingress.class: kong
     # Apply multiple plugins using comma-separated names
     konghq.com/plugins: rate-limit-per-ip,api-key-auth,add-internal-headers
 spec:
+  ingressClassName: kong
   rules:
     - host: api.example.com
       http:
@@ -254,7 +251,7 @@ spec:
 
 - Use KongClusterPlugin for organization-wide policies (CORS, logging, security headers) and KongPlugin for service-specific settings (rate limits, authentication).
 - Store plugin configuration in separate files per plugin rather than combining multiple plugins in one file; this makes diffs more readable in pull requests.
-- Test plugin configurations in a staging environment with Kong's `/debug/config` admin endpoint to verify plugins are loaded correctly before promoting to production.
+- Test plugin configurations in a staging environment with the Kong Ingress Controller diagnostic server's `/debug/config` endpoint after enabling `CONTROLLER_DUMP_CONFIG` to verify plugins are loaded correctly before promoting to production.
 - Version your plugin configurations with semantic version annotations in the CRD metadata to track breaking changes.
 - Avoid storing secrets (API keys, passwords) directly in KongPlugin CRDs; use KongConsumer credential Secrets managed by Sealed Secrets or External Secrets Operator.
 - Monitor plugin performance through Kong's Prometheus metrics; some plugins (like rate-limiting with Redis policy) have significant latency impacts when the backing store is slow.
