@@ -55,7 +55,7 @@ spec:
   chart:
     spec:
       chart: seldon-core-operator
-      version: "1.18.x"
+      version: "1.19.0"
       sourceRef:
         kind: HelmRepository
         name: seldon
@@ -71,21 +71,16 @@ spec:
     ambassador:
       enabled: false
 
-    # Enable metrics with Prometheus
+    # Name the executor metrics port for Prometheus scraping
     executor:
-      defaultEnv:
-        - name: PREDICTIVE_UNIT_METRICS_PORT_NAME
-          value: metrics
+      metricsPortName: metrics
 
     # Operator resources
     manager:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 200Mi
-        limits:
-          cpu: 500m
-          memory: 500Mi
+      cpuRequest: 100m
+      memoryRequest: 200Mi
+      cpuLimit: 500m
+      memoryLimit: 500Mi
 ```
 
 ## Step 3: Create a Basic SeldonDeployment
@@ -202,6 +197,9 @@ spec:
         envSecretRefName: s3-credentials
         # TensorFlow Serving configuration
         parameters:
+          - name: signature_name
+            value: serving_default
+            type: STRING
           - name: model_name
             value: image-classifier
             type: STRING
@@ -236,7 +234,7 @@ spec:
   prune: true
   wait: true
   timeout: 10m
-  # Seldon operator must be running before deploying models
+  # The Kustomization that applies the Seldon operator must be ready before deploying models
   dependsOn:
     - name: seldon-core-operator
 ```
