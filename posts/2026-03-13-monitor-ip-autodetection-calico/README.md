@@ -23,42 +23,42 @@ Calico IP Autodetection is a critical configuration aspect of Calico networking.
 ```bash
 # Check current state
 
-calicoctl get ippools -o yaml
+calicoctl get nodes -o yaml
+kubectl get nodes -o wide
 calicoctl ipam show --show-blocks
-kubectl get pods -A -o wide | head -10
 ```
 
 ## Configuration
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
+apiVersion: operator.tigera.io/v1
+kind: Installation
 metadata:
-  name: example-pool
+  name: default
 spec:
-  cidr: 10.48.0.0/16
-  blockSize: 26
-  ipipMode: Never
-  vxlanMode: Never
-  natOutgoing: true
+  calicoNetwork:
+    nodeAddressAutodetectionV4:
+      kubernetes: NodeInternalIP
 ```
 
 ## Verify
 
 ```bash
 # Validate changes
+calicoctl get nodes -o yaml
 calicoctl ipam check
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u
+kubectl get nodes -o 'custom-columns=NAME:.metadata.name,INTERNAL-IP:.status.addresses[?(@.type=="InternalIP")].address' --no-headers
 ```
 
 ## Architecture
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> BLOCK[Block Allocation]
-    BLOCK --> POD[Pod IP Assignment]
+    K8S[Kubernetes Node InternalIP] --> DETECT[Calico IP Autodetection]
+    DETECT --> NODE[Calico Node ipv4Address]
+    NODE --> ROUTE[Inter-node Routing]
 ```
 
 ## Conclusion
 
-How to Monitor IP Autodetection in Calico in Calico requires careful planning and validation. Use the steps above to ensure your configuration meets your cluster's IP addressing requirements.
+How to Monitor IP Autodetection in Calico requires careful planning and validation. Use the steps above to ensure your configuration meets your cluster's IP addressing requirements.
