@@ -21,7 +21,7 @@ This guide covers deploying cert-manager via Flux, configuring ClusterIssuers fo
 - Flux CD v2 bootstrapped in your cluster
 - A domain name with DNS controllable by your cluster (for Let's Encrypt DNS challenges)
 - kubectl and Flux CLI installed
-- cert-manager v1.14+
+- cert-manager v1.15+
 
 ## Step 1: Deploy cert-manager via Flux
 
@@ -40,6 +40,11 @@ spec:
 
 ```yaml
 # infrastructure/controllers/cert-manager/helmrelease.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -50,7 +55,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "v1.14.x"
+      version: "v1.20.1"
       sourceRef:
         kind: HelmRepository
         name: cert-manager
@@ -61,7 +66,8 @@ spec:
     crds: CreateReplace
   values:
     # Install CRDs as part of the Helm chart
-    installCRDs: true
+    crds:
+      enabled: true
     # Enable Prometheus metrics
     prometheus:
       enabled: true
@@ -72,11 +78,6 @@ spec:
       requests:
         cpu: 10m
         memory: 32Mi
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: cert-manager
-      namespace: cert-manager
 ```
 
 ## Step 2: Configure ClusterIssuers
@@ -129,7 +130,7 @@ spec:
   path: ./infrastructure/cert-manager
   prune: true
   dependsOn:
-    - name: cert-manager-controller   # Wait for cert-manager to be running
+    - name: cert-manager-controller   # Kustomization that applies the cert-manager HelmRelease
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -150,7 +151,7 @@ spec:
   # The TLS secret that will be created/updated by cert-manager
   secretName: my-service-tls
 
-  # Certificate validity - cert-manager renews at 2/3 of duration
+  # Certificate validity - cert-manager renews 30 days before expiry
   duration: 2160h     # 90 days
   renewBefore: 720h   # Renew 30 days before expiry
 
@@ -173,9 +174,6 @@ kind: Ingress
 metadata:
   name: my-service
   namespace: team-alpha
-  annotations:
-    # Tell cert-manager which issuer to use for auto-provisioned certs
-    cert-manager.io/cluster-issuer: letsencrypt-production
 spec:
   ingressClassName: nginx
   tls:
@@ -244,7 +242,7 @@ spec:
 ```bash
 # List all certificates and their expiry dates
 kubectl get certificates --all-namespaces \
-  -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[0].status,EXPIRY:.status.notAfter"
+  -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=='Ready')].status,EXPIRY:.status.notAfter"
 
 # Check a specific certificate's status
 kubectl describe certificate my-service-tls -n team-alpha
@@ -268,13 +266,13 @@ kubectl get certificaterequests -n team-alpha -w
 spec:
   chart:
     spec:
-      version: "v1.15.x"   # Updated version
+      version: "v1.20.2"   # Updated version
 ```
 
 ```bash
 # Commit the version change
 git add infrastructure/controllers/cert-manager/helmrelease.yaml
-git commit -m "chore: upgrade cert-manager to v1.15.x"
+git commit -m "chore: upgrade cert-manager to v1.20.2"
 git push
 
 # Flux will detect the change and upgrade cert-manager
