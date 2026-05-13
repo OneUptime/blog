@@ -19,7 +19,7 @@ This guide covers installing Calico on a single-node kubeadm cluster, including 
 - A Linux machine or VM (Ubuntu 20.04+ or similar)
 - At least 2 CPU cores and 4GB RAM
 - `kubectl` installed
-- `calicoctl` installed
+- `curl` installed
 - Root or sudo access
 
 ## Step 1: Install Kubernetes with kubeadm on a Single Node
@@ -31,12 +31,14 @@ sudo apt-get update
 sudo apt-get install -y containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 sudo systemctl restart containerd
 
 # Install kubeadm, kubelet, kubectl
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | \
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | \
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' | \
   sudo tee /etc/apt/sources.list.d/kubernetes.list
 sudo apt-get update
 sudo apt-get install -y kubeadm kubelet kubectl
@@ -47,17 +49,27 @@ sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
 # Load required kernel modules
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
 sudo modprobe overlay
 sudo modprobe br_netfilter
+
+# Configure required sysctl parameters
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+EOF
+sudo sysctl --system
 ```
 
 Initialize the single-node cluster:
 
 ```bash
-# Initialize with pod CIDR for Calico (no control plane taints)
-sudo kubeadm init \
-  --pod-network-cidr=192.168.0.0/16 \
-  --ignore-preflight-errors=NumCPU
+# Initialize with pod CIDR for Calico
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
 
 # Set up kubectl
 mkdir -p $HOME/.kube
@@ -72,8 +84,9 @@ kubectl taint nodes --all node-role.kubernetes.io/master-
 ## Step 2: Install Calico
 
 ```bash
-# Install the Tigera Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Install the Calico custom resource definitions and Tigera Operator
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Wait for operator
 kubectl wait --for=condition=Available deployment/tigera-operator \
@@ -94,6 +107,7 @@ spec:
   calicoNetwork:
     ipPools:
       - name: default-ipv4-ippool
+        blockSize: 26
         cidr: 192.168.0.0/16
         # VXLAN works for single-node (no actual cross-node traffic needed)
         encapsulation: VXLAN
@@ -118,9 +132,9 @@ kubectl get nodes
 
 ```bash
 # Install calicoctl
-curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 \
+sudo curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 \
   -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
+sudo chmod +x /usr/local/bin/calicoctl
 
 # Configure for Kubernetes datastore
 export CALICO_DATASTORE_TYPE=kubernetes
@@ -143,7 +157,7 @@ kubectl run curl-test --image=curlimages/curl:latest -- sleep 3600
 kubectl exec curl-test -- curl http://nginx
 
 # Apply a deny-all policy
-cat <<EOF | kubectl apply -f -
+cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -160,7 +174,7 @@ kubectl exec curl-test -- curl --max-time 5 http://nginx
 # Should timeout
 
 # Allow specific traffic
-cat <<EOF | kubectl apply -f -
+cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -185,7 +199,7 @@ kubectl exec curl-test -- curl http://nginx
 - Use single-node clusters in CI/CD pipelines for automated Calico policy testing
 - Keep single-node Calico configuration in sync with your production cluster's Calico version
 - Use namespaces to simulate multi-tenant environments even in single-node setups
-- Test both `calicoctl` and `kubectl` commands for policy management to understand the differences
+- Use `kubectl` for Kubernetes NetworkPolicy and `calicoctl` for Calico policy management to understand the differences
 - Clean up test policies with `calicoctl delete networkpolicies --all -n default` before starting new tests
 
 ## Conclusion
