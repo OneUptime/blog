@@ -75,10 +75,10 @@ kubectl get secrets -n <release-namespace> -l owner=helm
 Check for unusually large secrets:
 
 ```bash
-kubectl get secrets -n <release-namespace> -l owner=helm -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.meta\.helm\.sh/release-name}{"\n"}{end}'
+kubectl get secrets -n <release-namespace> -l owner=helm -o go-template='{{range .items}}{{.metadata.name}}{{"\t"}}{{index .metadata.labels "name"}}{{"\t"}}{{index .metadata.labels "version"}}{{"\t"}}{{len (index .data "release")}}{{"\n"}}{{end}}'
 ```
 
-If you find corrupted release secrets, you may need to remove them and let the controller reinstall the release:
+If you find corrupted old release secrets, you may need to remove the affected revision. Be careful with the currently deployed revision, because deleting its storage secret can make Helm lose track of resources that still exist:
 
 ```bash
 kubectl delete secret -n <release-namespace> sh.helm.release.v1.<release-name>.v<revision>
@@ -86,7 +86,7 @@ kubectl delete secret -n <release-namespace> sh.helm.release.v1.<release-name>.v
 
 ### Too Many Release Revisions
 
-By default, Helm keeps a history of 10 revisions. If many HelmReleases are being frequently updated, the accumulated secrets can cause memory pressure:
+By default, Flux sets the HelmRelease history limit to 5 revisions. If many HelmReleases are being frequently updated, the accumulated secrets can cause memory pressure:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -99,9 +99,9 @@ spec:
   # ... rest of spec
 ```
 
-### Failed Helm Tests Causing Crash Loops
+### Failed Helm Tests Adding Repeated Work
 
-If a HelmRelease has tests enabled and those tests consistently fail, the controller may enter a tight retry loop that consumes resources:
+If a HelmRelease has tests enabled and those tests consistently fail, the release can remain failed or remediating and add repeated work during reconciliation:
 
 ```bash
 kubectl logs -n flux-system deploy/helm-controller | grep -i "test\|hook"
@@ -121,13 +121,13 @@ spec:
 
 ### CRD Size Limits
 
-Helm charts that install Custom Resource Definitions with very large schemas can exceed etcd object size limits, causing the controller to crash:
+Helm charts that install Custom Resource Definitions with very large schemas can exceed Kubernetes API or etcd object size limits, causing reconciliation failures and sometimes contributing to controller memory pressure:
 
 ```bash
 kubectl logs -n flux-system deploy/helm-controller | grep -i "too large\|etcd\|request entity"
 ```
 
-Consider using `crds: Skip` in the HelmRelease spec and managing CRDs separately if they are very large.
+Consider using `install.crds: Skip` and `upgrade.crds: Skip` in the HelmRelease spec and managing CRDs separately if they are very large.
 
 ## Step 4: Check Concurrent Reconciliation
 
