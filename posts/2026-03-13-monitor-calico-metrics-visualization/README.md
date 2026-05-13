@@ -76,11 +76,11 @@ spec:
 ## Stale Data Detection
 
 ```promql
-# Alert if Calico metrics haven't been updated in >10 minutes
-# (indicates Prometheus scrape failure)
-(time() - max(timestamp(felix_active_local_policies))) > 600
+# Alert if Calico metrics have been absent for 10 minutes
+# (indicates Prometheus scrape failure or missing Felix metrics)
+absent_over_time(felix_active_local_policies[10m])
 ```
 
 ## Conclusion
 
-Monitoring your Calico visualization infrastructure ensures dashboards are available when needed. Key signals are Grafana service health, dashboard accessibility (HTTP 200 responses), and metric freshness (timestamp-based staleness detection). Add these checks to your cluster health monitoring so dashboard failures are treated with the same urgency as other operational tool failures.
+Monitoring your Calico visualization infrastructure ensures dashboards are available when needed. Key signals are Grafana service health, dashboard accessibility (HTTP 200 responses), and metric freshness (absence-based staleness detection). Add these checks to your cluster health monitoring so dashboard failures are treated with the same urgency as other operational tool failures.
