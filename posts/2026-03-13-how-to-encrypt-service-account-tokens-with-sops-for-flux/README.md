@@ -25,7 +25,7 @@ You need:
 
 ## Encrypting a Kubernetes Service Account Token
 
-For scenarios where you need a pre-created token secret:
+For scenarios where you need a manually created, long-lived token secret, create the Secret and let Kubernetes populate the token data:
 
 ```yaml
 apiVersion: v1
@@ -36,8 +36,6 @@ metadata:
   annotations:
     kubernetes.io/service-account.name: monitoring-sa
 type: kubernetes.io/service-account-token
-stringData:
-  token: eyJhbGciOiJSUzI1NiIsImtpZCI6...long-token-value...
 ```
 
 Configure SOPS and encrypt:
@@ -160,7 +158,13 @@ metadata:
   name: cloud-app
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: cloud-app
   template:
+    metadata:
+      labels:
+        app: cloud-app
     spec:
       containers:
         - name: app
@@ -189,7 +193,13 @@ metadata:
   name: monitoring-agent
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: monitoring-agent
   template:
+    metadata:
+      labels:
+        app: monitoring-agent
     spec:
       containers:
         - name: agent
@@ -241,11 +251,11 @@ git commit -m "Rotate external API tokens"
 git push
 ```
 
-Flux detects the change and updates the Kubernetes Secret, and pods that reference it pick up the new values on their next restart or through environment variable refresh.
+Flux detects the change and updates the Kubernetes Secret. Pods that consume Secret values as environment variables need to be restarted to see the new values. Pods that mount Secrets as volumes receive projected updates eventually, but the application must reload the changed files.
 
 ## Automating Token Rotation with CronJobs
 
-For tokens that need regular rotation, combine SOPS-managed initial tokens with in-cluster rotation:
+For tokens that need regular rotation, use SOPS-managed initial tokens with in-cluster rotation only when Flux is not continuously reconciling the same Secret data, or when the rotation process also updates the encrypted Git source of truth:
 
 ```yaml
 apiVersion: batch/v1
