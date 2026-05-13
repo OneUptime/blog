@@ -136,7 +136,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "6.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -145,7 +145,7 @@ spec:
     # Install the AWS plugin for S3 backup storage and EBS snapshots
     initContainers:
       - name: velero-plugin-for-aws
-        image: velero/velero-plugin-for-aws:v1.9.0
+        image: velero/velero-plugin-for-aws:v1.14.0
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -241,18 +241,18 @@ velero backup-location get
 
 Expected backup storage location status:
 ```plaintext
-NAME      PROVIDER   BUCKET/PREFIX                        PHASE       LAST VALIDATED
-default   aws        my-cluster-velero-backups            Available   1m ago
+NAME      PROVIDER   BUCKET/PREFIX               PHASE       LAST VALIDATED   ACCESS MODE   DEFAULT
+default   aws        my-cluster-velero-backups   Available   1m ago          ReadWrite      true
 ```
 
 ## Best Practices
 
 - Enable S3 versioning on the backup bucket to protect against accidental backup deletion.
 - Use server-side encryption (`serverSideEncryption: AES256` or `aws:kms`) for all backup data stored in S3.
-- Deploy the `nodeAgent` DaemonSet to enable file system-level backup of Persistent Volumes, not just volume snapshots.
+- Deploy the `nodeAgent` DaemonSet to make file system-level backup of Persistent Volumes available, then annotate pods or enable `defaultVolumesToFsBackup` when you want Velero to use file system backups instead of volume snapshots.
 - Store the Velero AWS credentials secret using SOPS encryption before committing to Git.
 - Set a lifecycle rule on the S3 bucket to transition old backups to cheaper storage classes (Glacier) after 90 days.
 
 ## Conclusion
 
-Velero is now deployed and managed through Flux CD. Kubernetes workloads can be backed up to S3 on a schedule, and Persistent Volume data is captured through EBS snapshots. The next steps are to configure backup schedules for your namespaces and test the restore process to validate your disaster recovery capability.
+Velero is now deployed and managed through Flux CD. Kubernetes workloads can be backed up to S3 manually or on a schedule, and Persistent Volume data can be captured through EBS snapshots or Velero file system backups. The next steps are to configure backup schedules for your namespaces and test the restore process to validate your disaster recovery capability.
