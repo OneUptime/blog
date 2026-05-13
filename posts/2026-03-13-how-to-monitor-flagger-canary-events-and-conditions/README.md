@@ -25,17 +25,16 @@ This guide covers how to access, filter, and act on Flagger events and condition
 
 Flagger generates standard Kubernetes events on the Canary resource. Each event includes a reason, a message, and a type (Normal or Warning).
 
-Common event reasons include:
+Flagger records these rollout actions as event messages. The Kubernetes event reason is typically `Synced`, while the type and message identify what happened:
 
-| Reason | Type | Description |
-|--------|------|-------------|
-| `Synced` | Normal | Canary initialization or update completed |
-| `ScalingUp` | Normal | Canary deployment scaled up for analysis |
-| `ScalingDown` | Normal | Canary deployment scaled down after analysis |
-| `AdvanceCanary` | Normal | Traffic weight increased to canary |
-| `Promotion` | Normal | Canary promoted to primary |
-| `PromotionCompleted` | Normal | Promotion finished, finalizing |
-| `RollbackCanary` | Warning | Canary failed analysis, rolling back |
+| Reason | Type | Example Message |
+|--------|------|-----------------|
+| `Synced` | Normal | `New revision detected! Scaling up my-app.default` |
+| `Synced` | Normal | `Advance my-app.default canary weight 10` |
+| `Synced` | Normal | `Copying my-app.default template spec to my-app-primary.default` |
+| `Synced` | Normal | `Promotion completed! Scaling down my-app.default` |
+| `Synced` | Warning | `Rolling back my-app.default failed checks threshold reached 5` |
+| `Synced` | Warning | `Canary failed! Scaling down my-app.default` |
 
 ## Viewing Events with kubectl
 
@@ -78,7 +77,7 @@ kubectl get events -n default \
 
 ## Understanding Canary Conditions
 
-Flagger maintains conditions on the Canary status that indicate the overall state. The primary condition is `Promoted`, which can have the following states:
+Flagger maintains conditions on the Canary status that indicate the overall state. The primary condition is `Promoted`, and its reason follows the canary phase (`Initializing`, `Initialized`, `Waiting`, `Progressing`, `WaitingPromotion`, `Promoting`, `Finalising`, `Succeeded`, or `Failed`):
 
 ```bash
 # View conditions for a canary
@@ -94,33 +93,33 @@ conditions:
   - type: Promoted
     status: "Unknown"
     reason: Initializing
-    message: "Waiting for primary to be ready"
+    message: "New Deployment detected, starting initialization."
 
 # During analysis
 conditions:
   - type: Promoted
     status: "Unknown"
     reason: Progressing
-    message: "New revision detected, starting canary analysis"
+    message: "New revision detected, progressing canary analysis."
 
 # After successful promotion
 conditions:
   - type: Promoted
     status: "True"
     reason: Succeeded
-    message: "Canary analysis completed successfully, promotion finished"
+    message: "Canary analysis completed successfully, promotion finished."
 
 # After failed analysis
 conditions:
   - type: Promoted
     status: "False"
     reason: Failed
-    message: "Canary analysis failed, rolling back"
+    message: "Canary analysis failed, Deployment scaled to zero."
 ```
 
-## Setting Up Alert Webhooks
+## Setting Up Alert Providers
 
-Flagger can send alerts to external systems via webhooks. Configure the alert provider in the Canary spec:
+Flagger can send alerts to external systems through alert providers. Configure the alert provider in the Canary spec:
 
 ```yaml
 # canary-with-alerts.yaml
@@ -148,10 +147,10 @@ spec:
         providerRef:
           name: slack-alert
           namespace: flagger-system
-      - name: "pagerduty-alert"
+      - name: "slack-error-notification"
         severity: error
         providerRef:
-          name: pagerduty-alert
+          name: slack-alert
           namespace: flagger-system
     metrics:
       - name: request-success-rate
@@ -191,20 +190,21 @@ kubectl apply -f slack-alert-provider.yaml
 
 ## Monitoring Events with Prometheus
 
-Flagger exposes Prometheus metrics that correspond to events. You can query these to build dashboards and alerts:
+Flagger exposes Prometheus metrics for canary status, weights, duration, and analysis results. You can query these to build dashboards and alerts:
 
 ```promql
-# Count of successful canary promotions
-flagger_canary_status{status="succeeded"}
+# Last known status for a canary: 0 running, 1 successful, 2 failed
+flagger_canary_status{name="my-app", namespace="default"}
 
-# Count of failed canary rollbacks
-flagger_canary_status{status="failed"}
+# Failed canaries
+flagger_canary_status{name="my-app", namespace="default"} == 2
 
 # Current canary weight
-flagger_canary_weight{name="my-app", namespace="default"}
+flagger_canary_weight{workload="my-app", namespace="default"}
 
-# Canary analysis duration
-flagger_canary_duration_seconds{name="my-app", namespace="default"}
+# Canary analysis duration histogram
+flagger_canary_duration_seconds_sum{name="my-app", namespace="default"}
+flagger_canary_duration_seconds_count{name="my-app", namespace="default"}
 ```
 
 ### Alertmanager Rule for Failed Canaries
@@ -222,7 +222,7 @@ spec:
       rules:
         - alert: CanaryRollbackDetected
           expr: |
-            flagger_canary_status{status="failed"} == 1
+            flagger_canary_status == 2
           for: 1m
           labels:
             severity: warning
@@ -242,7 +242,7 @@ graph LR
     A -->|sends alerts| D[Alert Providers]
     A -->|exposes metrics| E[Prometheus]
     B -->|stream| F[kubectl watch]
-    D -->|webhook| G[Slack / PagerDuty]
+    D -->|webhook| G[Slack / MS Teams]
     E -->|query| H[Grafana Dashboard]
     E -->|alerting| I[Alertmanager]
 ```
@@ -259,13 +259,13 @@ Create a simple event collector that logs canary events to a file:
 NAMESPACE=${1:-default}
 LOG_FILE="/var/log/flagger-events.log"
 
-kubectl get events -n $NAMESPACE \
+kubectl get events -n "$NAMESPACE" \
   --field-selector involvedObject.kind=Canary \
   --sort-by='.lastTimestamp' \
   -o jsonpath='{range .items[*]}{.lastTimestamp} [{.type}] {.involvedObject.name}: {.reason} - {.message}{"\n"}{end}' \
-  >> $LOG_FILE
+  >> "$LOG_FILE"
 ```
 
 ## Conclusion
 
-Flagger events and conditions provide comprehensive visibility into the progressive delivery process. By combining kubectl event queries, webhook alerts, and Prometheus metrics, you can build a robust monitoring pipeline that keeps your team informed about every canary deployment. Use alert providers for real-time notifications and Prometheus rules for automated incident detection to ensure no failed rollout goes unnoticed.
+Flagger events and conditions provide comprehensive visibility into the progressive delivery process. By combining kubectl event queries, alert providers, and Prometheus metrics, you can build a robust monitoring pipeline that keeps your team informed about every canary deployment. Use alert providers for real-time notifications and Prometheus rules for automated incident detection to ensure no failed rollout goes unnoticed.
