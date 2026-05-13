@@ -10,11 +10,11 @@ Description: Learn how to migrate workloads to Calico on a self-managed Kubernet
 
 ## Introduction
 
-Running a self-managed Kubernetes cluster on AWS gives you full control over your infrastructure, but it also means you are responsible for choosing and maintaining your CNI plugin. Many teams start with the default AWS VPC CNI and later discover they need more advanced network policy capabilities, BGP peering support, or fine-grained IPAM control - all areas where Calico excels.
+Running a self-managed Kubernetes cluster on AWS gives you full control over your infrastructure, but it also means you are responsible for choosing and maintaining your CNI plugin. Many teams start with an existing CNI such as the AWS VPC CNI or flannel and later discover they need more advanced network policy capabilities, BGP peering support, or fine-grained IPAM control - all areas where Calico excels.
 
 Migrating to Calico on a self-managed AWS cluster is different from managed EKS because you have direct access to the control plane nodes and can adjust kubelet and kube-proxy settings freely. This flexibility makes the migration more straightforward while also requiring careful planning to avoid network disruption.
 
-This guide walks you through replacing your existing CNI with Calico on a self-managed AWS Kubernetes cluster, reconfiguring IP pools to align with your VPC CIDR, and validating that all workloads maintain connectivity throughout the process.
+This guide walks you through replacing your existing CNI with Calico on a self-managed AWS Kubernetes cluster, reconfiguring IP pools to align with your Kubernetes pod CIDR, and validating workload connectivity throughout the process.
 
 ## Prerequisites
 
@@ -22,12 +22,12 @@ This guide walks you through replacing your existing CNI with Calico on a self-m
 - `kubectl` configured with cluster-admin access
 - `calicoctl` v3.27+ installed
 - Existing workloads in a non-production namespace for initial testing
-- AWS VPC with sufficient CIDR space for Calico IP pools
+- Kubernetes pod CIDR planned for Calico IP pools that does not overlap with your AWS VPC or service CIDRs
 - Node access via SSH or AWS Systems Manager
 
 ## Step 1: Drain and Prepare Nodes
 
-Before replacing the CNI, drain workloads from each node one at a time to maintain availability.
+Before replacing the CNI, plan a maintenance window and drain workloads from nodes in a controlled sequence. Replacing a CNI is a cluster-wide operation, so do not delete the existing CNI until you are ready to install Calico across the cluster.
 
 Drain the first node to safely evict all workloads before modifying the CNI:
 
@@ -78,7 +78,7 @@ kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0
 curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
 ```
 
-Configure the Calico installation to match your AWS VPC CIDR:
+Configure the Calico installation to match your Kubernetes pod CIDR:
 
 ```yaml
 # custom-resources.yaml - configure Calico for self-managed AWS cluster
@@ -87,12 +87,12 @@ kind: Installation
 metadata:
   name: default
 spec:
-  # Use VXLAN encapsulation for cross-AZ traffic compatibility
+  # Use cross-subnet VXLAN encapsulation for AWS multi-AZ compatibility
   calicoNetwork:
     ipPools:
     - blockSize: 26
-      cidr: 192.168.0.0/16   # Adjust to your pod CIDR
-      encapsulation: VXLAN
+      cidr: 192.168.0.0/16   # Adjust to your Kubernetes pod CIDR
+      encapsulation: VXLANCrossSubnet
       natOutgoing: Enabled
       nodeSelector: all()
 ```
@@ -116,7 +116,7 @@ kubectl get pods -n calico-system -w
 # Verify node status in Calico using calicoctl
 calicoctl node status
 
-# Check that BGP peers are established (if using BGP mode)
+# Check configured BGP peers, if using BGP mode
 calicoctl get bgppeers
 ```
 
@@ -139,12 +139,12 @@ kubectl exec -it <pod-name> -- ping <other-pod-ip>
 
 ## Best Practices
 
-- Migrate one node at a time to limit the blast radius of any issues
+- For flannel or Canal live migrations, use Calico's migration controller to roll nodes one at a time; otherwise treat CNI replacement as a planned cluster-wide maintenance task
 - Take VPC Flow Logs snapshots before and after migration for comparison
 - Use Calico GlobalNetworkPolicy to enforce a default-deny baseline after migration
-- Align Calico IP pool CIDRs with your VPC secondary CIDR ranges to avoid conflicts
+- Align Calico IP pool CIDRs with the Kubernetes pod CIDR and avoid overlap with VPC and service CIDRs
 - Enable Calico IPAM metrics and monitor via OneUptime for IP exhaustion alerts
 
 ## Conclusion
 
-Migrating to Calico on a self-managed AWS Kubernetes cluster gives you powerful network policy enforcement and flexible IPAM that scales with your workload requirements. By following a node-by-node approach and validating connectivity at each step, you can complete the migration with minimal disruption. Pair Calico with OneUptime to continuously monitor network health and alert on policy violations or IP pool exhaustion after the migration is complete.
+Migrating to Calico on a self-managed AWS Kubernetes cluster gives you powerful network policy enforcement and flexible IPAM that scales with your workload requirements. By planning the CNI replacement carefully, using the official migration controller where it applies, and validating connectivity at each step, you can reduce disruption during the migration. Pair Calico with OneUptime to continuously monitor network health and alert on policy violations or IP pool exhaustion after the migration is complete.
