@@ -46,7 +46,7 @@ kubectl get leases -n flux-system
 Examine a specific lease:
 
 ```bash
-kubectl describe lease -n flux-system source-controller
+kubectl describe lease -n flux-system source-controller-leader-election
 ```
 
 Key fields to check:
@@ -67,13 +67,13 @@ If a pod was terminated without properly releasing the lease, the lease remains 
 ```bash
 # Check who holds the lease
 
-kubectl get lease -n flux-system source-controller -o jsonpath='{.spec.holderIdentity}'
+kubectl get lease -n flux-system source-controller-leader-election -o jsonpath='{.spec.holderIdentity}'
 
 # Verify the pod exists
 kubectl get pods -n flux-system
 ```
 
-If the holder pod no longer exists, the new pod must wait for the lease to expire before acquiring it. The default lease duration is typically 15 seconds, but network or API server issues can delay the process.
+If the holder pod no longer exists, the new pod must wait for the lease to expire before acquiring it. Flux controllers default to a 35 second leader election lease duration, but network or API server issues can delay the process.
 
 ### API Server Connectivity Issues
 
@@ -86,7 +86,7 @@ kubectl logs -n flux-system deploy/source-controller | grep -i "connection refus
 Check API server health:
 
 ```bash
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 kubectl cluster-info
 ```
 
@@ -97,7 +97,7 @@ If the clocks on different nodes are significantly out of sync, lease renewal ti
 ```bash
 # Check time on different nodes
 kubectl get nodes -o wide
-kubectl debug node/<node-name> -- date
+kubectl debug node/<node-name> -it --image=busybox -- date
 ```
 
 Resource Quota Preventing Pod Creation
@@ -125,7 +125,7 @@ kubectl auth can-i update leases --as=system:serviceaccount:flux-system:source-c
 If a lease is stuck with a non-existent holder, delete it to allow re-election:
 
 ```bash
-kubectl delete lease -n flux-system source-controller
+kubectl delete lease -n flux-system source-controller-leader-election
 ```
 
 The controller will automatically create a new lease and acquire it.
@@ -156,6 +156,20 @@ rules:
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: source-controller-leader-election
+  namespace: flux-system
+subjects:
+- kind: ServiceAccount
+  name: source-controller
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: source-controller-leader-election
 ```
 
 ### Adjust Lease Parameters
@@ -164,9 +178,9 @@ If leader election is failing due to network latency, you can adjust the lease p
 
 ```bash
 kubectl patch deployment source-controller -n flux-system --type='json' -p='[
-  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--leader-elect-lease-duration=30s"},
-  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--leader-elect-renew-deadline=20s"},
-  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--leader-elect-retry-period=5s"}
+  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--leader-election-lease-duration=45s"},
+  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--leader-election-renew-deadline=35s"},
+  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--leader-election-retry-period=10s"}
 ]'
 ```
 
