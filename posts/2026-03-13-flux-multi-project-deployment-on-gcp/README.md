@@ -12,7 +12,7 @@ Description: Deploy applications across multiple GCP projects using Flux CD with
 
 Large organizations on Google Cloud often split workloads across multiple GCP projects for billing isolation, security boundaries, and compliance requirements. A typical setup has separate projects for development, staging, and production, each with its own GKE cluster, IAM policies, and Cloud resources. Managing deployments across this landscape manually is error-prone and slows down release velocity.
 
-Flux CD's multi-tenancy model is well-suited to this challenge. A central "fleet management" repository defines which clusters receive which applications, while each GCP project hosts a GKE cluster that Flux reconciles independently. Workload Identity federates IAM roles across projects so Flux controllers and application pods can access GCP APIs in the correct project without static service account key files.
+Flux CD's multi-tenancy model is well-suited to this challenge. A central "fleet management" repository defines which clusters receive which applications, while each GCP project hosts a GKE cluster that Flux reconciles independently. Workload Identity Federation for GKE lets application pods access GCP APIs in the correct project without static service account key files.
 
 This guide walks through a hub-and-spoke architecture where a single Git repository drives deployments into three GCP projects, each with its own GKE cluster, using Flux CD and Workload Identity.
 
@@ -64,8 +64,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/dev \
-  --personal
+  --path=clusters/dev
 
 # Bootstrap the staging cluster
 gcloud container clusters get-credentials staging-cluster \
@@ -75,8 +74,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/staging \
-  --personal
+  --path=clusters/staging
 
 # Bootstrap the prod cluster
 gcloud container clusters get-credentials prod-cluster \
@@ -86,17 +84,19 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/prod \
-  --personal
+  --path=clusters/prod
 ```
 
-## Step 3: Configure Workload Identity for Cross-Project Access
+## Step 3: Configure Workload Identity Federation for Per-Project Access
 
 Applications in the dev cluster that need to access resources in `my-org-dev` must be granted Workload Identity bindings in that project.
 
 ```bash
 # For each project, bind the Kubernetes SA to a GCP SA
 for PROJECT in my-org-dev my-org-staging my-org-prod; do
+  KSA_NAMESPACE="my-app"
+  KSA_NAME="my-app"
+
   # Create an application GCP service account in each project
   gcloud iam service-accounts create my-app-sa \
     --project="${PROJECT}" \
@@ -106,6 +106,13 @@ for PROJECT in my-org-dev my-org-staging my-org-prod; do
   gcloud projects add-iam-policy-binding "${PROJECT}" \
     --member="serviceAccount:my-app-sa@${PROJECT}.iam.gserviceaccount.com" \
     --role="roles/storage.objectViewer"
+
+  # Allow the Kubernetes SA to impersonate the GCP SA
+  gcloud iam service-accounts add-iam-policy-binding \
+    "my-app-sa@${PROJECT}.iam.gserviceaccount.com" \
+    --project="${PROJECT}" \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:${PROJECT}.svc.id.goog[${KSA_NAMESPACE}/${KSA_NAME}]"
 done
 ```
 
@@ -200,7 +207,7 @@ graph LR
 # To promote from dev to staging, update the image tag in the staging overlay
 # (or use Flux image automation to do this automatically)
 cd apps/overlays/staging
-kustomize edit set image my-app=gcr.io/my-org-dev/my-app:v1.2.3
+kustomize edit set image my-app=us-central1-docker.pkg.dev/my-org-dev/my-app-repo/my-app:v1.2.3
 
 git add .
 git commit -m "chore: promote my-app v1.2.3 to staging"
