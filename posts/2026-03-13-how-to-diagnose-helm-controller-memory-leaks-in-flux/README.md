@@ -35,7 +35,7 @@ Check how frequently the pod restarts:
 kubectl get pod -n flux-system -l app=helm-controller -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}'
 ```
 
-If restarts happen at increasing intervals (e.g., every 2 hours, then every 4 hours as limits are raised), this strongly suggests a memory leak.
+If restarts happen at increasing intervals (e.g., every 2 hours, then every 4 hours as limits are raised), this strongly suggests memory growth under sustained workload and should be investigated with metrics and profiles.
 
 ## Step 2: Monitor with Prometheus
 
@@ -51,13 +51,13 @@ Calculate the rate of memory growth:
 deriv(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"helm-controller.*"}[2h])
 ```
 
-A consistently positive derivative confirms a memory leak.
+A consistently positive derivative supports the suspicion of a leak or unbounded memory growth. Correlate it with restarts, reconciliation activity, and heap profiles before treating it as confirmed.
 
 ## Step 3: Identify Leak Causes
 
 ### Accumulated Helm Release Secrets
 
-The Helm Controller reads release history from Kubernetes secrets. Each Helm release revision creates a new secret. If `maxHistory` is not set, secrets accumulate indefinitely:
+The Helm Controller reads release history from Kubernetes secrets. Each Helm release revision creates a new secret. Flux defaults `.spec.maxHistory` to `5`, but setting `maxHistory: 0` allows an unlimited number of revisions and high values can increase storage and reconciliation overhead:
 
 ```bash
 kubectl get secrets --all-namespaces -l owner=helm --no-headers | wc -l
@@ -69,7 +69,7 @@ Check secrets per release:
 kubectl get secrets --all-namespaces -l owner=helm -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}' | sort | head -50
 ```
 
-If you see many revisions for a single release (e.g., v1 through v50), the controller is loading all of them into memory during reconciliation. Set `maxHistory` on your HelmReleases:
+If you see many revisions for a single release (e.g., v1 through v50), the controller has more Helm storage data to inspect during reconciliation. Set or lower `maxHistory` on your HelmReleases:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -101,7 +101,7 @@ Charts with very large values files or deeply nested structures consume memory d
 kubectl get helmreleases --all-namespaces -o json | jq '[.items[] | {name: .metadata.name, namespace: .metadata.namespace, valuesSize: (.spec.values | tostring | length)}] | sort_by(.valuesSize) | reverse | .[:10]'
 ```
 
-Move large values to ConfigMaps to reduce the memory footprint during reconciliation:
+Move large values to ConfigMaps to keep the HelmRelease object smaller and easier to manage:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -117,7 +117,7 @@ spec:
 
 ### Reconciliation Loops
 
-A HelmRelease that continuously drifts and re-reconciles can leak memory if each reconciliation cycle does not fully clean up:
+A HelmRelease that continuously drifts and re-reconciles can cause sustained controller load and memory pressure:
 
 ```bash
 kubectl logs -n flux-system deploy/helm-controller | grep -c "Reconciliation finished"
@@ -129,9 +129,9 @@ Check for HelmReleases stuck in a loop:
 flux get helmreleases --all-namespaces | grep -i "false\|failed"
 ```
 
-### Failed Upgrades Not Being Cleaned Up
+### Failed Upgrades Not Being Remediated
 
-Failed Helm upgrade attempts can leave resources in memory. Check for remediation settings:
+Failed Helm upgrade attempts can leave a release in a failed state or leave newly created cluster resources behind. Check for remediation and cleanup settings:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -169,7 +169,7 @@ In pprof, use `top` to find the largest allocators and `list <function>` to see 
 ### Set maxHistory on All HelmReleases
 
 ```bash
-# Check which HelmReleases lack maxHistory
+# Check HelmRelease maxHistory settings
 kubectl get helmreleases --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.maxHistory}{"\n"}{end}'
 ```
 
@@ -191,11 +191,11 @@ kubectl patch deployment helm-controller -n flux-system --type='json' -p='[{"op"
 
 ### Update Flux
 
-Check for and apply updates that may contain memory leak fixes:
+Check the installed versions and apply updates that may contain memory leak fixes:
 
 ```bash
 flux version
-flux check --pre
+flux check
 ```
 
 ## Step 6: Verify the Fix
@@ -214,9 +214,9 @@ kubectl get pod -n flux-system -l app=helm-controller -w
 
 ## Prevention Tips
 
-- Always set `maxHistory` on HelmRelease resources (3-5 is a good default)
+- Use a bounded `maxHistory` on HelmRelease resources (the Flux default is 5; avoid `0` unless you explicitly need unlimited history)
 - Periodically audit and clean up accumulated Helm release secrets
-- Use `valuesFrom` with ConfigMaps instead of large inline values
+- Use `valuesFrom` with ConfigMaps for large values to keep HelmRelease objects manageable
 - Configure proper remediation strategies for failed upgrades
 - Set up Prometheus alerts for memory growth trends
 - Keep Flux updated to benefit from memory leak fixes
@@ -224,4 +224,4 @@ kubectl get pod -n flux-system -l app=helm-controller -w
 
 ## Summary
 
-Helm Controller memory leaks are most commonly caused by accumulated release history secrets, large chart values loaded into memory, reconciliation loops, and failed upgrade artifacts not being cleaned up. Setting `maxHistory` on all HelmReleases, cleaning up stale secrets, moving large values to ConfigMaps, and keeping Flux updated are the most effective remediation and prevention strategies.
+Helm Controller memory growth is commonly associated with accumulated release history secrets, large chart values, reconciliation loops, and failed releases that are not remediated. Keeping `maxHistory` bounded, cleaning up stale secrets, moving large values to ConfigMaps for manageability, and keeping Flux updated are effective remediation and prevention strategies.
