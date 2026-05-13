@@ -27,8 +27,9 @@ kubectl krew install kuttl
 Or download the binary directly:
 
 ```bash
-curl -sSL https://github.com/kudobuilder/kuttl/releases/latest/download/kubectl-kuttl_linux_amd64 -o /usr/local/bin/kubectl-kuttl
-chmod +x /usr/local/bin/kubectl-kuttl
+curl -sSL https://github.com/kudobuilder/kuttl/releases/latest/download/kubectl-kuttl_linux_amd64 -o kubectl-kuttl
+chmod +x kubectl-kuttl
+sudo mv kubectl-kuttl /usr/local/bin/kubectl-kuttl
 ```
 
 ## Project Structure
@@ -264,7 +265,6 @@ apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
   - command: flux reconcile kustomization test-app -n flux-system
-    namespaced: true
 ```
 
 This is useful for triggering reconciliation or running validation scripts between steps.
@@ -286,10 +286,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install kind
+        uses: helm/kind-action@v1
+
       - name: Install kuttl
         run: |
-          curl -sSL https://github.com/kudobuilder/kuttl/releases/latest/download/kubectl-kuttl_linux_amd64 -o /usr/local/bin/kubectl-kuttl
-          chmod +x /usr/local/bin/kubectl-kuttl
+          curl -sSL https://github.com/kudobuilder/kuttl/releases/latest/download/kubectl-kuttl_linux_amd64 -o kubectl-kuttl
+          chmod +x kubectl-kuttl
+          sudo mv kubectl-kuttl /usr/local/bin/kubectl-kuttl
 
       - name: Install Flux CLI
         uses: fluxcd/flux2/action@main
@@ -300,7 +304,7 @@ jobs:
 
 ## Cleanup
 
-kuttl automatically cleans up resources created during tests when using `startKIND: true` since the entire cluster is deleted. When running against an existing cluster, kuttl deletes the test namespace after each test.
+kuttl automatically cleans up resources created during tests when using `startKIND: true` since the entire cluster is deleted. When running against an existing cluster, kuttl deletes the generated test namespace after each test. Resources in explicitly specified namespaces such as `default` or `flux-system` should be cleaned up by the test, by Flux pruning, or by running the tests in a disposable cluster.
 
 ## Conclusion
 
