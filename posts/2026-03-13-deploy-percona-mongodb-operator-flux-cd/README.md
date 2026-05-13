@@ -10,9 +10,9 @@ Description: Deploy the Percona MongoDB Operator for production MongoDB replica 
 
 ## Introduction
 
-The Percona Operator for MongoDB manages MongoDB replica sets and sharded clusters on Kubernetes, providing automated failover, rolling upgrades, backup via Percona Backup for MongoDB (PBM), and optional PMM monitoring integration. It supports both Percona Server for MongoDB (PSMDB) and is built on the community MongoDB operator patterns.
+The Percona Operator for MongoDB manages Percona Server for MongoDB replica sets and sharded clusters on Kubernetes, providing automated failover, rolling upgrades, backup via Percona Backup for MongoDB (PBM), and optional PMM monitoring integration.
 
-Managing MongoDB clusters through Flux CD ensures that topology, backup configuration, and user settings are version-controlled. When a team needs to add a shard or change a MongoDB parameter, the change flows through a pull request with clear diffs - not a manual `mongo` shell command applied directly to the cluster.
+Managing MongoDB clusters through Flux CD ensures that topology, backup configuration, and user settings are version-controlled. When a team needs to add a shard or change a MongoDB parameter, the change flows through a pull request with clear diffs - not a manual `mongosh` command applied directly to the cluster.
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ spec:
 ## Step 2: Deploy the Percona MongoDB Operator
 
 ```yaml
-# infrastructure/databases/percona-mongodb/namespace.yaml
+# infrastructure/databases/percona-mongodb/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -47,7 +47,7 @@ metadata:
 ```
 
 ```yaml
-# infrastructure/databases/percona-mongodb/operator.yaml
+# infrastructure/databases/percona-mongodb/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -81,7 +81,7 @@ spec:
 ## Step 3: Create a MongoDB Replica Set
 
 ```yaml
-# infrastructure/databases/percona-mongodb/psmdb-cluster.yaml
+# infrastructure/databases/percona-mongodb/cluster/psmdb-cluster.yaml
 apiVersion: psmdb.percona.com/v1
 kind: PerconaServerMongoDB
 metadata:
@@ -131,10 +131,9 @@ spec:
               cacheSizeGB: 0.5
       affinity:
         antiAffinityTopologyKey: kubernetes.io/hostname
-      # Expose replica set members via ClusterIP
+      # Keep replica set members reachable only inside the cluster
       expose:
         enabled: false
-        exposeType: ClusterIP
 
   # Sharding (enable for large datasets)
   sharding:
@@ -174,7 +173,7 @@ spec:
 ## Step 4: Create Cluster Secrets
 
 ```yaml
-# infrastructure/databases/percona-mongodb/secrets.yaml (use SealedSecret)
+# infrastructure/databases/percona-mongodb/cluster/secrets.yaml (use SealedSecret)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -207,23 +206,44 @@ stringData:
 ## Step 5: Flux Kustomization
 
 ```yaml
-# clusters/production/mongodb-kustomization.yaml
+# clusters/production/mongodb-operator-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: percona-mongodb
+  name: percona-mongodb-operator
   namespace: flux-system
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/databases/percona-mongodb
+  path: ./infrastructure/databases/percona-mongodb/operator
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: percona-server-mongodb-operator
+      namespace: mongodb
+---
+# clusters/production/mongodb-cluster-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: percona-mongodb-cluster
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: percona-mongodb-operator
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/databases/percona-mongodb/cluster
+  prune: true
+  healthChecks:
+    - apiVersion: psmdb.percona.com/v1
+      kind: PerconaServerMongoDB
+      name: my-cluster
       namespace: mongodb
 ```
 
@@ -241,10 +261,10 @@ kubectl get pods -n mongodb
 
 # Connect to MongoDB
 kubectl port-forward svc/my-cluster-rs0 27017:27017 -n mongodb
-mongosh "mongodb://databaseAdmin:AdminPassword!@localhost:27017/admin"
+mongosh 'mongodb://databaseAdmin:AdminPassword!@localhost:27017/admin'
 
 # Check replica set status
-mongosh "mongodb://clusterAdmin:ClusterAdminPassword!@localhost:27017/admin" \
+mongosh 'mongodb://clusterAdmin:ClusterAdminPassword!@localhost:27017/admin' \
   --eval "rs.status()"
 
 # Check backup status
@@ -261,4 +281,4 @@ kubectl get psmdb-backup -n mongodb
 
 ## Conclusion
 
-The Percona MongoDB Operator deployed via Flux CD provides an enterprise-grade MongoDB management platform with automated replica set management, rolling upgrades, and pgBackup-equivalent backup capabilities through PBM. Every cluster configuration change is a Git commit reviewed by your team. From simple replica sets to complex sharded clusters, the operator handles the operational complexity while Flux ensures the desired state is always applied.
+The Percona MongoDB Operator deployed via Flux CD provides an enterprise-grade MongoDB management platform with automated replica set management, rolling upgrades, and backup capabilities through PBM. Every cluster configuration change is a Git commit reviewed by your team. From simple replica sets to complex sharded clusters, the operator handles the operational complexity while Flux ensures the desired state is always applied.
