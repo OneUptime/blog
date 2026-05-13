@@ -51,6 +51,7 @@ Define key groups in your `.sops.yaml` file with a `shamir_threshold`:
 ```yaml
 creation_rules:
   - path_regex: secrets/.*\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     shamir_threshold: 2
     key_groups:
       - age:
@@ -62,7 +63,7 @@ creation_rules:
           - age1platformteam1...
 ```
 
-This configuration creates three key groups. The `shamir_threshold` of 2 means that keys from at least two of the three groups are required to decrypt the file.
+This configuration creates three key groups. The `encrypted_regex` keeps Kubernetes fields such as `apiVersion`, `kind`, and `metadata` readable while encrypting secret values. The `shamir_threshold` of 2 means that keys from at least two of the three groups are required to decrypt the file.
 
 ## Encrypting Secrets with Key Groups
 
@@ -95,7 +96,7 @@ After encryption, examine the SOPS metadata to confirm key groups are configured
 cat secrets/database-credentials.yaml | grep -A 50 "sops:"
 ```
 
-You will see separate key entries organized by group index, confirming that Shamir secret sharing is in use.
+You will see separate key entries organized under `key_groups`, confirming that Shamir secret sharing is in use.
 
 ## Configuring Flux for Quorum Decryption
 
@@ -155,6 +156,7 @@ A common pattern is to use a threshold of 2 with 3 groups:
 ```yaml
 creation_rules:
   - path_regex: production/.*\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     shamir_threshold: 2
     key_groups:
       - age:
