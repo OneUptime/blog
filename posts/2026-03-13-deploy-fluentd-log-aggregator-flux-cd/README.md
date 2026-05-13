@@ -14,7 +14,7 @@ Fluentd is a mature, pluggable log aggregator written in Ruby with a C core for 
 
 Managing Fluentd through Flux CD ensures that pipeline changes are peer-reviewed, versioned, and automatically applied. Whether you are adding a new Elasticsearch index or routing error logs to a PagerDuty webhook, the workflow is the same: open a pull request, get it reviewed, and Flux applies it.
 
-This guide deploys Fluentd as a Deployment (aggregator role), configures it to receive logs from Fluent Bit forwarders, and routes output to Elasticsearch with buffering enabled.
+This guide deploys Fluentd as a StatefulSet (aggregator role), configures it to receive logs from Fluent Bit forwarders, and routes output to Elasticsearch with buffering enabled.
 
 ## Prerequisites
 
@@ -58,6 +58,13 @@ data:
       bind 0.0.0.0
     </source>
 
+    # HTTP input for the chart's liveness and readiness probes
+    <source>
+      @type http
+      bind 0.0.0.0
+      port 9880
+    </source>
+
     # Parse and enrich Kubernetes logs
     <filter kube.**>
       @type kubernetes_metadata
@@ -76,7 +83,7 @@ data:
 
         <buffer>
           @type file
-          path /var/log/fluentd-buffers/all
+          path /opt/bitnami/fluentd/logs/buffers/all
           flush_mode interval
           flush_interval 5s
           retry_type exponential_backoff
@@ -86,6 +93,22 @@ data:
       </store>
 
       <store>
+        @type relabel
+        @label @ERROR_LOGS
+      </store>
+    </match>
+
+    <label @ERROR_LOGS>
+      # Only store error and fatal logs in this index
+      <filter kube.**>
+        @type grep
+        <regexp>
+          key level
+          pattern /^(error|fatal)$/i
+        </regexp>
+      </filter>
+
+      <match kube.**>
         @type elasticsearch
         host elasticsearch-master.logging.svc.cluster.local
         port 9200
@@ -94,19 +117,15 @@ data:
 
         <buffer>
           @type file
-          path /var/log/fluentd-buffers/errors
+          path /opt/bitnami/fluentd/logs/buffers/errors
           flush_interval 10s
         </buffer>
+      </match>
+    </label>
 
-        # Only store error and fatal logs in this store
-        <filter>
-          @type grep
-          <regexp>
-            key level
-            pattern /^(error|fatal)$/i
-          </regexp>
-        </filter>
-      </store>
+    # Throw the healthcheck to the standard output instead of forwarding it
+    <match fluentd.healthcheck>
+      @type stdout
     </match>
 ```
 
@@ -133,38 +152,33 @@ spec:
     aggregator:
       enabled: true
       replicaCount: 2
+      configMap: fluentd-config
 
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "512Mi"
-      limits:
-        cpu: "500m"
-        memory: "1Gi"
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "500m"
+          memory: "1Gi"
 
-    # Mount our custom config
-    extraVolumes:
-      - name: custom-config
-        configMap:
-          name: fluentd-config
-    extraVolumeMounts:
-      - name: custom-config
-        mountPath: /opt/bitnami/fluentd/conf/fluentd.conf
-        subPath: fluentd.conf
+      # Persistent volume for file-based buffer
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClass: ""  # use default StorageClass
 
-    # Persistent volume for file-based buffer
-    persistence:
-      enabled: true
-      size: 10Gi
-      storageClass: ""  # use default StorageClass
-
-    service:
-      type: ClusterIP
-      ports:
-        - name: forward
-          port: 24224
-          targetPort: 24224
-          protocol: TCP
+      service:
+        type: ClusterIP
+        ports:
+          tcp:
+            port: 24224
+            targetPort: tcp
+            protocol: TCP
+          http:
+            port: 9880
+            targetPort: http
+            protocol: TCP
 ```
 
 ## Step 4: Configure Fluent Bit to Forward to Fluentd
@@ -178,9 +192,8 @@ Update your Fluent Bit HelmRelease output section to send logs to the Fluentd ag
         [OUTPUT]
             Name          forward
             Match         kube.*
-            Host          fluentd.logging.svc.cluster.local
+            Host          fluentd-aggregator.logging.svc.cluster.local
             Port          24224
-            Shared_Key    ""
             Self_Hostname fluent-bit
 ```
 
@@ -204,7 +217,7 @@ spec:
     - name: elasticsearch
   healthChecks:
     - apiVersion: apps/v1
-      kind: Deployment
+      kind: StatefulSet
       name: fluentd
       namespace: logging
 ```
