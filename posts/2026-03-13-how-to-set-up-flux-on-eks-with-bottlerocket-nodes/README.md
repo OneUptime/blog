@@ -13,7 +13,7 @@ Bottlerocket is an open-source Linux-based operating system built by AWS specifi
 ## Prerequisites
 
 - AWS CLI configured with appropriate permissions
-- eksctl installed (version 0.170 or later)
+- eksctl installed (version 0.215 or later)
 - Flux CLI installed
 - kubectl installed
 - A GitHub personal access token with repo permissions
@@ -41,7 +41,7 @@ kind: ClusterConfig
 metadata:
   name: my-bottlerocket-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.35"
 
 managedNodeGroups:
   - name: bottlerocket-system
@@ -53,7 +53,7 @@ managedNodeGroups:
     bottlerocket:
       settings:
         kubernetes:
-          maxPods: 58
+          max-pods: 58
         kernel:
           sysctl:
             "net.core.somaxconn": "16384"
@@ -63,6 +63,7 @@ managedNodeGroups:
         efs: true
     labels:
       role: system
+      bottlerocket.aws/updater-interface-version: "2.0.0"
     tags:
       nodegroup-role: system
 
@@ -75,11 +76,12 @@ managedNodeGroups:
     bottlerocket:
       settings:
         kubernetes:
-          maxPods: 110
-          allowedUnsafeSysctls:
+          max-pods: 110
+          allowed-unsafe-sysctls:
             - "net.core.somaxconn"
     labels:
       role: workloads
+      bottlerocket.aws/updater-interface-version: "2.0.0"
     tags:
       nodegroup-role: workloads
 ```
@@ -145,11 +147,55 @@ metadata:
 ```
 
 ```yaml
-# clusters/my-bottlerocket-cluster/brupop/helmrepository.yaml
+# clusters/my-bottlerocket-cluster/brupop/cert-manager-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+```
+
+```yaml
+# clusters/my-bottlerocket-cluster/brupop/cert-manager-helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: bottlerocket
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://charts.jetstack.io
+```
+
+```yaml
+# clusters/my-bottlerocket-cluster/brupop/cert-manager-helmrelease.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: cert-manager
+      version: "v1.20.*"
+      sourceRef:
+        kind: HelmRepository
+        name: jetstack
+        namespace: flux-system
+      interval: 24h
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+```
+
+```yaml
+# clusters/my-bottlerocket-cluster/brupop/brupop-helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: brupop
   namespace: flux-system
 spec:
   interval: 24h
@@ -157,30 +203,56 @@ spec:
 ```
 
 ```yaml
-# clusters/my-bottlerocket-cluster/brupop/helmrelease.yaml
+# clusters/my-bottlerocket-cluster/brupop/bottlerocket-shadow-helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: bottlerocket-update-operator
+  name: brupop-crd
   namespace: brupop-bottlerocket-aws
 spec:
   interval: 1h
+  dependsOn:
+    - name: cert-manager
+      namespace: cert-manager
+  chart:
+    spec:
+      chart: bottlerocket-shadow
+      version: "1.3.*"
+      sourceRef:
+        kind: HelmRepository
+        name: brupop
+        namespace: flux-system
+      interval: 24h
+```
+
+```yaml
+# clusters/my-bottlerocket-cluster/brupop/brupop-operator-helmrelease.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: brupop-operator
+  namespace: brupop-bottlerocket-aws
+spec:
+  interval: 1h
+  dependsOn:
+    - name: brupop-crd
+      namespace: brupop-bottlerocket-aws
   chart:
     spec:
       chart: bottlerocket-update-operator
       version: "1.3.*"
       sourceRef:
         kind: HelmRepository
-        name: bottlerocket
+        name: brupop
         namespace: flux-system
       interval: 24h
   values:
-    scheduler:
-      cron: "0 3 * * MON"
-    maxUnavailable: 1
+    namespace: brupop-bottlerocket-aws
+    scheduler_cron_expression: "0 0 3 * * Mon *"
+    max_concurrent_updates: "1"
 ```
 
-This configures the update operator to check for and apply Bottlerocket OS updates every Monday at 3 AM, updating one node at a time.
+This configures the update operator to check for and apply Bottlerocket OS updates every Monday at 3 AM UTC, updating one node at a time.
 
 ## Step 6: Deploy a Sample Application
 
@@ -207,9 +279,9 @@ spec:
         role: workloads
       containers:
         - name: nginx
-          image: nginx:1.25
+          image: nginxinc/nginx-unprivileged:1.25-alpine
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           resources:
             requests:
               cpu: 100m
@@ -224,12 +296,8 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: cache
-              mountPath: /var/cache/nginx
       volumes:
         - name: tmp
-          emptyDir: {}
-        - name: cache
           emptyDir: {}
 ```
 
@@ -267,12 +335,10 @@ Bottlerocket does not have SSH access by default. Use the SSM agent for debuggin
 INSTANCE_ID=$(kubectl get nodes -o jsonpath='{.items[0].spec.providerID}' | cut -d'/' -f5)
 
 aws ssm start-session \
-  --target "${INSTANCE_ID}" \
-  --document-name "AWS-StartInteractiveCommand" \
-  --parameters command="enter-admin-container"
+  --target "${INSTANCE_ID}"
 ```
 
-The admin container provides a shell environment for debugging without compromising the host OS security.
+The SSM session starts in Bottlerocket's control container. From there, run `enter-admin-container` when you need the admin container shell for debugging without compromising the host OS security.
 
 ## Monitoring Bottlerocket Updates
 
