@@ -17,6 +17,7 @@ The AWS EBS CSI (Container Storage Interface) driver enables Kubernetes to manag
 - An EKS cluster with the OIDC provider enabled
 - Flux installed on the EKS cluster
 - IAM permissions for EBS volume management
+- The Kubernetes CSI snapshot CRDs and snapshot controller installed if you want to use VolumeSnapshots
 
 ## Repository Structure
 
@@ -35,133 +36,21 @@ flux-repo/
         └── service-account.yaml
 ```
 
-## Step 1: Create the IAM Policy
+## Step 1: Use the IAM Policy
 
-Create an IAM policy for the EBS CSI driver:
+Use the AWS managed IAM policy for the EBS CSI driver:
 
 ```bash
-cat > ebs-csi-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateSnapshot",
-        "ec2:AttachVolume",
-        "ec2:DetachVolume",
-        "ec2:ModifyVolume",
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeInstances",
-        "ec2:DescribeSnapshots",
-        "ec2:DescribeTags",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeVolumesModifications"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ],
-      "Condition": {
-        "StringEquals": {
-          "ec2:CreateAction": [
-            "CreateVolume",
-            "CreateSnapshot"
-          ]
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "aws:RequestTag/ebs.csi.aws.com/cluster": "true"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "ec2:ResourceTag/ebs.csi.aws.com/cluster": "true"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteSnapshot"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "ec2:ResourceTag/CSIVolumeSnapshotName": "*"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "kms:CreateGrant",
-        "kms:ListGrants",
-        "kms:RevokeGrant"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "Bool": {
-          "kms:GrantIsForAWSResource": "true"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "kms:Encrypt",
-        "kms:Decrypt",
-        "kms:ReEncrypt*",
-        "kms:GenerateDataKey*",
-        "kms:DescribeKey"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-EOF
-
-aws iam create-policy \
-  --policy-name AmazonEBSCSIDriverPolicy \
-  --policy-document file://ebs-csi-policy.json
+EBS_CSI_POLICY_ARN=arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2
 ```
+
+If you use a customer-managed KMS key for encrypted EBS volumes, attach an additional KMS policy scoped to that key.
 
 ## Step 2: Create the IAM Role
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+EBS_CSI_POLICY_ARN=arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2
 OIDC_PROVIDER=$(aws eks describe-cluster --name my-cluster \
   --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
 
@@ -192,7 +81,7 @@ aws iam create-role \
 
 aws iam attach-role-policy \
   --role-name AmazonEKS_EBS_CSI_DriverRole \
-  --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/AmazonEBSCSIDriverPolicy"
+  --policy-arn "${EBS_CSI_POLICY_ARN}"
 ```
 
 ## Step 3: Define Flux Resources
@@ -233,7 +122,7 @@ spec:
   chart:
     spec:
       chart: aws-ebs-csi-driver
-      version: "2.28.x"
+      version: "2.59.x"
       sourceRef:
         kind: HelmRepository
         name: aws-ebs-csi-driver
@@ -310,7 +199,6 @@ spec:
     name: flux-system
   path: ./infrastructure/ebs-csi
   prune: true
-  wait: true
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
