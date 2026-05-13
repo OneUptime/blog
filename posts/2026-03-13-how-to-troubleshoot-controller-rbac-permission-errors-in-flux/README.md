@@ -63,13 +63,13 @@ Each controller has its own service account:
 Check what roles are bound to a specific service account:
 
 ```bash
-kubectl get clusterrolebindings -o jsonpath='{range .items[?(@.subjects[0].name=="kustomize-controller")]}{.metadata.name}{"\t"}{.roleRef.name}{"\n"}{end}'
+kubectl get clusterrolebindings -o go-template='{{range .items}}{{ $name := .metadata.name }}{{ $role := .roleRef.name }}{{range .subjects}}{{if and (eq .kind "ServiceAccount") (eq .name "kustomize-controller") (eq .namespace "flux-system")}}{{$name}}{{"\t"}}{{$role}}{{"\n"}}{{end}}{{end}}{{end}}'
 ```
 
 Check namespace-scoped role bindings:
 
 ```bash
-kubectl get rolebindings --all-namespaces -o jsonpath='{range .items[?(@.subjects[0].name=="kustomize-controller")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.roleRef.name}{"\n"}{end}'
+kubectl get rolebindings --all-namespaces -o go-template='{{range .items}}{{ $ns := .metadata.namespace }}{{ $name := .metadata.name }}{{ $role := .roleRef.name }}{{range .subjects}}{{if and (eq .kind "ServiceAccount") (eq .name "kustomize-controller") (eq .namespace "flux-system")}}{{$ns}}{{"\t"}}{{$name}}{{"\t"}}{{$role}}{{"\n"}}{{end}}{{end}}{{end}}'
 ```
 
 ## Step 3: Test Specific Permissions
@@ -196,6 +196,7 @@ metadata:
   name: my-app
   namespace: flux-system
 spec:
+  interval: 5m
   serviceAccountName: my-app-deployer
   sourceRef:
     kind: GitRepository
