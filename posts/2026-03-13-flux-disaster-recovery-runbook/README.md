@@ -51,7 +51,7 @@ Every runbook starts with meta-information so responders know who to call and wh
 
 ## Step 2: Scenario 1 - Flux Controllers Not Running (P1)
 
-```markdown
+````markdown
 ### Scenario: Flux Controllers Down
 
 **Symptoms:**
@@ -64,7 +64,7 @@ Every runbook starts with meta-information so responders know who to call and wh
 kubectl get pods -n flux-system
 kubectl describe pod -n flux-system -l app=source-controller
 kubectl logs -n flux-system deployment/source-controller --tail=50
-```plaintext
+```
 
 **Recovery:**
 ```bash
@@ -83,18 +83,18 @@ flux bootstrap github \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/production \
-  --token-env=GITHUB_TOKEN
+  --token-auth
 
 # Step 4: Verify recovery
 flux get all -A
-```plaintext
+```
 
 **Expected RTO:** 5-10 minutes
-```
+````
 
 ## Step 3: Scenario 2 - Git Repository Unreachable (P1)
 
-```markdown
+````markdown
 ### Scenario: Git Repository Unreachable
 
 **Symptoms:**
@@ -104,9 +104,9 @@ flux get all -A
 **Diagnosis:**
 ```bash
 flux get sources git -A
-flux describe source git flux-system
+kubectl describe gitrepository flux-system -n flux-system
 kubectl logs -n flux-system deployment/source-controller | grep -i error
-```plaintext
+```
 
 **Recovery - Authentication Issue:**
 ```bash
@@ -118,7 +118,7 @@ kubectl create secret generic flux-system \
   --from-literal=password="$NEW_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 flux reconcile source git flux-system
-```plaintext
+```
 
 **Recovery - Repository Unreachable (failover to mirror):**
 ```bash
@@ -126,14 +126,14 @@ kubectl patch gitrepository flux-system -n flux-system \
   --type=merge \
   -p '{"spec":{"url":"https://gitea.internal.example.com/my-org/my-fleet"}}'
 flux reconcile source git flux-system
-```plaintext
+```
 
 **Expected RTO:** 3-5 minutes
-```
+````
 
 ## Step 4: Scenario 3 - Full Cluster Rebuild (P0)
 
-```markdown
+````markdown
 ### Scenario: Full Cluster Rebuild
 
 **Symptoms:**
@@ -158,56 +158,56 @@ flux bootstrap github \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/production \
-  --token-env=GITHUB_TOKEN
+  --token-auth
 
 # Step 3: Restore Sealed Secrets master key
 op read 'op://Production/sealed-secrets-master-key/notesPlain' \
   > /tmp/sealed-secrets-key.yaml
-kubectl apply -f /tmp/sealed-secrets-key.yaml -n kube-system
+kubectl apply -f /tmp/sealed-secrets-key.yaml -n flux-system
 rm /tmp/sealed-secrets-key.yaml
-kubectl rollout restart deployment sealed-secrets -n kube-system
+kubectl rollout restart deployment sealed-secrets-controller -n flux-system
 
 # Step 4: Wait for reconciliation
 flux reconcile kustomization flux-system --with-source
 kubectl wait kustomization/apps -n flux-system \
-  --for=condition=ready --timeout=600s
+  --for=condition=Ready --timeout=600s
 
 # Step 5: Validate
 kubectl get pods -A | grep -v Running | grep -v Completed
 flux get all -A | grep -v True
-```plaintext
+```
 
 **Expected RTO:** 20-45 minutes
-```
+````
 
 ## Step 5: Scenario 4 - HelmRelease Failing (P2)
 
-```markdown
+````markdown
 ### Scenario: HelmRelease Stuck or Failing
 
 **Diagnosis:**
 ```bash
 flux get helmreleases -A
-flux describe helmrelease my-app -n production
+kubectl describe helmrelease my-app -n production
 helm history my-app -n production
-```plaintext
+```
 
 **Recovery - Rollback to last good release:**
 ```bash
 flux suspend helmrelease my-app -n production
 helm rollback my-app -n production
 flux resume helmrelease my-app -n production
-```plaintext
+```
 
 **Recovery - Force re-install:**
 ```bash
 flux suspend helmrelease my-app -n production
 helm uninstall my-app -n production
 flux resume helmrelease my-app -n production
-```plaintext
+```
 
 **Expected RTO:** 5-15 minutes
-```
+````
 
 ## Step 6: Runbook Maintenance and Testing
 
