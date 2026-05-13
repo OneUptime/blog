@@ -20,22 +20,27 @@ Deploying Piraeus through Flux CD gives you GitOps-managed replicated storage in
 
 - Kubernetes v1.26+ with Flux CD bootstrapped
 - Nodes with raw block devices or LVM thin pools for LINSTOR storage pools
-- Kernel version 5.10+ (for DRBD 9.x in-tree or dkms module)
+- Linux nodes with kernel headers available so the Piraeus DRBD module loader can build or load DRBD 9
 - `kubectl` and `flux` CLIs installed
 
-## Step 1: Add the Piraeus HelmRepository
+## Step 1: Add the Piraeus OCIRepository
 
 ```yaml
-# infrastructure/sources/piraeus-helm.yaml
+# infrastructure/sources/piraeus-oci.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: piraeus
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://piraeus.io/helm-charts
+  url: oci://ghcr.io/piraeusdatastore/piraeus-operator/piraeus
+  ref:
+    semver: "2.7.0"
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
 ```
 
 ## Step 2: Create the Namespace
@@ -59,15 +64,14 @@ metadata:
   namespace: piraeus-datastore
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: piraeus-operator
-      version: "2.7.0"
-      sourceRef:
-        kind: HelmRepository
-        name: piraeus
-        namespace: flux-system
+  chartRef:
+    kind: OCIRepository
+    name: piraeus
+    namespace: flux-system
   values:
+    # Install the Piraeus CRDs with the operator chart
+    installCRDs: true
+
     # Operator controller resources
     operator:
       resources:
@@ -78,14 +82,9 @@ spec:
           cpu: "500m"
           memory: "256Mi"
 
-    # Deploy the LINSTOR CSI driver alongside the operator
-    csiDriver:
-      enabled: true
-
-    # Use cert-manager for webhook TLS
-    webhooks:
-      certManager:
-        enabled: true
+    # Let the chart generate the webhook TLS certificate
+    tls:
+      autogenerate: true
 ```
 
 ## Step 4: Configure the LINSTOR Cluster
@@ -100,55 +99,40 @@ metadata:
 spec:
   # LINSTOR controller configuration
   controller:
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "512Mi"
-      limits:
-        cpu: "1"
-        memory: "1Gi"
-    # Internal database for cluster state
-    dbConnectionURL: k8s   # use Kubernetes CRDs as the controller database
+    enabled: true
+    podTemplate:
+      spec:
+        containers:
+          - name: linstor-controller
+            resources:
+              requests:
+                cpu: "200m"
+                memory: "512Mi"
+              limits:
+                cpu: "1"
+                memory: "1Gi"
 
-  # Properties applied to all storage nodes
+  # Properties applied at the LINSTOR controller level
   properties:
     - name: DrbdOptions/auto-quorum
-      value: io-error   # evict fencing on quorum loss
-    - name: DrbdOptions/on-no-data-accessible
+      value: io-error   # return I/O errors on quorum loss
+    - name: DrbdOptions/Resource/on-no-data-accessible
       value: io-error
 
   # CSI driver configuration
   csiController:
-    resources:
-      requests:
-        cpu: "50m"
-        memory: "64Mi"
-      limits:
-        cpu: "200m"
-        memory: "256Mi"
-
-  # Patches applied to the satellite DaemonSet
-  patches:
-    - target:
-        kind: DaemonSet
-        name: linstor-satellite
-      patch: |-
-        apiVersion: apps/v1
-        kind: DaemonSet
-        metadata:
-          name: linstor-satellite
-        spec:
-          template:
-            spec:
-              containers:
-                - name: linstor-satellite
-                  resources:
-                    requests:
-                      cpu: "200m"
-                      memory: "256Mi"
-                    limits:
-                      cpu: "2"
-                      memory: "2Gi"
+    enabled: true
+    podTemplate:
+      spec:
+        containers:
+          - name: linstor-csi
+            resources:
+              requests:
+                cpu: "50m"
+                memory: "64Mi"
+              limits:
+                cpu: "200m"
+                memory: "256Mi"
 ```
 
 ## Step 5: Configure Satellite Storage Pools
@@ -163,8 +147,7 @@ metadata:
 spec:
   # Apply to all nodes with the storage label
   nodeSelector:
-    matchLabels:
-      piraeus.io/satellite: "true"
+    piraeus.io/satellite: "true"
 
   # LVM thin pool storage configuration
   storagePools:
@@ -179,6 +162,19 @@ spec:
     - name: Aux/topology-zone
       valueFrom:
         nodeFieldRef: metadata.labels['topology.kubernetes.io/zone']
+
+  # Satellite pod resources
+  podTemplate:
+    spec:
+      containers:
+        - name: linstor-satellite
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
 ```
 
 Label your storage nodes:
@@ -209,7 +205,7 @@ reclaimPolicy: Delete
 parameters:
   linstor.csi.linbit.com/storagePool: thinpool
   linstor.csi.linbit.com/placementCount: "2"   # 2 replicas
-  linstor.csi.linbit.com/layerList: DRBD STORAGE
+  linstor.csi.linbit.com/layerList: "drbd storage"
   property.linstor.csi.linbit.com/DrbdOptions/Net/rr-conflict: retry-connect
 ---
 # Replicated block storage - 3 copies for critical data
@@ -224,7 +220,7 @@ reclaimPolicy: Retain   # retain for databases
 parameters:
   linstor.csi.linbit.com/storagePool: thinpool
   linstor.csi.linbit.com/placementCount: "3"   # 3 replicas
-  linstor.csi.linbit.com/layerList: DRBD STORAGE
+  linstor.csi.linbit.com/layerList: "drbd storage"
 ---
 # Local storage (no replication) - highest performance
 apiVersion: storage.k8s.io/v1
@@ -238,7 +234,7 @@ reclaimPolicy: Delete
 parameters:
   linstor.csi.linbit.com/storagePool: thinpool
   linstor.csi.linbit.com/placementCount: "1"   # no replication
-  linstor.csi.linbit.com/layerList: STORAGE     # no DRBD layer
+  linstor.csi.linbit.com/layerList: "storage"   # no DRBD layer
 ```
 
 ## Step 7: Configure VolumeSnapshotClass
@@ -253,8 +249,6 @@ metadata:
     snapshot.storage.kubernetes.io/is-default-class: "true"
 driver: linstor.csi.linbit.com
 deletionPolicy: Delete
-parameters:
-  linstor.csi.linbit.com/snap-storagePool: thinpool
 ```
 
 ## Step 8: Flux Kustomization
