@@ -10,7 +10,7 @@ Description: Deploy CrunchyData PGO (Crunchy Postgres Operator) to Kubernetes us
 
 ## Introduction
 
-The Crunchy Postgres Operator (PGO) from CrunchyData is a Kubernetes-native PostgreSQL operator that emphasizes enterprise readiness with features like pgBouncer connection pooling, pgBackRest backup management, and built-in Prometheus monitoring. PGO v5 was redesigned from scratch to follow Kubernetes operator best practices and is the basis for the Percona PostgreSQL Operator. Red Hat OpenShift Data Foundation uses PGO as its PostgreSQL engine.
+The Crunchy Postgres Operator (PGO) from CrunchyData is a Kubernetes-native PostgreSQL operator that emphasizes enterprise readiness with features like pgBouncer connection pooling, pgBackRest backup management, and built-in Prometheus monitoring. PGO v5 was redesigned from scratch to follow Kubernetes operator best practices, and the Percona Operator for PostgreSQL is based on CrunchyData's PostgreSQL Operator.
 
 Deploying PGO through Flux CD provides GitOps control over the operator installation and over the `PostgresCluster` CRDs that define each PostgreSQL cluster. Teams can provision new databases via pull requests and have cluster topology, backup configuration, and user management all version-controlled.
 
@@ -42,15 +42,20 @@ spec:
 ## Step 2: Deploy the PGO Operator
 
 ```yaml
-# infrastructure/databases/pgo/namespace.yaml
+# infrastructure/databases/pgo/operator/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: postgres-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: databases
 ```
 
 ```yaml
-# infrastructure/databases/pgo/operator.yaml
+# infrastructure/databases/pgo/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -84,14 +89,14 @@ spec:
 ## Step 3: Create a PostgresCluster
 
 ```yaml
-# infrastructure/databases/pgo/my-cluster.yaml
+# infrastructure/databases/pgo/clusters/my-cluster.yaml
 apiVersion: postgres-operator.crunchydata.com/v1beta1
 kind: PostgresCluster
 metadata:
   name: hippo
   namespace: databases
 spec:
-  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-16.3-0
+  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-16.4-0
   postgresVersion: 16
 
   instances:
@@ -124,7 +129,7 @@ spec:
   # PgBouncer connection pooler
   proxy:
     pgBouncer:
-      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbouncer:ubi8-1.22-0
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbouncer:ubi8-1.22-4
       replicas: 2
       resources:
         requests:
@@ -134,7 +139,14 @@ spec:
   # pgBackRest backup configuration
   backups:
     pgbackrest:
-      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.51-0
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.52.1-1
+      configuration:
+        - secret:
+            name: hippo-pgbackrest-secret
+      manual:
+        repoName: repo1
+        options:
+          - --type=full
       repos:
         - name: repo1
           schedules:
@@ -170,7 +182,7 @@ spec:
   monitoring:
     pgmonitor:
       exporter:
-        image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres-exporter:ubi8-5.6.1-0
+        image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres-exporter:ubi8-0.15.0-10
         resources:
           requests:
             cpu: "50m"
@@ -180,7 +192,7 @@ spec:
 ## Step 4: S3 Credentials for pgBackRest
 
 ```yaml
-# infrastructure/databases/pgo/pgbackrest-secret.yaml (use SealedSecret)
+# infrastructure/databases/pgo/clusters/pgbackrest-secret.yaml (use SealedSecret)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -196,24 +208,39 @@ stringData:
 ## Step 5: Flux Kustomization
 
 ```yaml
-# clusters/production/pgo-kustomization.yaml
+# clusters/production/pgo-operator-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: crunchy-pgo
+  name: crunchy-pgo-operator
   namespace: flux-system
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/databases/pgo
+  path: ./infrastructure/databases/pgo/operator
   prune: true
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
       name: pgo
       namespace: postgres-operator
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crunchy-pgo-clusters
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/databases/pgo/clusters
+  prune: true
+  dependsOn:
+    - name: crunchy-pgo-operator
 ```
 
 ## Step 6: Verify the Cluster
@@ -235,7 +262,7 @@ kubectl get secret hippo-pguser-app -n databases \
 
 # Trigger a manual backup
 kubectl annotate postgrescluster hippo -n databases \
-  postgres-operator.crunchydata.com/pgbackrest-backup="$(date)"
+  --overwrite postgres-operator.crunchydata.com/pgbackrest-backup="$(date)"
 ```
 
 ## Best Practices
