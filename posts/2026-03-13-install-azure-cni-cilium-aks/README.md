@@ -4,47 +4,35 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
-Description: Step-by-step guide to installing Cilium as the CNI plugin on Azure Kubernetes Service using the Azure CNI Powered by Cilium feature.
+Description: Step-by-step guide to enabling the Cilium data plane on Azure Kubernetes Service using the Azure CNI Powered by Cilium feature.
 
 ---
 
 ## Introduction
 
-Azure Kubernetes Service supports Cilium as a CNI through the "Azure CNI Powered by Cilium" feature. This integration combines Azure's native IP address management (IPAM) with Cilium's eBPF-based networking, providing advanced network policy enforcement, transparent encryption, and deep observability without replacing Azure's networking plane.
+Azure Kubernetes Service supports Cilium as the data plane through the "Azure CNI Powered by Cilium" feature. This integration combines Azure's native IP address management (IPAM) with Cilium's eBPF-based networking, providing advanced network policy enforcement and improved observability without replacing Azure's networking plane. Features such as transit encryption and Hubble-based observability are available through Advanced Container Networking Services (ACNS).
 
-This guide covers enabling Cilium CNI on a new AKS cluster and verifying the installation with Cilium's connectivity tests.
+This guide covers enabling the Cilium data plane on a new AKS cluster and verifying the installation with Cilium's connectivity tests.
 
 ## Prerequisites
 
-- Azure CLI (`az`) installed and authenticated
+- Azure CLI (`az`) version 2.48.1 or later installed and authenticated
 - Azure subscription with AKS permissions
 - `kubectl` installed
-- `cilium` CLI installed (`curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/latest/download/cilium-linux-amd64.tar.gz`)
+- `cilium` CLI installed
+- For Hubble in Step 4, Azure CLI 2.79.0 or later, the `hubble` CLI installed, and an AKS cluster running Kubernetes 1.29 or later
 
-## Step 1: Register the Azure CNI Cilium Feature
+## Step 1: Verify Azure CLI and Resource Provider
 
 ```bash
-# Register the required Azure feature flags for AKS Cilium CNI
+# Check the installed Azure CLI version
+az --version
 
-az feature register \
-  --namespace Microsoft.ContainerService \
-  --name AzureOverlayPreview
-
-az feature register \
-  --namespace Microsoft.ContainerService \
-  --name CiliumDataplane
-
-# Wait for feature registration (this may take a few minutes)
-az feature show \
-  --namespace Microsoft.ContainerService \
-  --name CiliumDataplane \
-  --query properties.state
-
-# Refresh the provider registration after features are registered
+# Register or refresh the AKS resource provider
 az provider register --namespace Microsoft.ContainerService
 ```
 
-## Step 2: Create an AKS Cluster with Cilium CNI
+## Step 2: Create an AKS Cluster with Azure CNI Powered by Cilium
 
 ```bash
 # Set variables for the cluster
@@ -64,7 +52,6 @@ az aks create \
   --location $LOCATION \
   --network-plugin azure \
   --network-plugin-mode overlay \
-  # Enable Cilium as the dataplane
   --network-dataplane cilium \
   --pod-cidr 192.168.0.0/16 \
   --node-count 3 \
@@ -88,26 +75,41 @@ kubectl exec -n kube-system ds/cilium -- cilium status
 
 # Use the Cilium CLI for a comprehensive status check
 cilium status --wait
+
+# Run Cilium connectivity tests
+cilium connectivity test
 ```
 
 ## Step 4: Enable Hubble for Network Observability
 
-Hubble is Cilium's built-in network observability layer:
+Hubble is Cilium's built-in network observability layer. On AKS, enable it through Advanced Container Networking Services:
 
 ```bash
-# Enable Hubble on the existing AKS cluster with Cilium
+# Enable ACNS on the existing AKS cluster with Cilium
 az aks update \
   --resource-group $RESOURCE_GROUP \
   --name $CLUSTER_NAME \
-  --enable-azure-monitor-metrics
+  --enable-acns
 
-# Enable Hubble via Cilium CLI
-cilium hubble enable --ui
+# Verify Hubble Relay is running
+kubectl get pods -o wide -n kube-system -l k8s-app=hubble-relay
 
-# Port-forward to access Hubble UI
-cilium hubble ui &
+# Port-forward Hubble Relay for the Hubble CLI
+kubectl port-forward -n kube-system svc/hubble-relay --address 127.0.0.1 4245:443
 
-# Use Hubble CLI to observe network flows
+# Configure Hubble CLI TLS certificates in another terminal
+CERT_DIR="$(pwd)/.certs"
+mkdir -p "$CERT_DIR"
+kubectl get secret hubble-relay-client-certs -n kube-system -o jsonpath="{.data['tls\.crt']}" | base64 -d > "$CERT_DIR/tls.crt"
+kubectl get secret hubble-relay-client-certs -n kube-system -o jsonpath="{.data['tls\.key']}" | base64 -d > "$CERT_DIR/tls.key"
+kubectl get secret hubble-relay-client-certs -n kube-system -o jsonpath="{.data['ca\.crt']}" | base64 -d > "$CERT_DIR/ca.crt"
+hubble config set tls-client-cert-file "$CERT_DIR/tls.crt"
+hubble config set tls-client-key-file "$CERT_DIR/tls.key"
+hubble config set tls-ca-cert-files "$CERT_DIR/ca.crt"
+hubble config set tls true
+hubble config set tls-server-name instance.hubble-relay.cilium.io
+
+# Use the Hubble CLI to observe network flows
 hubble observe --namespace production --follow
 ```
 
@@ -137,11 +139,11 @@ spec:
 ## Best Practices
 
 - Use Azure CNI Overlay mode with Cilium to conserve IP addresses in large clusters
-- Enable Hubble for network flow visibility before deploying production workloads
+- Enable ACNS for Hubble-based network flow visibility before deploying production workloads
 - Apply `CiliumNetworkPolicy` resources gradually, starting with deny-all and explicitly allowing required traffic
 - Monitor Cilium agent health with `cilium status` as part of your cluster health checks
 - Use Azure Policy to enforce network policy requirements across all AKS clusters in your subscription
 
 ## Conclusion
 
-Azure CNI Powered by Cilium provides the best of both worlds: Azure's native IP management and Cilium's eBPF-based network policies, transparent encryption, and deep observability. The integration is seamless for AKS users and provides significantly better network policy enforcement and visibility compared to the standard Azure CNI. Enable Hubble alongside Cilium for production observability from day one.
+Azure CNI Powered by Cilium provides the best of both worlds: Azure's native IP management and Cilium's eBPF-based network policies, with optional ACNS features for transit encryption and deep observability. The integration is seamless for AKS users and provides more efficient network policy enforcement and better visibility compared to the standard Azure CNI. Enable ACNS alongside Cilium for production observability from day one.
