@@ -66,7 +66,7 @@ istioctl verify-install
 
 ```bash
 # Install Prometheus for Istio metrics
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 
 # Wait for Prometheus
 kubectl rollout status deployment/prometheus -n istio-system
@@ -79,9 +79,13 @@ kubectl rollout status deployment/prometheus -n istio-system
 helm repo add flagger https://flagger.app
 helm repo update
 
+# Install Flagger's Canary CRD
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger for Istio
 helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 
@@ -172,12 +176,12 @@ spec:
     port: 9898
     targetPort: 9898
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
     hosts:
       - "*"
     trafficPolicy:
       tls:
-        mode: ISTIO_MUTUAL
+        mode: DISABLE
   analysis:
     interval: 1m
     threshold: 5
