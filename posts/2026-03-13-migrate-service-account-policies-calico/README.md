@@ -10,7 +10,7 @@ Description: Migrate from label-based or namespace-scoped Calico policies to ser
 
 ## Introduction
 
-Migrating from label-based policies to service account-based policies is a security upgrade that makes your network access controls harder to bypass. Unlike labels, service accounts cannot be modified by a compromised pod, making them a more reliable identity mechanism for sensitive traffic controls.
+Migrating from label-based policies to service account-based policies is a security upgrade that makes your network access controls harder to bypass. Unlike workload labels, service account assignment and service account changes are controlled through Kubernetes pod specs and RBAC, making them a more reliable identity mechanism for sensitive traffic controls.
 
 The migration has two prerequisites: all workloads must be running with dedicated service accounts, and the new SA-based policies must be tested before the old label-based ones are removed.
 
@@ -18,7 +18,7 @@ The migration has two prerequisites: all workloads must be running with dedicate
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
-- RBAC access to create service accounts across all namespaces
+- RBAC access to create service accounts and update workload pod templates across all namespaces
 
 ## Step 1: Inventory Existing Label-Based Policies
 
@@ -46,15 +46,7 @@ done
 ```bash
 kubectl get deployments --all-namespaces -o json | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | while read ns name; do
   SA_NAME="${name}-sa"
-  kubectl patch deployment "$name" -n "$ns" --type=merge -p "{
-    "spec": {
-      "template": {
-        "spec": {
-          "serviceAccountName": "$SA_NAME"
-        }
-      }
-    }
-  }"
+  kubectl set serviceaccount deployment "$name" "$SA_NAME" -n "$ns"
   echo "Updated deployment $name in $ns to use SA: $SA_NAME"
 done
 ```
@@ -74,11 +66,13 @@ metadata:
   namespace: production
 spec:
   order: 100
-  serviceAccountSelector: name == 'backend-sa'
+  serviceAccountSelector: projectcalico.org/name == 'backend-sa'
   ingress:
     - action: Allow
       source:
-        serviceAccountSelector: name == 'frontend-sa'
+        serviceAccounts:
+          names:
+            - frontend-sa
     - action: Deny
   types:
     - Ingress
