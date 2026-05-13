@@ -10,7 +10,7 @@ Description: Learn how to handle orphaned resources that remain in your cluster 
 
 ## Introduction
 
-When you delete a Flux Kustomization resource from your cluster, the behavior regarding the managed resources depends on your configuration. By default, Flux will attempt to garbage collect all resources tracked in the Kustomization inventory. However, there are situations where resources become orphaned, meaning they remain in the cluster without any Flux Kustomization managing them. This can happen due to misconfiguration, partial failures during deletion, or intentional design choices.
+When you delete a Flux Kustomization resource from your cluster, the behavior regarding the managed resources depends on your configuration. By default, Flux mirrors the Kustomization's `prune` setting through the `MirrorPrune` deletion policy: resources are garbage collected when `prune: true` and orphaned when `prune: false`. However, there are situations where resources become orphaned, meaning they remain in the cluster without any Flux Kustomization managing them. This can happen due to misconfiguration, partial failures during deletion, or intentional design choices.
 
 Understanding how to handle these orphaned resources is critical for maintaining a clean and predictable cluster state. This post covers the different scenarios that lead to orphaned resources and how to address each one.
 
@@ -22,11 +22,13 @@ Understanding how to handle these orphaned resources is critical for maintaining
 
 ## What Happens When You Delete a Kustomization
 
-When a Flux Kustomization is deleted, the kustomize-controller processes the deletion based on the `prune` setting:
+When a Flux Kustomization is deleted, the kustomize-controller processes the deletion based on the `deletionPolicy` and `prune` settings:
 
-If `prune: true` is set, Flux attempts to delete all resources in the Kustomization's inventory before the Kustomization itself is removed. This is handled through a Kubernetes finalizer.
+With the default `deletionPolicy: MirrorPrune`, if `prune: true` is set, Flux attempts to delete the resources in the Kustomization's inventory when the Kustomization is deleted.
 
-If `prune: false` is set, Flux removes the Kustomization without touching any of the managed resources. All resources remain in the cluster as orphans.
+With the default `deletionPolicy: MirrorPrune`, if `prune: false` is set, Flux removes the Kustomization without deleting the managed resources. All resources remain in the cluster as orphans.
+
+You can also set `deletionPolicy: Delete`, `deletionPolicy: WaitForTermination`, or `deletionPolicy: Orphan` to control deletion behavior independently of `prune`.
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -47,10 +49,12 @@ spec:
 
 Orphaned resources are those that were once managed by a Flux Kustomization but are no longer tracked by any Kustomization. They retain the Flux labels but have no active controller managing them.
 
-To find orphaned resources, look for resources with Flux labels:
+To find orphaned resources, look for common resource types with Flux labels:
 
 ```bash
-kubectl get all --all-namespaces -l kustomize.toolkit.fluxcd.io/name=my-app
+kubectl get deployments,services,configmaps,secrets,serviceaccounts --all-namespaces \
+  -l kustomize.toolkit.fluxcd.io/name=my-app \
+  -l kustomize.toolkit.fluxcd.io/namespace=flux-system
 ```
 
 If this returns resources but the `my-app` Kustomization no longer exists, those resources are orphaned:
@@ -65,7 +69,7 @@ If the Kustomization is not found, any resources still carrying its labels are o
 
 Sometimes you want to remove the Kustomization without deleting the managed resources. This is common during migrations or when transferring resource ownership to another controller.
 
-To intentionally orphan resources, you have two options. First, set `prune: false` before deleting:
+To intentionally orphan resources, you have two supported options. First, set `prune: false` before deleting when using the default `MirrorPrune` deletion policy:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -89,16 +93,32 @@ kubectl apply -f kustomization.yaml
 kubectl delete kustomization my-app -n flux-system
 ```
 
-Second, you can remove the finalizer to skip garbage collection entirely:
+Second, set `deletionPolicy: Orphan` before deleting:
+
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./apps/my-app
+  prune: true
+  deletionPolicy: Orphan
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+```
+
+Apply the change, then delete:
 
 ```bash
-kubectl patch kustomization my-app -n flux-system \
-  --type json \
-  -p '[{"op": "remove", "path": "/metadata/finalizers"}]'
+kubectl apply -f kustomization.yaml
 kubectl delete kustomization my-app -n flux-system
 ```
 
-This removes the finalizer that triggers garbage collection, causing Kubernetes to delete the Kustomization resource immediately without cleaning up managed resources.
+This tells Flux to leave the managed resources when the Kustomization is deleted.
 
 ## Cleaning Up Orphaned Resources
 
@@ -107,31 +127,42 @@ If you have orphaned resources that need to be removed, you can clean them up us
 ```bash
 # List all orphaned resources for a deleted Kustomization
 
-kubectl get all --all-namespaces \
+kubectl get deployments,services,configmaps,secrets,serviceaccounts --all-namespaces \
   -l kustomize.toolkit.fluxcd.io/name=my-app \
   -l kustomize.toolkit.fluxcd.io/namespace=flux-system
 
 # Delete orphaned Deployments
 kubectl delete deployments --all-namespaces \
-  -l kustomize.toolkit.fluxcd.io/name=my-app
+  -l kustomize.toolkit.fluxcd.io/name=my-app \
+  -l kustomize.toolkit.fluxcd.io/namespace=flux-system
 
 # Delete orphaned Services
 kubectl delete services --all-namespaces \
-  -l kustomize.toolkit.fluxcd.io/name=my-app
+  -l kustomize.toolkit.fluxcd.io/name=my-app \
+  -l kustomize.toolkit.fluxcd.io/namespace=flux-system
 
 # Delete orphaned ConfigMaps
 kubectl delete configmaps --all-namespaces \
-  -l kustomize.toolkit.fluxcd.io/name=my-app
+  -l kustomize.toolkit.fluxcd.io/name=my-app \
+  -l kustomize.toolkit.fluxcd.io/namespace=flux-system
 ```
 
 For a more thorough cleanup, check multiple resource types:
 
 ```bash
-for resource in deployments services configmaps secrets serviceaccounts \
-  clusterroles clusterrolebindings roles rolebindings; do
+for resource in deployments services configmaps secrets serviceaccounts roles rolebindings; do
   echo "Checking $resource..."
   kubectl get $resource --all-namespaces \
     -l kustomize.toolkit.fluxcd.io/name=my-app \
+    -l kustomize.toolkit.fluxcd.io/namespace=flux-system \
+    --no-headers 2>/dev/null
+done
+
+for resource in clusterroles clusterrolebindings; do
+  echo "Checking $resource..."
+  kubectl get $resource \
+    -l kustomize.toolkit.fluxcd.io/name=my-app \
+    -l kustomize.toolkit.fluxcd.io/namespace=flux-system \
     --no-headers 2>/dev/null
 done
 ```
@@ -153,10 +184,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  force: true
 ```
 
-When Flux applies the new Kustomization, it will take ownership of any matching resources by updating the Flux labels. The `force: true` option ensures that Flux can overwrite the labels even if they reference the old Kustomization.
+When Flux applies the new Kustomization, it records the matching resources in the new Kustomization's inventory and updates the Flux ownership labels. If the apply fails because immutable fields changed, use `force: true` temporarily for that specific migration; `force` is for recreating resources on immutable field changes, not for changing ownership labels.
 
 ## Handling Partial Deletion Failures
 
@@ -182,7 +212,7 @@ kubectl get deployment my-deployment -n default -o yaml | grep -A 5 "finalizers:
 
 ## Preventing Orphaned Resources
 
-To avoid orphaned resources, follow these practices. Always use `prune: true` for Kustomizations that manage application lifecycle resources. Use the prune-disabled annotation for resources that should persist independently. Test Kustomization deletions in staging environments before production. Monitor Kustomization status regularly to catch deletion failures early.
+To avoid orphaned resources, follow these practices. Always use `prune: true` for Kustomizations that manage application lifecycle resources. Use the prune-disabled label or annotation for resources that should persist independently. Test Kustomization deletions in staging environments before production. Monitor Kustomization status regularly to catch deletion failures early.
 
 ```bash
 # Check all Kustomization statuses
