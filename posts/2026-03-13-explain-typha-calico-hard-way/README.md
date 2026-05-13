@@ -22,7 +22,7 @@ Typha is Calico's CDN equivalent: it holds one watch connection to the API serve
 
 ## The Coalescing Benefit
 
-Beyond reducing connection count, Typha also coalesces rapid updates. If a NetworkPolicy is updated five times in two seconds (as might happen during a rollout), Felix without Typha would reprogram iptables five times per node. With Typha, only the final state is delivered to Felix, resulting in one iptables reprogram per node.
+Beyond reducing connection count, Typha also caches datastore state and deduplicates events. If a resource update is not relevant to Felix, Typha can filter it before fanning out updates to clients, reducing unnecessary Felix CPU work across the cluster.
 
 This matters most in large clusters during policy rollouts or when automation tools apply many policy changes rapidly.
 
@@ -34,12 +34,11 @@ A useful analogy for engineering teams:
 
 ## How Felix Connects to Typha
 
-In a hard way installation, Felix connects to Typha using a configuration parameter.
+In a hard way installation, `calico/node` connects to Typha through a Kubernetes Service using a Felix configuration parameter.
 
 ```bash
-# In Felix configuration (/etc/calico/felix.cfg or FelixConfiguration)
-
-TyphaAddr = typha-service.calico-system.svc.cluster.local:5473
+# In the calico/node DaemonSet environment
+FELIX_TYPHAK8SSERVICENAME=calico-typha
 ```
 
 Felix opens a persistent TCP connection to Typha on port 5473. Typha authenticates Felix using mTLS certificates.
@@ -49,9 +48,9 @@ Felix opens a persistent TCP connection to Typha on port 5473. Typha authenticat
 Each Typha replica handles a configurable number of Felix connections. The recommended ratio is approximately 200 Felix connections per Typha replica.
 
 ```bash
-# Check current Typha connection count
-kubectl exec -n calico-system deployment/calico-typha -- \
-  wget -qO- http://localhost:9093/metrics | grep typha_connections_accepted
+# Check current Typha connection count when Typha metrics are enabled
+kubectl exec -n kube-system deployment/calico-typha -- \
+  wget -qO- http://localhost:9091/metrics | grep typha_connections_streaming
 ```
 
 ## RBAC Requirements
@@ -65,10 +64,10 @@ kubectl get clusterrole calico-typha -o yaml | grep -A5 rules
 
 ## Deployment Model
 
-In hard way installations, Typha runs as a Deployment (not a DaemonSet). Typically 1-3 replicas are sufficient for clusters up to 3000 nodes.
+In hard way installations, Typha runs as a Deployment (not a DaemonSet). Current Calico guidance recommends at least one Typha replica for every 200 nodes, no more than 20 replicas, and at least three replicas in production.
 
 ```bash
-kubectl get deployment -n calico-system calico-typha
+kubectl get deployment -n kube-system calico-typha
 ```
 
 ## Conclusion
