@@ -40,7 +40,7 @@ graph TD
 ```yaml
 # clusters/workloads/production-cluster/machinedeployment-default.yaml
 
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-cluster-workers-default
@@ -56,13 +56,14 @@ spec:
     matchLabels:
       cluster.x-k8s.io/cluster-name: production-cluster
       pool: default
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      # Maximum nodes that can be unavailable during rolling update
-      maxUnavailable: 0
-      # Maximum nodes above desired count during rolling update
-      maxSurge: 1
+  rollout:
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        # Maximum nodes that can be unavailable during rolling update
+        maxUnavailable: 0
+        # Maximum nodes above desired count during rolling update
+        maxSurge: 1
   template:
     metadata:
       labels:
@@ -73,11 +74,11 @@ spec:
       version: v1.29.2
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: production-cluster-workers-default
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: AWSMachineTemplate
         name: production-cluster-workers-default
 ```
@@ -89,7 +90,7 @@ Different workload types benefit from different instance types and configuration
 ```yaml
 # clusters/workloads/production-cluster/machinedeployment-compute.yaml
 # High-CPU pool for compute-intensive workloads
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-cluster-workers-compute
@@ -101,11 +102,12 @@ spec:
     matchLabels:
       cluster.x-k8s.io/cluster-name: production-cluster
       pool: compute
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+  rollout:
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0
+        maxSurge: 1
   template:
     metadata:
       labels:
@@ -116,11 +118,11 @@ spec:
       version: v1.29.2
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: production-cluster-workers-compute
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: AWSMachineTemplate
         name: production-cluster-workers-compute
 
@@ -154,7 +156,7 @@ spec:
 
 ```yaml
 # clusters/workloads/production-cluster/kubeadm-config-compute.yaml
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: production-cluster-workers-compute
@@ -170,9 +172,11 @@ spec:
               value: compute
               effect: NoSchedule
           kubeletExtraArgs:
-            cloud-provider: aws
+            - name: cloud-provider
+              value: external
             # Node labels applied during bootstrap
-            node-labels: "pool=compute,workload-type=compute"
+            - name: node-labels
+              value: "pool=compute,workload-type=compute"
 ```
 
 ## Step 5: Manage MachineDeployments with Flux Kustomization
@@ -194,14 +198,18 @@ spec:
   dependsOn:
     - name: workload-cluster-production
   healthChecks:
-    - apiVersion: cluster.x-k8s.io/v1beta1
+    - apiVersion: cluster.x-k8s.io/v1beta2
       kind: MachineDeployment
       name: production-cluster-workers-default
       namespace: default
-    - apiVersion: cluster.x-k8s.io/v1beta1
+    - apiVersion: cluster.x-k8s.io/v1beta2
       kind: MachineDeployment
       name: production-cluster-workers-compute
       namespace: default
+  healthCheckExprs:
+    - apiVersion: cluster.x-k8s.io/v1beta2
+      kind: MachineDeployment
+      current: status.conditions.exists(e, e.type == 'Available' && e.status == 'True')
 ```
 
 ## Step 6: Perform a Rolling Node Upgrade
@@ -232,7 +240,7 @@ kubectl get machines -n default \
 - Use `maxUnavailable: 0` and `maxSurge: 1` for production rolling updates to ensure no capacity is lost during node replacements.
 - Apply `taints` to specialized node pools via `KubeadmConfigTemplate` to ensure only workloads with the corresponding `tolerations` are scheduled on them.
 - Never modify an existing AWSMachineTemplate for rolling updates. Create a new template with a version suffix (e.g., `workers-v2`) and update the MachineDeployment reference. CAPI triggers a rolling update on the reference change.
-- Use Flux health checks on MachineDeployments to block application deployments until the node pool is fully ready.
+- Use Flux health checks or CEL-based health check expressions on MachineDeployments to block application deployments until the node pool reports `Available`.
 
 ## Conclusion
 
