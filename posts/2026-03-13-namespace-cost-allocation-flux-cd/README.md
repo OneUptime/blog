@@ -85,28 +85,34 @@ spec:
     name: cluster-config
 ```
 
-## Step 4: Integrate with OpenCost via Labels
+## Step 4: Deploy Kubecost with Label Mapping via Flux
 
-Configure OpenCost to aggregate costs by the labels Flux manages.
+OpenCost reads Kubernetes labels automatically and exposes them through the `/allocation/compute` API (e.g., `aggregate=label:team`), so no static label config is required there. Kubecost goes further and lets you map your custom labels to its built-in allocation categories via `kubecostProductConfigs.labelMappingConfigs`. Deploy it via a Flux `HelmRelease` so the mapping is version-controlled.
 
 ```yaml
-# opencost-config.yaml
-# ConfigMap configuring OpenCost to aggregate by Flux-managed cost labels
-apiVersion: v1
-kind: ConfigMap
+# flux/helmreleases/kubecost.yaml
+# HelmRelease deploying Kubecost with Flux-tracked label mapping for cost allocation
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
-  name: opencost-conf
-  namespace: opencost
-data:
-  opencost.json: |
-    {
-      "costAllocationLabels": [
-        "cost-center",
-        "team",
-        "environment"
-      ],
-      "defaultAllocationTarget": "namespace"
-    }
+  name: kubecost
+  namespace: kubecost
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: cost-analyzer
+      sourceRef:
+        kind: HelmRepository
+        name: kubecost
+        namespace: flux-system
+  values:
+    kubecostProductConfigs:
+      labelMappingConfigs:
+        enabled: true
+        team_label: "team"
+        department_label: "cost-center"
+        environment_label: "environment"
 ```
 
 ## Step 5: Audit Cost Allocation with kubectl
@@ -144,7 +150,7 @@ flowchart TD
 
 - Enforce cost labels as required fields in admission webhooks to prevent unlabeled workloads
 - Set `prune: true` in Flux Kustomizations to automatically remove orphaned namespaces
-- Use Flux Image Automation to keep quota values updated as team capacity changes
+- Update quota values through pull requests to the Flux-managed Git repository so capacity changes are reviewed and auditable
 - Review quota usage weekly and right-size quotas to match actual consumption patterns
 - Separate cost allocation labels from operational labels to keep policies clean
 
