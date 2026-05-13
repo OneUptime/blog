@@ -10,7 +10,7 @@ Description: A guide to configuring Flux CD Source Controller to authenticate wi
 
 ## Introduction
 
-Flux CD supports bearer token authentication for HTTPS Git repositories. This method is useful when your Git provider or identity system issues tokens that should be passed as HTTP bearer credentials rather than as basic auth username/password pairs. Bearer tokens are common with Azure DevOps, GitHub fine-grained tokens, and enterprise identity providers.
+Flux CD supports bearer token authentication for HTTPS Git repositories. This method is useful when your Git provider or identity system issues tokens that should be passed as HTTP bearer credentials rather than as basic auth username/password pairs. Bearer tokens are common with Azure Repos when using Microsoft Entra OAuth tokens and with enterprise identity providers.
 
 In this guide, you will learn how to create a Kubernetes Secret with a bearer token and configure a Flux `GitRepository` resource to use it.
 
@@ -27,17 +27,22 @@ How you obtain a bearer token depends on your Git provider:
 
 ### Azure DevOps
 
-Generate a Personal Access Token (PAT) from Azure DevOps:
+Obtain a Microsoft Entra OAuth token for Azure Repos:
 
-1. Go to User Settings > Personal Access Tokens.
-2. Create a new token with Code (Read) scope.
-3. Copy the generated token.
+```bash
+TOKEN=$(az account get-access-token \
+  --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+  --query "accessToken" \
+  --output tsv)
+```
 
 ### GitHub (Fine-Grained Tokens)
 
+GitHub personal access tokens should be used with basic access authentication for Git operations, not with Flux's `bearerToken` field:
+
 1. Go to Settings > Developer settings > Personal access tokens > Fine-grained tokens.
 2. Create a new token with repository access.
-3. Copy the generated token.
+3. Store it in a Flux Secret as `username` and `password`, using the token as the password.
 
 ### Custom Identity Provider
 
@@ -109,7 +114,7 @@ When Flux detects a `bearerToken` field in the Secret, it uses the token as an H
 
 ## Step 4: Handle Token Rotation
 
-Bearer tokens often have expiration times. You can update the token without downtime by patching the Secret:
+Bearer tokens often have expiration times. You can update the token without downtime by applying an updated Secret:
 
 ```bash
 kubectl create secret generic git-bearer-token \
@@ -152,7 +157,7 @@ spec:
                 -d "client_secret=$CLIENT_SECRET" | jq -r '.access_token')
               kubectl create secret generic git-bearer-token \
                 --namespace=flux-system \
-                --from-literal=bearerToken=$TOKEN \
+                --from-literal=bearerToken="$TOKEN" \
                 --dry-run=client -o yaml | kubectl apply -f -
             envFrom:
             - secretRef:
@@ -205,8 +210,8 @@ Flux uses different authentication methods based on which keys exist in the Secr
 - `username` + `password`: Basic authentication
 - `bearerToken`: Bearer token authentication
 
-Do not mix both in the same Secret. If both are present, the behavior may be unpredictable.
+Do not mix both in the same Secret. Keep only one authentication method in the Secret so the intended method is unambiguous.
 
 ## Summary
 
-Bearer token authentication with Flux provides a flexible way to authenticate with Git repositories, especially when working with Azure DevOps, fine-grained tokens, or enterprise identity providers. The key considerations are using the correct Secret key name (`bearerToken`), managing token expiration, and implementing automated rotation for short-lived tokens.
+Bearer token authentication with Flux provides a flexible way to authenticate with Git repositories, especially when working with Azure Repos using Microsoft Entra OAuth tokens or enterprise identity providers. The key considerations are using the correct Secret key name (`bearerToken`), managing token expiration, and implementing automated rotation for short-lived tokens.
