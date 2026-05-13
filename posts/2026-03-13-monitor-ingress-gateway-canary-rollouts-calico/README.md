@@ -18,7 +18,7 @@ This guide covers implementing canary traffic splitting with Calico's gateway, i
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.27+ and Gateway API CRDs installed
+- Kubernetes cluster with Calico v3.30+ and Gateway API CRDs installed
 - Calico ingress gateway deployed and functional
 - `kubectl` with admin access
 - Prometheus and Grafana for metrics collection
@@ -77,11 +77,13 @@ Measure actual traffic distribution using Prometheus metrics:
 # Port-forward to Prometheus for querying
 kubectl port-forward svc/prometheus -n monitoring 9090:9090 &
 
-# Query request count per backend to verify split ratio
+# Query request count per backend to verify split ratio.
+# Envoy Gateway generates cluster label values; inspect /stats/prometheus
+# and adjust these regexes to match your stable and canary backend clusters.
 # Stable backend requests:
-# envoy_cluster_upstream_rq_total{cluster_name="production/api-stable/8080"}
+# envoy_cluster_upstream_rq_total{envoy_cluster_name=~".*production.*api-stable.*"}
 # Canary backend requests:
-# envoy_cluster_upstream_rq_total{cluster_name="production/api-canary/8080"}
+# envoy_cluster_upstream_rq_total{envoy_cluster_name=~".*production.*api-canary.*"}
 
 # Calculate actual canary percentage:
 # (canary_requests / (stable_requests + canary_requests)) * 100
@@ -112,13 +114,13 @@ spec:
     rules:
     - alert: CanaryHighErrorRate
       expr: |
-        rate(envoy_cluster_upstream_rq_xx{
-          cluster_name=~"production/api-canary.*",
-          response_code_class="5"
-        }[5m]) /
-        rate(envoy_cluster_upstream_rq_total{
-          cluster_name=~"production/api-canary.*"
-        }[5m]) > 0.02   # Alert if canary error rate exceeds 2%
+        sum(rate(envoy_cluster_upstream_rq_xx{
+          envoy_cluster_name=~".*production.*api-canary.*",
+          envoy_response_code_class="5"
+        }[5m])) /
+        sum(rate(envoy_cluster_upstream_rq_total{
+          envoy_cluster_name=~".*production.*api-canary.*"
+        }[5m])) > 0.02   # Alert if canary error rate exceeds 2%
       for: 2m
       labels:
         severity: critical
@@ -128,14 +130,14 @@ spec:
     - alert: CanaryHighLatency
       expr: |
         histogram_quantile(0.95,
-          rate(envoy_cluster_upstream_rq_time_bucket{
-            cluster_name=~"production/api-canary.*"
-          }[5m])
+          sum by (le) (rate(envoy_cluster_upstream_rq_time_bucket{
+            envoy_cluster_name=~".*production.*api-canary.*"
+          }[5m]))
         ) > 
         histogram_quantile(0.95,
-          rate(envoy_cluster_upstream_rq_time_bucket{
-            cluster_name=~"production/api-stable.*"
-          }[5m])
+          sum by (le) (rate(envoy_cluster_upstream_rq_time_bucket{
+            envoy_cluster_name=~".*production.*api-stable.*"
+          }[5m]))
         ) * 1.5    # Alert if canary p95 is 50% higher than stable
       for: 3m
       labels:
@@ -159,7 +161,7 @@ Create a script that promotes the canary if metrics are healthy or rolls back if
 # canary-gate.sh - automated canary validation gate
 
 CANARY_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-  --data-urlencode 'query=rate(envoy_cluster_upstream_rq_xx{cluster_name=~"production/api-canary.*",response_code_class="5"}[5m])/rate(envoy_cluster_upstream_rq_total{cluster_name=~"production/api-canary.*"}[5m])' \
+  --data-urlencode 'query=sum(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~".*production.*api-canary.*",envoy_response_code_class="5"}[5m]))/sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~".*production.*api-canary.*"}[5m]))' \
   | jq '.data.result[0].value[1]' | tr -d '"')
 
 echo "Canary error rate: $CANARY_ERROR_RATE"
@@ -181,12 +183,13 @@ Set up external monitoring to validate the canary from the user's perspective.
 Configure OneUptime monitors targeting the canary endpoint:
 
 ```bash
-# Test the canary route specifically using a canary-specific header
+# After adding an HTTPRoute rule that matches X-Canary: true and routes it to
+# api-canary, test the canary route specifically using the canary header
 curl -H "X-Canary: true" https://api.example.com/health
 
 # Configure OneUptime monitors:
 # 1. Standard health check: https://api.example.com/health (hits both stable and canary)
-# 2. Canary-specific check: https://api.example.com/health with X-Canary header
+# 2. Canary-specific check: https://api.example.com/health with X-Canary header and a matching HTTPRoute rule
 # 3. Alert on response time > 500ms for canary check
 # 4. Alert on any non-200 responses from canary endpoint
 ```
