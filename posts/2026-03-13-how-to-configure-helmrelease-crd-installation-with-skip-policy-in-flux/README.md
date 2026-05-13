@@ -155,7 +155,7 @@ spec:
   chart:
     spec:
       chart: prometheus-operator-crds
-      version: "12.x"
+      version: "10.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -201,6 +201,8 @@ spec:
     remediation:
       retries: 3
   values:
+    crds:
+      enabled: false
     prometheusOperator:
       admissionWebhooks:
         certManager:
