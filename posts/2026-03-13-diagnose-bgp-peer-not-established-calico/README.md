@@ -28,7 +28,7 @@ The BGP session establishment process requires: TCP connectivity on port 179 bet
 - TCP port 179 blocked by firewall (host firewall or cloud security group)
 - BIRD daemon not running or crashed on the peer node
 - Authentication password configured on one side but not the other
-- BGP timer mismatches causing session timeout
+- BGP timers set too aggressively causing session timeout
 
 ## Diagnosis Steps
 
@@ -64,9 +64,10 @@ ssh <node-name> "sudo iptables -L -n | grep 179"
 **Step 5: Check BIRD log for connection errors**
 
 ```bash
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
+CALICO_NAMESPACE=calico-system # Use kube-system for manifest-based installs.
+NODE_POD=$(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o name)
-kubectl logs $NODE_POD -n kube-system -c calico-node \
+kubectl logs $NODE_POD -n "$CALICO_NAMESPACE" -c calico-node \
   | grep -i "bgp\|bird\|peer\|connect\|error" | tail -30
 ```
 
