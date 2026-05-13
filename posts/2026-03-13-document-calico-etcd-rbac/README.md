@@ -48,8 +48,8 @@ Maintain a human-readable table:
 
 | Role | User | Paths (Read) | Paths (Write) | Last Reviewed |
 |------|------|-------------|---------------|---------------|
-| `calico-felix` | `calico-felix` | `/calico/v1/policy/`, `/calico/v1/config/` | `/calico/v1/host/`, `/calico/felix/v1/` | 2026-01-15 |
-| `calico-cni` | `calico-cni` | `/calico/v1/config/`, `/calico/v1/policy/` | `/calico/v1/ipam/`, `/calico/v1/host/` | 2026-01-15 |
+| `calico-felix` | `calico-felix` | `/calico/resources/v3/projectcalico.org/*` | `/calico/felix/v1/*`, `/calico/felix/v2/*` | 2026-01-15 |
+| `calico-cni` | `calico-cni` | `/calico/resources/v3/projectcalico.org/ippools/*`, `/calico/resources/v3/projectcalico.org/clusterinformations/*`, `/calico/resources/v3/projectcalico.org/nodes/*` | `/calico/ipam/v2/*`, `/calico/resources/v3/projectcalico.org/workloadendpoints/*` | 2026-01-15 |
 
 ### 2. Certificate Inventory
 
