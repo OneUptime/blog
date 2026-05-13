@@ -18,7 +18,7 @@ This post provides a decision framework for the key ingress policy questions pro
 
 - Understanding of your organization's security requirements for inter-pod communication
 - Knowledge of how teams are organized relative to namespaces
-- Decision on Calico edition (Open Source vs. Cloud/Enterprise for tier support)
+- Decision on Calico edition and which policy features you plan to use
 
 ## Decision 1: Default Ingress Posture
 
@@ -39,11 +39,11 @@ graph TD
     Q1{Single team\nmanages all namespaces?}
     Q1 -->|Yes| GNP[Consider GlobalNetworkPolicy\nfor cluster-wide baseline]
     Q1 -->|No| Q2{Do teams need\nto write their own policies?}
-    Q2 -->|Yes| TIERED[Use Tiered Policy\nEnterprise required]
+    Q2 -->|Yes| TIERED[Use Tiered Policy\nfor delegated baselines]
     Q2 -->|No| NP[Use namespace NetworkPolicy\nmanaged by platform team]
 ```
 
-For single-team clusters, GlobalNetworkPolicy with cluster-wide baselines is the cleanest approach. For multi-team clusters, Calico Enterprise's tiered policy model lets platform teams set baselines that application teams cannot override.
+For single-team clusters, GlobalNetworkPolicy with cluster-wide baselines is the cleanest approach. For multi-team clusters, Calico's tiered policy model lets platform teams set higher-priority baselines that application teams cannot override.
 
 ## Decision 3: Standard Kubernetes NetworkPolicy vs. Calico NetworkPolicy
 
@@ -53,30 +53,30 @@ Use standard Kubernetes NetworkPolicy when:
 - Your policy requirements are simple (source/destination pod selectors, port matching)
 
 Use Calico NetworkPolicy when:
-- You need explicit `Deny` actions for audit logging of blocked traffic
+- You need explicit `Deny` actions, or `Log` actions for visibility into allowed or denied traffic
 - You need policy ordering (Calico's `order` field)
 - You need ICMP matching
 - You need service account-based selectors
-- You are using Calico's tiers (Enterprise)
+- You are using Calico's tiers
 
-Both types can coexist in the same cluster. Calico evaluates its own NetworkPolicy first, then falls through to Kubernetes NetworkPolicy if no Calico policy applies.
+Both types can coexist in the same cluster. Calico policies add ordering, explicit `Allow`/`Deny` actions, and tiers; standard Kubernetes NetworkPolicy rules remain additive, so use Calico `order` values and tiers deliberately when both policy types apply.
 
 ## Decision 4: Health Check and Kubelet Ingress
 
-Many teams forget to allow kubelet health check traffic in their deny-all policies. Without an explicit allow, pod readiness and liveness probes from the kubelet fail, causing pods to be marked as not ready.
+Many teams worry about kubelet health check traffic in their deny-all policies. Standard Kubernetes NetworkPolicy allows traffic from the pod's node, but Calico host endpoint policy or more restrictive node-level controls can still affect probes. If you use those controls, verify that readiness and liveness probes from the kubelet can reach the probe ports.
 
-Always include kubelet health check ingress in deny-all policies:
+If you must model probe traffic explicitly, scope the source to your node CIDR rather than using an empty `from` list. In Kubernetes NetworkPolicy, an empty or omitted `from` matches all sources for that rule:
 
 ```yaml
 ingress:
-# Allow kubelet health checks
-
-- from: []
+- from:
+  - ipBlock:
+      cidr: 10.0.0.0/16  # Your node CIDR
   ports:
   - port: 8080  # Your health check port
 ```
 
-Or more specifically with a HostEndpoint policy approach, allow traffic from the node network CIDR to probe ports.
+With a Calico HostEndpoint policy approach, allow traffic from the node network CIDR to probe ports.
 
 ## Decision 5: Ingress Controller Traffic
 
@@ -98,9 +98,9 @@ ingress:
 ## Best Practices
 
 - Apply deny-all ingress to every namespace at creation time, before deploying any workloads
-- Use Calico GlobalNetworkPolicy for cluster-wide baseline rules (allow health checks, allow DNS, block known bad CIDRs)
-- For multi-team clusters, use Enterprise tiers to prevent application teams from accidentally writing overly permissive policies
-- Include ingress controller and kubelet health check allows in your namespace creation template
+- Use Calico GlobalNetworkPolicy for cluster-wide baseline rules (allow required platform traffic such as health checks and DNS egress, block known bad CIDRs)
+- For multi-team clusters, use higher-priority tiers to prevent application teams from accidentally writing overly permissive policies
+- Include ingress controller and, if applicable, kubelet health check allows in your namespace creation template
 
 ## Conclusion
 
