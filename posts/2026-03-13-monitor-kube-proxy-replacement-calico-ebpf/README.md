@@ -19,7 +19,7 @@ This guide covers enabling Calico's eBPF kube-proxy replacement, validating its 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.23+ in eBPF mode
-- Linux kernel 5.3+ on all nodes (required for kube-proxy replacement)
+- Linux kernel 5.10+ on all nodes (required for kube-proxy replacement)
 - `kubectl` with admin access
 - `calicoctl` v3.27+ installed
 - kube-proxy either disabled or in standby mode
@@ -31,7 +31,7 @@ Check that all nodes meet the kernel version requirement for kube-proxy replacem
 Inspect kernel versions across all nodes:
 
 ```bash
-# Check kernel versions on all nodes (need 5.3+ for kube-proxy replacement)
+# Check kernel versions on all nodes (need 5.10+ for kube-proxy replacement)
 
 kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
@@ -74,9 +74,10 @@ kubectl apply -f calico-ebpf-config.yaml
 kubectl patch ds -n kube-system kube-proxy \
   -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico": "true"}}}}}'
 
-# Set the Kubernetes service host for Calico eBPF (critical for correct operation)
-kubectl patch installation default --type=merge \
-  -p '{"spec":{"calicoNetwork":{"kubeAPIServer":{"host":"<api-server-ip>","port":6443}}}}'
+# Create the kubernetes-services-endpoint ConfigMap (critical for eBPF operation)
+kubectl create configmap -n tigera-operator kubernetes-services-endpoint \
+  --from-literal=KUBERNETES_SERVICE_HOST=<api-server-ip> \
+  --from-literal=KUBERNETES_SERVICE_PORT=6443
 ```
 
 ## Step 3: Verify eBPF kube-proxy Replacement
@@ -144,7 +145,7 @@ spec:
     rules:
     - alert: CalicoEBPFDataplaneFailed
       expr: |
-        rate(felix_int_dataplane_failures_total[5m]) > 0
+        rate(felix_int_dataplane_failures[5m]) > 0
       for: 1m
       labels:
         severity: critical
@@ -152,12 +153,12 @@ spec:
         summary: "Calico eBPF dataplane failures - kube-proxy replacement may be broken"
     - alert: CalicoNodeNotEBPFReady
       expr: |
-        felix_bpf_enabled != 1
+        absent(felix_bpf_num_endpoints)
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Calico node {{ $labels.node }} is not running in eBPF mode"
+        summary: "No Calico nodes are reporting eBPF endpoint metrics - eBPF mode may not be active"
 ```
 
 Apply the alert rules:
