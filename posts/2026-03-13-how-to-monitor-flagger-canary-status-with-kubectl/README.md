@@ -27,8 +27,12 @@ Flagger canary resources cycle through several phases during their lifecycle:
 stateDiagram-v2
     [*] --> Initializing
     Initializing --> Initialized
+    Initialized --> Waiting
+    Waiting --> Progressing
     Initialized --> Progressing
     Progressing --> Promoting
+    Progressing --> WaitingPromotion
+    WaitingPromotion --> Promoting
     Promoting --> Finalising
     Finalising --> Succeeded
     Progressing --> Failed
@@ -36,9 +40,11 @@ stateDiagram-v2
     Succeeded --> Progressing: new revision
 ```
 
-- **Initializing**: Flagger is creating the primary and canary Deployments
+- **Initializing**: Flagger is creating the generated primary resources and configuring the canary target
 - **Initialized**: Setup is complete, waiting for a new revision
+- **Waiting**: A new revision was detected and Flagger is waiting before starting analysis
 - **Progressing**: A canary analysis is in progress with traffic shifting
+- **WaitingPromotion**: Canary analysis passed and Flagger is waiting before promotion
 - **Promoting**: Canary passed analysis, being promoted to primary
 - **Finalising**: Promotion complete, cleaning up canary resources
 - **Succeeded**: Rollout completed successfully
@@ -129,13 +135,12 @@ kubectl get canary my-app -n default \
 ### Check Primary and Canary Deployments
 
 ```bash
-# View both primary and canary deployments
-kubectl get deployments -n default | grep my-app
+# View the canary target deployment and generated primary deployment
+kubectl get deployments my-app my-app-primary -n default
 
 # Example output:
 # my-app           0/0     0            0           1h
 # my-app-primary   3/3     3            3           1h
-# my-app-canary    1/1     1            1           5m
 
 # Compare images between primary and canary
 echo "Primary image:"
@@ -143,7 +148,7 @@ kubectl get deployment my-app-primary -n default \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
 echo ""
 echo "Canary image:"
-kubectl get deployment my-app-canary -n default \
+kubectl get deployment my-app -n default \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
@@ -151,10 +156,10 @@ kubectl get deployment my-app-canary -n default \
 
 ```bash
 # List pods for primary and canary
-kubectl get pods -n default -l app=my-app
+kubectl get pods -n default -l 'app in (my-app,my-app-primary)'
 
 # Check pod readiness for canary pods
-kubectl get pods -n default -l "app=my-app,app.kubernetes.io/managed-by=flagger" \
+kubectl get pods -n default -l app=my-app \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\n"}{end}'
 ```
 
@@ -200,8 +205,7 @@ while true; do
 
   # Get deployment status
   echo "--- Deployments ---"
-  kubectl get deployments -n $NAMESPACE \
-    -l "app=$CANARY_NAME" \
+  kubectl get deployments "$CANARY_NAME" "$CANARY_NAME-primary" -n "$NAMESPACE" \
     --no-headers 2>/dev/null
   echo ""
 
@@ -243,7 +247,7 @@ kubectl logs -n flagger-system deployment/flagger \
   --tail=100 | grep my-app
 
 # Check canary pod logs for application errors
-kubectl logs -n default -l app=my-app,deploy=canary --tail=50
+kubectl logs -n default -l app=my-app --tail=50
 ```
 
 ## Conclusion
