@@ -44,7 +44,7 @@ spec:
         name: app-secrets
 ```
 
-The Secret must be in the same namespace as the Kustomization (typically `flux-system`). Each key in the Secret's `data` or `stringData` becomes a substitution variable.
+The Secret must be in the same namespace as the Kustomization (typically `flux-system`). Each key in the Secret's `data` becomes a substitution variable; when you create a Secret with `stringData`, Kubernetes stores those entries under `data`.
 
 ## Creating the Secret
 
@@ -130,13 +130,13 @@ When migrating secrets from one management system to another, optional reference
 postBuild:
   substituteFrom:
     - kind: Secret
+      name: app-secrets-v1    # Old secret format (fallback)
+    - kind: Secret
       name: app-secrets-v2    # New secret format
       optional: true
-    - kind: Secret
-      name: app-secrets-v1    # Old secret format (fallback)
 ```
 
-Since earlier entries take precedence, when `app-secrets-v2` exists, its values override `app-secrets-v1`. You can deploy the new Secret to clusters one at a time, and on clusters where it does not yet exist, the old Secret provides the values.
+Since later entries take precedence, when `app-secrets-v2` exists, its values override `app-secrets-v1`. You can deploy the new Secret to clusters one at a time, and on clusters where it does not yet exist, the old Secret provides the values.
 
 ## Using Secrets in Application Manifests
 
@@ -169,7 +169,7 @@ spec:
               value: "${REDIS_URL}"
 ```
 
-Note that this approach puts the secret values directly into the Deployment manifest as plain-text environment variables. For better security, consider creating Kubernetes Secrets in your manifests and referencing them via `secretKeyRef`:
+Note that this approach puts the secret values directly into the Deployment manifest as plain-text environment variables. For better security, consider creating Kubernetes Secrets in your manifests and referencing them via `envFrom` or `secretKeyRef`:
 
 ```yaml
 apiVersion: v1
@@ -204,7 +204,7 @@ spec:
 
 ## Combining ConfigMaps and Secrets with Defaults
 
-A comprehensive pattern uses inline defaults, required ConfigMaps, and optional Secrets:
+A comprehensive pattern uses inline non-secret values, required ConfigMaps, optional Secrets, and default expressions in manifests:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -223,7 +223,6 @@ spec:
     substitute:
       REPLICAS: "2"
       LOG_LEVEL: "info"
-      DATABASE_PASSWORD: "changeme"
     substituteFrom:
       - kind: ConfigMap
         name: cluster-config
@@ -232,29 +231,29 @@ spec:
         optional: true
 ```
 
-When the Secret does not exist, `DATABASE_PASSWORD` uses the inline default "changeme". Once the proper Secret is created on the cluster, the real password overrides the default.
+When the Secret does not exist, a manifest reference such as `${DATABASE_PASSWORD:=changeme}` uses the default "changeme". Once the proper Secret is created on the cluster, the real password supplies the value.
 
 ## Security Considerations
 
 When using Secrets in post-build substitution, keep these points in mind:
 
-1. The Secret must exist in the `flux-system` namespace, which means anyone with read access to that namespace can see the values
-2. After substitution, the secret values appear in plain text in the rendered manifests stored in the cluster
+1. The Secret must exist in the same namespace as the Kustomization, which means anyone with read access to that namespace can see the values
+2. After substitution, the secret values can appear in plain text in the resulting live resources stored in the cluster
 3. Consider using SOPS-encrypted Secrets or Sealed Secrets to manage the source Secrets in Git
-4. Audit who has access to the `flux-system` namespace
+4. Audit who has access to the Kustomization namespace
 
 ## Verifying Secret-Based Substitution
 
 Check that the Secret exists and has the expected keys:
 
 ```bash
-kubectl get secret app-secrets -n flux-system -o jsonpath='{.data}' | jq 'keys'
+kubectl get secret app-secrets -n flux-system -o json | jq '.data | keys'
 ```
 
 Check the Kustomization status:
 
 ```bash
-flux get kustomization my-app
+flux get kustomizations my-app
 ```
 
 Verify the substituted values in the resulting resources:
@@ -265,4 +264,4 @@ kubectl get deployment my-app -o jsonpath='{.spec.template.spec.containers[0].en
 
 ## Conclusion
 
-Optional Secret references in Flux post-build substitution provide flexibility when managing sensitive configuration values across multiple environments. By marking Secret references as optional, you ensure that missing Secrets do not block deployments, which is especially useful during initial cluster setup, progressive rollouts, and secret migration workflows. Always combine this with inline defaults for critical variables and follow security best practices for managing the Secrets themselves.
+Optional Secret references in Flux post-build substitution provide flexibility when managing sensitive configuration values across multiple environments. By marking Secret references as optional, you ensure that missing Secrets do not block deployments, which is especially useful during initial cluster setup, progressive rollouts, and secret migration workflows. Always combine this with default expressions for critical variables and follow security best practices for managing the Secrets themselves.
