@@ -65,7 +65,8 @@ metadata:
 spec:
   cidr: 10.100.0.0/16    # Stable CIDR - never change this
   blockSize: 26
-  encapsulation: VXLAN
+  vxlanMode: Always
+  ipipMode: Never
   natOutgoing: true
   nodeSelector: "environment == 'production'"
 ---
@@ -79,7 +80,8 @@ metadata:
 spec:
   cidr: 10.200.0.0/16    # Stable CIDR - never change this
   blockSize: 26
-  encapsulation: VXLAN
+  vxlanMode: Always
+  ipipMode: Never
   natOutgoing: true
   nodeSelector: "environment == 'staging'"
 ```
@@ -170,9 +172,10 @@ spec:
   - name: calico-ipam-firewall
     rules:
     - alert: CalicoIPPoolModified
-      # Alert if the Calico API server reports IP pool changes
+      # Alert if calico-kube-controllers reports IP pool size changes
+      # Metric is exposed by calico-kube-controllers on port 9094
       expr: |
-        changes(calico_ipam_ippool_size_total[1h]) > 0
+        changes(ipam_ippool_size[1h]) > 0
       for: 1m
       labels:
         severity: warning
