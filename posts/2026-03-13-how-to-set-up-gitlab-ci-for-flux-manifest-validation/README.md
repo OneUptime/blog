@@ -32,7 +32,7 @@ variables:
   FLUX_VERSION: "2.2.0"
   KUBECONFORM_VERSION: "0.6.4"
 
-validate-manifests:
+flux-pre-check:
   stage: validate
   image: alpine:3.19
   before_script:
@@ -43,13 +43,14 @@ validate-manifests:
     - flux check --pre
     - echo "Flux pre-checks passed"
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - clusters/**/*
         - apps/**/*
         - infrastructure/**/*
 ```
 
-The `rules` section ensures the pipeline only triggers when Flux-related files change, reducing unnecessary pipeline runs.
+This job verifies Flux prerequisites against the configured Kubernetes context. The `rules` section ensures the job only runs for merge requests when Flux-related files change, reducing unnecessary pipeline work.
 
 ## Adding Schema Validation
 
@@ -72,7 +73,8 @@ schema-validation:
           -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
           -summary
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - clusters/**/*
         - apps/**/*
         - infrastructure/**/*
@@ -117,7 +119,8 @@ yaml-lint:
     - yamllint -c .yamllint.yml .
   allow_failure: true
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - '**/*.yaml'
         - '**/*.yml'
 ```
@@ -151,7 +154,8 @@ flux-pre-check:
   script:
     - flux check --pre
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - clusters/**/*
         - apps/**/*
         - infrastructure/**/*
@@ -169,7 +173,8 @@ schema-validation:
           -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
           -summary
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - clusters/**/*
         - apps/**/*
         - infrastructure/**/*
@@ -184,7 +189,8 @@ kustomize-build:
         kustomize build "$dir" > /dev/null || exit 1
       done
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - clusters/**/*
         - apps/**/*
         - infrastructure/**/*
@@ -198,7 +204,8 @@ yaml-lint:
     - yamllint -c .yamllint.yml .
   allow_failure: true
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - '**/*.yaml'
         - '**/*.yml'
 ```
@@ -229,9 +236,9 @@ Speed up pipeline execution by caching downloaded tools:
 
 To enforce validation, go to your project settings and configure merge request approvals. Navigate to Settings, then Merge requests, and enable "Pipelines must succeed" under Merge checks. This prevents merging when any validation job fails.
 
-## Adding Merge Request Comments
+## Adding Validation Artifacts
 
-You can add pipeline results as comments on merge requests using GitLab CI artifacts:
+You can save pipeline results on merge requests using GitLab CI artifacts:
 
 ```yaml
 flux-pre-check:
