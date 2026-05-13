@@ -16,7 +16,7 @@ Flux CD's Source Controller supports TLS client certificate authentication for `
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - A Helm chart repository configured to require TLS client certificates
@@ -47,13 +47,15 @@ openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 \
 openssl genrsa -out tls.key 4096
 openssl req -new -key tls.key -out client.csr \
   -subj "/CN=flux-source-controller/O=flux-system"
+printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n" > client-ext.cnf
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out tls.crt -days 365 -sha256
+  -CAcreateserial -out tls.crt -days 365 -sha256 \
+  -extfile client-ext.cnf
 ```
 
 ## Step 2: Create the Kubernetes Secret
 
-Create a Secret of type `kubernetes.io/tls` with the client certificate, private key, and CA certificate:
+Create an `Opaque` Secret with the client certificate, private key, and CA certificate:
 
 ```bash
 kubectl create secret generic helm-tls-credentials \
@@ -293,7 +295,7 @@ Flux expects specific key names in the Secret:
 - `tls.key`: Client private key in PEM format
 - `ca.crt`: CA certificate in PEM format
 
-Using different key names will cause authentication to fail silently.
+Using different key names will prevent Flux from loading the TLS material correctly.
 
 ## Certificate Rotation
 
@@ -317,6 +319,8 @@ spec:
   duration: 720h
   renewBefore: 168h
   usages:
+  - digital signature
+  - key encipherment
   - client auth
 ```
 
