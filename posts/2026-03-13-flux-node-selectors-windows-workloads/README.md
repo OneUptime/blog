@@ -12,7 +12,7 @@ Description: Configure node selectors for Windows workloads in Flux-managed depl
 
 Node selectors are the primary mechanism for directing Windows container workloads to Windows nodes in a Kubernetes cluster. Without explicit node selectors, Kubernetes may attempt to schedule a Windows container on a Linux node (or vice versa), causing immediate scheduling failure and confusing error messages.
 
-In a Flux-managed environment, node selectors should be consistently applied across all Windows workloads. Kustomize's strategic merge patches and component overlays make it possible to define OS targeting once and apply it across many deployments without duplication.
+In a Flux-managed environment, node selectors should be consistently applied across all Windows workloads. Kustomize patches and component overlays make it possible to define OS targeting once and apply it across many deployments without duplication.
 
 This guide covers every type of node selector relevant to Windows workloads, from basic OS targeting to hardware-specific selectors for GPU or specialized Windows hardware, and shows how to apply them consistently through Flux.
 
@@ -37,7 +37,7 @@ kubectl describe node windows-worker-1 | grep -A 30 Labels
 # kubernetes.io/arch=amd64               - CPU architecture
 # node.kubernetes.io/windows-build=10.0.20348  - Windows Server 2022 build number
 # node.kubernetes.io/windows-build=10.0.17763  - Windows Server 2019 build number
-# agentpool=winsystem                    - AKS node pool name (AKS-specific)
+# kubernetes.azure.com/agentpool=winsystem  - AKS node pool name (AKS-specific)
 # kubernetes.azure.com/node-image-version=...  - AKS image version
 
 # Common Windows build numbers:
@@ -56,6 +56,8 @@ kind: Deployment
 metadata:
   name: windows-app
   namespace: windows-workloads
+  labels:
+    os: windows
 spec:
   replicas: 2
   selector:
@@ -65,6 +67,7 @@ spec:
     metadata:
       labels:
         app: windows-app
+        os: windows
     spec:
       # MINIMUM REQUIRED for Windows workloads
       nodeSelector:
@@ -147,7 +150,7 @@ components:
 
 ## Step 5: AKS-Specific Node Pool Targeting
 
-In AKS, you may have multiple Windows node pools with different VM sizes (e.g., `Standard_D4s_v3` for general workloads, `Standard_NC6s_v3` for GPU workloads). Use `agentpool` labels to target specific pools.
+In AKS, you may have multiple Windows node pools with different VM sizes (e.g., `Standard_D4s_v3` for general workloads, `Standard_NC6s_v3` for GPU workloads). Use `kubernetes.azure.com/agentpool` labels to target specific pools.
 
 ```yaml
 # Target a specific AKS node pool for GPU-enabled Windows workloads
@@ -156,8 +159,8 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-        agentpool: wingpu              # AKS GPU Windows node pool name
-        accelerator: nvidia-gpu        # Hardware label for GPU nodes
+        kubernetes.azure.com/agentpool: wingpu  # AKS GPU Windows node pool name
+        accelerator: nvidia-gpu                 # Custom hardware label for GPU nodes
 
       tolerations:
         - key: os
@@ -221,16 +224,17 @@ kind: ClusterPolicy
 metadata:
   name: require-windows-nodeselector
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-windows-nodeselector
       match:
-        resources:
-          kinds: ["Pod"]
-          selector:
-            matchLabels:
-              os: windows
+        any:
+          - resources:
+              kinds: ["Pod"]
+              selector:
+                matchLabels:
+                  os: windows
       validate:
+        failureAction: Enforce
         message: "Windows pods must include nodeSelector kubernetes.io/os: windows"
         pattern:
           spec:
