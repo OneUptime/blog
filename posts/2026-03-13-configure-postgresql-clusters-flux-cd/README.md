@@ -30,7 +30,8 @@ infrastructure/
     postgres/
       production/
         cluster.yaml       # PostgresCluster or Cluster CRD
-        users.yaml         # User grants (if separate from cluster CRD)
+        users.yaml         # Managed roles and password Secrets
+        pooler.yaml        # PgBouncer Pooler (CloudNativePG)
         backup.yaml        # ScheduledBackup (CloudNativePG)
         kustomization.yaml # Kustomize base
       staging/
@@ -50,12 +51,9 @@ kind: Cluster
 metadata:
   name: app-postgres
   namespace: databases
-  annotations:
-    # Force rolling restart when this annotation changes
-    kubectl.kubernetes.io/last-applied-configuration: ""
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.3
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.13
 
   postgresql:
     parameters:
@@ -113,24 +111,50 @@ spec:
       cpu: "2"
       memory: "4Gi"
 
-  # Connection pooler via PgBouncer
+  # Additional service endpoints
   managed:
     services:
       additional:
         - selectorType: rw  # read-write service
+          serviceTemplate:
+            metadata:
+              name: app-postgres-rw-lb
+            spec:
+              type: LoadBalancer
         - selectorType: ro  # read-only service pointing to replicas
+          serviceTemplate:
+            metadata:
+              name: app-postgres-ro-lb
+            spec:
+              type: LoadBalancer
 
   affinity:
     podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
+```
 
-  monitoring:
-    enablePodMonitor: true
+```yaml
+# infrastructure/databases/postgres/production/pooler.yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: app-postgres-rw-pooler
+  namespace: databases
+spec:
+  cluster:
+    name: app-postgres
+  instances: 3
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "50"
 ```
 
 ## Step 3: Manage PostgreSQL Parameters with Kustomize Overlays
 
-Use Kustomize strategic merge patches to customize per-environment:
+Use Kustomize patches to customize per-environment:
 
 ```yaml
 # infrastructure/databases/postgres/staging/cluster-patch.yaml
@@ -183,9 +207,8 @@ kubectl exec -n databases app-postgres-1 -- \
 ## Step 5: Manage Database Users Declaratively
 
 ```yaml
-# infrastructure/databases/postgres/production/users.yaml (CloudNativePG)
-# CloudNativePG manages users through Secrets with specific naming conventions
-# The app user is created by initdb; additional users can be added via bootstrap SQL
+# Add to infrastructure/databases/postgres/production/cluster.yaml (CloudNativePG)
+# The app user is created by initdb; additional roles can be managed declaratively.
 
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -193,14 +216,26 @@ metadata:
   name: app-postgres
   namespace: databases
 spec:
-  # Post-init SQL for additional users and grants
-  bootstrap:
-    initdb:
-      postInitSQL:
-        - CREATE USER reader WITH PASSWORD 'reader-password' NOSUPERUSER;
-        - GRANT CONNECT ON DATABASE app TO reader;
-        - GRANT SELECT ON ALL TABLES IN SCHEMA public TO reader;
-        - ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO reader;
+  managed:
+    roles:
+      - name: reader
+        ensure: present
+        login: true
+        superuser: false
+        passwordSecret:
+          name: app-postgres-reader
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-postgres-reader
+  namespace: databases
+  labels:
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+stringData:
+  username: reader
+  password: reader-password
 ```
 
 ## Step 6: Monitor Cluster Changes with Flux
