@@ -24,19 +24,38 @@ In this guide you will install KServe and its dependencies using Flux CD, create
 - `kubectl` and `flux` CLI tools installed
 - Model artifacts accessible from the cluster (S3, GCS, or Azure Blob)
 
-## Step 1: Add the KServe HelmRepository
+## Step 1: Add the KServe OCIRepository Sources
 
 ```yaml
 # clusters/production/sources/kserve.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: kserve
+  name: kserve-crd
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://kserve.github.io/kserve
+  url: oci://ghcr.io/kserve/charts/kserve-crd
+  ref:
+    tag: v0.13.0
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: kserve-resources
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/kserve/charts/kserve-resources
+  ref:
+    tag: v0.13.0
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
 ```
 
 ## Step 2: Deploy KServe
@@ -46,19 +65,36 @@ spec:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: kserve
+  name: kserve-crd
   namespace: flux-system
 spec:
   interval: 1h
   targetNamespace: kserve
   createNamespace: true
-  chart:
-    spec:
-      chart: kserve
-      version: "0.13.x"
-      sourceRef:
-        kind: HelmRepository
-        name: kserve
+  chartRef:
+    kind: OCIRepository
+    name: kserve-crd
+    namespace: flux-system
+  install:
+    timeout: 15m
+  upgrade:
+    timeout: 15m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kserve-resources
+  namespace: flux-system
+spec:
+  interval: 1h
+  targetNamespace: kserve
+  createNamespace: true
+  chartRef:
+    kind: OCIRepository
+    name: kserve-resources
+    namespace: flux-system
+  dependsOn:
+    - name: kserve-crd
   install:
     timeout: 15m
   upgrade:
@@ -68,27 +104,28 @@ spec:
     kserve:
       controller:
         deploymentMode: Serverless
+        resources:
+          requests:
+            cpu: 100m
+            memory: 300Mi
+          limits:
+            cpu: 500m
+            memory: 500Mi
+
+        # Configure ingress for external access
+        gateway:
+          ingressGateway:
+            gateway: knative-serving/knative-ingress-gateway
+            gatewayService: istio-ingressgateway.istio-system.svc.cluster.local
+          localGateway:
+            gateway: knative-serving/knative-local-gateway
+            gatewayService: knative-local-gateway.istio-system.svc.cluster.local
       agent:
-        image: kserve/agent:v0.13.0
+        tag: v0.13.0
       router:
-        image: kserve/router:v0.13.0
+        tag: v0.13.0
       metricsaggregator:
         enableMetricAggregation: "true"
-
-    # Resource configuration for the KServe controller
-    controller:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 300Mi
-        limits:
-          cpu: 500m
-          memory: 500Mi
-
-    # Enable ingress for external access
-    ingress:
-      ingressGateway: istio-system/istio-ingressgateway
-      localGateway: knative-serving/knative-local-gateway
 ```
 
 ## Step 3: Configure Storage Credentials
@@ -96,6 +133,11 @@ spec:
 ```yaml
 # clusters/production/secrets/kserve-s3-secret.yaml
 # Encrypt with SOPS before committing
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kserve-models
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -132,16 +174,18 @@ metadata:
   annotations:
     # Enable autoscaling to zero when not in use
     autoscaling.knative.dev/target: "100"
-    autoscaling.knative.dev/scaleToZeroPodRetentionPeriod: "10m"
+    autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
 spec:
   predictor:
     serviceAccountName: kserve-sa
     # Minimum and maximum pod replicas
-    minReplicas: 1
+    minReplicas: 0
     maxReplicas: 10
-    sklearn:
+    model:
       # SKLearn runtime server
-      runtimeVersion: "1.3.2"
+      modelFormat:
+        name: sklearn
+      protocolVersion: v2
       storageUri: s3://my-models-bucket/churn-model/v1.2.0
       resources:
         requests:
@@ -166,8 +210,9 @@ spec:
     serviceAccountName: kserve-sa
     minReplicas: 1
     maxReplicas: 5
-    pytorch:
-      runtimeVersion: "2.1.0"
+    model:
+      modelFormat:
+        name: pytorch
       storageUri: s3://my-models-bucket/sentiment-v2/
       resources:
         requests:
@@ -177,14 +222,8 @@ spec:
           cpu: 2000m
           memory: 2Gi
 
-  # Canary traffic: send 20% to new model version
-  canaryTrafficPercent: 20
-  # Uncomment when a new version is ready:
-  # canary:
-  #   predictor:
-  #     pytorch:
-  #       runtimeVersion: "2.2.0"
-  #       storageUri: s3://my-models-bucket/sentiment-v3/
+    # Canary traffic: send 20% to the latest model revision
+    canaryTrafficPercent: 20
 ```
 
 ## Step 6: Deploy a Custom Model Server
@@ -247,8 +286,6 @@ spec:
   prune: true
   wait: true
   timeout: 10m
-  dependsOn:
-    - name: kserve
 ```
 
 ```bash
@@ -278,7 +315,7 @@ kubectl get pods -n kserve-models -w
 
 ## Best Practices
 
-- Use `scaleToZeroPodRetentionPeriod` to keep warm replicas for low-latency responses on infrequently called models
+- Use `scale-to-zero-pod-retention-period` to keep warm replicas for low-latency responses on infrequently called models
 - Set `minReplicas: 1` for latency-sensitive models to avoid cold-start delays
 - Use canary rollouts to gradually shift traffic to new model versions before full promotion
 - Store model artifacts in versioned S3 paths (never overwrite an existing version) for reliable rollbacks
