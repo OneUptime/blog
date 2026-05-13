@@ -10,18 +10,19 @@ Description: Migrate Calico HTTP method-based network policies using Istio to co
 
 ## Introduction
 
-HTTP Method Policies with Calico and Istio combines Calico's network-layer enforcement with Istio's application-layer visibility. This powerful combination lets you write policies that reference HTTP attributes - methods, paths, headers - in addition to network-level properties like IP addresses and ports.
+HTTP Method Policies with Calico and Istio combines Calico's network-layer enforcement with Istio's application-layer visibility. This powerful combination lets you write policies that reference HTTP attributes - methods and paths - in addition to network-level properties like IP addresses and ports.
 
-Calico's `projectcalico.org/v3` ApplicationPolicy (available with Istio integration) allows you to write rules that are evaluated by Istio's Envoy sidecar proxies rather than at the network layer. This enables fine-grained control like "allow GET requests to /api/health but deny POST requests to /api/admin."
+Calico's `projectcalico.org/v3` NetworkPolicy and GlobalNetworkPolicy resources (with application layer policy enabled for Istio integration) allow you to write ingress rules that are evaluated by Istio's Envoy sidecar proxies rather than only at the network layer. This enables fine-grained control like "allow GET requests to /api/health but leave POST requests to /api/admin denied by default."
 
 This guide covers migrate HTTP Method Policies using Calico and Istio together.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+ and Istio installed
+- Kubernetes v1.29+ cluster with Calico CNI and Istio v1.22+ installed
+- Calico application layer policy enabled
 - Calico-Istio integration configured (Dikastes sidecar)
 - `calicoctl` and `kubectl` installed
-- Workloads with Istio sidecar injection enabled
+- Workloads with Istio sidecar injection and Dikastes template injection enabled
 
 ## Core Configuration
 
@@ -45,40 +46,36 @@ spec:
         paths:
           - exact: /api/v1/data
           - prefix: /api/v1/public
-    - action: Deny
-      source:
-        selector: app == 'frontend'
-      http:
-        methods:
-          - DELETE
-          - PUT
-        paths:
-          - prefix: /api/v1/admin
   types:
     - Ingress
 ```
+
+Calico application-layer match criteria are supported only on ingress `Allow` rules. Requests that do not match an explicit allow policy are denied by Dikastes, so `DELETE` or `PUT` requests to `/api/v1/admin` are not added as HTTP `Deny` rules.
 
 ## Istio + Calico Setup
 
 ```bash
 # Verify Calico-Istio integration
 
-kubectl get pods -n istio-system | grep calico
-kubectl get pods -n calico-system | grep dikastes
+kubectl get felixconfiguration default -o yaml | grep policySyncPathPrefix
+kubectl get pods -n calico-system -l k8s-app=csi-node-driver
 
-# Enable sidecar injection for namespace
-kubectl label namespace production istio-injection=enabled
+# Enable Istio sidecar injection for namespace
+kubectl label namespace production istio-injection=enabled --overwrite
+
+# Verify Dikastes is injected into application pods
+kubectl get pod -n production -l app=backend-api -o jsonpath='{.items[0].spec.containers[*].name}'
 ```
 
 ## Test Application-Layer Policy
 
 ```bash
 # Test allowed method
-kubectl exec -n production frontend-pod -- curl -X GET http://backend-api:8080/api/v1/data
+kubectl exec -n production frontend-pod -- curl -fsS -X GET http://backend-api:8080/api/v1/data
 echo "GET /api/v1/data (should pass): $?"
 
 # Test denied method/path
-kubectl exec -n production frontend-pod -- curl -X DELETE http://backend-api:8080/api/v1/admin
+kubectl exec -n production frontend-pod -- curl -fsS -X DELETE http://backend-api:8080/api/v1/admin
 echo "DELETE /api/v1/admin (should be denied): $?"
 ```
 
@@ -86,13 +83,13 @@ echo "DELETE /api/v1/admin (should be denied): $?"
 
 ```mermaid
 flowchart TD
-    A[Frontend Pod] -->|HTTP Request| B[Envoy Sidecar]
+    A[Frontend Pod] -->|HTTP Request| B[Backend Envoy Sidecar]
     B -->|Calico App Policy| C{HTTP Method + Path Check}
     C -->|GET /api/v1/data - ALLOW| D[Backend Pod]
-    C -->|DELETE /api/admin - DENY| E[403 Forbidden]
-    F[Calico Dikastes] -->|App Policy Rules| B
+    C -->|DELETE /api/v1/admin - NO ALLOW MATCH| E[403 Forbidden]
+    B -->|External authorization check| F[Dikastes Sidecar]
 ```
 
 ## Conclusion
 
-HTTP Method Policies with Calico and Istio with Calico and Istio provides the most fine-grained network security available in Kubernetes, combining network-layer enforcement with application-layer policy evaluation. By filtering on HTTP methods, paths, and headers, you can implement access controls that are impossible with pure network-layer policies. Ensure your Calico-Istio integration is properly configured and test both allowed and denied request patterns to verify your application-layer policies are working correctly.
+HTTP Method Policies with Calico and Istio provides fine-grained Kubernetes network security by combining network-layer enforcement with application-layer policy evaluation. By filtering on HTTP methods and paths, you can implement access controls that are impossible with pure network-layer policies. Ensure your Calico-Istio integration is properly configured and test both allowed and denied request patterns to verify your application-layer policies are working correctly.
