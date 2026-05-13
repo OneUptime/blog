@@ -12,7 +12,7 @@ Description: Learn how to configure, monitor, and troubleshoot IP-in-IP encapsul
 
 IP-in-IP (IPIP) is a network encapsulation protocol where an IP packet is wrapped inside another IP packet. Calico uses IPIP encapsulation to route pod traffic across nodes when direct routing is not possible - for example, when nodes are in different subnets and the underlying network does not support BGP route injection.
 
-Calico supports two IPIP modes: `Always` (all pod traffic is encapsulated) and `CrossSubnet` (only traffic crossing subnet boundaries is encapsulated, with direct routing for same-subnet traffic). `CrossSubnet` mode provides better performance by avoiding encapsulation overhead for traffic between nodes in the same subnet.
+Calico supports two enabled IPIP modes: `Always` (all traffic to IPIP-enabled pools is encapsulated) and `CrossSubnet` (only traffic crossing subnet boundaries is encapsulated, with direct routing for same-subnet traffic). The `Never` value disables IPIP on a pool. `CrossSubnet` mode provides better performance by avoiding encapsulation overhead for traffic between nodes in the same subnet.
 
 This guide covers configuring IPIP encapsulation, monitoring IPIP tunnel health, diagnosing encapsulation-related performance issues, and deciding when to switch to VXLAN or native routing.
 
@@ -57,17 +57,17 @@ Check IPIP tunnel state and traffic counters on each node:
 # List all calico-node pods to check per-node IPIP status
 kubectl get pods -n calico-system -l k8s-app=calico-node -o wide
 
-# Check Felix status which includes IPIP tunnel information
+# Check Felix readiness for dataplane programming
 kubectl exec -n calico-system \
   $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=<node-name> -o name) \
-  -- calico-node -bird-ready
+  -c calico-node -- /bin/calico-node -felix-ready
 
 # Monitor IPIP packet counters (increase indicates active encapsulation)
 # Collected from /proc/net/dev or ip -s link show tunl0
 kubectl exec -n calico-system \
   $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1) \
-  -- bash -c "cat /proc/net/dev | grep tunl0"
+  -c calico-node -- sh -c "cat /proc/net/dev | grep tunl0"
 ```
 
 ## Step 3: Diagnose IPIP Performance Issues
@@ -79,6 +79,7 @@ Compare throughput with and without IPIP encapsulation:
 ```bash
 # Deploy iperf3 server on one node
 kubectl run iperf-server --image=networkstatic/iperf3 \
+  --restart=Never \
   --overrides='{"spec":{"nodeName":"<node-1>"}}' \
   -- -s
 
@@ -87,47 +88,36 @@ IPERF_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 
 # Run iperf3 client on a DIFFERENT node (cross-node = IPIP path)
 kubectl run iperf-client --image=networkstatic/iperf3 \
+  --restart=Never \
   --overrides='{"spec":{"nodeName":"<node-2>"}}' \
   --rm -it \
   -- -c $IPERF_IP -t 10 -p 5201
 
 # Compare results with expected throughput for your instance type
-# IPIP overhead is typically 20-50 bytes per packet, ~2-5% throughput reduction
+# IPIP adds a 20-byte IPv4 header per encapsulated packet; throughput impact depends on MTU, packet size, and NIC offload support
 ```
 
 ## Step 4: Configure CrossSubnet Mode for Hybrid Performance
 
 Enable CrossSubnet mode to use native routing within subnets and IPIP only across subnets.
 
-Update the IP pool to use CrossSubnet mode:
-
-```yaml
-# update-ipip-crosssubnet.yaml - switch IPIP to CrossSubnet mode
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: default-ipv4-ippool
-spec:
-  cidr: 192.168.0.0/16
-  blockSize: 26
-  ipipMode: CrossSubnet    # IPIP only when crossing subnet boundaries
-  vxlanMode: Never
-  natOutgoing: true
-  nodeSelector: all()
-```
-
-Apply the CrossSubnet configuration:
+Patch the IP pool to use CrossSubnet mode:
 
 ```bash
-calicoctl apply -f update-ipip-crosssubnet.yaml
+calicoctl patch ippool default-ipv4-ippool \
+  --patch '{"spec":{"ipipMode":"CrossSubnet","vxlanMode":"Never"}}'
+```
 
+Verify the CrossSubnet configuration:
+
+```bash
 # Verify the change is applied
 calicoctl get ippool default-ipv4-ippool -o yaml | grep ipipMode
 
-# Verify that same-subnet nodes now use direct routing (no tunl0)
+# Verify that same-subnet routes avoid tunl0 while cross-subnet routes use it
 kubectl exec -n calico-system \
   $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1) \
-  -- ip route show | grep -v tunl0 | head -10
+  -c calico-node -- ip route show
 ```
 
 ## Step 5: Alert on IPIP Tunnel Failures
@@ -150,7 +140,7 @@ spec:
     - alert: CalicoIPIPTunnelDown
       # Felix will emit errors when IPIP tunnel configuration fails
       expr: |
-        rate(felix_int_dataplane_failures_total[5m]) > 0
+        rate(felix_int_dataplane_failures[5m]) > 0
       for: 3m
       labels:
         severity: critical
