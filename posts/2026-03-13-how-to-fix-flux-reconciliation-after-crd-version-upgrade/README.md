@@ -58,7 +58,7 @@ kubectl get crd myresources.example.com -o jsonpath='{.spec.conversion}'
 ### Check if the old API version is still served
 
 ```bash
-kubectl get crd myresources.example.com -o jsonpath='{.spec.versions}' | jq '.[] | {name: .name, served: .served, storage: .storage}'
+kubectl get crd myresources.example.com -o json | jq '.spec.versions[] | {name: .name, served: .served, storage: .storage}'
 ```
 
 ## Common Root Causes
@@ -147,7 +147,7 @@ kubectl get service -n operator-namespace operator-webhook
 Verify the webhook configuration in the CRD:
 
 ```bash
-kubectl get crd myresources.example.com -o jsonpath='{.spec.conversion}' | jq .
+kubectl get crd myresources.example.com -o json | jq '.spec.conversion'
 ```
 
 ### Fix 4: Migrate stored objects
@@ -156,15 +156,15 @@ If the stored version has changed, you may need to migrate existing objects. Use
 
 ```bash
 # List all objects of the custom resource
-kubectl get myresources.example.com --all-namespaces -o name | while read obj; do
-  kubectl patch $obj --type=merge -p '{}'
+kubectl get myresources.example.com --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | while read ns name; do
+  kubectl patch myresources.example.com "$name" -n "$ns" --type=merge -p '{}'
 done
 ```
 
 Update the stored versions in the CRD status:
 
 ```bash
-kubectl get crd myresources.example.com -o json | jq '.status.storedVersions = ["v1"]' | kubectl replace -f -
+kubectl patch customresourcedefinition myresources.example.com --subresource=status --type=merge -p '{"status":{"storedVersions":["v1"]}}'
 ```
 
 ### Fix 5: Coordinate CRD and manifest upgrades
@@ -226,6 +226,7 @@ kind: HelmRepository
 metadata:
   name: operator-repo
 spec:
+  interval: 1h
   url: https://charts.example.com
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -233,10 +234,14 @@ kind: HelmRelease
 metadata:
   name: operator
 spec:
+  interval: 10m
   chart:
     spec:
       chart: operator
       version: "2.5.x"  # Pin to a specific minor version
+      sourceRef:
+        kind: HelmRepository
+        name: operator-repo
 ```
 
 CRD version upgrades require careful coordination between the CRD definition, the operator, and the application manifests. Planning the upgrade sequence in advance prevents reconciliation failures.
