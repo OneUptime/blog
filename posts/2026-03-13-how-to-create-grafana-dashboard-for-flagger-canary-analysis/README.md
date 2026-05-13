@@ -25,7 +25,7 @@ Before you begin, ensure you have:
 
 ## Setting Up the Grafana Data Source
 
-If Prometheus is not already configured as a Grafana data source, add it through the Grafana configuration.
+If Prometheus is not already configured as a Grafana data source, add it through Grafana provisioning. In Kubernetes, this ConfigMap is typically loaded by a Grafana sidecar or mounted into Grafana's provisioning directory.
 
 ```yaml
 # grafana-datasource.yaml
@@ -52,7 +52,7 @@ data:
 
 ## Creating the Dashboard ConfigMap
 
-You can provision the Grafana dashboard as a Kubernetes ConfigMap for automatic loading. The following defines a dashboard with essential panels for canary monitoring.
+You can provision the Grafana dashboard as a Kubernetes ConfigMap for automatic loading when your Grafana installation includes a dashboard sidecar or mounts dashboard files from ConfigMaps. The following defines a starter dashboard with template variables for canary monitoring.
 
 ```yaml
 # grafana-flagger-dashboard.yaml
@@ -101,8 +101,7 @@ Track the current status of the canary deployment.
 
 ```yaml
 # PromQL query for canary status
-# Returns 0 for initialized, 1 for progressing, 2 for promoting,
-# 3 for finalizing, 4 for succeeded, 5 for failed
+# Returns 0 for running, 1 for successful, 2 for failed
 query: |
   flagger_canary_status{
     namespace="$namespace",
@@ -119,7 +118,7 @@ Visualize the current traffic weight assigned to the canary.
 query: |
   flagger_canary_weight{
     namespace="$namespace",
-    name="$canary"
+    workload=~"$canary|$canary-primary"
   }
 ```
 
@@ -133,7 +132,7 @@ query: |
   sum(rate(istio_requests_total{
     reporter="destination",
     destination_workload_namespace="$namespace",
-    destination_workload=~"$canary-primary|$canary-canary",
+    destination_workload=~"$canary-primary|$canary",
     response_code!~"5.*"
   }[$__rate_interval]))
   by (destination_workload)
@@ -141,7 +140,7 @@ query: |
   sum(rate(istio_requests_total{
     reporter="destination",
     destination_workload_namespace="$namespace",
-    destination_workload=~"$canary-primary|$canary-canary"
+    destination_workload=~"$canary-primary|$canary"
   }[$__rate_interval]))
   by (destination_workload)
   * 100
@@ -158,7 +157,7 @@ query: |
     istio_request_duration_milliseconds_bucket{
       reporter="destination",
       destination_workload_namespace="$namespace",
-      destination_workload=~"$canary-primary|$canary-canary"
+      destination_workload=~"$canary-primary|$canary"
     }[$__rate_interval]
   )) by (le, destination_workload))
 ```
@@ -173,7 +172,7 @@ query: |
   sum(rate(istio_requests_total{
     reporter="destination",
     destination_workload_namespace="$namespace",
-    destination_workload=~"$canary-primary|$canary-canary"
+    destination_workload=~"$canary-primary|$canary"
   }[$__rate_interval]))
   by (destination_workload)
 ```
@@ -182,7 +181,7 @@ query: |
 
 You can create the dashboard directly in the Grafana UI. Here is a recommended panel layout.
 
-The first row should contain single-stat panels for canary status and canary weight. The canary status panel uses the `flagger_canary_status` metric with value mappings to display human-readable status names. The canary weight panel uses `flagger_canary_weight` and should show a gauge from 0 to 100.
+The first row should contain single-stat panels for canary status and canary weight. The canary status panel uses the `flagger_canary_status` metric with value mappings to display human-readable status names. The canary weight panel uses `flagger_canary_weight` filtered by the `workload` label and should show a gauge from 0 to 100.
 
 The second row should contain time series graphs for request success rate and request duration. Set the success rate panel Y-axis to percentage (0-100) and add a threshold line at your configured minimum (such as 99 percent). Set the request duration panel Y-axis to milliseconds and add a threshold at your configured maximum.
 
@@ -198,13 +197,13 @@ kubectl apply -f grafana-flagger-dashboard.yaml
 
 If your Grafana is configured to watch for ConfigMaps with the `grafana_dashboard` label, the dashboard will be automatically loaded. Otherwise, import the JSON through the Grafana UI.
 
-## Adding Alerting to the Dashboard
+## Adding Prometheus Alerting
 
-Configure Grafana alerts to notify you when canary deployments fail.
+Configure Prometheus alerting rules to notify you when canary deployments fail. The following rule format is for Prometheus installations configured to load alerting rule files from this ConfigMap.
 
 ```yaml
-# grafana-alert-rule.yaml
-# Grafana alert rule for failed canary deployments
+# prometheus-alert-rule.yaml
+# Prometheus alert rule for failed canary deployments
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -216,7 +215,7 @@ data:
       - name: flagger
         rules:
           - alert: CanaryFailed
-            expr: flagger_canary_status{status="failed"} == 1
+            expr: flagger_canary_status == 2
             for: 1m
             labels:
               severity: warning
