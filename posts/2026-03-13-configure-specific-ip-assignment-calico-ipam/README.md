@@ -16,26 +16,32 @@ Specific IP Assignment with Calico IPAM provides important IP address management
 
 - Calico v3.20+ installed
 - kubectl and calicoctl access
+- Cluster configured to use Calico IPAM
 - IP pools configured
 
 ## Configuration
 
+Specific pod IP assignment with Calico IPAM uses the `cni.projectcalico.org/ipAddrs` pod annotation. The requested address must be in a configured Calico IP pool, must not already be in use, and must be present when the pod is created.
+
 ```bash
 calicoctl get ippools -o yaml
+calicoctl ipam show --ip=10.48.0.10
 calicoctl ipam show --show-blocks
 ```
 
 ## Example
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
+apiVersion: v1
+kind: Pod
 metadata:
-  name: example-pool
+  name: static-ip-pod
+  annotations:
+    cni.projectcalico.org/ipAddrs: '["10.48.0.10"]'
 spec:
-  cidr: 10.48.0.0/16
-  blockSize: 26
-  natOutgoing: true
+  containers:
+    - name: app
+      image: nginx:1.25
 ```
 
 ## Verification
