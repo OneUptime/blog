@@ -49,9 +49,13 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: signoz
-  namespace: platform
+  namespace: flux-system
 spec:
   interval: 15m
+  releaseName: signoz
+  targetNamespace: platform
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: signoz
@@ -61,8 +65,8 @@ spec:
         name: signoz
         namespace: flux-system
   values:
-    # SigNoz frontend configuration
-    frontend:
+    # SigNoz application configuration
+    signoz:
       replicaCount: 1
       ingress:
         enabled: true
@@ -79,21 +83,26 @@ spec:
         annotations:
           cert-manager.io/cluster-issuer: letsencrypt-prod
 
-    # SigNoz query service
-    queryService:
-      replicaCount: 1
-
     # SigNoz OTEL collector (receives telemetry from applications)
     otelCollector:
-      # OTLP gRPC port exposed for application instrumentation
       ports:
-        otlpGrpc: 4317
-        otlpHttp: 4318
+        # OTLP gRPC port exposed for application instrumentation
+        otlp:
+          enabled: true
+          servicePort: 4317
+          containerPort: 4317
+        # OTLP HTTP port exposed for application instrumentation
+        otlp-http:
+          enabled: true
+          servicePort: 4318
+          containerPort: 4318
 
     # ClickHouse storage - the core storage engine for all signals
     clickhouse:
       enabled: true
-      replicaCount: 1
+      layout:
+        shardsCount: 1
+        replicasCount: 1
       persistence:
         enabled: true
         # SSD storage recommended for ClickHouse performance
@@ -107,13 +116,13 @@ spec:
           cpu: "4"
           memory: "8Gi"
 
-    # ZooKeeper is required by ClickHouse for coordination
-    zookeeper:
-      enabled: true
-      replicaCount: 1
-      persistence:
+      # ZooKeeper is required by ClickHouse for coordination
+      zookeeper:
         enabled: true
-        size: 10Gi
+        replicaCount: 1
+        persistence:
+          enabled: true
+          size: 10Gi
 ```
 
 ## Step 3: Configure Application Instrumentation
@@ -166,20 +175,17 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: signoz-frontend
-      namespace: platform
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: chi-signoz-clickhouse-cluster-0-0
-      namespace: platform
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: signoz
+      namespace: flux-system
+  timeout: 10m
 ```
 
 ## Best Practices
 
 - Allocate SSDs for ClickHouse PVCs; ClickHouse query performance degrades significantly on spinning disks.
-- Start with `replicaCount: 1` for ClickHouse in development and increase to 3 for production HA.
+- Start with `clickhouse.layout.replicasCount: 1` for ClickHouse in development and increase replicas, shards, and ZooKeeper quorum settings deliberately for production HA.
 - Use SigNoz's built-in retention configuration to set TTLs on metrics, traces, and logs independently.
 - Instrument all microservices with the same `OTEL_SERVICE_NAME` convention so the service map renders correctly.
 - Monitor ClickHouse's own metrics-query latency and insert throughput-to detect storage bottlenecks early.
