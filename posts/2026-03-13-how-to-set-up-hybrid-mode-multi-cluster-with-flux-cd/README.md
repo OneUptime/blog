@@ -83,8 +83,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/management \
-  --personal
+  --path=clusters/management
 ```
 
 ## Step 2: Register Non-Production Clusters with the Hub
@@ -132,7 +131,7 @@ kubectl config use-context management-cluster
 
 kubectl create secret generic dev-cluster-kubeconfig \
   --namespace=flux-system \
-  --from-literal=value="$(cat dev-cluster-kubeconfig.yaml)"
+  --from-file=value.yaml=./dev-cluster-kubeconfig.yaml
 ```
 
 Create Kustomizations targeting the dev cluster in `clusters/management/dev-cluster.yaml`:
@@ -187,8 +186,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production-us \
-  --personal
+  --path=clusters/production-us
 ```
 
 ```bash
@@ -198,8 +196,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production-eu \
-  --personal
+  --path=clusters/production-eu
 ```
 
 ## Step 4: Configure Production Cluster Kustomizations
@@ -319,7 +316,7 @@ spec:
       order: asc
 ```
 
-For production, pin to specific tags using a semver policy:
+For production, select release tags using a semver policy:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
