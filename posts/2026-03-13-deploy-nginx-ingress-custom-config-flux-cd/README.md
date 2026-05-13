@@ -51,9 +51,13 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: ingress-nginx
+  targetNamespace: ingress-nginx
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: ingress-nginx
@@ -174,10 +178,10 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: ingress-nginx-controller
-      namespace: ingress-nginx
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: ingress-nginx
+      namespace: flux-system
   timeout: 10m
 ```
 
@@ -193,9 +197,6 @@ metadata:
   name: api-server
   namespace: backend
   annotations:
-    # Use the NGINX ingress class
-    kubernetes.io/ingress.class: nginx
-
     # Per-route overrides of global config
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
@@ -239,7 +240,7 @@ kubectl get pods -n ingress-nginx
 kubectl get svc -n ingress-nginx ingress-nginx-controller
 
 # Check Flux reconciliation
-flux get helmrelease ingress-nginx -n ingress-nginx
+flux get helmrelease ingress-nginx -n flux-system
 
 # View applied ConfigMap settings
 kubectl get configmap -n ingress-nginx ingress-nginx-controller -o yaml
@@ -280,7 +281,7 @@ data:
 
 ## Best Practices
 
-- Use the `ingress-nginx` class annotation (`ingressClassName: nginx`) rather than the deprecated `kubernetes.io/ingress.class` annotation in new Ingress resources.
+- Use the `spec.ingressClassName: nginx` field rather than the deprecated `kubernetes.io/ingress.class` annotation in new Ingress resources.
 - Set conservative default timeouts in the ConfigMap and override them per-route using annotations for services that legitimately need longer timeouts.
 - Enable the Prometheus ServiceMonitor and import the official NGINX Ingress Grafana dashboard (ID: 9614) for immediate visibility into request rates and latency.
 - Use `nginx.ingress.kubernetes.io/configuration-snippet` annotations for custom NGINX location blocks, but audit them carefully - custom snippets can introduce security vulnerabilities.
