@@ -161,7 +161,7 @@ spec:
     disableHooks: true
 ```
 
-Setting `keepHistory: false` when using uninstall remediation is recommended. Keeping history could cause the subsequent reinstall to see old release data and behave as an upgrade rather than a fresh install, potentially reintroducing the same failures.
+Setting `keepHistory: false` when using uninstall remediation is recommended. Keeping history leaves the deleted release record behind, so a later install with the same release name may require explicit replacement behavior instead of starting from a fully purged release record.
 
 ## Inspecting Preserved History
 
