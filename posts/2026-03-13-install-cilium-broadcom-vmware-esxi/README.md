@@ -10,7 +10,7 @@ Description: Guide to installing Cilium on Kubernetes clusters running on VMware
 
 ## Introduction
 
-Running Kubernetes on VMware ESXi or vSphere is common in enterprise on-premises environments. Cilium works well on VMware-hosted Kubernetes clusters, though it requires specific configuration for vSphere's networking model. Unlike cloud environments with ENI or native CNI integrations, VMware clusters typically use VXLAN or Geneve encapsulation for pod networking.
+Running Kubernetes on VMware ESXi or vSphere is common in enterprise on-premises environments. Cilium works well on VMware-hosted Kubernetes clusters, though it requires specific configuration for vSphere's networking model. Unlike cloud environments with ENI or native CNI integrations, VMware-hosted clusters commonly use an overlay CNI such as VXLAN or Geneve for pod networking.
 
 This guide covers installing Cilium on Kubernetes clusters running on VMware ESXi virtual machines using kubeadm, with VXLAN encapsulation for cross-node pod communication.
 
@@ -20,17 +20,19 @@ This guide covers installing Cilium on Kubernetes clusters running on VMware ESX
 - Kubernetes installed via kubeadm on the VMs
 - `kubectl` cluster-admin access
 - `cilium` CLI installed on the management machine
-- VMware portgroups configured to allow promiscuous mode and MAC address changes (for some networking modes)
+- `hubble` CLI installed if you want to run `hubble observe`
+- VMware portgroups configured to allow node-to-node VXLAN traffic on UDP port 8472
 
 ## Step 1: Prepare VMware Network Configuration
 
-For Cilium VXLAN mode, ensure VMware virtual switches allow the necessary traffic:
+For Cilium VXLAN mode, ensure VMware virtual switches and upstream firewalls allow node-to-node UDP traffic on port 8472. The promiscuous mode, MAC address changes, and forged transmits settings are not normally required for Cilium VXLAN, but they may be needed for configurations that emit traffic with MAC addresses different from the VM's vNIC, such as nested virtualization or some L2 announcement setups:
 
 ```bash
-# On ESXi host: configure vSwitch to allow VXLAN traffic
+# On ESXi host: only apply these security settings if your Cilium mode needs
+# the guest VM to send or receive traffic for non-vNIC MAC addresses.
 
 # This is typically done via vSphere Web Client or esxcli
-# Ensure these settings on the vSwitch portgroup:
+# Optional settings on the vSwitch portgroup:
 # - Allow Promiscuous Mode: Accept (for some Cilium configurations)
 # - Allow MAC Address Changes: Accept
 # - Allow Forged Transmits: Accept
@@ -51,9 +53,8 @@ Configure the VM network interfaces for Cilium:
 ip link show
 # Identify the primary interface (typically eth0 or ens192 on VMware)
 
-# Ensure iptables rules are clean before Cilium installation
-sudo iptables -F && sudo iptables -t nat -F
-sudo ip6tables -F && sudo ip6tables -t nat -F
+# If this node previously had another CNI installed, reset that CNI cleanly
+# before installing Cilium. Do not flush iptables on an active cluster.
 ```
 
 ## Step 2: Initialize Kubernetes Cluster
@@ -67,6 +68,7 @@ sudo kubeadm init \
 # Set up kubectl
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 # Untaint control plane for single-node setups
 kubectl taint nodes --all node-role.kubernetes.io/control-plane-
@@ -87,13 +89,12 @@ Create Cilium values for VMware:
 # Detect the node's primary interface automatically
 autoDirectNodeRoutes: false
 
-# Use VXLAN tunnel for cross-node pod networking on VMware
-tunnel: vxlan
+# Use VXLAN tunneling for cross-node pod networking on VMware
+routingMode: tunnel
+tunnelProtocol: vxlan
 
-# Enable kube-proxy replacement via eBPF
-kubeProxyReplacement: true
-k8sServiceHost: <CONTROL_PLANE_IP>
-k8sServicePort: "6443"
+# Keep kube-proxy enabled for a standard kubeadm installation
+kubeProxyReplacement: false
 
 # Standard IPAM (not ENI or Azure)
 ipam:
@@ -109,11 +110,12 @@ hubble:
   ui:
     enabled: true
 
-# eBPF host routing for better performance
+# eBPF masquerading for IPv4 SNAT
 bpf:
   masquerade: true
-  # Set to false for VMware environments that need iptables fallback
-  hostRouting: false
+
+# Account for VXLAN overhead when the underlay MTU is 1500
+MTU: 1450
 ```
 
 Install Cilium:
@@ -157,8 +159,6 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app: prometheus
-      fromRequires:
-        - matchLabels:
             k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
@@ -175,20 +175,19 @@ kubectl exec -n kube-system ds/cilium -- cilium status
 # View endpoint policy enforcement
 kubectl exec -n kube-system ds/cilium -- cilium endpoint list
 
-# Enable Hubble and observe traffic
-cilium hubble enable
+# Observe traffic with Hubble
 kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
 hubble observe --namespace production
 ```
 
 ## Best Practices
 
-- Set VMware portgroup security to allow forged transmits for VXLAN encapsulated traffic
-- Use VMware NSX-T for advanced network integration with Cilium when available
+- Allow UDP port 8472 between Kubernetes nodes for Cilium VXLAN traffic
+- Use VMware NSX-T networking features alongside Cilium when your platform design requires NSX-managed overlays or firewalling
 - Test MTU settings carefully - VMware VMXNET3 adapters default to 1500, set Cilium MTU to 1450 for VXLAN
 - Enable promiscuous mode only on portgroups used by Kubernetes nodes, not broadly across the ESXi environment
 - Use vSphere resource pools to ensure Kubernetes nodes have dedicated CPU/memory resources
 
 ## Conclusion
 
-Cilium works reliably on VMware ESXi-hosted Kubernetes clusters with VXLAN encapsulation. The main considerations are VMware's portgroup security policies and MTU configuration for VXLAN overhead. Once configured correctly, Cilium provides the same eBPF-based network policies and Hubble observability on VMware as on cloud environments, bringing enterprise-grade network security to on-premises Kubernetes deployments.
+Cilium works reliably on VMware ESXi-hosted Kubernetes clusters with VXLAN encapsulation. The main considerations are allowing node-to-node VXLAN traffic and configuring MTU for VXLAN overhead. Once configured correctly, Cilium provides the same eBPF-based network policies and Hubble observability on VMware as on cloud environments, bringing enterprise-grade network security to on-premises Kubernetes deployments.
