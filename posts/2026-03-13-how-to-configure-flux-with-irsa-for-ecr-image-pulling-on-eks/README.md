@@ -15,7 +15,7 @@ Amazon Elastic Container Registry (ECR) requires authentication to pull images. 
 ## Prerequisites
 
 - An EKS cluster with the OIDC provider enabled
-- Flux installed on the EKS cluster
+- Flux installed on the EKS cluster with the image-reflector-controller and image-automation-controller components enabled
 - An ECR repository with container images
 - AWS CLI and eksctl installed
 
@@ -67,7 +67,7 @@ aws iam create-policy \
 
 ## Step 3: Create the IAM Role with Trust Policy
 
-Create an IAM role that the Flux source-controller service account can assume:
+Create an IAM role that the Flux image-reflector-controller service account can assume:
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -86,7 +86,7 @@ cat > trust-policy.json << EOF
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:flux-system:source-controller",
+          "${OIDC_PROVIDER}:sub": "system:serviceaccount:flux-system:image-reflector-controller",
           "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
         }
       }
@@ -106,7 +106,7 @@ aws iam attach-role-policy \
 
 ## Step 4: Annotate the Flux Service Account
 
-Annotate the Flux source-controller service account to use the IAM role:
+Annotate the Flux image-reflector-controller service account to use the IAM role:
 
 ```yaml
 # clusters/production/flux-patches.yaml
@@ -114,16 +114,17 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - gotk-components.yaml
+  - gotk-sync.yaml
 patches:
   - target:
       kind: ServiceAccount
-      name: source-controller
+      name: image-reflector-controller
       namespace: flux-system
     patch: |
       apiVersion: v1
       kind: ServiceAccount
       metadata:
-        name: source-controller
+        name: image-reflector-controller
         namespace: flux-system
         annotations:
           eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-ecr-role
@@ -133,12 +134,18 @@ Alternatively, use eksctl:
 
 ```bash
 eksctl create iamserviceaccount \
-  --name source-controller \
+  --name image-reflector-controller \
   --namespace flux-system \
   --cluster my-cluster \
   --attach-policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/FluxECRReadOnly" \
   --override-existing-serviceaccounts \
   --approve
+```
+
+After changing the service account annotation, restart the controller so the pod picks up the IRSA environment:
+
+```bash
+kubectl rollout restart deployment -n flux-system image-reflector-controller
 ```
 
 ## Step 5: Configure ECR Image Repository in Flux
@@ -158,7 +165,7 @@ spec:
   provider: aws
 ```
 
-The `provider: aws` field tells Flux to use the IRSA-based authentication for ECR access.
+The `provider: aws` field tells Flux to use AWS authentication from the image-reflector-controller pod, including IRSA-based authentication when its service account is annotated with the IAM role.
 
 ## Step 6: Configure Image Policy and Automation
 
@@ -239,19 +246,19 @@ aws ecr set-repository-policy \
 ## Verifying the Setup
 
 ```bash
-# Check the source-controller service account annotations
-kubectl get sa source-controller -n flux-system -o yaml
+# Check the image-reflector-controller service account annotations
+kubectl get sa image-reflector-controller -n flux-system -o yaml
 
 # Verify image repository scanning works
-flux get image repository my-app
+flux get images repository my-app
 
 # Check for any errors
-kubectl logs -n flux-system deployment/source-controller | grep -i ecr
+kubectl logs -n flux-system deployment/image-reflector-controller | grep -i ecr
 
 # Verify image policies are resolving
-flux get image policy my-app
+flux get images policy my-app
 ```
 
 ## Conclusion
 
-Configuring Flux with IRSA for ECR image pulling eliminates the need for static Docker registry credentials and provides secure, auditable access to your container images. By leveraging the EKS OIDC provider, the source-controller can automatically authenticate to ECR using short-lived tokens, reducing the operational burden of credential management and improving security posture.
+Configuring Flux with IRSA for ECR image pulling eliminates the need for static Docker registry credentials and provides secure, auditable access to your container images. By leveraging the EKS OIDC provider, the image-reflector-controller can automatically authenticate to ECR using short-lived tokens, reducing the operational burden of credential management and improving security posture.
