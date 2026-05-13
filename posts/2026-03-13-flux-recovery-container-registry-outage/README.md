@@ -50,7 +50,13 @@ metadata:
   name: my-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -68,9 +74,14 @@ A local pull-through cache (using Harbor, Nexus, or a cloud provider's registry 
 ```yaml
 # Harbor proxy project configuration (stored in Git)
 # After setting up Harbor, configure containerd on each node
-# /etc/containerd/config.toml addition:
-# [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-#   endpoint = ["https://harbor.internal.example.com/v2/dockerhub-proxy"]
+# /etc/containerd/config.toml addition for containerd 1.x:
+# [plugins."io.containerd.grpc.v1.cri".registry]
+#   config_path = "/etc/containerd/certs.d"
+#
+# /etc/containerd/certs.d/docker.io/hosts.toml:
+# server = "https://registry-1.docker.io"
+# [host."https://harbor.internal.example.com/dockerhub-proxy"]
+#   capabilities = ["pull", "resolve"]
 ```
 
 Configure Flux to pull from your mirror instead of the upstream registry:
@@ -90,10 +101,11 @@ spec:
 
 ## Step 4: Configure ECR Authentication with Automatic Token Refresh
 
-AWS ECR tokens expire every 12 hours. Use the ECR credential helper to keep tokens fresh.
+AWS ECR tokens expire every 12 hours. If you are using Kubernetes image pull secrets, refresh them automatically so Flux image scans and workload image pulls do not fail when the token expires.
 
 ```yaml
-# ECR token refresh CronJob
+# ECR token refresh CronJob for the flux-system namespace.
+# Repeat this pattern for workload namespaces that use the same ECR pull secret.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -108,7 +120,8 @@ spec:
           serviceAccountName: ecr-token-refresh
           containers:
             - name: refresh
-              image: amazon/aws-cli:latest
+              # Use an internal utility image that includes both aws and kubectl.
+              image: my-registry.example.com/platform/aws-kubectl:latest
               command:
                 - /bin/sh
                 - -c
@@ -152,7 +165,7 @@ kubectl describe imagerepository my-app -n flux-system | grep "Last Scan"
 
 ## Step 6: Set Up Multi-Registry Redundancy
 
-Store critical images in multiple registries and configure failover at the deployment level using an init container or a registry that aggregates multiple upstreams.
+Store critical images in multiple registries and configure failover using a registry mirror that aggregates multiple upstreams, or maintain a Kustomization overlay that rewrites the image reference to the backup registry. `imagePullSecrets` provide credentials; they do not make Kubernetes try a different registry for the same image name.
 
 ```yaml
 # Kustomization overlay for registry failover
@@ -164,13 +177,11 @@ metadata:
 spec:
   template:
     spec:
-      initContainers:
-        - name: image-prefetch
-          image: alpine:latest
-          command: ["/bin/sh", "-c", "echo prefetch complete"]
+      containers:
+        - name: my-app
+          image: backup-registry.example.com/my-org/my-app:v1.2.3
           imagePullPolicy: IfNotPresent
       imagePullSecrets:
-        - name: primary-registry-secret
         - name: backup-registry-secret
 ```
 
