@@ -8,7 +8,7 @@ Description: Learn how to configure Flux Receivers to trigger reconciliation of 
 
 ---
 
-By default, a Flux Receiver can only trigger reconciliation of resources within its own namespace. In multi-tenant clusters or setups where teams manage resources in separate namespaces, you need the Receiver to reach across namespace boundaries. This requires configuring the Receiver's resource references with explicit namespace fields and ensuring the notification-controller has the RBAC permissions to patch resources in those namespaces.
+When a Flux Receiver resource reference omits `namespace`, Flux uses the Receiver's own namespace. In multi-tenant clusters or setups where teams manage resources in separate namespaces, you need the Receiver to reach across namespace boundaries by setting explicit namespace fields. Cross-namespace references also require the notification-controller to be allowed to patch resources in those namespaces, and they will not work if the controller is started with `--no-cross-namespace-refs=true`.
 
 This guide walks through the complete setup for cross-namespace Receiver configurations.
 
@@ -29,7 +29,7 @@ flux get all --all-namespaces
 
 ## Understanding the Default Behavior
 
-When a Receiver is created in `flux-system`, it can annotate resources in `flux-system` because the notification-controller's default RBAC grants it permission to patch Flux resources in its own namespace. Attempting to reference a resource in another namespace without additional RBAC will fail silently or log an error.
+When a Receiver is created in `flux-system` and a resource entry does not specify a `namespace`, Flux looks for that resource in `flux-system`. To target another namespace, set the resource entry's `namespace` field. A standard Flux bootstrap gives the notification-controller cluster-wide access to Flux custom resources through the Flux `crd-controller` ClusterRole, but hardened or custom multi-tenant installs may restrict this. In those restricted installs, a cross-namespace reference without the required RBAC will fail with a forbidden error in the notification-controller logs.
 
 ## Step 1: Create Namespaces and Deploy Resources
 
@@ -106,7 +106,7 @@ kubectl apply -f team-beta-source.yaml
 
 ## Step 2: Grant Cross-Namespace RBAC Permissions
 
-The notification-controller needs permission to patch resources in the target namespaces. Create a ClusterRole and ClusterRoleBinding:
+If your Flux installation uses restricted RBAC, the notification-controller needs permission to patch resources in the target namespaces. Create a ClusterRole and ClusterRoleBinding:
 
 ```yaml
 # cross-namespace-rbac.yaml
@@ -194,6 +194,8 @@ subjects:
 ```
 
 Repeat for each target namespace.
+
+Also make sure the notification-controller is not running with `--no-cross-namespace-refs=true`, because that flag prevents Receivers from referring to resources outside their own namespace even when RBAC allows it.
 
 ## Step 3: Create the Cross-Namespace Receiver
 
@@ -308,7 +310,7 @@ spec:
       name: team-alpha-app
 ```
 
-This requires the webhook-token secret to exist in the `team-alpha` namespace. Each team gets their own webhook URL and token, which is cleaner from a security perspective.
+This requires the `team-alpha-webhook-token` secret to exist in the `team-alpha` namespace. Each team gets their own webhook URL and token, which is cleaner from a security perspective.
 
 Create the token secret in the team namespace:
 
@@ -357,6 +359,12 @@ kubectl -n flux-system logs deploy/notification-controller --since=5m | grep -i 
 ```
 
 If you see forbidden errors, the ClusterRole or RoleBinding is missing or incorrect.
+
+If RBAC is correct but cross-namespace references still do not work, check whether notification-controller was started with `--no-cross-namespace-refs=true`:
+
+```bash
+kubectl -n flux-system describe deploy/notification-controller | grep -A20 "Args:"
+```
 
 Resource not found errors
 
