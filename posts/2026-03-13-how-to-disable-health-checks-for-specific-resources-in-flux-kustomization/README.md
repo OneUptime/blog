@@ -14,8 +14,8 @@ Flux Kustomization health checks are valuable for ensuring deployments are succe
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
-- Flux v2.3 or later installed on the cluster
+- A Kubernetes cluster version supported by your Flux release
+- Flux v2 installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
 - Understanding of Flux Kustomization health checking
@@ -251,21 +251,21 @@ spec:
     name: flux-system
 ```
 
-This Kustomization applies all resources in the path and immediately reports success without waiting for any health status.
+This Kustomization applies all resources in the path and reports success after the apply completes, without waiting for any health status.
 
 ## Verifying Your Configuration
 
-Check which resources are being health-checked:
+Check your configured health checks and applied inventory:
 
 ```bash
 # See the full Kustomization spec
 kubectl get kustomization my-app -n flux-system -o yaml
 
 # Check reconciliation status
-flux get kustomization my-app
+flux get kustomizations my-app
 
 # See which resources were applied
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries}' | jq .
+kubectl get kustomization my-app -n flux-system -o json | jq '.status.inventory.entries'
 ```
 
 ## Conclusion
