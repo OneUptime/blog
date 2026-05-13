@@ -10,7 +10,7 @@ Description: Learn how to create Kubernetes NetworkPolicies that restrict the Fl
 
 The Flux source-controller is responsible for cloning Git repositories, downloading Helm charts, and pulling OCI artifacts. In a default installation, it has unrestricted network access, which means a vulnerability in the controller could be exploited to reach any network destination. By applying targeted NetworkPolicies, you can limit the source-controller to only your Git hosting endpoints, significantly reducing your attack surface.
 
-This guide covers how to configure NetworkPolicies that allow the Flux source-controller to access only specific Git servers over HTTPS and SSH while blocking all other egress traffic.
+This guide covers how to configure NetworkPolicies that allow the Flux source-controller to access only specific Git servers over HTTPS and SSH while blocking all other egress traffic. This pattern is intended for Flux installations that use GitRepository sources only; if you also use HelmRepository, OCIRepository, or Bucket sources, add allow rules for those endpoints too.
 
 ## Prerequisites
 
@@ -57,8 +57,9 @@ curl -s https://api.github.com/meta | jq -r '.git[]'
 For GitLab.com:
 
 ```bash
-curl -s https://gitlab.com/api/v4/metadata | jq -r '.kas.externalUrl'
 dig gitlab.com +short
+# GitLab.com is fronted by Cloudflare; use Cloudflare's published ranges if you allow-list by CIDR.
+curl -s https://www.cloudflare.com/ips-v4
 ```
 
 ## Step 2: Create a Default Deny Egress Policy
@@ -98,7 +99,9 @@ spec:
     - Egress
   egress:
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -118,7 +121,7 @@ kubectl apply -f allow-dns.yaml
 All Flux controllers need to talk to the API server:
 
 ```bash
-KUBE_API_IP=$(kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}')
+KUBE_API_IP=$(kubectl get service kubernetes -n default -o jsonpath='{.spec.clusterIP}')
 
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
@@ -140,6 +143,12 @@ spec:
         - protocol: TCP
           port: 6443
 EOF
+```
+
+NetworkPolicy handling for Service IPs can vary depending on when your CNI applies policy relative to Kubernetes destination NAT. If your CNI enforces egress policy after destination NAT, allow the API server endpoint IPs instead:
+
+```bash
+kubectl get endpoints kubernetes -n default -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}'
 ```
 
 ## Step 5: Allow Source Controller Access to GitHub Only
@@ -248,7 +257,7 @@ spec:
   egress:
     - to:
         - ipBlock:
-            cidr: 172.65.0.0/16
+            cidr: 172.64.0.0/13
       ports:
         - protocol: TCP
           port: 443
@@ -256,15 +265,16 @@ spec:
           port: 22
 ```
 
-Resolve current GitLab IPs and adjust the CIDR accordingly:
+GitLab.com is fronted by Cloudflare. Resolve the current address and use Cloudflare's published ranges to choose the narrowest CIDRs that cover the resolved address:
 
 ```bash
 dig gitlab.com +short
+curl -s https://www.cloudflare.com/ips-v4
 ```
 
 ## Step 6: Automate IP Range Updates with a CronJob
 
-Git hosting providers rotate their IP ranges periodically. Create a CronJob to keep the NetworkPolicy up to date:
+Git hosting providers rotate their IP ranges periodically. Create a CronJob to fetch the current ranges, then extend the script to generate and apply a NetworkPolicy:
 
 ```yaml
 apiVersion: batch/v1
@@ -281,13 +291,13 @@ spec:
           serviceAccountName: netpol-updater
           containers:
             - name: updater
-              image: bitnami/kubectl:latest
+              image: alpine:3.20
               command:
                 - /bin/sh
                 - -c
                 - |
                   apk add --no-cache curl jq
-                  CIDRS=$(curl -s https://api.github.com/meta | jq -r '.git[]' | head -10)
+                  CIDRS=$(curl -s https://api.github.com/meta | jq -r '.git[]')
                   # Generate and apply updated NetworkPolicy
                   echo "Updated GitHub CIDRs: $CIDRS"
           restartPolicy: OnFailure
@@ -300,7 +310,7 @@ This is a starting point. In production, you would generate the full NetworkPoli
 Confirm Flux can still pull from your Git repository:
 
 ```bash
-flux reconcile source git flux-system
+flux reconcile source git <repository-name> -n flux-system
 ```
 
 Check the source-controller logs for successful fetches:
@@ -318,7 +328,7 @@ kubectl get networkpolicies -n flux-system
 Test that other egress is blocked by running a temporary pod in the flux-system namespace:
 
 ```bash
-kubectl run test-egress --rm -it --image=busybox -n flux-system -- wget -qO- --timeout=5 https://example.com
+kubectl run test-egress --rm -it --restart=Never --image=busybox:1.36 -n flux-system -- wget -qO- --timeout=5 http://example.com
 ```
 
 This should time out, confirming that only Git traffic is allowed.
