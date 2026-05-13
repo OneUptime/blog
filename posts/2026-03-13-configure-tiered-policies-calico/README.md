@@ -30,11 +30,20 @@ Before writing policies, document the traffic flows you want to control using Ti
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: security
+spec:
+  order: 300
+  defaultAction: Pass
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: configure-tiered-policies
   namespace: production
 spec:
+  tier: security
   order: 100
   selector: all()
   ingress:
@@ -44,7 +53,7 @@ spec:
   egress:
     - action: Allow
       destination:
-        ports: [443, 80]
+        ports: [443, 80, 8080]
   types:
     - Ingress
     - Egress
@@ -54,12 +63,14 @@ spec:
 
 ```bash
 calicoctl apply -f tiered-policies-policy.yaml
-calicoctl get networkpolicies -n production -o wide
+calicoctl get tiers
+kubectl get networkpolicies.projectcalico.org -n production --field-selector spec.tier=security
 ```
 
 ## Step 4: Test the Policy
 
 ```bash
+kubectl label pod -n production test-pod app=authorized --overwrite
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target-service:8080
 echo "Result: $?"
 ```
