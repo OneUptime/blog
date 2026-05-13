@@ -26,7 +26,7 @@ This error is caused by Kubernetes optimistic concurrency control. When two or m
 
 ### 1. Concurrent Controllers Modifying the Same Resource
 
-Multiple controllers (Flux, HPA, VPA, Istio, operators) updating the same resource at the same time triggers resource version conflicts.
+Multiple controllers (Flux, HPA, Istio, operators) updating the same resource or subresource at the same time can trigger resource version conflicts.
 
 ### 2. High Reconciliation Frequency
 
@@ -34,7 +34,7 @@ Very short reconciliation intervals increase the likelihood of concurrent update
 
 ### 3. Webhooks or Admission Controllers Modifying Resources
 
-Mutating admission webhooks that modify resources during apply can cause the resource version to change between Flux's read and write operations.
+Mutating admission webhooks can change fields during create or apply, and webhooks or controllers that perform follow-up updates can contribute to field ownership or resource version conflicts.
 
 ### 4. Manual Edits During Reconciliation
 
@@ -70,13 +70,14 @@ kubectl logs -n flux-system deploy/kustomize-controller --since=10m | grep "obje
 
 Count how frequently the error occurs. Occasional occurrences are normal; constant occurrences indicate a problem.
 
-### Step 4: Check for HPA or VPA
+### Step 4: Check for Autoscalers
 
 ```bash
-kubectl get hpa,vpa -A
+kubectl get hpa -A
+kubectl get vpa -A
 ```
 
-These controllers frequently update Deployment resources and can conflict with Flux.
+HPA updates workload scale targets such as Deployments. VPA usually affects pod resource settings through recommendations, admission, or eviction rather than directly updating Deployment manifests, but it is still worth checking for autoscalers when debugging ownership conflicts.
 
 ### Step 5: Check API Server Load
 
@@ -159,26 +160,32 @@ spec:
     - name: infra
 ```
 
-### Fix 5: Switch to Server-Side Apply
+### Fix 5: Tune Server-Side Apply Behavior
 
-Server-side apply handles concurrent updates more gracefully through field-level ownership:
+Flux v2 Kustomizations already use server-side apply. If another controller adds non-overlapping fields that Flux should preserve, annotate the affected resource with the `Merge` apply policy:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
-  namespace: flux-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: Merge
 spec:
-  interval: 10m
-  path: ./apps/my-app
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: app
+          image: my-app:latest
 ```
 
-Flux v2 Kustomizations use SSA by default.
+The `Merge` policy preserves fields added by other tools only when they do not overlap with fields defined in the Flux manifest.
 
 ### Fix 6: Force Reconciliation
 
@@ -188,4 +195,4 @@ flux reconcile kustomization my-app --with-source
 
 ## Prevention
 
-This error is usually transient and resolves on the next reconciliation cycle. To minimize its frequency, ensure clear field ownership between Flux and other controllers, use server-side apply, and avoid very short reconciliation intervals. Monitor reconciliation success rates to detect systematic conflicts early.
+This error is usually transient and resolves on the next reconciliation cycle. To minimize its frequency, ensure clear field ownership between Flux and other controllers, tune server-side apply behavior where needed, and avoid very short reconciliation intervals. Monitor reconciliation success rates to detect systematic conflicts early.
