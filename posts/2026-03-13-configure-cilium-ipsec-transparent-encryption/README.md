@@ -18,8 +18,8 @@ This guide covers the complete IPsec configuration, key management, and verifica
 
 ## Prerequisites
 
-- Linux kernel 4.19+
-- Cilium 1.10+
+- Linux kernel 5.10+ or equivalent supported distribution kernel, with the required XFRM/IPsec crypto modules
+- Cilium 1.16+ for per-tunnel IPsec keys
 - `kubectl` with kube-system access
 
 ## Generate IPsec Pre-Shared Key
@@ -34,10 +34,10 @@ Create the Kubernetes Secret with the key in the required format:
 ```bash
 kubectl create secret generic cilium-ipsec-keys \
   --namespace kube-system \
-  --from-literal=keys="3 rfc4106(gcm(aes)) ${PSK} 128"
+  --from-literal=keys="3+ rfc4106(gcm(aes)) ${PSK} 128"
 ```
 
-The format is: `<SPI> <algorithm> <key> <key-length>`.
+The format is: `<key-id> <algorithm> <key> <key-length>`. The `+` suffix on the key ID enables per-tunnel IPsec key derivation, which is recommended for current Cilium releases.
 
 ## Enable IPsec Encryption
 
@@ -88,16 +88,19 @@ kubectl exec -n kube-system ds/cilium -- \
 Rotate the PSK to a new key while maintaining connectivity:
 
 ```bash
-NEW_PSK=$(dd if=/dev/urandom count=20 bs=1 2>/dev/null | xxd -p -l 20)
+KEYID=$(kubectl get secret -n kube-system cilium-ipsec-keys \
+  -o go-template --template='{{.data.keys}}' | base64 -d | grep -oP '^\d+')
 
-# Use SPI 4 (increment from previous 3)
-kubectl create secret generic cilium-ipsec-keys \
-  --namespace kube-system \
-  --from-literal=keys="4 rfc4106(gcm(aes)) ${NEW_PSK} 128" \
-  --dry-run=client -o yaml | kubectl apply -f -
+if [[ ${KEYID} -ge 15 ]]; then
+  KEYID=0
+fi
+
+kubectl patch secret -n kube-system cilium-ipsec-keys \
+  --type merge \
+  -p "{\"stringData\":{\"keys\":\"$((KEYID + 1))+ rfc4106(gcm(aes)) $(dd if=/dev/urandom count=20 bs=1 2>/dev/null | xxd -p -c 64) 128\"}}"
 ```
 
-Cilium performs a rolling key rotation without dropping connections.
+Cilium keeps the old and new keys available during the transition so nodes can continue to communicate while the new key is rolled out. Avoid rotating keys during Cilium upgrades or downgrades.
 
 ## Limitations
 
