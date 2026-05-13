@@ -48,7 +48,7 @@ spec:
 
 ## Using SemVer Policy with CalVer
 
-When your CalVer tags use a three-component format like `2026.03.13` or `2026.3.1`, they happen to be valid SemVer strings. You can use the SemVer policy directly:
+When your CalVer tags use a three-component format without leading zeroes, such as `2026.3.13` or `2026.3.1`, they can be parsed as SemVer strings. You can use the SemVer policy directly:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -127,7 +127,7 @@ Since the format is zero-padded, alphabetical ordering gives the correct chronol
 
 ## CalVer with Build Number Suffix
 
-Some projects append a build number to the CalVer date, producing tags like `2026.03.13-1` or `2026.03.13-2` for multiple releases on the same day:
+Some projects append a fixed-width build number to the CalVer date, producing tags like `2026.03.13-001` or `2026.03.13-002` for multiple releases on the same day:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -139,12 +139,14 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^(?P<calver>[0-9]{4}\.[0-9]{2}\.[0-9]{2})-(?P<build>[0-9]+)$'
+    pattern: '^(?P<calver>[0-9]{4}\.[0-9]{2}\.[0-9]{2})-(?P<build>[0-9]{3})$'
     extract: '$calver-$build'
   policy:
     alphabetical:
       order: asc
 ```
+
+The build number must be zero-padded to a consistent width. Without padding, alphabetical sorting would place values like `2026.03.13-10` before `2026.03.13-2`.
 
 ## CalVer with v Prefix
 
@@ -188,7 +190,7 @@ spec:
     spec:
       containers:
         - name: my-app
-          image: docker.io/myorg/my-app:2026.03.13 # {"$imagepolicy": "flux-system:my-app-calver"}
+          image: docker.io/myorg/my-app:2026.3.13 # {"$imagepolicy": "flux-system:my-app-calver"}
 ```
 
 ## CI Pipeline CalVer Tagging
@@ -199,7 +201,7 @@ A GitHub Actions step to generate CalVer tags:
 - name: Generate CalVer tag
   run: |
     CALVER=$(date -u +%Y.%m.%d)
-    BUILD_NUM=${{ github.run_number }}
+    BUILD_NUM=$(printf "%03d" "${{ github.run_number }}")
     echo "IMAGE_TAG=${CALVER}-${BUILD_NUM}" >> $GITHUB_ENV
 
 - name: Build and push
@@ -217,4 +219,4 @@ flux get image policy my-app-calver
 
 ## Conclusion
 
-Calendar Versioning provides a human-readable tagging scheme that naturally sorts chronologically. Flux supports CalVer tags through its SemVer policy when the format has three components, and through alphabetical or numerical policies with tag filtering for other formats. The zero-padded date format is essential for correct sorting, so make sure your CI pipeline produces consistently formatted tags. CalVer works particularly well for teams that release frequently and want the release date embedded directly in the version number.
+Calendar Versioning provides a human-readable tagging scheme that naturally sorts chronologically. Flux supports CalVer tags through its SemVer policy when the format has three non-zero-padded numeric components, and through alphabetical or numerical policies with tag filtering for other formats. The zero-padded date format is essential for correct alphabetical sorting, so make sure your CI pipeline produces consistently formatted tags. CalVer works particularly well for teams that release frequently and want the release date embedded directly in the version number.
