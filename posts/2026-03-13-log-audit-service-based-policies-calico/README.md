@@ -10,15 +10,17 @@ Description: Log and Audit Calico service-based network policies to track servic
 
 ## Introduction
 
-Logging service-based policies gives you visibility into which services are being accessed by which workloads. Combined with Kubernetes Service change events, you get a complete audit trail for your service-to-service communication patterns.
+Logging service-based policies gives you visibility into which services are being accessed by which workloads. Combined with Kubernetes Service change events from Kubernetes API audit logs, you get an audit trail for your service-to-service communication patterns.
 
 Calico's `projectcalico.org/v3` service-based policies use the `services` field in egress destination rules to reference Kubernetes Service objects. This creates a stable, maintainable policy that survives pod restarts, scaling events, and deployments without requiring policy updates.
 
-This guide covers practical techniques for log and audit service-based Calico policies effectively.
+This guide covers practical techniques for logging and auditing service-based Calico policies effectively.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
+- Calico configured with the Kubernetes datastore driver
+- Kubernetes API audit logging enabled for Service change events
 - `calicoctl` and `kubectl` installed
 - Service-based policies configured or ready to configure
 
@@ -36,6 +38,11 @@ spec:
   order: 100
   selector: tier == 'frontend'
   egress:
+    - action: Log
+      destination:
+        services:
+          name: backend-api
+          namespace: production
     - action: Allow
       destination:
         services:
@@ -48,10 +55,10 @@ spec:
 ## Core Technique
 
 ```bash
-# Verify service exists and has endpoints
+# Verify service exists and has EndpointSlices
 
 kubectl get service backend-api -n production
-kubectl get endpoints backend-api -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api
 
 # Test traffic through the service
 SVC_IP=$(kubectl get service backend-api -n production -o jsonpath='{.spec.clusterIP}')
@@ -62,13 +69,13 @@ echo "Result: $?"
 ## Troubleshooting Service Policies
 
 ```bash
-# Check if service has backing pods
-kubectl get endpoints backend-api -n production -o yaml | grep -A 10 subsets
+# Check if service has ready backing endpoints
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api -o yaml | grep -A 10 endpoints:
 
 # Verify policy is targeting the correct service
-calicoctl get networkpolicy allow-frontend-to-backend -n production -o yaml | grep -A 5 services
+calicoctl get networkpolicy example-service-policy -n production -o yaml | grep -A 5 services
 
-# List all policies affecting the frontend pods
+# List namespace policies and inspect selectors for frontend pods
 calicoctl get networkpolicies -n production -o wide
 ```
 
@@ -79,8 +86,8 @@ flowchart TD
     A[frontend pods] -->|Egress allow to backend-api Service| B[backend-api Service]
     B --> C[backend pod 1]
     B --> D[backend pod 2]
-    E[unauthorized pod] -.-x|Denied| B
-    F[Policy Update] -->|Service scales| B
+    A --x|Other service egress denied unless otherwise allowed| E[other Service]
+    F[No policy update needed] -->|Service scales| B
     B --> G[backend pod 3 - auto included]
 ```
 
