@@ -12,16 +12,17 @@ Description: A step-by-step guide to installing Calico as the CNI plugin on a Ku
 
 Bare metal Kubernetes clusters running containerized workloads get the best performance when paired with a CNI plugin that can operate without encapsulation overhead. Calico is purpose-built for this use case - it can route pod traffic natively using BGP, eliminating VXLAN or IPIP tunneling and delivering bare-metal-level network performance to containers.
 
-Installing Calico on bare metal with containers follows the same core operator-based workflow as other environments, but the configuration choices differ. You will typically want to disable overlay encapsulation, configure BGP to your physical switches, and tune the MTU to match your NIC's maximum frame size.
+Installing Calico on bare metal with containers follows the same core operator-based workflow as other environments, but the configuration choices differ. You will typically want to disable overlay encapsulation, configure BGP to your physical switches, and tune the MTU to match your network's usable frame size.
 
 This guide walks through a complete Calico installation on a bare metal Kubernetes cluster running containerized workloads.
 
 ## Prerequisites
 
-- Bare metal servers running Linux with kernel 4.19+
+- Bare metal servers running Linux with kernel 5.10+
 - Kubernetes cluster bootstrapped with kubeadm, no CNI installed
 - Physical or virtual network switches that support BGP (optional but recommended)
 - `kubectl` with cluster admin access
+- `calicoctl` installed and configured if you want to run the IPAM verification command
 - Container runtime (containerd or CRI-O) installed and running
 
 ## Step 1: Prepare Nodes
@@ -43,7 +44,8 @@ kubectl label node <worker-node> node-role.kubernetes.io/worker=
 ## Step 2: Install the Tigera Operator
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 kubectl rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -59,7 +61,8 @@ metadata:
 spec:
   calicoNetwork:
     ipPools:
-    - blockSize: 26
+    - name: default-ipv4-ippool
+      blockSize: 26
       cidr: 10.244.0.0/16
       encapsulation: None
       natOutgoing: Enabled
