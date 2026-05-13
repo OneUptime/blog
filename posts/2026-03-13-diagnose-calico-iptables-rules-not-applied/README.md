@@ -34,7 +34,7 @@ CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
 # Check if Felix readiness probe passes
 kubectl exec -n calico-system "${CALICO_POD}" -- \
   wget -qO- http://localhost:9099/readiness 2>/dev/null
-# Expected: 200 OK response (Felix is ready)
+# Expected: Successful response (Felix is ready)
 
 # Check Felix liveness probe
 kubectl exec -n calico-system "${CALICO_POD}" -- \
@@ -63,16 +63,17 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 
 ## Step 3: Check Felix Configuration for iptables Mode
 
-Felix may be configured to use nftables instead of iptables, or may have iptables programming disabled.
+Felix may be configured to use native nftables or eBPF instead of the iptables dataplane.
 
 ```bash
 # Check the FelixConfiguration for iptables-related settings
 calicoctl get felixconfiguration default -o yaml | \
-  grep -E "iptables|nftables|dataplane"
+  grep -E "iptables|nftables|bpf|dataplane"
 
 # Key fields to check:
-# datastoreType: etcdv3 or kubernetes
 # iptablesBackend: Legacy, NFT, or Auto
+# nftablesMode: Enabled means Felix is using the native nftables dataplane
+# bpfEnabled: true means Felix is using the eBPF dataplane
 # iptablesRefreshInterval: Should be > 0
 # iptablesLockFilePath: Should be valid
 
@@ -119,11 +120,11 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 
 ## Best Practices
 
-- Monitor the `felix_iptables_restore_errors_total` Prometheus metric and alert when it increases
+- Monitor the `felix_iptables_restore_errors` Prometheus metric and alert when it increases
 - Ensure calico-node pods run with the `system-node-critical` priority class to prevent eviction during resource pressure
 - Verify that required kernel modules (`xt_conntrack`, `ip_tables`) are loaded on all nodes
 - Use `iptablesBackend: Auto` in FelixConfiguration to let Felix choose the best backend for the kernel version
 
 ## Conclusion
 
-Diagnosing missing Calico iptables rules requires checking Felix readiness, verifying that `cali-` prefixed iptables chains exist on the node, reviewing FelixConfiguration for correct iptables backend settings, and checking Felix logs for specific error messages. The `felix_iptables_restore_errors_total` metric is the most reliable indicator of ongoing iptables programming failures.
+Diagnosing missing Calico iptables rules requires checking Felix readiness, verifying that `cali-` prefixed iptables chains exist on the node, reviewing FelixConfiguration for correct dataplane and iptables backend settings, and checking Felix logs for specific error messages. The `felix_iptables_restore_errors` metric is a reliable indicator of ongoing iptables programming failures.
