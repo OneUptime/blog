@@ -40,16 +40,17 @@ spec:
 # Create namespace for ExternalDNS
 kubectl create namespace external-dns
 
-# Create credentials secret (provider-specific)
+# Create AWS credentials secret
 kubectl create secret generic aws-credentials \
-  --from-literal=key=your-api-key-or-credentials \
+  --from-literal=aws_access_key_id=YOUR_AWS_ACCESS_KEY_ID \
+  --from-literal=aws_secret_access_key=YOUR_AWS_SECRET_ACCESS_KEY \
   --namespace=external-dns
 ```
 
 ## Step 3: Deploy ExternalDNS via Flux HelmRelease
 
 ```yaml
-# clusters/production/apps/external-dns.yaml
+# clusters/production/apps/external-dns/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -66,7 +67,8 @@ spec:
         name: external-dns
         namespace: flux-system
   values:
-    provider: route53
+    provider:
+      name: aws
     # Domain filter: only manage records for these zones
     domainFilters:
       - your-domain.com
@@ -77,16 +79,22 @@ spec:
       - service
       - ingress
     # Annotation filter to only manage annotated resources
-    annotationFilter: "externaldns.alpha.kubernetes.io/external=true"
+    extraArgs:
+      - --annotation-filter=external-dns.alpha.kubernetes.io/external=true
     # TXT record for ownership tracking
     txtOwnerId: "production-cluster"
-    # Provider-specific configuration
+    # Provider-specific configuration. On EKS, prefer IRSA and service account annotations.
     env:
-      - name: PROVIDER_KEY
+      - name: AWS_ACCESS_KEY_ID
         valueFrom:
           secretKeyRef:
             name: aws-credentials
-            key: key
+            key: aws_access_key_id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: aws_secret_access_key
     # RBAC
     serviceAccount:
       create: true
@@ -100,10 +108,8 @@ spec:
         cpu: 100m
         memory: 128Mi
     # Metrics
-    metrics:
+    serviceMonitor:
       enabled: true
-      serviceMonitor:
-        enabled: true
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -144,7 +150,7 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: "myapp.your-domain.com"
     external-dns.alpha.kubernetes.io/ttl: "300"
     # Match the annotation filter above
-    externaldns.alpha.kubernetes.io/external: "true"
+    external-dns.alpha.kubernetes.io/external: "true"
 spec:
   type: LoadBalancer
   selector:
@@ -163,7 +169,7 @@ metadata:
   name: myapp
   namespace: myapp
   annotations:
-    externaldns.alpha.kubernetes.io/external: "true"
+    external-dns.alpha.kubernetes.io/external: "true"
 spec:
   rules:
     - host: myapp.your-domain.com  # ExternalDNS creates A/CNAME for this
