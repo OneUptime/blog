@@ -4,48 +4,53 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Operation
 
-Description: Monitor Calico datastore backup health by alerting on failed export CronJobs, tracking backup file size trends, and verifying backup recency meets recovery time objectives.
+Description: Monitor Calico datastore migration export health by alerting on failed export jobs, tracking export file size trends, and verifying export recency meets recovery time objectives.
 
 ---
 
 ## Introduction
 
-Monitoring datastore export operations ensures backups are being created on schedule and that they contain the expected amount of data. A backup that completes but produces a much smaller file than usual indicates a partial export failure that would fail during restore.
+Monitoring datastore export operations ensures migration exports are being created on schedule and that they contain the expected amount of data. An export that completes but produces a much smaller file than usual can indicate missing resources or a partial export problem that should be investigated before relying on it for import.
 
 ## Key Commands
 
 ```bash
-# Export Calico datastore (backup or migration)
+# Export Calico etcdv3 datastore for migration
 
-calicoctl datastore migrate export > calico-backup-$(date +%Y%m%d).yaml
-
-# Verify export content
-echo "Resources in backup: $(grep -c '^kind:' calico-backup.yaml)"
-grep "^kind:" calico-backup.yaml | sort | uniq -c
-
-# Lock source datastore (migration only, not backup)
+# Lock source datastore for migration
 calicoctl datastore migrate lock
 
-# Import to destination datastore
-calicoctl datastore migrate import -f calico-backup.yaml
+export_file="calico-export-$(date +%Y%m%d).yaml"
+calicoctl datastore migrate export > "$export_file"
+
+# Verify export content
+echo "Resources in export: $(grep -c '^kind:' "$export_file")"
+grep "^kind:" "$export_file" | sort | uniq -c
+
+# Import to Kubernetes datastore after configuring calicoctl for it
+calicoctl datastore migrate import -f "$export_file"
 
 # Verify import
 calicoctl get felixconfiguration
 calicoctl get globalnetworkpolicy | wc -l
+
+# Unlock after migration verification and Calico rollout
+calicoctl datastore migrate unlock
 ```
 
 ## Operation Flow
 
 ```mermaid
 flowchart TD
-    A[Export: calicoctl datastore migrate export] --> B[Backup YAML file]
-    B --> C[Encrypt and store]
-    D[Restore needed] --> E[Retrieve backup from storage]
-    E --> F[Import: calicoctl datastore migrate import]
-    F --> G[Verify resource counts match]
-    G --> H{Match?}
-    H -->|Yes| I[Restore complete]
-    H -->|No| J[Investigate partial import]
+    A[Lock: calicoctl datastore migrate lock] --> B[Export: calicoctl datastore migrate export]
+    B --> C[Migration YAML file]
+    C --> D[Encrypt and store]
+    E[Migration import needed] --> F[Retrieve export from storage]
+    F --> G[Import: calicoctl datastore migrate import]
+    G --> H[Verify resource counts match]
+    H --> I{Match?}
+    I -->|Yes| J[Unlock: calicoctl datastore migrate unlock]
+    I -->|No| K[Investigate partial import]
 ```
 
 ## Operational Checklist
@@ -66,4 +71,4 @@ After import:
 
 ## Conclusion
 
-Calico datastore export and import operations require careful verification at both ends: confirm resource counts before and after, verify connectivity and policy enforcement after import, and store exports encrypted in access-controlled storage. Regular automated exports with monthly restore testing ensure that disaster recovery is not just theoretically possible but practically verified.
+Calico datastore export and import operations require careful verification at both ends: confirm resource counts before and after, verify connectivity and policy enforcement after import, and store exports encrypted in access-controlled storage. Regular automated exports with monthly import testing ensure that disaster recovery is not just theoretically possible but practically verified.
