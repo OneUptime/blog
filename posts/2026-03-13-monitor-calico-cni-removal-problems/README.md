@@ -12,7 +12,7 @@ Description: Monitor Calico CNI removal progress by tracking resource deletion, 
 
 Monitoring Calico CNI removal is less about continuous alerting and more about tracking progress through a defined removal procedure. Each step of the removal process has observable outputs that confirm successful completion. Monitoring these checkpoints prevents the common mistake of assuming removal is complete when it is not.
 
-The key monitoring points are: Calico pod count reaching zero, CRD resource count reaching zero, CNI config files absent from nodes, and iptables cali-* chains absent from the FORWARD table.
+The key monitoring points are: Calico pod count reaching zero, CRD resource count reaching zero, CNI config files absent from nodes, and iptables cali-* chains and rules absent from the host iptables ruleset.
 
 ## Symptoms
 
@@ -30,7 +30,7 @@ The key monitoring points are: Calico pod count reaching zero, CRD resource coun
 ```bash
 # Overall Calico presence check
 
-kubectl get all -n kube-system | grep calico | wc -l
+kubectl get all --all-namespaces | grep calico | wc -l
 kubectl get crd | grep calico | wc -l
 ```
 
@@ -40,14 +40,14 @@ kubectl get crd | grep calico | wc -l
 
 ```bash
 # Watch Calico pod count decrease
-watch -n5 kubectl get pods -n kube-system -l k8s-app=calico-node
+watch -n5 "kubectl get pods --all-namespaces -l k8s-app=calico-node"
 ```
 
 **Step 2: Monitor CRD deletion**
 
 ```bash
 # Watch CRD count
-watch -n5 "kubectl get crd | grep calico"
+watch -n5 "kubectl get crd | grep calico | wc -l"
 # Expected: count decreases to 0
 ```
 
@@ -57,9 +57,17 @@ watch -n5 "kubectl get crd | grep calico"
 # Check all namespaces for Terminating Calico resources
 kubectl get all --all-namespaces | grep -i "terminating\|calico"
 
-# Check for stuck CRD objects
-kubectl api-resources --verbs=list | grep calico | awk '{print $1}' | while read RES; do
-  COUNT=$(kubectl get $RES --all-namespaces 2>/dev/null | tail -n +2 | wc -l)
+# Check for stuck namespaced Calico CRD objects
+kubectl api-resources --verbs=list --namespaced=true -o name | grep crd.projectcalico.org | while read RES; do
+  COUNT=$(kubectl get "$RES" --all-namespaces --no-headers 2>/dev/null | wc -l)
+  if [ "$COUNT" -gt 0 ]; then
+    echo "Remaining $RES: $COUNT"
+  fi
+done
+
+# Check for stuck cluster-scoped Calico CRD objects
+kubectl api-resources --verbs=list --namespaced=false -o name | grep crd.projectcalico.org | while read RES; do
+  COUNT=$(kubectl get "$RES" --no-headers 2>/dev/null | wc -l)
   if [ "$COUNT" -gt 0 ]; then
     echo "Remaining $RES: $COUNT"
   fi
@@ -71,8 +79,8 @@ done
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   CNI_FILES=$(ssh $NODE "ls /etc/cni/net.d/ | grep calico | wc -l" 2>/dev/null)
-  CALI_CHAINS=$(ssh $NODE "sudo iptables -L | grep -c cali-" 2>/dev/null || echo "0")
-  echo "$NODE - CNI files: $CNI_FILES, cali- chains: $CALI_CHAINS"
+  CALI_RULES=$(ssh $NODE "sudo iptables-save | grep -c 'cali-'" 2>/dev/null || echo "0")
+  echo "$NODE - CNI files: $CNI_FILES, cali- rules: $CALI_RULES"
 done
 ```
 
@@ -81,11 +89,11 @@ done
 ```bash
 echo "=== Post-removal verification ==="
 echo -n "Calico pods: "
-kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l
+kubectl get pods --all-namespaces -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l
 echo -n "Calico CRDs: "
 kubectl get crd 2>/dev/null | grep calico | wc -l
 echo -n "calico-config ConfigMap: "
-kubectl get configmap calico-config -n kube-system 2>/dev/null | wc -l
+kubectl get configmap --all-namespaces --no-headers 2>/dev/null | grep -w calico-config | wc -l
 echo "=== Expected: all zeros ==="
 ```
 
@@ -94,7 +102,7 @@ flowchart LR
     A[Start removal] --> B[Monitor: pod count -> 0]
     B --> C[Monitor: CRD count -> 0]
     C --> D[Monitor: node CNI files -> 0]
-    D --> E[Monitor: iptables cali- chains -> 0]
+    D --> E[Monitor: iptables cali- rules -> 0]
     E --> F{All zero?}
     F -- Yes --> G[Removal complete]
     F -- No --> H[Investigate stuck resources]
@@ -110,4 +118,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring Calico CNI removal requires tracking resource counts at each layer: pods, CRDs, CNI config files, and iptables chains. A simple verification script run after each step confirms progress and catches stuck resources before they block the next step or the new CNI installation.
+Monitoring Calico CNI removal requires tracking resource counts at each layer: pods, CRDs, CNI config files, and iptables ruleset references. A simple verification script run after each step confirms progress and catches stuck resources before they block the next step or the new CNI installation.
