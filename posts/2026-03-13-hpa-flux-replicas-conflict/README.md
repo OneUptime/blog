@@ -83,25 +83,23 @@ kind: Kustomization
 resources:
   - ../../base/web-api
 patches:
-  # Strategic merge patch to remove the replicas field
+  # JSON6902 patch to remove the replicas field
   - patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: web-api
-      spec:
-        replicas: null
+      - op: remove
+        path: /spec/replicas
     target:
+      group: apps
+      version: v1
       kind: Deployment
       name: web-api
 ```
 
-## Step 3: Solution 3 - Use Flux's ignoreDifferences
+## Step 3: Solution 3 - Use Flux Kustomization Patches
 
-Flux supports ignoring specific fields during reconciliation. This tells Flux to never overwrite the `replicas` field:
+Flux Kustomization supports inline Kustomize patches. If your Flux Kustomization points at plain manifests or you want the removal to happen at the Flux Kustomization level, patch the rendered Deployment before Flux applies it:
 
 ```yaml
-# flux-kustomization-ignore-replicas.yaml - Ignore replicas field during reconciliation
+# flux-kustomization-remove-replicas.yaml - Remove replicas before reconciliation
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -114,22 +112,23 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-infra
-  # Tell Flux to ignore the replicas field so HPA can manage it
+  # Remove replicas from the rendered manifest so HPA can manage it
   patches:
     - patch: |
         - op: remove
           path: /spec/replicas
       target:
+        group: apps
+        version: v1
         kind: Deployment
         name: web-api
 ```
 
-Alternatively, use `spec.force: false` and strategic merge patches, or configure `ignoreDifferences` with server-side apply:
+Do not rely on `spec.force: false` for this problem. In Flux, `spec.force` controls whether resources are recreated when patching fails because of immutable field changes; it does not make Flux ignore `spec.replicas`.
 
 ```yaml
-# Using force field with kustomize patch to never overwrite replicas
+# This is the default and is not a fix for HPA replica conflicts
 spec:
-  # Enable server-side apply which respects HPA ownership of replicas
   force: false
 ```
 
@@ -152,11 +151,11 @@ flux get kustomizations
 ## Best Practices
 
 - Always choose Solution 1 (remove `replicas` from Git) as the primary approach - it is the cleanest
-- Use Solution 3 (`ignoreDifferences`) when you cannot modify the base manifests
+- Use Solution 3 (Flux Kustomization `patches`) when you cannot modify the base manifests
 - Document in the Deployment YAML that replicas are HPA-managed to prevent future confusion
 - Set HPA `minReplicas` to your desired baseline replica count rather than putting it in the Deployment
 - Test the solution by watching both Flux reconciliation logs and HPA events simultaneously
 
 ## Conclusion
 
-The HPA-Flux replicas conflict is a common pitfall for teams new to GitOps with autoscaling. The correct solution is to remove or patch out the `replicas` field from Git-managed manifests in environments where HPA is active. Using Flux's `ignoreDifferences` is a viable alternative when modifying base manifests is not feasible. Once resolved, Flux and HPA coexist cleanly - Flux manages all deployment configuration except replica count, which HPA owns.
+The HPA-Flux replicas conflict is a common pitfall for teams new to GitOps with autoscaling. The correct solution is to remove or patch out the `replicas` field from Git-managed manifests in environments where HPA is active. Using Flux Kustomization patches is a viable alternative when modifying base manifests is not feasible. Once resolved, Flux and HPA coexist cleanly - Flux manages all deployment configuration except replica count, which HPA owns.
