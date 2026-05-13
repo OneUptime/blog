@@ -63,18 +63,18 @@ Maintain this as a table in your documentation:
 
 ### 3. Label Change Runbook
 
-```markdown
+````markdown
 ## Runbook: Changing a Node Label Used by Calico Selectors
 
 ### Before Changing
 1. Identify all policies that reference the label being changed:
-   ```
+   ```bash
    grep -r "node-role" policies/
-   ```plaintext
-2. Determine which nodes will be affected:
    ```
-   calicoctl get hep --selector="node-role == 'old-value'" -o wide
-   ```plaintext
+2. Determine which nodes will be affected:
+   ```bash
+   calicoctl get hep -o json | python3 -c "import json, sys; data = json.load(sys.stdin); [print(hep['metadata']['name'], hep.get('spec', {}).get('node', '')) for hep in data.get('items', []) if hep.get('metadata', {}).get('labels', {}).get('node-role') == 'old-value']"
+   ```
 3. Get approval from the Security and Platform teams
 
 ### Making the Change
@@ -87,7 +87,7 @@ Maintain this as a table in your documentation:
 1. Update the Label Taxonomy documentation
 2. Run validation tests
 3. Commit updated documentation to Git
-```
+````
 
 ## Version-Controlled Policy Export
 
