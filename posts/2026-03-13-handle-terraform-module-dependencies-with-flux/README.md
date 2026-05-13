@@ -10,57 +10,56 @@ Description: Manage Terraform module dependencies in the Tofu Controller with Fl
 
 ## Introduction
 
-When managing infrastructure with Terraform through GitOps, resource deployment order matters. A VPC must exist before subnets, an EKS cluster before node groups, and a database before applications. Flux CD's `dependsOn` feature combined with the Terraform Controller (tf-controller) enables declarative dependency management for Terraform modules running on Kubernetes.
+When managing infrastructure with Terraform through GitOps, resource deployment order matters. A VPC must exist before subnets, an EKS cluster before node groups, and a database before applications. Flux CD's `dependsOn` feature combined with Tofu Controller (formerly tf-controller) enables declarative dependency management for Terraform modules running on Kubernetes.
 
 This post demonstrates how to structure Terraform workspaces managed by Flux so that dependencies are respected and failures in one module stop downstream modules from running.
 
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD installed
-- Terraform Controller (tf-controller) installed
+- Tofu Controller installed
 - AWS/GCP/Azure credentials stored as Kubernetes secrets
 - Git repository with Terraform module configurations
 
-## Step 1: Install the Terraform Controller
+## Step 1: Install Tofu Controller
 
-The tf-controller by Weaveworks runs Terraform plans and applies within Kubernetes pods.
+Tofu Controller runs Terraform plans and applies within Kubernetes pods.
 
 ```bash
-# Add the tf-controller Helm repository
+# Add the Tofu Controller Helm repository
 
-helm repo add tf-controller https://weaveworks.github.io/tf-controller
+helm repo add tofu-controller https://flux-iac.github.io/tofu-controller
 helm repo update
 
-# Install tf-controller via Flux HelmRelease
-cat > tf-controller-helmrelease.yaml << 'EOF'
+# Install Tofu Controller via Flux HelmRelease
+cat > tofu-controller-helmrelease.yaml << 'EOF'
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: tf-controller
+  name: tofu-controller
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://weaveworks.github.io/tf-controller
+  url: https://flux-iac.github.io/tofu-controller
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: tf-controller
+  name: tofu-controller
   namespace: flux-system
 spec:
   interval: 1h
   chart:
     spec:
-      chart: tf-controller
-      version: "0.x"
+      chart: tofu-controller
       sourceRef:
         kind: HelmRepository
-        name: tf-controller
+        name: tofu-controller
   values:
     replicaCount: 1
     concurrency: 4
 EOF
-kubectl apply -f tf-controller-helmrelease.yaml
+kubectl apply -f tofu-controller-helmrelease.yaml
 ```
 
 ## Step 2: Define Terraform Modules as Flux Resources
@@ -76,7 +75,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  # Apply changes automatically (set to false for plan-only mode)
+  # Apply changes automatically (omit approvePlan for manual approval, or use planOnly: true for plan-only mode)
   approvePlan: auto
   path: ./modules/vpc
   sourceRef:
@@ -161,6 +160,12 @@ spec:
   # EKS cannot start until VPC Terraform is complete
   dependsOn:
     - name: terraform-vpc
+  # Wait for EKS to be ready before dependent Kustomizations proceed
+  healthChecks:
+    - apiVersion: infra.contrib.fluxcd.io/v1alpha2
+      kind: Terraform
+      name: eks-cluster
+      namespace: flux-system
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -182,11 +187,11 @@ spec:
 ## Best Practices
 
 - Use `writeOutputsToSecret` to pass Terraform outputs between modules without hardcoding values
-- Set `approvePlan: auto` only after thorough review; use plan-only mode in staging
+- Set `approvePlan: auto` only after thorough review; use `planOnly: true` in staging when you only want Terraform plans
 - Define `retryInterval` on Terraform resources to handle transient provider API failures
 - Use separate Git paths for each Terraform module to enable independent reconciliation
-- Monitor tf-controller pod logs when a Terraform resource enters a stuck state
+- Monitor Tofu Controller pod logs when a Terraform resource enters a stuck state
 
 ## Conclusion
 
-Flux CD's `dependsOn` feature combined with the tf-controller enables a clean, declarative approach to managing Terraform module dependencies. By wrapping Terraform resources in Kustomizations with explicit ordering, you get automatic dependency resolution, health-checked sequential execution, and full GitOps auditability for infrastructure changes. This approach is significantly more reliable than managing Terraform module ordering in custom CI/CD scripts.
+Flux CD's `dependsOn` feature combined with Tofu Controller enables a clean, declarative approach to managing Terraform module dependencies. By wrapping Terraform resources in Kustomizations with explicit ordering, you get automatic dependency resolution, health-checked sequential execution, and full GitOps auditability for infrastructure changes. This approach is significantly more reliable than managing Terraform module ordering in custom CI/CD scripts.
