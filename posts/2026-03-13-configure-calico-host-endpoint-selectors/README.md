@@ -10,7 +10,7 @@ Description: Learn how to configure Calico host endpoint selectors to target spe
 
 ## Introduction
 
-Calico host endpoint selectors are the mechanism by which GlobalNetworkPolicy objects target specific HostEndpoint resources. Rather than applying a policy to all nodes uniformly, selectors allow you to apply differentiated policies based on node labels - enforcing stricter rules on control plane nodes, different port allowances for GPU nodes, or region-specific rules for geographically distributed clusters.
+Calico host endpoint selectors are the mechanism by which GlobalNetworkPolicy objects can target specific HostEndpoint resources. Rather than applying a policy to all nodes uniformly, selectors allow you to apply differentiated policies based on HostEndpoint labels - enforcing stricter rules on control plane nodes, different port allowances for GPU nodes, or region-specific rules for geographically distributed clusters.
 
 Mastering selectors is fundamental to building a layered host endpoint security model. Calico selectors support equality, set membership, existence checks, and compound boolean expressions, giving you expressive power to match exactly the nodes you intend to affect.
 
@@ -25,12 +25,12 @@ This guide covers the selector syntax, common patterns, and examples for configu
 
 ## Understanding Selector Syntax
 
-Calico uses a CSS-like selector language. The selector in a GlobalNetworkPolicy `spec.selector` field matches labels on HostEndpoint resources.
+Calico uses a label selector language. The selector in a GlobalNetworkPolicy `spec.selector` field matches labels on endpoints, including HostEndpoint resources.
 
 | Expression | Meaning |
 |------------|---------|
 | `role == 'worker'` | Label `role` equals `worker` |
-| `role != 'control-plane'` | Label `role` not equal to `control-plane'` |
+| `role != 'control-plane'` | Label `role` is absent or not equal to `control-plane` |
 | `has(gpu)` | Label `gpu` exists (any value) |
 | `!has(untrusted)` | Label `untrusted` does not exist |
 | `env in {'prod', 'staging'}` | Label `env` is one of the listed values |
@@ -48,7 +48,7 @@ kubectl label node worker-gpu-1 node-role=worker workload-type=gpu security-tier
 
 ## Step 2: Add Labels to HostEndpoints
 
-When creating HostEndpoints manually, mirror the node labels:
+When creating HostEndpoints manually, mirror the node labels. If you use Calico automatic host endpoints instead, Calico syncs node labels to the generated HostEndpoint resources.
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -112,7 +112,7 @@ spec:
     - action: Allow
       protocol: TCP
       destination:
-        ports: [10250, 30000, 32767]
+        ports: [10250, '30000:32767']
     - action: Deny
   egress:
     - action: Allow
@@ -139,4 +139,4 @@ spec:
 
 ## Conclusion
 
-Calico host endpoint selectors provide fine-grained control over which policies apply to which nodes. By labeling nodes with meaningful security attributes and writing selector expressions that target those labels precisely, you can maintain differentiated host-level security policies across heterogeneous node pools. Always verify selector matches with `calicoctl get hostendpoints -o wide` before applying policies to production nodes.
+Calico host endpoint selectors provide fine-grained control over which policies apply to which nodes. By labeling HostEndpoints with meaningful security attributes and writing selector expressions that target those labels precisely, you can maintain differentiated host-level security policies across heterogeneous node pools. Always verify selector matches with `calicoctl get hostEndpoint --output=wide` before applying policies to production nodes.
