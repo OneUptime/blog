@@ -10,7 +10,7 @@ Description: Debug and troubleshoot Terraform plan failures in the Tofu Controll
 
 ## Introduction
 
-Terraform plan failures in the Tofu Controller manifest differently from failures in a local CLI workflow. Instead of seeing plan output directly in your terminal, you need to know where to look in Kubernetes: the controller logs, the Terraform resource status conditions, the runner pod logs, and the plan output secrets. Understanding this debugging workflow is essential for operating the Tofu Controller in production.
+Terraform plan failures in the Tofu Controller manifest differently from failures in a local CLI workflow. Instead of seeing plan output directly in your terminal, you need to know where to look in Kubernetes: the controller logs, the Terraform resource status conditions, the runner pod logs, and the Kubernetes events. Understanding this debugging workflow is essential for operating the Tofu Controller in production.
 
 Common failure causes include authentication errors (expired credentials, missing permissions), variable resolution failures (missing Secrets or ConfigMaps), module errors (syntax errors, invalid variable values), and provider API rate limiting. Each has a distinct signature in the Tofu Controller's status conditions and logs.
 
@@ -45,20 +45,25 @@ kubectl get terraform my-failing-resource \
 #   {
 #     "lastTransitionTime": "2026-03-13T10:00:00Z",
 #     "message": "error: No value for required variable",
-#     "reason": "TerraformPlanFailed",
+#     "reason": "TFExecPlanFailed",
 #     "status": "False",
 #     "type": "Ready"
 #   }
 # ]
 ```
 
-## Step 2: Get the Full Plan Error from the Status
+## Step 2: Get the Plan Error from Conditions and Events
 
 ```bash
-# Get the detailed plan error message
+# Get the detailed Ready condition message
 kubectl get terraform my-failing-resource \
   -n flux-system \
-  -o jsonpath='{.status.plan.error}'
+  -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{.reason}{": "}{.message}{"\n"}{end}'
+
+# Get recent warning events emitted for the resource
+kubectl get events -n flux-system \
+  --field-selector involvedObject.name=my-failing-resource,type=Warning \
+  --sort-by='.lastTimestamp'
 
 # Alternatively, describe the resource for human-readable output
 kubectl describe terraform my-failing-resource -n flux-system
@@ -66,7 +71,7 @@ kubectl describe terraform my-failing-resource -n flux-system
 
 ## Step 3: Find and Inspect the Runner Pod Logs
 
-The Tofu Controller spawns runner pods to execute Terraform. These pods contain the full Terraform output.
+The Tofu Controller spawns runner pods to execute Terraform. These pods contain Terraform output unless runner logging has been disabled; plan errors are sanitized by default.
 
 ```bash
 # List runner pods (they are short-lived - look for recent completed/failed pods)
@@ -172,7 +177,7 @@ spec:
         namespace: flux-system
   values:
     # Temporarily increase log verbosity for debugging
-    # logLevel: info (normal), debug (verbose), trace (very verbose)
+    # logLevel: info (normal), debug (verbose)
     logLevel: debug
 ```
 
@@ -230,8 +235,8 @@ kubectl get pods -n "${NAMESPACE}" | grep "${RESOURCE}"
 ## Best Practices
 
 - Check status conditions first (`kubectl describe terraform ...`) before diving into logs. The condition message usually identifies the failure category immediately.
-- Set up Flux Alerts for `TerraformPlanFailed` events so the team is notified immediately rather than discovering failures during the next review cycle.
-- Keep runner pod logs for failed executions by setting a longer pod grace period. By default, runner pods are cleaned up quickly, which can make debugging time-sensitive.
+- Set up Flux Alerts for `TFExecPlanFailed` events so the team is notified immediately rather than discovering failures during the next review cycle.
+- Keep runner pod logs for failed executions by temporarily setting `.spec.alwaysCleanupRunnerPod: false` on the Terraform resource. By default, runner pods are cleaned up after each reconciliation cycle, which can make debugging time-sensitive.
 - Maintain a runbook for the most common failure types (authentication, state lock, provider rate limiting) so on-call engineers can resolve them without deep Terraform knowledge.
 - Test variable injection by printing variable values at the start of your Terraform modules (using `output` or `terraform console`) in non-production environments before promoting to production.
 
