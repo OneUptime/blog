@@ -95,7 +95,7 @@ Steps:
    `./scripts/validate-calico-certs-fips.sh`
 
 3. If fipsMode disabled:
-   a. Check who changed it: kubectl audit logs
+   a. Check who changed it: review kube-apiserver audit logs (filter by objectRef.name=default and resource=installations)
    b. Re-enable: kubectl patch installation default \
         --type=merge -p '{"spec":{"fipsMode":"Enabled"}}'
    c. Notify compliance team within 1 hour
@@ -134,7 +134,7 @@ kubectl get pods -n calico-system \
   > "${AUDIT_DIR}/pod-images.txt"
 
 # Certificate details
-for secret in calico-typha-tls calico-node-tls; do
+for secret in typha-certs node-certs; do
   kubectl get secret -n calico-system "${secret}" \
     -o jsonpath='{.data.tls\.crt}' | base64 -d | \
     openssl x509 -noout -text 2>/dev/null \
