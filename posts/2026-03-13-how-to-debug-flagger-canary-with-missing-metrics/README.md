@@ -41,14 +41,14 @@ Ensure Flagger is configured to reach your metrics server.
 
 ```bash
 # Check Flagger deployment for metrics server configuration
-kubectl get deployment flagger -n <flagger-namespace> -o yaml | grep -A 2 metricsServer
+kubectl get deployment flagger -n <flagger-namespace> -o yaml | grep -A 1 -- "-metrics-server"
 ```
 
 The metrics server URL must be accessible from within the cluster. Test connectivity.
 
 ```bash
 # Test Prometheus connectivity
-kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never --command -- \
   curl -s "http://prometheus.monitoring:9090/api/v1/query?query=up"
 ```
 
@@ -60,7 +60,7 @@ Check that your application pods are exposing Prometheus metrics on the expected
 
 ```bash
 # Port-forward to a canary pod and check the metrics endpoint
-kubectl port-forward <canary-pod> -n <namespace> 9898:9898
+kubectl port-forward pod/<canary-pod> -n <namespace> 9898:9898
 
 # In another terminal, fetch the metrics
 curl http://localhost:9898/metrics
@@ -80,12 +80,23 @@ metadata:
   name: podinfo
   namespace: test
 spec:
+  selector:
+    matchLabels:
+      app: podinfo
   template:
     metadata:
+      labels:
+        app: podinfo
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9898"
         prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: podinfo
+          image: <your-image>
+          ports:
+            - containerPort: 9898
 ```
 
 If you use ServiceMonitor resources with the Prometheus Operator, verify the ServiceMonitor exists and matches your service.
@@ -107,7 +118,7 @@ For Istio:
 ```bash
 # Test Istio request success rate query
 curl -s 'http://localhost:9090/api/v1/query' \
-  --data-urlencode 'query=sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace="test",destination_workload="podinfo-canary",response_code!~"5.*"}[1m]))/sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace="test",destination_workload="podinfo-canary"}[1m]))*100'
+  --data-urlencode 'query=sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace="test",destination_workload=~"podinfo",response_code!~"5.*"}[1m]))/sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace="test",destination_workload=~"podinfo"}[1m]))*100'
 ```
 
 For NGINX:
@@ -115,7 +126,7 @@ For NGINX:
 ```bash
 # Test NGINX request success rate query
 curl -s 'http://localhost:9090/api/v1/query' \
-  --data-urlencode 'query=sum(rate(nginx_ingress_controller_requests{namespace="test",ingress="podinfo-canary",status!~"5.*"}[1m]))/sum(rate(nginx_ingress_controller_requests{namespace="test",ingress="podinfo-canary"}[1m]))*100'
+  --data-urlencode 'query=sum(rate(nginx_ingress_controller_requests{namespace="test",ingress="podinfo",canary!="",status!~"5.*"}[1m]))/sum(rate(nginx_ingress_controller_requests{namespace="test",ingress="podinfo",canary!=""}[1m]))*100'
 ```
 
 If the query returns empty results, the metric data is not being collected. Check that traffic is reaching the canary and that the metric labels match.
@@ -175,7 +186,7 @@ Metrics are only generated when traffic flows through the canary. If no traffic 
 kubectl get endpoints <app-name>-canary -n <namespace>
 
 # Send test traffic to the canary
-kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never --command -- \
   curl -s http://<app-name>-canary.<namespace>/
 ```
 
@@ -186,12 +197,12 @@ If the canary service has no endpoints or is unreachable, check the service sele
 Prometheus metrics have a retention period and a scrape interval. If you are querying with a range that is shorter than the scrape interval, results may be empty.
 
 ```yaml
-# Ensure the analysis interval is longer than the Prometheus scrape interval
+# Ensure the metric query interval is longer than the Prometheus scrape interval
   analysis:
-    interval: 1m  # Should be >= Prometheus scrape interval
+    interval: 1m  # How often Flagger runs analysis checks
     metrics:
       - name: request-success-rate
-        interval: 1m  # Range for the rate() function
+        interval: 1m  # Range for the rate() function; should be > Prometheus scrape interval
 ```
 
 If your Prometheus scrape interval is 30 seconds, using a 1-minute range in the rate function should be sufficient. If the scrape interval is 1 minute, consider using a 2-minute range.
