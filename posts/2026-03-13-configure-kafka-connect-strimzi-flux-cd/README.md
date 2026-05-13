@@ -23,7 +23,7 @@ With Flux CD managing your `KafkaConnect` and `KafkaConnector` resources, your e
 
 ## Step 1: Build a Custom Kafka Connect Image
 
-Strimzi's `KafkaConnect` supports loading connector plugins via an init container or by building a custom image. The cleanest approach for GitOps is a custom image with plugins pre-installed:
+Strimzi's `KafkaConnect` supports loading connector plugins by using Strimzi's build configuration or by building a custom image. The cleanest approach for GitOps is a custom image with plugins pre-installed:
 
 ```dockerfile
 # connectors/Dockerfile
@@ -37,10 +37,14 @@ RUN mkdir -p /opt/kafka/plugins/debezium-postgres && \
     curl -L https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.7.0.Final/debezium-connector-postgres-2.7.0.Final-plugin.tar.gz \
     | tar -xzf - -C /opt/kafka/plugins/debezium-postgres/
 
-# Download Elasticsearch sink connector
-RUN mkdir -p /opt/kafka/plugins/kafka-connect-elasticsearch && \
-    curl -L https://packages.confluent.io/maven/io/confluent/kafka-connect-elasticsearch/14.0.12/kafka-connect-elasticsearch-14.0.12.jar \
-    -o /opt/kafka/plugins/kafka-connect-elasticsearch/kafka-connect-elasticsearch.jar
+# Download Elasticsearch sink connector with its dependencies
+RUN mkdir -p /opt/kafka/plugins /tmp/confluent-hub && \
+    curl -L https://client.hub.confluent.io/confluent-hub-client-latest.tar.gz \
+    | tar -xzf - -C /tmp/confluent-hub && \
+    /tmp/confluent-hub/bin/confluent-hub install --no-prompt \
+      --component-dir /opt/kafka/plugins \
+      confluentinc/kafka-connect-elasticsearch:14.0.12 && \
+    rm -rf /tmp/confluent-hub
 
 USER 1001
 ```
@@ -95,6 +99,9 @@ spec:
     value.converter: org.apache.kafka.connect.json.JsonConverter
     key.converter.schemas.enable: "false"
     value.converter.schemas.enable: "false"
+    # Enable secrets mounted as files to be referenced from connector config
+    config.providers: directory
+    config.providers.directory.class: org.apache.kafka.common.config.provider.DirectoryConfigProvider
 
   resources:
     requests:
@@ -108,8 +115,12 @@ spec:
     -Xms: 512m
     -Xmx: 1024m
 
-  # Expose REST API for status checks
+  # Mount connector secrets and environment variables
   externalConfiguration:
+    volumes:
+      - name: db-credentials
+        secret:
+          secretName: db-credentials
     env:
       - name: AWS_ACCESS_KEY_ID
         valueFrom:
@@ -143,9 +154,8 @@ spec:
     database.hostname: app-postgres-rw.databases.svc.cluster.local
     database.port: "5432"
     database.user: debezium
-    database.password: "${file:/opt/kafka/external-configuration/db-credentials/password}"
+    database.password: "${directory:/opt/kafka/external-configuration/db-credentials:password}"
     database.dbname: app
-    database.server.name: production-postgres
 
     # Tables to capture
     table.include.list: "public.orders,public.order_items"
@@ -170,8 +180,7 @@ spec:
     value.converter.schemas.enable: "false"
 
     # Transforms: add metadata
-    transforms: route,addTimestamp
-    transforms.route.type: org.apache.kafka.connect.transforms.ReplaceField$Value
+    transforms: addTimestamp
     transforms.addTimestamp.type: org.apache.kafka.connect.transforms.InsertField$Value
     transforms.addTimestamp.timestamp.field: _ingested_at
 ```
@@ -198,8 +207,9 @@ spec:
     key.ignore: "true"
     schema.ignore: "true"
     behavior.on.malformed.documents: warn
-    # Index naming
-    index.name: "orders-${source.system}"
+    # By default, the topic name is used as the Elasticsearch index name.
+    # To use a pre-created index or alias, configure external.resource.usage
+    # and topic.to.external.resource.mapping.
     # Flush settings
     flush.timeout.ms: "10000"
     max.retries: "5"
@@ -258,7 +268,7 @@ kubectl logs -n kafka deploy/data-pipeline-connect --tail=30
 
 - Set `strimzi.io/use-connector-resources: "true"` on the KafkaConnect resource - without this annotation, KafkaConnector CRDs are ignored.
 - Use `tasksMax: 1` for Debezium CDC connectors (they are inherently single-threaded per database slot).
-- Store connector credentials in Kubernetes Secrets and reference them via `externalConfiguration.env` - never embed passwords in KafkaConnector config.
+- Store connector credentials in Kubernetes Secrets and reference them through mounted files or environment variables - never embed passwords in KafkaConnector config.
 - Monitor connector lag with the Connect REST API (`/connectors/{name}/status`) and set up Prometheus alerts on `status.running` going false.
 - Use Single Message Transforms (SMTs) to enrich or route messages without writing custom code.
 
