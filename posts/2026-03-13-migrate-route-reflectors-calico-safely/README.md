@@ -17,33 +17,30 @@ Route reflectors solve this by acting as BGP hubs: instead of each node peering 
 ## Prerequisites
 
 - Calico with BGP mode
-- Dedicated nodes for route reflector role (recommended: not worker nodes)
+- Dedicated unschedulable nodes for route reflector role, or existing nodes drained before enabling the role
 - kubectl and calicoctl access
 
 ## Designate Route Reflector Nodes
 
 ```bash
 # Label nodes that will act as route reflectors
-
 kubectl label node rr-node-1 calico-route-reflector=true
 kubectl label node rr-node-2 calico-route-reflector=true
 
+# Prevent workloads from being scheduled on dedicated RR nodes during migration
+kubectl cordon rr-node-1
+kubectl cordon rr-node-2
+
 # Set route reflector cluster ID
-calicoctl patch node rr-node-1 --type merge \
+calicoctl patch node rr-node-1 \
   --patch '{"spec":{"bgp":{"routeReflectorClusterID":"244.0.0.1"}}}'
-calicoctl patch node rr-node-2 --type merge \
+calicoctl patch node rr-node-2 \
   --patch '{"spec":{"bgp":{"routeReflectorClusterID":"244.0.0.1"}}}'
 ```
 
-## Disable Full-Mesh and Configure Peering
+## Configure Peering and Disable Full-Mesh
 
-```bash
-# Disable node-to-node mesh
-calicoctl patch bgpconfiguration default --type merge \
-  --patch '{"spec":{"nodeToNodeMeshEnabled":false}}'
-```
-
-Create BGPPeer resources for workers to peer with RRs:
+Create BGPPeer resources for workers to peer with RRs before disabling the mesh:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -63,16 +60,33 @@ spec:
   peerSelector: "has(calico-route-reflector)"
 ```
 
+After the new peerings are established, disable node-to-node mesh:
+
+```bash
+calicoctl patch bgpconfiguration default \
+  --patch '{"spec":{"nodeToNodeMeshEnabled":false}}'
+```
+
 ## Verify Route Reflection
 
 ```bash
 # On a worker node, check sessions are with RRs only
-RR_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=rr-node-1 -o name | head -1)
-kubectl exec -n calico-system ${RR_NODE_POD} -- birdcl show protocols
+sudo calicoctl node status
 
-# Verify routes are being reflected
-kubectl exec -n calico-system ${RR_NODE_POD} -- birdcl show route count
+# Or create a CalicoNodeStatus resource to monitor BGP sessions from Kubernetes
+kubectl apply -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: CalicoNodeStatus
+metadata:
+  name: worker-node-status
+spec:
+  classes:
+    - BGP
+    - Routes
+  node: worker-node-1
+  updatePeriodSeconds: 10
+EOF
+kubectl get caliconodestatus worker-node-status -o yaml
 ```
 
 ## Route Reflector Architecture
@@ -89,8 +103,12 @@ graph TB
         WN[Worker N]
     end
     W1 -->|BGP| RR1
+    W1 -->|BGP| RR2
     W2 -->|BGP| RR1
+    W2 -->|BGP| RR2
+    W3 -->|BGP| RR1
     W3 -->|BGP| RR2
+    WN -->|BGP| RR1
     WN -->|BGP| RR2
     RR1 -->|Reflected routes| W3
     RR2 -->|Reflected routes| W1
