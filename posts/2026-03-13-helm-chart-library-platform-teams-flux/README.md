@@ -144,11 +144,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.service.port }}
+          {{- with .Values.env }}
           env:
-            {{- range $key, $value := .Values.env }}
+            {{- range $key, $value := . }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
@@ -178,6 +180,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -254,11 +257,11 @@ spec:
 
 ## Step 6: Implement Chart Update Notifications
 
-Alert platform teams when chart updates are available for consumption.
+Alert platform teams when Flux detects chart artifact updates.
 
 ```yaml
 # infrastructure/notifications/chart-updates.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: chart-update-available
@@ -267,9 +270,11 @@ spec:
   providerRef:
     name: slack
   eventSources:
-    - kind: HelmRepository
-      name: platform-charts
-  summary: "New platform chart version available"
+    - kind: HelmChart
+      name: "*"
+      namespace: flux-system
+  eventMetadata:
+    summary: "New platform chart version available"
 ```
 
 ## Best Practices
