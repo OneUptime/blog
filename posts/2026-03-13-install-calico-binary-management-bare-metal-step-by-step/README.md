@@ -1,27 +1,28 @@
-# How to Install Calico with Binary Management on Bare Metal Step by Step
+# How to Install Calico with Ansible on Bare Metal Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Bare Metal, Binary Management, Installation
+Tags: Calico, Kubernetes, Networking, CNI, Bare Metal, Ansible, Installation
 
-Description: A step-by-step guide to installing Calico on bare metal using an automated binary management system such as Ansible or a package manager.
+Description: A step-by-step guide to installing Calico on bare metal Kubernetes nodes using Ansible to manage the official Calico manifest.
 
 ---
 
 ## Introduction
 
-Managing Calico binary installations across many bare metal nodes manually is not sustainable. Binary management tools - Ansible, Chef, Puppet, or OS package managers - automate the distribution, version control, and lifecycle management of the Calico binaries across your node fleet. This approach combines the benefits of binary installation (native OS service, no container runtime dependency) with the scale and repeatability of configuration management.
+Managing Calico installations across many bare metal nodes manually is not sustainable. Configuration management tools - Ansible, Chef, Puppet, or OS package managers - automate the distribution, version control, and lifecycle management of the Calico installation assets across your node fleet. This approach combines the benefits of the official Calico manifests with the scale and repeatability of configuration management.
 
-Calico's binary components - calico-node, the CNI plugins, and calicoctl - are distributed as static binaries that can be managed by any tool that can copy files and manage systemd services. This makes them straightforward to automate with standard infrastructure tooling.
+For Kubernetes, Calico is normally installed with the Tigera Operator or the raw Calico manifests. The raw manifest installs the Calico CRDs, RBAC, CNI configuration, `calico/node`, `calico/cni`, and `calico/kube-controllers` resources needed by the cluster. This makes the installation straightforward to automate with standard infrastructure tooling.
 
-This guide covers installing Calico with Ansible as the binary management layer on bare metal Kubernetes nodes.
+This guide covers installing Calico with Ansible as the configuration management layer on bare metal Kubernetes nodes.
 
 ## Prerequisites
 
 - Bare metal servers bootstrapped with Kubernetes (no CNI installed)
 - Ansible control node with SSH access to all Kubernetes nodes
 - The target Calico version decided (e.g., v3.27.0)
-- `kubectl` access to the cluster
+- `kubectl` installed and configured on the control plane host Ansible targets
+- The Kubernetes pod CIDR selected during cluster bootstrap
 
 ## Step 1: Create the Ansible Inventory
 
@@ -39,57 +40,29 @@ worker3 ansible_host=10.0.1.13
 [all:vars]
 ansible_user=ubuntu
 calico_version=v3.27.0
-calico_pod_cidr=192.168.0.0/16
 ```
 
-## Step 2: Write the Binary Installation Playbook
+## Step 2: Write the Installation Playbook
 
 ```yaml
 # install-calico.yml
 ---
-- name: Install Calico binaries
-  hosts: all
-  become: true
+- name: Install Calico on Kubernetes
+  hosts: control_plane[0]
   vars:
-    calico_base_url: "https://github.com/projectcalico/calico/releases/download/{{ calico_version }}"
+    calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml"
+    calico_manifest_path: "/tmp/calico-{{ calico_version }}.yaml"
   tasks:
-    - name: Download calico-node
+    - name: Download Calico manifest
       get_url:
-        url: "{{ calico_base_url }}/calico-node-amd64"
-        dest: /usr/local/bin/calico-node
-        mode: '0755'
+        url: "{{ calico_manifest_url }}"
+        dest: "{{ calico_manifest_path }}"
+        mode: '0644'
 
-    - name: Create CNI bin directory
-      file:
-        path: /opt/cni/bin
-        state: directory
-        mode: '0755'
-
-    - name: Download Calico CNI plugins
-      get_url:
-        url: "{{ calico_base_url }}/{{ item.src }}"
-        dest: "/opt/cni/bin/{{ item.dest }}"
-        mode: '0755'
-      loop:
-        - { src: 'calico-cni-amd64', dest: 'calico' }
-        - { src: 'calico-ipam-amd64', dest: 'calico-ipam' }
-
-    - name: Write CNI config
-      template:
-        src: calico-cni.conflist.j2
-        dest: /etc/cni/net.d/10-calico.conflist
-
-    - name: Write systemd service
-      template:
-        src: calico-node.service.j2
-        dest: /etc/systemd/system/calico-node.service
-
-    - name: Enable and start calico-node
-      systemd:
-        name: calico-node
-        enabled: true
-        state: started
-        daemon_reload: true
+    - name: Apply Calico manifest
+      command: kubectl apply -f "{{ calico_manifest_path }}"
+      register: calico_apply
+      changed_when: "'created' in calico_apply.stdout or 'configured' in calico_apply.stdout"
 ```
 
 ## Step 3: Run the Playbook
@@ -98,23 +71,23 @@ calico_pod_cidr=192.168.0.0/16
 ansible-playbook -i inventory.ini install-calico.yml
 ```
 
-## Step 4: Apply Calico CRDs and Configuration
+## Step 4: Apply Additional Calico Configuration
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/crds.yaml
-
-calicoctl apply -f ippool.yaml
-calicoctl apply -f bgpconfig.yaml
+kubectl apply -f ippool.yaml
+kubectl apply -f bgpconfig.yaml
 ```
+
+The Calico manifest already includes the CRDs and the default IP pool configuration. Apply additional resources only if you need custom IP pools, BGP settings, or other Calico resources after the base install.
 
 ## Step 5: Verify Installation
 
 ```bash
-ansible all -i inventory.ini -m shell -a "systemctl is-active calico-node"
+kubectl get pods -n kube-system -l k8s-app=calico-node
 kubectl get nodes
-calicoctl ipam show
+kubectl get ippools.crd.projectcalico.org
 ```
 
 ## Conclusion
 
-Installing Calico with binary management on bare metal combines the stability of native OS service installation with the repeatability and scale of configuration management tools. An Ansible playbook handles binary distribution, CNI configuration, and systemd service management across all nodes simultaneously, eliminating the manual node-by-node work of unmanaged binary installation.
+Installing Calico with configuration management on bare metal combines the official Kubernetes manifest workflow with the repeatability and scale of infrastructure automation. An Ansible playbook handles manifest distribution and application consistently, eliminating manual installation steps during cluster bootstrap.
