@@ -48,14 +48,13 @@ Two CRDs manage notifications:
 ```yaml
 # clusters/production/notifications/slack-provider.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-deployments
   namespace: flux-system
 spec:
   type: slack
-  channel: '#deployments'
   secretRef:
     name: slack-webhook-url
 ```
@@ -74,7 +73,7 @@ kubectl create secret generic slack-webhook-url \
 # clusters/production/notifications/deployment-alerts.yaml
 
 # Alert for successful reconciliations
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-success
@@ -95,7 +94,7 @@ spec:
   summary: "Production deployment succeeded"
 ---
 # Alert for failed reconciliations
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-failure
@@ -121,17 +120,17 @@ spec:
 
 ```yaml
 # clusters/production/notifications/pagerduty-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
   namespace: flux-system
 spec:
   type: pagerduty
-  secretRef:
-    name: pagerduty-integration-key
+  address: https://events.pagerduty.com
+  channel: your-pagerduty-integration-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-failure-pagerduty
@@ -149,18 +148,12 @@ spec:
   summary: "CRITICAL: Flux CD reconciliation failure in production"
 ```
 
-Create the PagerDuty secret:
-
-```bash
-kubectl create secret generic pagerduty-integration-key \
-  --from-literal=token=your-pagerduty-integration-key \
-  --namespace=flux-system
-```
+Replace `your-pagerduty-integration-key` with the Events API v2 integration key for your PagerDuty service or event orchestration.
 
 ## Step 5: Configure Microsoft Teams Notification
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
@@ -170,7 +163,7 @@ spec:
   secretRef:
     name: teams-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: teams-deployments
@@ -188,13 +181,13 @@ spec:
 ## Step 6: Configure a Generic Webhook for Custom Integrations
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: custom-webhook
   namespace: flux-system
 spec:
-  type: generic
+  type: generic-hmac
   address: https://your-ops-platform.example.com/webhooks/flux
   secretRef:
     name: webhook-hmac-token
@@ -202,7 +195,7 @@ spec:
   # certSecretRef:
   #   name: webhook-ca-cert
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: custom-webhook-alert
@@ -222,7 +215,7 @@ spec:
 
 ```bash
 # Check Provider status
-flux get providers -n flux-system
+flux get alert-providers -n flux-system
 
 # Check Alert configuration
 flux get alerts -n flux-system
