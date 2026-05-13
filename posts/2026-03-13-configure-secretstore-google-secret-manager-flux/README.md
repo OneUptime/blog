@@ -20,6 +20,7 @@ This guide covers configuring a `SecretStore` for Google Secret Manager using GK
 
 - External Secrets Operator deployed via Flux HelmRelease
 - A GCP project with Secret Manager API enabled
+- IAM Service Account Credentials API enabled
 - For Workload Identity: GKE cluster with Workload Identity enabled
 - For key file auth: A GCP service account JSON key file
 
@@ -30,10 +31,17 @@ This guide covers configuring a `SecretStore` for Google Secret Manager using GK
 
 gcloud container clusters update my-cluster \
   --workload-pool=MY_PROJECT_ID.svc.id.goog \
-  --region=us-central1
+  --location=us-central1
+
+# For existing Standard node pools, enable the GKE metadata server
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --workload-metadata=GKE_METADATA \
+  --location=us-central1
 
 # Create a GCP service account for ESO
 gcloud iam service-accounts create eso-gsa \
+  --project=MY_PROJECT_ID \
   --display-name="External Secrets Operator"
 
 # Grant access to Secret Manager
@@ -66,7 +74,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-gcp.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcp-secret-manager
@@ -76,15 +84,6 @@ spec:
     gcpsm:
       # GCP project ID where secrets are stored
       projectID: MY_PROJECT_ID
-      auth:
-        workloadIdentity:
-          # Reference the annotated Kubernetes service account
-          clusterLocation: us-central1
-          clusterName: my-cluster
-          clusterProjectID: MY_PROJECT_ID
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets
 ```
 
 ## Step 4: Configure with Service Account Key (Non-GKE Clusters)
@@ -96,7 +95,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: gcp-sa-key
-  namespace: external-secrets
+  namespace: default
 type: Opaque
 stringData:
   # Paste the contents of the GCP service account JSON key here
@@ -106,14 +105,19 @@ stringData:
       "type": "service_account",
       "project_id": "MY_PROJECT_ID",
       "private_key_id": "...",
-      "private_key": "...",
-      "client_email": "eso-gsa@MY_PROJECT_ID.iam.gserviceaccount.com"
+      "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+      "client_email": "eso-gsa@MY_PROJECT_ID.iam.gserviceaccount.com",
+      "client_id": "...",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/eso-gsa%40MY_PROJECT_ID.iam.gserviceaccount.com"
     }
 ```
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-gcp-key.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcp-secret-manager-key
@@ -157,7 +161,7 @@ kubectl get secretstore gcp-secret-manager -n default
 
 # Create a test ExternalSecret
 kubectl apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test-gcp-secret
