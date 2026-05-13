@@ -28,7 +28,7 @@ Install SOPS if needed:
 brew install sops
 
 # Linux
-curl -sSL https://github.com/getsops/sops/releases/latest/download/sops-v3.9.0.linux.amd64 -o /usr/local/bin/sops
+curl -sSL https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64 -o /usr/local/bin/sops
 chmod +x /usr/local/bin/sops
 ```
 
@@ -108,11 +108,13 @@ In the root of your Git repository, create a `.sops.yaml` configuration file tha
 creation_rules:
   - path_regex: .*\.sops\.yaml$
     gcp_kms: projects/my-project/locations/global/keyRings/flux-sops/cryptoKeys/sops-key
+    encrypted_regex: ^(data|stringData)$
   - path_regex: .*secret.*\.yaml$
     gcp_kms: projects/my-project/locations/global/keyRings/flux-sops/cryptoKeys/sops-key
+    encrypted_regex: ^(data|stringData)$
 ```
 
-This configuration encrypts any file matching the specified patterns using your Cloud KMS key.
+This configuration encrypts the `data` and `stringData` values in files matching the specified patterns using your Cloud KMS key, while leaving Kubernetes fields such as `apiVersion`, `kind`, and `metadata` in plain text.
 
 ## Step 6: Encrypt a Secret with SOPS
 
