@@ -31,15 +31,20 @@ kind: Namespace
 metadata:
   name: karpenter
 ---
-# karpenter-helmrepository.yaml - Add Karpenter Helm repository
+# karpenter-ocirepository.yaml - Add Karpenter OCI Helm chart source
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: karpenter
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://charts.karpenter.sh
+  url: oci://public.ecr.aws/karpenter/karpenter
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    semver: ">=1.0.0 <2.0.0"
 ```
 
 ```yaml
@@ -51,27 +56,20 @@ metadata:
   namespace: karpenter
 spec:
   interval: 1h
-  chart:
-    spec:
-      chart: karpenter
-      version: "0.x"
-      sourceRef:
-        kind: HelmRepository
-        name: karpenter
-        namespace: flux-system
+  chartRef:
+    kind: OCIRepository
+    name: karpenter
+    namespace: flux-system
   values:
     # Replace with your cluster name
-    clusterName: my-eks-cluster
-    # Replace with your cluster endpoint
-    clusterEndpoint: https://XXXXXXXXXXXXXXX.gr7.us-east-1.eks.amazonaws.com
+    settings:
+      clusterName: my-eks-cluster
+      # Optional: replace with your SQS interruption queue name if configured
+      interruptionQueue: my-eks-cluster
     # Replace with your Karpenter controller IAM role ARN
     serviceAccount:
       annotations:
         eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/KarpenterControllerRole
-    settings:
-      aws:
-        clusterName: my-eks-cluster
-        defaultInstanceProfile: KarpenterNodeInstanceProfile
 ```
 
 ## Step 2: Define EC2NodeClass
@@ -80,15 +78,16 @@ The `EC2NodeClass` defines the AMI, subnet, and security group configuration for
 
 ```yaml
 # ec2nodeclass-general.yaml - General purpose node class for EKS
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: general
 spec:
-  # Use the EKS optimized AMI
-  amiFamily: AL2
+  # Use an EKS optimized AL2023 AMI
+  amiSelectorTerms:
+    - alias: al2023@v20240807
 
-  # Automatically discover node role from cluster tags
+  # Use the node role created for Karpenter-managed nodes
   role: KarpenterNodeRole-my-eks-cluster
 
   # Discover subnets by cluster tag
@@ -121,7 +120,7 @@ Create NodePools for different workload characteristics:
 
 ```yaml
 # nodepool-general.yaml - General purpose NodePool for most workloads
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: general
@@ -129,7 +128,7 @@ spec:
   template:
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: general
       requirements:
@@ -156,12 +155,12 @@ spec:
     cpu: 1000
     memory: 4000Gi
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     # Wait 5 minutes before consolidating underutilized nodes
     consolidateAfter: 5m
 ---
 # nodepool-gpu.yaml - GPU NodePool for ML workloads
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: gpu
@@ -169,7 +168,7 @@ spec:
   template:
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: general
       taints:
@@ -205,11 +204,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-infra
-  # Ensure Karpenter controller is running before applying node configs
+  # Ensure a Flux Kustomization named "karpenter" has installed the controller before applying node configs
   dependsOn:
     - name: karpenter
   healthChecks:
-    - apiVersion: karpenter.sh/v1beta1
+    - apiVersion: karpenter.sh/v1
       kind: NodePool
       name: general
 ```
