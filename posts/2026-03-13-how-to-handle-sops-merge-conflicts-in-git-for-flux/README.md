@@ -48,10 +48,10 @@ Decrypt both versions, merge the plaintext, and re-encrypt:
 # Before starting the merge, save decrypted versions from both branches
 git stash
 git checkout main
-sops --decrypt secrets/app-secret.yaml > /tmp/main-secret.yaml
+sops decrypt secrets/app-secret.yaml > /tmp/main-secret.yaml
 
 git checkout feature-branch
-sops --decrypt secrets/app-secret.yaml > /tmp/feature-secret.yaml
+sops decrypt secrets/app-secret.yaml > /tmp/feature-secret.yaml
 
 # Now perform the merge
 git checkout main
@@ -67,7 +67,7 @@ vimdiff /tmp/main-secret.yaml /tmp/feature-secret.yaml
 # Save as /tmp/merged-secret.yaml
 
 # Encrypt the merged result
-sops --encrypt /tmp/merged-secret.yaml > secrets/app-secret.yaml
+sops encrypt --filename-override secrets/app-secret.yaml /tmp/merged-secret.yaml > secrets/app-secret.yaml
 
 # Stage and complete the merge
 git add secrets/app-secret.yaml
@@ -118,22 +118,22 @@ TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
 # Decrypt all three versions
-sops --decrypt "$ANCESTOR" > "$TMPDIR/ancestor.yaml" 2>/dev/null || cp "$ANCESTOR" "$TMPDIR/ancestor.yaml"
-sops --decrypt "$OURS" > "$TMPDIR/ours.yaml" 2>/dev/null || cp "$OURS" "$TMPDIR/ours.yaml"
-sops --decrypt "$THEIRS" > "$TMPDIR/theirs.yaml" 2>/dev/null || cp "$THEIRS" "$TMPDIR/theirs.yaml"
+sops decrypt "$ANCESTOR" > "$TMPDIR/ancestor.yaml" 2>/dev/null || cp "$ANCESTOR" "$TMPDIR/ancestor.yaml"
+sops decrypt "$OURS" > "$TMPDIR/ours.yaml" 2>/dev/null || cp "$OURS" "$TMPDIR/ours.yaml"
+sops decrypt "$THEIRS" > "$TMPDIR/theirs.yaml" 2>/dev/null || cp "$THEIRS" "$TMPDIR/theirs.yaml"
 
 # Attempt a three-way merge on decrypted content
 if git merge-file "$TMPDIR/ours.yaml" "$TMPDIR/ancestor.yaml" "$TMPDIR/theirs.yaml"; then
   # Merge succeeded, re-encrypt
-  sops --encrypt "$TMPDIR/ours.yaml" > "$OURS"
+  sops encrypt --filename-override "$FILEPATH" "$TMPDIR/ours.yaml" > "$OURS"
   exit 0
 else
   # Merge had conflicts, leave conflict markers in the decrypted file
   # Copy the conflicted decrypted file so the developer can resolve it
-  cp "$TMPDIR/ours.yaml" "$OURS.decrypted-conflict"
+  cp "$TMPDIR/ours.yaml" "$FILEPATH.decrypted-conflict"
   echo "SOPS merge conflict in $FILEPATH"
   echo "Decrypted conflict saved to ${FILEPATH}.decrypted-conflict"
-  echo "Resolve, then run: sops --encrypt ${FILEPATH}.decrypted-conflict > ${FILEPATH}"
+  echo "Resolve, then run: sops encrypt --filename-override ${FILEPATH} ${FILEPATH}.decrypted-conflict > ${FILEPATH}"
   exit 1
 fi
 ```
@@ -185,7 +185,7 @@ git checkout feature-branch
 git rebase main
 
 # If conflict occurs, resolve for each commit individually
-git checkout --theirs secrets/app-secret.yaml
+git checkout --ours secrets/app-secret.yaml
 sops secrets/app-secret.yaml
 # Apply your changes
 git add secrets/app-secret.yaml
@@ -202,15 +202,15 @@ After resolving a merge conflict in a SOPS file:
 
 ```bash
 # Verify the file is valid SOPS
-sops --decrypt secrets/app-secret.yaml > /dev/null
+sops decrypt secrets/app-secret.yaml > /dev/null
 echo "Decryption successful"
 
 # Verify the YAML structure
-sops --decrypt secrets/app-secret.yaml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)"
+sops decrypt secrets/app-secret.yaml | python3 -c "import sys, yaml; yaml.safe_load(sys.stdin)"
 echo "YAML structure is valid"
 
 # Verify it is a valid Kubernetes manifest
-sops --decrypt secrets/app-secret.yaml | kubectl apply --dry-run=client -f -
+sops decrypt secrets/app-secret.yaml | kubectl apply --dry-run=client -f -
 echo "Valid Kubernetes manifest"
 ```
 
