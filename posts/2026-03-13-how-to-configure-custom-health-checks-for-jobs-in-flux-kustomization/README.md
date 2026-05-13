@@ -15,7 +15,7 @@ Kubernetes Jobs run tasks to completion, making them ideal for database migratio
 ## Prerequisites
 
 - A Kubernetes cluster running version 1.25 or later
-- Flux v2.3 or later installed on the cluster
+- Flux v2.6 or later installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
 - Understanding of Kubernetes Job resources
@@ -158,7 +158,7 @@ All three Jobs must complete successfully within the 20-minute timeout.
 
 ## Handling Job Immutability
 
-Kubernetes Jobs are immutable once created. If you update a Job manifest in Git, Flux will attempt to apply the changes but Kubernetes will reject the update. To handle this, you have several options.
+Kubernetes Job pod templates are immutable once created. If you update fields such as the container image or command in a Job manifest in Git, Flux will attempt to apply the changes but Kubernetes will reject the update. To handle this, you have several options.
 
 Use the `force` field to delete and recreate the Job:
 
@@ -190,7 +190,7 @@ Alternatively, include the version or timestamp in the Job name so each update c
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-${MIGRATION_VERSION}
+  name: db-migrate-v2-1-0
   namespace: production
 spec:
   backoffLimit: 3
@@ -199,7 +199,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: myregistry/db-migrate:${MIGRATION_VERSION}
+          image: myregistry/db-migrate:v2.1.0
           command: ["./migrate", "up"]
 ```
 
@@ -209,7 +209,7 @@ Then update the health check reference to match:
 healthChecks:
   - apiVersion: batch/v1
     kind: Job
-    name: db-migrate-${MIGRATION_VERSION}
+    name: db-migrate-v2-1-0
     namespace: production
 ```
 
@@ -288,7 +288,7 @@ When a Job health check fails:
 ```bash
 # Check Kustomization status
 
-flux get kustomization db-migration
+flux get kustomizations --namespace flux-system
 
 # Check Job status
 kubectl get job db-migrate -n production
