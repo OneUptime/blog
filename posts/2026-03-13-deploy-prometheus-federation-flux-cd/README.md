@@ -28,6 +28,13 @@ This guide deploys a global Prometheus using kube-prometheus-stack and configure
 Deploy a global Prometheus with an extended retention period using kube-prometheus-stack.
 
 ```yaml
+# clusters/global/monitoring/namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
 # clusters/global/monitoring/helmrepository.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -50,7 +57,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: ">=55.0.0 <56.0.0"
+      version: ">=85.0.0 <86.0.0"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -79,8 +86,8 @@ spec:
                 - '{__name__=~"container_.*"}'
             static_configs:
               - targets:
-                  # Leaf Prometheus endpoint for cluster-a
-                  - "prometheus-operated.monitoring.svc.cluster-a.local:9090"
+                  # Leaf Prometheus federation endpoint for cluster-a
+                  - "prometheus-federation.monitoring.svc.cluster-a.local:9090"
                 labels:
                   cluster: cluster-a
 
@@ -94,14 +101,14 @@ spec:
                 - '{__name__=~"kube_.*"}'
             static_configs:
               - targets:
-                  - "prometheus-operated.monitoring.svc.cluster-b.local:9090"
+                  - "prometheus-federation.monitoring.svc.cluster-b.local:9090"
                 labels:
                   cluster: cluster-b
 ```
 
 ## Step 2: Expose Leaf Prometheus Instances
 
-On each leaf cluster, ensure the Prometheus service is accessible. Use a Kubernetes Service with appropriate network policies or an Ingress.
+On each leaf cluster, ensure the Prometheus service is accessible. Use a Kubernetes Service with appropriate network policies, multi-cluster DNS, or an Ingress.
 
 ```yaml
 # On leaf cluster: expose Prometheus for federation scraping
@@ -114,7 +121,7 @@ spec:
   selector:
     # Match the Prometheus Operator-managed Prometheus pods
     app.kubernetes.io/name: prometheus
-    prometheus: kube-prometheus-stack-prometheus
+    operator.prometheus.io/name: kube-prometheus-stack-prometheus
   ports:
     # Expose Prometheus HTTP API including /federate endpoint
     - name: http
@@ -159,7 +166,7 @@ spec:
 ## Step 4: Create the Flux Kustomization
 
 ```yaml
-# clusters/global/monitoring/kustomization.yaml
+# clusters/global/monitoring-sync.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
