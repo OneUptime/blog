@@ -18,7 +18,7 @@ This guide covers how to configure a Flux Receiver specifically for GitLab tag e
 
 Ensure you have the following:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller accessible from GitLab
 - A GitLab project with your application or infrastructure code
@@ -171,8 +171,6 @@ spec:
   resources:
     - kind: GitRepository
       name: staging-repo
-    - kind: Kustomization
-      name: staging-apps
 ---
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
@@ -188,8 +186,6 @@ spec:
   resources:
     - kind: GitRepository
       name: production-repo
-    - kind: Kustomization
-      name: production-apps
 ```
 
 This creates two separate webhook URLs. Configure the staging webhook in GitLab to trigger on push events, and the production webhook to trigger on tag events.
@@ -213,13 +209,9 @@ spec:
   resources:
     - kind: GitRepository
       name: helm-charts-repo
-    - kind: HelmChart
-      name: flux-system-my-app
-    - kind: HelmRelease
-      name: my-app
 ```
 
-This triggers the full update chain when a new chart version tag is pushed.
+When the GitRepository detects a new revision, Flux automatically notifies the downstream HelmChart and HelmRelease resources that reference the source.
 
 ## Ingress Configuration
 
@@ -247,7 +239,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
