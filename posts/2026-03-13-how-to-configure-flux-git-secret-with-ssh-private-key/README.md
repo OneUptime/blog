@@ -58,10 +58,13 @@ If Flux needs to push changes (for example, for image automation), make sure to 
 Create a Kubernetes Secret in the namespace where Flux is running (typically `flux-system`) with the SSH private key:
 
 ```bash
+ssh-keyscan github.com > known_hosts
+
 kubectl create secret generic git-ssh-credentials \
   --namespace=flux-system \
   --from-file=identity=./flux-deploy-key \
-  --from-literal=identity.pub="$(cat flux-deploy-key.pub)"
+  --from-file=identity.pub=./flux-deploy-key.pub \
+  --from-file=known_hosts=./known_hosts
 ```
 
 Alternatively, you can define the Secret as a YAML manifest:
@@ -79,6 +82,8 @@ stringData:
     <your-private-key-content-here>
     -----END OPENSSH PRIVATE KEY-----
   identity.pub: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... flux-deploy-key"
+  known_hosts: |
+    github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 ```
 
 Apply the manifest:
@@ -112,7 +117,7 @@ Apply the resource:
 kubectl apply -f gitrepository.yaml
 ```
 
-Make sure the `url` field uses the SSH protocol format (`ssh://git@...` or `git@...`).
+Make sure the `url` field uses the SSH protocol format (`ssh://git@...`). Flux does not support the shorter scp-like syntax (`git@github.com:your-org/your-repo.git`).
 
 ## Verification
 
