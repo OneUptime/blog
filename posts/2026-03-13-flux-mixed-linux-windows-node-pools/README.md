@@ -47,8 +47,8 @@ apps/
     windows-only/         # Explicitly Windows-targeted workloads
       legacy-api/
         deployment.yaml   # Has nodeSelector: kubernetes.io/os: windows
-    cross-platform/       # Workloads that can run on either OS
-      # These typically use Linux since Linux nodes are default
+    cross-platform/       # Workloads published for both OSes
+      # Choose the target OS explicitly per overlay; do not rely on a default
   overlays/
     production-mixed/
       kustomization.yaml
@@ -63,49 +63,10 @@ Flux CD's controllers are Linux containers and must only be scheduled on Linux n
 ```yaml
 # clusters/production/flux-system/linux-patch.yaml
 # Ensure all Flux controllers run on Linux nodes
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      nodeSelector:
-        kubernetes.io/os: linux
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      nodeSelector:
-        kubernetes.io/os: linux
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      nodeSelector:
-        kubernetes.io/os: linux
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: notification-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      nodeSelector:
-        kubernetes.io/os: linux
+- op: add
+  path: /spec/template/spec/nodeSelector
+  value:
+    kubernetes.io/os: linux
 ```
 
 ```yaml
@@ -120,6 +81,7 @@ patches:
     target:
       kind: Deployment
       namespace: flux-system
+      labelSelector: app.kubernetes.io/part-of=flux
 ```
 
 ## Step 4: Linux Workload Configuration
@@ -141,7 +103,7 @@ spec:
       labels:
         app: api-server
     spec:
-      # Explicit Linux node targeting (recommended even when Linux is default)
+      # Explicit Linux node targeting
       nodeSelector:
         kubernetes.io/os: linux
       containers:
@@ -187,8 +149,10 @@ spec:
         kubernetes.io/os: windows
         # Target specific Windows Server version to ensure image compatibility
         node.kubernetes.io/windows-build: "10.0.20348"  # Server 2022
+      # Required if Windows nodes are tainted with os=windows:NoSchedule
       tolerations:
         - key: os
+          operator: Equal
           value: windows
           effect: NoSchedule
       containers:
@@ -267,8 +231,9 @@ spec:
 - Set separate Kustomization timeouts for Windows workloads (longer) and Linux workloads (shorter).
 - Keep Windows and Linux workload manifests in separate directories for clarity and independent management.
 - Match the Windows Server build version in your node selector to your container image's base OS version.
+- Add a matching toleration when Windows nodes are tainted, such as `os=windows:NoSchedule`.
 - Monitor node pool scaling separately - Windows nodes are typically more expensive and should not autoscale unnecessarily.
 
 ## Conclusion
 
-Mixed Linux and Windows Kubernetes clusters are manageable with Flux CD when manifests are explicit about OS targeting. The most critical configuration is ensuring Flux's own controllers target Linux nodes, and that Windows workload manifests include both the correct node selector and the Windows OS toleration. With these in place, Flux reconciles Linux and Windows workloads identically through the same GitOps workflow.
+Mixed Linux and Windows Kubernetes clusters are manageable with Flux CD when manifests are explicit about OS targeting. The most critical configuration is ensuring Flux's own controllers target Linux nodes, and that Windows workload manifests include the correct node selector and any toleration required by your Windows node taints. With these in place, Flux reconciles Linux and Windows workloads identically through the same GitOps workflow.
