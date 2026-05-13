@@ -10,7 +10,7 @@ Description: Log Audit Calico network policies for DoS defense to protect cluste
 
 ## Introduction
 
-DoS Defense with Calico Policies is an important security consideration for production Calico deployments. The `projectcalico.org/v3` API provides the tools needed to log audit DoS Defense effectively, combining Calico's network policy with proper access controls and monitoring.
+DoS Defense with Calico Policies is an important security consideration for production Calico deployments. The `projectcalico.org/v3` API provides the tools needed to log and audit DoS Defense decisions effectively, combining Calico's network policy with proper access controls and monitoring.
 
 This guide covers log audit DoS Defense in Calico with practical configurations and operational best practices.
 
@@ -26,23 +26,30 @@ This guide covers log audit DoS Defense in Calico with practical configurations 
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: dos-defense-rate-limit
+  name: dos-defense-log-and-allow
 spec:
   order: 50
   selector: app == 'web-frontend'
   ingress:
-    - action: Allow
+    - action: Log
+      protocol: TCP
       source:
         nets:
           - 0.0.0.0/0
       destination:
         ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
+    - action: Allow
+      protocol: TCP
+      source:
+        nets:
+          - 0.0.0.0/0
+      destination:
+        ports: [80, 443]
     - action: Allow
   types:
     - Ingress
 ---
-# Block known bad actors
+# Block example bad actors
 
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -52,10 +59,15 @@ spec:
   order: 10
   selector: app == 'web-frontend'
   ingress:
+    - action: Log
+      source:
+        nets:
+          - 198.51.100.0/24  # Example blocked source
+          - 203.0.113.0/24
     - action: Deny
       source:
         nets:
-          - 198.51.100.0/24  # Known attack source
+          - 198.51.100.0/24  # Example blocked source
           - 203.0.113.0/24
   types:
     - Ingress
@@ -67,18 +79,18 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# View policy log entries on iptables dataplane nodes
+journalctl -k | grep calico-packet
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# View policy log entries on eBPF dataplane nodes
+kubectl exec -n calico-system -it ds/calico-node -- bpftool prog tracelog
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+## eBPF Dataplane (Optional)
 
 ```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Enable eBPF dataplane support with the Tigera operator
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF", "bpfNetworkBootstrap":"Enabled", "kubeProxyManagement":"Enabled"}}}'
 ```
 
 ## Architecture
