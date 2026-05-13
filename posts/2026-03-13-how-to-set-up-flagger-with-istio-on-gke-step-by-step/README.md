@@ -53,7 +53,7 @@ Install Istio with the default profile:
 
 ```bash
 # Install Istio
-istioctl install --set profile=default -y
+istioctl install --set profile=default --set values.global.platform=gke -y
 
 # Verify Istio pods are running
 kubectl get pods -n istio-system
@@ -71,7 +71,7 @@ Install Prometheus to collect Istio metrics that Flagger uses for canary analysi
 
 ```bash
 # Install Prometheus from Istio addons
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 
 # Wait for Prometheus to be ready
 kubectl rollout status deployment/prometheus -n istio-system
@@ -86,9 +86,13 @@ Install Flagger configured for Istio:
 helm repo add flagger https://flagger.app
 helm repo update
 
+# Install Flagger's Canary CRD
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger
 helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 
@@ -184,7 +188,7 @@ spec:
     port: 9898
     targetPort: 9898
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
     hosts:
       - "*"
     trafficPolicy:
