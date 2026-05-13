@@ -27,10 +27,12 @@ metadata:
 spec:
   order: 100
   selector: all()
+  namespaceSelector: has(projectcalico.org/name)
   ingress:
     - action: Allow
       source:
         selector: app == 'authorized'
+    - action: Log
   egress:
     - action: Allow
       protocol: UDP
@@ -39,6 +41,7 @@ spec:
     - action: Allow
       destination:
         selector: app == 'permitted-destination'
+    - action: Log
   types:
     - Ingress
     - Egress
@@ -62,11 +65,14 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Check Felix policy metrics
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Review Calico policy logs from Log rules on the iptables dataplane
+journalctl -k -f | grep calico-packet
+
+# Review Calico policy logs on the eBPF dataplane
+kubectl exec -n calico-system ds/calico-node -- bpftool prog tracelog | grep DENIED
 ```
 
 ## Architecture
