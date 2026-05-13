@@ -12,14 +12,14 @@ Description: Deploy Windows container workloads to Kubernetes using Flux CD, wit
 
 Windows containers enable organizations to run legacy Windows applications - IIS websites, .NET Framework services, Windows Communication Foundation APIs - in Kubernetes alongside Linux workloads. Microsoft Azure Kubernetes Service (AKS) and other managed Kubernetes platforms support mixed Windows and Linux node pools, making it possible to manage the entire application portfolio through a single orchestration platform.
 
-Flux CD manages Windows container workloads the same way it manages Linux workloads - through GitOps reconciliation of Kubernetes manifests. The key differences are in the deployment manifests themselves: Windows workloads require specific node selectors, OS-specific tolerations, and Windows-compatible base images.
+Flux CD manages Windows container workloads the same way it manages Linux workloads - through GitOps reconciliation of Kubernetes manifests. The key differences are in the deployment manifests themselves: Windows workloads require specific node selectors, matching tolerations when Windows nodes are tainted, and Windows-compatible base images.
 
 This guide covers the fundamentals of deploying Windows container workloads with Flux CD, from configuring the correct node targeting to managing Windows-specific resources.
 
 ## Prerequisites
 
 - Kubernetes cluster with Windows node pools (AKS, EKS, or on-premises Windows Server nodes)
-- Windows nodes running Windows Server 2019 or 2022
+- Windows nodes running a currently supported Windows Server version, such as Windows Server 2022 or 2025 depending on your Kubernetes provider
 - Flux CD bootstrapped on the cluster
 - Git repository for manifests
 - Container registry with Windows container images
@@ -33,15 +33,15 @@ This guide covers the fundamentals of deploying Windows container workloads with
 kubectl get nodes -L kubernetes.io/os
 
 # Expected output:
-# NAME                    STATUS   OS-IMAGE
-# linux-worker-1          Ready    Ubuntu 22.04
-# linux-worker-2          Ready    Ubuntu 22.04
-# windows-worker-1        Ready    Windows Server 2022
-# windows-worker-2        Ready    Windows Server 2022
+# NAME                    STATUS   ROLES    AGE   VERSION   KUBERNETES.IO/OS
+# linux-worker-1          Ready    <none>   10d   v1.35.0   linux
+# linux-worker-2          Ready    <none>   10d   v1.35.0   linux
+# windows-worker-1        Ready    <none>   10d   v1.35.0   windows
+# windows-worker-2        Ready    <none>   10d   v1.35.0   windows
 
-# Check Windows node taints
+# Check Windows node taints, if your cluster taints Windows nodes
 kubectl describe node windows-worker-1 | grep -A5 Taints
-# Expected: Taints: os=windows:NoSchedule
+# Example: Taints: os=windows:NoSchedule
 ```
 
 ## Step 2: Repository Structure for Mixed Workloads
@@ -69,7 +69,7 @@ apps/
 
 ## Step 3: Create a Windows Deployment Manifest
 
-Windows deployments require specific node selectors and tolerations to schedule on Windows nodes.
+Windows deployments require specific node selectors to schedule on Windows nodes. If your Windows nodes are tainted, include a matching toleration.
 
 ```yaml
 # apps/base/windows-workloads/iis-app/deployment.yaml
@@ -98,9 +98,10 @@ spec:
         # Optionally target specific Windows Server versions
         # node.kubernetes.io/windows-build: "10.0.20348"  # Server 2022
 
-      # REQUIRED: Tolerate the Windows node taint
+      # REQUIRED when Windows nodes are tainted this way
       tolerations:
         - key: os
+          operator: Equal
           value: windows
           effect: NoSchedule
 
@@ -134,7 +135,7 @@ spec:
             initialDelaySeconds: 90
             periodSeconds: 30
             failureThreshold: 3
-      # No init containers for Windows - they must be Windows-compatible
+      # Init containers, if used, must also use Windows-compatible images
 ```
 
 ## Step 4: Configure Flux Kustomization for Windows Workloads
@@ -168,14 +169,14 @@ spec:
 
 ## Step 5: Handle Windows-Specific Image Pull Configuration
 
-Windows container images are significantly larger than Linux images. Configure appropriate pull timeouts and image pull policies.
+Windows container images are significantly larger than Linux images. Configure appropriate shutdown grace periods and image pull policies.
 
 ```yaml
 # apps/base/windows-workloads/iis-app/deployment.yaml additions
 spec:
   template:
     spec:
-      # Image pull timeout for large Windows images
+      # Shutdown grace period for Windows containers
       terminationGracePeriodSeconds: 120  # Windows containers need more time to shut down
 
       containers:
@@ -225,13 +226,13 @@ flux get kustomizations -A --watch
 
 ## Best Practices
 
-- Always include both `nodeSelector: kubernetes.io/os: windows` and the OS toleration in Windows deployments.
-- Use Windows Server 2022 images when possible - they have better performance and security than 2019.
+- Always include `nodeSelector: kubernetes.io/os: windows`, and include the matching OS toleration when your Windows nodes are tainted.
+- Use currently supported Windows Server images, such as Windows Server 2022 or 2025 where your Kubernetes provider supports them.
 - Set generous `initialDelaySeconds` for probes - Windows containers typically take 60-120 seconds to start.
-- Use `IfNotPresent` image pull policy; Windows images are 2-10GB and repulling is expensive.
+- Use `IfNotPresent` image pull policy; Windows images are often several GB and repulling is expensive.
 - Keep Windows workload manifests in a dedicated directory separate from Linux workloads for clarity.
 - Test Windows deployments in a staging environment first - the image version must match the node OS version.
 
 ## Conclusion
 
-Deploying Windows container workloads with Flux CD follows the same GitOps principles as Linux workloads, with the critical addition of Windows-specific node selectors and tolerations. Flux manages the reconciliation loop, ensuring Windows workloads are always running the correct version as defined in Git. The longer startup times and larger image sizes of Windows containers require some configuration adjustments, but the overall workflow is consistent and manageable.
+Deploying Windows container workloads with Flux CD follows the same GitOps principles as Linux workloads, with the critical addition of Windows-specific node selectors and matching tolerations when nodes are tainted. Flux manages the reconciliation loop, ensuring Windows workloads are always running the correct version as defined in Git. The longer startup times and larger image sizes of Windows containers require some configuration adjustments, but the overall workflow is consistent and manageable.
