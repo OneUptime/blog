@@ -14,8 +14,9 @@ In Flux 2.8, the ArtifactGenerator resource provides a way to generate artifacts
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
+- A supported Kubernetes cluster (Flux 2.8 supports Kubernetes 1.33, 1.34, and 1.35)
 - Flux 2.8 installed on your cluster
+- The `ExternalArtifact` feature gate enabled for HelmRelease `chartRef` support
 - A Git repository containing Helm charts (ideally a monorepo)
 - kubectl configured to access your cluster
 
@@ -61,13 +62,18 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: monorepo
   artifacts:
-    - path: "charts/frontend/**"
+    - name: frontend-chart
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/charts/frontend/**"
+          to: "@artifact/"
 ```
 
-This ArtifactGenerator watches the `monorepo` GitRepository but only generates a new artifact when files under `charts/frontend/` change.
+This ArtifactGenerator watches the `monorepo` GitRepository and generates an ExternalArtifact named `frontend-chart`. A new artifact revision is generated when the files copied from `charts/frontend/` change.
 
 ## Setting Up the Full Pipeline
 
@@ -92,10 +98,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: monorepo
   artifacts:
-    - path: "charts/frontend/**"
+    - name: frontend-chart
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/charts/frontend/**"
+          to: "@artifact/"
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -104,10 +115,15 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: monorepo
   artifacts:
-    - path: "charts/backend/**"
+    - name: backend-chart
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/charts/backend/**"
+          to: "@artifact/"
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -117,7 +133,7 @@ metadata:
 spec:
   interval: 5m
   chartRef:
-    kind: ArtifactGenerator
+    kind: ExternalArtifact
     name: frontend-chart
     namespace: flux-system
   values:
@@ -134,7 +150,7 @@ metadata:
 spec:
   interval: 5m
   chartRef:
-    kind: ArtifactGenerator
+    kind: ExternalArtifact
     name: backend-chart
     namespace: flux-system
   values:
@@ -144,7 +160,7 @@ spec:
       tag: "v3.1.0"
 ```
 
-With this setup, changing `charts/frontend/values.yaml` only triggers the frontend HelmRelease to reconcile. Changes to `charts/backend/` only affect the backend HelmRelease. Changes outside these paths trigger no HelmRelease reconciliation at all.
+With this setup, changing `charts/frontend/values.yaml` only produces a new `frontend-chart` ExternalArtifact revision and triggers the frontend HelmRelease to reconcile. Changes to `charts/backend/` only affect the backend HelmRelease. Changes outside these paths do not produce new chart artifact revisions, so the HelmReleases are not triggered by those commits.
 
 ## Handling Shared Chart Dependencies
 
@@ -158,11 +174,17 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: monorepo
   artifacts:
-    - path: "charts/frontend/**"
-    - path: "charts/common-lib/**"
+    - name: frontend-chart
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/charts/frontend/**"
+          to: "@artifact/"
+        - from: "@repo/charts/common-lib/**"
+          to: "@artifact/charts/common-lib/"
 ```
 
 This ensures that changes to the shared library chart also trigger a new artifact generation for the frontend chart.
@@ -179,14 +201,19 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: monorepo
   artifacts:
-    - path: "charts/frontend/**"
-      exclude:
-        - "charts/frontend/ci/**"
-        - "charts/frontend/test-values/**"
-        - "charts/frontend/*.md"
+    - name: frontend-chart
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/charts/frontend/**"
+          to: "@artifact/"
+          exclude:
+            - "ci/**"
+            - "test-values/**"
+            - "*.md"
 ```
 
 This includes all chart files but excludes CI test values, test configurations, and documentation files that should not affect the deployed chart.
@@ -199,12 +226,12 @@ Check the status of your ArtifactGenerator resources:
 kubectl get artifactgenerators -n flux-system
 ```
 
-Expected output:
+Look for `READY` to be `True`:
 
 ```text
 NAME              READY   STATUS                  AGE
-frontend-chart    True    Artifact generated       5m
-backend-chart     True    Artifact generated       5m
+frontend-chart    True    <status message>         5m
+backend-chart     True    <status message>         5m
 ```
 
 For detailed status:
@@ -215,7 +242,7 @@ kubectl describe artifactgenerator frontend-chart -n flux-system
 
 ## Monitoring with the Flux Web UI
 
-If you have the Flux 2.8 Web UI enabled, ArtifactGenerator resources appear under their own tab. You can see which source each generator references, the included paths, and when the last artifact was generated.
+If you have the Flux Operator Web UI enabled, you can inspect ArtifactGenerator resources and their generated ExternalArtifacts. The Web UI can also expose download actions for ExternalArtifacts listed in an ArtifactGenerator's inventory when the user has the required RBAC permissions.
 
 ## Conclusion
 
