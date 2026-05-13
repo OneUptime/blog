@@ -10,7 +10,7 @@ Description: Practical techniques to reduce the time Flux spends cloning large G
 
 ## Why Git Clone Time Is a Bottleneck
 
-The Flux source-controller clones Git repositories on every reconciliation cycle. For small repositories this takes a fraction of a second, but large repositories with extensive commit history, many branches, or large binary files can take tens of seconds or even minutes to clone. Since the source-controller clones fresh on each cycle, this cost is paid repeatedly.
+The Flux source-controller checks Git repositories on every reconciliation cycle and produces an artifact when it detects a new revision. For small repositories this takes a fraction of a second, but large repositories with extensive commit history, many branches, or large binary files can take tens of seconds or even minutes to clone when a new artifact is needed. Since this work happens repeatedly as Flux monitors the repository, the cost can add up.
 
 ## Understanding What Makes a Clone Slow
 
@@ -43,11 +43,11 @@ spec:
     *.md
 ```
 
-Flux uses shallow clones by default with a depth of 1 (fetching only the latest commit). If you have explicitly set a deeper depth, consider reducing it.
+When you specify `.spec.ref.branch`, Flux performs a shallow clone that fetches only the specified branch. If you pin a commit, combine `.spec.ref.commit` with `.spec.ref.branch` when possible so Flux can still perform a shallow clone of that branch.
 
 ## Technique 2 - Include Only Relevant Paths
 
-If your repository contains both application code and Kubernetes manifests, and Flux only needs the manifests, use the `.spec.include` field to fetch only specific directories:
+If your repository contains both application code and Kubernetes manifests, and Flux only needs the manifests, use the `.spec.sparseCheckout` field to check out only specific directories:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -60,12 +60,11 @@ spec:
   url: https://github.com/my-org/my-large-repo.git
   ref:
     branch: main
-  include:
-    - fromPath: deploy/kubernetes
-      toPath: .
+  sparseCheckout:
+    - deploy/kubernetes
 ```
 
-This reduces the amount of data transferred and processed.
+This reduces the amount of data checked out and processed.
 
 ## Technique 3 - Use the Ignore Field
 
@@ -179,4 +178,4 @@ echo "Clone and artifact creation took $((END - START)) seconds"
 
 ## Summary
 
-Reducing Git clone time for large repositories requires a combination of techniques: shallow clones, path filtering, ignore rules, repository restructuring, and network optimization. Start with shallow clones and ignore rules as they require the least effort, then consider splitting monorepos if clone times remain problematic.
+Reducing Git clone time for large repositories requires a combination of techniques: shallow clones, sparse checkout, ignore rules, repository restructuring, and network optimization. Start with shallow clones and ignore rules as they require the least effort, then consider splitting monorepos if clone times remain problematic.
