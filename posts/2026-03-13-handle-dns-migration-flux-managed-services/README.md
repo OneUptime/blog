@@ -46,11 +46,14 @@ spec:
         name: external-dns
         namespace: flux-system
   values:
-    provider: aws          # Or cloudflare, azure, etc.
-    aws:
-      region: us-east-1
-      zoneType: public
-    # Only manage records that have this annotation
+    provider:
+      name: aws            # Or cloudflare, azure, etc.
+    env:
+      - name: AWS_DEFAULT_REGION
+        value: us-east-1
+    extraArgs:
+      aws-zone-type: public
+    # Only manage records in these domain suffixes
     domainFilters:
       - acme.example.com
       - acme-new.example.com   # Include the target domain during migration
@@ -68,7 +71,7 @@ Lower the TTL on existing DNS records to minimize propagation delay during cutov
 ```bash
 # Check current TTL on the existing record
 dig +short my-service.acme.example.com
-dig my-service.acme.example.com | grep TTL
+dig +nocmd my-service.acme.example.com +noall +answer
 
 # If managing DNS via Terraform or another IaC tool, reduce TTL to 60 seconds
 # If ExternalDNS manages the record, it uses 300s by default
@@ -83,6 +86,7 @@ metadata:
   name: my-service
   namespace: team-alpha
   annotations:
+    external-dns.alpha.kubernetes.io/hostname: my-service.acme.example.com
     # Reduce TTL to 60 seconds for faster DNS propagation during migration
     external-dns.alpha.kubernetes.io/ttl: "60"
 spec:
@@ -118,6 +122,7 @@ metadata:
   name: my-service
   namespace: team-alpha
   annotations:
+    external-dns.alpha.kubernetes.io/hostname: my-service.acme.example.com,my-service.acme-new.example.com
     external-dns.alpha.kubernetes.io/ttl: "60"
     cert-manager.io/cluster-issuer: letsencrypt-production
 spec:
@@ -229,6 +234,7 @@ metadata:
   name: my-service
   namespace: team-alpha
   annotations:
+    external-dns.alpha.kubernetes.io/hostname: my-service.acme-new.example.com
     # Restore normal TTL after migration
     external-dns.alpha.kubernetes.io/ttl: "300"
     cert-manager.io/cluster-issuer: letsencrypt-production
@@ -258,9 +264,9 @@ Commit and push - ExternalDNS will remove the old DNS record, cert-manager will 
 - Reduce TTL to 60 seconds at least one old-TTL period before any cutover to enable fast propagation
 - Always run both old and new domains simultaneously during the migration window (minimum 24 hours)
 - Monitor ingress access logs on the old domain before removing it - make the removal data-driven
-- Use `external-dns.alpha.kubernetes.io/alias: "true"` for CNAME-based migrations to reduce propagation delay
+- Use `external-dns.alpha.kubernetes.io/alias: "true"` only when you intentionally want supported providers such as AWS or PowerDNS to create alias records instead of CNAME records
 - Test the new domain with synthetic monitoring before updating client configurations
-- Add a redirect (301) from the old domain to the new domain before removing DNS, to help search engines and cached bookmarks
+- If search engines or cached bookmarks matter, keep the old DNS name in place and serve a 301 redirect to the new domain before eventually removing it
 
 ## Conclusion
 
