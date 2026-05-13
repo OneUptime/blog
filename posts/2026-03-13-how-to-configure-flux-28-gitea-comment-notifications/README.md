@@ -18,7 +18,7 @@ This guide shows you how to configure Flux 2.8 to send reconciliation notificati
 
 - A Kubernetes cluster running Flux v2.8 or later
 - A Gitea instance (v1.19 or later) with API access enabled
-- A Gitea access token with repository read/write permissions
+- A Gitea access token with `write:repository` and `write:issue` permissions
 - `kubectl` and `flux` CLI tools installed
 - A Gitea repository configured as a Flux GitRepository source
 
@@ -26,8 +26,8 @@ This guide shows you how to configure Flux 2.8 to send reconciliation notificati
 
 In your Gitea instance, navigate to Settings > Applications > Generate New Token. Create a token with the following permissions:
 
-- Repository: Read and Write
-- Issue: Read and Write (for comments)
+- Repository: Write
+- Issue: Write (for comments)
 
 Create a Kubernetes secret with the token:
 
@@ -37,14 +37,14 @@ kubectl create secret generic gitea-token \
   --from-literal=token=your_gitea_api_token
 ```
 
-## Step 2: Configure the Gitea Notification Provider
+## Step 2: Configure the Gitea Notification Providers
 
-Create a provider for Gitea commit status and comment notifications:
+Create providers for Gitea commit status and comment notifications:
 
 ```yaml
 # gitea-provider.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitea-status
@@ -54,18 +54,29 @@ spec:
   address: https://gitea.example.com/your-org/fleet-infra
   secretRef:
     name: gitea-token
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: gitea-pr-comment
+  namespace: flux-system
+spec:
+  type: giteapullrequestcomment
+  address: https://gitea.example.com/your-org/fleet-infra
+  secretRef:
+    name: gitea-token
 ```
 
-Apply the provider:
+Apply the providers:
 
 ```bash
 kubectl apply -f gitea-provider.yaml
 ```
 
-Verify the provider is ready:
+Verify the providers are ready:
 
 ```bash
-kubectl get provider gitea-status -n flux-system
+kubectl get providers gitea-status gitea-pr-comment -n flux-system
 ```
 
 ## Step 3: Set Up the GitRepository Source
@@ -99,11 +110,11 @@ kubectl create secret generic gitea-repo-credentials \
 
 ## Step 4: Create Alert Rules
 
-Configure alerts for Gitea pull request notifications:
+Configure alerts for Gitea commit status and pull request comment notifications:
 
 ```yaml
 # gitea-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gitea-deployment-status
@@ -119,10 +130,25 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: flux-system
-  inclusionList:
-    - ".*reconciliation.*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: gitea-pr-comment
+  namespace: flux-system
+spec:
+  providerRef:
+    name: gitea-pr-comment
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+      namespace: flux-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: flux-system
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gitea-error-status
@@ -157,6 +183,9 @@ kind: Kustomization
 metadata:
   name: app-deployment
   namespace: flux-system
+  annotations:
+    event.toolkit.fluxcd.io/change_request: "123"
+    event.toolkit.fluxcd.io/commit: "<commit-sha>"
 spec:
   interval: 5m
   sourceRef:
@@ -168,7 +197,7 @@ spec:
   timeout: 5m
 ```
 
-When Flux reconciles a commit, it posts the status to the Gitea API. Gitea displays this status on any pull request containing that commit.
+Set `event.toolkit.fluxcd.io/change_request` to the pull request number and `event.toolkit.fluxcd.io/commit` to the commit SHA for the preview environment. When Flux reconciles the object, it can post a commit status to the Gitea API and update the status comment on the annotated pull request.
 
 ## Step 6: Handle Gitea Behind Reverse Proxy
 
@@ -176,7 +205,7 @@ If your Gitea instance is behind a reverse proxy or uses a non-standard port, ad
 
 ```yaml
 # gitea-proxy-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitea-status
@@ -219,7 +248,7 @@ Trigger a reconciliation and watch for the notification:
 flux reconcile kustomization app-deployment --with-source
 ```
 
-Check the Gitea pull request for the commit status update. The status should appear as a check on the commit.
+Check the Gitea pull request for the commit status update and Flux status comment.
 
 ## Step 8: Configure Webhook Receivers
 
@@ -233,13 +262,14 @@ metadata:
   name: gitea-webhook
   namespace: flux-system
 spec:
-  type: gitea
+  type: github
   events:
     - "push"
   secretRef:
     name: gitea-webhook-secret
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: fleet-infra
 ```
 
@@ -271,9 +301,11 @@ kubectl run test-gitea --rm -it --image=curlimages/curl -- \
 
 # Check notification controller events
 kubectl events -n flux-system --for provider/gitea-status
+kubectl events -n flux-system --for provider/gitea-pr-comment
 
 # Verify the provider address format
 kubectl get provider gitea-status -n flux-system -o yaml
+kubectl get provider gitea-pr-comment -n flux-system -o yaml
 ```
 
 Ensure the provider address includes the full repository path and matches the Gitea URL structure exactly.
