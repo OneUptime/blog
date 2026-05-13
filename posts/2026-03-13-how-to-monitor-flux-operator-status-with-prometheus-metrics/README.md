@@ -85,7 +85,7 @@ spec:
     matchNames:
       - flux-system
   endpoints:
-    - port: http-metrics
+    - targetPort: 8080
       path: /metrics
       interval: 30s
 ```
@@ -96,7 +96,7 @@ Apply the ServiceMonitor.
 kubectl apply -f flux-operator-servicemonitor.yaml
 ```
 
-If the Flux Operator does not have a Service with a metrics port, create one.
+The Flux Operator installation includes a Service that exposes the metrics port. If you use a custom installation and do not have this Service, create one.
 
 ```yaml
 # flux-operator-metrics-service.yaml
@@ -104,7 +104,7 @@ If the Flux Operator does not have a Service with a metrics port, create one.
 apiVersion: v1
 kind: Service
 metadata:
-  name: flux-operator-metrics
+  name: flux-operator
   namespace: flux-system
   labels:
     app.kubernetes.io/name: flux-operator
@@ -112,7 +112,7 @@ spec:
   selector:
     app.kubernetes.io/name: flux-operator
   ports:
-    - name: http-metrics
+    - name: http
       port: 8080
       targetPort: 8080
       protocol: TCP
@@ -129,8 +129,10 @@ Standard controller-runtime metrics include reconciliation counts, durations, an
 ```yaml
 # Key controller-runtime metrics
 # Total reconciliation attempts
-controller_runtime_reconcile_total{controller="fluxinstance",result="success"}
-controller_runtime_reconcile_total{controller="fluxinstance",result="error"}
+controller_runtime_reconcile_total{controller="fluxinstance"}
+
+# Total reconciliation errors
+controller_runtime_reconcile_errors_total{controller="fluxinstance"}
 
 # Reconciliation duration
 controller_runtime_reconcile_time_seconds_bucket{controller="fluxinstance"}
@@ -145,26 +147,26 @@ Metrics that reflect the status of FluxInstance resources.
 
 ```yaml
 # FluxInstance readiness
-# 1 if the FluxInstance is ready, 0 otherwise
-flux_instance_ready{name="flux",namespace="flux-system"}
+# The ready label is True, False, or Unknown
+flux_instance_info{name="flux",exported_namespace="flux-system",ready="True"}
 
-# FluxInstance information including version
-flux_instance_info{name="flux",namespace="flux-system",version="2.4.0"}
+# FluxInstance information including the installed revision
+flux_instance_info{name="flux",exported_namespace="flux-system",revision="v2.3.0@sha256:..."}
 ```
 
 ### Flux Component Metrics
 
-When Flux components are installed, they expose their own metrics that provide detailed reconciliation information.
+The Flux Operator also exports metrics for Flux resources found in the cluster.
 
 ```yaml
-# Source controller reconciliation
-gotk_reconcile_condition{kind="GitRepository",name="flux-system",namespace="flux-system",type="Ready"}
+# Source resource readiness
+flux_resource_info{kind="GitRepository",name="flux-system",exported_namespace="flux-system",ready="True"}
 
-# Kustomize controller reconciliation
-gotk_reconcile_condition{kind="Kustomization",namespace="flux-system",type="Ready"}
+# Kustomize resource readiness
+flux_resource_info{kind="Kustomization",exported_namespace="flux-system",ready="True"}
 
 # Resource suspension status
-gotk_suspend_status{kind="Kustomization",namespace="flux-system"}
+flux_resource_info{kind="Kustomization",exported_namespace="flux-system",suspended="False"}
 ```
 
 ## Creating Prometheus Alert Rules
@@ -186,16 +188,16 @@ spec:
     - name: flux-operator
       rules:
         - alert: FluxInstanceNotReady
-          expr: flux_instance_ready == 0
+          expr: flux_instance_info{ready!="True"} == 1
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "FluxInstance {{ $labels.name }} in {{ $labels.namespace }} is not ready"
+            summary: "FluxInstance {{ $labels.name }} in {{ $labels.exported_namespace }} is not ready"
             description: "The FluxInstance has been not ready for more than 5 minutes."
 
         - alert: FluxOperatorReconcileErrors
-          expr: rate(controller_runtime_reconcile_total{controller="fluxinstance",result="error"}[5m]) > 0
+          expr: rate(controller_runtime_reconcile_errors_total{controller="fluxinstance"}[5m]) > 0
           for: 10m
           labels:
             severity: warning
@@ -204,7 +206,7 @@ spec:
             description: "The Flux Operator has been producing reconciliation errors for more than 10 minutes."
 
         - alert: FluxOperatorHighReconcileLatency
-          expr: histogram_quantile(0.99, rate(controller_runtime_reconcile_time_seconds_bucket{controller="fluxinstance"}[5m])) > 60
+          expr: histogram_quantile(0.99, sum(rate(controller_runtime_reconcile_time_seconds_bucket{controller="fluxinstance"}[5m])) by (le)) > 60
           for: 10m
           labels:
             severity: warning
@@ -215,15 +217,15 @@ spec:
     - name: flux-components
       rules:
         - alert: FluxComponentNotReady
-          expr: gotk_reconcile_condition{type="Ready",status="False"} == 1
+          expr: flux_resource_info{ready!="True"} == 1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Flux resource {{ $labels.kind }}/{{ $labels.name }} in {{ $labels.namespace }} is not ready"
+            summary: "Flux resource {{ $labels.kind }}/{{ $labels.name }} in {{ $labels.exported_namespace }} is not ready"
 
         - alert: FluxReconciliationFailure
-          expr: max(gotk_reconcile_condition{type="Ready",status="False"}) by (namespace, name, kind) == 1
+          expr: max(flux_resource_info{ready!="True"}) by (exported_namespace, name, kind) == 1
           for: 15m
           labels:
             severity: critical
@@ -245,7 +247,7 @@ Create a Grafana dashboard to visualize Flux Operator metrics.
 
 ```yaml
 # Grafana panel query for FluxInstance readiness
-query: flux_instance_ready
+query: max by (name, exported_namespace) (flux_instance_info{ready="True"}) or on(name, exported_namespace) (0 * max by (name, exported_namespace) (flux_instance_info))
 legend: "{{ name }}"
 type: stat
 thresholds:
@@ -259,8 +261,8 @@ thresholds:
 
 ```yaml
 # Grafana panel query for reconciliation rate
-query: sum(rate(controller_runtime_reconcile_total{controller="fluxinstance"}[5m])) by (result)
-legend: "{{ result }}"
+query: sum(rate(controller_runtime_reconcile_total{controller="fluxinstance"}[5m]))
+legend: "reconciliations"
 type: timeseries
 ```
 
@@ -277,7 +279,7 @@ type: timeseries
 
 ```yaml
 # Grafana panel query for component health
-query: gotk_reconcile_condition{type="Ready",status="True"}
+query: flux_resource_info{ready="True"}
 legend: "{{ kind }}/{{ name }}"
 type: table
 ```
@@ -293,7 +295,7 @@ kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090
 
 # Test a metric query
 curl -s 'http://localhost:9090/api/v1/query' \
-  --data-urlencode 'query=flux_instance_ready'
+  --data-urlencode 'query=flux_instance_info'
 
 # Check alert rules are loaded
 curl -s 'http://localhost:9090/api/v1/rules' | jq '.data.groups[] | select(.name=="flux-operator")'
@@ -301,4 +303,4 @@ curl -s 'http://localhost:9090/api/v1/rules' | jq '.data.groups[] | select(.name
 
 ## Conclusion
 
-Monitoring the Flux Operator with Prometheus metrics provides essential visibility into your GitOps infrastructure. By scraping the operator's metrics endpoint, setting up alerts for reconciliation failures and FluxInstance health, and building dashboards for real-time observability, you can maintain confidence in your Flux installations. Combined with Flux component metrics, this monitoring setup gives you a complete picture of your GitOps pipeline health from the operator level down to individual reconciliation results.
+Monitoring the Flux Operator with Prometheus metrics provides essential visibility into your GitOps infrastructure. By scraping the operator's metrics endpoint, setting up alerts for reconciliation failures and FluxInstance health, and building dashboards for real-time observability, you can maintain confidence in your Flux installations. Combined with Flux resource metrics, this monitoring setup gives you a complete picture of your GitOps pipeline health from the operator level down to individual reconciliation results.
