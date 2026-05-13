@@ -29,6 +29,8 @@ First, create an incoming webhook in your Slack workspace. Navigate to your Slac
 
 The webhook URL will look similar to `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`.
 
+Slack app-based incoming webhooks are bound to the channel selected when the webhook is created, and Slack does not allow overriding the channel or username at runtime. If you need Flagger's `channel` and `username` settings to control those values, use the Slack integration type supported by your Slack workspace that permits those overrides, or configure Flagger with a Slack bot token.
+
 ## Storing the Webhook URL as a Kubernetes Secret
 
 Store the Slack webhook URL in a Kubernetes Secret to keep it secure.
@@ -79,6 +81,8 @@ Apply the AlertProvider.
 kubectl apply -f alert-provider.yaml
 ```
 
+For Slack app-based incoming webhooks, the `channel` and `username` fields may be ignored by Slack because those values come from the webhook's app configuration.
+
 ## Configuring Canary Resources to Use the AlertProvider
 
 Add an alert reference to your Canary resources to enable Slack notifications for that specific canary.
@@ -121,7 +125,7 @@ spec:
 
 ## Configuring Alert Severity Levels
 
-Flagger supports three severity levels for alerts: info, warn, and error. You can create multiple AlertProviders for different severity levels and route them to different Slack channels.
+Flagger supports three severity levels for alerts: info, warn, and error. You can create multiple AlertProviders for different severity levels and route them to different Slack channels. When using Slack app-based incoming webhooks, create a separate webhook and Kubernetes Secret for each destination channel.
 
 ```yaml
 # alert-provider-critical.yaml
@@ -136,7 +140,7 @@ spec:
   channel: critical-alerts
   username: flagger
   secretRef:
-    name: slack-webhook-url
+    name: slack-critical-webhook-url
 ---
 # alert-provider-info.yaml
 # AlertProvider for informational alerts
@@ -150,7 +154,7 @@ spec:
   channel: deployments
   username: flagger
   secretRef:
-    name: slack-webhook-url
+    name: slack-info-webhook-url
 ```
 
 Reference multiple alert providers in your Canary resource.
@@ -193,7 +197,7 @@ helm upgrade -i flagger flagger/flagger \
   --values flagger-values.yaml
 ```
 
-Global alerting sends notifications for all canary events without requiring individual Canary resource configuration.
+Global alerting sends notifications for canary analysis events without requiring individual Canary resource configuration.
 
 ## Testing the Slack Integration
 
@@ -208,7 +212,7 @@ kubectl set image deployment/podinfo \
 kubectl get canary podinfo -n test -w
 ```
 
-You should see messages in your Slack channel for canary initialization, weight advancement, and eventual promotion or rollback.
+You should see messages in your Slack channel when Flagger detects the new revision and when the canary analysis succeeds or fails.
 
 ## Customizing Notification Messages
 
