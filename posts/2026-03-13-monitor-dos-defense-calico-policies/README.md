@@ -19,6 +19,7 @@ This guide covers monitor DoS Defense in Calico with practical configurations an
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
 - Understanding of Calico's monitoring and security architecture
+- HostEndpoints configured for the node interfaces where DoS mitigation should be enforced
 
 ## Core Configuration
 
@@ -26,39 +27,30 @@ This guide covers monitor DoS Defense in Calico with practical configurations an
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: dos-defense-rate-limit
+  name: dos-defense-deny-list
 spec:
-  order: 50
-  selector: app == 'web-frontend'
+  selector: apply-dos-mitigation == 'true'
+  doNotTrack: true
+  applyOnForward: true
   ingress:
-    - action: Allow
+    - action: Deny
       source:
-        nets:
-          - 0.0.0.0/0
-      destination:
-        ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
-    - action: Allow
+        selector: dos-deny-list == 'true'
   types:
     - Ingress
 ---
 # Block known bad actors
 
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: GlobalNetworkSet
 metadata:
   name: dos-block-bad-actors
+  labels:
+    dos-deny-list: 'true'
 spec:
-  order: 10
-  selector: app == 'web-frontend'
-  ingress:
-    - action: Deny
-      source:
-        nets:
-          - 198.51.100.0/24  # Known attack source
-          - 203.0.113.0/24
-  types:
-    - Ingress
+  nets:
+    - 198.51.100.0/24  # Known attack source
+    - 203.0.113.0/24
 ```
 
 ## Implementation
@@ -67,18 +59,18 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Verify Felix has active policy on the node
+curl -s http://node-ip:9091/metrics | grep felix_active_local_policies
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# Check denial counters if Calico Enterprise or Calico Cloud policy metrics are enabled
+watch -n1 'curl -s http://policy-metrics-endpoint/metrics | grep calico_denied_packets'
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+## eBPF Dataplane (Calico)
 
 ```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Enable eBPF dataplane with the Tigera operator
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
 ```
 
 ## Architecture
