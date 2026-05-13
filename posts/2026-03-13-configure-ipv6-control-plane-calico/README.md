@@ -12,7 +12,7 @@ Description: Learn how to configure an IPv6 control plane in Kubernetes using Ca
 
 IPv6 adoption in Kubernetes clusters is accelerating as organizations exhaust IPv4 address space and embrace next-generation networking standards. Calico provides robust support for IPv6 control planes, enabling you to run pods, services, and node communication entirely over IPv6 or in a dual-stack configuration.
 
-Configuring an IPv6 control plane requires coordinating changes across the Kubernetes API server, kubelet, kube-controller-manager, and Calico itself. Each component must be instructed to advertise and accept IPv6 CIDRs, and Calico's IP pool must be configured with an appropriate IPv6 prefix.
+Configuring an IPv6 or dual-stack cluster requires coordinating changes across the Kubernetes API server, kubelet, kube-controller-manager, kube-proxy, and Calico itself. Each component must be instructed to use the correct IPv6 service and pod CIDRs, and Calico's IP pool must be configured with an appropriate IPv6 prefix.
 
 This guide walks through enabling IPv6 in Calico's control plane, configuring IP pools with IPv6 ranges, and validating end-to-end IPv6 connectivity across your cluster nodes and pods.
 
@@ -23,6 +23,7 @@ This guide walks through enabling IPv6 in Calico's control plane, configuring IP
 - `calicoctl` CLI installed and configured
 - Node OS with IPv6 kernel support enabled (`sysctl net.ipv6.conf.all.forwarding=1`)
 - Kubernetes API server configured with `--service-cluster-ip-range` including an IPv6 range
+- Kubernetes controller manager and kube-proxy configured with `--cluster-cidr` including an IPv6 pod CIDR; for bare-metal dual-stack nodes, kubelet should set `--node-ip=<IPv4>,<IPv6>`
 
 ## Step 1: Enable IPv6 Forwarding on All Nodes
 
@@ -38,9 +39,9 @@ echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-ipv6.conf
 sudo sysctl -p /etc/sysctl.d/99-ipv6.conf
 ```
 
-## Step 2: Configure Calico FelixConfiguration for IPv6
+## Step 2: Configure Calico for IPv6
 
-Update Calico's FelixConfiguration to enable IPv6 dataplane support.
+Update Calico's FelixConfiguration to enable IPv6 dataplane support, and ensure the Calico node and CNI configuration enable IPv6 address assignment.
 
 ```yaml
 # felix-ipv6.yaml - FelixConfiguration enabling IPv6 in the dataplane
@@ -51,8 +52,6 @@ metadata:
 spec:
   # Enable IPv6 support in the Felix dataplane agent
   ipv6Support: true
-  # Use iptables backend compatible with IPv6 (ip6tables)
-  iptablesBackend: Auto
 ```
 
 Apply the configuration using `calicoctl`:
@@ -60,6 +59,28 @@ Apply the configuration using `calicoctl`:
 ```bash
 # Apply FelixConfiguration with calicoctl
 calicoctl apply -f felix-ipv6.yaml
+```
+
+If you installed Calico from manifests, also update the `calico-node` environment and CNI IPAM section in the Calico manifest before applying it:
+
+```yaml
+# calico-node environment
+- name: IP6
+  value: "autodetect"
+- name: FELIX_IPV6SUPPORT
+  value: "true"
+- name: CALICO_IPV6POOL_CIDR
+  value: "fd00:10:244::/48"
+```
+
+```json
+{
+  "ipam": {
+    "type": "calico-ipam",
+    "assign_ipv4": "true",
+    "assign_ipv6": "true"
+  }
+}
 ```
 
 ## Step 3: Create an IPv6 IP Pool
@@ -75,7 +96,7 @@ metadata:
 spec:
   # Use an IPv6 CIDR; choose a range appropriate for your environment
   cidr: fd00:10:244::/48
-  # Enable BGP route advertisement for this pool
+  # Disable encapsulation; use this with BGP or other routing between nodes
   ipipMode: Never
   vxlanMode: Never
   natOutgoing: true
@@ -104,14 +125,14 @@ kubectl run ipv6-test --image=nicolaka/netshoot --restart=Never -- sleep 3600
 # Check the pod's IP addresses (should show an IPv6 address)
 kubectl get pod ipv6-test -o jsonpath='{.status.podIPs}'
 
-# Test IPv6 connectivity from within the pod
-kubectl exec ipv6-test -- ping6 -c 3 fd00:10:244::1
+# Test IPv6 connectivity to another pod's IPv6 address
+kubectl exec ipv6-test -- ping6 -c 3 <other-pod-ipv6-address>
 ```
 
 ## Best Practices
 
 - Always test IPv6 connectivity between nodes before enabling Calico's IPv6 pool
-- Use `/48` or `/64` prefixes for pod CIDRs to allow sufficient address space per node
+- Use an IPv6 pod CIDR large enough for your node count and per-node allocations; Calico's default IPv6 block size is `/122`
 - Enable dual-stack (IPv4 + IPv6) if you need backward compatibility with IPv4-only services
 - Monitor `calicoctl node status` after enabling IPv6 to verify BGP sessions establish correctly
 - Ensure your CNI configuration file (usually in `/etc/cni/net.d/`) references IPv6 settings
