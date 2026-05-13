@@ -12,7 +12,7 @@ Description: Monitor the Calico manifest-to-operator migration in real time, tra
 
 Monitoring the Calico operator migration in real time gives you the ability to detect problems before they affect production workloads and to make informed decisions about whether to continue or abort the migration. The migration happens in phases across nodes, so having per-node visibility is essential.
 
-During migration, you need to monitor: the operator's reconciliation progress via TigeraStatus, individual node network health via `NodeNetworkUnavailable` conditions, pod readiness across all namespaces, and actual network performance metrics to detect any latency or packet loss introduced during the transition.
+During migration, you need to monitor: the operator's reconciliation progress via TigeraStatus, individual node network health via `NetworkUnavailable` conditions, pod readiness across all namespaces, and actual network performance metrics to detect any latency or packet loss introduced during the transition.
 
 ## Prerequisites
 
@@ -56,14 +56,14 @@ tmux attach-session -t calico-migration
 
 ```promql
 # Track calico-node availability during migration
-kube_daemonset_status_number_available{daemonset="calico-node"}
-/ kube_daemonset_status_desired_number_scheduled{daemonset="calico-node"}
+kube_daemonset_status_number_available{namespace="calico-system", daemonset="calico-node"}
+/ kube_daemonset_status_desired_number_scheduled{namespace="calico-system", daemonset="calico-node"}
 
 # Track pod restart rate (spikes indicate migration issues)
 rate(kube_pod_container_status_restarts_total{namespace="calico-system"}[5m])
 
 # Monitor node network unavailability
-kube_node_status_condition{condition="NetworkReady", status="false"}
+kube_node_status_condition{condition="NetworkUnavailable", status="true"}
 ```
 
 ## Migration Progress Tracker
@@ -96,7 +96,7 @@ while true; do
   echo ""
   echo "Node Network Status:"
   kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}\
-{range .status.conditions[?(@.type=="NetworkReady")]}{.status}{"\n"}{end}{end}' 2>/dev/null
+{range .status.conditions[?(@.type=="NetworkUnavailable")]}{.status}{"\n"}{end}{end}' 2>/dev/null
 
   sleep 15
 done
@@ -143,7 +143,7 @@ spec:
         - |
           while true; do
             START=\$(date +%s%N)
-            wget -qO/dev/null http://kubernetes.default.svc 2>/dev/null
+            wget --no-check-certificate -qO/dev/null https://kubernetes.default.svc/version 2>/dev/null
             END=\$(date +%s%N)
             echo "\$(date): latency \$(((END-START)/1000000))ms"
             sleep 5
