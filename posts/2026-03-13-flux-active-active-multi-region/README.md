@@ -12,7 +12,7 @@ Description: Deploy active-active multi-region architecture using Flux CD, with 
 
 Active-active multi-region architecture is the gold standard for global applications: every region serves real user traffic, and the loss of any single region results in only a partial capacity reduction, not a complete outage. Users are routed to the nearest healthy region, providing both resilience and low latency.
 
-Flux CD is an ideal tool for managing active-active deployments because it can reconcile the same application definitions across multiple clusters simultaneously, ensuring configuration consistency across regions while allowing region-specific customization through Kustomize overlays.
+Flux CD is an ideal tool for managing active-active deployments because it can reconcile the same application definitions independently across multiple clusters, ensuring configuration consistency across regions while allowing region-specific customization through Kustomize overlays.
 
 This guide covers the repository structure, per-region customization, global load balancing, and the operational considerations unique to active-active deployments.
 
@@ -20,7 +20,7 @@ This guide covers the repository structure, per-region customization, global loa
 
 - Kubernetes clusters in at least two regions (e.g., us-east-1, eu-west-1, ap-southeast-1)
 - Flux CD bootstrapped on all clusters
-- Global DNS/load balancing service (Cloudflare, Route53 with latency routing, or GKE Traffic Director)
+- Global DNS/load balancing service (Cloudflare, Route53 with latency routing, or Google Cloud Load Balancing)
 - Shared data layer that supports multi-region access (CockroachDB, Spanner, DynamoDB Global Tables)
 - `flux` and `kubectl` CLI access to all clusters
 
@@ -131,44 +131,56 @@ Repeat for eu-west-1 and ap-southeast-1, pointing at their respective overlay pa
 
 Use Cloudflare Load Balancing with health checks to route users to the nearest healthy region.
 
-```yaml
+```hcl
 # infrastructure/cloudflare/load-balancer.tf
+resource "cloudflare_load_balancer_monitor" "regional_https" {
+  account_id     = var.cloudflare_account_id
+  type           = "https"
+  method         = "GET"
+  path           = "/health"
+  expected_codes = "2xx"
+  interval       = 60
+  timeout        = 5
+  retries        = 2
+}
+
 resource "cloudflare_load_balancer" "global" {
-  zone_id          = var.cloudflare_zone_id
-  name             = "app.example.com"
-  fallback_pool_id = cloudflare_load_balancer_pool.us_east_1.id
-  default_pool_ids = [
+  zone_id       = var.cloudflare_zone_id
+  name          = "app.example.com"
+  fallback_pool = cloudflare_load_balancer_pool.us_east_1.id
+  default_pools = [
     cloudflare_load_balancer_pool.us_east_1.id,
     cloudflare_load_balancer_pool.eu_west_1.id,
     cloudflare_load_balancer_pool.ap_southeast_1.id,
   ]
-  steering_policy  = "geo"  # Route based on user geography
-  proxied          = true
+  steering_policy = "dynamic_latency" # Route to the lowest-latency healthy pool
+  proxied         = true
 
-  rules {
+  rules = [{
     name      = "eu-users"
     condition = "ip.src.country in {\"DE\" \"FR\" \"GB\" \"NL\"}"
-    overrides {
-      steering_policy  = "off"
-      default_pool_ids = [cloudflare_load_balancer_pool.eu_west_1.id]
+    overrides = {
+      steering_policy = "off"
+      default_pools   = [cloudflare_load_balancer_pool.eu_west_1.id]
     }
-  }
+  }]
 }
 
 resource "cloudflare_load_balancer_pool" "us_east_1" {
-  name = "us-east-1"
-  origins {
+  account_id = var.cloudflare_account_id
+  name       = "us-east-1"
+  monitor    = cloudflare_load_balancer_monitor.regional_https.id
+  origins = [{
     name    = "us-east-1-lb"
     address = "k8s-lb.us-east-1.example.com"
     enabled = true
-  }
-  health_check_id = cloudflare_healthcheck.us_east_1.id
+  }]
 }
 ```
 
 ## Step 5: Synchronize Configuration Changes Across All Regions
 
-A key advantage of Flux is that a single Git commit propagates to all regions simultaneously.
+A key advantage of Flux is that a single Git commit propagates to all regions as each cluster reconciles.
 
 ```bash
 # Deploy a new application version to all regions
@@ -201,8 +213,9 @@ done
 # If a region needs to be disabled for maintenance
 # Update the Cloudflare pool to disable the origin (via Terraform + Flux)
 # Or use the Cloudflare API directly for emergency:
-curl -X PATCH "https://api.cloudflare.com/client/v4/user/load_balancers/pools/$POOL_ID" \
+curl -X PATCH "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/load_balancers/pools/$POOL_ID" \
   -H "Authorization: Bearer $CF_TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{"origins":[{"name":"us-east-1-lb","address":"...","enabled":false}]}'
 ```
 
