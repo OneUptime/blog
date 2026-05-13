@@ -28,22 +28,24 @@ Check OpenShift's configured pod CIDR:
 oc get network.config cluster -o jsonpath='{.spec.clusterNetwork}'
 ```
 
-Update the Calico IP pool to match:
+Verify the Calico IP pool is within the OpenShift cluster network:
 
 ```bash
 calicoctl get ippool -o yaml
 ```
 
-If the CIDR does not match, patch it:
+If the CIDR does not match on a new cluster, update the Tigera Operator `Installation` resource before workloads are scheduled:
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"cidr":"10.128.0.0/14"}}'
+oc patch installation.operator.tigera.io default --type=merge \
+  -p '{"spec":{"calicoNetwork":{"ipPools":[{"cidr":"10.128.0.0/14","encapsulation":"VXLAN","natOutgoing":"Enabled","nodeSelector":"all()"}]}}}'
 ```
+
+For a cluster that is already running workloads, create a replacement IP pool and migrate workloads to it rather than patching the `cidr` field of the existing IP pool.
 
 ## Step 2: Configure Felix for OpenShift
 
-OpenShift uses iptables by default. Configure Felix accordingly.
+Calico's standard Linux data plane uses iptables. Configure Felix accordingly unless you have explicitly enabled and tested Calico's eBPF data plane.
 
 ```bash
 calicoctl patch felixconfiguration default \
@@ -80,7 +82,7 @@ calicoctl apply -f allow-openshift-system.yaml
 
 ## Step 4: Configure Calico for OpenShift Routes
 
-OpenShift uses Routes (not Ingress) for external access. Ensure Calico does not block router traffic.
+OpenShift commonly uses Routes, implemented by the cluster Ingress Controller, for external HTTP and HTTPS access. Ensure Calico does not block router traffic.
 
 ```bash
 # Verify the OpenShift router pods are using host networking
@@ -94,7 +96,20 @@ oc get pods -n openshift-ingress -o wide
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
-oc create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico-prometheus.yaml
+oc apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - port: 9091
+      targetPort: 9091
+EOF
 ```
 
 ## Step 6: Validate Configuration
