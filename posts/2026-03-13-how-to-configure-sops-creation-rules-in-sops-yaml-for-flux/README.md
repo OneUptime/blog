@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring SOPS creation rules in .sops.y
 
 ---
 
-The `.sops.yaml` configuration file is central to how SOPS encrypts and manages secrets in your repository. Creation rules define which encryption keys, algorithms, and settings apply to which files. Getting this configuration right is essential for a well-organized Flux GitOps workflow. This guide covers everything you need to know about SOPS creation rules.
+The `.sops.yaml` configuration file is central to how SOPS encrypts and manages secrets in your repository. Creation rules define which encryption keys and settings apply to which files. Getting this configuration right is essential for a well-organized Flux GitOps workflow. This guide covers everything you need to know about SOPS creation rules.
 
 ## What Are Creation Rules
 
@@ -98,9 +98,9 @@ creation_rules:
 
 SOPS encrypts the data key for each provider, so any one of them can decrypt the file.
 
-## Setting MAC Algorithm
+## Setting MAC Coverage
 
-You can specify the MAC (Message Authentication Code) algorithm:
+You can specify whether the MAC (Message Authentication Code) covers only encrypted values:
 
 ```yaml
 creation_rules:
@@ -109,7 +109,7 @@ creation_rules:
     mac_only_encrypted: true
 ```
 
-When `mac_only_encrypted` is true, the MAC is computed only over the encrypted values rather than the entire file. This is useful when non-sensitive metadata changes should not affect the MAC.
+When `mac_only_encrypted` is true, the MAC is computed only over the encrypted values rather than both encrypted and unencrypted values. This is useful when non-sensitive metadata changes should not affect the MAC.
 
 ## Environment-Specific Rules
 
@@ -140,7 +140,7 @@ creation_rules:
 
 ## Placing .sops.yaml in Your Repository
 
-The `.sops.yaml` file should be placed at the root of your Git repository. SOPS searches for it starting from the file being encrypted and walking up the directory tree. You can also place `.sops.yaml` files in subdirectories to override the root configuration for specific paths.
+The `.sops.yaml` file is often placed at the root of your Git repository. SOPS searches for it starting from the current working directory and walking up the directory tree, using the first `.sops.yaml` it finds. The `path_regex` is evaluated against the file path relative to that `.sops.yaml` file. You can also place `.sops.yaml` files in subdirectories for cluster- or namespace-specific configurations.
 
 ```text
 flux-repo/
@@ -160,12 +160,10 @@ flux-repo/
 Test that your creation rules work correctly before committing:
 
 ```bash
-# Dry run to see which rule matches
-
-sops --encrypt --verbose test-secret.yaml 2>&1 | head -20
+# Verbose run to see which rule and keys are used
+sops --encrypt --verbose test-secret.yaml > encrypted.yaml
 
 # Encrypt and then decrypt to verify round-trip
-sops --encrypt test-secret.yaml > encrypted.yaml
 sops --decrypt encrypted.yaml
 ```
 
