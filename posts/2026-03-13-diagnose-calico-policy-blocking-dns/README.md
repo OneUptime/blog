@@ -10,13 +10,13 @@ Description: Diagnose DNS failures caused by Calico NetworkPolicies by testing D
 
 ## Introduction
 
-Calico NetworkPolicies blocking DNS is one of the most impactful misconfigurations in a Kubernetes cluster because DNS failure cascades into failures across every service that depends on name resolution. When a default-deny egress policy is applied without an explicit allow for UDP port 53 to CoreDNS, all pods in the affected namespace lose the ability to resolve service names.
+Calico NetworkPolicies blocking DNS is one of the most impactful misconfigurations in a Kubernetes cluster because DNS failure cascades into failures across every service that depends on name resolution. When a default-deny egress policy is applied without an explicit allow for UDP/TCP port 53 to CoreDNS, all selected pods in the affected namespace lose the ability to resolve service names.
 
 The symptoms are often misleading - pods may report "connection refused" or "no such host" errors that look like application failures or service outages. The DNS layer needs to be specifically tested to distinguish DNS blocking from other connectivity issues.
 
 ## Symptoms
 
-- Pods return `nslookup: server can't find <service>: SERVFAIL` or `NXDOMAIN`
+- Pods return `nslookup: can't resolve <service>` or DNS query timeouts
 - Application errors: `dial tcp: lookup <hostname>: no such host`
 - `kubectl exec <pod> -- nslookup kubernetes.default` fails
 - Errors disappear when a test pod without NetworkPolicy is deployed
@@ -42,7 +42,7 @@ kubectl exec <pod-name> -n <namespace> -- cat /etc/resolv.conf
 ```bash
 COREDNS_IP=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
 echo "CoreDNS Service IP: $COREDNS_IP"
-kubectl exec <pod-name> -n <namespace> -- nc -zuv $COREDNS_IP 53 2>&1
+kubectl exec <pod-name> -n <namespace> -- nslookup kubernetes.default.svc.cluster.local $COREDNS_IP 2>&1
 ```
 
 **Step 3: Check egress policies in namespace**
@@ -63,18 +63,18 @@ calicoctl get networkpolicy -n kube-system -o yaml 2>/dev/null
 
 ```bash
 kubectl run dns-diag --image=busybox --restart=Never -n default -- sleep 120
-kubectl exec dns-diag -- nslookup kubernetes.default
+kubectl exec dns-diag -n default -- nslookup kubernetes.default
 # If this works: policy is blocking DNS in affected namespace
 
 # If this fails: DNS infrastructure problem
-kubectl delete pod dns-diag
+kubectl delete pod dns-diag -n default
 ```
 
 ```mermaid
 flowchart TD
     A[DNS failure] --> B[Test nslookup from affected pod]
-    B --> C{SERVFAIL or NXDOMAIN?}
-    C -- SERVFAIL --> D[DNS reachable but query failing]
+    B --> C{Timeout or DNS error response?}
+    C -- DNS error response --> D[DNS reachable but query failing]
     C -- timeout/refused --> E[DNS not reachable from pod]
     E --> F[Check egress policy for port 53]
     F --> G{Port 53 allowed?}
