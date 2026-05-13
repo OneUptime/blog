@@ -41,7 +41,7 @@ spec:
     port: 8080
     targetPort: http
   analysis:
-    interval: 30s
+    interval: 1m
     threshold: 3
     maxWeight: 50
     stepWeight: 10
@@ -56,7 +56,7 @@ spec:
         interval: 1m
 ```
 
-The `request-duration` metric has `thresholdRange.max: 500`, meaning the p99 latency must stay below 500 milliseconds. If it exceeds this value for `threshold` consecutive checks, Flagger rolls back.
+The `request-duration` metric has `thresholdRange.max: 500`, meaning the p99 latency must stay below 500 milliseconds. If the number of failed checks reaches `threshold`, Flagger rolls back.
 
 ## Step 2: Create Custom Latency Metrics for Different Percentiles
 
@@ -136,7 +136,7 @@ spec:
   service:
     port: 8080
   analysis:
-    interval: 30s
+    interval: 1m
     threshold: 3
     maxWeight: 50
     stepWeight: 10
@@ -177,7 +177,7 @@ If any of these thresholds are breached, the failure counter increments.
 
 ## Step 4: Endpoint-Specific Latency Monitoring
 
-Different endpoints may have different acceptable latency ranges. Create endpoint-specific metrics:
+Different endpoints may have different acceptable latency ranges. Istio does not add raw URL paths to standard metrics by default; if you classify paths into a bounded custom label such as `request_operation` on request duration metrics, create endpoint-specific metrics:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -195,7 +195,7 @@ spec:
         reporter="destination",
         destination_workload_namespace="{{ namespace }}",
         destination_workload="{{ target }}",
-        request_url_path=~"/api/.*"
+        request_operation=~"Api.*"
       }[{{ interval }}])) by (le)
     )
 ```
@@ -220,7 +220,7 @@ spec:
         sum(rate(istio_request_duration_milliseconds_bucket{
           reporter="destination",
           destination_workload_namespace="{{ namespace }}",
-          destination_workload="{{ target }}-canary"
+          destination_workload="{{ target }}"
         }[{{ interval }}])) by (le)
       )
       /
