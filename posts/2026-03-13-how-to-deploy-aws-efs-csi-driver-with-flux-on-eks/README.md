@@ -10,7 +10,7 @@ Description: Learn how to deploy the AWS EFS CSI driver on EKS using Flux for Gi
 
 ## What is the AWS EFS CSI Driver
 
-The AWS EFS CSI driver enables Kubernetes workloads to use Amazon Elastic File System (EFS) for shared, persistent file storage. Unlike EBS which provides block storage limited to a single pod, EFS provides NFS-based file storage that supports ReadWriteMany access, making it ideal for shared data, content management systems, and applications that need concurrent file access across multiple pods.
+The AWS EFS CSI driver enables Kubernetes workloads to use Amazon Elastic File System (EFS) for shared, persistent file storage. Unlike EBS which provides block storage that is typically attached to a single node, EFS provides NFS-based file storage that supports ReadWriteMany access, making it ideal for shared data, content management systems, and applications that need concurrent file access across multiple pods.
 
 ## Prerequisites
 
@@ -90,6 +90,7 @@ cat > efs-csi-policy.json << 'EOF'
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "AllowDescribe",
       "Effect": "Allow",
       "Action": [
         "elasticfilesystem:DescribeAccessPoints",
@@ -100,36 +101,48 @@ cat > efs-csi-policy.json << 'EOF'
       "Resource": "*"
     },
     {
+      "Sid": "AllowCreateAccessPoint",
       "Effect": "Allow",
       "Action": [
         "elasticfilesystem:CreateAccessPoint"
       ],
       "Resource": "*",
       "Condition": {
-        "StringLike": {
-          "aws:RequestTag/efs.csi.aws.com/cluster": "true"
+        "Null": {
+          "aws:RequestTag/efs.csi.aws.com/cluster": "false"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": "efs.csi.aws.com/cluster"
         }
       }
     },
     {
+      "Sid": "AllowTagNewAccessPoints",
       "Effect": "Allow",
       "Action": [
         "elasticfilesystem:TagResource"
       ],
       "Resource": "*",
       "Condition": {
-        "StringLike": {
-          "aws:ResourceTag/efs.csi.aws.com/cluster": "true"
+        "StringEquals": {
+          "elasticfilesystem:CreateAction": "CreateAccessPoint"
+        },
+        "Null": {
+          "aws:RequestTag/efs.csi.aws.com/cluster": "false"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": "efs.csi.aws.com/cluster"
         }
       }
     },
     {
+      "Sid": "AllowDeleteAccessPoint",
       "Effect": "Allow",
       "Action": "elasticfilesystem:DeleteAccessPoint",
       "Resource": "*",
       "Condition": {
-        "StringEquals": {
-          "aws:ResourceTag/efs.csi.aws.com/cluster": "true"
+        "Null": {
+          "aws:ResourceTag/efs.csi.aws.com/cluster": "false"
         }
       }
     }
@@ -160,8 +173,8 @@ cat > trust-policy.json << EOF
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
-        "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa",
+        "StringLike": {
+          "${OIDC_PROVIDER}:sub": "system:serviceaccount:kube-system:efs-csi-*",
           "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
         }
       }
@@ -216,7 +229,7 @@ spec:
   chart:
     spec:
       chart: aws-efs-csi-driver
-      version: "2.5.x"
+      version: "4.2.x"
       sourceRef:
         kind: HelmRepository
         name: aws-efs-csi-driver
@@ -240,7 +253,8 @@ spec:
           cpu: 100m
           memory: 128Mi
     node:
-      tolerateAllTaints: true
+      tolerations:
+        - operator: Exists
     storageClasses:
       - name: efs-sc
         parameters:
@@ -282,7 +296,7 @@ spec:
     name: flux-system
   path: ./infrastructure/efs-csi
   prune: true
-  wait: true
+  wait: false
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
