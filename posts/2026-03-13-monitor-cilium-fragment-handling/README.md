@@ -12,13 +12,13 @@ Description: Learn how to monitor and troubleshoot IP packet fragmentation in Ci
 
 IP packet fragmentation occurs when a packet exceeds the Maximum Transmission Unit (MTU) of a network path and must be split into smaller fragments. In Kubernetes clusters, fragmentation can occur when overlay encapsulation (VXLAN, Geneve) adds headers that push packets beyond the physical network's MTU limit. Cilium must correctly handle fragmented packets to ensure reliable pod-to-pod and pod-to-external communication.
 
-Cilium includes eBPF-based fragment tracking for UDP and other protocols that do not perform path MTU discovery (PMTUD). When fragment tracking fails or is misconfigured, workloads may experience silent packet drops, TCP retransmissions, or application-level timeouts that are difficult to attribute to fragmentation without proper monitoring.
+Cilium includes eBPF-based fragment tracking for protocols that do not support segmentation, such as UDP. When fragment tracking fails or is misconfigured, workloads may experience silent packet drops, TCP retransmissions, or application-level timeouts that are difficult to attribute to fragmentation without proper monitoring.
 
 This guide covers monitoring Cilium's fragment handling, identifying fragmentation-related issues, and tuning MTU settings to minimize unnecessary fragmentation.
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium v1.14+ installed
+- Kubernetes cluster with Cilium v1.18+ installed
 - `kubectl` with cluster-admin access
 - `cilium` CLI v0.15+ installed
 - Hubble for flow observation
@@ -38,7 +38,7 @@ cilium config view | grep -i mtu
 # View the MTU reported by Cilium on each node
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium status | grep -i mtu
+  -- cilium-dbg status | grep -i mtu
 
 # Check node interface MTUs for comparison
 kubectl get nodes -o wide
@@ -53,18 +53,21 @@ Check Cilium's eBPF fragment tracking counters to detect fragmentation activity.
 Query fragment tracking metrics from Cilium agents:
 
 ```bash
-# Check fragment-related eBPF map statistics
+# Check fragment-related metrics
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium metrics list | grep -i frag
+  -- cilium-dbg metrics list | grep -E "fragmented_count_total|mtu_error_message_total|cilium_.*_frag_datagrams"
 
 # View Cilium drop reasons to identify fragment-related drops
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium monitor --type drop 2>/dev/null | head -20
+  -- cilium-dbg monitor --type drop 2>/dev/null | head -20
 
-# Check Prometheus metrics for fragment drops
-# cilium_drop_count_total{reason="Fragmented packet"} - fragment drop count
+# Check Prometheus metrics for fragment processing and PMTUD signals
+# cilium_fragmented_count_total - fragmented packets processed
+# cilium_mtu_error_message_total - ICMP fragmentation-needed or ICMPv6 packet-too-big messages
+# cilium_bpf_map_pressure{map_name="cilium_ipv4_frag_datagrams"} - IPv4 fragment map pressure
+# cilium_bpf_map_pressure{map_name="cilium_ipv6_frag_datagrams"} - IPv6 fragment map pressure
 ```
 
 ## Step 3: Observe Fragmented Flows with Hubble
@@ -79,13 +82,13 @@ cilium hubble port-forward &
 
 # Observe dropped flows that may be fragmentation-related
 hubble observe --verdict DROPPED --follow --output json | \
-  jq 'select(.flow.drop_reason != null) | 
-      {src: .flow.ip.source, dst: .flow.ip.destination, reason: .flow.drop_reason}'
+  jq 'select(.flow.drop_reason_desc != null) |
+      {src: .flow.IP.source, dst: .flow.IP.destination, reason: .flow.drop_reason_desc}'
 
 # Monitor UDP flows which are more susceptible to fragmentation
 hubble observe --protocol udp --follow
 
-# Look for flows with large payload sizes approaching MTU limits
+# Identify high-volume UDP conversations to correlate with fragment metrics
 hubble observe --last 1000 --output json | \
   jq 'select(.flow.l4.UDP != null) | .flow' | head -20
 ```
@@ -130,8 +133,7 @@ metadata:
 data:
   # Set MTU to account for VXLAN encapsulation overhead
   mtu: "1450"
-  # Enable automatic MTU detection (alternative approach)
-  # auto-direct-node-routes: "false"
+  # Leave mtu unset or set it to "0" to use Cilium's automatic MTU detection
 ```
 
 Apply the MTU configuration:
@@ -149,8 +151,8 @@ cilium config view | grep mtu
 ## Best Practices
 
 - Set pod interface MTU to physical MTU minus overlay header size to eliminate fragmentation entirely
-- Enable Cilium's auto MTU detection for clusters where interface MTU may vary across nodes
-- Monitor the `cilium_drop_count_total{reason="Fragmented packet"}` Prometheus counter and alert on increases
+- Use Cilium's automatic MTU detection for clusters where interface MTU may vary across nodes
+- Monitor `cilium_fragmented_count_total`, `cilium_mtu_error_message_total`, and the `cilium_bpf_map_pressure` metrics for `cilium_ipv4_frag_datagrams` and `cilium_ipv6_frag_datagrams`
 - Use Jumbo Frames (9000 byte MTU) on the physical network to reduce fragmentation in overlay networks
 - Test large payload applications (file transfers, streaming) after MTU changes to validate no silent drops
 
