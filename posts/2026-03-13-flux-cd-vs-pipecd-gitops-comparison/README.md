@@ -43,10 +43,10 @@ spec:
 
 ## Step 2: PipeCD Architecture Overview
 
-PipeCD uses a control plane (piped server) and per-cluster piped agents. Applications are defined with a `.pipe.yaml` file in the application repository:
+PipeCD uses a control plane and per-cluster piped agents. Applications are defined with an `app.pipecd.yaml` file, or another file suffixed with `.pipecd.yaml`, in the application repository:
 
 ```yaml
-# .pipe.yaml - PipeCD application definition
+# app.pipecd.yaml - PipeCD application definition
 apiVersion: pipecd.dev/v1beta1
 kind: KubernetesApp
 spec:
@@ -80,7 +80,7 @@ pipeline:
   stages:
     - name: K8S_CANARY_ROLLOUT
       with:
-        replicas: 10%  # Start with 10% of traffic
+        replicas: 10%  # Start with canary pods at 10% of primary replicas
     - name: WAIT
       with:
         duration: 10m
@@ -90,7 +90,14 @@ pipeline:
         canary: 20
     - name: WAIT_APPROVAL
     - name: K8S_PRIMARY_ROLLOUT
+    - name: K8S_TRAFFIC_ROUTING
+      with:
+        primary: 100
     - name: K8S_CANARY_CLEAN
+trafficRouting:
+  method: istio
+  istio:
+    host: myapp.default.svc.cluster.local
 ```
 
 ## Comparison Table
@@ -102,7 +109,7 @@ pipeline:
 | Cloud Run support | No | Yes |
 | Lambda/ECS support | No | Yes |
 | Built-in canary | No (via Flagger) | Yes, native |
-| Manual approval gates | No (via Jobs) | Yes, native |
+| Manual approval gates | No native gate | Yes, native |
 | Multi-platform GitOps | No | Yes |
 | SOPS secrets | Yes, native | Limited |
 | OCI artifacts | Yes | Partial |
@@ -119,8 +126,6 @@ apiVersion: pipecd.dev/v1beta1
 kind: TerraformApp
 spec:
   name: vpc-infrastructure
-  input:
-    workingDir: terraform/vpc
   pipeline:
     stages:
       - name: TERRAFORM_PLAN
