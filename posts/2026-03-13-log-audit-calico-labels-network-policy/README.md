@@ -12,7 +12,7 @@ Description: Set up comprehensive logging and auditing for Calico label-based ne
 
 Auditing label-based network policies requires two layers of visibility: tracking traffic decisions made by your policies, and tracking changes to the labels that determine policy scope. A pod that gets mislabeled in production might silently bypass security controls or trigger unexpected denials - and without proper logging, these changes are invisible.
 
-Calico's `Log` action captures policy-level traffic decisions. Kubernetes API server audit logs capture label changes on pods and deployments. Together, they give you a complete audit trail: what labels exist, what policies they triggered, and what traffic was allowed or denied as a result.
+Calico's `Log` action captures traffic that matches policy rules before the next rule decides whether to allow or deny it. Kubernetes API server audit logs capture label changes on pods and deployments. Together, they give you a complete audit trail: what labels exist, what policies they triggered, and what traffic was allowed or denied as a result.
 
 This guide shows you how to configure both levels of logging, correlate policy decisions with label changes, and use this data for compliance reporting and security investigations.
 
@@ -73,8 +73,8 @@ spec:
 ## Step 3: Correlate Label Changes with Traffic Anomalies
 
 ```bash
-# Find traffic denials in Calico logs
-sudo journalctl | grep "CALICO.*DENY" | grep "api" | tail -20
+# Find traffic logged by Calico policy Log actions
+sudo journalctl -k | grep "calico-packet" | tail -20
 
 # Find recent label changes in audit log
 cat /var/log/kubernetes/audit.log | jq '. | select(.verb=="patch" and .objectRef.resource=="pods")' | tail -20
@@ -100,6 +100,8 @@ kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.metadata.l
 
 ```yaml
 # Prometheus alert for unlabeled pods
+# Requires kube-state-metrics to allowlist the tier pod label, for example:
+# --metric-labels-allowlist=pods=[tier]
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -124,7 +126,7 @@ spec:
 ```mermaid
 flowchart TD
     A[Pod Label Change] -->|API Server Audit Log| B[Audit Log Store]
-    C[Traffic Hits Policy] -->|Calico Log Action| D[Felix Flow Logs]
+    C[Traffic Hits Policy] -->|Calico Log Action| D[Node Policy Packet Logs]
     B --> E[Log Aggregator\nELK/Loki]
     D --> E
     E --> F[Correlation Dashboard]
