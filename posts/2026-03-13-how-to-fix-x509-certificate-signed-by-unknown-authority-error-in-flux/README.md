@@ -47,6 +47,7 @@ A previously trusted CA certificate may have been renewed or rotated, and the ne
 ```bash
 flux get sources git -A
 flux get sources helm -A
+flux get sources oci -A
 ```
 
 ### Step 2: Inspect the Server Certificate
@@ -59,10 +60,10 @@ kubectl run -it --rm debug --image=alpine --restart=Never -n flux-system -- \
 ### Step 3: Check If a CA Bundle Is Configured
 
 ```bash
-kubectl get gitrepository my-repo -n flux-system -o jsonpath='{.spec.certSecretRef}'
+kubectl get gitrepository my-repo -n flux-system -o jsonpath='{.spec.secretRef}'
 ```
 
-If empty, no custom CA is configured.
+If empty, no source Secret is configured. If it returns a name, inspect that Secret for a `ca.crt` or `caFile` entry.
 
 ### Step 4: Verify the CA Certificate
 
@@ -84,7 +85,7 @@ kubectl create secret generic internal-ca-cert \
   --from-file=ca.crt=/path/to/ca-certificate.pem
 ```
 
-Reference it in your GitRepository:
+For GitRepository, the CA certificate must be in the Secret referenced by `secretRef`. If the repository also needs credentials, add `ca.crt` to that same credentials Secret. Reference it in your GitRepository:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -95,10 +96,8 @@ metadata:
 spec:
   interval: 5m
   url: https://git.internal.example.com/my-org/my-repo.git
-  certSecretRef:
-    name: internal-ca-cert
   secretRef:
-    name: git-credentials
+    name: internal-ca-cert
 ```
 
 For HelmRepository:
@@ -118,7 +117,7 @@ spec:
 
 ### Fix 2: Add CA to the Controller Trust Store
 
-For controllers that do not support `certSecretRef`, mount the CA certificate into the controller pod:
+For controllers that do not support a source-level CA Secret, mount the CA certificate into the controller pod:
 
 ```yaml
 apiVersion: apps/v1
