@@ -16,7 +16,7 @@ Most teams default to kube-proxy without evaluating whether Calico eBPF would be
 
 ## Prerequisites
 
-- Knowledge of your cluster's kernel version (eBPF requires 5.3+)
+- Knowledge of your cluster's kernel version and distribution support (Calico eBPF generally requires a supported Linux distribution with kernel 5.10+, with some vendor backports such as RHEL 8.4's 4.18 kernel)
 - Understanding of which workloads need external access
 - Awareness of whether client source IP matters for your applications
 
@@ -24,13 +24,13 @@ Most teams default to kube-proxy without evaluating whether Calico eBPF would be
 
 | Factor | Favor kube-proxy | Favor Calico eBPF |
 |---|---|---|
-| Kernel version | < 5.3 | 5.3+ (5.8+ for DSR) |
-| Cluster size | < 100 services | > 100 services |
+| Kernel version | Older or unsupported Linux kernel/distribution | Supported Linux kernel/distribution; DSR also requires compatible underlying network fabric |
+| Cluster size | Small or static service set | Large clusters or high service churn |
 | Source IP preservation for external traffic | Not required | Required |
 | Windows nodes in cluster | Yes | No (Linux-only) |
 | Team eBPF expertise | No | Yes or learning |
 
-For most modern Linux clusters with more than 100 services, Calico eBPF is the better choice. For small clusters or mixed OS environments, kube-proxy is appropriate.
+For modern Linux clusters that meet Calico eBPF support requirements and have significant service scale, service churn, or source IP requirements, Calico eBPF is often the better choice. For small clusters or mixed OS environments, kube-proxy is appropriate.
 
 ## Decision 2: Service Type Selection
 
@@ -61,9 +61,9 @@ For LoadBalancer and NodePort services receiving external traffic:
 - Required for applications that do IP-based access control
 
 **Calico eBPF with DSR**:
-- Preserves client source IP for all service types
+- Preserves client source IP for external service traffic when the load balancer and network path forward the original client packets
 - Does not require `externalTrafficPolicy: Local`
-- The recommended approach for source IP preservation
+- The recommended approach for source IP preservation when the underlying network supports DSR
 
 ## Decision 4: Session Affinity
 
@@ -83,7 +83,7 @@ Session affinity works in both kube-proxy and Calico eBPF modes but has differen
 
 ## Decision 5: Service CIDR Sizing
 
-The service CIDR (set at cluster creation via `--service-cluster-ip-range`) cannot be changed without cluster recreation. Size it adequately:
+The service CIDR is usually set at cluster creation via `--service-cluster-ip-range`. Newer Kubernetes clusters can support additional Service CIDR ranges with the MultiCIDRServiceAllocator feature, but changing service ranges remains distribution-specific and should be planned carefully. Size the initial range adequately:
 
 - Default in many distributions: 10.96.0.0/12 (~1 million addresses)
 - For most clusters, this is adequate
@@ -91,11 +91,11 @@ The service CIDR (set at cluster creation via `--service-cluster-ip-range`) cann
 
 ## Best Practices
 
-- For clusters with 50+ services, enable Calico eBPF to eliminate kube-proxy DNAT overhead
+- For large clusters or clusters with high service churn, evaluate Calico eBPF to reduce kube-proxy service handling overhead
 - Use `externalTrafficPolicy: Local` or Calico eBPF DSR for any service that needs accurate client IPs in application logs
 - Apply a `ClusterIP: None` (headless) configuration for stateful workloads (databases, message queues) where pods need direct addressing
 - Monitor service endpoint counts - services with zero endpoints are silently unreachable
 
 ## Conclusion
 
-Production service networking decisions with Calico involve choosing the right service routing mechanism (kube-proxy vs. eBPF), service type (ClusterIP, NodePort, LoadBalancer, Headless), and external traffic policy. Calico eBPF is the preferred service routing mechanism for modern clusters, providing better performance and native source IP preservation. Service type and external traffic policy should be selected based on each workload's external accessibility and source IP requirements.
+Production service networking decisions with Calico involve choosing the right service routing mechanism (kube-proxy vs. eBPF), service type (ClusterIP, NodePort, LoadBalancer, Headless), and external traffic policy. Calico eBPF is a strong service routing option for supported modern Linux clusters, providing better performance and native source IP preservation for external service traffic. Service type and external traffic policy should be selected based on each workload's external accessibility and source IP requirements.
