@@ -60,7 +60,7 @@ The distribution section specifies the Flux version and container registry.
 ```yaml
 spec:
   distribution:
-    version: "2.4.0"          # Specific version or semver range
+    version: "2.8.x"          # Specific version or semver range
     registry: ghcr.io/fluxcd  # Container registry for Flux images
     imagePullSecret: regcred  # Optional: secret for private registries
 ```
@@ -78,6 +78,7 @@ spec:
     - notification-controller
     - image-reflector-controller
     - image-automation-controller
+    - source-watcher              # Requires Flux v2.7.0 or later
 ```
 
 ### Cluster
@@ -87,7 +88,7 @@ The cluster section defines cluster-specific settings.
 ```yaml
 spec:
   cluster:
-    type: kubernetes       # kubernetes or openshift
+    type: kubernetes       # kubernetes, openshift, azure, aws, or gcp
     multitenant: false     # Enable multi-tenancy
     networkPolicy: true    # Create network policies
     domain: cluster.local  # Cluster DNS domain
@@ -107,10 +108,11 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.4.0"
+    version: "2.8.x"
     registry: ghcr.io/fluxcd
   components:
     - source-controller
+    - source-watcher
     - kustomize-controller
     - helm-controller
     - notification-controller
