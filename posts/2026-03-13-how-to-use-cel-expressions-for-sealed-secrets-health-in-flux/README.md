@@ -14,9 +14,9 @@ Sealed Secrets allow you to store encrypted secrets in Git safely. The Sealed Se
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
-- Flux v2.3 or later installed on the cluster
-- Sealed Secrets controller installed (kubeseal)
+- A Kubernetes cluster running a version supported by your Flux release
+- Flux v2.5 or later installed on the cluster
+- Sealed Secrets controller installed, with the `kubeseal` CLI available when sealing new secrets
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
 - Sealed Secrets encrypted with the cluster's sealing key
@@ -48,7 +48,7 @@ status:
 
 ## Basic CEL Health Check for Sealed Secrets
 
-Use a CEL expression to verify the `Synced` condition:
+Use `healthChecks` to select the SealedSecret and `healthCheckExprs` to verify the `Synced` condition:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -69,9 +69,13 @@ spec:
       kind: SealedSecret
       name: database-credentials
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      failed: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+      current: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 The corresponding SealedSecret:
@@ -116,30 +120,25 @@ spec:
       kind: SealedSecret
       name: database-credentials
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
     - apiVersion: bitnami.com/v1alpha1
       kind: SealedSecret
       name: api-keys
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
     - apiVersion: bitnami.com/v1alpha1
       kind: SealedSecret
       name: tls-certificates
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
     - apiVersion: bitnami.com/v1alpha1
       kind: SealedSecret
       name: oauth-config
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      failed: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+      current: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 ## Ordering Secrets Before Applications
@@ -182,16 +181,17 @@ spec:
       kind: SealedSecret
       name: database-credentials
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
     - apiVersion: bitnami.com/v1alpha1
       kind: SealedSecret
       name: api-keys
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      failed: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+      current: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -223,10 +223,15 @@ healthChecks:
     kind: SealedSecret
     name: database-credentials
     namespace: production
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
-        && has(status.observedGeneration) && status.observedGeneration == metadata.generation
+healthCheckExprs:
+  - apiVersion: bitnami.com/v1alpha1
+    kind: SealedSecret
+    failed: >-
+      status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+      && has(status.observedGeneration) && status.observedGeneration == metadata.generation
+    current: >-
+      status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+      && has(status.observedGeneration) && status.observedGeneration == metadata.generation
 ```
 
 This expression verifies that the controller has processed the most recent version of the SealedSecret, not just an older version.
@@ -254,9 +259,13 @@ spec:
       kind: SealedSecret
       name: db-creds
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      failed: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+      current: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -276,9 +285,13 @@ spec:
       kind: SealedSecret
       name: db-creds
       namespace: staging
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      failed: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+      current: >-
+        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 ## Handling Key Rotation
@@ -291,9 +304,13 @@ healthChecks:
     kind: SealedSecret
     name: database-credentials
     namespace: production
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: bitnami.com/v1alpha1
+    kind: SealedSecret
+    failed: >-
+      status.conditions.exists(c, c.type == 'Synced' && c.status == 'False')
+    current: >-
+      status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
 ```
 
 If key rotation causes decryption failures, the Kustomization will report the failure, alerting you to re-seal the affected secrets.
