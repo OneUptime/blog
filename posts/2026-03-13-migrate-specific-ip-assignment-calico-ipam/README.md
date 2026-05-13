@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM, Static IP, Networking
 
-Description: Safely add specific IP assignments to existing pods without causing connectivity disruption.
+Description: Safely plan specific IP assignments for pods using Calico IPAM.
 
 ---
 
 ## Introduction
 
-Specific IP Assignment with Calico IPAM provides important IP address management capabilities in Calico. This feature allows for fine-grained control over how IP addresses are assigned to pods in your Kubernetes cluster.
+Specific IP Assignment with Calico IPAM provides important IP address management capabilities in Calico. This feature allows for fine-grained control over how IP addresses are assigned to pods in your Kubernetes cluster. The annotation must be present when the pod is created; adding it to an existing pod has no effect until the pod is recreated.
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico installed with Calico IPAM enabled
 - kubectl and calicoctl access
 - IP pools configured
 
@@ -36,6 +36,19 @@ spec:
   cidr: 10.48.0.0/16
   blockSize: 26
   natOutgoing: true
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: specific-ip-example
+  annotations:
+    cni.projectcalico.org/ipAddrs: '["10.48.0.10"]'
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
 ```
 
 ## Verification
