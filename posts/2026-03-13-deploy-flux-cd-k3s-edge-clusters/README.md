@@ -10,7 +10,7 @@ Description: Deploy Flux CD on K3s lightweight Kubernetes for edge computing env
 
 ## Introduction
 
-K3s is Rancher's lightweight Kubernetes distribution, designed specifically for edge, IoT, and resource-constrained environments. It packages Kubernetes into a single binary under 100MB, uses SQLite instead of etcd by default, and runs comfortably on hardware as modest as a Raspberry Pi 4 with 2GB RAM. It is the most popular Kubernetes distribution for edge deployments.
+K3s is Rancher's lightweight Kubernetes distribution, designed specifically for edge, IoT, and resource-constrained environments. It packages Kubernetes into a single binary under 100MB, uses SQLite instead of etcd by default, and runs comfortably on hardware as modest as a Raspberry Pi 4 with 2GB RAM. It is a popular Kubernetes distribution for edge deployments.
 
 Flux CD and K3s are a natural combination. K3s handles the heavy lifting of running containers at the edge, while Flux ensures those containers are running the right workloads from your Git repository. Together, they provide a GitOps-managed edge computing platform that can be deployed to thousands of sites from a single repository.
 
@@ -19,7 +19,7 @@ This guide covers installing K3s, bootstrapping Flux with K3s-specific optimizat
 ## Prerequisites
 
 - Edge hardware running Linux (x86_64 or ARM64; ARM32 is supported but less capable)
-- Minimum 512MB RAM (1GB+ recommended), 1 CPU core
+- For a K3s server: minimum 2GB RAM and 2 CPU cores. For agent-only edge nodes: minimum 512MB RAM and 1 CPU core
 - Internet or VPN connectivity to your Git repository
 - SSH access to the edge device for initial setup
 - `kubectl` and `flux` CLI on your management workstation
@@ -31,9 +31,11 @@ This guide covers installing K3s, bootstrapping Flux with K3s-specific optimizat
 
 # --disable=traefik: Remove Traefik if using NGINX or no ingress
 # --disable=servicelb: Remove Klipper LB if not needed
+# --tls-san: Add the stable DNS name you will use in kubeconfig
 curl -sfL https://get.k3s.io | sh -s - \
   --disable=traefik \
   --disable=servicelb \
+  --tls-san=edge-site-001.internal.example.com \
   --write-kubeconfig-mode=644
 
 # Verify K3s is running
@@ -44,7 +46,7 @@ sudo k3s kubectl get pods -A
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 ```
 
-For ARM64 devices (Raspberry Pi, NVIDIA Jetson):
+To join an ARM64 device (Raspberry Pi, NVIDIA Jetson) as an agent to an existing K3s server:
 
 ```bash
 # K3s detects ARM architecture automatically
@@ -54,7 +56,7 @@ curl -sfL https://get.k3s.io | K3S_URL=https://myserver:6443 \
 
 ## Step 2: Configure K3s for Flux Compatibility
 
-K3s uses containerd with a specific configuration path. Ensure Flux can access the cluster.
+K3s writes its kubeconfig to `/etc/rancher/k3s/k3s.yaml`. Ensure Flux can access the cluster API with a stable server address.
 
 ```bash
 # Export kubeconfig with a stable server address
@@ -75,13 +77,14 @@ kubectl create secret generic edge-site-001-kubeconfig \
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # Bootstrap with only the controllers needed for edge
+export GITHUB_TOKEN=<your-github-token>
+
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/edge-site-001 \
-  --components=source-controller,kustomize-controller \
-  --token-env=GITHUB_TOKEN
+  --components=source-controller,kustomize-controller
 
 # Verify Flux is running
 kubectl get pods -n flux-system
@@ -89,7 +92,7 @@ kubectl get pods -n flux-system
 
 ## Step 4: K3s-Specific Kustomization Configuration
 
-K3s uses containerd and has specific paths. Configure Flux manifests to account for this.
+K3s includes Rancher's Local Path Provisioner by default. Configure Flux manifests to account for local edge storage.
 
 ```yaml
 # clusters/edge-site-001/infrastructure.yaml
@@ -110,20 +113,18 @@ spec:
   # K3s-specific health checks
   healthChecks:
     - apiVersion: apps/v1
-      kind: DaemonSet
+      kind: Deployment
       name: local-path-provisioner
       namespace: kube-system
 ```
 
 ```yaml
 # infrastructure/k3s/local-path-storage.yaml
-# Configure K3s local path storage for edge PVCs
+# Configure a Retain variant of K3s local path storage for edge PVCs
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: local-path
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
+  name: local-path-retain
 provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain  # Retain data on pod deletion at edge
@@ -134,7 +135,7 @@ reclaimPolicy: Retain  # Retain data on pod deletion at edge
 K3s uses SQLite by default instead of etcd, which changes the backup strategy.
 
 ```bash
-# Backup K3s SQLite database (instead of etcd snapshot)
+# Backup K3s SQLite database and server token (instead of etcd snapshot)
 #!/bin/bash
 K3S_DATA_DIR="/var/lib/rancher/k3s"
 BACKUP_DIR="/backup/k3s"
@@ -142,15 +143,15 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 mkdir -p "$BACKUP_DIR"
 
-# Stop K3s briefly for consistent SQLite backup
-# (Or use SQLite online backup which doesn't require stopping)
-sqlite3 "${K3S_DATA_DIR}/server/db/state.db" ".backup ${BACKUP_DIR}/k3s-${TIMESTAMP}.db"
+# K3s requires both the SQLite datastore and server token for restore
+tar -czf "${BACKUP_DIR}/k3s-${TIMESTAMP}.tar.gz" \
+  -C "${K3S_DATA_DIR}/server" db token
 
 # Upload to central backup store
-aws s3 cp "${BACKUP_DIR}/k3s-${TIMESTAMP}.db" \
-  "s3://my-edge-backups/edge-site-001/k3s-${TIMESTAMP}.db"
+aws s3 cp "${BACKUP_DIR}/k3s-${TIMESTAMP}.tar.gz" \
+  "s3://my-edge-backups/edge-site-001/k3s-${TIMESTAMP}.tar.gz"
 
-echo "K3s backup complete: k3s-${TIMESTAMP}.db"
+echo "K3s backup complete: k3s-${TIMESTAMP}.tar.gz"
 ```
 
 For production K3s clusters, use external etcd or the built-in embedded etcd cluster mode:
@@ -206,7 +207,7 @@ spec:
 - Use K3s embedded etcd mode for edge sites that require data durability, not just SQLite.
 - Configure K3s `--data-dir` to point at fast local storage (NVMe over SD card).
 - Set K3s service to auto-restart with `systemd` so it recovers from power cycles automatically.
-- Use Flux's `prune: false` for infrastructure components that survive pod restarts.
+- Use Flux's `prune: false` for infrastructure components that Flux should not garbage-collect automatically.
 - Automate initial K3s installation with Ansible or cloud-init for consistent site deployments.
 - Monitor K3s node health remotely via Prometheus federation or Flux notification webhooks.
 
