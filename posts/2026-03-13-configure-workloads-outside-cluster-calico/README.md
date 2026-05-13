@@ -29,8 +29,9 @@ Option 1: Static routes on external hosts:
 
 ip route add 10.244.0.0/16 via <kubernetes-node-ip>
 
-# Make permanent
-echo "10.244.0.0/16 via <kubernetes-node-ip>" >> /etc/network/routes
+# Make permanent with your host's network manager. For example, on
+# Debian/Ubuntu hosts using ifupdown, add a post-up command:
+#   post-up ip route replace 10.244.0.0/16 via <kubernetes-node-ip>
 ```
 
 Option 2: BGP peering with external hosts running Bird:
@@ -50,7 +51,25 @@ protocol bgp calico_peer {
     export none;
   };
 }
+
+protocol kernel {
+  ipv4 {
+    export all;
+  };
+}
 BIRDEOF
+
+# Configure Calico to peer with the external host
+calicoctl create -f - << 'CALICOEOF'
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: external-host-peer
+spec:
+  node: <calico-node-name>
+  peerIP: <external-host-ip>
+  asNumber: 64514
+CALICOEOF
 ```
 
 ## Test Pod-to-External Connectivity
@@ -65,7 +84,7 @@ kubectl exec test-pod -- curl http://${EXTERNAL_IP}:8080/health
 ## Test External-to-Pod Connectivity
 
 ```bash
-# From external host, ping pod IP
+# Get the pod IP from a machine with kubectl access, then test from the external host
 POD_IP=$(kubectl get pod test-pod -o jsonpath='{.status.podIP}')
 ping -c 3 ${POD_IP}
 curl http://${POD_IP}:8080/
