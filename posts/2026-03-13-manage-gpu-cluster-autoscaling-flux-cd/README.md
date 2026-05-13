@@ -68,37 +68,42 @@ spec:
   chart:
     spec:
       chart: cluster-autoscaler
-      version: "9.36.*"
+      version: "9.57.*"
       sourceRef:
         kind: HelmRepository
         name: autoscaler
         namespace: flux-system
       interval: 12h
   values:
+    fullnameOverride: cluster-autoscaler
     # Cloud provider configuration
     cloudProvider: gce
-    clusterName: my-gpu-cluster
     # GPU node groups to manage
     autoDiscovery:
       clusterName: my-gpu-cluster
-      tags:
-        - k8s.io/cluster-autoscaler/enabled
-        - k8s.io/cluster-autoscaler/my-gpu-cluster
-    # Scale down after 10 minutes of inactivity
-    scaleDownUnneededTime: 10m
-    # Delay scale-down after scale-up to avoid thrashing
-    scaleDownDelayAfterAdd: 15m
-    # GPU utilization threshold for scale-down
-    scaleDownUtilizationThreshold: 0.3
-    # Do not scale down nodes with GPU pods
-    skipNodesWithSystemPods: true
-    # Balance similar node groups
-    balanceSimilarNodeGroups: true
+    # Cluster Autoscaler command-line flags
+    extraArgs:
+      # Scale down after 10 minutes of inactivity
+      scale-down-unneeded-time: 10m
+      # Delay scale-down after scale-up to avoid thrashing
+      scale-down-delay-after-add: 15m
+      # Node CPU/memory request utilization threshold for scale-down
+      scale-down-utilization-threshold: "0.3"
+      # Avoid scaling down nodes that run non-DaemonSet kube-system pods
+      skip-nodes-with-system-pods: "true"
+      # Balance similar node groups
+      balance-similar-node-groups: "true"
+      # Use the priority expander for multi-pool clusters
+      expander: priority
     # Expander strategy for multi-pool clusters
-    expanderPriority: |-
-      - a3-highgpu-8g: 10   # H100 nodes - highest priority
-      - a2-highgpu-4g: 5    # A100 nodes
-      - n1-standard-8-gpu: 1 # T4 nodes - lowest priority
+    expanderPriorities:
+      30:
+        - ".*t4.*"
+        - ".*n1-standard-8-gpu.*"
+      20:
+        - ".*a2-highgpu-4g.*"
+      10:
+        - ".*a3-highgpu-8g.*"
     resources:
       requests:
         cpu: 100m
@@ -106,22 +111,24 @@ spec:
       limits:
         cpu: 100m
         memory: 600Mi
-    serviceAccountAnnotations:
-      iam.gke.io/gcp-service-account: cluster-autoscaler@my-project.iam.gserviceaccount.com
+    rbac:
+      serviceAccount:
+        create: false
+        name: cluster-autoscaler
 ```
 
 ## Step 3: Create Priority Classes for GPU Workloads
 
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/priority-classes.yaml
-# High priority for production inference (prevents scale-down eviction)
+# High priority for production inference scheduling and preemption
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: gpu-inference-critical
 value: 1000000
 globalDefault: false
-description: "Critical GPU inference workloads - protected from autoscaler eviction"
+description: "Critical GPU inference workloads - preferred during scheduling and preemption"
 ---
 # Medium priority for training jobs (can be evicted if needed)
 apiVersion: scheduling.k8s.io/v1
@@ -156,7 +163,11 @@ spec:
           priorityClassName: gpu-training-preemptible
           containers:
             - name: trainer
+              image: nvcr.io/nvidia/pytorch:24.01-py3
               # ... training configuration
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
 ```
 
 ## Step 5: Create the Flux Kustomization
@@ -202,9 +213,9 @@ kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
 
 ## Best Practices
 
-- Set `scaleDownUnneededTime` to at least 10 minutes to avoid prematurely terminating GPU nodes that are briefly idle between training runs.
+- Set `scale-down-unneeded-time` to at least 10 minutes to avoid prematurely terminating GPU nodes that are briefly idle between training runs.
 - Use `safe-to-evict: "true"` annotations on training pods and `safe-to-evict: "false"` on inference pods to give the autoscaler clear guidance.
-- Configure priority classes to protect inference workloads from eviction while allowing training pods to be preempted for scale-down.
+- Configure priority classes to prefer inference workloads during scheduling and preemption, and use PodDisruptionBudgets plus `safe-to-evict: "false"` when inference pods must not be evicted during scale-down.
 - Use the priority expander strategy to prefer cheaper GPU types (T4) for development and reserve H100/A100 nodes for production inference.
 - Monitor autoscaler logs with a Loki/Grafana stack to detect and alert on failed scale-up events (e.g., quota exceeded).
 

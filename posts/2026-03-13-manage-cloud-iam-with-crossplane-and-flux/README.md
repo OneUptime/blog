@@ -18,8 +18,8 @@ This guide demonstrates managing AWS IAM roles and policies using Crossplane's `
 
 ## Prerequisites
 
-- Crossplane with `provider-aws-iam` installed
-- The AWS ProviderConfig named `default` configured
+- Crossplane with `provider-aws-iam` v2.x installed
+- The AWS ProviderConfig named `default` configured in the same namespace as the IAM managed resources
 - Flux CD bootstrapped on the cluster
 - Existing EKS cluster with OIDC provider configured (for IRSA)
 
@@ -28,13 +28,15 @@ This guide demonstrates managing AWS IAM roles and policies using Crossplane's `
 ```yaml
 # infrastructure/iam/policies/s3-read-policy.yaml
 
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: Policy
 metadata:
   name: app-s3-read-policy
+  namespace: crossplane-system
+  annotations:
+    crossplane.io/external-name: AppS3ReadPolicy
 spec:
   forProvider:
-    name: AppS3ReadPolicy
     description: "Allows read access to the application S3 bucket"
     # Least-privilege policy granting only the required S3 actions
     policy: |
@@ -60,6 +62,7 @@ spec:
       ManagedBy: crossplane
       Purpose: app-s3-access
   providerConfigRef:
+    kind: ProviderConfig
     name: default
 ```
 
@@ -67,13 +70,15 @@ spec:
 
 ```yaml
 # infrastructure/iam/roles/app-irsa-role.yaml
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: Role
 metadata:
   name: my-app-irsa-role
+  namespace: crossplane-system
+  annotations:
+    crossplane.io/external-name: MyAppIRSARole
 spec:
   forProvider:
-    name: MyAppIRSARole
     description: "IRSA role for the my-app Kubernetes service account"
     # Trust policy allows EKS OIDC provider to assume this role
     assumeRolePolicy: |
@@ -99,6 +104,7 @@ spec:
       ManagedBy: crossplane
       Application: my-app
   providerConfigRef:
+    kind: ProviderConfig
     name: default
 ```
 
@@ -106,10 +112,11 @@ spec:
 
 ```yaml
 # infrastructure/iam/roles/app-irsa-role-attachment.yaml
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: RolePolicyAttachment
 metadata:
   name: my-app-s3-policy-attachment
+  namespace: crossplane-system
 spec:
   forProvider:
     # Reference the role by name
@@ -119,6 +126,7 @@ spec:
     policyArnRef:
       name: app-s3-read-policy
   providerConfigRef:
+    kind: ProviderConfig
     name: default
 ```
 
@@ -140,31 +148,36 @@ metadata:
 
 ```yaml
 # infrastructure/iam/users/cicd-user.yaml
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: User
 metadata:
   name: cicd-deploy-user
+  namespace: crossplane-system
+  annotations:
+    crossplane.io/external-name: cicd-deploy-user
 spec:
   forProvider:
-    name: cicd-deploy-user
     path: /automation/
     tags:
       ManagedBy: crossplane
       Purpose: cicd
   providerConfigRef:
+    kind: ProviderConfig
     name: default
 
 ---
-apiVersion: iam.aws.upbound.io/v1beta1
+apiVersion: iam.aws.m.upbound.io/v1beta1
 kind: UserPolicyAttachment
 metadata:
   name: cicd-user-ecr-policy
+  namespace: crossplane-system
 spec:
   forProvider:
     userRef:
       name: cicd-deploy-user
     policyArn: arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
   providerConfigRef:
+    kind: ProviderConfig
     name: default
 ```
 
@@ -190,10 +203,10 @@ spec:
 
 ## Best Practices
 
-- Never create wildcard IAM policies (`"Action": "*"` or `"Resource": "*"`). Each policy should grant only the specific actions on specific resources required by the workload.
+- Avoid broad wildcard IAM policies (`"Action": "*"` or `"Resource": "*"`) unless an AWS action requires a wildcard resource. Each policy should grant only the specific actions on specific resources required by the workload.
 - Prefer IRSA for all Kubernetes workloads running on EKS over long-lived IAM user credentials. IRSA eliminates secrets management and is more secure.
 - Organize IAM resources under `infrastructure/iam/policies/`, `infrastructure/iam/roles/`, and `infrastructure/iam/users/` to keep them discoverable.
-- Enable `prune: true` for IAM Kustomizations unlike databases-orphaned IAM roles and policies are a security risk and should be cleaned up automatically.
+- Enable `prune: true` for IAM Kustomizations. Unlike databases, orphaned IAM roles and policies are a security risk and should be cleaned up automatically.
 - Review IAM policy changes in pull requests with a security-focused reviewer. Consider requiring mandatory review for any PR modifying the `infrastructure/iam/` path.
 
 ## Conclusion
