@@ -10,9 +10,9 @@ Description: Safely migrate service handling from kube-proxy iptables to Calico 
 
 ## Introduction
 
-Calico eBPF mode handles all Kubernetes service types - ClusterIP, NodePort, LoadBalancer, and ExternalName - using BPF programs and maps that are loaded directly into the kernel. This provides lower latency service routing compared to iptables-based approaches and scales better with the number of services and endpoints.
+Calico eBPF mode handles Kubernetes service traffic for ClusterIP, NodePort, and LoadBalancer services using BPF programs and maps that are loaded directly into the kernel. ExternalName services are handled by Kubernetes DNS as CNAME records and do not use service proxying. This provides lower latency service routing compared to iptables-based approaches and scales better with the number of services and endpoints.
 
-Understanding how eBPF handles each service type is important for troubleshooting and optimization. ClusterIP services are handled via BPF NAT maps, NodePort services add host networking DNAT, and LoadBalancer services optionally use DSR to eliminate the load balancer hop from return traffic.
+Understanding how eBPF handles each service type is important for troubleshooting and optimization. ClusterIP services are handled via BPF NAT maps, NodePort services add host networking DNAT, and external service traffic such as NodePort can optionally use DSR to eliminate an extra hop on return traffic when the underlying network supports it.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ Understanding how eBPF handles each service type is important for troubleshootin
 # Check BPF NAT map contents
 
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-nat-dump | head -50
+  calico-node -bpf nat dump | head -50
 
 # Test ClusterIP service
 SVC_IP=$(kubectl get svc my-service -o jsonpath='{.spec.clusterIP}')
@@ -44,9 +44,9 @@ curl http://${NODE_IP}:${NODE_PORT}/
 # Enable session affinity for a service
 kubectl patch svc my-service -p '{"spec":{"sessionAffinity":"ClientIP"}}'
 
-# Verify eBPF affinity map is populated
+# Verify the service is still programmed in the BPF NAT maps
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-affinity-dump
+  calico-node -bpf nat dump
 ```
 
 ## eBPF Service Types Architecture
@@ -56,11 +56,11 @@ graph LR
     subgraph Service Types
         CIP[ClusterIP\nBPF NAT map\nDNAT to backend]
         NP[NodePort\nHost DNAT\n+ ClusterIP handling]
-        LB[LoadBalancer\nExternal IP +\nNodePort + ClusterIP]
-        DSR[DSR Mode\nReturn bypasses LB node]
+        LB[LoadBalancer\nExternal IP +\noptional NodePort + ClusterIP]
+        DSR[DSR Mode\nReturn bypasses forwarding node]
     end
 ```
 
 ## Conclusion
 
-Calico eBPF service handling provides efficient O(1) routing for all Kubernetes service types. Verify each service type works after enabling eBPF mode, check BPF map contents to diagnose routing issues, and configure session affinity where needed for stateful applications. Monitor BPF map capacity as it must accommodate all service endpoints.
+Calico eBPF service handling provides efficient routing for Kubernetes service traffic without kube-proxy iptables rules. Verify each proxied service type works after enabling eBPF mode, check BPF map contents to diagnose routing issues, and configure session affinity where needed for stateful applications. Monitor BPF NAT frontend and backend map capacity because these maps must accommodate service ports and endpoints.
