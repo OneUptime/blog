@@ -37,7 +37,9 @@ graph TD
         I[calico-node/Felix]
         J[Datastore - IPAM blocks]
     end
-    A --> B --> C --> D
+    A --> B --> C
+    C --> B
+    B --> D
     D --> E --> F
     F --> H
     F --> G --> J
@@ -54,7 +56,7 @@ graph TD
 |-----------|------|-----------|-----------|---------------|
 | prod-pool | 192.168.0.0/20 | production | /24 | CrossSubnet |
 | dev-pool | 192.168.16.0/20 | development | /24 | CrossSubnet |
-| default-pool | 192.168.32.0/16 | all others | /24 | CrossSubnet |
+| default-pool | 10.244.0.0/16 | all others | /24 | CrossSubnet |
 
 ### Capacity Planning
 - Prod pool: 4,096 IPs, max 16 nodes × 256 pods/node
@@ -63,7 +65,7 @@ graph TD
 
 ### IPAM Block Allocation Strategy
 Each node receives /24 blocks on demand.
-Nodes never share blocks (isolation prevents IPAM conflicts).
+With the default `StrictAffinity=false`, nodes can borrow addresses from blocks allocated to other nodes when local blocks are exhausted.
 ```
 
 ## Documentation Component 3: CNI Configuration Reference
@@ -104,7 +106,7 @@ To change: Edit calico-config ConfigMap `cni_network_config` field.
 ### Common Fixes
 - IPAM exhausted: calicoctl create -f additional-pool.yaml
 - CNI config missing: kubectl rollout restart ds/calico-node -n calico-system
-- Leaked handles: calicoctl ipam check && calicoctl ipam gc
+- Leaked IPs: calicoctl datastore migrate lock && calicoctl ipam check -o report.json && calicoctl ipam release --from-report report.json && calicoctl datastore migrate unlock
 ```
 
 ## Documentation Component 5: Capacity Planning
