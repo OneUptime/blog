@@ -100,11 +100,13 @@ if ! kubectl get imageset "${IMAGESET_NAME}" > /dev/null 2>&1; then
   exit 1
 fi
 
-# Patch Installation to reference previous ImageSet
-# Note: The operator picks the ImageSet matching the version in the Installation
-echo "Rolling back Calico version..."
-kubectl patch installation default --type=merge \
-  -p "{\"spec\":{\"version\":\"${PREVIOUS_VERSION}\"}}"
+# Roll back the Tigera operator deployment so it selects the previous ImageSet
+# Note: The Installation CRD has no spec.version field; the operator binary version
+# determines which ImageSet (named calico-<version>) the operator looks up.
+PREVIOUS_OPERATOR_VERSION="${2:-v1.30.4}"
+echo "Rolling back Tigera operator to ${PREVIOUS_OPERATOR_VERSION}..."
+kubectl set image deployment/tigera-operator -n tigera-operator \
+  tigera-operator=quay.io/tigera/operator:${PREVIOUS_OPERATOR_VERSION}
 
 # Monitor rollback
 echo "Monitoring rollback..."
