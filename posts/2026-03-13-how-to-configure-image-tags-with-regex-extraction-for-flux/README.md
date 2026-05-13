@@ -17,7 +17,7 @@ This guide demonstrates how to use the `filterTags` field with regex capture gro
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed
-- The `image-reflector-controller` and `image-automation-controller` deployed
+- The `image-reflector-controller` deployed, and the `image-automation-controller` if you want Flux to commit image updates back to Git
 - Container images with structured tag formats in your registry
 - Familiarity with Go-compatible regular expressions
 
@@ -150,7 +150,7 @@ By anchoring the pattern with `$` and not allowing pre-release suffixes, this po
 After applying your ImagePolicy, check whether the regex is matching tags correctly:
 
 ```bash
-kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestImage}'
+kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 ```
 
 If the output is empty or unexpected, review the ImageRepository scan results:
@@ -159,7 +159,7 @@ If the output is empty or unexpected, review the ImageRepository scan results:
 kubectl -n flux-system get imagerepository my-app -o jsonpath='{.status.lastScanResult.tagCount}'
 ```
 
-You can also inspect Flux logs for pattern matching details:
+You can also inspect Flux logs for reconciliation errors:
 
 ```bash
 kubectl -n flux-system logs deploy/image-reflector-controller | grep my-app
@@ -170,7 +170,7 @@ kubectl -n flux-system logs deploy/image-reflector-controller | grep my-app
 1. **Unescaped dots**: In regex, `.` matches any character. Use `\.` to match a literal dot in version strings.
 2. **Missing anchors**: Without `^` and `$`, the pattern may match substrings of longer tags unexpectedly.
 3. **Greedy quantifiers**: `.*` is greedy and may capture more than intended. Use `.*?` for non-greedy matching or be specific with character classes.
-4. **Named group syntax**: Flux uses Go regex syntax. Named groups are written as `(?P<name>pattern)`, not `(?<name>pattern)`.
+4. **Named group syntax**: Flux uses Go regex syntax. Named groups can be written as `(?P<name>pattern)` or `(?<name>pattern)`.
 
 ## Conclusion
 
