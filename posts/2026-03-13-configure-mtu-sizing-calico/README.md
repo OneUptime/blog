@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MTU, Networking, CNI
 
-Description: Configure MTU settings in Calico to match your network infrastructure and avoid packet fragmentation that degrades performance and causes mysterious connectivity failures.
+Description: Configure MTU settings in Calico to match your network infrastructure and avoid packet fragmentation or drops that degrade performance and cause mysterious connectivity failures.
 
 ---
 
 ## Introduction
 
-MTU (Maximum Transmission Unit) configuration is one of the most impactful and frequently misunderstood aspects of Calico networking. An incorrectly sized MTU causes packet fragmentation, which degrades throughput by orders of magnitude and can cause mysterious application-level failures like broken TLS handshakes or GRPC streams that silently drop data.
+MTU (Maximum Transmission Unit) configuration is one of the most impactful and frequently misunderstood aspects of Calico networking. An incorrectly sized MTU can cause packet fragmentation or dropped packets, which degrades throughput and can cause mysterious application-level failures like broken TLS handshakes or GRPC streams that silently drop data.
 
 Calico automatically detects the host MTU and sets pod MTU accordingly, accounting for encapsulation overhead when VXLAN or IP-in-IP is used. However, automatic detection can fail in environments with non-standard MTU configurations, underlying network MTU changes, or when running on cloud platforms with different MTU values per interface.
 
 ## Prerequisites
 
-- Calico installed (v3.20+ for automatic MTU detection)
+- Calico installed
 - Knowledge of your network's physical MTU
 - kubectl access
 
@@ -28,13 +28,16 @@ Calico automatically detects the host MTU and sets pod MTU accordingly, accounti
 | IP-in-IP | 20 bytes | 1480 |
 | VXLAN | 50 bytes | 1450 |
 | WireGuard | 60 bytes | 1440 |
-| WireGuard + VXLAN | 110 bytes | 1390 |
+| WireGuard mixed with VXLAN | 60 bytes effective | 1440 |
 
 ## Check Current MTU Configuration
 
 ```bash
-# Check what Calico has auto-detected
+# Check the operator's observed pod network MTU
 
+kubectl get installation.operator.tigera.io default -o yaml | grep -i mtu
+
+# Check current tunnel MTU settings
 kubectl get felixconfiguration default -o yaml | grep -i mtu
 
 # Check current pod interface MTU
@@ -49,16 +52,16 @@ ip link show eth0
 Override auto-detection with explicit MTU values:
 
 ```bash
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"mtu":1500}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1500}}}'
 
 # For VXLAN deployments
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"vxlanMTU":1450}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 
 # For WireGuard deployments
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"wireguardMTU":1440}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1440}}}'
 ```
 
 ## Configure MTU in Installation Resource
@@ -72,7 +75,7 @@ metadata:
   name: default
 spec:
   calicoNetwork:
-    mtu: 1500
+    mtu: 1450
     ipPools:
     - cidr: 10.48.0.0/16
       encapsulation: VXLAN
@@ -113,4 +116,4 @@ kubectl exec mtu-test -- ip link show eth0
 
 ## Conclusion
 
-Configuring the correct MTU in Calico prevents packet fragmentation and the hard-to-debug performance and connectivity issues it causes. Set MTU explicitly rather than relying on auto-detection when running in environments with non-standard MTU values or when using encapsulation modes. Always verify that newly created pods receive the expected MTU by checking their network interface configuration.
+Configuring the correct MTU in Calico prevents packet fragmentation or drops and the hard-to-debug performance and connectivity issues they cause. Set MTU explicitly rather than relying on auto-detection when running in environments with non-standard MTU values or when using encapsulation modes. Always verify that newly created pods receive the expected MTU by checking their network interface configuration.
