@@ -46,12 +46,12 @@ spec:
     rules:
     - alert: FelixPolicySyncLag
       expr: |
-        felix_resync_state{state!="in-sync"} > 0
+        felix_resync_state != 3
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Felix policy sync not in-sync on {{ $labels.instance }}"
+        summary: "Felix datastore sync not in-sync on {{ $labels.instance }}"
     - alert: FelixActiveLocalEndpointsDropped
       expr: |
         decrease(felix_active_local_endpoints[10m]) > 5
@@ -62,12 +62,12 @@ spec:
         summary: "Felix local endpoints decreased significantly on {{ $labels.instance }}"
 ```
 
-**Enable Calico policy audit logging**
+**Enable verbose Felix logging for policy diagnostics**
 
 ```bash
 kubectl patch felixconfiguration default \
   --type merge \
-  --patch '{"spec":{"policyDebugEnabled":true}}'
+  --patch '{"spec":{"logSeverityScreen":"Debug"}}'
 ```
 
 **Periodic policy compliance check**
