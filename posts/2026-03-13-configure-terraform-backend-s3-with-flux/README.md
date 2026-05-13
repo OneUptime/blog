@@ -110,8 +110,7 @@ spec:
     name: terraform-modules
     namespace: flux-system
   path: ./modules/vpc
-  workspace: production-vpc
-  approvePlan: "manual"
+  approvePlan: ""
 
   # Configure the S3 backend for state storage
   backendConfig:
@@ -124,8 +123,6 @@ spec:
         encrypt        = true
         # DynamoDB table for state locking prevents concurrent applies
         dynamodb_table = "terraform-state-lock"
-        # Use a workspace prefix to separate environments
-        workspace_key_prefix = "workspaces"
       }
 
   # Inject AWS credentials as environment variables for the backend
@@ -194,8 +191,7 @@ spec:
     name: terraform-modules
     namespace: flux-system
   path: ./modules/rds
-  workspace: production-database
-  approvePlan: "manual"
+  approvePlan: ""
   backendConfig:
     customConfiguration: |
       backend "s3" {
@@ -210,9 +206,9 @@ spec:
       value: production
 ```
 
-## Step 5: Enable S3 State Versioning for Rollback
+## Step 5: Enable S3 State Versioning for Recovery
 
-S3 versioning is already enabled on the bucket. To roll back to a previous state version:
+S3 versioning is already enabled on the bucket. To inspect a previous state version before restoring it:
 
 ```bash
 # List state file versions in S3
@@ -234,7 +230,7 @@ aws s3api get-object \
 - Enable S3 MFA delete on the state bucket to prevent accidental state deletion.
 - Grant runner pods access to the S3 backend using IAM roles (IRSA) rather than long-lived access keys when running on EKS.
 - Use a consistent key naming convention (`environment/component/terraform.tfstate`) to make state files discoverable and to scope S3 bucket policies by environment.
-- Enable DynamoDB TTL on the lock table to automatically clean up stale locks from interrupted operations.
+- Do not rely on DynamoDB TTL to clean up Terraform or OpenTofu locks. If a lock is stale, force-unlock it only after confirming that no active run owns the lock.
 
 ## Conclusion
 
