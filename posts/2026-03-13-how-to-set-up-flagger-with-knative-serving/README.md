@@ -83,7 +83,7 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/min-scale: "1"
     spec:
       containers:
         - image: stefanprodan/podinfo:6.0.0
@@ -97,7 +97,7 @@ Apply the service:
 kubectl apply -f knative-service.yaml
 ```
 
-The `autoscaling.knative.dev/minScale: "1"` annotation prevents the service from scaling to zero during canary analysis, ensuring that Flagger can evaluate metrics consistently.
+The `autoscaling.knative.dev/min-scale: "1"` annotation prevents the service from scaling to zero during canary analysis, ensuring that Flagger can evaluate metrics consistently.
 
 ## Step 5: Create the Canary Resource
 
@@ -110,6 +110,7 @@ metadata:
   name: podinfo
   namespace: default
 spec:
+  provider: knative
   targetRef:
     apiVersion: serving.knative.dev/v1
     kind: Service
@@ -137,6 +138,7 @@ spec:
         url: http://flagger-loadtester.test/
         timeout: 5s
         metadata:
+          type: cmd
           cmd: "hey -z 1m -q 10 -c 2 http://podinfo.default/"
 ```
 
@@ -153,10 +155,10 @@ kubectl apply -f canary.yaml
 Update the Knative Service to trigger a new revision:
 
 ```bash
-kubectl patch service podinfo \
+kubectl patch services.serving.knative.dev podinfo \
   --namespace default \
-  --type merge \
-  --patch '{"spec":{"template":{"spec":{"containers":[{"image":"stefanprodan/podinfo:6.0.1","name":"user-container"}]}}}}'
+  --type json \
+  --patch '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"stefanprodan/podinfo:6.0.1"}]'
 ```
 
 Flagger detects the new revision and starts the canary analysis. It manages the traffic splitting through the Knative Service's `traffic` stanza.
@@ -218,7 +220,7 @@ When using Kourier or Contour as the networking layer, you need application-leve
 
 Knative's auto-scaling can affect canary analysis:
 
-- If the canary scales to zero during analysis, metrics become unavailable. Use `minScale: "1"` to prevent this.
+- If the canary scales to zero during analysis, metrics become unavailable. Use `min-scale: "1"` to prevent this.
 - During scale-up, initial requests may have higher latency. Account for this in your latency thresholds.
 - The `window` annotation controls the scaling window:
 
@@ -226,8 +228,8 @@ Knative's auto-scaling can affect canary analysis:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "1"
-        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/min-scale: "1"
+        autoscaling.knative.dev/max-scale: "10"
         autoscaling.knative.dev/window: "60s"
 ```
 
@@ -260,6 +262,7 @@ metadata:
   name: podinfo
   namespace: default
 spec:
+  provider: knative
   targetRef:
     apiVersion: serving.knative.dev/v1
     kind: Service
@@ -290,6 +293,7 @@ spec:
         url: http://flagger-loadtester.test/
         timeout: 5s
         metadata:
+          type: cmd
           cmd: "hey -z 1m -q 10 -c 2 http://podinfo.default/"
 ```
 
