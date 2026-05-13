@@ -12,11 +12,11 @@ Description: How to configure Calico Tier resources to organize network policies
 
 Calico Tier resources define ordered evaluation layers for GlobalNetworkPolicy and NetworkPolicy resources. Tiers allow different teams to manage policies at different priority levels - a security team can enforce cluster-wide baseline policies in a high-priority tier, while application teams manage their own connectivity policies in lower-priority tiers, without risking that application policies override security baselines.
 
-The default tier (`default`) has order 1000 and contains all standard NetworkPolicy resources. Custom tiers with lower order numbers are evaluated first, enabling a layered security model.
+The default tier (`default`) has order 1,000,000 and contains all standard NetworkPolicy resources. Custom tiers with lower order numbers are evaluated first, enabling a layered security model.
 
 ## Prerequisites
 
-- Calico Enterprise or Calico Cloud (Tier resources require enterprise features)
+- Calico with tiered policy support, such as current Calico Open Source, Calico Enterprise, or Calico Cloud
 - `calicoctl` with cluster admin access
 - RBAC configured to control which teams can manage each tier
 
@@ -25,10 +25,10 @@ The default tier (`default`) has order 1000 and contains all standard NetworkPol
 ```yaml
 # Lower order = higher priority
 
-# Tier evaluation: security (100) → platform (500) → default (1000)
+# Tier evaluation: security (100) → platform (500) → default (1,000,000)
 ```
 
-Traffic passes through each tier in order. If a tier's policies match the traffic and take action (Allow or Deny), evaluation stops. If no policy in a tier matches, evaluation passes to the next tier with an implicit pass.
+Traffic passes through each tier in order. If a tier's policies match the traffic and take action (Allow or Deny), evaluation stops. If a policy uses `Pass`, evaluation skips to the next tier that contains a policy applying to the endpoint. If a tier applies to an endpoint but takes no action, Calico drops the packet unless the tier's `defaultAction` is set to `Pass`.
 
 ## Step 2: Create Security Tier
 
@@ -39,6 +39,7 @@ metadata:
   name: security
 spec:
   order: 100
+  defaultAction: Pass
 ```
 
 ```bash
@@ -54,6 +55,7 @@ metadata:
   name: platform
 spec:
   order: 500
+  defaultAction: Pass
 ```
 
 ## Step 4: Create Policies in Specific Tiers
@@ -80,9 +82,9 @@ spec:
 graph TD
     A[Incoming Traffic] --> B[Tier: security order=100]
     B -->|Policy matches - Deny| C[Traffic Blocked]
-    B -->|No match or Pass| D[Tier: platform order=500]
+    B -->|Pass or defaultAction Pass| D[Tier: platform order=500]
     D -->|Policy matches| E[Action taken]
-    D -->|No match or Pass| F[Tier: default order=1000]
+    D -->|Pass or defaultAction Pass| F[Tier: default order=1,000,000]
     F -->|NetworkPolicy match| G[Action taken]
     F -->|No match| H[Implicit deny if endpoint has policies]
 ```
@@ -97,7 +99,11 @@ metadata:
   name: security-tier-admin
 rules:
   - apiGroups: ["projectcalico.org"]
-    resources: ["globalnetworkpolicies", "networkpolicies"]
+    resources: ["tiers"]
+    resourceNames: ["security"]
+    verbs: ["get"]
+  - apiGroups: ["projectcalico.org"]
+    resources: ["tier.globalnetworkpolicies", "tier.networkpolicies"]
     resourceNames: ["security.*"]
     verbs: ["get", "list", "create", "update", "delete"]
 ```
@@ -114,4 +120,4 @@ calicoctl get globalnetworkpolicies -o wide | sort -k4 -n
 
 ## Conclusion
 
-Calico Tier resources implement a multi-team policy ownership model where security rules always take precedence. Configure tiers with distinct order numbers reflecting their priority: security (100) for cluster-wide security baselines, platform (500) for infrastructure policies like monitoring access, and leave the default tier (1000) for application teams. Combine tier RBAC with this ordering to enforce that application teams cannot override security or platform policies.
+Calico Tier resources implement a multi-team policy ownership model where security rules always take precedence. Configure tiers with distinct order numbers reflecting their priority: security (100) for cluster-wide security baselines, platform (500) for infrastructure policies like monitoring access, and leave the default tier (1,000,000) for application teams. Combine tier RBAC with this ordering to enforce that application teams cannot override security or platform policies.
