@@ -42,7 +42,7 @@ while true; do
       echo "  PENDING: ${node}"
     fi
   done < <(kubectl get pods -n calico-system -l k8s-app=calico-node \
-    -o jsonpath='{range .items[*]}{.spec.nodeName}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}')
+    -o jsonpath='{range .items[*]}{.spec.nodeName}{"\t"}{.spec.containers[?(@.name=="calico-node")].image}{"\n"}{end}')
 
   echo ""
   echo "Progress: ${ON_TARGET}/${TOTAL} nodes updated"
@@ -59,15 +59,15 @@ done
 ## Prometheus Queries for Upgrade Monitoring
 
 ```promql
-# Track upgrade progress via version metric
-count(felix_version{version="3.28.0"}) /
-count(kube_node_info)
+# Track upgrade progress via calico-node container image
+count(kube_pod_container_info{namespace="calico-system",container="calico-node",image=~".*:v?3\\.28\\.0(@.*)?"}) /
+count(kube_pod_container_info{namespace="calico-system",container="calico-node"})
 
 # Monitor pod restart rate during upgrade (spikes are normal)
 rate(kube_pod_container_status_restarts_total{namespace="calico-system"}[5m])
 
 # Monitor policy programming latency during upgrade
-histogram_quantile(0.99, rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))
+felix_int_dataplane_apply_time_seconds{quantile="0.99"}
 ```
 
 ## Upgrade Duration Tracking
@@ -110,7 +110,9 @@ spec:
       rules:
         - alert: CalicoUpgradeStuck
           expr: |
-            (time() - kube_daemonset_status_updated_number_scheduled{daemonset="calico-node",namespace="calico-system"} / kube_daemonset_status_desired_number_scheduled{daemonset="calico-node",namespace="calico-system"}) > 900
+            kube_daemonset_status_updated_number_scheduled{daemonset="calico-node",namespace="calico-system"}
+              < kube_daemonset_status_desired_number_scheduled{daemonset="calico-node",namespace="calico-system"}
+          for: 15m
           annotations:
             summary: "Calico upgrade appears to be stuck - less than 100% updated after 15 minutes"
 ```
