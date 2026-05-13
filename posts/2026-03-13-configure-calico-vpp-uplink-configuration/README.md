@@ -4,25 +4,25 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, VPP, DPDK, Uplink, NIC, Configuration
 
-Description: A detailed guide to configuring the uplink interface for Calico VPP, covering DPDK driver selection, PCI device configuration, multi-queue setup, and SR-IOV uplink modes.
+Description: A detailed guide to configuring the uplink interface for Calico VPP, covering DPDK driver selection, PCI device configuration, multi-queue setup, and native VPP uplink modes.
 
 ---
 
 ## Introduction
 
-The uplink configuration in Calico VPP determines how VPP connects to the physical network. The uplink interface is the NIC that VPP takes over from the Linux kernel using DPDK - this is the most impactful configuration decision for Calico VPP performance. The choice of driver (af_packet, DPDK, SR-IOV), queue count, and interrupt vs. polling mode directly determines the maximum throughput and minimum latency achievable.
+The uplink configuration in Calico VPP determines how VPP connects to the physical network. The uplink interface is the NIC that VPP drives using the configured VPP driver - this is the most impactful configuration decision for Calico VPP performance. The choice of driver (af_packet, DPDK, virtio, AVF), queue count, and interrupt vs. polling mode directly determines the maximum throughput and minimum latency achievable.
 
 Calico VPP supports several uplink modes:
 - `af_packet`: Uses Linux AF_PACKET socket (no DPDK required, lower performance)
 - `dpdk`: Full DPDK with user-space NIC driver (maximum performance)
 - `virtio`: For virtual machine environments
-- SR-IOV Virtual Functions: For hardware offload on supported NICs
+- `avf`: Native VPP driver for supported Intel 700-Series and 800-Series interfaces
 
 ## Prerequisites
 
 - Nodes with supported NICs (Intel, Mellanox, Broadcom for DPDK)
 - Hugepages configured (required for DPDK mode)
-- DPDK kernel modules loaded (vfio-pci or uio_pci_generic)
+- DPDK kernel modules loaded (for example, vfio-pci)
 - PCI address of the target NIC identified
 
 ## Step 1: Identify Your NIC and PCI Address
@@ -67,7 +67,7 @@ Note: af_packet mode keeps eth0 in the Linux kernel but creates a mirror in VPP.
 
 ```mermaid
 graph TD
-    A[Linux kernel owns eth0] -->|VPP startup| B[dpdk-devbind binds to vfio-pci]
+    A[Linux kernel owns eth0] -->|VPP startup| B[vpp-manager binds to vfio-pci]
     B --> C[eth0 no longer in Linux]
     C --> D[VPP creates GigabitEthernet0/0/0]
     D --> E[VPP manages all NIC traffic]
@@ -81,12 +81,12 @@ data:
         {
           "interfaceName": "eth0",
           "vppDriver": "dpdk",
-          "newDriverName": "vfio-pci",
+          "newDriver": "vfio-pci",
           "rxMode": "polling",
-          "numRxQueues": 4,
-          "numTxQueues": 4,
-          "rxQueueSize": 4096,
-          "txQueueSize": 4096
+          "rx": 4,
+          "tx": 4,
+          "rxqsz": 4096,
+          "txqsz": 4096
         }
       ]
     }
@@ -105,13 +105,14 @@ data:
           "interfaceName": "eth0",
           "vppDriver": "virtio",
           "rxMode": "interrupt",
-          "numRxQueues": 2
+          "rx": 2,
+          "tx": 2
         }
       ]
     }
 ```
 
-## Step 5: Configure Multiple Uplinks (Bonding)
+## Step 5: Configure Multiple Uplinks
 
 ```yaml
 data:
@@ -121,21 +122,16 @@ data:
         {
           "interfaceName": "eth0",
           "vppDriver": "dpdk",
-          "newDriverName": "vfio-pci",
-          "numRxQueues": 4
+          "newDriver": "vfio-pci",
+          "rx": 4,
+          "tx": 4
         },
         {
           "interfaceName": "eth1",
           "vppDriver": "dpdk",
-          "newDriverName": "vfio-pci",
-          "numRxQueues": 4
-        }
-      ],
-      "bondInterfaces": [
-        {
-          "interfaceNames": ["eth0", "eth1"],
-          "mode": "lacp",
-          "loadBalance": "l34"
+          "newDriver": "vfio-pci",
+          "rx": 4,
+          "tx": 4
         }
       ]
     }
