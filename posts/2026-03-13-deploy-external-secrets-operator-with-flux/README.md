@@ -68,7 +68,7 @@ spec:
     spec:
       chart: external-secrets
       # Pin to a specific version for stability
-      version: "0.x.x"
+      version: "2.4.1"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -97,7 +97,7 @@ spec:
 ## Step 4: Create the Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/external-secrets/kustomization.yaml
+# clusters/my-cluster/external-secrets.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -111,14 +111,10 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: external-secrets
-      namespace: external-secrets
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: external-secrets-webhook
-      namespace: external-secrets
+      namespace: flux-system
 ```
 
 ## Step 5: Verify the Installation
@@ -135,9 +131,12 @@ kubectl get crd | grep external-secrets.io
 
 # Expected CRDs:
 # clusterexternalsecrets.external-secrets.io
+# clusterpushsecrets.external-secrets.io
 # clustersecretstores.external-secrets.io
 # externalsecrets.external-secrets.io
+# pushsecrets.external-secrets.io
 # secretstores.external-secrets.io
+# plus generator CRDs under generators.external-secrets.io
 ```
 
 ## Step 6: Confirm the Webhook is Operational
@@ -148,7 +147,7 @@ kubectl get secret external-secrets-webhook -n external-secrets
 
 # Test ESO is ready to validate resources
 kubectl apply --dry-run=server -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test
@@ -173,7 +172,7 @@ EOF
 - Pin the ESO Helm chart to a specific version in `HelmRelease` to avoid unexpected upgrades breaking existing `ExternalSecret` resources.
 - Enable `serviceMonitor: true` from day one so you can monitor secret sync failures via Prometheus alerts.
 - Set `installCRDs: true` in the chart values to manage CRD lifecycle with the Helm release.
-- Use Flux health checks on both the `external-secrets` and `external-secrets-webhook` deployments so dependent Kustomizations (like SecretStores) wait for ESO to be fully ready.
+- Use a Flux health check on the `HelmRelease` so dependent Kustomizations (like SecretStores) wait for ESO to be reconciled.
 - Grant the ESO service account only the minimum IRSA/Workload Identity permissions needed for the specific secret paths it must access.
 
 ## Conclusion
