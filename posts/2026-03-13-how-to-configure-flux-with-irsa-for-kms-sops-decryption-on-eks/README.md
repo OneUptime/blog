@@ -131,6 +131,12 @@ patches:
           eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-kms-sops-role
 ```
 
+If you apply this patch after Flux has already been bootstrapped, restart the controller so the projected web identity environment is added to the pod:
+
+```bash
+kubectl rollout restart deployment/kustomize-controller -n flux-system
+```
+
 ## Step 5: Configure SOPS Locally
 
 Create a `.sops.yaml` configuration file in your repository root:
@@ -162,11 +168,12 @@ stringData:
   connection-string: postgresql://admin:super-secret-password@db:5432/mydb
 EOF
 
-# Encrypt with SOPS using KMS
-sops --encrypt --in-place secret.yaml
-
-# Move to the secrets directory
+# Move to the secrets directory so the .sops.yaml path_regex matches
+mkdir -p secrets/production
 mv secret.yaml secrets/production/database-credentials.yaml
+
+# Encrypt with SOPS using KMS
+sops --encrypt --in-place secrets/production/database-credentials.yaml
 ```
 
 The encrypted file will look like this:
@@ -282,8 +289,10 @@ aws iam get-role --role-name flux-kms-sops-role --query 'Role.AssumeRolePolicyDo
 kubectl get pod -n flux-system -l app=kustomize-controller -o yaml | grep -A5 serviceAccount
 
 # Test KMS access from within the pod
-kubectl exec -n flux-system deployment/kustomize-controller -- \
-  aws sts get-caller-identity
+kubectl run aws-cli -n flux-system --rm -i --restart=Never \
+  --overrides='{"spec":{"serviceAccountName":"kustomize-controller"}}' \
+  --image=public.ecr.aws/aws-cli/aws-cli:2 \
+  -- sts get-caller-identity
 ```
 
 ## Conclusion
