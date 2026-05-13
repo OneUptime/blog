@@ -12,16 +12,16 @@ Description: Learn how to deploy and monitor Cilium on k0s, a minimal Kubernetes
 
 k0s is a lightweight, single-binary Kubernetes distribution designed for simplicity and minimal resource overhead. Like K3s, k0s ships with a default CNI (kube-router), but teams requiring Cilium's advanced eBPF capabilities, network policy enforcement, and Hubble observability can replace kube-router with Cilium.
 
-Monitoring Cilium on k0s requires understanding both k0s's unique cluster structure (no separate etcd, embedded control plane) and Cilium's standard monitoring interfaces. Because k0s uses a simplified node architecture, some Cilium monitoring approaches need minor adjustments compared to standard kubeadm clusters.
+Monitoring Cilium on k0s requires understanding both k0s's controller/worker structure and Cilium's standard monitoring interfaces. Because k0s can run an isolated control plane with Konnectivity proxying API server traffic to workers, some Cilium monitoring approaches need minor adjustments compared to standard kubeadm clusters.
 
 This guide covers installing Cilium on k0s, setting up Hubble for observability, and monitoring Cilium health in the k0s environment.
 
 ## Prerequisites
 
-- k0s cluster v1.27+ with controller and worker nodes
+- k0s cluster with controller and worker nodes running a Kubernetes version supported by the Cilium release you install
 - `k0sctl` or direct SSH access to k0s controller
 - `kubectl` configured for the k0s cluster (`k0s kubeconfig admin`)
-- `cilium` CLI v0.15+ installed
+- Current `cilium` CLI installed
 - Helm v3.10+ for Cilium installation via Helm
 
 ## Step 1: Install Cilium on k0s
@@ -42,7 +42,8 @@ spec:
     provider: custom              # Use custom CNI instead of default kube-router
     podCIDR: 10.244.0.0/16
     serviceCIDR: 10.96.0.0/12
-  # Disable default CNI extensions
+    kubeProxy:
+      disabled: true              # Required when Cilium replaces kube-proxy
   extensions:
     helm:
       repositories:
@@ -51,16 +52,30 @@ spec:
       charts:
       - name: cilium
         chartname: cilium/cilium
-        version: "1.15.0"
+        version: "1.19.3"
         namespace: kube-system
         values: |
-          kubeProxyReplacement: strict
+          kubeProxyReplacement: true
           k8sServiceHost: <controller-ip>
           k8sServicePort: 6443
+          prometheus:
+            enabled: true
+          operator:
+            prometheus:
+              enabled: true
           hubble:
             enabled: true
             relay:
               enabled: true
+            ui:
+              enabled: true
+            metrics:
+              enabled:
+              - dns
+              - drop
+              - tcp
+              - flow
+              - icmp
 ```
 
 Apply the configuration and create the k0s cluster:
@@ -70,7 +85,7 @@ Apply the configuration and create the k0s cluster:
 k0sctl apply --config k0s-config.yaml
 
 # Get kubeconfig for kubectl access
-k0sctl kubeconfig > ~/.kube/config
+k0sctl kubeconfig --config k0s-config.yaml > ~/.kube/config
 
 # Verify cluster is up and Cilium is being deployed
 kubectl get pods -n kube-system -l k8s-app=cilium -w
@@ -92,8 +107,8 @@ kubectl get daemonset cilium -n kube-system
 # Check that k0s nodes are registered with Cilium
 kubectl get ciliumnodes -o wide
 
-# Run Cilium connectivity test (uses test namespace)
-cilium connectivity test --namespace cilium-test
+# Run Cilium connectivity test (uses test namespace prefix)
+cilium connectivity test --test-namespace cilium-test
 ```
 
 ## Step 3: Enable and Monitor with Hubble
@@ -156,8 +171,7 @@ kubectl apply -f k0s-cilium-policy.yaml
 hubble observe --namespace default --verdict DROPPED --follow
 
 # Check Cilium endpoint policy status
-kubectl exec -n kube-system \
-  $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
+kubectl exec -n kube-system ds/cilium -c cilium-agent \
   -- cilium endpoint list
 ```
 
@@ -178,8 +192,9 @@ curl http://localhost:9962/metrics | head -20
 # Key metrics to monitor:
 # cilium_endpoint_state{state="ready"} - healthy endpoints
 # cilium_drop_count_total - network policy drops
-# cilium_policy_count - active policies
+# cilium_policy - active policies
 # cilium_forward_count_total - forwarded packets
+# hubble_drop_total - Hubble-observed dropped flows
 ```
 
 ## Best Practices
