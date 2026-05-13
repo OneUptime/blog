@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Kubernetes node NotReady status caused by Calico issues by restoring calico-node pod health, reinstalling CNI binaries, and resolving Felix connectivity problems.
+Description: Fix Kubernetes node NotReady status caused by Calico issues by restoring calico-node pod health, reinstalling CNI binaries, and resolving node resource pressure.
 
 ---
 
 ## Introduction
 
-Fixing a node's NotReady status caused by Calico requires restoring the calico-node pod to a healthy running state. The specific fix depends on the root cause identified during diagnosis. The most common fixes are resolving a calico-node CrashLoopBackOff (addressed in that companion post), uncordoning the node after eviction, or reinstalling the calico-node DaemonSet to restore missing CNI binaries.
+Fixing a node's NotReady status caused by Calico requires restoring the calico-node pod to a healthy running state. The specific fix depends on the root cause identified during diagnosis. The most common fixes are resolving a calico-node CrashLoopBackOff (addressed in that companion post), freeing node resources after eviction, or restarting the calico-node DaemonSet so Calico can reinstall missing CNI binaries.
 
 ## Symptoms
 
@@ -22,8 +22,7 @@ Fixing a node's NotReady status caused by Calico requires restoring the calico-n
 
 - calico-node CrashLoopBackOff (see companion post)
 - calico-node pod evicted from the node
-- CNI binary missing from /opt/cni/bin
-- Felix datastore connectivity issue
+- CNI binary missing from the configured CNI binary directory, commonly /opt/cni/bin on Linux nodes
 
 ## Diagnosis Steps
 
@@ -60,11 +59,11 @@ kubectl describe node <node-name> | grep -i "pressure\|condition"
 kubectl get pods -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName=<node-name>
 ```
 
-**Fix 3: Reinstall calico-node to restore CNI binary**
+**Fix 3: Restart calico-node to restore CNI binary**
 
 ```bash
-# Force calico-node DaemonSet to redeploy on the node
-# This regenerates CNI binaries
+# Restart the calico-node DaemonSet pods
+# In manifest-based Calico installs, this reruns the CNI installer
 kubectl rollout restart daemonset calico-node -n kube-system
 
 # Wait for the pod on the affected node
@@ -114,4 +113,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing Calico-induced node NotReady status centers on restoring the calico-node pod to healthy state. The specific fix matches the pod's failure mode: restart for CrashLoopBackOff, resource adjustment for eviction, or DaemonSet restart for missing CNI binary. After calico-node recovers, restart kubelet if the node status does not automatically recover.
+Fixing Calico-induced node NotReady status centers on restoring the calico-node pod to healthy state. The specific fix matches the pod's failure mode: restart for CrashLoopBackOff, resource adjustment for eviction, or DaemonSet restart for missing CNI binaries in manifest-based installs. After calico-node recovers, restart kubelet if the node status does not automatically recover.
