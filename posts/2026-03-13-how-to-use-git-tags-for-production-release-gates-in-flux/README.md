@@ -14,7 +14,7 @@ In many organizations, deploying to production requires an explicit approval ste
 
 ## How It Works
 
-The strategy is straightforward: staging tracks a branch (like `main`) and automatically deploys every commit, while production tracks Git tags matching a specific pattern (like `v*`). Creating a new tag triggers a production deployment.
+The strategy is straightforward: staging tracks a branch (like `main`) and automatically deploys every commit, while production tracks the latest Git tag that matches a SemVer constraint. Creating a new highest matching tag triggers a production deployment.
 
 ## Repository Structure
 
@@ -76,7 +76,7 @@ spec:
 
 ## Configuring Production to Track Tags
 
-Production only deploys when a new semver tag is created:
+Production only deploys when a new matching SemVer tag becomes the latest selected tag:
 
 ```yaml
 # clusters/production/flux-system/gotk-sync.yaml
@@ -109,9 +109,9 @@ spec:
 
 The `semver` reference tells Flux to find the latest tag that matches the given semver constraint and deploy that specific commit.
 
-## Using Tag Patterns Instead of Semver
+## Pinning Exact Tags or Using Semver Ranges
 
-If you prefer a different tagging convention, use the `tag` field with regex:
+If you prefer to pin production to a specific release, use the `tag` field with an exact tag name:
 
 ```yaml
 # For exact tag matching
@@ -231,7 +231,7 @@ flux get sources git flux-system
 
 # Output shows the deployed tag
 # NAME         REVISION        READY
-# flux-system  v1.5.0/abc123   True
+# flux-system  v1.5.0@sha1:abc123   True
 
 # Check deployment status
 flux get kustomizations
