@@ -16,8 +16,9 @@ This guide covers log audit Calico Metrics in Calico with practical configuratio
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.30+ if you want Calico Open Source flow logs through Whisker
 - `calicoctl` and `kubectl` installed
+- Automatic HostEndpoints enabled, with a node label such as `kubernetes-host` synced to the HostEndpoints
 - Understanding of Calico's monitoring and security architecture
 
 ## Core Configuration
@@ -31,19 +32,22 @@ metadata:
   name: secure-calico-metrics
 spec:
   order: 100
-  selector: k8s-app == 'calico-node'
+  selector: has(kubernetes-host)
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         namespaceSelector: team == 'observability'
       destination:
         ports: [9091]
     - action: Allow
+      protocol: TCP
       source:
         selector: app == 'prometheus'
       destination:
         ports: [9091]
     - action: Deny
+      protocol: TCP
       destination:
         ports: [9091, 9092, 9093]
   types:
@@ -54,25 +58,27 @@ spec:
 
 ```bash
 # Apply metrics security policy
+calicoctl patch kubecontrollersconfiguration default --patch='{"spec": {"controllers": {"node": {"hostEndpoint": {"autoCreate": "Enabled"}}}}}'
+kubectl label nodes --all kubernetes-host=
 calicoctl apply -f secure-calico-metrics.yaml
 
 # Verify only authorized access works
-kubectl exec -n monitoring prometheus-pod -- curl -s http://calico-node-ip:9091/metrics | head -5
+kubectl exec -n monitoring prometheus-pod -- curl -s http://<node-ip>:9091/metrics | head -5
 echo "Prometheus access (should work): $?"
 
 # Verify unauthorized access is blocked
-kubectl exec -n default test-pod -- curl -s --max-time 5 http://calico-node-ip:9091/metrics
+kubectl exec -n default test-pod -- curl -s --max-time 5 http://<node-ip>:9091/metrics
 echo "Unauthorized access (should timeout): $?"
 ```
 
 ## Verify Metrics Security
 
 ```bash
-# List all IPs that have accessed the metrics endpoint recently
-grep "port=9091" /var/log/calico/flow-logs/*.log | tail -20
+# View flow logs and filter for destination port 9091 in the Whisker UI
+kubectl port-forward -n calico-system service/whisker 8081:8081
 
-# Check active policy for calico-node pods
-calicoctl get networkpolicies -n kube-system | grep metrics
+# Check active global policy for HostEndpoints
+calicoctl get globalnetworkpolicies | grep secure-calico-metrics
 ```
 
 ## Architecture
