@@ -26,7 +26,7 @@ Octopus Deploy is a mature CD platform traditionally used for Windows and .NET d
 
 curl -H "X-Octopus-ApiKey: API-XXXXXXXX" \
   https://your-octopus.example.com/api/deploymentprocesses \
-  | jq '.Items[] | select(.Steps[].Actions[].ActionType | contains("Kubernetes"))' \
+  | jq '.Items[] | select(any(.Steps[].Actions[]; .ActionType | test("Kubernetes|Helm")))' \
   > kubernetes-deployments.json
 
 # Document per project:
