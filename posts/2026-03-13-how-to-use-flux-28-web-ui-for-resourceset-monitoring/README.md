@@ -10,18 +10,18 @@ Description: Learn how to monitor ResourceSet resources using the Flux 2.8 Web U
 
 ## Introduction
 
-ResourceSet is a Flux resource type that allows you to deploy templated resources across multiple instances using a single definition. It is particularly useful for deploying the same application to multiple namespaces or clusters with different configurations. The Flux 2.8 Web UI provides dedicated monitoring for ResourceSet resources, giving you a consolidated view of all generated instances and their status. This post covers how to use the web UI to monitor ResourceSet resources effectively.
+ResourceSet is a Flux Operator resource type that allows you to deploy templated resources across multiple instances using a single definition. It is particularly useful for deploying the same application to multiple namespaces with different configurations. The Flux Web UI, available through Flux Operator and highlighted with the Flux 2.8 release, provides dedicated monitoring for ResourceSet resources, giving you a consolidated view of generated resources and their status. This post covers how to use the web UI to monitor ResourceSet resources effectively.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later recommended)
-- Flux 2.8 installed with the web UI component enabled
+- A Kubernetes cluster supported by Flux 2.8, such as Kubernetes 1.33, 1.34, or 1.35
+- Flux 2.8 and Flux Operator installed with the web UI enabled
 - kubectl configured to access your cluster
 - Familiarity with Flux ResourceSet concepts
 
 ## Understanding ResourceSet in Flux
 
-A ResourceSet allows you to define a template for Flux resources and generate multiple instances from a list of inputs. This is useful when you need to deploy similar configurations across multiple tenants, environments, or namespaces.
+A ResourceSet allows you to define templates for Flux resources or other Kubernetes objects and generate multiple instances from a list of inputs. This is useful when you need to deploy similar configurations across multiple tenants, environments, or namespaces.
 
 Here is an example ResourceSet that creates Kustomizations for multiple tenants:
 
@@ -60,7 +60,7 @@ This ResourceSet generates three Kustomization resources, one for each tenant.
 
 ## Accessing the ResourceSet View in the Web UI
 
-Open the Flux Web UI at `http://localhost:9080` (after port-forwarding with `kubectl -n flux-system port-forward svc/flux-web 9080:9080`) and navigate to the "ResourceSets" tab in the left sidebar. This view lists all ResourceSet resources in the cluster.
+Open the Flux Web UI at `http://localhost:9080` after port-forwarding the web service. For a standalone Web UI installation, use `kubectl -n flux-system port-forward svc/flux-web 9080:9080`; for the Web UI embedded in Flux Operator, use `kubectl -n flux-system port-forward svc/flux-operator 9080:9080`. Then navigate to the ResourceSet dashboard or filter the resource list by ResourceSet. This view lists ResourceSet resources in the cluster.
 
 Each entry shows:
 
@@ -88,9 +88,9 @@ Each generated resource links to its own detail view, so you can drill down into
 
 The inputs section shows all the parameter sets defined in the ResourceSet spec. This helps you verify that the correct values are being used for resource generation.
 
-### Template Preview
+### Status History
 
-The web UI can display the rendered template output for each input set, showing you the exact YAML that was generated. This is invaluable for debugging template rendering issues.
+The ResourceSet status records reconciliation history, including timestamps, generated resource counts, input counts, and reconciliation status. This is useful for debugging template rendering, health check, and apply issues.
 
 ## Creating a More Complex ResourceSet Example
 
@@ -152,9 +152,9 @@ In the web UI, this ResourceSet would show three generated HelmRelease resources
 
 The web UI provides aggregate health information for ResourceSets:
 
-- **All Ready**: All generated resources are reconciled successfully (green indicator)
-- **Partial Ready**: Some generated resources have issues (yellow indicator)
-- **Failed**: The ResourceSet itself failed to generate resources (red indicator)
+- **Ready**: Generated resources were built and applied, and enabled health checks are passing
+- **Reconciling**: The operator is building manifests, detecting drift, or applying resources
+- **Failed or Stalled**: The ResourceSet failed because of dependency, templating, apply, garbage collection, health check, or misconfiguration errors
 
 The aggregate view makes it easy to spot problems without checking each generated resource individually.
 
@@ -164,7 +164,7 @@ The ResourceSet view supports filtering by:
 
 - **Namespace**: Show ResourceSets from a specific namespace
 - **Status**: Filter by Ready, Not Ready, or Progressing states
-- **Resource count**: Sort by number of generated resources
+- **Type**: Filter by ResourceSet or other Flux resource types
 
 You can also search by ResourceSet name to quickly find a specific one in large clusters.
 
@@ -173,19 +173,19 @@ You can also search by ResourceSet name to quickly find a specific one in large 
 When you update a ResourceSet's inputs (adding or removing entries), the web UI reflects these changes:
 
 - Newly added inputs appear as new generated resources in Progressing state
-- Removed inputs trigger pruning, and the web UI shows the resources being removed
+- Removed inputs trigger garbage collection of resources that are no longer generated
 - Modified inputs cause the corresponding generated resources to reconcile with updated values
 
-The events timeline on the detail page records all these changes with timestamps.
+ResourceSet status history and Kubernetes events record reconciliation attempts and garbage collection results with timestamps.
 
 ## Troubleshooting ResourceSet Issues
 
 Common issues visible in the web UI include:
 
-- **Template rendering errors**: The web UI shows which template expressions failed and why. Check for missing input fields or invalid Go template syntax.
+- **Template rendering errors**: ResourceSet status conditions report build failures. Check for missing input fields or invalid Go template syntax.
 - **Generated resource failures**: Individual generated resources may fail independently. The web UI lets you click through to each one.
-- **Input validation errors**: If input values do not match expected formats, the ResourceSet status shows the validation error.
+- **Invalid generated resources**: If rendered resources are invalid or cannot be applied, the ResourceSet status reports a reconciliation failure.
 
 ## Conclusion
 
-The Flux 2.8 Web UI provides essential visibility into ResourceSet resources, making it straightforward to monitor multi-instance deployments. The ability to see all generated resources, their individual statuses, and the template rendering output in one place significantly reduces the effort needed to manage ResourceSet-based workflows. For teams using ResourceSets for multi-tenant or multi-service deployments, the web UI becomes an indispensable tool for day-to-day operations.
+The Flux Web UI provides essential visibility into ResourceSet resources, making it straightforward to monitor multi-instance deployments. The ability to see ResourceSet readiness, generated resource status, and reconciliation history in one place significantly reduces the effort needed to manage ResourceSet-based workflows. For teams using ResourceSets for multi-tenant or multi-service deployments, the web UI becomes an indispensable tool for day-to-day operations.
