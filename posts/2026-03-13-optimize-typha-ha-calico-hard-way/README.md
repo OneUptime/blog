@@ -14,26 +14,28 @@ A Typha HA deployment that is correctly configured but not optimized may still e
 
 ## Step 1: Minimize Felix Reconnect Latency
 
-Felix detects a lost Typha connection when the TCP keepalive fails. The default timeout is 30 seconds. For faster failover, reduce the read timeout.
+Felix detects a lost Typha connection when the read timeout expires (Typha sends regular pings, so traffic is always expected on a healthy connection). The default timeout is 30 seconds. For faster failover, reduce the read timeout.
+
+`TyphaReadTimeout` is a local-only Felix configuration option, so it must be set via the `FELIX_TYPHAREADTIMEOUT` environment variable on the calico-node DaemonSet rather than via a `FelixConfiguration` patch.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"typhaReadTimeout": "15s"}}'
+kubectl set env daemonset/calico-node -n calico-system \
+  FELIX_TYPHAREADTIMEOUT=15
 ```
 
-With 15 seconds, Felix will detect and reconnect to a healthy Typha replica within 15 seconds of a replica failure.
+The value is a floating-point number of seconds (the default is 30). With 15 seconds, Felix will detect and reconnect to a healthy Typha replica within 15 seconds of a replica failure.
 
-## Step 2: Stagger Typha Startup to Avoid Connection Storms
+## Step 2: Bound Per-Replica Connection Counts to Avoid Hotspots
 
-When Typha restarts (or scales up), multiple Felix agents reconnect simultaneously. Stagger this by using Typha's connection throttle feature.
+When Typha replicas are unbalanced, individual replicas can accept large numbers of connections before any rebalancing kicks in. Bound the per-replica connection floor so the rebalancer can shed load down to a sensible target.
 
 ```bash
 kubectl set env deployment/calico-typha -n calico-system \
-  TYPHA_MAXCONNECTIONSLOWERLIMIT=10 \
-  TYPHA_CONNECTIONREBALANCINGMODE=auto
+  TYPHA_MAXCONNECTIONSLOWERLIMIT=200 \
+  TYPHA_CONNECTIONREBALANCINGMODE=kubernetes
 ```
 
-The lower limit slows the initial connection rate, preventing Typha from being overwhelmed by simultaneous snapshot requests.
+`TYPHA_MAXCONNECTIONSLOWERLIMIT` (default 400) is the minimum value the dynamic per-replica connection cap will be lowered to during rebalancing — picking a value below the default lets the rebalancer drive each replica's cap closer to an even share when there are many Typha replicas relative to Felix clients.
 
 ## Step 3: Optimize Connection Rebalancing After Failure
 
@@ -41,10 +43,10 @@ After a Typha replica fails and recovers, connections are concentrated on the su
 
 ```bash
 kubectl set env deployment/calico-typha -n calico-system \
-  TYPHA_CONNECTIONREBALANCINGMODE=auto
+  TYPHA_CONNECTIONREBALANCINGMODE=kubernetes
 ```
 
-In `auto` mode, Typha gradually sheds connections (by sending a disconnect message to Felix) to trigger reconnection to a less-loaded replica.
+In `kubernetes` mode, Typha polls the Kubernetes API for the number of Typha replicas and nodes and periodically recomputes a per-replica connection cap. When a replica is over its cap, it drops the excess connections (throttled by `ShutdownConnectionDropIntervalMaxSecs`), causing those Felix clients to reconnect and land on a less-loaded replica. The only other valid value is `none` (the default), which disables rebalancing.
 
 ## Step 4: Optimize Snapshot Caching
 
@@ -52,7 +54,7 @@ When Felix reconnects to a new Typha replica, the replica sends a full snapshot 
 
 ```bash
 kubectl port-forward -n calico-system deployment/calico-typha 9093:9093 &
-curl -s http://localhost:9093/metrics | grep typha_snapshot
+curl -s http://localhost:9093/metrics | grep typha_client_snapshot_send_secs
 ```
 
 If snapshot send time is high (>5 seconds), consider:
@@ -69,7 +71,7 @@ apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: calico-networking-critical
-value: 2000000000  # Just below system-cluster-critical
+value: 1000000000  # Maximum allowed for a user-defined PriorityClass; below system-cluster-critical (2,000,000,000)
 globalDefault: false
 description: "Critical Calico networking components"
 EOF
@@ -126,4 +128,4 @@ During the 30-second grace period, Typha sends disconnect signals to connected F
 
 ## Conclusion
 
-Optimizing Typha HA focuses on reducing failover latency (shorter Felix read timeout), preventing connection storms during restart (connection throttle), balancing connections after recovery (auto rebalancing), prioritizing Typha scheduling above application workloads (PriorityClass), and enabling graceful failover during planned operations (termination grace period). Together these optimizations ensure that Typha HA delivers fast, clean failover rather than just theoretical redundancy.
+Optimizing Typha HA focuses on reducing failover latency (shorter Felix read timeout), bounding per-replica connection counts, balancing connections after recovery (Kubernetes-mode rebalancing), prioritizing Typha scheduling above application workloads (PriorityClass), and enabling graceful failover during planned operations (termination grace period). Together these optimizations ensure that Typha HA delivers fast, clean failover rather than just theoretical redundancy.
