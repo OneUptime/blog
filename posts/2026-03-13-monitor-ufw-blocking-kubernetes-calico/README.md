@@ -63,13 +63,14 @@ spec:
       - operator: Exists
       containers:
       - name: monitor
-        image: busybox
+        image: alpine:3.19
         securityContext:
           privileged: true
         command:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache iptables > /dev/null
           while true; do
             POLICY=$(iptables -L FORWARD -n 2>/dev/null | head -1 | grep -c "DROP" || true)
             if [ "$POLICY" -gt 0 ]; then
@@ -111,7 +112,7 @@ spec:
 sudo ufw logging on
 
 # Watch UFW logs for Calico-related drops
-sudo tail -f /var/log/ufw.log | grep -E "BLOCK|DROP" | grep -E "4789|proto 4|DPT=179"
+sudo tail -f /var/log/ufw.log | grep -E "BLOCK|DROP" | grep -E "DPT=4789|PROTO=4 |DPT=179"
 ```
 
 ```mermaid
