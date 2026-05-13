@@ -84,8 +84,8 @@ Node becomes unreachable after applying new host endpoint policy
 
 ## Steps
 1. Connect via cloud console or out-of-band access
-2. Identify recently applied policy:
-   calicoctl get globalnetworkpolicies --sort-by=metadata.creationTimestamp
+2. Identify the recently applied policy from Git history or deployment logs, then inspect current policies:
+   calicoctl get globalnetworkpolicies -o wide
 3. Delete the offending policy:
    calicoctl delete globalnetworkpolicy <name>
 4. Verify connectivity restored
@@ -120,16 +120,26 @@ on:
 jobs:
   export:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
+      - name: Install calicoctl
+        run: |
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
+          chmod +x calicoctl
+          sudo mv calicoctl /usr/local/bin/
       - name: Export policies
         run: |
+          mkdir -p docs/policies
           calicoctl get globalnetworkpolicies -o yaml > docs/policies/host-endpoint.yaml
           calicoctl get hostendpoints -o yaml > docs/policies/hostendpoints.yaml
       - name: Commit changes
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/policies/
-          git commit -m "chore: auto-export Calico policies"
+          git diff --cached --quiet || git commit -m "chore: auto-export Calico policies"
           git push
 ```
 
