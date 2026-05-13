@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Calico IP pool exhaustion by cleaning up leaked IPAM allocations, expanding the IP pool CIDR, or adding a new non-overlapping IP pool.
+Description: Fix Calico IP pool exhaustion by cleaning up leaked IPAM allocations or adding a new non-overlapping IP pool.
 
 ---
 
 ## Introduction
 
-Fixing IP pool exhaustion in Calico depends on the root cause: if the exhaustion is due to leaked allocations, cleaning them up restores capacity immediately. If the pool is genuinely too small, expanding the CIDR or adding a second IP pool provides the additional address space needed.
+Fixing IP pool exhaustion in Calico depends on the root cause: if the exhaustion is due to leaked allocations, cleaning them up restores capacity immediately. If the pool is genuinely too small, adding a second IP pool provides the additional address space needed.
 
 New pods cannot start until IP addresses are available, so restoring capacity is a time-sensitive operation.
 
@@ -39,30 +39,30 @@ calicoctl ipam check
 ```bash
 # First, identify leaked allocations
 
-calicoctl ipam check --show-all-ips 2>/dev/null | grep "leak\|no workload"
+calicoctl ipam check --show-problem-ips 2>/dev/null
 
 # Release leaked IPs
 calicoctl ipam release --ip=<leaked-ip> 2>/dev/null || true
 
 # Or use the automated cleanup
-calicoctl ipam check -o ipam-report.json.json 2>/dev/null
-# Review report and release IPs with no corresponding workload
+calicoctl datastore migrate lock
+calicoctl ipam check -o ipam-report.json 2>/dev/null
+# Review the report before releasing leaked IPs
+calicoctl ipam release --from-report=ipam-report.json
+calicoctl datastore migrate unlock
 
 # After cleanup, verify free IPs
 calicoctl ipam show
 ```
 
-**Fix 2: Expand the existing IP pool (if CIDR allows)**
+**Fix 2: Do not patch the existing IP pool CIDR**
 
 ```bash
 # Check current pool
 calicoctl get ippool default-ipv4-ippool -o yaml
 
-# Expand to a larger CIDR (must be a supernet of current CIDR)
-# WARNING: This cannot shrink a pool - only expand
-calicoctl patch ippool default-ipv4-ippool \
-  --patch='{"spec": {"cidr": "10.0.0.0/8"}}'
-# Use with caution - verify the new CIDR doesn't overlap anything
+# The IPPool spec.cidr field is immutable. Do not try to expand it with patch.
+# Add a new non-overlapping pool instead, then recreate pods that need new IPs.
 ```
 
 **Fix 3: Add a second IP pool (safest option)**
@@ -74,7 +74,7 @@ kind: IPPool
 metadata:
   name: additional-ippool
 spec:
-  cidr: 192.168.0.0/16  # Non-overlapping CIDR
+  cidr: 192.168.0.0/16  # Must be non-overlapping and within the Kubernetes pod CIDR
   ipipMode: Always
   natOutgoing: true
   disabled: false
@@ -84,12 +84,11 @@ EOF
 calicoctl ipam show
 ```
 
-**Fix 4: Force IPAM block cleanup**
+**Fix 4: Release leaked IPs from an IPAM report**
 
 ```bash
-# Release blocks with no allocations from nodes that no longer exist
-calicoctl ipam release --from-report=<report-file> 2>/dev/null || \
-  echo "Use calicoctl ipam check output to identify and release"
+# Release leaked allocations identified by calicoctl ipam check
+calicoctl ipam release --from-report=<report-file>
 ```
 
 **Verify fix: New pods can get IPs**
@@ -122,4 +121,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing Calico IP pool exhaustion requires addressing leaks first (often restoring sufficient capacity), then adding pool capacity if genuine exhaustion occurred. Adding a second IP pool is the safest expansion approach. Verify fix by confirming new pods receive IPs successfully.
+Fixing Calico IP pool exhaustion requires addressing leaks first (often restoring sufficient capacity), then adding pool capacity if genuine exhaustion occurred. Adding a second IP pool is the correct expansion approach because an existing IP pool CIDR cannot be changed. Verify fix by confirming new pods receive IPs successfully.
