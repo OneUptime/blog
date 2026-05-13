@@ -36,7 +36,7 @@ kubectl label node gpu-node-02 nvidia.com/gpu.product=A100-SXM4-80GB
 kubectl label node gpu-node-02 nvidia.com/gpu.count="8"
 ```
 
-(The GPU Operator's Node Feature Discovery component adds these labels automatically.)
+(The GPU Operator's GPU Feature Discovery component adds these labels automatically.)
 
 ## Step 2: Configure a Single-Node Multi-GPU Deployment
 
@@ -72,10 +72,9 @@ spec:
                     values:
                       - A100-SXM4-80GB
                   - key: nvidia.com/gpu.count
-                    operator: In
+                    operator: Gt
                     values:
-                      - "4"
-                      - "8"
+                      - "3"
         # Prevent multiple replicas on same node
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -166,6 +165,8 @@ kind: Job
 metadata:
   name: distributed-training
   namespace: ml-workloads
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: Enabled
 spec:
   completions: 4        # Total workers
   parallelism: 4        # Run all workers simultaneously
@@ -184,7 +185,7 @@ spec:
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    job-name: distributed-training
+                    batch.kubernetes.io/job-name: distributed-training
                 topologyKey: kubernetes.io/hostname
       restartPolicy: OnFailure
       containers:
@@ -243,7 +244,7 @@ kubectl get pods -n ml-workloads -o json | \
 ## Best Practices
 
 - Use `requiredDuringSchedulingIgnoredDuringExecution` node affinity for workloads that absolutely need specific GPU types, and `preferred` for workloads that benefit but can fall back.
-- Set `podAntiAffinity` with `requiredDuringScheduling` for HA inference deployments to prevent multiple replicas landing on the same node.
+- Set `podAntiAffinity` with `requiredDuringSchedulingIgnoredDuringExecution` for HA inference deployments to prevent multiple replicas landing on the same node.
 - Combine topology spread constraints with zone-level spreading to protect inference deployments from zone-level failures.
 - Use Indexed Jobs for distributed training to simplify worker rank assignment via `JOB_COMPLETION_INDEX`.
 - Monitor inter-GPU communication with NVIDIA NCCL tests after scheduling to confirm NVLink or InfiniBand connectivity between co-located workers.
