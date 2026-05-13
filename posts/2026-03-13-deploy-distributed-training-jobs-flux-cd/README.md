@@ -14,12 +14,12 @@ Distributed ML training across multiple GPUs and nodes is essential for training
 
 Flux CD brings GitOps discipline to distributed training: every training job configuration - worker count, GPU allocation, hyperparameters via ConfigMaps, and training image versions - is version-controlled. Teams can reproduce any historical training run by checking out the corresponding Git commit.
 
-This guide covers setting up distributed PyTorch and TensorFlow training jobs on Kubernetes using Flux CD, with patterns for job templates, hyperparameter management, and monitoring.
+This guide covers setting up distributed PyTorch and TensorFlow training jobs on Kubernetes using Flux CD and the Kubeflow Training Operator v1 APIs, with patterns for job templates, hyperparameter management, and monitoring.
 
 ## Prerequisites
 
 - Kubernetes cluster with multiple GPU nodes
-- Kubeflow Training Operator deployed (see the companion post)
+- Kubeflow Training Operator v1 deployed (see the companion post). For new Kubeflow Trainer v2 installations, use the `TrainJob` API instead of `PyTorchJob` and `TFJob`.
 - Flux CD v2 bootstrapped to your Git repository
 - Container registry with your training images
 
@@ -218,7 +218,7 @@ kubectl describe pytorchjob resnet50-imagenet-v2 -n ml-training
 - Label training jobs with a run ID and model name to make it easy to filter logs and correlate resource usage across runs.
 - Use ReadWriteMany PVCs or object storage for training data and ReadWriteOnce PVCs for per-job checkpoints to avoid data access conflicts.
 - Set `NCCL_DEBUG=INFO` during initial setup to diagnose inter-node communication issues in distributed training.
-- Configure Flux to only apply changes to completed or non-existent jobs by using the `dependsOn` field to sequence infrastructure before job submission.
+- Use Flux `dependsOn` to sequence infrastructure Kustomizations, such as namespaces, GPU operators, storage, and Kubeflow CRDs, before reconciling training job manifests.
 
 ## Conclusion
 
