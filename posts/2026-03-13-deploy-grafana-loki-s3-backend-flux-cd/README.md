@@ -14,7 +14,7 @@ Grafana Loki is a horizontally scalable log aggregation system designed to be co
 
 Deploying Loki via Flux CD ensures your storage configuration, retention policies, and scaling parameters are all version-controlled. Changes to chunk size, retention period, or S3 bucket configuration flow through a pull request and are applied automatically.
 
-This guide uses Loki's Simple Scalable deployment mode, which provides a good balance between simplicity and scalability for mid-sized environments.
+This guide uses Loki's Simple Scalable deployment mode, which provides a good balance between simplicity and scalability for mid-sized environments. Simple Scalable Deployment mode is being deprecated before Loki 4.0, so use microservices mode for new large production deployments.
 
 ## Prerequisites
 
@@ -49,11 +49,11 @@ stringData:
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: grafana
+  name: grafana-community
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://grafana.github.io/helm-charts
+  url: https://grafana-community.github.io/helm-charts
 ```
 
 ## Step 3: Deploy Loki with S3 Backend via HelmRelease
@@ -72,10 +72,10 @@ spec:
   chart:
     spec:
       chart: loki
-      version: ">=6.0.0 <7.0.0"
+      version: ">=13.0.0 <14.0.0"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
   valuesFrom:
     # Inject S3 credentials from the Secret into Helm values
@@ -95,11 +95,19 @@ spec:
       auth_enabled: false
       commonConfig:
         replication_factor: 2
-      storage:
-        type: s3
-        s3:
+      storage_config:
+        aws:
           region: us-east-1
           bucketnames: my-loki-chunks
+          s3forcepathstyle: false
+      storage:
+        type: s3
+        bucketNames:
+          chunks: my-loki-chunks
+          ruler: my-loki-ruler
+          admin: my-loki-admin
+        s3:
+          region: us-east-1
           s3ForcePathStyle: false
       schemaConfig:
         configs:
@@ -113,6 +121,8 @@ spec:
       limits_config:
         # Retain logs for 30 days
         retention_period: 720h
+      compactor:
+        retention_enabled: true
 
     # Scale write path
     write:
@@ -125,6 +135,10 @@ spec:
     # Single backend component
     backend:
       replicas: 1
+
+    # Use external S3 storage instead of the chart's bundled MinIO
+    minio:
+      enabled: false
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -158,7 +172,7 @@ spec:
 
 - Use schema version `v13` with TSDB index for best performance on Loki 3.x.
 - Set `replication_factor: 2` or higher for production; single-replica clusters lose data if an ingester crashes.
-- Configure S3 lifecycle rules to expire old chunks; Loki's compactor handles index expiry but relies on S3 object expiry for chunk deletion.
+- Enable compactor retention so Loki removes expired index entries and deletes chunk objects asynchronously; S3 lifecycle rules can still be used as an additional safeguard.
 - Use `valuesFrom` to inject S3 credentials from Secrets rather than embedding them directly in HelmRelease values.
 - Enable `auth_enabled: true` in multi-tenant environments and use Grafana datasource per-tenant headers.
 
