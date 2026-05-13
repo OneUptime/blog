@@ -28,7 +28,8 @@ In this guide you will install Score for Kubernetes, write a Score workload spec
 ```bash
 # Install score-k8s CLI
 
-curl -L https://github.com/score-spec/score-k8s/releases/latest/download/score-k8s_linux_amd64.tar.gz | tar xz
+curl -L -o score-k8s.tgz https://github.com/score-spec/score-k8s/releases/download/0.13.0/score-k8s_0.13.0_linux_amd64.tar.gz
+tar xvzf score-k8s.tgz
 sudo mv score-k8s /usr/local/bin/
 
 # Verify installation
@@ -47,7 +48,7 @@ metadata:
 
 containers:
   api:
-    image: ghcr.io/acme/my-service:${IMAGE_TAG}
+    image: .
     command: []
     args: []
 
@@ -100,25 +101,19 @@ resources:
 Define how Score resources map to Kubernetes resources in your platform.
 
 ```yaml
-# .score-k8s/provisioners.yaml
+# score-k8s/provisioners.yaml
 - uri: template://postgres
   type: postgres
-  outputs:
+  outputs: |
     host: postgresql.team-alpha.svc.cluster.local
     port: 5432
-    name: ${resource.metadata.name}
-    username:
-      secret:
-        name: postgresql-credentials
-        key: username
-    password:
-      secret:
-        name: postgresql-credentials
-        key: password
+    name: {{ .SourceWorkload }}
+    username: {{ encodeSecretRef "postgresql-credentials" "username" }}
+    password: {{ encodeSecretRef "postgresql-credentials" "password" }}
 
 - uri: template://redis
   type: redis
-  outputs:
+  outputs: |
     host: redis.team-alpha.svc.cluster.local
     port: 6379
 ```
@@ -134,11 +129,14 @@ on:
     branches: [main]
     paths:
       - score.yaml
-      - .score-k8s/**
+      - score-k8s/**
 
 jobs:
   render:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -146,8 +144,13 @@ jobs:
 
       - name: Install score-k8s
         run: |
-          curl -L https://github.com/score-spec/score-k8s/releases/latest/download/score-k8s_linux_amd64.tar.gz | tar xz
+          curl -L -o score-k8s.tgz https://github.com/score-spec/score-k8s/releases/download/0.13.0/score-k8s_0.13.0_linux_amd64.tar.gz
+          tar xvzf score-k8s.tgz
           sudo mv score-k8s /usr/local/bin/
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build and push image
         id: docker
@@ -160,12 +163,13 @@ jobs:
       - name: Initialize Score state
         run: |
           score-k8s init \
-            --provisioners .score-k8s/provisioners.yaml
+            --provisioners score-k8s/provisioners.yaml
 
       - name: Render Score to Kubernetes manifests
         run: |
+          mkdir -p deploy
           score-k8s generate score.yaml \
-            --image api=ghcr.io/acme/my-service:${{ steps.docker.outputs.tag }} \
+            --image ghcr.io/acme/my-service:${{ steps.docker.outputs.tag }} \
             --namespace team-alpha \
             --output deploy/manifests.yaml
 
@@ -229,16 +233,16 @@ graph LR
     kubesec scan deploy/manifests.yaml
 
     # Check that the output includes the expected resources
-    kubectl get -f deploy/manifests.yaml --ignore-not-found -o name | grep deployment
+    grep -q '^kind: Deployment$' deploy/manifests.yaml
 ```
 
 ## Best Practices
 
 - Commit the Score-rendered manifests to a separate `deploy/` directory distinct from application source code
-- Use Score's `${IMAGE_TAG}` substitution pattern and inject the tag at render time in CI, not at Flux reconcile time
+- Set container images to `.` in Score and inject the built image tag with `score-k8s generate --image` in CI, not at Flux reconcile time
 - Keep provisioner definitions in a shared platform repository so multiple teams benefit from the same resource abstractions
 - Version your provisioners alongside your platform Helm charts to ensure consistency
-- Use `score-k8s validate` in CI to catch Score specification errors before the render step
+- Use `score-k8s generate` in CI to catch Score specification and provisioner errors before committing rendered manifests
 - Document available resource types (postgres, redis, kafka) in your internal developer portal
 
 ## Conclusion
