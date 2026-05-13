@@ -17,9 +17,9 @@ This guide covers enabling Azure Policy on AKS, assigning built-in policies, cre
 ## Prerequisites
 
 - An Azure subscription with permissions to assign policies
-- An AKS cluster running Kubernetes 1.24 or later
-- Flux CLI version 2.0 or later bootstrapped on the cluster
-- Azure CLI version 2.40 or later
+- An AKS cluster running a supported Kubernetes version
+- Flux CLI bootstrapped on the cluster
+- A current Azure CLI installation
 
 ## Step 1: Enable Azure Policy Add-on
 
@@ -64,8 +64,8 @@ az policy assignment create \
 # Require specific labels
 az policy assignment create \
   --name "require-team-label" \
-  --display-name "Require team label on namespaces" \
-  --policy "96670d01-0a4d-4649-9c89-2d3abc0a5025" \
+  --display-name "Require team label on pods" \
+  --policy "46592696-4c7b-4bf3-9e45-6c2763bdc0a6" \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/my-resource-group" \
   --params '{"effect": {"value": "deny"}, "labelsList": {"value": ["team"]}}'
 ```
@@ -172,17 +172,15 @@ spec:
       - "runbook-url"
 ```
 
-## Step 5: Exempt Flux System Namespaces
+## Step 5: Exclude Flux System Namespaces
 
-Flux system components may not conform to all policies. Create policy exemptions:
+Flux system components may not conform to all policies. For Azure Policy assignments, exclude the namespace with the policy parameters instead of using an Azure Policy exemption, which applies to Azure resource scopes rather than Kubernetes namespaces:
 
 ```bash
-az policy exemption create \
-  --name "flux-system-exemption" \
-  --policy-assignment "no-privileged-containers" \
+az policy assignment update \
+  --name "no-privileged-containers" \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/my-resource-group" \
-  --exemption-category Waiver \
-  --description "Flux system controllers require elevated permissions"
+  --params '{"effect": {"value": "deny"}, "excludedNamespaces": {"value": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system", "flux-system"]}}'
 ```
 
 Alternatively, exclude the flux-system namespace in the constraint:
@@ -260,7 +258,7 @@ kubectl describe k8srequiredannotations require-oncall-annotation
 Configure notifications when Flux reconciliation fails due to policy violations:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: policy-violations
@@ -272,7 +270,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: "*"
-  summary: "Policy violation detected in Flux reconciliation"
+  eventMetadata:
+    summary: "Policy violation detected in Flux reconciliation"
 ```
 
 ## Verifying the Setup
