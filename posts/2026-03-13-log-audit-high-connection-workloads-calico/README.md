@@ -33,13 +33,23 @@ spec:
   order: 100
   selector: app == 'high-throughput-service'
   ingress:
+    - action: Log
+      source:
+        selector: tier == 'client'
     - action: Allow
       source:
         selector: tier == 'client'
   egress:
+    - action: Log
+      destination:
+        selector: app == 'backend-pool'
     - action: Allow
       destination:
         selector: app == 'backend-pool'
+    - action: Log
+      protocol: UDP
+      destination:
+        ports: [53]
     - action: Allow
       protocol: UDP
       destination:
@@ -55,8 +65,8 @@ spec:
 # Tune Felix for high-connection workloads
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "ipSetSize": 1048576,
     "maxIpsetSize": 1048576,
+    "bpfMapSizeConntrack": 1048576,
     "prometheusMetricsEnabled": true
   }
 }'
