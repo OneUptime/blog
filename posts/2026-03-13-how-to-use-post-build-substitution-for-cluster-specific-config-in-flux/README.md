@@ -227,10 +227,10 @@ kubectl get ingress my-app -o jsonpath='{.spec.rules[0].host}'
 You can also check the Kustomization status for any substitution errors:
 
 ```bash
-flux get kustomization app
+flux get kustomizations
 ```
 
-If a variable is referenced in a manifest but not defined, Flux will leave the placeholder as-is and report a warning in the Kustomization status.
+If a variable is referenced in a manifest but not defined, Flux substitutes it with an empty string unless you provide a default value such as `${VAR_NAME:=default}`. If you want reconciliation to fail when a variable is missing, enable the `StrictPostBuildSubstitutions` feature gate on the kustomize-controller.
 
 ## Conclusion
 
