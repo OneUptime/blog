@@ -20,7 +20,7 @@ In this guide you will configure a Kubernetes Deployment with a Flyway init cont
 
 - A Kubernetes cluster with Flux CD installed
 - `kubectl` and `flux` CLI tools installed
-- A PostgreSQL (or compatible) database accessible from the cluster
+- A PostgreSQL (or compatible) database accessible from the cluster, with a migration user that can apply schema changes
 - A Docker image containing your migration tool (e.g., `flyway/flyway` or `liquibase/liquibase`)
 - Basic understanding of Kubernetes init containers
 
@@ -39,6 +39,8 @@ metadata:
 data:
   # Flyway naming convention: V{version}__{description}.sql
   V1__create_users_table.sql: |
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
     CREATE TABLE IF NOT EXISTS users (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email       VARCHAR(255) UNIQUE NOT NULL,
@@ -46,7 +48,7 @@ data:
       updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
-    CREATE INDEX idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
   V2__create_orders_table.sql: |
     CREATE TABLE IF NOT EXISTS orders (
@@ -57,8 +59,8 @@ data:
       created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
 
-    CREATE INDEX idx_orders_user_id ON orders(user_id);
-    CREATE INDEX idx_orders_status ON orders(status);
+    CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 
   V3__add_audit_columns.sql: |
     ALTER TABLE users
@@ -95,9 +97,6 @@ kind: Deployment
 metadata:
   name: backend-api
   namespace: app
-  annotations:
-    # Flux will update this annotation on each reconciliation
-    fluxcd.io/automated: "true"
 spec:
   replicas: 3
   selector:
@@ -107,6 +106,9 @@ spec:
     metadata:
       labels:
         app: backend-api
+      annotations:
+        # Update this value when migration-only ConfigMap changes should create new Pods
+        migrations.revision: "v3"
     spec:
       # Init containers run to completion before main containers start
       initContainers:
@@ -132,7 +134,7 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: FLYWAY_PASSWORD
-            # Baseline on migrate handles pre-existing databases
+            # Enable only when onboarding a non-empty database without Flyway history
             - name: FLYWAY_BASELINE_ON_MIGRATE
               value: "true"
           volumeMounts:
@@ -241,11 +243,6 @@ spec:
   # Database must be running before migrations can run
   dependsOn:
     - name: postgresql
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: backend-api
-      namespace: app
 ```
 
 ## Step 6: Monitor Migration Execution
@@ -263,7 +260,7 @@ kubectl logs -n app -l app=backend-api -c flyway-migration | tail -20
 # If migration fails, the pod will be in Init:Error state
 kubectl describe pod -n app -l app=backend-api
 
-# Force Flux to reconcile and re-run migrations
+# Reconcile after committing a Deployment pod-template change, such as image tag or migrations.revision
 flux reconcile kustomization backend-api --with-source
 ```
 
@@ -284,13 +281,13 @@ data:
     );
 ```
 
-Flux detects the ConfigMap change, reconciles the Deployment (causing a rolling restart), and the Flyway init container runs V4 before the new app version starts.
+Also update the Deployment pod template, such as changing `migrations.revision` to `"v4"` or deploying a new application image tag. Flux detects the Git change and applies it; Kubernetes then creates new Pods because the Deployment pod template changed, and the Flyway init container runs V4 before the new app version starts.
 
 ## Best Practices
 
 - Set a generous `timeout` in your Flux Kustomization to allow for slow migrations
 - Use migration tools that support idempotency so re-runs are safe
-- Always use `FLYWAY_BASELINE_ON_MIGRATE=true` for databases with pre-existing data
+- Use `FLYWAY_BASELINE_ON_MIGRATE=true` only when intentionally onboarding a non-empty database that does not already have a Flyway schema history table
 - Store migration SQL files in Git - never generate them dynamically at runtime
 - Test migrations in a staging environment against a copy of production data before promoting
 - Set resource limits on init containers to prevent them from consuming excessive memory during large migrations
