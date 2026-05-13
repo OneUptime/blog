@@ -16,7 +16,7 @@ When service advertisement is configured, Calico watches the Kubernetes API for 
 
 ## Prerequisites
 
-- Calico v3.10+ with BGP mode
+- Calico v3.21+ with BGP mode
 - At least one external BGP peer configured
 - Kubernetes services to be advertised
 
@@ -51,7 +51,7 @@ calicoctl apply -f bgp-service-config.yaml
 
 ## Configure LoadBalancer IP Advertisement
 
-To advertise individual LoadBalancer IPs, annotate services or create an IP pool for LoadBalancer addresses:
+To allocate LoadBalancer IPs with Calico IPAM, create an IP pool for LoadBalancer addresses:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -61,7 +61,9 @@ metadata:
 spec:
   cidr: 192.168.100.0/24
   disabled: false
-  nodeSelector: "!all()"  # Don't use for pod IPs
+  assignmentMode: Automatic
+  allowedUses:
+  - LoadBalancer
 ```
 
 Create a service with a LoadBalancer IP from this pool:
@@ -87,7 +89,7 @@ spec:
 Configure advertisement of specific service LoadBalancer IPs:
 
 ```bash
-calicoctl patch bgpconfiguration default --type merge \
+calicoctl patch bgpconfiguration default \
   --patch '{"spec":{"serviceLoadBalancerIPs":[{"cidr":"192.168.100.0/24"}]}}'
 ```
 
