@@ -14,30 +14,40 @@ RBAC for Tiered Policies is an advanced Calico feature that provides fine-graine
 
 Calico's `projectcalico.org/v3` API provides rich support for RBAC Tiered Policies through its `GlobalNetworkPolicy`, `NetworkPolicy`, and related resources. Proper configuration of RBAC Tiered Policies is essential for maintaining a secure, well-controlled network fabric.
 
-This guide provides production-tested patterns for migrate RBAC Tiered Policies, including YAML examples, CLI commands, and troubleshooting techniques.
+This guide provides production-tested patterns for migrating RBAC Tiered Policies, including YAML examples, CLI commands, and troubleshooting techniques.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico and the Calico API server or native `projectcalico.org/v3` CRDs enabled
 - `calicoctl` and `kubectl` installed  
 - Basic understanding of Calico network policy concepts
-- Calico v3.26+ for full RBAC Tiered Policies feature support
+- Cluster-admin access to create tiers and Kubernetes RBAC resources
 
 ## Core Configuration
 
-The following YAML demonstrates the key pattern for RBAC Tiered Policies:
+The following YAML demonstrates the key pattern for RBAC Tiered Policies. Keep the Calico resources and Kubernetes RBAC resources in separate files when using `calicoctl`, because `calicoctl` only manages Calico resource types.
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: net-sec
+spec:
+  order: 100
+  defaultAction: Deny
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
-  name: migrate-rbac-tiered-policies
+  name: net-sec.migrate-rbac-tiered-policies
   namespace: production
 spec:
+  tier: net-sec
   order: 100
   selector: all()
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: app == 'authorized-source'
       destination:
@@ -53,24 +63,77 @@ spec:
   types:
     - Ingress
     - Egress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: production-net-sec-tier-reader
+rules:
+  - apiGroups: ["projectcalico.org"]
+    resources: ["tiers"]
+    resourceNames: ["net-sec"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: production-net-sec-policy-manager
+rules:
+  - apiGroups: ["projectcalico.org"]
+    resources: ["tier.networkpolicies"]
+    resourceNames: ["net-sec.*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: production-team-can-read-net-sec-tier
+subjects:
+  - kind: Group
+    name: production-team
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: production-net-sec-tier-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: production-team-can-manage-net-sec-policies
+  namespace: production
+subjects:
+  - kind: Group
+    name: production-team
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: production-net-sec-policy-manager
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Implementation Steps
 
 ```bash
-# 1. Apply the policy
+# 1. Validate the Calico policy and tier resources before applying
+calicoctl validate -f migrate-rbac-tiered-policies.yaml
 
+# 2. Apply the Kubernetes RBAC resources
+kubectl apply -f migrate-rbac-tiered-policy-rbac.yaml
+
+# 3. Apply the Calico tier and policy
 calicoctl apply -f migrate-rbac-tiered-policies.yaml
 
-# 2. Verify it's active
-calicoctl get networkpolicies -n production -o wide
+# 4. Verify the policy is active in the expected tier
+kubectl get networkpolicies.p -n production --field-selector spec.tier=net-sec
+calicoctl get networkpolicy net-sec.migrate-rbac-tiered-policies -n production -o yaml
 
-# 3. Test connectivity
+# 5. Test connectivity
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
 echo "Exit code: $?"
 
-# 4. Check policy hit counters (if Felix metrics enabled)
-curl -s http://localhost:9091/metrics | grep felix_denied
+# 6. Check Felix metrics if Prometheus metrics are enabled
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 ```
 
 ## Operational Commands
@@ -79,12 +142,13 @@ curl -s http://localhost:9091/metrics | grep felix_denied
 # List all relevant policies
 calicoctl get networkpolicies --all-namespaces
 calicoctl get globalnetworkpolicies
+kubectl get networkpolicies.p --all-namespaces --field-selector spec.tier=net-sec
 
 # View policy details
-calicoctl get networkpolicy migrate-policy -n production -o yaml
+calicoctl get networkpolicy net-sec.migrate-rbac-tiered-policies -n production -o yaml
 
 # Delete a policy if needed
-calicoctl delete networkpolicy migrate-policy -n production
+calicoctl delete networkpolicy net-sec.migrate-rbac-tiered-policies -n production
 ```
 
 ## Architecture
@@ -93,17 +157,17 @@ calicoctl delete networkpolicy migrate-policy -n production
 flowchart TD
     A[Workload Pods] -->|Traffic| B{RBAC Tiered Policies Policy}
     B -->|Allow Rule| C[Target Service]
-    B -->|Default Deny| D[Blocked]
-    E[calicoctl] -->|Manages| B
+    B -->|Tier Default Deny| D[Blocked]
+    E[kubectl RBAC + calicoctl] -->|Manages| B
     F[Felix] -->|Enforces| B
     G[Prometheus :9091] -->|Metrics from| F
 ```
 
 ## Common Issues
 
-1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
-2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
-3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
+1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl validate -f <file>` first
+2. **Selector not matching**: Translate the Calico selector to a Kubernetes label selector such as `kubectl get pods -l app=authorized-source` to verify label matches
+3. **Order conflicts**: Run `calicoctl get networkpolicies --all-namespaces -o wide` and `calicoctl get globalnetworkpolicies -o wide`, then sort by the tier and order fields
 4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress
 
 ## Conclusion
