@@ -12,14 +12,14 @@ Description: An in-depth explanation of how the Star Wars demo application expos
 
 The demo application powering the Cilium Star Wars scenario is deliberately designed to expose both safe and dangerous HTTP endpoints. This design choice makes it possible to demonstrate the limitations of L3/L4 policies - which can only control whether a connection is established - versus L7 policies, which can control what happens once a connection is open. The `/v1/exhaust-port` endpoint is the smoking gun: an L3/L4 policy cannot block it when the `tiefighter` already has permission to connect on port 80.
 
-Explaining this nuance is the whole point of the demo application. In real systems, this maps precisely to scenarios like an authenticated service calling a privileged administrative API that it should not have access to. Port 443 is open, TLS is valid, but the `/admin/drop-database` path should be forbidden. Standard `NetworkPolicy` cannot help here. Cilium can.
+Explaining this nuance is the whole point of the demo application. In real systems, this maps precisely to scenarios like an authenticated service calling a privileged administrative API that it should not have access to. A connection to the service is allowed, but the `/admin/drop-database` path should be forbidden. Standard `NetworkPolicy` cannot help here. Cilium can, as long as the HTTP layer is visible to its L7 proxy, such as with plaintext HTTP, TLS termination, or configured TLS inspection.
 
 This document explains the demo application's HTTP interface, how Cilium intercepts and parses HTTP traffic using its L7 proxy, and how policy decisions at the HTTP layer are made without a sidecar.
 
 ## Prerequisites
 
 - Star Wars demo deployed on a Cilium-enabled cluster
-- Cilium CLI installed
+- `kubectl` access to the cluster and `cilium-dbg` available in the Cilium agent pod
 - Basic understanding of HTTP methods and paths
 
 ## The Application's HTTP Interface
@@ -45,7 +45,7 @@ sequenceDiagram
 ```bash
 # Verify health endpoint
 
-kubectl exec tiefighter -- curl -sv http://deathstar.default.svc.cluster.local/v1/health
+kubectl exec tiefighter -- curl -sv http://deathstar.default.svc.cluster.local/v1/healthz
 
 # Test landing request - primary use case
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
@@ -55,16 +55,16 @@ kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 ```
 
-## How Cilium Parses HTTP at the Kernel Level
+## How Cilium Enforces HTTP Policy
 
-Cilium's L7 policy enforcement uses a redirect mechanism: when an HTTP policy is active, the eBPF program redirects matching traffic to Cilium's userspace proxy (based on Envoy). The proxy parses the HTTP headers, evaluates the path and method against the policy, and either forwards or drops the request.
+Cilium's L7 policy enforcement uses a redirect mechanism: when an HTTP policy is active, the eBPF datapath redirects matching traffic to Cilium's userspace proxy (based on Envoy). The proxy parses the HTTP headers, evaluates the path and method against the policy, and either forwards or rejects the request.
 
 ```bash
 # Inspect the L7 proxy activity
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type l7
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor -v --type l7
 
-# View proxy redirect rules
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+# View the node-local Envoy listeners
+kubectl exec -n kube-system ds/cilium -- cilium-dbg envoy admin listeners
 ```
 
 ## The L7 Policy Resource
@@ -99,10 +99,10 @@ The `rules.http` section is what makes this L7-aware. Without it, the policy wou
 
 ```bash
 # Monitor all drops in real time
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop
 
-# Check policy verdicts for the deathstar endpoint
-kubectl exec -n kube-system ds/cilium -- cilium policy get
+# Check policy verdict events
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 ```
 
 ## Conclusion
