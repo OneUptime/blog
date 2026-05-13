@@ -133,7 +133,7 @@ data:
 
 ## Comparison: SSO and Identity Integration
 
-**Flux CD** has no UI, so SSO applies only to kubectl access, which is managed at the Kubernetes API server level (OIDC, LDAP via kube-apiserver flags). This means SSO configuration is cluster-wide and managed by the platform team, not Flux-specific.
+**Flux CD** has no UI, so SSO applies only to kubectl access, which is managed at the Kubernetes API server level. Kubernetes supports OIDC/JWT authentication natively; LDAP or SAML integrations typically require an authenticating proxy or authentication webhook. This means SSO configuration is cluster-wide and managed by the platform team, not Flux-specific.
 
 **ArgoCD** includes Dex as an embedded OIDC provider, supporting GitHub OAuth, GitLab OAuth, SAML 2.0, LDAP, and custom OIDC providers. RBAC roles map to SSO groups, making it straightforward to connect ArgoCD access to existing identity providers:
 
@@ -144,19 +144,18 @@ data:
   oidc.config: |
     name: Okta
     issuer: https://your-org.okta.com
-    clientId: $oidc-client-id
+    clientID: your-argo-cd-client-id
     clientSecret: $oidc-client-secret
     requestedScopes: ["openid", "profile", "email", "groups"]
-    groupsClaim: groups
 ```
 
 **Edge**: ArgoCD has significantly more powerful built-in UI RBAC and SSO integration. Flux CD requires external solutions for UI access control.
 
 ## Comparison: Audit Logging
 
-**Flux CD**: All reconciliation actions are recorded as Kubernetes Events, which can be collected by standard logging infrastructure. The audit trail is Kubernetes-native.
+**Flux CD**: Flux controllers emit Kubernetes Events during reconciliation, which can be collected by standard logging infrastructure. The audit trail is Kubernetes-native.
 
-**ArgoCD**: Provides an application audit log visible in the UI and via the API, in addition to Kubernetes Events. The ArgoCD audit log records who synced an application, when, and what changed.
+**ArgoCD**: Emits Kubernetes Events for application activity, including the responsible actor when applicable, and exposes application history through the UI and CLI. Git history remains the primary record of what changed in application manifests.
 
 **Edge**: ArgoCD provides a more accessible audit trail, especially for non-platform teams using the UI.
 
@@ -164,13 +163,13 @@ data:
 
 **Flux CD**: With the right RBAC configuration, tenants can create their own Kustomizations in their namespace without platform team involvement. This is GitOps-native: tenants commit to their own repository path and Flux reconciles.
 
-**ArgoCD**: Requires a platform team to create Projects for each tenant unless using ApplicationSets with project templates. However, ArgoCD offers the Application-in-Any-Namespace feature to allow tenants to manage Applications in their own namespace.
+**ArgoCD**: Requires a platform team to create Projects for each tenant unless using ApplicationSets with project templates. However, ArgoCD offers the Application-in-Any-Namespace feature to allow tenants to manage Applications in their own namespace when the feature is enabled and the AppProject permits those source namespaces.
 
 ## Best Practices
 
 - Use Flux CD when your team is comfortable managing multi-tenancy through Kubernetes RBAC and namespace isolation.
 - Use ArgoCD when you need a rich, SSO-integrated UI with self-service application management for multiple teams.
-- Regardless of tool, enforce namespace resource whitelisting to prevent tenants from creating ClusterRoles or modifying cluster-scoped resources.
+- Regardless of tool, enforce resource restrictions to prevent tenants from creating ClusterRoles or modifying cluster-scoped resources: use Kubernetes RBAC/admission policy with Flux CD and Project resource allow/deny lists with ArgoCD.
 - Integrate both tools with your organizational SSO provider for centralized identity management.
 
 ## Conclusion
