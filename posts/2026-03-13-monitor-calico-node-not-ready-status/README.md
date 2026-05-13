@@ -10,7 +10,7 @@ Description: Monitor for Calico-related node NotReady conditions using kube-stat
 
 ## Introduction
 
-Monitoring for node NotReady status caused by Calico requires tracking both node conditions and calico-node pod readiness in parallel. A calico-node pod becoming not-ready is an early warning signal that typically precedes the node NotReady condition by 30-60 seconds. Alerting on calico-node readiness provides a head start on response.
+Monitoring for node NotReady status caused by Calico requires tracking both node conditions and calico-node pod readiness in parallel. A calico-node pod becoming not-ready can be an early warning signal for some Calico failures, but the lead time depends on the failure mode and cluster settings. Alerting on calico-node readiness provides useful context alongside node condition alerts.
 
 ## Symptoms
 
@@ -26,7 +26,7 @@ Monitoring for node NotReady status caused by Calico requires tracking both node
 
 ```bash
 kubectl get nodes
-kubectl get pods -n kube-system -l k8s-app=calico-node
+kubectl get pods -A -l k8s-app=calico-node
 ```
 
 ## Solution
@@ -46,7 +46,7 @@ spec:
     - alert: CalicoNodePodNotReady
       expr: |
         kube_pod_status_ready{
-          namespace="kube-system",
+          namespace=~"kube-system|calico-system",
           pod=~"calico-node-.*",
           condition="true"
         } == 0
@@ -66,8 +66,8 @@ spec:
 
 Monitor these metrics:
 - `kube_node_status_condition{condition="Ready"}` - node readiness
-- `kube_pod_status_ready{namespace="kube-system",pod=~"calico-node-.*"}` - calico-node readiness
-- `kube_pod_container_status_restarts_total{container="calico-node"}` - restart rate
+- `kube_pod_status_ready{namespace=~"kube-system|calico-system",pod=~"calico-node-.*"}` - calico-node readiness
+- `rate(kube_pod_container_status_restarts_total{container="calico-node"}[5m])` - restart rate
 
 **Step 3: Event watcher**
 
@@ -88,9 +88,9 @@ flowchart LR
 ## Prevention
 
 - Deploy both alerts: calico-node readiness and node readiness
-- Set calico-node alert threshold at 2 minutes to alert before node impact
+- Set calico-node alert threshold at 2 minutes to avoid alerting on brief readiness probe flaps
 - Include calico-node readiness in cluster health dashboards
 
 ## Conclusion
 
-Monitoring Calico node NotReady status requires two layers: calico-node pod readiness (early warning at 2 minutes) and node NotReady condition (urgent alert). The combination provides both early warning and a confirmed critical alert, enabling tiered response.
+Monitoring Calico node NotReady status requires two layers: calico-node pod readiness and node NotReady condition. The combination provides both Calico-specific context and a confirmed critical alert, enabling tiered response.
