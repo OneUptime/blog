@@ -23,7 +23,7 @@ Without monitoring, these problems are typically discovered only when they cause
 
 ## Step 1: Monitor etcd Storage Size
 
-etcd has a configurable storage quota (default 8GB). Monitor usage:
+etcd has a configurable storage quota (default 2 GiB, with 8 GiB recommended as the normal maximum). Monitor usage:
 
 ```bash
 # Check etcd database size
@@ -31,17 +31,17 @@ etcd has a configurable storage quota (default 8GB). Monitor usage:
 etcdctl endpoint status --write-out=table
 
 # Via Prometheus
-curl http://etcd:2381/metrics | grep etcd_mvcc_db_total_size_in_bytes
+curl http://etcd:2379/metrics | grep etcd_mvcc_db_total_size_in_bytes
 ```
 
 ```yaml
 - alert: CalicoEtcdStorageHigh
-  expr: etcd_mvcc_db_total_size_in_bytes / 1e9 > 5
+  expr: etcd_mvcc_db_total_size_in_bytes / 1024 / 1024 / 1024 > 1.5
   for: 10m
   labels:
     severity: warning
   annotations:
-    summary: "etcd storage is {{ $value }}GB - approaching quota"
+    summary: "etcd storage is {{ $value }}GiB - approaching quota"
 ```
 
 ## Step 2: Monitor IPAM Pool Utilization
@@ -77,8 +77,8 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  calicoctl ipam show --show-blocks --output=json > /tmp/ipam.json
-                  # Parse and push to monitoring system
+                  calicoctl ipam show --show-blocks > /tmp/ipam.txt
+                  # Parse the table output and push to monitoring system
           restartPolicy: OnFailure
 ```
 
@@ -88,7 +88,8 @@ Unexpected changes in policy count can indicate policy manipulation:
 
 ```bash
 # Record policy count periodically
-etcdctl get /calico/v1/policy/ --prefix --keys-only | wc -l
+etcdctl get /calico/resources/v3/projectcalico.org/networkpolicies/ --prefix --keys-only | wc -l
+etcdctl get /calico/resources/v3/projectcalico.org/globalnetworkpolicies/ --prefix --keys-only | wc -l
 ```
 
 ```yaml
@@ -108,15 +109,15 @@ Unusual growth in Calico etcd key count indicates leaks:
 
 ```bash
 # Track key count over time
-etcdctl get /calico/v1/ipam/ --prefix --keys-only | wc -l
-etcdctl get /calico/v1/host/ --prefix --keys-only | wc -l
+etcdctl get /calico/ipam/v2/ --prefix --keys-only | wc -l
+etcdctl get /calico/resources/v3/projectcalico.org/hostendpoints/ --prefix --keys-only | wc -l
 ```
 
 Alert on rapid growth:
 
 ```yaml
 - alert: CalicoEtcdIPAMKeyGrowth
-  expr: rate(calico_etcd_ipam_key_count[1h]) > 50
+  expr: calico_etcd_ipam_key_count - calico_etcd_ipam_key_count offset 1h > 50
   for: 30m
   labels:
     severity: warning
@@ -126,10 +127,10 @@ Alert on rapid growth:
 
 ## Step 5: etcd Compaction Health
 
-Calico data in etcd requires regular compaction to reclaim space from deleted keys:
+Calico data in etcd requires regular compaction to remove old revisions, followed by defragmentation when you need to return free backend space to the filesystem:
 
 ```bash
-# Check compaction revision
+# Check current etcd revision
 etcdctl endpoint status --write-out=json | \
   python3 -c "import json,sys; d=json.load(sys.stdin); print('Revision:', d[0]['Status']['header']['revision'])"
 ```
@@ -138,6 +139,12 @@ Configure automatic compaction:
 
 ```bash
 etcd --auto-compaction-mode=periodic --auto-compaction-retention=1h
+```
+
+Defragment members after compaction when database size needs to shrink on disk:
+
+```bash
+etcdctl defrag --cluster
 ```
 
 ## Conclusion
