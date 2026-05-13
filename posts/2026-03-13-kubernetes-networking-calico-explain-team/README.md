@@ -33,7 +33,7 @@ kubectl get nodes
 
 ```
 
-This makes the CNI's role concrete: without it, pods cannot be scheduled and nodes cannot communicate. Calico is what makes the cluster functional at the network layer.
+This makes the CNI's role concrete: without it, pods may be assigned to nodes, but the kubelet cannot create their network sandbox and the nodes remain NotReady. Calico is what makes the cluster functional at the network layer.
 
 ## Teaching the Pod IP Model
 
@@ -48,7 +48,7 @@ kubectl run pod-b --image=busybox -- sleep 3600
 kubectl get pods -o wide
 
 # Show they can communicate directly
-kubectl exec pod-b -- ping $(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
+kubectl exec pod-b -- ping -c 3 $(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
 ```
 
 Then show where the IP came from:
@@ -68,7 +68,7 @@ Show the host routing table on a node to make cross-node routing visible:
 ip route show | grep "via"
 ```
 
-Each entry is a route Felix programmed for pods on another node. This is the "every pod can reach every other pod" guarantee made concrete - there is literally a route for each remote pod subnet.
+The Calico entries matching the pod CIDR are routes for pods on other nodes. Depending on the Calico routing mode, those cluster routes may be distributed by BGP or programmed by Felix directly. This is the "every pod can reach every other pod" guarantee made concrete - there is a route for each remote pod block or, in some modes, each remote pod IP.
 
 ```mermaid
 graph LR
@@ -91,18 +91,18 @@ kubectl apply -f deny-all-ingress.yaml
 kubectl exec pod-b -- wget --timeout=5 -qO- $(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
 # Should time out
 
-# Show the iptables rule that enforces it (iptables mode)
+# Show the Calico iptables chains that enforce it (iptables mode)
 # On the node running pod-a:
-sudo iptables -L cali-pi-inbound-policy -n --line-numbers
+sudo iptables-save | grep cali-
 ```
 
 ## Common Questions and Answers
 
 **Q: Why does my pod have a /32 IP when the pool is a /16?**
-A: Calico allocates host routes per-pod - each pod gets a host route on the node, not a subnet broadcast domain. The /32 makes routing more specific and avoids broadcast traffic.
+A: Calico treats pod addresses as routed workload endpoints, not as members of a subnet broadcast domain inside the pod. Local pod routes are typically /32 routes on the node, while routes between nodes may be advertised or programmed as blocks or as individual workload routes depending on the Calico mode.
 
 **Q: What happens if the IPPool runs out of IPs?**
-A: New pods will fail to schedule with IPAM exhaustion errors. Show with `calicoctl ipam show` and walk through how to expand the pool.
+A: New pods may still be assigned to nodes, but their sandbox creation fails when Calico IPAM cannot allocate an address. Show the exhaustion with `calicoctl ipam show` and walk through how to expand the pool.
 
 ## Best Practices
 
