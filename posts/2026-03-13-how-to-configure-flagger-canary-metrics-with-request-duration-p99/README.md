@@ -88,7 +88,7 @@ spec:
     )
 ```
 
-The template variables `{{ namespace }}`, `{{ target }}`, and `{{ interval }}` are automatically populated by Flagger at query time. `{{ target }}` resolves to the canary workload name (with the `-canary` suffix appended by Flagger), `{{ namespace }}` resolves to the Canary resource namespace, and `{{ interval }}` resolves to the metric interval you specify.
+The template variables `{{ namespace }}`, `{{ target }}`, and `{{ interval }}` are automatically populated by Flagger at query time. `{{ target }}` resolves to the target workload name from `spec.targetRef.name`, `{{ namespace }}` resolves to the Canary resource namespace, and `{{ interval }}` resolves to the metric interval you specify.
 
 ## Referencing the Custom MetricTemplate in a Canary
 
