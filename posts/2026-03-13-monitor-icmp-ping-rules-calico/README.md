@@ -31,15 +31,17 @@ kubectl patch felixconfiguration default --type=merge -p '{"spec":{"prometheusMe
 ## Step 2: Key Metrics
 
 ```promql
-# Denied packets rate
+# Selector evaluation rate
 
-rate(felix_denied_packets_total[5m])
+rate(felix_label_index_selector_evals[5m])
 
-# Active policies
-felix_active_network_policies
+# Active local policies
 
-# Policy evaluation rate
-rate(felix_policy_evaluation_total[5m])
+felix_active_local_policies
+
+# Cluster-wide policy count
+
+felix_cluster_num_policies
 ```
 
 ## Step 3: Set Up Alerts
@@ -53,18 +55,18 @@ spec:
   groups:
     - name: calico.policy
       rules:
-        - alert: HighDenialRate
-          expr: rate(felix_denied_packets_total[5m]) > 50
+        - alert: HighSelectorEvaluationRate
+          expr: sum(rate(felix_label_index_selector_evals[5m])) > 1000
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "High packet denial rate for ICMP Rules policies"
+            summary: "High selector evaluation rate after ICMP Rules policy changes"
 ```
 
 ## Step 4: Grafana Dashboard
 
-Track denial rates, policy evaluation counts, and active policy counts on a single dashboard to quickly spot anomalies related to ICMP Rules policy changes.
+Track selector evaluation rates, active policy counts, and cluster-wide policy counts on a single dashboard to quickly spot anomalies related to ICMP Rules policy changes.
 
 ## Architecture
 
