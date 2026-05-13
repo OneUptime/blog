@@ -138,7 +138,7 @@ spec:
       containers:
         - name: fluent-bit
           # Use the Windows-specific Fluent Bit image
-          image: cr.fluentbit.io/fluent/fluent-bit:windows-amd64-latest
+          image: cr.fluentbit.io/fluent/fluent-bit:windows-2022-3.2.10
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: fluent-bit-config
