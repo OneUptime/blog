@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Ruby On Rail, Ruby, PostgreSQL, Migration
+Tags: Flux CD, Kubernetes, GitOps, Ruby on Rails, Ruby, PostgreSQL, Migration
 
 Description: Deploy a Ruby on Rails application with database migrations to Kubernetes using Flux CD, handling asset precompilation and the migration Job pattern.
 
@@ -10,9 +10,9 @@ Description: Deploy a Ruby on Rails application with database migrations to Kube
 
 ## Introduction
 
-Ruby on Rails is a full-stack web framework known for its convention-over-configuration philosophy and developer productivity. Deploying Rails to Kubernetes involves several steps beyond a simple stateless API: asset precompilation, database migrations, and a production WSGI server like Puma. Getting these right in a GitOps workflow requires deliberate ordering and configuration.
+Ruby on Rails is a full-stack web framework known for its convention-over-configuration philosophy and developer productivity. Deploying Rails to Kubernetes involves several steps beyond a simple stateless API: asset precompilation, database migrations, and a production Rack server like Puma. Getting these right in a GitOps workflow requires deliberate ordering and configuration.
 
-Flux CD's dependency management is a natural fit for the Rails deployment lifecycle. You can declare a migration Job, a Kustomization for the Rails web server, and a Kustomization for background Sidekiq workers, with explicit `dependsOn` relationships that ensure migrations run first, then the web server, then the workers.
+Flux CD's dependency management is a natural fit for the Rails deployment lifecycle. You can declare a migration Job, a Kustomization for the Rails web server, and, if needed, a Kustomization for background Sidekiq workers, with explicit `dependsOn` relationships that ensure migrations run before the workloads that use the database.
 
 This guide covers the Rails multi-stage Dockerfile with asset precompilation, the migration Job pattern, and the full Flux pipeline.
 
@@ -84,7 +84,6 @@ metadata:
   name: rails-migrate-v1-0-0     # Version-stamp for each release
   namespace: my-rails-app
 spec:
-  ttlSecondsAfterFinished: 300
   backoffLimit: 2
   template:
     spec:
