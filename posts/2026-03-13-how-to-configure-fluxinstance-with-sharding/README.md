@@ -16,7 +16,7 @@ The Flux Operator supports sharding through the FluxInstance CRD, allowing you t
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later) with sufficient resources for multiple controller replicas
+- A Kubernetes cluster running a version supported by your selected Flux release (for Flux v2.8, Kubernetes v1.33-v1.35) with sufficient resources for multiple controller replicas
 - kubectl configured to access your cluster
 - The Flux Operator installed in your cluster
 - Familiarity with Flux controllers and resource reconciliation
