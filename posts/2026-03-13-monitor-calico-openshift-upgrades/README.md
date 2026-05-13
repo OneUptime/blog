@@ -30,7 +30,7 @@ while true; do
   TOTAL=$(kubectl get nodes --no-headers | wc -l)
   UPDATED=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
     -o jsonpath='{range .items[*]}{.spec.containers[0].image}{"\n"}{end}' | \
-    grep -c "${TARGET_VERSION}" || echo 0)
+    grep -c "${TARGET_VERSION}" || true)
   echo "Nodes updated: ${UPDATED}/${TOTAL}"
 
   # TigeraStatus
@@ -46,9 +46,10 @@ while true; do
 
   echo ""
   echo "--- Cluster Operators ---"
-  oc get co --no-headers 2>/dev/null | \
-    awk '{if($3!="True" || $4!="False" || $5!="False") print "DEGRADED:", $0}' | \
-    head -5 || echo "All operators healthy"
+  oc get co --no-headers 2>/dev/null | awk '
+    $3!="True" || $4!="False" || $5!="False" { print "UNHEALTHY:", $0; found=1 }
+    END { if (!found) print "All operators healthy" }
+  ' | head -5
 
   sleep 15
 done
@@ -61,18 +62,26 @@ done
 # can also scrape Calico metrics without external Prometheus
 
 # Enable user-workload monitoring
-oc patch configmap cluster-monitoring-config -n openshift-monitoring \
-  --type=merge -p '{"data":{"config.yaml":"enableUserWorkload: true\n"}}'
+oc apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true
+EOF
 
-# Apply Calico ServiceMonitors to openshift-monitoring
+# Apply Calico ServiceMonitors to calico-system
 # (Note: ServiceMonitors go in calico-system, not openshift-monitoring)
 ```
 
 ## Alert for OCP-Calico Interaction Issues
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
+apiVersion: monitoring.openshift.io/v1
+kind: AlertingRule
 metadata:
   name: calico-ocp-upgrade-alerts
   namespace: openshift-monitoring
@@ -82,14 +91,15 @@ spec:
       rules:
         - alert: OCPMCPUpdatingDuringCalicoUpgrade
           expr: |
-            (mco_machine_config_pool_updating == 1)
+            (mco_updated_machine_count < mco_machine_count)
             and on()
-            (kube_daemonset_status_updated_number_scheduled{daemonset="calico-node"} <
-             kube_daemonset_status_desired_number_scheduled{daemonset="calico-node"})
+            (kube_daemonset_status_updated_number_scheduled{namespace="calico-system", daemonset="calico-node"} <
+             kube_daemonset_status_desired_number_scheduled{namespace="calico-system", daemonset="calico-node"})
           for: 5m
+          labels:
+            severity: warning
           annotations:
-            summary: "MachineConfigPool updating while Calico upgrade in progress"
-            description: "Concurrent MCP and Calico updates may interfere. Consider pausing one."
+            message: "MachineConfigPool updating while Calico upgrade is in progress. Concurrent MCP and Calico updates may interfere. Consider pausing one."
 ```
 
 ## Conclusion
