@@ -25,7 +25,7 @@ The minimum eBPF knowledge for on-call rotation:
 ## Module 2: Diagnostic Tools (2 hours)
 - Using bpftool prog list / map list
 - Reading Felix logs for eBPF events
-- Using calico-node -bpf-* commands
+- Using calico-node -bpf subcommands (conntrack, nat, routes, ipsets, counters)
 - Running the diagnostic bundle script
 
 ## Module 3: Common Failure Patterns (1 hour)
@@ -48,12 +48,15 @@ The minimum eBPF knowledge for on-call rotation:
 ### Symptoms
 - Alert: CalicoEBPFModeRegression
 - Users report: possible service latency increase
-- felix_bpf_enabled == 0 on affected node(s)
+- FelixConfiguration `bpfEnabled` is false or no Calico BPF programs attached on affected node(s)
 
 ### Step 1: Identify Scope
 ```bash
-kubectl exec -n calico-system -l k8s-app=calico-node -- \
-  sh -c 'bpftool prog list 2>/dev/null | grep -c calico || echo 0'
+for pod in $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name); do
+  echo "$pod:"
+  kubectl exec -n calico-system "$pod" -- \
+    sh -c 'bpftool prog list 2>/dev/null | grep -c calico || echo 0'
+done
 ```plaintext
 - If 0 on all nodes: cluster-wide regression
 - If 0 on some nodes: partial regression (more dangerous)
