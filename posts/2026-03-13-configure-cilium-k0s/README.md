@@ -18,7 +18,7 @@ This guide walks through installing k0s with Cilium as the CNI, configuring Cili
 
 ## Prerequisites
 
-- Linux nodes with kernel 4.19+ (5.10+ recommended for full Cilium features)
+- Linux nodes with kernel 5.10+ or an equivalent distribution kernel
 - `k0s` binary downloaded and installed
 - `kubectl` and `cilium` CLI available
 - Root or sudo access on cluster nodes
@@ -52,24 +52,6 @@ spec:
     # Disable kube-proxy - Cilium will replace it with eBPF
     kubeProxy:
       disabled: true
-  # Disable the default CoreDNS; Cilium will manage DNS
-  extensions:
-    helm:
-      repositories:
-      - name: cilium
-        url: https://helm.cilium.io/
-      charts:
-      - name: cilium
-        chartname: cilium/cilium
-        version: "1.15.3"
-        namespace: kube-system
-        values: |
-          kubeProxyReplacement: true
-          k8sServiceHost: 127.0.0.1
-          k8sServicePort: "6443"
-          ipam:
-            mode: kubernetes
-          tunnel: vxlan
 ```
 
 ## Step 2: Start k0s Controller
@@ -88,8 +70,9 @@ sudo k0s status
 sudo k0s kubeconfig admin > ~/.kube/k0s-config.yaml
 export KUBECONFIG=~/.kube/k0s-config.yaml
 
-# Wait for the API server to be ready
-kubectl wait --for=condition=Ready node --all --timeout=5m
+# Confirm the API server is reachable; nodes may remain NotReady until Cilium is installed
+kubectl cluster-info
+kubectl get nodes
 ```
 
 ## Step 3: Install Cilium on k0s
@@ -102,14 +85,19 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium configured for k0s
-# Note: k0s runs the API server on localhost:6443 by default
-helm install cilium cilium/cilium \
+# Use the controller node IP or control-plane load balancer address, not 127.0.0.1,
+# so Cilium agents on worker nodes can reach the API server before service routing exists.
+API_SERVER_IP=<controller-node-ip-or-load-balancer>
+API_SERVER_PORT=6443
+
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --set kubeProxyReplacement=true \
-  --set k8sServiceHost=127.0.0.1 \
-  --set k8sServicePort=6443 \
+  --set k8sServiceHost=${API_SERVER_IP} \
+  --set k8sServicePort=${API_SERVER_PORT} \
   --set ipam.mode=kubernetes \
-  --set tunnel=vxlan \
+  --set routingMode=tunnel \
+  --set tunnelProtocol=vxlan \
   --set operator.replicas=1
 
 # Wait for Cilium to be ready
@@ -145,7 +133,7 @@ cilium status
 cilium connectivity test
 
 # Verify kube-proxy replacement (Cilium handles service load balancing)
-cilium status | grep KubeProxyReplacement
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 
 # Enable Hubble for observability
 cilium hubble enable
@@ -154,7 +142,7 @@ cilium hubble ui
 
 ## Best Practices
 
-- Use k0s's built-in Helm extension to install Cilium declaratively - it integrates with k0s's lifecycle management
+- Use Helm or k0s's built-in Helm extension to install Cilium declaratively, but do not install the same Cilium release twice
 - Enable kube-proxy replacement from the start - it reduces resource usage and improves latency
 - On resource-constrained edge nodes, set `operator.replicas=1` to reduce overhead
 - Use the `kubernetes` IPAM mode on k0s to align with the pod CIDR configured in k0s's ClusterConfig
