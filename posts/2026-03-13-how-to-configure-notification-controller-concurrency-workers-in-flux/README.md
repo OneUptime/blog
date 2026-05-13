@@ -10,7 +10,7 @@ Description: Improve alert delivery speed in Flux by configuring the notificatio
 
 ## What the Notification Controller Handles
 
-The notification-controller is responsible for two things: dispatching alerts based on events from other Flux controllers, and receiving webhooks that trigger reconciliations. When many events fire at the same time, such as after a large deployment wave, the controller must process each alert delivery sequentially unless you increase its concurrency.
+The notification-controller is responsible for two things: dispatching alerts based on events from other Flux controllers, and receiving webhooks that trigger reconciliations. When many events fire at the same time, such as after a large deployment wave, the controller work queue can back up unless you tune its reconcile concurrency.
 
 ## Why Concurrency Matters for Notifications
 
@@ -25,22 +25,9 @@ The notification-controller supports the same `--concurrent` flag as the other F
 ```yaml
 # clusters/my-cluster/flux-system/notification-controller-patch.yaml
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: notification-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            - --concurrent=10
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --concurrent=10
 ```
 
 ### Add to Kustomization
@@ -69,7 +56,7 @@ git push
 
 ## Sizing Recommendations
 
-The notification-controller is generally lightweight compared to the kustomize or helm controllers. Its main cost is network I/O for outbound webhook calls:
+The notification-controller is generally lightweight compared to the kustomize or helm controllers. Its main cost is network I/O for outbound webhook calls. Use these as starting points and tune with your own metrics:
 
 - Under 10 Provider/Alert pairs: the default (`--concurrent=4`) is usually fine
 - 10 to 30 Provider/Alert pairs: `--concurrent=5`
@@ -107,7 +94,7 @@ spec:
 
 ```bash
 kubectl get deployment notification-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n'
+  -o jsonpath='{range .spec.template.spec.containers[?(@.name=="manager")].args[*]}{.}{"\n"}{end}'
 ```
 
 ## Summary
