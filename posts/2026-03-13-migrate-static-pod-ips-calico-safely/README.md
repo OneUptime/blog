@@ -19,6 +19,7 @@ This guide covers identifying workloads with static IP requirements, migrating t
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.x
+- Calico IPAM enabled for pod address allocation
 - `calicoctl` CLI configured
 - List of workloads requiring static IPs and their assigned addresses
 - Cluster admin permissions
@@ -29,19 +30,18 @@ Document all pods and services that currently rely on static IP addresses.
 
 ```bash
 # Find pods with existing Calico IP annotations
+kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.metadata.annotations["cni.projectcalico.org/ipAddrs"] != null) | "\(.metadata.namespace)/\(.metadata.name): \(.metadata.annotations["cni.projectcalico.org/ipAddrs"])"'
 
-kubectl get pods --all-namespaces -o jsonpath='{range .items[?(@.metadata.annotations.cni\.projectcalico\.org/ipAddrs)]}{.metadata.namespace}/{.metadata.name}{": "}{.metadata.annotations.cni\.projectcalico\.org/ipAddrs}{"\n"}{end}'
-
-# Find pods with nodeSelector that co-locate them with specific nodes for IP stability
+# Find pods pinned to specific nodes for IP stability
 kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.spec.nodeName != null) | "\(.metadata.namespace)/\(.metadata.name): node=\(.spec.nodeName), ip=\(.status.podIP)"'
 
-# Check ConfigMaps and Secrets for hardcoded pod IPs
+# Check ConfigMaps for hardcoded pod IPs
 kubectl get configmaps --all-namespaces -o yaml | grep -E "10\.244\.|172\.16\."
 ```
 
 ## Step 2: Reserve Target Static IPs in Calico IPAM
 
-Create IPReservation resources for all IPs that need to be statically assigned.
+Create IPReservation resources for all IPs that need to be statically assigned. Target IPs must be within a configured Calico IP pool and not currently in use.
 
 ```yaml
 # calico-ipam/static-ip-reservations.yaml - Reserve all static IP addresses
