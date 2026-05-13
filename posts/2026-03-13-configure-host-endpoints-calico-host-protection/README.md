@@ -50,6 +50,7 @@ spec:
   preDNAT: false
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -65,15 +66,14 @@ spec:
 ## Implementation
 
 ```bash
-# Create host endpoint
+# Apply host protection policy
+calicoctl apply -f host-protection-policy.yaml
 
+# Create host endpoint
 calicoctl apply -f host-endpoint.yaml
 
 # Verify host endpoint is active
 calicoctl get hostendpoints -o wide
-
-# Apply host protection policy
-calicoctl apply -f host-protection-policy.yaml
 
 # Test SSH access (should still work)
 ssh user@node01-ip "echo connected"
@@ -85,11 +85,11 @@ ssh user@node01-ip "echo connected"
 # List all host endpoints
 calicoctl get hostendpoints
 
-# View host-level policy decisions
+# View Calico iptables chains (iptables dataplane)
 sudo iptables -L -n | grep CALICO
 
 # Check Felix status on node
-kubectl exec -n kube-system calico-node-xxx -- calico-node -felix-live
+kubectl exec -n kube-system calico-node-xxx -c calico-node -- /bin/calico-node -felix-ready
 ```
 
 ## Architecture
@@ -107,4 +107,3 @@ flowchart TD
 ## Conclusion
 
 Host Protection with Calico Host Endpoints with Calico provides a comprehensive security layer that extends beyond pod-to-pod policies to protect the underlying node infrastructure. Configure host endpoints carefully to avoid locking yourself out of the node, always test SSH and management access after applying host policies, and use staged policies to preview impact before enforcement. Host-level policies are powerful but require careful planning and testing.
-
