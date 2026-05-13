@@ -10,7 +10,7 @@ Description: A step-by-step guide to configuring Calico networking on Google Com
 
 ## Introduction
 
-Google Compute Engine (GCE) provides a unique networking environment for Calico deployments. GCP's VPC network is globally routed and supports custom static routes, which makes it well-suited for Calico's native routing mode. Unlike AWS, GCP VMs automatically forward packets for any IP address without a source/destination check equivalent. This simplifies Calico deployment on GCE but still requires attention to firewall rules and VPC route configuration.
+Google Compute Engine (GCE) provides a unique networking environment for Calico deployments. GCP's VPC network is globally routed and supports custom static routes, which makes it well-suited for Calico's native routing mode. GCP VMs can forward pod traffic when IP forwarding is enabled on the instance, but by default Google Cloud performs strict source address checking. This simplifies Calico deployment on GCE but still requires attention to firewall rules, instance IP forwarding, and VPC route configuration.
 
 Calico on GCE can operate in either overlay mode (VXLAN) or native routing mode. For most GCE deployments, native routing via VPC static routes provides better performance and is simpler to manage than overlay networking.
 
@@ -74,9 +74,14 @@ gcloud compute firewall-rules create allow-kubelet \
 
 ```bash
 helm repo add projectcalico https://docs.tigera.io/calico/charts
+kubectl create namespace tigera-operator
+
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 \
+  --version v3.32.0 | kubectl apply --server-side -f -
+
 helm install calico projectcalico/tigera-operator \
-  --namespace tigera-operator \
-  --create-namespace
+  --version v3.32.0 \
+  --namespace tigera-operator
 ```
 
 ## Step 3: Configure IP Pool for GCE Native Routing
@@ -113,17 +118,19 @@ gcloud compute routes create worker-2-pods \
   --next-hop-instance-zone us-central1-b
 ```
 
-## Step 5: (Alternative) Enable IP Forwarding on Instances
+## Step 5: Enable IP Forwarding on Instances
 
-If using GCE instances without enabling can-ip-forward during creation:
+For native routing with VPC static routes, each node used as a next hop must have IP forwarding enabled:
 
 ```bash
-# Enable IP forwarding (requires instance stop/start on most machine types)
-gcloud compute instances describe worker-1 | grep canIpForward
-# Should be: canIpForward: true
+# Verify IP forwarding
+gcloud compute instances describe worker-1 \
+  --zone us-central1-a \
+  --format="value(canIpForward)"
+# Should output: true
 ```
 
-For new instances, always enable:
+For new instances, enable it during creation:
 
 ```bash
 gcloud compute instances create worker-new \
