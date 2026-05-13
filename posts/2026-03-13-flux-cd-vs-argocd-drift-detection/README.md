@@ -12,7 +12,7 @@ Description: Compare configuration drift detection and alerting capabilities in 
 
 Configuration drift occurs when the actual state of a Kubernetes cluster diverges from the desired state declared in Git. This can happen due to manual kubectl changes, external controllers modifying resources, or partial application failures. A GitOps tool's drift detection capability determines how quickly it detects and responds to these deviations.
 
-Flux CD and ArgoCD differ fundamentally in their drift detection models: Flux CD uses periodic reconciliation, while ArgoCD uses an event-driven watch mechanism for near-real-time detection. Understanding these differences helps you set appropriate expectations and configure the right alerting strategy.
+Flux CD and ArgoCD differ fundamentally in their drift detection models: Flux CD corrects drift during reconciliation, while ArgoCD maintains a Kubernetes watch-backed cluster cache and can self-heal live-state drift when automated sync is configured for self-healing. Understanding these differences helps you set appropriate expectations and configure the right alerting strategy.
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ flux get kustomizations myapp -n flux-system
 
 ## Step 2: How ArgoCD Detects Drift
 
-ArgoCD uses a Kubernetes controller watch to detect changes to managed resources in near-real-time:
+ArgoCD's application controller uses Kubernetes watch APIs to maintain a cluster cache for live state. Automated sync can then correct live-state drift when self-healing is enabled:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -74,13 +74,13 @@ spec:
       - RespectIgnoreDifferences=true
 ```
 
-ArgoCD's application controller maintains watches on all managed resources. When any resource changes, ArgoCD detects the diff within seconds and can auto-sync if `selfHeal: true` is configured.
+ArgoCD's application controller maintains a watch-backed cache of managed cluster resources. When a resource changes and the application is found to be OutOfSync, ArgoCD can auto-sync if `selfHeal: true` is configured; the self-heal retry timeout is 5 seconds by default, while normal automated sync reconciliation also follows the controller's configured reconciliation interval.
 
 ## Step 3: Configuring Drift Alerts in Flux CD
 
 ```yaml
 # Alert on reconciliation failures (which indicate drift that couldn't be fixed)
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-alert
@@ -115,10 +115,10 @@ Prometheus alert for sustained drift:
 
 Both tools support ignoring certain fields that legitimately differ from Git state:
 
-**Flux CD** via Kustomize strategic merge patches to ignore fields:
+**Flux CD** by omitting controller-managed fields from the desired manifests, or by using a Kustomize patch to remove them before Flux applies the objects:
 
 ```yaml
-# Ignore HPA-managed replica count
+# Omit HPA-managed replica count before Flux applies the Deployment
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -127,10 +127,11 @@ metadata:
 spec:
   patches:
     - patch: |
-        - op: add
-          path: /metadata/annotations/kustomize.toolkit.fluxcd.io~1ssa-ignore-fields
-          value: '{"spec.replicas": {}}'
+        - op: remove
+          path: /spec/replicas
       target:
+        group: apps
+        version: v1
         kind: Deployment
         name: myapp
 ```
@@ -155,9 +156,9 @@ spec:
 
 | Dimension | Flux CD | ArgoCD |
 |---|---|---|
-| Drift detection latency | Configurable interval (1m to 1h) | Near-real-time (seconds) |
-| Self-healing | Yes, on next reconciliation interval | Yes, immediate with selfHeal: true |
-| Manual drift check | flux reconcile command | argocd app sync or UI |
+| Drift detection latency | Configurable interval, minimum 60s for Kustomizations | Watch-backed live-state cache, with sync behavior governed by self-heal and reconciliation settings |
+| Self-healing | Yes, on next reconciliation interval | Yes, with selfHeal: true |
+| Manual drift check | flux reconcile command | argocd app diff or UI |
 | Drift notification | Via Notification Controller | Via ArgoCD Notifications |
 | Ignore rules | Kustomize annotations/patches | ignoreDifferences field |
 | Prune on drift | prune: true in Kustomization | prune: true in syncPolicy |
@@ -167,9 +168,9 @@ spec:
 - Set Flux reconciliation intervals to 5 minutes or less for critical production applications to minimize drift correction latency.
 - Enable `selfHeal: true` in ArgoCD for production applications to automatically correct drift without human intervention.
 - Configure drift alerts that fire when reconciliation has been in a non-Ready state for more than a threshold period.
-- Use the `ignoreDifferences` (ArgoCD) or SSA ignore annotations (Flux) to avoid false positive drift detection for fields managed by other controllers (HPA, VPA).
+- Use the `ignoreDifferences` (ArgoCD) or omit/patch out controller-managed fields from Flux-managed manifests to avoid false positive drift detection for fields managed by other controllers (HPA, VPA).
 - Audit kubectl usage in production and require all changes to go through Git to minimize intentional drift.
 
 ## Conclusion
 
-ArgoCD's near-real-time drift detection is a genuine advantage over Flux CD's interval-based model, especially for security-sensitive environments where manual changes must be detected and reverted quickly. For most production workloads, a 5-minute Flux reconciliation interval is acceptable. Teams requiring sub-minute drift correction should favor ArgoCD with `selfHeal: true`, while teams comfortable with interval-based correction can use either tool effectively.
+ArgoCD's watch-backed live-state cache and self-healing behavior are a genuine advantage over Flux CD's interval-based correction model, especially for security-sensitive environments where manual changes must be detected and reverted quickly. For most production workloads, a 5-minute Flux reconciliation interval is acceptable. Teams requiring faster drift correction should favor ArgoCD with `selfHeal: true`, while teams comfortable with interval-based correction can use either tool effectively.
