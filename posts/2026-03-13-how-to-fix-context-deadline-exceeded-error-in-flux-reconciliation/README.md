@@ -54,16 +54,16 @@ flux get kustomizations -A
 
 Look for entries with `context deadline exceeded` in the status message.
 
-### Step 2: Measure Reconciliation Duration
+### Step 2: Check Reconciliation Status and Events
 
 ```bash
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.conditions[0]}'
+kubectl describe kustomization my-app -n flux-system
 ```
 
 ### Step 3: Check API Server Health
 
 ```bash
-kubectl get --raw /healthz
+kubectl get --raw /livez
 kubectl get --raw /readyz
 ```
 
@@ -83,7 +83,7 @@ kubectl logs -n webhook-namespace deploy/webhook-server --since=10m | grep -i ti
 ### Step 5: Count Managed Resources
 
 ```bash
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries}' | jq length
+kubectl get kustomization my-app -n flux-system -o json | jq '.status.inventory.entries | length'
 ```
 
 ## How to Fix
@@ -141,6 +141,7 @@ metadata:
 spec:
   interval: 10m
   path: ./infrastructure
+  prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -153,6 +154,7 @@ metadata:
 spec:
   interval: 10m
   path: ./apps
+  prune: true
   dependsOn:
     - name: infrastructure
   sourceRef:
@@ -162,7 +164,7 @@ spec:
 
 ### Fix 3: Fix or Remove Slow Webhooks
 
-If a webhook is causing delays, either fix it or add a failure policy:
+If a webhook is causing delays, either fix it or tune its timeout and failure policy:
 
 ```bash
 kubectl get validatingwebhookconfiguration my-webhook -o yaml
@@ -175,8 +177,9 @@ Check that webhook deployments are healthy and have sufficient resources.
 Give the kustomize-controller more CPU and memory:
 
 ```bash
-kubectl patch deployment kustomize-controller -n flux-system --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/cpu","value":"2"},{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"2Gi"}]'
+kubectl set resources deployment/kustomize-controller -n flux-system \
+  --containers=manager \
+  --limits=cpu=2,memory=2Gi
 ```
 
 ### Fix 5: Force Reconciliation
