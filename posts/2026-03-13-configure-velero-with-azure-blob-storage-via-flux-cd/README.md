@@ -16,7 +16,7 @@ When running on AKS, you can use AAD Pod Identity or Workload Identity to authen
 
 ## Prerequisites
 
-- Velero installed on an AKS cluster
+- Velero CLI installed locally
 - Flux CD bootstrapped on the cluster
 - Azure subscription with an AKS cluster that has Workload Identity enabled
 - `az` and `kubectl` CLIs installed
@@ -50,7 +50,8 @@ az storage account create \
 # Create the blob container for backups
 az storage container create \
   --name "${CONTAINER}" \
-  --account-name "${STORAGE_ACCOUNT}"
+  --account-name "${STORAGE_ACCOUNT}" \
+  --auth-mode login
 ```
 
 ## Step 2: Configure Azure Workload Identity for Velero
@@ -59,6 +60,12 @@ az storage container create \
 # Create a managed identity for Velero
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 VELERO_IDENTITY_NAME="velero-backup-identity"
+AKS_RESOURCE_GROUP="aks-resource-group"
+AKS_CLUSTER_NAME="my-aks-cluster"
+AKS_NODE_RESOURCE_GROUP=$(az aks show \
+  --name "${AKS_CLUSTER_NAME}" \
+  --resource-group "${AKS_RESOURCE_GROUP}" \
+  --query nodeResourceGroup -o tsv)
 
 az identity create \
   --name "${VELERO_IDENTITY_NAME}" \
@@ -69,9 +76,15 @@ IDENTITY_CLIENT_ID=$(az identity show \
   --resource-group "${RESOURCE_GROUP}" \
   --query clientId -o tsv)
 
-# Grant the identity Contributor access to the storage account
+# Grant the identity blob data access to the storage account
 az role assignment create \
   --role "Storage Blob Data Contributor" \
+  --assignee "${IDENTITY_CLIENT_ID}" \
+  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Storage/storageAccounts/${STORAGE_ACCOUNT}"
+
+# Grant Reader so Velero can read the storage account properties to resolve the blob endpoint
+az role assignment create \
+  --role "Reader" \
   --assignee "${IDENTITY_CLIENT_ID}" \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Storage/storageAccounts/${STORAGE_ACCOUNT}"
 
@@ -79,12 +92,12 @@ az role assignment create \
 az role assignment create \
   --role "Contributor" \
   --assignee "${IDENTITY_CLIENT_ID}" \
-  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/YOUR-AKS-NODE-RESOURCE-GROUP"
+  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${AKS_NODE_RESOURCE_GROUP}"
 
 # Create the federated identity credential for AKS Workload Identity
 AKS_OIDC_ISSUER=$(az aks show \
-  --name my-aks-cluster \
-  --resource-group aks-resource-group \
+  --name "${AKS_CLUSTER_NAME}" \
+  --resource-group "${AKS_RESOURCE_GROUP}" \
   --query "oidcIssuerProfile.issuerUrl" -o tsv)
 
 az identity federated-credential create \
@@ -133,6 +146,7 @@ spec:
           provider: azure
           bucket: backups
           config:
+            useAAD: "true"
             resourceGroup: velero-backup-rg
             storageAccount: myclustervelerobackups
             subscriptionId: YOUR_SUBSCRIPTION_ID
@@ -163,7 +177,7 @@ spec:
         azure.workload.identity/use: "true"
 ```
 
-## Step 4: Create the Velero Namespace with Workload Identity Labels
+## Step 4: Create the Velero Namespace
 
 ```yaml
 # infrastructure/velero/namespace.yaml
@@ -172,7 +186,7 @@ kind: Namespace
 metadata:
   name: velero
   labels:
-    # Required for Azure Workload Identity webhook
+    # Optional namespace label for consistency; the pod labels above are required for Workload Identity
     azure.workload.identity/use: "true"
 ```
 
@@ -219,6 +233,7 @@ az storage blob list \
   --container-name backups \
   --account-name myclustervelerobackups \
   --prefix "backups/azure-connectivity-test/" \
+  --auth-mode login \
   --output table
 ```
 
@@ -226,7 +241,7 @@ az storage blob list \
 
 - Use Azure Blob Storage with the `Standard_GRS` SKU for geo-redundant backup storage. GRS replicates data to a paired region automatically.
 - Use Workload Identity instead of service principal secrets for authentication. Workload Identity is more secure and eliminates secret rotation.
-- Enable Azure Blob Storage soft delete (30 days recommended) to protect against accidental backup container deletion.
+- Enable Azure Blob Storage blob and container soft delete (30 days recommended) to protect against accidental backup object or container deletion.
 - Use incremental disk snapshots (`incremental: "true"`) for Azure Managed Disk snapshots to reduce snapshot costs significantly after the first full snapshot.
 - Configure Azure Storage lifecycle management policies to automatically tier old backups to cool or archive storage.
 
