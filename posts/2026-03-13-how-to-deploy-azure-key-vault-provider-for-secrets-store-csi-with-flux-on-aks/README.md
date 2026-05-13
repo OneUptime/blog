@@ -39,7 +39,7 @@ kubectl get pods -n kube-system -l app=secrets-store-csi-driver
 kubectl get pods -n kube-system -l app=secrets-store-provider-azure
 ```
 
-If you prefer to manage the driver yourself through Flux instead of the add-on, continue with the Helm-based deployment below.
+If you prefer to manage the driver yourself through Flux instead of the add-on, skip the add-on command and use the Helm-based deployment below.
 
 ## Step 2: Add Helm Repositories
 
@@ -78,7 +78,7 @@ spec:
   chart:
     spec:
       chart: secrets-store-csi-driver
-      version: "1.4.*"
+      version: "1.5.*"
       sourceRef:
         kind: HelmRepository
         name: secrets-store-csi
@@ -105,7 +105,7 @@ spec:
   chart:
     spec:
       chart: csi-secrets-store-provider-azure
-      version: "1.5.*"
+      version: "1.8.*"
       sourceRef:
         kind: HelmRepository
         name: azure-kv-provider
@@ -139,10 +139,15 @@ IDENTITY_OBJECT_ID=$(az identity show \
   --name keyvault-workload-identity \
   --query principalId -o tsv)
 
-az keyvault set-policy \
+KEYVAULT_SCOPE=$(az keyvault show \
   --name my-keyvault \
-  --object-id "$IDENTITY_OBJECT_ID" \
-  --secret-permissions get list
+  --query id -o tsv)
+
+az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee-object-id "$IDENTITY_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$KEYVAULT_SCOPE"
 
 AKS_OIDC_ISSUER=$(az aks show \
   --resource-group my-resource-group \
@@ -155,7 +160,7 @@ az identity federated-credential create \
   --resource-group my-resource-group \
   --issuer "$AKS_OIDC_ISSUER" \
   --subject system:serviceaccount:default:keyvault-sa \
-  --audience api://AzureADTokenExchange
+  --audiences api://AzureADTokenExchange
 ```
 
 ## Step 6: Create a Kubernetes Service Account
@@ -168,8 +173,6 @@ metadata:
   namespace: default
   annotations:
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
 ## Step 7: Define a SecretProviderClass
@@ -229,6 +232,7 @@ spec:
     metadata:
       labels:
         app: my-app
+        azure.workload.identity/use: "true"
     spec:
       serviceAccountName: keyvault-sa
       containers:
