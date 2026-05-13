@@ -12,7 +12,7 @@ The AWS VPC CNI plugin is the default networking solution for Amazon EKS. It ass
 
 ## Prerequisites
 
-- An existing EKS cluster (version 1.25 or later)
+- An existing supported EKS cluster
 - Flux CLI installed and bootstrapped on your cluster
 - AWS CLI configured with appropriate permissions
 - kubectl configured to access your EKS cluster
@@ -54,6 +54,24 @@ aws eks delete-addon \
 
 The `--preserve` flag keeps the running CNI in place while removing EKS management of it.
 
+Before installing the HelmRelease, annotate and label the preserved resources so Helm can adopt them:
+
+```bash
+for kind in daemonset clusterrole clusterrolebinding; do
+  kubectl -n kube-system annotate --overwrite $kind aws-node \
+    meta.helm.sh/release-name=aws-vpc-cni \
+    meta.helm.sh/release-namespace=kube-system
+  kubectl -n kube-system label --overwrite $kind aws-node \
+    app.kubernetes.io/managed-by=Helm
+done
+
+kubectl -n kube-system annotate --overwrite configmap amazon-vpc-cni \
+  meta.helm.sh/release-name=aws-vpc-cni \
+  meta.helm.sh/release-namespace=kube-system
+kubectl -n kube-system label --overwrite configmap amazon-vpc-cni \
+  app.kubernetes.io/managed-by=Helm
+```
+
 ## Step 3: Add the EKS Helm Repository Source
 
 Create a Flux `HelmRepository` pointing to the EKS charts repository.
@@ -87,13 +105,14 @@ spec:
   chart:
     spec:
       chart: aws-vpc-cni
-      version: "1.16.*"
+      version: "1.21.*"
       sourceRef:
         kind: HelmRepository
         name: eks-charts
         namespace: flux-system
       interval: 24h
   values:
+    originalMatchLabels: true
     init:
       env:
         DISABLE_TCP_EARLY_DEMUX: "true"
@@ -229,13 +248,13 @@ kubectl exec -n kube-system ds/aws-node -- env | grep ENABLE_PREFIX_DELEGATION
 
 ## Upgrading the VPC CNI
 
-To upgrade, update the version in your HelmRelease and push to Git:
+To upgrade, update the version in your HelmRelease and push to Git. For example, if your release currently pins `1.20.*`, update it to:
 
 ```yaml
 spec:
   chart:
     spec:
-      version: "1.17.*"
+      version: "1.21.*"
 ```
 
 Flux will roll out the upgrade as a DaemonSet update across all nodes. Monitor the rollout:
