@@ -160,7 +160,7 @@ Any new resource with the `webhook-trigger: true` label will automatically be in
 
 ## Step 4: Multiple Receivers for Different Webhook Sources
 
-If different repositories or services need to trigger different sets of resources, create separate Receivers. Each Receiver gets its own webhook path and token:
+If different repositories or services need to trigger different sets of resources, create separate Receivers. Each Receiver gets its own webhook path and can reference its own token secret:
 
 ```yaml
 # receiver-infra.yaml
@@ -210,7 +210,7 @@ spec:
       name: production-apps
 ```
 
-Each Receiver needs its own secret. You can use the same token value if the same GitHub repository sends both webhooks, or different tokens for different repositories.
+Each Receiver needs a `secretRef` that points to a Secret with a `token` key. You can reference the same Secret or use the same token value if the same GitHub repository sends both webhooks, or use different tokens for different repositories.
 
 Get the webhook paths:
 
@@ -304,7 +304,7 @@ If a Receiver references a large number of resources, the notification-controlle
 
 Resource in a different namespace
 
-By default, the Receiver can only target resources in its own namespace. To target resources in other namespaces, see the cross-namespace configuration guide. You may need to use `namespace` in the resource reference and configure appropriate RBAC.
+When `namespace` is omitted from a resource reference, the Receiver targets resources in its own namespace. To target resources in other namespaces, set `namespace` in the resource reference. Cross-namespace references can be disabled by platform admins with `--no-cross-namespace-refs=true`.
 
 ## Summary
 
