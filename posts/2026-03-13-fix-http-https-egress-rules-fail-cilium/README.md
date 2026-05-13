@@ -109,7 +109,7 @@ Look for `POLICY_DENIED` drops with destination port 53 (DNS blocked) or 443 (HT
 
 ## Common Failure: CIDR vs FQDN Conflict
 
-If the same destination is matched by both a CIDR allow rule and an FQDN rule, behavior depends on rule ordering. Prefer FQDN rules for external services.
+If the same destination is matched by both a broad CIDR allow rule and an FQDN rule, the CIDR rule can allow traffic even when the FQDN rule would not match. Cilium allow policies are combined rather than ordered; deny policies take precedence over allows. Prefer FQDN rules for external services when the destination IPs are expected to change.
 
 ## Conclusion
 
