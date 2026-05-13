@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix DNS failures caused by Calico NetworkPolicies by adding correct UDP port 53 egress allow rules for CoreDNS access from affected namespaces.
+Description: Fix DNS failures caused by Calico NetworkPolicies by adding correct UDP and TCP port 53 egress allow rules for CoreDNS access from affected namespaces.
 
 ---
 
@@ -95,10 +95,12 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
+      selector: 'k8s-app == "kube-dns"'
       ports: [53]
   - action: Allow
     protocol: TCP
     destination:
+      selector: 'k8s-app == "kube-dns"'
       ports: [53]
 ```
 
