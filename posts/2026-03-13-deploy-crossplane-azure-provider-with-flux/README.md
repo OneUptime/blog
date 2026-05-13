@@ -10,7 +10,7 @@ Description: Deploy the Crossplane Azure provider using Flux CD GitOps to manage
 
 ## Introduction
 
-The Crossplane Azure provider enables your Kubernetes cluster to provision and manage Azure resources using the same declarative API patterns you use for pods and deployments. Resources like Azure SQL databases, storage accounts, virtual networks, and AKS clusters become Kubernetes objects that Flux reconciles continuously.
+The Crossplane Azure provider enables your Kubernetes cluster to provision and manage Azure resources using the same declarative API patterns you use for pods and deployments. Resources like Azure SQL databases, storage accounts, virtual networks, and AKS clusters become Kubernetes objects that Flux applies from Git and Crossplane reconciles continuously.
 
 Managing the Azure provider through Flux ensures it is installed consistently across environments and that credential configuration is treated as code. When a cluster is rebuilt or a new environment is provisioned, the full provider setup is applied automatically from the Git repository, eliminating manual setup steps.
 
@@ -32,7 +32,7 @@ az ad sp create-for-rbac \
   --name "crossplane-provider" \
   --role Contributor \
   --scopes /subscriptions/YOUR_SUBSCRIPTION_ID \
-  --sdk-auth > /tmp/azure-credentials.json
+  --json-auth > /tmp/azure-credentials.json
 
 # Note the output - you'll need clientId, clientSecret, subscriptionId, tenantId
 cat /tmp/azure-credentials.json
@@ -167,7 +167,7 @@ kubectl get crds | grep azure.upbound.io | wc -l
 - Use a dedicated service principal for Crossplane with the minimum required permissions. Start with Contributor and narrow the scope once you know which resource types you need.
 - Scope the service principal to a specific resource group rather than the entire subscription when possible.
 - Rotate the service principal credentials regularly. Update the Kubernetes secret and the ProviderConfig without downtime by applying the new secret first.
-- Use Azure Managed Identity instead of a service principal when running Crossplane on AKS with Workload Identity enabled, to eliminate credential management entirely.
+- Use Microsoft Entra Workload ID or managed identity instead of a service principal when running Crossplane on AKS, to eliminate credential management entirely.
 - Set `revisionActivationPolicy: Automatic` during initial setup but consider switching to `Manual` in production to control when provider upgrades are applied.
 
 ## Conclusion
