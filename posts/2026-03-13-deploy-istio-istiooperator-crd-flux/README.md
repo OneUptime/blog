@@ -1,30 +1,30 @@
-# How to Deploy Istio with IstioOperator CRD via Flux
+# How to Deploy Istio with Helm via Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, IstioOperator, mTLS
+Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, Helm, mTLS
 
-Description: Deploy and manage Istio using the IstioOperator CRD with Flux CD for declarative, GitOps-driven service mesh lifecycle management.
+Description: Deploy and manage Istio using the official Istio Helm charts with Flux CD for declarative, GitOps-driven service mesh lifecycle management.
 
 ---
 
 ## Introduction
 
-Istio is the most widely adopted service mesh for Kubernetes, providing mTLS, traffic management, observability, and policy enforcement as infrastructure features. Managing Istio's lifecycle - installation, upgrades, and configuration - has historically been complex. The IstioOperator CRD provides a declarative way to describe the desired Istio installation, and Flux CD can manage this CRD through GitOps.
+Istio is a widely adopted service mesh for Kubernetes, providing mTLS, traffic management, observability, and policy enforcement as infrastructure features. Managing Istio's lifecycle - installation, upgrades, and configuration - has historically been complex. The official Istio Helm charts provide a declarative way to describe the desired Istio installation, and Flux CD can manage those Helm releases through GitOps.
 
-Using Flux to manage the IstioOperator gives you version-controlled Istio configuration, automatic reconciliation if the installation drifts, and a clear upgrade path via pull requests.
+Using Flux to manage the Istio Helm releases gives you version-controlled Istio configuration, automatic reconciliation if the installation drifts, and a clear upgrade path via pull requests.
 
-This guide covers deploying Istio using the IstioOperator CRD managed by Flux CD.
+This guide covers deploying Istio using the official Istio Helm charts managed by Flux CD.
 
 ## Prerequisites
 
 - Kubernetes cluster (1.26+)
 - Flux CD v2 bootstrapped to your Git repository
-- Helm CLI installed locally for initial CRD setup
+- `istioctl` installed locally for validation commands
 
-## Step 1: Install the Istio Operator
+## Step 1: Declare the Istio Helm Repository
 
-The Istio Operator is installed via Helm before Flux manages the IstioOperator CR:
+Flux uses the Istio Helm repository before installing Istio components:
 
 ```yaml
 # clusters/my-cluster/istio/helmrepository.yaml
@@ -95,7 +95,7 @@ spec:
     meshConfig:
       # Enable access logging
       accessLogFile: /dev/stdout
-      # Default mTLS mode
+      # Proxy startup behavior
       defaultConfig:
         holdApplicationUntilProxyStarts: true
       # Enable tracing
@@ -180,7 +180,7 @@ metadata:
 spec:
   interval: 10m
   path: ./clusters/my-cluster/istio
-  prune: false   # Never accidentally delete Istio CRDs
+  prune: false   # Avoid accidentally deleting HelmReleases that own the Istio install
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -200,7 +200,7 @@ flux get kustomizations istio
 # Verify Istio components
 kubectl get pods -n istio-system
 
-# Check mTLS is working
+# Analyze Istio configuration
 istioctl analyze -n production
 
 # Verify proxy injection
@@ -213,7 +213,7 @@ istioctl proxy-status
 ## Best Practices
 
 - Use `dependsOn` in Flux HelmReleases to ensure `istio-base` (CRDs) is applied before `istiod`, and `istiod` before `istio-ingressgateway`.
-- Set `prune: false` on Flux Kustomizations managing Istio CRDs to prevent accidental deletion of the mesh foundation.
+- Set `prune: false` on Flux Kustomizations managing Istio HelmReleases to prevent accidental deletion of the mesh foundation.
 - Pin the Istio Helm chart version with a minor version wildcard (e.g., `1.21.*`) to automatically receive patch releases while controlling minor upgrades.
 - Use `holdApplicationUntilProxyStarts: true` in mesh config to prevent application containers from accepting traffic before the Envoy proxy is ready.
 - Monitor istiod with Prometheus metrics and alert on `pilot_xds_push_errors` and `pilot_total_xds_rejects` to detect mesh configuration errors.
