@@ -16,7 +16,7 @@ This guide walks you through setting up post-build substitution with secret refe
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2.3 or later installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
@@ -142,7 +142,7 @@ In this configuration, `APP_ENV` and `LOG_LEVEL` are defined inline, while other
 
 ## Using Default Values for Safety
 
-To prevent errors when a variable is not defined in any source, use the default value syntax:
+To avoid empty substitutions or reconciliation errors under strict substitution mode when a variable is not defined in any source, use the default value syntax:
 
 ```yaml
 env:
@@ -192,10 +192,10 @@ When multiple sources define the same variable, the last source in the list take
 After Flux reconciles, verify that the substitution worked correctly by checking the Kustomization status:
 
 ```bash
-flux get kustomization my-application
+flux get kustomizations my-application
 ```
 
-If a variable is undefined and has no default value, Flux will report a substitution error in the Kustomization status. You can also inspect the applied manifests:
+If a variable is undefined and has no default value, Flux substitutes it with an empty string by default. To make missing variables fail reconciliation, enable the `StrictPostBuildSubstitutions` feature gate on the kustomize-controller. You can also inspect the applied manifests:
 
 ```bash
 kubectl get deployment my-application -o yaml | grep -A 5 "env:"
