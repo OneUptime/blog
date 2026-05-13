@@ -25,7 +25,6 @@ The TiDB Operator manages TiDB clusters on Kubernetes through the `TidbCluster` 
 
 ```yaml
 # infrastructure/sources/pingcap-helm.yaml
-
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -36,29 +35,37 @@ spec:
   url: https://charts.pingcap.org
 ```
 
+```yaml
+# infrastructure/sources/tidb-operator-git.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: tidb-operator-source
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://github.com/pingcap/tidb-operator.git
+  ref:
+    tag: v1.6.1
+```
+
 ## Step 2: Deploy the TiDB Operator and CRDs
 
 ```yaml
-# infrastructure/databases/tidb/operator-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+# infrastructure/databases/tidb/operator/namespaces.yaml
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: tidb-operator-crds
-  namespace: tidb-admin
-spec:
-  interval: 30m
-  chart:
-    spec:
-      chart: tidb-operator-crds
-      version: "1.6.1"
-      sourceRef:
-        kind: HelmRepository
-        name: pingcap
-        namespace: flux-system
+  name: tidb-admin
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tidb-cluster
 ```
 
 ```yaml
-# infrastructure/databases/tidb/operator.yaml
+# infrastructure/databases/tidb/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -66,26 +73,25 @@ metadata:
   namespace: tidb-admin
 spec:
   interval: 30m
-  dependsOn:
-    - name: tidb-operator-crds
-      namespace: tidb-admin
   chart:
     spec:
       chart: tidb-operator
-      version: "1.6.1"
+      version: "v1.6.1"
       sourceRef:
         kind: HelmRepository
         name: pingcap
         namespace: flux-system
   values:
-    resources:
-      requests:
-        cpu: "250m"
-        memory: "500Mi"
-      limits:
-        cpu: "500m"
-        memory: "1Gi"
+    controllerManager:
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "500Mi"
+        limits:
+          cpu: "500m"
+          memory: "1Gi"
     scheduler:
+      create: true
       resources:
         requests:
           cpu: "250m"
@@ -95,7 +101,7 @@ spec:
 ## Step 3: Create a TiDB Cluster
 
 ```yaml
-# infrastructure/databases/tidb/tidb-cluster.yaml
+# infrastructure/databases/tidb/cluster/tidb-cluster.yaml
 apiVersion: pingcap.com/v1alpha1
 kind: TidbCluster
 metadata:
@@ -114,12 +120,11 @@ spec:
     requests:
       cpu: "500m"
       memory: "1Gi"
+      storage: 10Gi
     limits:
       cpu: "1"
       memory: "2Gi"
     storageClassName: premium-ssd
-    requests:
-      storage: 10Gi
     config: |
       [replication]
         max-replicas = 3
@@ -150,8 +155,6 @@ spec:
         slow-threshold = 300
     service:
       type: ClusterIP
-      # MySQL port
-      mysqlNodePort: 0
 
   # TiKV (row storage) - distributed, persistent
   tikv:
@@ -161,12 +164,11 @@ spec:
     requests:
       cpu: "1"
       memory: "2Gi"
+      storage: 100Gi
     limits:
       cpu: "2"
       memory: "4Gi"
     storageClassName: premium-ssd
-    requests:
-      storage: 100Gi
     config: |
       [rocksdb]
         max-background-jobs = 4
@@ -199,15 +201,54 @@ Add the TiFlash component for columnar storage:
           requests:
             storage: 100Gi
         storageClassName: premium-ssd
-    config: |
-      [flash]
-        overlap_threshold = 0.6
 ```
 
 ## Step 5: Create the Flux Kustomization
 
 ```yaml
-# clusters/production/tidb-kustomization.yaml
+# clusters/production/tidb-crds-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tidb-operator-crds
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: tidb-operator-source
+  path: ./manifests/crd/v1
+  prune: false
+  wait: true
+  timeout: 5m
+```
+
+```yaml
+# clusters/production/tidb-operator-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tidb-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/databases/tidb/operator
+  prune: true
+  dependsOn:
+    - name: tidb-operator-crds
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: tidb-operator
+      namespace: tidb-admin
+  timeout: 5m
+```
+
+```yaml
+# clusters/production/tidb-cluster-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -218,15 +259,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/databases/tidb
+  path: ./infrastructure/databases/tidb/cluster
   prune: true
   dependsOn:
     - name: tidb-operator
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: tidb-controller-manager
-      namespace: tidb-admin
 ```
 
 ## Step 6: Verify and Connect
@@ -254,7 +290,7 @@ mysql -h 127.0.0.1 -P 4000 -u root -e "SELECT * FROM information_schema.cluster_
 - Run TiDB SQL servers as stateless Deployments - scale them horizontally for more query throughput.
 - Set `slow-threshold: 300` (300ms) in TiDB config to capture slow queries for optimization.
 - Use TiFlash for aggregation and analytical queries - add `/*+ READ_FROM_STORAGE(TIFLASH[table_name]) */` hints or enable tiflash replicas via DDL.
-- Monitor TiDB with the official Grafana dashboards available in the PingCAP Helm chart (`tidb-cluster.grafana`).
+- Monitor TiDB with Prometheus and Grafana by creating a `TidbMonitor` CR for the cluster.
 
 ## Conclusion
 
