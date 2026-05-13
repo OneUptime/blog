@@ -12,7 +12,7 @@ Description: A guide to configuring Calico's core settings - IP pools, BGP, enca
 
 After installing Calico on an on-premises cluster, the default configuration works but is not optimized for your specific environment. On-prem clusters often have layer-2 or layer-3 connectivity between nodes, physical router infrastructure that can participate in BGP routing, and specific MTU values set by the network team. Calico's default settings assume none of this - configuring it to match your environment unlocks its full potential.
 
-The Tigera Operator exposes Calico's core configuration through the `Installation` and `FelixConfiguration` CRDs. BGP configuration is managed through `BGPConfiguration` and `BGPPeer` resources. Understanding how these interact lets you build a networking layer that integrates cleanly with your on-prem infrastructure.
+The Tigera Operator exposes Calico's installation-level configuration through the `Installation` CRD. Runtime Calico configuration is managed through resources such as `FelixConfiguration`, `BGPConfiguration`, and `BGPPeer`. Understanding how these interact lets you build a networking layer that integrates cleanly with your on-prem infrastructure.
 
 This guide covers the key configuration steps for a new on-prem Calico deployment.
 
@@ -25,13 +25,13 @@ This guide covers the key configuration steps for a new on-prem Calico deploymen
 
 ## Step 1: Configure the IP Pool
 
-Adjust the IP pool to match your pod CIDR and choose the appropriate encapsulation mode.
+Confirm that the IP pool matches your pod CIDR and choose the appropriate encapsulation mode.
 
 ```bash
 calicoctl get ippool default-ipv4-ippool -o yaml > ippool.yaml
 ```
 
-Edit `ippool.yaml` to set encapsulation. For on-prem environments where all nodes are on the same L2 segment, use `None` (no encapsulation):
+Edit `ippool.yaml` to set encapsulation. For on-prem environments where all nodes are on the same L2 segment, disable both IP-in-IP and VXLAN encapsulation:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -41,7 +41,8 @@ metadata:
 spec:
   cidr: 192.168.0.0/16
   blockSize: 26
-  encapsulation: None
+  ipipMode: Never
+  vxlanMode: Never
   natOutgoing: true
   nodeSelector: all()
 ```
@@ -74,6 +75,8 @@ calicoctl apply -f bgp-config.yaml
 Add a BGP peer for your upstream router:
 
 ```yaml
+# bgppeer.yaml
+
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
@@ -92,7 +95,7 @@ calicoctl apply -f bgppeer.yaml
 Set the MTU to match your physical network. For standard Ethernet without encapsulation:
 
 ```bash
-kubectl patch installation default --type merge \
+kubectl patch installation.operator.tigera.io default --type merge \
   --patch '{"spec":{"calicoNetwork":{"mtu":1500}}}'
 ```
 
@@ -111,7 +114,7 @@ calicoctl patch felixconfiguration default \
 calicoctl node status
 ```
 
-Look for `Established` state on all BGP peers. If sessions are in `Idle` or `Active`, check firewall rules on TCP port 179.
+Run this on the node whose BGP status you want to inspect, and look for `Established` state on all BGP peers. If sessions are in `Idle` or `Active`, check firewall rules on TCP port 179.
 
 ## Conclusion
 
