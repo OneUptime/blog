@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Installation, EKS, AWS
 
-Description: Step-by-step guide to installing Calico on Amazon EKS, covering both Calico as a full CNI replacement for the VPC CNI and as a network policy engine.
+Description: Step-by-step guide to installing Calico on Amazon EKS as a network policy engine while keeping the AWS VPC CNI for pod networking.
 
 ---
 
@@ -46,10 +46,24 @@ When using VPC CNI (default), install Calico for network policy enforcement only
 
 ```bash
 # Install Calico operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Wait for the operator to be ready
 kubectl wait --for=condition=Available deployment/tigera-operator -n tigera-operator --timeout=120s
+
+# Configure AWS VPC CNI to annotate pods with their IPs
+cat << EOF > append.yaml
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - patch
+EOF
+
+kubectl apply -f <(cat <(kubectl get clusterrole aws-node -o yaml) append.yaml)
+kubectl set env -n kube-system daemonset/aws-node ANNOTATE_POD_IP=true
 ```
 
 Create the Calico installation configuration for EKS VPC CNI mode:
@@ -61,6 +75,7 @@ kind: Installation
 metadata:
   name: default
 spec:
+  kubernetesProvider: EKS
   # Use the VPC CNI for pod networking
   cni:
     type: AmazonVPC
@@ -68,6 +83,13 @@ spec:
   calicoNetwork:
     bgp: Disabled
     ipPools: []
+---
+# Enable the Calico API server
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
 ```
 
 Apply the installation:
@@ -88,19 +110,23 @@ kubectl get pods -n calico-apiserver
 
 ```bash
 # Configure calicoctl to use Kubernetes datastore (standard for EKS)
-export CALICO_DATASTORE_TYPE=kubernetes
-export CALICO_KUBECONFIG=~/.kube/config
+export DATASTORE_TYPE=kubernetes
+export KUBECONFIG=~/.kube/config
 
 # Verify connectivity
 calicoctl get nodes
 
-# Check Calico node status on each worker node
-calicoctl node status
+# Check Calico component status
+kubectl get tigerastatus
 ```
 
 ## Step 4: Apply Network Policies
 
 Create namespace-level isolation:
+
+```bash
+kubectl create namespace production
+```
 
 ```yaml
 # namespace-isolation.yaml - Isolate the production namespace with Calico
@@ -130,6 +156,12 @@ spec:
         namespaceSelector: kubernetes.io/metadata.name == 'kube-system'
         ports:
           - 53
+    - action: Allow
+      protocol: TCP
+      destination:
+        namespaceSelector: kubernetes.io/metadata.name == 'kube-system'
+        ports:
+          - 53
   types:
     - Egress
 ---
@@ -153,6 +185,12 @@ spec:
     - Ingress
 ```
 
+Apply the policies:
+
+```bash
+kubectl apply -f namespace-isolation.yaml
+```
+
 ## Step 5: Verify Network Policies
 
 ```bash
@@ -171,7 +209,7 @@ kubectl exec -it other-pod -n production -- curl --max-time 5 http://api-service
 
 - For EKS, keep the VPC CNI and use Calico for policy enforcement only - full CNI replacement complicates VPC integration
 - Use Calico `GlobalNetworkPolicy` for cluster-wide baseline rules (node-to-pod communication, health checks)
-- Enable Calico's eBPF dataplane for better performance on EKS with large workloads
+- Consider Calico's eBPF dataplane for better performance on EKS with large workloads after verifying the prerequisites and following the eBPF migration procedure
 - Use AWS Security Groups in conjunction with Calico policies for defense-in-depth network security
 - Upgrade Calico minor versions with a rolling node upgrade to avoid network disruption
 
