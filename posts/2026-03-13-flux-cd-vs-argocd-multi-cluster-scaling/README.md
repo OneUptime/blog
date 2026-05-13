@@ -10,7 +10,7 @@ Description: Compare the multi-cluster scaling capabilities of Flux CD and ArgoC
 
 ## Introduction
 
-Managing GitOps at scale-across dozens or hundreds of Kubernetes clusters-is one of the most demanding use cases for any GitOps tool. Both Flux CD and ArgoCD have architectural patterns for multi-cluster management, but they approach it differently: Flux CD uses a hub-and-spoke model where each cluster runs its own Flux controllers, while ArgoCD uses a centralized control plane that manages remote clusters via the ArgoCD API server.
+Managing GitOps at scale-across dozens or hundreds of Kubernetes clusters-is one of the most demanding use cases for any GitOps tool. Both Flux CD and ArgoCD have architectural patterns for multi-cluster management, but they approach it differently: Flux CD commonly uses a distributed pull model where each cluster runs its own Flux controllers, while ArgoCD commonly uses a centralized control plane where the application controller reconciles remote clusters through their Kubernetes APIs.
 
 At 100+ clusters, both architectures have tradeoffs around blast radius, operational overhead, network connectivity requirements, and how changes are distributed. This post examines these tradeoffs with concrete architectural examples.
 
@@ -94,9 +94,9 @@ spec:
 |---|---|---|
 | Control plane location | Distributed (per cluster) | Centralized |
 | Blast radius on tool failure | Limited to one cluster | All managed clusters |
-| Network requirements | Only Git access needed | ArgoCD API access to all clusters |
-| Resource per cluster | ~150 MB Flux controllers | Shared ArgoCD control plane |
-| Git polling load | N clusters × poll interval | 1 centralized poll |
+| Network requirements | Each cluster needs access to its configured Git/source endpoints | ArgoCD control plane needs Kubernetes API access to all managed clusters |
+| Resource per cluster | Flux controllers run in every cluster | Shared ArgoCD control plane |
+| Git polling load | N clusters × poll interval | Centralized repository access and caching |
 | Upgrade complexity | N separate upgrades | 1 centralized upgrade |
 
 ## Step 4: Flux CD at Scale with Bootstrap Automation
@@ -153,7 +153,7 @@ EOF
 
 ## Best Practices
 
-- Use Flux CD for large edge deployments where clusters may have limited or intermittent connectivity to a central control plane.
+- Use Flux CD for large edge deployments where clusters may have limited or intermittent connectivity to a central control plane, as long as they can reach their configured Git or source endpoints.
 - Use ArgoCD when you need a single pane of glass for operations teams managing many clusters.
 - With Flux CD at scale, use a tiered fleet repository structure: one root Kustomization per cluster, pointing to cluster-specific paths.
 - With ArgoCD at scale, implement ApplicationSets with cluster generators and label selectors to avoid per-cluster Application management.
@@ -161,4 +161,4 @@ EOF
 
 ## Conclusion
 
-Flux CD scales horizontally through distributed, independent controller installations-ideal for edge or air-gapped clusters. ArgoCD scales through a centralized control plane with ApplicationSets-ideal for teams that need centralized visibility and management. At 100+ clusters, Flux CD's distributed model reduces blast radius and network dependencies, while ArgoCD's centralized model simplifies operations for teams that can maintain the central control plane.
+Flux CD scales horizontally through distributed, independent controller installations-ideal for edge clusters or air-gapped environments with local source mirrors. ArgoCD scales through a centralized control plane with ApplicationSets-ideal for teams that need centralized visibility and management. At 100+ clusters, Flux CD's distributed model reduces blast radius and central control-plane dependencies, while ArgoCD's centralized model simplifies operations for teams that can maintain the central control plane.
