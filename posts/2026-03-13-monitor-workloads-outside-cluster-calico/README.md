@@ -29,8 +29,8 @@ Option 1: Static routes on external hosts:
 
 ip route add 10.244.0.0/16 via <kubernetes-node-ip>
 
-# Make permanent
-echo "10.244.0.0/16 via <kubernetes-node-ip>" >> /etc/network/routes
+# Make permanent (Debian/Ubuntu: add a post-up line to /etc/network/interfaces)
+echo "    post-up ip route add 10.244.0.0/16 via <kubernetes-node-ip>" >> /etc/network/interfaces
 ```
 
 Option 2: BGP peering with external hosts running Bird:
