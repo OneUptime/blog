@@ -26,7 +26,7 @@ This post provides a structured validation checklist organized by networking lay
 Verify the IPPool is configured correctly:
 
 ```bash
-calicoctl get ippools -o wide
+calicoctl get ippool -o wide
 # Expected: At least one IPv4 IPPool with correct CIDR and mode
 
 ```
@@ -50,8 +50,8 @@ calicoctl ipam show
 Create two pods on the same node:
 
 ```bash
-kubectl run pod-a --image=nginx --overrides='{"spec":{"nodeName":"worker-1"}}'
-kubectl run pod-b --image=nicolaka/netshoot --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600
+kubectl run pod-a --image=nginx --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-1"}}'
+kubectl run pod-b --image=nicolaka/netshoot --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-1"}}' --command -- sleep 3600
 
 POD_A_IP=$(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
 kubectl exec pod-b -- ping -c3 $POD_A_IP
@@ -63,7 +63,7 @@ kubectl exec pod-b -- ping -c3 $POD_A_IP
 Create pods on different nodes:
 
 ```bash
-kubectl run pod-c --image=nginx --overrides='{"spec":{"nodeName":"worker-2"}}'
+kubectl run pod-c --image=nginx --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-2"}}'
 
 POD_C_IP=$(kubectl get pod pod-c -o jsonpath='{.status.podIP}')
 kubectl exec pod-b -- ping -c3 $POD_C_IP
@@ -141,18 +141,18 @@ kubectl exec pod-b -- wget --timeout=5 -qO- http://$POD_A_IP
 
 ## Layer 6: Calico-Specific Resource Validation
 
-Verify Felix is healthy on all nodes:
+On each node, verify the local Calico node process and BGP status:
 
 ```bash
 calicoctl node status
-# Expected: BGP and dataplane both show "Established" or "Ready"
+# Expected: Calico process is running; BGP peers show "up" and "Established" when BGP is enabled
 ```
 
 Verify Calico endpoints exist for all pods:
 
 ```bash
 calicoctl get workloadendpoints --all-namespaces
-# Expected: One entry per pod in the cluster
+# Expected: One entry per Calico-networked pod with a workload endpoint
 ```
 
 ## Best Practices
