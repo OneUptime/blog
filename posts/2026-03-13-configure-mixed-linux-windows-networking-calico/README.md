@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Window, Linux, Networking
+Tags: Calico, Kubernetes, Windows, Linux, Networking
 
 Description: Configure Calico to manage networking for both Linux and Windows nodes in a mixed-OS Kubernetes cluster.
 
@@ -10,7 +10,7 @@ Description: Configure Calico to manage networking for both Linux and Windows no
 
 ## Introduction
 
-Running Calico in mixed Linux/Windows Kubernetes clusters enables organizations to containerize Windows-specific workloads alongside Linux containers while using a unified networking and policy model. Calico for Windows supports VXLAN encapsulation (IP-in-IP is not supported on Windows) and BGP peering, providing the same network policy capabilities available for Linux pods.
+Running Calico in mixed Linux/Windows Kubernetes clusters enables organizations to containerize Windows-specific workloads alongside Linux containers while using a unified networking and policy model. Calico for Windows supports VXLAN encapsulation and non-overlay BGP networking (IP-in-IP is not supported on Windows), providing Kubernetes network policy for Windows pods with Windows-specific limitations.
 
 Mixed OS networking requires careful attention to differences in how Windows handles network interfaces, IPAM, and policy enforcement. Windows Calico uses a different CNI binary and network driver compared to Linux, but both integrate with the same Kubernetes API and Calico datastore.
 
@@ -18,8 +18,8 @@ Mixed OS networking requires careful attention to differences in how Windows han
 
 - Kubernetes cluster with Linux control plane nodes
 - Windows worker nodes (Windows Server 2019+)
-- Calico v3.12+ with Windows support
-- VXLAN mode configured (required for Windows)
+- Calico version with Windows support (Calico v3.16+ introduced open source Windows network policy; current operator installs require Calico v3.27+)
+- VXLAN or non-overlay BGP configured, with IP-in-IP disabled
 
 ## Configure VXLAN for Windows Compatibility
 
@@ -30,8 +30,8 @@ metadata:
   name: default-ipv4-ippool
 spec:
   cidr: 10.244.0.0/16
-  vxlanMode: Always  # Required for Windows
-  ipipMode: Never    # IP-in-IP not supported on Windows
+  vxlanMode: Always  # Use VXLAN for this Windows-compatible configuration
+  ipipMode: Never    # IP-in-IP is not supported on Windows
   natOutgoing: true
 ```
 
@@ -40,11 +40,11 @@ spec:
 ```powershell
 # On Windows node
 
-Invoke-WebRequest -Uri https://github.com/projectcalico/calico/releases/download/v3.27.0/calico-windows-v3.27.0.zip -OutFile calico-windows.zip
-Expand-Archive calico-windows.zip -DestinationPath C:\CalicoWindows
+Invoke-WebRequest -Uri https://github.com/projectcalico/calico/releases/download/v3.27.0/install-calico-windows.ps1 -OutFile C:\install-calico-windows.ps1
 
 # Configure and start Calico
-C:\CalicoWindows\install-calico.ps1
+$KubeVersion = "v1.29.0" # Replace with your cluster's Kubernetes version
+C:\install-calico-windows.ps1 -KubeVersion $KubeVersion
 ```
 
 ## Test Cross-OS Connectivity
@@ -81,4 +81,4 @@ graph LR
 
 ## Conclusion
 
-Mixed Linux/Windows networking with Calico requires VXLAN mode (IP-in-IP is not supported on Windows), careful MTU configuration, and thorough testing of cross-OS pod connectivity. Network policies work consistently across both OS types, giving you a unified security model for mixed workload clusters.
+Mixed Linux/Windows networking with Calico requires a Windows-supported networking mode such as VXLAN or non-overlay BGP (IP-in-IP is not supported on Windows), careful MTU configuration, and thorough testing of cross-OS pod connectivity. Kubernetes network policies work across both OS types, giving you a unified security model for mixed workload clusters with Windows-specific limitations.
