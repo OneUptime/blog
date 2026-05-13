@@ -125,28 +125,27 @@ metadata:
   namespace: kyverno
 data:
   values.yaml: |
-    replicaCount: ${kyverno_replicas}
-    resources:
-      limits:
-        cpu: ${kyverno_cpu_limit}
-        memory: ${kyverno_memory_limit}
-      requests:
-        cpu: ${kyverno_cpu_request}
-        memory: ${kyverno_memory_request}
     config:
       webhooks:
-        - objectSelector:
-            matchExpressions:
-              - key: app.kubernetes.io/managed-by
-                operator: NotIn
-                values:
-                  - flux
+        namespaceSelector:
+          matchExpressions:
+            - key: kubernetes.io/metadata.name
+              operator: NotIn
+              values:
+                - kube-system
+                - flux-system
+                - kyverno
       resourceFiltersExcludeNamespaces:
         - kube-system
         - flux-system
         - kyverno
+    features:
+      policyExceptions:
+        enabled: true
+        namespace: kube-system
     backgroundController:
       enabled: true
+      replicas: ${kyverno_replicas}
       resources:
         limits:
           cpu: 500m
@@ -156,10 +155,20 @@ data:
           memory: 128Mi
     cleanupController:
       enabled: true
+      replicas: ${kyverno_replicas}
     reportsController:
       enabled: true
+      replicas: ${kyverno_replicas}
     admissionController:
       replicas: ${kyverno_replicas}
+      container:
+        resources:
+          limits:
+            cpu: ${kyverno_cpu_limit}
+            memory: ${kyverno_memory_limit}
+          requests:
+            cpu: ${kyverno_cpu_request}
+            memory: ${kyverno_memory_request}
 ```
 
 ## Defining Baseline Policies
@@ -177,7 +186,6 @@ metadata:
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: ${policy_enforcement_mode}
   background: true
   rules:
     - name: disallow-privileged
@@ -194,15 +202,19 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: ${policy_enforcement_mode}
         message: "Privileged containers are not allowed."
         pattern:
           spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
             containers:
-              - securityContext:
-                  privileged: "false"
-            initContainers:
-              - securityContext:
-                  privileged: "false"
+              - =(securityContext):
+                  =(privileged): "false"
 ```
 
 ### Require Resource Limits
@@ -218,7 +230,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: ${policy_enforcement_mode}
   background: true
   rules:
     - name: require-limits
@@ -235,6 +246,7 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: ${policy_enforcement_mode}
         message: "CPU and memory limits are required for all containers."
         pattern:
           spec:
@@ -258,7 +270,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: ${policy_enforcement_mode}
   background: true
   rules:
     - name: disallow-latest
@@ -268,6 +279,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: ${policy_enforcement_mode}
         message: "Using 'latest' image tag is not allowed. Please use a specific version tag."
         pattern:
           spec:
@@ -288,7 +300,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: ${policy_enforcement_mode}
   background: true
   rules:
     - name: require-team-label
@@ -307,6 +318,7 @@ spec:
                 - flux-system
                 - kyverno
       validate:
+        failureAction: ${policy_enforcement_mode}
         message: "The label 'app.kubernetes.io/team' is required."
         pattern:
           metadata:
@@ -368,8 +380,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  dependsOn:
-    - name: crds
   wait: true
   timeout: 10m
   postBuild:
