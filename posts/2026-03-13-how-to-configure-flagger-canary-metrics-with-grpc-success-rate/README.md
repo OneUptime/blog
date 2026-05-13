@@ -82,6 +82,7 @@ spec:
     name: my-grpc-app
   service:
     port: 9090
+    portName: grpc
     targetPort: 9090
     appProtocol: grpc
   analysis:
@@ -101,7 +102,7 @@ spec:
 
 The `thresholdRange.min` of 99 means the gRPC success rate must be at least 99% for the metric check to pass. If fewer than 99% of gRPC calls succeed, Flagger counts it as a failed check.
 
-Note the `appProtocol: grpc` field in the service spec. This tells the service mesh to treat traffic on this port as gRPC, which is necessary for correct metric labeling.
+Note the `portName: grpc` and `appProtocol: grpc` fields in the service spec. These provide an explicit protocol hint for service meshes such as Istio; Linkerd can also identify gRPC traffic through protocol detection.
 
 ## Creating a gRPC Success Rate MetricTemplate for Linkerd
 
@@ -203,20 +204,32 @@ This requires both 99% gRPC success rate and P99 latency under 200 milliseconds.
 
 ## Handling the No-Traffic Edge Case
 
-As with HTTP error rate metrics, gRPC queries can return `NaN` when there is no traffic. Use the `or vector(0)` pattern to handle this:
+As with HTTP error rate metrics, gRPC queries can return no data or an invalid ratio when there is no traffic. Guard the denominator and use `or vector(100)` to handle this:
 
 ```yaml
   query: |
     (
-      sum(rate(
-        istio_requests_total{
-          reporter="destination",
-          destination_workload_namespace="{{ namespace }}",
-          destination_workload="{{ target }}",
-          grpc_response_status="0"
-        }[{{ interval }}]
-      ))
-      /
+      (
+        sum(rate(
+          istio_requests_total{
+            reporter="destination",
+            destination_workload_namespace="{{ namespace }}",
+            destination_workload="{{ target }}",
+            grpc_response_status="0"
+          }[{{ interval }}]
+        ))
+        /
+        sum(rate(
+          istio_requests_total{
+            reporter="destination",
+            destination_workload_namespace="{{ namespace }}",
+            destination_workload="{{ target }}",
+            grpc_response_status=~".*"
+          }[{{ interval }}]
+        ))
+        * 100
+      )
+      and
       sum(rate(
         istio_requests_total{
           reporter="destination",
@@ -224,8 +237,7 @@ As with HTTP error rate metrics, gRPC queries can return `NaN` when there is no 
           destination_workload="{{ target }}",
           grpc_response_status=~".*"
         }[{{ interval }}]
-      ))
-      * 100
+      )) > 0
     ) or vector(100)
 ```
 
