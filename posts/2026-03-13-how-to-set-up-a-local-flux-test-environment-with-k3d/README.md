@@ -38,10 +38,10 @@ k3d version
 Create a multi-node cluster with port mappings for testing.
 
 ```bash
-# Simple single-node cluster
-k3d cluster create flux-test
+# Option A: simple single-node cluster
+k3d cluster create flux-test-single
 
-# Multi-node cluster with port mapping and registry
+# Option B: multi-node cluster with port mappings
 k3d cluster create flux-test \
   --servers 1 \
   --agents 3 \
@@ -62,6 +62,9 @@ k3d can create a local container registry that is accessible from both your host
 ```bash
 # Create a registry
 k3d registry create flux-registry.localhost --port 5111
+
+# Delete the earlier test cluster before recreating it with registry access
+k3d cluster delete flux-test 2>/dev/null || true
 
 # Create a cluster connected to the registry
 k3d cluster create flux-test \
@@ -160,7 +163,7 @@ docker build -t localhost:5111/my-app:v2 .
 docker push localhost:5111/my-app:v2
 
 # Update the image tag in your manifests
-sed -i 's/my-app:v1/my-app:v2/' apps/local-app/deployment.yaml
+sed -i.bak 's/my-app:v1/my-app:v2/' apps/local-app/deployment.yaml && rm apps/local-app/deployment.yaml.bak
 
 # Commit and push to trigger Flux reconciliation
 git add . && git commit -m "Update my-app to v2" && git push
@@ -262,7 +265,7 @@ k3d cluster delete flux-test
 k3d cluster delete --all
 
 # Delete the registry
-k3d registry delete flux-registry.localhost
+k3d registry delete k3d-flux-registry.localhost
 ```
 
 ## Automation Script
