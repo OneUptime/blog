@@ -12,7 +12,7 @@ Description: A comprehensive guide to how Calico handles pod egress traffic, cov
 
 Egress traffic - traffic originating from pods and destined for services outside the cluster - is one of the most security-critical traffic flows in a Kubernetes cluster. Without controls, any pod can reach any external endpoint. Calico provides multiple layers of egress control, from simple NetworkPolicy egress rules to dedicated egress gateways with stable source IPs.
 
-Understanding Calico's egress capabilities requires understanding the default behavior (SNAT to the node IP), the policy mechanisms available (IP-based and FQDN-based), and the enterprise capability of egress gateways that provide stable, predictable source IPs for external communication.
+Understanding Calico's egress capabilities requires understanding the common outgoing NAT behavior (SNAT to the node IP when `natOutgoing` is enabled), the policy mechanisms available (IP-based and FQDN-based), and the enterprise capability of egress gateways that provide stable, predictable source IPs for external communication.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Understanding Calico's egress capabilities requires understanding the default be
 
 ## Default Egress Behavior: SNAT
 
-By default, when a pod initiates traffic to a destination outside the cluster CIDR, Calico applies SNAT (Source Network Address Translation) - rewriting the source IP from the pod's RFC 1918 address to the node's external IP.
+When a pod initiates traffic to a destination outside any Calico IP pool and `natOutgoing: true` is set on the pod's IPPool, Calico applies SNAT (Source Network Address Translation) - rewriting the source IP from the pod IP to an address on the node's outgoing interface.
 
 ```mermaid
 graph LR
@@ -30,11 +30,11 @@ graph LR
     Node -->|Source IP: 203.0.113.10| External[api.example.com]
 ```
 
-The SNAT rule is added by Felix when `natOutgoing: true` is set on the IPPool. This allows pods to reach the internet but means the receiving service sees the node IP, not the pod IP.
+The SNAT rule is added by Felix when `natOutgoing: true` is set on the IPPool. This allows pods with non-routable addresses to reach the internet but means the receiving service sees the node IP, not the pod IP.
 
 ## Egress NetworkPolicy
 
-Calico can restrict which external destinations pods are allowed to reach using `egress` rules in NetworkPolicy or CalicNetworkPolicy:
+Calico can restrict which external destinations pods are allowed to reach using `egress` rules in Calico `NetworkPolicy` or `GlobalNetworkPolicy` resources:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -74,7 +74,7 @@ spec:
   - action: Deny
 ```
 
-Calico's DNS controller watches DNS responses and dynamically updates the policy enforcement rules as IP addresses change.
+Calico uses DNS responses from trusted DNS servers to dynamically update the policy enforcement rules as IP addresses change.
 
 ## Egress Gateways (Enterprise)
 
@@ -95,10 +95,14 @@ metadata:
   name: payments-egress
 spec:
   rules:
-  - destination: {}
+  - destination:
+      cidr: 0.0.0.0/0
     gateway:
-      namespaceSelector: egress-gateway == 'true'
+      namespaceSelector: "projectcalico.org/name == 'egress-gateway'"
+      selector: "egress-code == 'payments'"
 ```
+
+To use the policy, annotate the pod or namespace with `egress.projectcalico.org/egressGatewayPolicy: "payments-egress"`.
 
 ## Best Practices
 
@@ -109,4 +113,4 @@ spec:
 
 ## Conclusion
 
-Calico provides a layered approach to egress control: default SNAT handles basic internet connectivity, NetworkPolicy egress rules restrict which destinations pods can reach, FQDN policies handle dynamic external SaaS APIs, and egress gateways provide stable source IPs for firewall-allowlisted external services. Implementing the full egress control stack is essential for production security postures.
+Calico provides a layered approach to egress control: outgoing NAT handles basic internet connectivity, NetworkPolicy egress rules restrict which destinations pods can reach, FQDN policies handle dynamic external SaaS APIs, and egress gateways provide stable source IPs for firewall-allowlisted external services. Implementing the full egress control stack is essential for production security postures.
