@@ -10,9 +10,9 @@ Description: Learn how to configure event webhooks in Flagger to log canary depl
 
 ## Introduction
 
-Flagger's `event` webhook type fires whenever the canary state changes. Unlike other webhook types that fire at specific points in the deployment lifecycle, event webhooks fire on every state transition: when the canary starts progressing, when it advances to a new traffic weight, when it succeeds, and when it fails. This makes event webhooks the best choice for comprehensive deployment logging, audit trails, and real-time monitoring dashboards.
+Flagger's `event` webhook type fires whenever Flagger emits a Kubernetes event for a canary. Unlike other webhook types that fire at specific points in the deployment lifecycle, event webhooks fire for the actions Flagger takes during a canary deployment: when the canary starts progressing, when it advances to a new traffic weight, when it succeeds, and when it fails. This makes event webhooks the best choice for comprehensive deployment logging, audit trails, and real-time monitoring dashboards.
 
-The event webhook provides a unified stream of all canary lifecycle events, eliminating the need to configure separate webhooks for each transition. If you need a complete log of everything that happens during a canary deployment, the event webhook is the right tool.
+The event webhook provides a unified stream of canary lifecycle events, eliminating the need to configure separate webhooks for each lifecycle point. If you need a complete log of Flagger's actions during a canary deployment, the event webhook is the right tool.
 
 This guide covers how to configure event webhooks, the event payload structure, and patterns for logging and notification integration.
 
@@ -25,7 +25,7 @@ This guide covers how to configure event webhooks, the event payload structure, 
 
 ## How event Webhooks Work
 
-Flagger fires event webhooks on canary state transitions. The key events include:
+Flagger fires event webhooks when it records canary events. The key events include:
 
 - Canary starts progressing (new revision detected)
 - Traffic weight increases
@@ -34,7 +34,7 @@ Flagger fires event webhooks on canary state transitions. The key events include
 - Canary is rolled back
 - Canary analysis reaches a new phase
 
-The event webhook receives a POST request with the canary name, namespace, current phase, and any configured metadata. The `phase` field in the payload changes based on the event.
+The event webhook receives a POST request with the canary name, namespace, current phase, checksum, event metadata, and any configured metadata. The `phase` field in the payload reflects the canary phase at the time of the event.
 
 ## Configuring an event Webhook
 
@@ -65,18 +65,23 @@ spec:
         url: http://event-logger.default.svc.cluster.local/events
 ```
 
-Flagger sends a POST request on each state transition with a payload like:
+Flagger sends a POST request for each emitted event with a payload like:
 
 ```json
 {
   "name": "my-app",
   "namespace": "default",
   "phase": "Progressing",
-  "metadata": {}
+  "checksum": "85d557f47b",
+  "metadata": {
+    "eventMessage": "New revision detected! Scaling up my-app.default",
+    "eventType": "Normal",
+    "timestamp": "1578607635167"
+  }
 }
 ```
 
-The `phase` field reflects the current canary phase. Common phases include `Initialized`, `Progressing`, `Promoting`, `Finalising`, `Succeeded`, and `Failed`.
+The `phase` field reflects the current canary phase. Common phases include `Initialized`, `Waiting`, `Progressing`, `WaitingPromotion`, `Promoting`, `Finalising`, `Succeeded`, and `Failed`.
 
 ## Logging to an External System
 
@@ -94,7 +99,7 @@ To send events to an external logging service, point the webhook URL to your log
           team: backend
 ```
 
-Your logging service receives every state transition with the metadata you define. This creates a complete audit trail of each deployment.
+Your logging service receives each event with Flagger's event metadata and the metadata you define. This creates a complete audit trail of each deployment.
 
 ## Sending Events to Slack
 
@@ -174,7 +179,7 @@ The logger application accepts POST requests, parses the JSON payload, and store
 
 ## Combining event with Other Webhook Types
 
-The event webhook can coexist with all other webhook types. Event webhooks provide a stream of all transitions, while targeted webhooks handle specific lifecycle actions:
+The event webhook can coexist with all other webhook types. Event webhooks provide a stream of Flagger events, while targeted webhooks handle specific lifecycle actions:
 
 ```yaml
     webhooks:
@@ -203,7 +208,7 @@ The event webhook can coexist with all other webhook types. Event webhooks provi
         timeout: 15s
 ```
 
-The event webhook logs everything, while the rollback webhook handles the specific case of sending an alert when a rollback occurs.
+The event webhook logs Flagger's emitted events, while the rollback webhook handles the specific case of sending an alert when a rollback occurs.
 
 ## Multiple Event Webhooks
 
@@ -217,10 +222,10 @@ You can define multiple event webhooks to send events to different systems simul
         timeout: 10s
       - name: log-to-datadog
         type: event
-        url: https://http-intake.logs.datadoghq.com/v1/input
+        url: http://datadog-forwarder.monitoring/flagger-events
         timeout: 10s
         metadata:
-          dd-api-key: "${DATADOG_API_KEY}"
+          service: my-app
       - name: notify-teams
         type: event
         url: http://teams-webhook.default/notify
@@ -231,4 +236,4 @@ Each event webhook receives the same event data independently.
 
 ## Conclusion
 
-The `event` webhook in Flagger provides a unified stream of all canary lifecycle state transitions. It fires on every phase change, from initialization through progression to success or failure. This makes it the best choice for comprehensive deployment logging, audit trails, and real-time monitoring. Unlike targeted webhook types that fire at specific lifecycle points, the event webhook covers all transitions in a single configuration, simplifying observability for your progressive delivery pipeline.
+The `event` webhook in Flagger provides a unified stream of canary lifecycle events. It fires when Flagger emits Kubernetes events during initialization, progression, promotion, success, or failure. This makes it the best choice for comprehensive deployment logging, audit trails, and real-time monitoring. Unlike targeted webhook types that fire at specific lifecycle points, the event webhook covers the emitted canary events in a single configuration, simplifying observability for your progressive delivery pipeline.
