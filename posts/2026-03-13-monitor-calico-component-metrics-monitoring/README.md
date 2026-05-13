@@ -63,7 +63,7 @@ spec:
 
         # Alert if Typha metrics completely missing
         - alert: CalicoTyphaMissing
-          expr: absent(typha_connections_total)
+          expr: absent(typha_connections_active)
           for: 15m
           labels:
             severity: info
@@ -77,11 +77,11 @@ spec:
 # Panel: Metrics Coverage Rate
 count(up{job=~"calico-.*"} == 1) / count(up{job=~"calico-.*"})
 
-# Panel: Last successful scrape per target
-time() - max(last_over_time(up{job=~"calico-.*"}[10m])) by (instance, job)
+# Panel: Last scrape sample age per target
+time() - timestamp(up{job=~"calico-.*"})
 
-# Panel: Scrape duration histogram
-histogram_quantile(0.99, rate(prometheus_target_interval_length_seconds_bucket{job=~"calico-.*"}[5m]))
+# Panel: Scrape duration per target
+scrape_duration_seconds{job=~"calico-.*"}
 ```
 
 ## Monitoring Pipeline Architecture
