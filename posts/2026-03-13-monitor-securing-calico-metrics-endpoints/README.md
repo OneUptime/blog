@@ -72,7 +72,7 @@ echo "Unauthorized access (should timeout): $?"
 grep "port=9091" /var/log/calico/flow-logs/*.log | tail -20
 
 # Check active policy for calico-node pods
-calicoctl get networkpolicies -n kube-system | grep metrics
+calicoctl get globalnetworkpolicies | grep metrics
 ```
 
 ## Architecture
