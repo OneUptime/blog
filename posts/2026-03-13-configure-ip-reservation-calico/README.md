@@ -10,7 +10,7 @@ Description: Learn how to reserve specific IP addresses in Calico's IPAM to prev
 
 ## Introduction
 
-Calico's IPAM system manages IP address allocation for pods automatically, but there are scenarios where you need to reserve specific IPs or ranges from being assigned. This includes reserving addresses for static virtual IPs, keeping IPs aligned with external firewall rules, preventing allocation of broadcast and network addresses, or holding IPs for services that will be deployed later.
+Calico's IPAM system manages IP address allocation for pods automatically, but there are scenarios where you need to reserve specific IPs or ranges from being assigned. This includes reserving addresses for static virtual IPs, keeping IPs aligned with external firewall rules, preventing allocation of known-conflict addresses, or holding IPs for services that will be deployed later.
 
 Calico provides IP reservation through IPReservation resources (available from Calico v3.22+), which explicitly exclude specific IPs or CIDRs from the IPAM allocation pool. Reserved IPs remain part of the IP pool's CIDR but are never assigned to pods.
 
@@ -62,8 +62,8 @@ calicoctl apply -f reserve-single-ip.yaml
 # Verify the reservation is active
 calicoctl get ipreservations
 
-# Confirm the IP is excluded from IPAM allocations
-calicoctl ipam show | grep "192.168.0.10"
+# Confirm the IP is not currently assigned
+calicoctl ipam show --ip=192.168.0.10
 ```
 
 ## Step 3: Reserve a Range of IPs
@@ -72,7 +72,7 @@ Reserve multiple addresses or a subnet range from the pod pool.
 
 ```yaml
 # reserve-ip-range.yaml
-# Reserve IPs in the .1 to .20 range for infrastructure services
+# Reserve IPs in the .0 to .19 range for infrastructure services
 apiVersion: projectcalico.org/v3
 kind: IPReservation
 metadata:
@@ -98,20 +98,18 @@ calicoctl get ipreservations -o yaml
 
 ## Step 4: Use Reservations with Multiple IP Pools
 
-Apply reservations to specific pools in multi-pool configurations.
+In multi-pool configurations, reserve addresses from the CIDRs used by the pools you want to protect. IPReservation resources are not tied to a named IP pool; they apply to matching addresses when Calico IPAM automatically assigns new IPs.
 
 ```yaml
 # reserve-in-specific-pool.yaml
-# Reserve gateway IPs from the production pool
+# Reserve gateway IPs from production pool ranges
 apiVersion: projectcalico.org/v3
 kind: IPReservation
 metadata:
   name: production-gateway-reservation
 spec:
   reservedCIDRs:
-  # Reserve the first IP in each /26 block for potential gateway use
-  # 192.168.0.0/26: reserve .0 (network) and .63 (broadcast are auto-reserved)
-  # Additionally reserve .1 and .2 for ingress gateway static IPs
+  # Reserve selected ingress gateway static IPs
   - "192.168.0.1/32"
   - "192.168.0.2/32"
   - "192.168.64.1/32"
@@ -126,7 +124,7 @@ Test that reserved IPs are not assigned to pods.
 
 ```bash
 # Deploy many pods to drive IP allocation
-kubectl run load-test --image=busybox --replicas=20 -- sleep 3600
+kubectl create deployment load-test --image=busybox --replicas=20 -- sleep 3600
 
 # Verify none of the reserved IPs were assigned
 kubectl get pods -o wide | awk '{print $6}' | grep -E "^192\.168\." | sort -V
@@ -134,8 +132,8 @@ kubectl get pods -o wide | awk '{print $6}' | grep -E "^192\.168\." | sort -V
 # The reserved IPs (192.168.0.1, 192.168.0.2, etc.) should NOT appear
 # in the pod IP list regardless of how many pods are running
 
-# Check IPAM to confirm reserved IPs show as "reserved"
-calicoctl ipam show --show-blocks | grep -E "reserved|Reserved"
+# Check a reserved IP directly; it should not be reported as assigned
+calicoctl ipam show --ip=192.168.0.1
 ```
 
 ## Best Practices
