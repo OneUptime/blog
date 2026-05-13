@@ -17,7 +17,7 @@ The migration is most commonly done to increase throughput for performance-sensi
 ## Prerequisites
 
 - A Kubernetes cluster with standard Calico installed (iptables or eBPF data plane)
-- Nodes meeting VPP hardware requirements (hugepages configured, DPDK-compatible NICs)
+- Nodes meeting Calico VPP requirements. Hugepages are optional, but required for some higher-performance drivers such as `virtio` and `dpdk`.
 - `kubectl` with cluster admin access
 
 ## Step 1: Verify Calico Control Plane Health
@@ -32,38 +32,41 @@ Calico must be fully healthy before adding VPP.
 
 ## Step 2: Prepare Nodes for VPP
 
-On each node, configure hugepages before installing VPP.
+On each node that will use a hugepage-backed VPP driver, configure hugepages before installing VPP.
 
 ```bash
 echo 512 > /proc/sys/vm/nr_hugepages
-# Add to sysctl for persistence
+echo 'vm.nr_hugepages = 512' >> /etc/sysctl.conf
+sysctl -p
 
-echo 'vm.nr_hugepages = 512' >> /etc/sysctl.d/99-hugepages.conf
+# Restart kubelet so the hugepage capacity is visible to Kubernetes.
+systemctl restart kubelet
 ```
 
-Bind the data interface to the DPDK driver:
+If you plan to use a VPP native driver that requires `vfio-pci`, load it on the node:
 
 ```bash
-# Identify NIC PCI address
-lspci | grep Ethernet
-
+echo "vfio-pci" > /etc/modules-load.d/95-vpp.conf
 modprobe vfio-pci
-dpdk-devbind.py --bind=vfio-pci <pci-address>
 ```
 
 ## Step 3: Deploy VPP Components Alongside Calico
 
-Clone and deploy the Calico VPP manifests.
+For operator-based Calico installations, switch the Installation resource to the VPP data plane, then download and deploy the Calico VPP manifest that matches the Calico VPP release you are installing.
 
 ```bash
-git clone https://github.com/projectcalico/vpp-dataplane.git
-cd vpp-dataplane
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"VPP"}}}'
 
-# Update config with your interface
-sed -i 's/CALICOVPP_INTERFACE.*/CALICOVPP_INTERFACE: eth1/' yaml/calico-vpp.yaml
+curl -o calico-vpp.yaml https://raw.githubusercontent.com/projectcalico/vpp-dataplane/v3.31.0/yaml/generated/calico-vpp.yaml
 
-kubectl apply -f yaml/calico-vpp.yaml
+# Update CALICOVPP_INTERFACES with your node's primary uplink interface.
+# The interface must be a valid Linux interface with the node address.
+sed -i 's/"interfaceName": "eth1"/"interfaceName": "<uplink-interface>"/' calico-vpp.yaml
+
+kubectl create -f calico-vpp.yaml
 ```
+
+For DPDK, set `uplinkInterfaces[0].vppDriver` to `"dpdk"` in the `CALICOVPP_INTERFACES` ConfigMap. For a simpler rollout that keeps the interface in Linux, set it to `"af_packet"`.
 
 ## Step 4: Roll Out VPP Node by Node
 
@@ -71,10 +74,10 @@ kubectl apply -f yaml/calico-vpp.yaml
 kubectl get pods -n calico-vpp-dataplane -o wide
 ```
 
-VPP manager pods will roll out to each node. Monitor for pods entering Running state.
+The `calico-vpp-node` pods will roll out to each node. Monitor for pods entering Running state.
 
 ```bash
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl show interface
 ```
 
 ## Step 5: Verify Workloads Are Unaffected
@@ -96,4 +99,4 @@ Compare against pre-migration throughput to verify the VPP migration delivered t
 
 ## Conclusion
 
-Migrating to Calico VPP from standard Calico is a data plane migration that preserves all existing control plane configuration including IP pools, BGP settings, and network policies. The migration requires node-level preparation (hugepages, DPDK driver binding) followed by deploying the VPP components alongside the existing Calico installation. VPP then takes over packet processing on each node as it initializes, with only brief connectivity interruption during the handoff.
+Migrating to Calico VPP from standard Calico is a data plane migration that preserves all existing control plane configuration including IP pools, BGP settings, and network policies. The migration requires node-level preparation for the selected VPP uplink driver followed by deploying the VPP components alongside the existing Calico installation. VPP then takes over packet processing on each node as it initializes, with only brief connectivity interruption during the handoff.
