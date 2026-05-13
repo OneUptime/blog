@@ -88,18 +88,19 @@ spec:
         - rsize=1048576           # read size 1 MiB
         - wsize=1048576           # write size 1 MiB
         - hard                    # retry on failure
-        - intr                    # allow interrupt
-        - timeo=14                # 14 × 0.1s = 1.4s timeout
+        - timeo=600               # 600 x 0.1s = 60s timeout for NFS over TCP
         - retrans=2               # retry 2 times before error
 
     # StorageClass configuration
     storageClass:
       name: nfs-client
+      provisionerName: cluster.local/nfs-subdir-external-provisioner
       # Make this the default StorageClass for development clusters
       defaultClass: false
       reclaimPolicy: Delete
-      # Subdirectory naming: ${namespace}-${pvcName}-${pvName}
-      pathPattern: "${.PVC.namespace}/${.PVC.annotations.nfs.io/storage-path:${.PVC.name}}"
+      allowVolumeExpansion: false
+      # Subdirectory naming: ${namespace}/${pvcName}
+      pathPattern: "${.PVC.namespace}/${.PVC.name}"
       onDelete: delete           # delete the NFS subdirectory on PVC deletion
       # OR: onDelete: retain      # keep the directory for manual inspection
 
@@ -125,7 +126,7 @@ metadata:
   name: nfs-fast
 provisioner: cluster.local/nfs-subdir-external-provisioner
 reclaimPolicy: Delete
-allowVolumeExpansion: false  # NFS doesn't support resize
+allowVolumeExpansion: false  # NFS Subdir External Provisioner doesn't support resize
 parameters:
   pathPattern: "fast/${.PVC.namespace}/${.PVC.name}"
   onDelete: delete
@@ -215,8 +216,8 @@ spec:
   path: ./infrastructure/storage/nfs
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: nfs-subdir-external-provisioner
       namespace: nfs-provisioner
 ```
@@ -255,7 +256,7 @@ ssh nfs-server "ls /mnt/nfs-share/nfs-test/"
 
 ## Best Practices
 
-- Use NFSv4.1 (`nfsvers=4.1`) for better performance and atomic operations compared to NFSv3.
+- Use NFSv4.1 (`nfsvers=4.1`) for stateful protocol features such as integrated locking and sessions.
 - Set `rsize` and `wsize` to 1 MiB for sequential workloads; reduce to 64KB for random small I/O.
 - Use `hard` mount option for production - `soft` mounts silently fail on server timeout, corrupting data.
 - Consider `onDelete: retain` for production data even if the StorageClass `reclaimPolicy` is Delete - you can always manually clean up directories.
