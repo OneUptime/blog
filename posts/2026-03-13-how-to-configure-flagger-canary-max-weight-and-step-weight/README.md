@@ -10,7 +10,7 @@ Description: Learn how to configure Flagger's maxWeight and stepWeight parameter
 
 ## Introduction
 
-Traffic-based canary analysis is one of Flagger's most powerful features. Instead of sending all traffic to a new version at once, Flagger gradually increases the percentage of traffic routed to the canary. The `maxWeight` and `stepWeight` parameters control this progression: `stepWeight` defines how much traffic to add at each step, and `maxWeight` defines the ceiling before promotion.
+Traffic-based canary analysis is one of Flagger's most powerful features. Instead of sending all traffic to a new version at once, Flagger gradually increases the percentage of traffic routed to the canary. The `maxWeight` and `stepWeight` parameters control this progression: `stepWeight` defines how much traffic to add at each step, and `maxWeight` defines the promotion threshold.
 
 Getting these values right determines how quickly your canary rolls out and how much exposure the new version gets before being promoted to primary.
 
@@ -35,17 +35,17 @@ spec:
 
 ### maxWeight
 
-The `maxWeight` field defines the maximum percentage of traffic the canary can receive before Flagger promotes it:
+The `maxWeight` field defines the traffic weight threshold Flagger uses before promoting the canary:
 
 ```yaml
 spec:
   analysis:
-    maxWeight: 50  # Promote when canary reaches 50% traffic
+    maxWeight: 50  # Promote when canary reaches the 50% threshold
 ```
 
 ### Traffic Progression
 
-The canary traffic progresses through weights from `stepWeight` up to `maxWeight` in increments of `stepWeight`:
+The canary traffic progresses in increments of `stepWeight` until it reaches the `maxWeight` threshold:
 
 ```mermaid
 graph LR
@@ -61,7 +61,7 @@ graph LR
     style F fill:#ff9800,color:#fff
 ```
 
-The total number of steps is: `maxWeight / stepWeight`
+When `maxWeight` is evenly divisible by `stepWeight`, the total number of steps is: `maxWeight / stepWeight`. Otherwise, Flagger rounds up to the next step before promotion.
 
 ## Configuration Examples
 
@@ -245,14 +245,14 @@ kubectl get virtualservice api-server -n production -o yaml
 
 ### maxWeight Not Divisible by stepWeight
 
-If `maxWeight` is not evenly divisible by `stepWeight`, Flagger will still work but the last step before promotion may be smaller than expected. For clarity, use values where `maxWeight % stepWeight == 0`.
+If `maxWeight` is not evenly divisible by `stepWeight`, Flagger will still work but the last step before promotion may go above `maxWeight`. For example, `maxWeight: 50` and `stepWeight: 20` produces 20%, 40%, 60%, then promotion. For clarity, use values where `maxWeight % stepWeight == 0`.
 
 ### stepWeight Too Small with Short Interval
 
 A `stepWeight` of 1 with a 15-second interval means the canary takes a long time to reach `maxWeight`. Make sure the total rollout time is acceptable:
 
 ```text
-total_time = (maxWeight / stepWeight) * interval
+total_time = ceil(maxWeight / stepWeight) * interval
 ```
 
 For `maxWeight=50`, `stepWeight=1`, `interval=15s`: total time = 50 * 15s = 12.5 minutes.
