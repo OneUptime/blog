@@ -18,7 +18,7 @@ This guide covers the complete setup of a Flux Receiver for GitLab push events, 
 
 Before proceeding, make sure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller accessible from GitLab (via ingress or LoadBalancer)
 - A GitLab project that Flux is tracking as a GitRepository source
@@ -114,7 +114,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -171,11 +171,11 @@ spec:
       name: monitoring-stack
 ```
 
-All listed resources are reconciled when a push event is received. This is useful when a single repository drives multiple deployments.
+All listed resources are reconciled when a push event is received. In most setups, list the source resources such as `GitRepository`; Flux automatically notifies downstream `Kustomization` and `HelmRelease` resources when a source revision changes. Listing downstream resources directly is only needed when you specifically want the receiver to request reconciliation for those resources as well.
 
 ## Handling GitLab Merge Request Events
 
-You can also listen for merge request events to trigger reconciliation when merge requests are merged:
+You can also listen for merge request events to trigger reconciliation when merge request activity occurs:
 
 ```yaml
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -195,7 +195,7 @@ spec:
       name: app-repo
 ```
 
-In the GitLab webhook settings, enable both "Push events" and "Merge request events" triggers.
+In the GitLab webhook settings, enable both "Push events" and "Merge request events" triggers. GitLab sends merge request webhooks for events such as opened, updated, merged, and closed merge requests, and Flux filters only on the `X-Gitlab-Event` value, not on the merge request action inside the payload.
 
 ## Self-Managed GitLab Configuration
 
