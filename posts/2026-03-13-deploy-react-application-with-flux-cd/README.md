@@ -135,8 +135,6 @@ kind: Ingress
 metadata:
   name: my-react-app
   namespace: my-react-app
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
@@ -242,7 +240,7 @@ spec:
 
 ## Step 5: Inject Runtime Configuration
 
-React apps bake environment variables at build time. For runtime configuration (API base URLs that differ per environment), use a ConfigMap served as a JavaScript file.
+React apps bake environment variables at build time. For runtime configuration (API base URLs that differ per environment), use a ConfigMap mounted into Nginx and served as a JavaScript file.
 
 ```yaml
 # deploy/configmap.yaml
@@ -258,6 +256,31 @@ data:
       apiBaseUrl: "https://api.example.com",
       environment: "production"
     };
+```
+
+Mount the file into the Nginx document root:
+
+```yaml
+# Add to deploy/deployment.yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: my-react-app
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: runtime-config
+```
+
+Then load it before the React bundle in `index.html`:
+
+```html
+<script src="/config.js"></script>
 ```
 
 ## Best Practices
