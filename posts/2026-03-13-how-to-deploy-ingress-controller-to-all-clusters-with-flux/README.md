@@ -10,6 +10,8 @@ Description: Learn how to deploy and configure ingress controllers consistently 
 
 Every Kubernetes cluster that serves external traffic needs an ingress controller. When you manage multiple clusters, deploying and configuring ingress controllers consistently becomes a challenge. This guide demonstrates how to use Flux to deploy NGINX Ingress Controller across all your clusters with cluster-specific configurations for load balancer types, annotations, TLS settings, and resource sizing.
 
+Note: the community-maintained Kubernetes ingress-nginx project was retired in March 2026. Existing Helm charts and images remain available, but there are no further bug fixes or security updates. Use this pattern for existing ingress-nginx estates, and plan migrations to Gateway API or another maintained ingress controller for new deployments.
+
 ## Architecture Overview
 
 ```mermaid
@@ -24,7 +26,7 @@ graph TD
     end
     subgraph "Production Cluster"
         G[Flux Kustomization] --> H[NGINX Ingress Controller]
-        H --> I[External NLB with WAF]
+        H --> I[External NLB]
         H --> J[Internal NLB]
     end
     B --> D
@@ -143,9 +145,10 @@ data:
         annotations:
           service.beta.kubernetes.io/aws-load-balancer-type: ${lb_type}
           service.beta.kubernetes.io/aws-load-balancer-scheme: ${lb_scheme}
-          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
           service.beta.kubernetes.io/aws-load-balancer-ssl-cert: ${lb_ssl_cert_arn}
           service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+          service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: proxy_protocol_v2.enabled=${use_proxy_protocol}
       config:
         use-forwarded-headers: "true"
         compute-full-forwarded-for: "true"
@@ -228,7 +231,7 @@ data:
 
 ## Flux Kustomization with Dependency Ordering
 
-The ingress controller should depend on cert-manager if you plan to use TLS certificates:
+The ingress controller should depend on cert-manager if you plan to use cert-manager-issued Kubernetes TLS certificates:
 
 ```yaml
 # clusters/production/infrastructure.yaml (ingress section)
@@ -246,7 +249,7 @@ spec:
     name: flux-system
   dependsOn:
     - name: cert-manager
-  wait: true
+  wait: false
   timeout: 10m
   postBuild:
     substituteFrom:
@@ -301,20 +304,15 @@ spec:
           enabled: true
 ```
 
-## Adding Rate Limiting and Security Headers
+## Adding Security Headers
 
-Configure global security settings through the ingress controller ConfigMap:
+Configure global security settings through the ingress controller Helm values:
 
 ```yaml
-# infrastructure/ingress-nginx/configmap-security.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ingress-nginx-security-config
-  namespace: ingress-nginx
-data:
-  # Security headers
-  add-headers: "ingress-nginx/custom-headers"
+# infrastructure/ingress-nginx/values-base.yaml (security settings)
+controller:
+  config:
+    add-headers: "ingress-nginx/custom-headers"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -368,11 +366,11 @@ spec:
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.9.0"  # Pin to specific version
+      version: "4.15.1"  # Pin to a tested version
 ```
 
-Roll out to staging first by updating the staging cluster configuration, verify it works, then update production. Flux's dependency system ensures the controller is healthy before any dependent Ingress resources are reconciled.
+Roll out to staging first by updating the staging cluster configuration, verify it works, then update production. Flux's dependency system ensures the controller is healthy before dependent Ingress resources are reconciled when those resources are managed by Kustomizations that declare `dependsOn` for the ingress controller Kustomization.
 
 ## Conclusion
 
-Deploying ingress controllers across multiple clusters with Flux provides consistency in networking configuration while allowing per-cluster customization for load balancer types, scaling parameters, and security settings. By using variable substitution for cloud-specific annotations and HelmRelease values, you maintain a single source of truth for your ingress configuration. The dependency ordering ensures cert-manager is ready before the ingress controller deploys, and health checks confirm the controller is serving traffic before downstream resources are applied.
+Deploying ingress controllers across multiple clusters with Flux provides consistency in networking configuration while allowing per-cluster customization for load balancer types, scaling parameters, and security settings. By using variable substitution for cloud-specific annotations and HelmRelease values, you maintain a single source of truth for your ingress configuration. The dependency ordering ensures cert-manager is ready before the ingress controller deploys, and health checks confirm the controller deployment is ready before dependent Kustomizations that declare `dependsOn` proceed.
