@@ -22,20 +22,20 @@ Key optimization areas include: configuring Equal-Cost Multi-Path (ECMP) routing
 
 ## Enable ECMP for Load Balancing
 
-When multiple pods serve the same application, configure BGP to use ECMP for traffic distribution. Enable `maxNextHops` on your external router and use equal-cost paths:
+When multiple pods serve the same application via a Kubernetes Service, configure BGP to use ECMP for traffic distribution. Enable a sufficient `maxNextHops` (or equivalent multipath setting) on your external router and use equal-cost paths:
 
 ```bash
 # Verify multiple BGP routes to the same destination
 
-ip route show | grep "10.48"
+ip route show | grep "192.168.100"
 # Should show multiple nexthops if ECMP is active
 ```
 
-Configure Calico to announce node IPs alongside pod CIDRs for ECMP:
+Configure Calico to advertise LoadBalancer service IPs over BGP. With `externalTrafficPolicy: Cluster`, every node advertises the service IP, giving the upstream router multiple equal-cost paths:
 
 ```bash
 calicoctl patch bgpconfiguration default --type merge \
-  --patch '{"spec":{"serviceLoadBalancerIPs":[{"cidr":"10.48.0.0/16"}]}}'
+  --patch '{"spec":{"serviceLoadBalancerIPs":[{"cidr":"192.168.100.0/24"}]}}'
 ```
 
 ## Tune IP Pool Block Size
@@ -66,7 +66,7 @@ calicoctl patch ippool default-ipv4-ippool --type merge \
 
 ## Optimize BGP Route Aggregation
 
-Reduce route table size by aggregating pod CIDRs at the pool level. Configure Calico to advertise the entire pool CIDR rather than individual node blocks:
+Calico advertises each node's allocated block individually, so true aggregation has to happen on the upstream routers. Attach BGP communities to the pool prefix with `prefixAdvertisements` so your ToR routers can match on the community and apply aggregation or filtering policy:
 
 ```bash
 calicoctl patch bgpconfiguration default --type merge \
