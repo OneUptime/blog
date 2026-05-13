@@ -1,23 +1,23 @@
-# How to Configure Flux with IRSA for CodeCommit Access on EKS
+# How to Configure Flux with CodeCommit Access on EKS
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, AWS, EKS, IRSA, CodeCommit
+Tags: Flux, Kubernetes, GitOps, AWS, EKS, CodeCommit
 
-Description: Learn how to configure Flux to access AWS CodeCommit repositories using IRSA on EKS, enabling GitOps workflows without static Git credentials.
+Description: Learn how to configure Flux to access AWS CodeCommit repositories on EKS, enabling GitOps workflows with SSH authentication.
 
 ---
 
-## Why CodeCommit with IRSA
+## Why CodeCommit with Flux
 
-AWS CodeCommit is a fully managed Git repository service that integrates natively with IAM for access control. By using IRSA, Flux can access CodeCommit repositories without SSH keys or HTTPS credentials, leveraging the EKS OIDC provider for secure, automatic authentication.
+AWS CodeCommit is a fully managed Git repository service that integrates natively with IAM for access control. Flux can access CodeCommit repositories over SSH by using an IAM user SSH key ID as the SSH username and a Kubernetes Secret containing the private key.
 
 ## Prerequisites
 
-- An EKS cluster with the OIDC provider enabled
+- An EKS cluster
 - Flux installed on the EKS cluster
 - An AWS CodeCommit repository
-- AWS CLI and eksctl installed
+- AWS CLI and Flux CLI installed
 
 ## Step 1: Create the CodeCommit Repository
 
@@ -32,7 +32,7 @@ aws codecommit create-repository \
 
 REPO_URL=$(aws codecommit get-repository \
   --repository-name flux-repo \
-  --query 'repositoryMetadata.cloneUrlHttp' \
+  --query 'repositoryMetadata.cloneUrlSsh' \
   --output text)
 
 echo "Repository URL: $REPO_URL"
@@ -94,76 +94,67 @@ cat > codecommit-write-policy.json << 'EOF'
   ]
 }
 EOF
+
+aws iam create-policy \
+  --policy-name FluxCodeCommitWriteAccess \
+  --policy-document file://codecommit-write-policy.json
 ```
 
-## Step 3: Create the IAM Role
+## Step 3: Create the IAM User SSH Key
 
-Create an IAM role for the Flux source-controller:
+Create or choose an IAM user that Flux will use for CodeCommit SSH access, then attach the policy:
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-OIDC_PROVIDER=$(aws eks describe-cluster --name my-cluster \
-  --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
+CODECOMMIT_USER=flux-codecommit-user
 
-cat > trust-policy.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:flux-system:source-controller",
-          "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
-        }
-      }
-    }
-  ]
-}
-EOF
+aws iam create-user --user-name "$CODECOMMIT_USER"
 
-aws iam create-role \
-  --role-name flux-codecommit-role \
-  --assume-role-policy-document file://trust-policy.json
-
-aws iam attach-role-policy \
-  --role-name flux-codecommit-role \
+aws iam attach-user-policy \
+  --user-name "$CODECOMMIT_USER" \
   --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/FluxCodeCommitAccess"
 ```
 
-## Step 4: Annotate the Source Controller Service Account
+Generate an SSH key pair and upload the public key to the IAM user:
 
-Patch the Flux source-controller service account:
+```bash
+ssh-keygen -t rsa -b 4096 -m PEM -f ./codecommit_rsa
 
-```yaml
-# clusters/production/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
-patches:
-  - target:
-      kind: ServiceAccount
-      name: source-controller
-      namespace: flux-system
-    patch: |
-      apiVersion: v1
-      kind: ServiceAccount
-      metadata:
-        name: source-controller
-        namespace: flux-system
-        annotations:
-          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-codecommit-role
+SSH_KEY_ID=$(aws iam upload-ssh-public-key \
+  --user-name "$CODECOMMIT_USER" \
+  --ssh-public-key-body file://codecommit_rsa.pub \
+  --query 'SSHPublicKey.SSHPublicKeyId' \
+  --output text)
+
+echo "SSH key ID: $SSH_KEY_ID"
+```
+
+The SSH key ID is used as the SSH username for CodeCommit.
+
+## Step 4: Create the Git Authentication Secret
+
+Create a Kubernetes Secret for Flux that contains the CodeCommit SSH private key:
+
+```bash
+flux create secret git codecommit-auth \
+  --namespace=flux-system \
+  --url=ssh://${SSH_KEY_ID}@git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo \
+  --private-key-file=./codecommit_rsa
+```
+
+If your private key has a passphrase, add the `--password` flag:
+
+```bash
+flux create secret git codecommit-auth \
+  --namespace=flux-system \
+  --url=ssh://${SSH_KEY_ID}@git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo \
+  --private-key-file=./codecommit_rsa \
+  --password='<key-passphrase>'
 ```
 
 ## Step 5: Configure the Git Repository Source
 
-Configure Flux to use the CodeCommit repository with the AWS provider:
+Configure Flux to use the CodeCommit repository over SSH:
 
 ```yaml
 # clusters/production/flux-system/gotk-sync.yaml
@@ -176,11 +167,12 @@ spec:
   interval: 1m
   ref:
     branch: main
-  url: https://git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo
-  provider: aws
+  url: ssh://<SSH-Key-ID>@git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo
+  secretRef:
+    name: codecommit-auth
 ```
 
-The `provider: aws` field tells Flux to use IRSA-based authentication instead of SSH keys or HTTPS credentials.
+The `secretRef` field tells Flux to use the SSH private key stored in the Kubernetes Secret.
 
 ## Step 6: Bootstrap Flux with CodeCommit
 
@@ -188,15 +180,26 @@ If you are bootstrapping Flux with CodeCommit from scratch:
 
 ```bash
 flux bootstrap git \
-  --url=https://git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo \
+  --url=ssh://${SSH_KEY_ID}@git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo \
   --branch=main \
   --path=clusters/production \
-  --provider=aws
+  --private-key-file=./codecommit_rsa
+```
+
+If the key has a passphrase, include it with `--password`:
+
+```bash
+flux bootstrap git \
+  --url=ssh://${SSH_KEY_ID}@git-codecommit.us-east-1.amazonaws.com/v1/repos/flux-repo \
+  --branch=main \
+  --path=clusters/production \
+  --private-key-file=./codecommit_rsa \
+  --password='<key-passphrase>'
 ```
 
 ## Step 7: Image Automation with CodeCommit
 
-If you use Flux image automation that pushes back to CodeCommit, the source-controller needs write access:
+If you use Flux image automation that pushes back to CodeCommit, the IAM user used by the GitRepository needs write access:
 
 ```yaml
 # clusters/production/image-update.yaml
@@ -267,15 +270,16 @@ spec:
   interval: 5m
   ref:
     branch: main
-  url: https://git-codecommit.us-east-1.amazonaws.com/v1/repos/app-config
-  provider: aws
+  url: ssh://<SSH-Key-ID>@git-codecommit.us-east-1.amazonaws.com/v1/repos/app-config
+  secretRef:
+    name: codecommit-auth
 ```
 
 ## Verifying the Setup
 
 ```bash
-# Check the source-controller service account
-kubectl get sa source-controller -n flux-system -o yaml | grep eks.amazonaws.com
+# Check the Git authentication secret
+kubectl get secret codecommit-auth -n flux-system
 
 # Verify Git repository source is syncing
 flux get sources git flux-system
@@ -289,4 +293,4 @@ flux get kustomizations
 
 ## Conclusion
 
-Configuring Flux with IRSA for CodeCommit access on EKS provides a secure, native AWS integration for GitOps workflows. By using the `provider: aws` configuration, Flux authenticates to CodeCommit through the EKS OIDC provider, eliminating the need for SSH keys or HTTPS Git credentials. This approach integrates seamlessly with AWS IAM policies, allowing fine-grained access control to specific repositories and branches.
+Configuring Flux with CodeCommit access on EKS provides a secure AWS integration for GitOps workflows. By using SSH authentication with CodeCommit, Flux can authenticate to the repository without embedding HTTPS Git credentials in manifests. This approach integrates with AWS IAM policies, allowing fine-grained access control to specific repositories and branches.
