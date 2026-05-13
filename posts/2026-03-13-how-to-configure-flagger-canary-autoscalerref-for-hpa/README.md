@@ -10,7 +10,7 @@ Description: Learn how to integrate Flagger canary deployments with Horizontal P
 
 ## Introduction
 
-When running canary deployments with Flagger, your primary deployment likely uses a Horizontal Pod Autoscaler (HPA) to handle varying traffic loads. By default, Flagger creates a canary Deployment but does not automatically duplicate or reference your HPA. The `autoscalerRef` field in the Canary spec solves this problem by telling Flagger which HPA to use, so the canary workload scales independently based on real traffic metrics.
+When running canary deployments with Flagger, your application deployment likely uses a Horizontal Pod Autoscaler (HPA) to handle varying traffic loads. By default, Flagger creates a primary Deployment but does not automatically duplicate or reference your HPA. The `autoscalerRef` field in the Canary spec solves this problem by telling Flagger which HPA to use, so Flagger can create a matching autoscaler for the primary workload while the target workload is used for canary analysis.
 
 This guide walks you through configuring `autoscalerRef` in your Flagger Canary resource so that both your primary and canary workloads autoscale correctly during progressive delivery.
 
@@ -24,20 +24,20 @@ This guide walks you through configuring `autoscalerRef` in your Flagger Canary 
 
 ## Understanding the autoscalerRef Field
 
-Flagger's Canary CRD includes an `autoscalerRef` field that points to an existing HPA (or any autoscaler that follows the `scale` subresource pattern). When Flagger detects a new revision and creates the canary Deployment, it also creates a copy of the referenced autoscaler targeting the canary Deployment. This means the canary pods scale up and down based on the same CPU/memory thresholds you have defined for your primary workload.
+Flagger's Canary CRD includes an `autoscalerRef` field that points to an existing HPA. When Flagger bootstraps the canary, it creates a primary Deployment and a copy of the referenced autoscaler targeting the primary Deployment. The original HPA continues to target the canary Deployment, while the generated primary HPA uses the same CPU/memory thresholds for the stable workload.
 
 ```mermaid
 graph LR
-    A[HPA - Primary] -->|scales| B[Primary Deployment]
-    C[HPA - Canary Copy] -->|scales| D[Canary Deployment]
+    A[HPA - Canary Target] -->|scales| B[Canary Deployment]
+    C[HPA - Primary Copy] -->|scales| D[Primary Deployment]
     E[Flagger Controller] -->|creates copy of HPA| C
     E -->|references| A
     E -->|manages traffic split| F[Service Mesh / Ingress]
 ```
 
-## Step 1: Create the HPA for Your Primary Deployment
+## Step 1: Create the HPA for Your Target Deployment
 
-First, define an HPA that targets your primary Deployment. This is the autoscaler that Flagger will duplicate for the canary.
+First, define an HPA that targets your Deployment. This is the autoscaler that Flagger will duplicate for the generated primary Deployment.
 
 ```yaml
 # hpa.yaml
@@ -48,7 +48,7 @@ metadata:
   name: my-app
   namespace: default
 spec:
-  # Target the primary deployment
+  # Target the deployment managed by Flagger
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -129,7 +129,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: my-app
-  # Reference the HPA so Flagger creates a copy for the canary
+  # Reference the HPA so Flagger creates a copy for the primary workload
   autoscalerRef:
     apiVersion: autoscaling/v2
     kind: HorizontalPodAutoscaler
@@ -166,24 +166,24 @@ kubectl apply -f canary.yaml
 
 ## Step 4: Verify the Configuration
 
-After Flagger initializes the canary, check that the primary HPA is intact and a canary HPA has been created:
+After Flagger initializes the canary, check that the target HPA is intact and a primary HPA has been created:
 
 ```bash
 # List all HPAs in the namespace
 kubectl get hpa -n default
 
 # You should see two HPAs:
-# my-app           (targeting my-app-primary)
-# my-app-canary    (targeting my-app-canary) - created by Flagger
+# my-app           (targeting my-app)
+# my-app-primary   (targeting my-app-primary) - created by Flagger
 ```
 
-Inspect the canary HPA to confirm it mirrors your primary HPA settings:
+Inspect the primary HPA to confirm it mirrors your target HPA settings:
 
 ```bash
-kubectl describe hpa my-app-canary -n default
+kubectl describe hpa my-app-primary -n default
 ```
 
-The canary HPA should have the same `minReplicas`, `maxReplicas`, and metrics configuration as the primary HPA but with `scaleTargetRef` pointing to the canary Deployment.
+The primary HPA should have the same `minReplicas`, `maxReplicas`, and metrics configuration as the referenced HPA but with `scaleTargetRef` pointing to the primary Deployment.
 
 ## Step 5: Trigger a Canary Release and Observe Autoscaling
 
@@ -203,11 +203,11 @@ kubectl get canary my-app -n default -w
 kubectl get hpa -n default -w
 ```
 
-During the rollout, the canary HPA will scale the canary pods independently based on the traffic it receives. As Flagger increases the canary traffic weight, the canary HPA reacts to the actual load.
+During the rollout, the referenced HPA can scale the canary pods independently based on the traffic they receive, while the generated primary HPA continues to scale the stable workload.
 
 ## Using autoscalerRef with ScaledObject (KEDA)
 
-If you use KEDA instead of the built-in HPA, you can reference a ScaledObject in `autoscalerRef`. Flagger supports any autoscaler that follows the standard Kubernetes patterns:
+If you use KEDA instead of the built-in HPA, you can reference a ScaledObject in `autoscalerRef`. Flagger can then generate a matching ScaledObject for the primary workload:
 
 ```yaml
 # canary-keda.yaml
@@ -252,4 +252,4 @@ spec:
 
 ## Conclusion
 
-Configuring `autoscalerRef` in your Flagger Canary resource ensures that canary workloads scale independently during progressive delivery. By referencing your existing HPA, Flagger automatically creates a matching autoscaler for the canary Deployment, giving you confidence that the canary handles real traffic loads just as the primary does. This setup is essential for production environments where traffic patterns are unpredictable and autoscaling is critical.
+Configuring `autoscalerRef` in your Flagger Canary resource ensures that canary and primary workloads can autoscale during progressive delivery. By referencing your existing HPA, Flagger automatically creates a matching autoscaler for the primary Deployment, giving you confidence that the stable workload keeps handling real traffic loads while the canary is evaluated. This setup is essential for production environments where traffic patterns are unpredictable and autoscaling is critical.
