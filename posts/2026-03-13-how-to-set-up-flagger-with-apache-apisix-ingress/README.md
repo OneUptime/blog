@@ -12,7 +12,7 @@ Description: Learn how to set up Flagger with Apache APISIX ingress controller f
 
 Apache APISIX is a dynamic, high-performance API gateway and ingress controller for Kubernetes. Flagger integrates with APISIX to perform progressive canary deployments using APISIX's traffic splitting capabilities through its ApisixRoute custom resource.
 
-When Flagger operates with APISIX as its provider, it manages ApisixRoute resources to control traffic distribution between primary and canary workloads. APISIX handles the actual traffic routing at the ingress level, while Flagger automates the weight updates based on canary health metrics.
+When Flagger operates with APISIX as its provider, it references an existing ApisixRoute and generates a canary ApisixRoute to control traffic distribution between primary and canary workloads. APISIX handles the actual traffic routing at the ingress level, while Flagger automates the weight updates based on canary health metrics.
 
 This guide walks through setting up Apache APISIX, installing Flagger with the APISIX provider, and configuring canary deployments.
 
@@ -28,13 +28,20 @@ This guide walks through setting up Apache APISIX, installing Flagger with the A
 Install APISIX and the APISIX Ingress Controller using Helm:
 
 ```bash
-helm repo add apisix https://charts.apiseven.com
+helm repo add apisix https://apache.github.io/apisix-helm-chart
 helm repo update
 
 helm install apisix apisix/apisix \
   --namespace apisix \
   --create-namespace \
   --set gateway.type=NodePort \
+  --set apisix.podAnnotations."prometheus\.io/scrape"=true \
+  --set apisix.podAnnotations."prometheus\.io/port"=9091 \
+  --set apisix.podAnnotations."prometheus\.io/path"=/apisix/prometheus/metrics \
+  --set pluginAttrs.prometheus.export_addr.ip=0.0.0.0 \
+  --set pluginAttrs.prometheus.export_addr.port=9091 \
+  --set pluginAttrs.prometheus.export_uri=/apisix/prometheus/metrics \
+  --set pluginAttrs.prometheus.metric_prefix=apisix_ \
   --set ingress-controller.enabled=true \
   --set ingress-controller.config.apisix.serviceNamespace=apisix
 ```
@@ -61,7 +68,7 @@ helm install prometheus prometheus-community/prometheus \
   --set alertmanager.enabled=false
 ```
 
-Configure APISIX to expose Prometheus metrics by enabling the prometheus plugin in the APISIX configuration.
+The APISIX Helm values above expose the Prometheus metrics endpoint and add scrape annotations for Prometheus.
 
 ## Step 3: Install Flagger
 
@@ -127,7 +134,34 @@ kubectl apply -f deployment.yaml
 
 ## Step 6: Create the Canary Resource
 
-Create a Canary resource for APISIX. The key difference from other providers is the service spec configuration for APISIX routing:
+Create an ApisixRoute for the application. Flagger references this route and generates a canary ApisixRoute from it:
+
+```yaml
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: podinfo
+  namespace: default
+spec:
+  http:
+    - name: podinfo
+      match:
+        hosts:
+          - podinfo.example.com
+        paths:
+          - /*
+      backends:
+        - serviceName: podinfo
+          servicePort: 9898
+      plugins:
+        - name: prometheus
+          enable: true
+          config:
+            disable: false
+            prefer_name: true
+```
+
+Create a Canary resource for APISIX. The key difference from other providers is the route reference that tells Flagger which ApisixRoute to manage:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -136,18 +170,18 @@ metadata:
   name: podinfo
   namespace: default
 spec:
+  provider: apisix
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: podinfo
+  routeRef:
+    apiVersion: apisix.apache.org/v2
+    kind: ApisixRoute
+    name: podinfo
   service:
     port: 9898
     targetPort: 9898
-    hosts:
-      - podinfo.example.com
-    apex:
-      annotations:
-        k8s.apisix.apache.org/upstream-hash-by: "consumer_name"
   analysis:
     interval: 30s
     threshold: 5
@@ -178,21 +212,22 @@ spec:
           cmd: "hey -z 1m -q 10 -c 2 -host podinfo.example.com http://apisix-gateway.apisix/"
 ```
 
-Apply the Canary:
+Apply the ApisixRoute and Canary:
 
 ```bash
+kubectl apply -f apisixroute.yaml
 kubectl apply -f canary.yaml
 ```
 
 ## How APISIX Traffic Routing Works with Flagger
 
-Flagger creates an ApisixRoute resource that defines traffic splitting between the primary and canary upstreams. During canary analysis, Flagger updates the route to adjust the weight distribution:
+Flagger references the application ApisixRoute and creates a generated canary ApisixRoute that defines traffic splitting between the primary and canary upstreams. During canary analysis, Flagger updates the generated route to adjust the weight distribution:
 
 ```yaml
 apiVersion: apisix.apache.org/v2
 kind: ApisixRoute
 metadata:
-  name: podinfo
+  name: podinfo-podinfo-canary
   namespace: default
 spec:
   http:
@@ -211,7 +246,7 @@ spec:
           weight: 10
 ```
 
-Flagger manages this resource automatically, updating the `weight` values at each analysis step.
+Flagger manages the generated resource automatically, updating the `weight` values at each analysis step.
 
 ## Step 7: Trigger a Canary Deployment
 
@@ -286,4 +321,4 @@ Testing through the gateway exercises the full APISIX routing path, while direct
 
 ## Conclusion
 
-Flagger integrates with Apache APISIX by managing ApisixRoute resources for traffic splitting during canary deployments. The setup involves installing APISIX with its ingress controller, deploying Flagger with the APISIX mesh provider, and creating Canary resources that define the service and analysis configuration. APISIX handles traffic routing at the ingress level, while Flagger automates the progressive weight updates based on metric analysis. Custom metrics can query APISIX's Prometheus plugin for gateway-level measurements.
+Flagger integrates with Apache APISIX by referencing an application ApisixRoute and managing a generated canary ApisixRoute for traffic splitting during canary deployments. The setup involves installing APISIX with its ingress controller, deploying Flagger with the APISIX mesh provider, and creating Canary resources that define the route reference, service, and analysis configuration. APISIX handles traffic routing at the ingress level, while Flagger automates the progressive weight updates based on metric analysis. Custom metrics can query APISIX's Prometheus plugin for gateway-level measurements.
