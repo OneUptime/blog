@@ -10,7 +10,7 @@ Description: Deploy Fission serverless framework to Kubernetes using Flux CD to 
 
 ## Introduction
 
-Fission is a Kubernetes-native serverless framework designed for fast cold starts - typically under 100 milliseconds - by pre-warming function containers. It supports multiple language environments (Python, Node.js, Go, Java, and more) and provides a clean separation between function code, runtime environments, and triggers.
+Fission is a Kubernetes-native serverless framework designed for fast cold starts - typically around 100 milliseconds - by pre-warming function containers. It supports multiple language environments (Python, Node.js, Go, Java, and more) and provides a clean separation between function code, runtime environments, and triggers.
 
 Managing Fission through Flux CD gives platform teams a reproducible deployment of the Fission control plane, while application teams can manage their function definitions, environments, and triggers declaratively in Git.
 
@@ -18,7 +18,7 @@ This guide covers deploying Fission on Kubernetes using Flux CD HelmRelease and 
 
 ## Prerequisites
 
-- Kubernetes cluster (1.25+)
+- Kubernetes cluster (1.28+)
 - Flux CD v2 bootstrapped to your Git repository
 - kubectl and Fission CLI installed locally for testing
 
@@ -59,7 +59,7 @@ spec:
   chart:
     spec:
       chart: fission-all
-      version: "1.20.*"
+      version: "1.22.*"
       sourceRef:
         kind: HelmRepository
         name: fission
@@ -70,18 +70,16 @@ spec:
     serviceType: ClusterIP
     # Router type for function invocations
     routerServiceType: LoadBalancer
-    # Enable function logs via InfluxDB or Loki
-    logger:
+    # Enable function logs via InfluxDB
+    influxdb:
       enabled: true
-    # Enable Prometheus integration
-    prometheus:
+    # Enable Prometheus Operator integration
+    serviceMonitor:
       enabled: true
-    # Pre-pool size for environments (reduce cold starts)
-    executor:
-      defaultIdleContainerCount: 2
-    # Namespace for function pods
-    functionNamespace: fission-fn
-    builderNamespace: fission-builder
+    podMonitor:
+      enabled: true
+    # Namespace for Fission custom resources
+    defaultNamespace: fission
 ```
 
 ## Step 3: Wire Up the Flux Kustomization
@@ -91,6 +89,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - github.com/fission/fission/crds/v1?ref=v1.22.0
   - namespace.yaml
   - helmrepository.yaml
   - helmrelease.yaml
@@ -109,15 +108,15 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: controller
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: fission
       namespace: fission
 ```
 
 ## Step 4: Define Fission Resources in Git
 
-Fission uses its own CRDs for Environments, Functions, and Triggers:
+Fission uses its own CRDs for Environments, Packages, Functions, and Triggers:
 
 ```yaml
 # clusters/my-cluster/fission-apps/python-env.yaml
@@ -130,9 +129,9 @@ metadata:
 spec:
   version: 3
   runtime:
-    image: fission/python-env:3.9
+    image: ghcr.io/fission/python-env
   builder:
-    image: fission/python-builder:3.9
+    image: ghcr.io/fission/python-builder
     command: build
   # Keep 2 pods pre-warmed to eliminate cold starts
   poolsize: 2
@@ -143,6 +142,20 @@ spec:
     limits:
       memory: "256Mi"
       cpu: "500m"
+---
+# clusters/my-cluster/fission-apps/hello-package.yaml
+apiVersion: fission.io/v1
+kind: Package
+metadata:
+  name: hello-pkg
+  namespace: fission
+spec:
+  environment:
+    name: python
+    namespace: fission
+  deployment:
+    type: literal
+    literal: ZGVmIGhhbmRsZXIoKToKICAgIHJldHVybiAiSGVsbG8sIFdvcmxkIQoiCg==
 ---
 # clusters/my-cluster/fission-apps/hello-function.yaml
 apiVersion: fission.io/v1
@@ -177,13 +190,13 @@ metadata:
   namespace: fission
 spec:
   # HTTP route
-  host: ""
   relativeurl: /hello
-  method: GET
+  methods:
+    - GET
   functionref:
     type: name
     name: hello-python
-  # Canary config for gradual rollouts
+  # Ingress config for external access
   createingress: true
   ingressconfig:
     host: fission.example.com
@@ -217,28 +230,28 @@ spec:
 
 ```bash
 # Verify Fission deployment
-flux get kustomizations fission fission-apps
+flux get kustomizations
 
 # Configure Fission CLI
 export FISSION_ROUTER=$(kubectl get svc router -n fission \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # List functions
-fission function list
+fission -n fission function list
 
 # Invoke function
 curl http://$FISSION_ROUTER/hello
 # Response: Hello, World!
 
 # Check function logs
-fission function log -f hello-python
+fission -n fission function log --name hello-python -f
 ```
 
 ## Best Practices
 
-- Set `poolsize: 2` or higher on your Environments to keep pre-warmed containers ready, achieving Fission's sub-100ms cold start promise.
+- Set `poolsize: 2` or higher on your Environments to keep pre-warmed containers ready, helping Fission achieve around 100ms cold starts.
 - Use the Fission `Environment` resource's `builder` section to compile function code at deploy time rather than at invocation time, reducing runtime overhead.
-- Manage function source code in a separate Git repository and use Flux's `OCIRepository` to pull pre-built function packages from an OCI registry.
+- Manage function source code in a separate Git repository and reference built archives from Fission `Package` resources with `source.url` or `deployment.url`.
 - Define `TimeTrigger` and `MessageQueueTrigger` CRDs for scheduled and message-driven functions alongside HTTP triggers for full serverless patterns.
 - Apply resource requests and limits on both Environment and Function specs to prevent runaway function containers from starving other workloads.
 
