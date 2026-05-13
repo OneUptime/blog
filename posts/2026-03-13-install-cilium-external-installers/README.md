@@ -37,10 +37,11 @@ helm search repo cilium/cilium --versions | head -10
 
 # Install Cilium with basic configuration
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --namespace kube-system \
   --set ipam.mode=kubernetes \
   --set kubeProxyReplacement=false \
+  --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true
 ```
@@ -104,7 +105,7 @@ Install with the values file:
 
 ```bash
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --namespace kube-system \
   -f cilium-helm-values.yaml
 
@@ -119,7 +120,7 @@ For Kustomize-based installations, generate manifests from the Helm chart:
 ```bash
 # Generate Cilium manifests from Helm chart
 helm template cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --namespace kube-system \
   -f cilium-helm-values.yaml > cilium-manifests.yaml
 
@@ -189,7 +190,7 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.15.x"
+      version: "1.19.x"
       sourceRef:
         kind: HelmRepository
         name: cilium
@@ -201,6 +202,7 @@ spec:
     k8sServiceHost: 10.0.0.1
     k8sServicePort: "6443"
     hubble:
+      enabled: true
       relay:
         enabled: true
       ui:
@@ -209,7 +211,7 @@ spec:
       enabled: true
       serviceMonitor:
         enabled: true
-  # Install as a dependency before other Flux resources
+  # Retry failed install and upgrade attempts
   install:
     remediation:
       retries: 3
@@ -235,7 +237,7 @@ cilium status --wait
 
 - Always use a specific `version` in Helm installs - never install without pinning the version
 - Store Helm values in Git alongside the HelmRelease for full version control
-- Use Flux's `spec.chart.spec.version` with a semantic version range (e.g., `1.15.x`) to enable automatic patch updates
+- Use Flux's `spec.chart.spec.version` with a semantic version range (e.g., `1.19.x`) to enable automatic patch updates
 - Run `cilium connectivity test` in CI/CD after every Cilium upgrade
 - Use `helm diff` (helm-diff plugin) to preview changes before upgrading
 
