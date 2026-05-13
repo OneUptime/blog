@@ -10,17 +10,17 @@ Description: Learn how to configure Calico networking options on a fresh Kind cl
 
 ## Introduction
 
-After installing Calico on a Kind cluster, the default configuration works for basic pod networking but may not reflect your production settings. Proper configuration of IP pools, encapsulation modes, and BGP settings ensures that your local Kind environment behaves consistently with staging or production clusters.
+After installing Calico on a Kind cluster, the default configuration works for basic pod networking but may not reflect your production settings. Proper configuration of IP pools and encapsulation modes helps your local Kind environment behave consistently with staging or production clusters.
 
-Calico stores its configuration in custom resources that you can manage with `kubectl` or `calicoctl`. On Kind, the most common customizations involve adjusting the IP pool CIDR, enabling or disabling IPIP encapsulation, and configuring node-to-node mesh settings.
+Calico stores its configuration in custom resources that you can manage with `kubectl` or `calicoctl`. On Kind, common customizations include checking the IP pool CIDR, enabling or disabling IPIP encapsulation, and tuning Felix settings for a local test cluster.
 
-This guide covers the essential Calico configuration steps you should perform after installing Calico on a new Kind cluster. You will use both `kubectl` and `calicoctl` to view and modify Calico resources.
+This guide covers the essential Calico configuration steps you should perform after installing Calico on a new Kind cluster. You will use `calicoctl` to view and modify Calico resources.
 
 ## Prerequisites
 
 - A Kind cluster with Calico installed (see the installation guide)
 - kubectl configured to target the Kind cluster
-- calicoctl installed (`v3.27.0` matching your Calico version)
+- calicoctl installed (`v3.27.0` if your cluster is running Calico `v3.27.0`)
 
 ## Step 1: Install calicoctl
 
@@ -47,14 +47,14 @@ Inspect the default IP pool that Calico created:
 calicoctl get ippool -o yaml
 ```
 
-You should see a pool with CIDR `192.168.0.0/16` and IPIP mode enabled.
+If you installed Calico from the v3.27 manifest without changing the default pool settings, you should see a pool with CIDR `192.168.0.0/16`, `ipipMode: Always`, and `vxlanMode: Never`.
 
 ## Step 3: Update the IP Pool Configuration
 
 To disable IPIP encapsulation (if your Kind nodes support direct routing):
 
 ```bash
-kubectl patch felixconfiguration default --type merge --patch '{"spec":{"ipipEnabled":false}}'
+calicoctl patch ippool default-ipv4-ippool --patch='{"spec":{"ipipMode":"Never"}}'
 ```
 
 To change IPIP mode to CrossSubnet (more efficient for multi-node setups):
@@ -68,13 +68,14 @@ metadata:
 spec:
   cidr: 192.168.0.0/16
   ipipMode: CrossSubnet
+  vxlanMode: Never
   natOutgoing: true
 EOF
 ```
 
 ## Step 4: Configure Felix for Kind
 
-Adjust Felix global settings for better performance in Kind:
+Adjust Felix global settings for a local Kind cluster:
 
 ```bash
 calicoctl apply -f - <<EOF
@@ -106,4 +107,4 @@ kubectl rollout status daemonset calico-node -n kube-system
 
 ## Conclusion
 
-You have configured Calico on your Kind cluster by adjusting IP pool settings, encapsulation modes, and Felix parameters. These configuration steps ensure that your local Kind environment reflects the networking behavior you expect in production, enabling reliable testing of CNI-dependent features.
+You have configured Calico on your Kind cluster by adjusting IP pool settings, encapsulation modes, and Felix parameters. These configuration steps help your local Kind environment reflect the networking behavior you expect in production, enabling reliable testing of CNI-dependent features.
