@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, ActiveMQ, Artemis, Message Queue, JMS, AMQP
 
-Description: Deploy the ActiveMQ Artemis Operator for enterprise messaging on Kubernetes using Flux CD HelmRelease for GitOps-managed JMS brokers.
+Description: Deploy the ActiveMQ Artemis Operator for enterprise messaging on Kubernetes using Flux CD Kustomization resources for GitOps-managed JMS brokers.
 
 ---
 
 ## Introduction
 
-Apache ActiveMQ Artemis is the next-generation message broker from Apache, combining the high-performance engine from HornetQ with the flexibility of the original ActiveMQ. It supports AMQP, STOMP, MQTT, OpenWire (JMS), and WebSockets, making it a versatile choice for enterprises with diverse messaging protocol requirements.
+Apache ActiveMQ Artemis is the next-generation message broker from Apache, combining the high-performance engine from HornetQ with the flexibility of the original ActiveMQ. It supports AMQP, STOMP, MQTT, OpenWire, and WebSockets, making it a versatile choice for enterprises with diverse messaging protocol requirements.
 
-The ActiveMQ Artemis Operator manages Artemis broker clusters on Kubernetes through `ActiveMQArtemis` CRDs, handling broker configuration, HA with live-backup pairs, and address management (queues and topics). Deploying through Flux CD ensures enterprise messaging configuration is version-controlled and consistently applied.
+The ActiveMQ Artemis Operator manages Artemis broker clusters on Kubernetes through `ActiveMQArtemis` CRDs, handling broker configuration, clustering, message migration, and address management (queues and topics). Deploying through Flux CD ensures enterprise messaging configuration is version-controlled and consistently applied.
 
 ## Prerequisites
 
@@ -20,75 +20,71 @@ The ActiveMQ Artemis Operator manages Artemis broker clusters on Kubernetes thro
 - StorageClass supporting `ReadWriteOnce` PVCs
 - `kubectl` and `flux` CLIs installed
 
-## Step 1: Add the ActiveMQ Artemis Operator HelmRepository
+## Step 1: Add the ActiveMQ Artemis Operator GitRepository
 
 ```yaml
-# infrastructure/sources/artemis-helm.yaml
+# infrastructure/sources/artemis-operator.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: GitRepository
 metadata:
-  name: artemis
+  name: activemq-artemis-operator
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://artemiscloud.io/helm-charts
+  url: https://github.com/artemiscloud/activemq-artemis-operator
+  ref:
+    tag: "1.2.8"
+  ignore: |
+    /*
+    !/deploy/
+    /deploy/*
+    !/deploy/activemq-artemis-operator.yaml
 ```
 
 ## Step 2: Deploy the Artemis Operator
 
 ```yaml
-# infrastructure/messaging/artemis/namespace.yaml
+# infrastructure/messaging/artemis/broker/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: activemq-artemis
+  name: activemq-artemis-operator
 ```
 
 ```yaml
-# infrastructure/messaging/artemis/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+# clusters/production/artemis-operator-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: activemq-artemis-operator
-  namespace: activemq-artemis
+  name: artemis-operator
+  namespace: flux-system
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: artemis-operator
-      version: "1.0.28"
-      sourceRef:
-        kind: HelmRepository
-        name: artemis
-        namespace: flux-system
-  install:
-    crds: Create
-  upgrade:
-    crds: CreateReplace
-  values:
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "256Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+  sourceRef:
+    kind: GitRepository
+    name: activemq-artemis-operator
+  path: ./deploy
+  prune: true
+  wait: true
+  timeout: 5m
 ```
 
 ## Step 3: Deploy an ActiveMQ Artemis Cluster
 
 ```yaml
-# infrastructure/messaging/artemis/artemis-cluster.yaml
+# infrastructure/messaging/artemis/broker/artemis-cluster.yaml
 apiVersion: broker.amq.io/v1beta1
 kind: ActiveMQArtemis
 metadata:
   name: production
-  namespace: activemq-artemis
+  namespace: activemq-artemis-operator
 spec:
   deploymentPlan:
     # Number of broker instances
     size: 2
+    # Cluster connectivity between brokers
+    clustered: true
     # Persistence for message journals
     persistenceEnabled: true
     # Enable message migration for clustered HA
@@ -123,6 +119,22 @@ spec:
     - "criticalAnalyzer=true"
     - "criticalAnalyzerTimeout=120000"
     - "criticalAnalyzerPolicy=HALT"
+    - 'addressSettings."#".deadLetterAddress=DLQ'
+    - 'addressSettings."#".expiryAddress=ExpiryQueue'
+    - 'addressSettings."#".redeliveryDelay=5000'
+    - 'addressSettings."#".maxRedeliveryDelay=60000'
+    - 'addressSettings."#".redeliveryMultiplier=2.0'
+    - 'addressSettings."#".maxDeliveryAttempts=5'
+    - 'addressSettings."#".messageCounterHistoryDayLimit=10'
+    - 'addressSettings."#".addressFullMessagePolicy=PAGE'
+    - 'addressSettings."#".maxSizeBytes=536870912'
+    - 'addressConfigurations."orders".routingTypes=ANYCAST'
+    - 'addressConfigurations."orders".queueConfigs."orders.processing".routingType=ANYCAST'
+    - 'addressConfigurations."notifications".routingTypes=MULTICAST'
+    - 'addressConfigurations."DLQ".routingTypes=ANYCAST'
+    - 'addressConfigurations."DLQ".queueConfigs."DLQ".routingType=ANYCAST'
+    - 'addressConfigurations."ExpiryQueue".routingTypes=ANYCAST'
+    - 'addressConfigurations."ExpiryQueue".queueConfigs."ExpiryQueue".routingType=ANYCAST'
 
   # Acceptors define which protocols are enabled
   acceptors:
@@ -156,76 +168,27 @@ spec:
   console:
     expose: true  # creates an OpenShift Route or Ingress
 
-  # Cluster connectivity between brokers
-  clustered: true
-  clusterProperties:
-    - "clusterPassword=ClusterSecret123!"
-
   # Admin credentials
   adminUser: admin
-  adminPassword: "AdminPassword123!"  # use secretRef in production
-
-  # Address settings (queue/topic policies)
-  addressSettings:
-    applyRule: replace_all
-    addressSetting:
-      - match: "#"   # apply to all addresses
-        deadLetterAddress: DLQ
-        expiryAddress: ExpiryQueue
-        redeliveryDelay: 5000
-        maxRedeliveryDelay: 60000
-        redeliveryDelayMultiplier: 2.0
-        maxDeliveryAttempts: 5
-        messageCounterHistoryDayLimit: 10
-        addressFullPolicy: PAGE    # page to disk when memory is full
-        maxSizeBytes: 536870912    # 512 MiB per address
+  adminPassword: "AdminPassword123!"  # use a credential Secret in production
 ```
 
 ## Step 4: Create Addresses (Queues and Topics)
 
 ```yaml
-# infrastructure/messaging/artemis/addresses.yaml
+# infrastructure/messaging/artemis/broker/artemis-cluster.yaml
+# The address and queue definitions are configured in spec.brokerProperties:
+#
 # orders queue
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemisAddress
-metadata:
-  name: orders-queue
-  namespace: activemq-artemis
-spec:
-  addressName: orders
-  queueName: orders.processing
-  routingType: anycast    # anycast = queue (one consumer gets each message)
-  activeMQArtemisInstance:
-    name: production
-    namespace: activemq-artemis
----
+#   addressConfigurations."orders".routingTypes=ANYCAST
+#   addressConfigurations."orders".queueConfigs."orders.processing".routingType=ANYCAST
+#
 # notifications topic
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemisAddress
-metadata:
-  name: notifications-topic
-  namespace: activemq-artemis
-spec:
-  addressName: notifications
-  queueName: ""    # multicast doesn't need a default queue name
-  routingType: multicast  # multicast = topic (all subscribers get each message)
-  activeMQArtemisInstance:
-    name: production
-    namespace: activemq-artemis
----
+#   addressConfigurations."notifications".routingTypes=MULTICAST
+#
 # Dead Letter Queue
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemisAddress
-metadata:
-  name: dead-letter-queue
-  namespace: activemq-artemis
-spec:
-  addressName: DLQ
-  queueName: DLQ
-  routingType: anycast
-  activeMQArtemisInstance:
-    name: production
-    namespace: activemq-artemis
+#   addressConfigurations."DLQ".routingTypes=ANYCAST
+#   addressConfigurations."DLQ".queueConfigs."DLQ".routingType=ANYCAST
 ```
 
 ## Step 5: Flux Kustomization
@@ -242,7 +205,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/messaging/artemis
+  path: ./infrastructure/messaging/artemis/broker
   prune: true
   dependsOn:
     - name: artemis-operator
@@ -250,35 +213,35 @@ spec:
     - apiVersion: apps/v1
       kind: StatefulSet
       name: production-ss
-      namespace: activemq-artemis
+      namespace: activemq-artemis-operator
 ```
 
 ## Step 6: Verify and Access
 
 ```bash
 # Check broker pods
-kubectl get pods -n activemq-artemis
+kubectl get pods -n activemq-artemis-operator
 
 # Check ActiveMQArtemis status
-kubectl get activemqartemis production -n activemq-artemis
+kubectl get activemqartemis production -n activemq-artemis-operator
 
 # Access Artemis Web Console
-kubectl port-forward svc/production-hdls-svc 8161:8161 -n activemq-artemis
-# Navigate to http://localhost:8161 (admin/AdminPassword123!)
+kubectl port-forward svc/production-hdls-svc 8161:8161 -n activemq-artemis-operator
+# Navigate to http://localhost:8161/console (admin/AdminPassword123!)
 
 # Check queue status via jolokia REST API
-kubectl exec -n activemq-artemis production-ss-0 -- \
-  curl -s -u admin:AdminPassword123! \
-  "http://localhost:8161/console/jolokia/exec/org.apache.activemq.artemis:broker=\"0.0.0.0\",component=addresses,address=\"orders\",subcomponent=queues,routing-type=\"anycast\",queue=\"orders.processing\"/messageCount"
+kubectl exec -n activemq-artemis-operator production-ss-0 -- \
+  curl -s -H "Origin: http://localhost:8161" -u 'admin:AdminPassword123!' \
+  "http://localhost:8161/console/jolokia/read/org.apache.activemq.artemis:broker=\"amq-broker\",component=addresses,address=\"orders\",subcomponent=queues,routing-type=\"anycast\",queue=\"orders.processing\"/MessageCount"
 ```
 
 ## Best Practices
 
-- Use `addressFullPolicy: PAGE` to page messages to disk when memory is full rather than blocking producers or dropping messages.
+- Use `addressSettings."#".addressFullMessagePolicy=PAGE` to page messages to disk when memory is full rather than blocking producers or dropping messages.
 - Configure `deadLetterAddress` and `maxDeliveryAttempts` on all addresses to catch poison messages automatically.
 - Use `anycast` routing for queues (point-to-point) and `multicast` for topics (publish-subscribe).
-- Enable `clustered: true` with `messageMigration: true` so messages are migrated to surviving brokers during failover.
-- Store broker credentials in Kubernetes Secrets and reference them via `adminPasswordSecret` rather than embedding in the CRD.
+- Enable `deploymentPlan.clustered: true` with `messageMigration: true` so messages are migrated to another running broker when a broker Pod shuts down or is scaled down.
+- Store broker credentials in the `<broker-name>-credentials-secret` Kubernetes Secret with `AMQ_USER` and `AMQ_PASSWORD` keys rather than embedding them in the CRD.
 
 ## Conclusion
 
