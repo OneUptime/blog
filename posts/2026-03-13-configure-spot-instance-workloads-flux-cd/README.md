@@ -36,11 +36,16 @@ kubectl get nodes -l "eks.amazonaws.com/capacityType=SPOT" --show-labels
 # GKE - preemptible nodes
 kubectl get nodes -l "cloud.google.com/gke-preemptible=true" --show-labels
 
-# Add custom labels if your spot nodes don't have standard labels
-kubectl label nodes <node-name> node-lifecycle=spot capacity-type=spot
+# GKE - Spot VM nodes
+kubectl get nodes -l "cloud.google.com/gke-spot=true" --show-labels
+
+# Add the custom labels used by the examples below
+kubectl label nodes -l "eks.amazonaws.com/capacityType=SPOT" node-lifecycle=spot capacity-type=spot --overwrite
+kubectl label nodes -l "cloud.google.com/gke-preemptible=true" node-lifecycle=spot capacity-type=spot --overwrite
+kubectl label nodes -l "cloud.google.com/gke-spot=true" node-lifecycle=spot capacity-type=spot --overwrite
 
 # Verify taint on spot nodes (add if missing)
-kubectl taint nodes -l "capacity-type=spot" spot=true:NoSchedule
+kubectl taint nodes -l "capacity-type=spot" spot=true:NoSchedule --overwrite
 ```
 
 ## Step 2: Create a Kustomize Base for Spot Workloads
@@ -62,10 +67,6 @@ spec:
         - key: "spot"
           operator: "Equal"
           value: "true"
-          effect: "NoSchedule"
-        # AWS-specific spot interruption taint
-        - key: "aws.amazon.com/spot"
-          operator: "Exists"
           effect: "NoSchedule"
 
       # Prefer spot nodes but fall back to on-demand
@@ -212,6 +213,17 @@ spec:
               operator: "Equal"
               value: "true"
               effect: "NoSchedule"
+        - op: add
+          path: /spec/template/spec/affinity
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: capacity-type
+                        operator: In
+                        values:
+                          - spot
 ```
 
 ## Step 6: Monitor Spot Interruption Events
