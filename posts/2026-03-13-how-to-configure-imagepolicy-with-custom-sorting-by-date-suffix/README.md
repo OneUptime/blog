@@ -17,7 +17,7 @@ This guide shows how to handle various date-based tag formats with Flux CD Image
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed
-- The `image-reflector-controller` and `image-automation-controller` deployed
+- The `image-reflector-controller` deployed, and `image-automation-controller` if you want Flux to write image updates back to Git
 - Container images with date-encoded tags in your registry
 - An ImageRepository resource configured
 
@@ -28,7 +28,7 @@ Flux CD does not have a dedicated date policy. Instead, you leverage either the 
 - **Numerical**: Works when the date can be extracted as a pure number (e.g., `20260313` or `20260313143000`)
 - **Alphabetical**: Works when the date format sorts lexicographically (e.g., `2026-03-13` or `2026.03.13T14.30.00`)
 
-The key insight is that ISO-style date formats sort correctly in both numerical and alphabetical order, as long as they use a consistent format with zero-padded values.
+The key insight is that ISO-style date formats sort correctly lexicographically, and compact numeric date formats sort correctly numerically, as long as they use a consistent format with zero-padded values.
 
 ## Example 1: YYYYMMDD Numeric Date
 
@@ -131,7 +131,7 @@ spec:
 
 This extracts the combined date and build number. Alphabetical sorting works for the date portion, but there is a caveat: build numbers `10` and above may sort incorrectly against single-digit numbers. If your build numbers are zero-padded (e.g., `main-20260313-003`), alphabetical sorting is reliable.
 
-For non-padded build numbers, consider using a different tag format or concatenating the date and build number without separators (e.g., `main-2026031300003`).
+For non-padded build numbers, consider using a different tag format or concatenating the date and a fixed-width, zero-padded build number without separators (e.g., `main-2026031300003`).
 
 ## Example 5: Dotted Date with Time
 
@@ -184,7 +184,7 @@ The format `YYYY-wWW` sorts alphabetically since both components are zero-padded
 After applying the policy:
 
 ```bash
-kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestImage}'
+kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 ```
 
 If the selected image does not reflect the most recent date, verify:
