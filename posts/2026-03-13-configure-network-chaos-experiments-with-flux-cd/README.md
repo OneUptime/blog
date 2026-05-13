@@ -12,16 +12,16 @@ Description: Manage network chaos experiments including latency injection and pa
 
 Network failures are among the most common and impactful failures in distributed systems. Latency spikes, packet loss, and DNS failures can cascade through microservice architectures in ways that are difficult to predict from code review alone. Network chaos experiments let you empirically verify that your services degrade gracefully and recover correctly when the network misbehaves.
 
-Chaos Mesh provides a powerful `NetworkChaos` CRD that can inject latency, packet loss, bandwidth limits, network partitions, and DNS faults into specific pods without any application changes. When these experiments are managed by Flux CD, they become reproducible, reviewable artifacts that your entire team can reason about.
+Chaos Mesh provides a powerful `NetworkChaos` CRD that can inject latency, packet loss, bandwidth limits, and network partitions into specific pods without any application changes. When these experiments are managed by Flux CD, they become reproducible, reviewable artifacts that your entire team can reason about.
 
 This guide walks through configuring network latency, packet loss, bandwidth throttling, and network partition experiments using Chaos Mesh CRDs managed by Flux CD.
 
 ## Prerequisites
 
-- Chaos Mesh deployed via Flux HelmRelease
+- Chaos Mesh deployed via Flux, with a Kustomization named `chaos-mesh` applying the HelmRelease if you use the `dependsOn` example below
 - Flux CD bootstrapped on the cluster
 - Target application deployed and accessible within the cluster
-- Namespace annotated for chaos injection: `chaos-mesh.org/inject: enabled`
+- If Chaos Mesh `FilterNamespace` is enabled, the target namespace annotated for chaos injection: `chaos-mesh.org/inject=enabled`
 
 ## Step 1: Inject Network Latency
 
@@ -47,7 +47,7 @@ spec:
     # Add 200ms of latency with 50ms jitter
     latency: "200ms"
     jitter: "50ms"
-    # Use a normal distribution for realistic jitter
+    # Correlate jitter with previous latency samples
     correlation: "25"
   # Only affect egress traffic (outbound calls to backend)
   direction: to
@@ -112,7 +112,6 @@ spec:
     rate: "1mbps"
     limit: 100
     buffer: 10000
-  direction: to
   duration: "5m"
 ```
 
@@ -174,14 +173,13 @@ spec:
     delay:
       latency: "500ms"
       jitter: "100ms"
-    direction: to
     duration: "10m"
 ```
 
 ## Step 6: Apply via Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/chaos-experiments/kustomization.yaml
+# clusters/my-cluster/network-chaos-experiments.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
