@@ -10,7 +10,7 @@ Description: Learn how to increase the helm-controller concurrency workers in Fl
 
 ## What the Helm Controller Does
 
-The helm-controller manages the lifecycle of HelmRelease objects. It downloads Helm charts (via artifacts produced by the source-controller), renders templates, and runs Helm install, upgrade, test, and rollback operations against your cluster. Each of these operations can take several seconds, and when you have many HelmRelease objects the default sequential processing becomes a major performance bottleneck.
+The helm-controller manages the lifecycle of HelmRelease objects. It downloads Helm charts (via artifacts produced by the source-controller), renders templates, and runs Helm install, upgrade, test, and rollback operations against your cluster. Each of these operations can take several seconds, and when you have many HelmRelease objects the default worker count can become a major performance bottleneck.
 
 ## Default Behavior
 
@@ -106,7 +106,7 @@ spec:
 
 ```bash
 kubectl get deployment helm-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n'
+  -o jsonpath='{range .spec.template.spec.containers[0].args[*]}{.}{"\n"}{end}'
 ```
 
 ## Watching for API Server Pressure
