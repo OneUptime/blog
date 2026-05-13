@@ -78,7 +78,7 @@ calicoctl ipam check -o ipam-report.json
 calicoctl ipam check --show-all-ips
 
 # Check for orphaned allocations
-calicoctl ipam check --show-all-ips
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Conclusion
