@@ -12,25 +12,25 @@ Description: Learn how to enable comprehensive logging and auditing for Calico d
 
 Logging and auditing are essential companions to any default deny policy. Without visibility into what traffic is being denied (and what is being allowed), you cannot confidently operate a secure cluster. Logs provide the forensic trail needed to investigate incidents, demonstrate compliance, and refine your policies over time.
 
-Calico supports multiple logging mechanisms: Felix flow logs, policy action logs (via the `Log` action in policy rules), and integration with external SIEM systems through syslog or Fluentd. Combined with Kubernetes audit logs for policy changes, you get complete end-to-end visibility.
+Calico supports multiple logging mechanisms: flow logs, policy action logs (via the `Log` action in policy rules), and integration with external SIEM systems through syslog or Fluentd. In Calico Open Source v3.30 and later, flow logs are exposed through Goldmane and Whisker; file-based Felix flow log settings are available in Calico Cloud and Calico Enterprise. Combined with Kubernetes audit logs for policy changes, you get complete end-to-end visibility.
 
-This guide shows you how to configure policy-level logging, enable Felix flow logs, and ship those logs to a centralized system for analysis and alerting.
+This guide shows you how to configure policy-level logging, enable file-based Felix flow logs, and ship those logs to a centralized system for analysis and alerting.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico Cloud or Calico Enterprise file-based flow log support
 - `calicoctl` and `kubectl` installed
 - A log aggregation system (ELK Stack, Loki, or Splunk recommended)
 - Sufficient storage for log retention
 
-## Step 1: Enable Felix Flow Logging
+## Step 1: Enable File-Based Felix Flow Logging
 
-Flow logs capture all traffic decisions at the Felix data plane level:
+Flow logs capture aggregated connection metadata and policy decisions at the Felix data plane level:
 
 ```bash
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "flowLogsEnabled": true,
+    "flowLogsFileEnabled": true,
     "flowLogsFlushInterval": "15s",
     "flowLogsFileMaxFiles": 5,
     "flowLogsFileMaxFileSizeMB": 100
@@ -72,8 +72,8 @@ Direct Felix logs to syslog for centralized collection:
 ```bash
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "logSeveritySys": "info",
-    "logSeverityScreen": "warning"
+    "logSeveritySys": "Info",
+    "logSeverityScreen": "Warning"
   }
 }'
 ```
@@ -92,7 +92,7 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /var/log/calico/flow-logs/*.log
+      path /var/log/calico/flowlogs/*.log
       tag calico.flow
       format json
     </source>
@@ -122,7 +122,7 @@ curl -X GET "http://elasticsearch:9200/calico-flows/_search" -H 'Content-Type: a
   },
   "aggs": {
     "denials_per_source": {
-      "terms": {"field": "src_ip"}
+      "terms": {"field": "source_ip"}
     }
   }
 }'
@@ -132,7 +132,7 @@ curl -X GET "http://elasticsearch:9200/calico-flows/_search" -H 'Content-Type: a
 
 ```mermaid
 flowchart TD
-    A[Calico Felix] -->|Flow Logs| B[/var/log/calico/]
+    A[Calico Felix] -->|Flow Logs| B[/var/log/calico/flowlogs/]
     A -->|Syslog| C[Syslog Server]
     B -->|Fluentd DaemonSet| D[Elasticsearch/Loki]
     C --> D
