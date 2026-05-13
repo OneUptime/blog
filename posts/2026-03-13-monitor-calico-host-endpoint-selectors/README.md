@@ -66,8 +66,8 @@ graph LR
   labels:
     severity: warning
   annotations:
-    summary: "Calico selector drift on {{ $labels.node }}"
-    description: "Policy count changed by {{ $value }} on {{ $labels.node }}"
+    summary: "Calico selector drift on {{ $labels.instance }}"
+    description: "Policy count changed by {{ $value }} on {{ $labels.instance }}"
 ```
 
 ## Step 3: Audit Label Changes with Kubernetes Events
@@ -105,14 +105,22 @@ spec:
           serviceAccountName: calico-auditor
           containers:
             - name: auditor
-              image: calico/ctl:v3.27.0
+              image: calico/ctl:v3.32.0
+              env:
+                - name: DATASTORE_TYPE
+                  value: kubernetes
+                - name: K8S_API_ENDPOINT
+                  value: https://kubernetes.default.svc:443
+                - name: K8S_CA_FILE
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
               command:
                 - /bin/sh
                 - -c
                 - |
+                  export K8S_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
                   WORKER_COUNT=$(calicoctl get hep \
-                    --selector="node-role == 'worker'" -o json \
-                    | python3 -c "import json,sys; print(len(json.load(sys.stdin)['items']))")
+                    -o go-template='{{range .}}{{range .Items}}{{if eq (index .ObjectMeta.Labels "node-role") "worker"}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}{{end}}' \
+                    | wc -l)
                   echo "Worker HEP count: $WORKER_COUNT"
                   # Compare to expected count and alert if mismatch
           restartPolicy: OnFailure
@@ -134,7 +142,9 @@ webhooks:
         apiVersions: ["v1"]
         resources: ["nodes"]
         operations: ["UPDATE"]
-    failurePolicy: Warn
+    failurePolicy: Fail
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     clientConfig:
       service:
         name: label-validator
