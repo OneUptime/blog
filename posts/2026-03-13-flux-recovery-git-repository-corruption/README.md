@@ -33,7 +33,7 @@ Flux will report errors on the GitRepository source object when it cannot access
 flux get sources git -A
 
 # Describe the failing source for details
-flux describe source git flux-system
+kubectl describe gitrepository flux-system -n flux-system
 
 # Example output showing corruption/access error:
 # Status: False
@@ -74,11 +74,10 @@ flux reconcile source git flux-system
 With Flux running from the mirror, you have time to restore the primary repository without pressure.
 
 ```bash
-# Option 1: Restore from a developer's clone
-git clone --mirror https://github.com/my-org/my-fleet /tmp/my-fleet-mirror
-cd /tmp/my-fleet-mirror
-git remote set-url origin https://github.com/my-org/my-fleet-restored
-git push --mirror
+# Option 1: Restore the production branch and tags from a developer's clone
+cd /path/to/developer/my-fleet
+git remote add restored https://github.com/my-org/my-fleet-restored
+git push restored main --tags
 
 # Option 2: Push from the mirror to a new primary repo
 git clone --mirror https://gitea.internal.example.com/my-org/my-fleet /tmp/fleet-restore
@@ -97,7 +96,7 @@ git log --oneline origin/main | head -20
 gh api repos/my-org/my-fleet/git/refs/heads/main \
   -X PATCH \
   -f sha="<last-good-sha>" \
-  -f force=true
+  -F force=true
 ```
 
 ## Step 4: Validate Repository Integrity
@@ -112,8 +111,7 @@ git fsck --full
 
 # Verify Flux manifests are parseable
 flux build kustomization flux-system \
-  --path clusters/production \
-  --kustomization-file clusters/production/kustomization.yaml
+  --path clusters/production
 
 # Check that all expected files are present
 ls clusters/production/flux-system/
@@ -146,7 +144,7 @@ flux get sources git -A
 Prevent future single points of failure by configuring automatic mirroring.
 
 ```yaml
-# GitRepository with fallback URL configuration
+# GitRepository backup source configuration
 # Use a Flux GitRepository pointing to the mirror as a backup source
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -164,19 +162,21 @@ spec:
 
 Configure GitHub mirroring to Gitea or another provider:
 
-```bash
-# Using GitHub Actions to mirror on every push
+```yaml
 # .github/workflows/mirror.yml
-# on: [push]
-# jobs:
-#   mirror:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#         with: { fetch-depth: 0 }
-#       - run: |
-#           git remote add mirror https://gitea.example.com/org/fleet
-#           git push mirror --mirror
+on: [push]
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          git clone --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo.git
+          cd repo.git
+          git remote set-url --push origin "https://git:${GITEA_TOKEN}@gitea.example.com/org/fleet.git"
+          git push --mirror
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
 ```
 
 ## Best Practices
