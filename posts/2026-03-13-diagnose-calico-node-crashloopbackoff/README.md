@@ -10,7 +10,7 @@ Description: A systematic approach to diagnosing calico-node pods stuck in Crash
 
 ## Introduction
 
-A calico-node pod in CrashLoopBackOff is one of the most disruptive conditions in a Calico-managed cluster. When the calico-node DaemonSet pod crashes and restarts repeatedly, the affected node loses CNI functionality: new pods cannot be scheduled, existing pods may lose connectivity, and BGP routes are withdrawn and re-advertised in rapid cycles that destabilize the entire cluster routing fabric.
+A calico-node pod in CrashLoopBackOff is one of the most disruptive conditions in a Calico-managed cluster. When the calico-node DaemonSet pod crashes and restarts repeatedly, the affected node loses CNI functionality: new pods may be scheduled but fail during pod sandbox creation, existing pods may lose connectivity, and in BGP-based clusters routes can be withdrawn and re-advertised in rapid cycles that destabilize cluster routing.
 
 CrashLoopBackOff in calico-node has a wide range of root causes, from simple configuration errors to kernel module incompatibilities. The challenge is that the pod crashes quickly, leaving a narrow window to observe its behavior before Kubernetes backs off and waits before the next restart. Capturing logs from the crashed container and examining init container state are the two most valuable sources of diagnostic information.
 
@@ -18,9 +18,9 @@ This guide provides a structured approach to diagnosing calico-node CrashLoopBac
 
 ## Symptoms
 
-- `kubectl get pods -n kube-system` shows calico-node pods in `CrashLoopBackOff`
+- `kubectl get pods -n calico-system` (or `kube-system` for installs that deploy there) shows calico-node pods in `CrashLoopBackOff`
 - New pods on affected nodes stay in `ContainerCreating` indefinitely
-- `kubectl describe node <node>` shows `NetworkPlugin calico not installed` or similar
+- `kubectl describe node <node>` shows `NetworkPluginNotReady`, `cni plugin not initialized`, or similar
 - Cluster events show rapid calico-node pod restarts
 
 ## Root Causes
@@ -37,27 +37,29 @@ This guide provides a structured approach to diagnosing calico-node CrashLoopBac
 **Step 1: Check pod status and restart count**
 
 ```bash
-kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+CALICO_NS=calico-system  # use kube-system for manifest-based installs that deploy there
+kubectl get pods -n "$CALICO_NS" -l k8s-app=calico-node -o wide
 ```
 
 **Step 2: Get logs from the PREVIOUS crashed container**
 
 ```bash
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
+NODE_POD=$(kubectl get pods -n "$CALICO_NS" -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o name | head -1)
-kubectl logs $NODE_POD -n kube-system --previous -c calico-node | tail -60
+kubectl logs "$NODE_POD" -n "$CALICO_NS" --previous -c calico-node | tail -60
 ```
 
 **Step 3: Check init container state**
 
 ```bash
-kubectl describe $NODE_POD -n kube-system | grep -A 40 "Init Containers:"
+kubectl describe "$NODE_POD" -n "$CALICO_NS" | grep -A 40 "Init Containers:"
 ```
 
-**Step 4: Check for kernel module availability**
+**Step 4: Check for kernel feature or module availability**
 
 ```bash
 # Run on the affected node
+# Some distributions compile these features into the kernel, so they may not always appear in lsmod.
 
 lsmod | grep -E "ipip|xt_set|ip_tables|nf_conntrack"
 ```
@@ -73,14 +75,14 @@ cat /etc/cni/net.d/10-calico.conflist
 **Step 6: Validate RBAC permissions**
 
 ```bash
-kubectl auth can-i list pods --as=system:serviceaccount:kube-system:calico-node
-kubectl auth can-i get nodes --as=system:serviceaccount:kube-system:calico-node
+kubectl auth can-i list pods --as="system:serviceaccount:${CALICO_NS}:calico-node" --all-namespaces
+kubectl auth can-i get nodes --as="system:serviceaccount:${CALICO_NS}:calico-node"
 ```
 
 **Step 7: Check Kubernetes events**
 
 ```bash
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep calico | tail -20
+kubectl get events -n "$CALICO_NS" --sort-by='.metadata.creationTimestamp' | grep calico | tail -20
 ```
 
 ```mermaid
