@@ -29,7 +29,7 @@ Calico's role differs depending on the service type:
 | ClusterIP | DNAT ClusterIP → PodIP | Policy enforcement on pod |
 | NodePort | DNAT NodePort → PodIP | Policy enforcement, optional SNAT |
 | LoadBalancer | Depends on cloud provider | Policy enforcement |
-| ExternalName | DNS CNAME only | Policy can match on DNS |
+| ExternalName | DNS CNAME only, no proxying | Policy applies to the resolved external traffic |
 
 In iptables mode, kube-proxy manages service routing and Calico manages policy. In eBPF mode, Calico manages both.
 
@@ -59,21 +59,21 @@ graph LR
     ServiceMap --> Backend[Backend Pod]
 ```
 
-The service DNAT happens in the eBPF program at the sending pod's TC egress hook. This eliminates the conntrack entry that kube-proxy creates in the kernel's connection tracking table, reducing memory usage and improving performance.
+Calico stores service frontends and backends in BPF maps and handles service load balancing in eBPF, including source-side connect-time load balancing for supported connections. This avoids kube-proxy's iptables/IPVS service path and uses BPF maps instead of the kernel conntrack table for service connection state, reducing overhead and improving performance.
 
 ## Writing NetworkPolicy for Service Traffic
 
-An important nuance: NetworkPolicy `from.ipBlock` matching on a ClusterIP does NOT work as intended. By the time Calico evaluates the ingress policy on the backend pod, the packet's source IP is the client pod's IP (after kube-proxy DNAT), not the ClusterIP.
+An important nuance: NetworkPolicy rules matching a Service ClusterIP do NOT work as intended for pod-to-service traffic. By the time Calico evaluates policy, the packet is matched against the selected backend pod IP. For ingress policy on the backend pod, the packet's source IP is the client pod's IP, not the ClusterIP.
 
 Use pod selector-based policies instead:
 
 ```yaml
-# Wrong: ClusterIP will never appear as a source in policy evaluation
+# Wrong: Service CIDRs do not identify the client pods in policy evaluation
 
 ingress:
 - from:
   - ipBlock:
-      cidr: 10.96.0.0/12  # Service CIDR - this will never match pod traffic
+      cidr: 10.96.0.0/12  # Service CIDR - this does not match the client pod source
 
 # Correct: Use pod selectors to select the actual source pods
 ingress:
@@ -85,13 +85,13 @@ ingress:
 
 ## Calico eBPF: Service Load Balancing Behavior
 
-Calico eBPF implements the same load balancing algorithms as kube-proxy:
-- **Random selection**: Default for ClusterIP services
-- **Session affinity**: Supported via `service.spec.sessionAffinity: ClientIP`
+Calico eBPF implements Kubernetes Service semantics without kube-proxy:
+- **Service backend selection**: Uses BPF maps for service frontends and backends, with basic load balancing for ClusterIP services
+- **Session affinity**: Supported for "sticky" services such as `service.spec.sessionAffinity: ClientIP`
 
 With eBPF mode, Calico also supports:
-- **Direct Server Return (DSR)**: For NodePort and LoadBalancer services, the backend pod can respond directly to the client without returning via the node that received the request
-- **Source IP preservation**: External clients see their actual source IP at the backend pod
+- **Direct Server Return (DSR)**: For external service traffic when DSR is enabled and the underlying network supports it, the backend pod can respond directly without returning via the node that received the request
+- **Source IP preservation**: External clients see their actual source IP at the backend pod in the eBPF service path
 
 ## NetworkPolicy on Service Endpoints
 
@@ -101,6 +101,7 @@ When all backends of a service are blocked by NetworkPolicy, the service effecti
 
 - In eBPF mode, verify kube-proxy is disabled before relying on Calico for service routing
 - Write ingress policy using pod selectors, not service ClusterIPs - the ClusterIP is never the observable source
+- Use Calico service rules when you want policy to reference Kubernetes Service names directly
 - Use `externalTrafficPolicy: Local` for LoadBalancer services when client source IP preservation is required (iptables mode)
 - Monitor service endpoint health separately from pod health - a pod can be running but removed from service endpoints
 
