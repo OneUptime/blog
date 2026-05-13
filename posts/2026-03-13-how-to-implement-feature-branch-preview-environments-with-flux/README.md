@@ -35,7 +35,8 @@ flux-repo/
 │       ├── service.yaml
 │       └── ingress.yaml
 └── templates/
-    └── preview-kustomization.yaml
+    ├── preview-kustomization.yaml
+    └── resource-quota.yaml
 ```
 
 ## Flux Configuration for Preview Cluster
@@ -129,7 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout flux repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: myorg/flux-repo
           token: ${{ secrets.FLUX_REPO_TOKEN }}
@@ -138,7 +139,8 @@ jobs:
         id: slug
         run: |
           BRANCH="${{ github.head_ref }}"
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 63)
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/^-*//; s/-*$//; s/--*/-/g' | cut -c 1-55 | sed 's/-*$//')
+          SLUG="${SLUG:-preview}"
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
@@ -147,6 +149,7 @@ jobs:
           SLUG="${{ steps.slug.outputs.slug }}"
           BRANCH="${{ steps.slug.outputs.branch }}"
           IMAGE_TAG="${{ github.event.pull_request.head.sha }}"
+          BRANCH_ESCAPED=$(printf '%s' "$BRANCH" | sed 's/[&|\\]/\\&/g')
 
           # Create namespace manifest
           cat > preview/branches/${SLUG}-namespace.yaml << EOF
@@ -162,10 +165,15 @@ jobs:
           # Create Flux kustomization from template
           sed \
             -e "s/BRANCH_SLUG/${SLUG}/g" \
-            -e "s/BRANCH_NAME_FULL/${BRANCH}/g" \
+            -e "s|BRANCH_NAME_FULL|${BRANCH_ESCAPED}|g" \
             -e "s/IMAGE_TAG_VALUE/${IMAGE_TAG}/g" \
             templates/preview-kustomization.yaml \
             > preview/branches/${SLUG}-kustomization.yaml
+
+          sed \
+            -e "s/BRANCH_SLUG/${SLUG}/g" \
+            templates/resource-quota.yaml \
+            > preview/branches/${SLUG}-quota.yaml
 
       - name: Update preview kustomization
         run: |
@@ -188,7 +196,7 @@ jobs:
           git push
 
       - name: Comment on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const slug = '${{ steps.slug.outputs.slug }}';
@@ -214,7 +222,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout flux repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: myorg/flux-repo
           token: ${{ secrets.FLUX_REPO_TOKEN }}
@@ -223,7 +231,8 @@ jobs:
         id: slug
         run: |
           BRANCH="${{ github.head_ref }}"
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 63)
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/^-*//; s/-*$//; s/--*/-/g' | cut -c 1-55 | sed 's/-*$//')
+          SLUG="${SLUG:-preview}"
           echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
 
       - name: Remove preview manifests
@@ -308,7 +317,7 @@ spec:
 
 ## Automatic Cleanup with TTL
 
-Add a CronJob to clean up stale preview environments:
+Add a CronJob to remove stale preview manifests from Git. Deleting the namespace directly is not enough because Flux will recreate resources that are still declared in the repository:
 
 ```yaml
 # preview/cleanup-cronjob.yaml
@@ -326,17 +335,44 @@ spec:
           serviceAccountName: preview-cleanup
           containers:
             - name: cleanup
-              image: bitnami/kubectl:latest
+              image: alpine/git:latest
+              env:
+                - name: FLUX_REPO_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: flux-repo-token
+                      key: token
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Delete preview namespaces older than 7 days
-                  kubectl get namespaces -l preview=true -o json | \
-                  jq -r '.items[] | select(
-                    (now - (.metadata.creationTimestamp | fromdateiso8601)) > 604800
-                  ) | .metadata.name' | \
-                  xargs -r kubectl delete namespace
+                  set -e
+                  apk add --no-cache findutils
+
+                  git clone "https://x-access-token:${FLUX_REPO_TOKEN}@github.com/myorg/flux-repo.git" /tmp/flux-repo
+                  cd /tmp/flux-repo
+
+                  find preview/branches -name '*-namespace.yaml' -mtime +7 -print | while read -r namespace_file; do
+                    slug=$(basename "$namespace_file" -namespace.yaml)
+                    rm -f "preview/branches/${slug}-"*.yaml
+                  done
+
+                  cd preview
+                  cat > kustomization.yaml << 'EOF'
+                  apiVersion: kustomize.config.k8s.io/v1beta1
+                  kind: Kustomization
+                  resources:
+                  EOF
+                  for f in branches/*.yaml; do
+                    [ -f "$f" ] && echo "  - $f" >> kustomization.yaml
+                  done
+
+                  cd /tmp/flux-repo
+                  git config user.name "Preview Cleanup"
+                  git config user.email "preview-cleanup@example.com"
+                  git add preview/
+                  git commit -m "Clean up stale preview environments" || exit 0
+                  git push
           restartPolicy: OnFailure
 ```
 
