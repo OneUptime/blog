@@ -19,6 +19,7 @@ This guide covers practical techniques for migrate to service-based Calico polic
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
+- Calico configured with the Kubernetes API datastore
 - `calicoctl` and `kubectl` installed
 - Service-based policies configured or ready to configure
 
@@ -48,10 +49,10 @@ spec:
 ## Core Technique
 
 ```bash
-# Verify service exists and has endpoints
+# Verify service exists and has EndpointSlices
 
 kubectl get service backend-api -n production
-kubectl get endpoints backend-api -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api
 
 # Test traffic through the service
 SVC_IP=$(kubectl get service backend-api -n production -o jsonpath='{.spec.clusterIP}')
@@ -63,12 +64,12 @@ echo "Result: $?"
 
 ```bash
 # Check if service has backing pods
-kubectl get endpoints backend-api -n production -o yaml | grep -A 10 subsets
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api -o yaml
 
 # Verify policy is targeting the correct service
 calicoctl get networkpolicy allow-frontend-to-backend -n production -o yaml | grep -A 5 services
 
-# List all policies affecting the frontend pods
+# List namespace policies to review selectors for frontend pods
 calicoctl get networkpolicies -n production -o wide
 ```
 
@@ -79,8 +80,8 @@ flowchart TD
     A[frontend pods] -->|Egress allow to backend-api Service| B[backend-api Service]
     B --> C[backend pod 1]
     B --> D[backend pod 2]
-    E[unauthorized pod] -.-x|Denied| B
-    F[Policy Update] -->|Service scales| B
+    A -.-x|Other egress denied without another allow| E[unapproved Service]
+    F[No Policy Update] -->|Service scales| B
     B --> G[backend pod 3 - auto included]
 ```
 
