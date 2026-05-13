@@ -40,10 +40,12 @@ spec:
     spec:
       containers:
       - name: gateway
-        image: envoyproxy/envoy:v1.28.0
+        image: your-registry/custom-gateway:latest
         ports:
-        - containerPort: 80
-        - containerPort: 443
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
 ---
 apiVersion: v1
 kind: Service
@@ -55,9 +57,11 @@ spec:
   selector:
     app: custom-gateway
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
-  - port: 443
+  - name: https
+    port: 443
     targetPort: 443
 ```
 
@@ -69,6 +73,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-custom-gateway-egress
 spec:
+  namespaceSelector: kubernetes.io/metadata.name == 'gateway-system'
   selector: app == 'custom-gateway'
   types:
   - Egress
@@ -98,9 +103,9 @@ spec:
 ## Verify Custom Gateway Routing
 
 ```bash
-GW_IP=$(kubectl get svc -n gateway-system custom-gateway   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -v http://${GW_IP}/health
-curl -H "Host: backend.example.com" http://${GW_IP}/api/
+GW_ADDR=$(kubectl get svc -n gateway-system custom-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -v http://${GW_ADDR}/health
+curl -H "Host: backend.example.com" http://${GW_ADDR}/api/
 ```
 
 ## Custom Gateway Architecture
