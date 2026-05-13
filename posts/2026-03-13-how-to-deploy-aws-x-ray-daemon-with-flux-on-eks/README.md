@@ -10,7 +10,9 @@ Description: Learn how to deploy the AWS X-Ray daemon on EKS using Flux for GitO
 
 ## What is AWS X-Ray
 
-AWS X-Ray is a distributed tracing service that helps developers analyze and debug applications composed of microservices. The X-Ray daemon listens for trace data from instrumented applications and forwards it to the X-Ray service for visualization, analysis, and debugging. Deploying it on EKS allows all your Kubernetes workloads to send trace data without individual configuration.
+AWS X-Ray is a distributed tracing service that helps developers analyze and debug applications composed of microservices. The X-Ray daemon listens for trace data from instrumented applications and forwards it to the X-Ray service for visualization, analysis, and debugging. Deploying it on EKS gives your Kubernetes workloads a shared daemon endpoint for sending trace data after the workloads are instrumented and configured to use it.
+
+As of February 25, 2026, the X-Ray SDKs and daemon are in maintenance mode. AWS recommends migrating new tracing instrumentation to OpenTelemetry, but existing X-Ray SDK and daemon deployments continue to work.
 
 ## Prerequisites
 
@@ -236,7 +238,6 @@ spec:
     name: flux-system
   path: ./infrastructure/xray
   prune: true
-  wait: true
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
@@ -248,9 +249,9 @@ spec:
 
 Applications need to know where the X-Ray daemon is running. There are two approaches:
 
-### Option A: Using the DaemonSet Host IP
+### Option A: Using the Kubernetes Service DNS Name
 
-Configure applications to send traces to the daemon running on the same node:
+Configure applications to send traces to the X-Ray daemon Service:
 
 ```yaml
 # apps/production/my-service/deployment.yaml
@@ -283,7 +284,7 @@ spec:
 
 ### Option B: Using the X-Ray Sidecar Pattern
 
-For more isolated tracing, deploy X-Ray as a sidecar:
+For more isolated tracing, deploy X-Ray as a sidecar. The service account used by the pod must have permissions to send segments to X-Ray:
 
 ```yaml
 # apps/production/my-service/deployment-sidecar.yaml
@@ -321,6 +322,8 @@ spec:
           ports:
             - containerPort: 2000
               protocol: UDP
+            - containerPort: 2000
+              protocol: TCP
           resources:
             requests:
               cpu: 25m
@@ -332,79 +335,85 @@ spec:
 
 ## Step 6: Sampling Rules Configuration
 
-Create custom sampling rules to control trace volume:
+Create custom sampling rules in X-Ray to control trace volume:
 
-```yaml
-# infrastructure/xray/sampling-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: xray-sampling-rules
-  namespace: xray-system
-data:
-  sampling-rules.json: |
-    {
-      "version": 2,
-      "rules": [
-        {
-          "description": "Health check - low sampling",
-          "host": "*",
-          "http_method": "GET",
-          "url_path": "/health",
-          "fixed_target": 0,
-          "rate": 0.01,
-          "service_name": "*",
-          "service_type": "*",
-          "resource_arn": "*",
-          "priority": 1
-        },
-        {
-          "description": "API requests - normal sampling",
-          "host": "*",
-          "http_method": "*",
-          "url_path": "/api/*",
-          "fixed_target": 1,
-          "rate": 0.1,
-          "service_name": "*",
-          "service_type": "*",
-          "resource_arn": "*",
-          "priority": 100
-        }
-      ],
-      "default": {
-        "fixed_target": 1,
-        "rate": 0.05
-      }
-    }
+```bash
+cat > health-check-sampling-rule.json << 'EOF'
+{
+  "SamplingRule": {
+    "RuleName": "health-check-low-sampling",
+    "ResourceARN": "*",
+    "Priority": 1,
+    "FixedRate": 0.01,
+    "ReservoirSize": 0,
+    "ServiceName": "*",
+    "ServiceType": "*",
+    "Host": "*",
+    "HTTPMethod": "GET",
+    "URLPath": "/health",
+    "Version": 1
+  }
+}
+EOF
+
+aws xray create-sampling-rule \
+  --cli-input-json file://health-check-sampling-rule.json
+
+cat > api-sampling-rule.json << 'EOF'
+{
+  "SamplingRule": {
+    "RuleName": "api-requests-normal-sampling",
+    "ResourceARN": "*",
+    "Priority": 100,
+    "FixedRate": 0.1,
+    "ReservoirSize": 1,
+    "ServiceName": "*",
+    "ServiceType": "*",
+    "Host": "*",
+    "HTTPMethod": "*",
+    "URLPath": "/api/*",
+    "Version": 1
+  }
+}
+EOF
+
+aws xray create-sampling-rule \
+  --cli-input-json file://api-sampling-rule.json
 ```
 
 ## Integrating with AWS Distro for OpenTelemetry (ADOT)
 
-For a more modern approach, you can use the ADOT collector instead of the standalone X-Ray daemon:
+For a more modern approach, you can use the ADOT collector instead of the standalone X-Ray daemon. After installing the ADOT Operator, apply an `OpenTelemetryCollector` resource with Flux:
 
 ```yaml
 # infrastructure/xray/adot-collector.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
 metadata:
-  name: adot-collector
+  name: xray
   namespace: xray-system
 spec:
-  interval: 1h
-  chart:
-    spec:
-      chart: adot-exporter-for-eks-on-ec2
-      version: "0.15.x"
-      sourceRef:
-        kind: HelmRepository
-        name: eks-charts
-        namespace: flux-system
-  values:
-    clusterName: my-cluster
-    awsRegion: us-east-1
-    serviceAccount:
-      create: false
-      name: xray-daemon
+  mode: deployment
+  serviceAccount: xray-daemon
+  config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch:
+    exporters:
+      awsxray:
+        region: us-east-1
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [awsxray]
 ```
 
 ## Verifying the Deployment
@@ -421,7 +430,7 @@ kubectl logs -n xray-system daemonset/xray-daemon --tail=20
 
 # Verify traces in AWS console
 aws xray get-trace-summaries \
-  --start-time $(date -u -v-1H +%s) \
+  --start-time $(date -u -d '1 hour ago' +%s) \
   --end-time $(date -u +%s)
 
 # Check Flux kustomization status
@@ -430,4 +439,4 @@ flux get kustomization xray
 
 ## Conclusion
 
-Deploying the AWS X-Ray daemon with Flux on EKS provides GitOps-managed distributed tracing for your microservices. By running the daemon as a DaemonSet, every node in your cluster has a local trace collector, minimizing latency for trace data submission. The IRSA integration ensures secure access to the X-Ray API, and Flux ensures the tracing infrastructure is always running and properly configured. For teams adopting OpenTelemetry, the ADOT collector provides a standards-based alternative that supports X-Ray as an export destination.
+Deploying the AWS X-Ray daemon with Flux on EKS provides GitOps-managed distributed tracing for your microservices. By running the daemon as a DaemonSet, every node in your cluster has a trace collector available. The IRSA integration ensures secure access to the X-Ray API, and Flux ensures the tracing infrastructure is always running and properly configured. For teams adopting OpenTelemetry, the ADOT collector provides a standards-based alternative that supports X-Ray as an export destination.
