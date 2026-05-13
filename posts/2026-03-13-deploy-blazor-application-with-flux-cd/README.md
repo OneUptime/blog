@@ -18,7 +18,7 @@ Flux CD manages the entire lifecycle, from the initial deployment to automated i
 
 ## Prerequisites
 
-- A Blazor WebAssembly 8.x application (.NET 8 or 9)
+- A Blazor WebAssembly application targeting .NET 8 or 9
 - A Kubernetes cluster with Flux CD bootstrapped
 - A container registry
 - `kubectl` and `flux` CLIs installed
@@ -26,7 +26,7 @@ Flux CD manages the entire lifecycle, from the initial deployment to automated i
 ## Step 1: Publish and Containerize the Blazor WASM Application
 
 ```dockerfile
-# Dockerfile - build with .NET SDK, serve with Nginx
+# Dockerfile - build with the matching .NET SDK, serve with Nginx
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
 WORKDIR /app
@@ -55,32 +55,60 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ```nginx
 # nginx.conf - Blazor WASM requires correct MIME types and SPA routing
+map $uri $cache_control {
+    default "max-age=3600";
+    /index.html "no-cache";
+    /service-worker.js "no-cache";
+    /appsettings.Production.json "no-cache";
+
+    # .NET 8/9 Blazor WASM boot/runtime files are not all fingerprinted.
+    /_framework/blazor.boot.json "no-cache";
+    /_framework/blazor.webassembly.js "max-age=3600";
+    /_framework/dotnet.js "max-age=3600";
+    ~^/_framework/ "public, max-age=31536000, immutable";
+}
+
 server {
     listen 80;
     root /usr/share/nginx/html;
     index index.html;
 
-    # Required: serve .wasm files with the correct MIME type
+    # Required: serve Blazor static assets with the correct MIME types
     types {
+        text/html html htm;
+        text/css css;
+        application/javascript js mjs;
+        application/json json;
+        application/manifest+json webmanifest;
         application/wasm wasm;
+        application/octet-stream dll pdb webcil;
+        image/png png;
+        image/jpeg jpg jpeg;
+        image/gif gif;
+        image/webp webp;
+        image/svg+xml svg;
+        image/x-icon ico;
+        font/woff woff;
+        font/woff2 woff2;
     }
 
-    # Enable gzip for text-based assets
+    # Enable gzip for assets that are not already pre-compressed
     gzip on;
     gzip_types text/plain text/css application/javascript application/json
                application/wasm application/octet-stream;
 
-    # Enable Brotli pre-compressed files (.br) if they exist
+    # Serve pre-compressed gzip files (.gz) if they exist
     location ~ \.(js|wasm|css)$ {
         gzip_static on;
-        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Cache-Control $cache_control always;
+        add_header Blazor-Environment "Production" always;
     }
 
     # SPA fallback - route all unmatched requests to index.html
     location / {
         try_files $uri $uri/ /index.html;
-        # index.html should not be cached
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Cache-Control $cache_control always;
+        add_header Blazor-Environment "Production" always;
     }
 }
 ```
@@ -177,8 +205,6 @@ kind: Ingress
 metadata:
   name: my-blazor-app
   namespace: my-blazor-app
-  annotations:
-    nginx.ingress.kubernetes.io/enable-brotli: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -295,9 +321,9 @@ kubectl port-forward -n my-blazor-app svc/my-blazor-app 8080:80
 ## Best Practices
 
 - Always configure Nginx to serve `.wasm` files with `Content-Type: application/wasm`. Without this, some browsers will refuse to compile the module.
-- Enable gzip and pre-compressed Brotli (`.br` files) for Blazor WASM bundles - uncompressed WASM can be several megabytes.
-- Use `appsettings.Production.json` mounted from a ConfigMap for runtime configuration so API base URLs and feature flags can differ per environment without rebuilding the image.
-- Set aggressive caching headers on fingerprinted static assets (`.wasm`, `.js`, `.css`) but use `no-cache` on `index.html` to ensure users always get the latest version.
+- Enable gzip and serve pre-compressed gzip (`.gz`) files for Blazor WASM bundles. If you want Brotli (`.br`) files, use an Nginx build that includes Brotli support or another host that negotiates Brotli content.
+- Use `appsettings.Production.json` mounted from a ConfigMap for runtime configuration so API base URLs and feature flags can differ per environment without rebuilding the image. For Blazor WebAssembly, make sure the client-side environment is `Production`, for example by setting the `Blazor-Environment` response header.
+- Set aggressive caching headers on fingerprinted static assets, but use `no-cache` on `index.html`, `service-worker.js`, `blazor.boot.json`, and runtime configuration files to ensure users always get the latest version.
 - Consider Blazor's lazy loading feature for large assemblies to reduce the initial download size.
 
 ## Conclusion
