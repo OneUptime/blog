@@ -187,16 +187,16 @@ kubectl delete kustomization test-shard-exclusion -n flux-system
 
 ## Common Mistakes
 
-1. **Forgetting to update all controllers**: If you shard the kustomize-controller, remember to also configure the source-controller and helm-controller if they use the same sharding labels.
+1. **Forgetting to update all sharded controllers**: If you shard the kustomize-controller, remember to also configure the source-controller and helm-controller if they use the same sharding labels.
 
-2. **Using incorrect selector syntax**: The `!` prefix negates the entire label key existence, not its value. `!key` means "key does not exist" while `key!=value` means "key exists but does not equal value."
+2. **Using incorrect selector syntax**: The `!` prefix negates the entire label key existence, not its value. `!key` means "key does not exist" while `key!=value` means "key does not exist or its value is not equal to value."
 
 3. **Not restarting the controller**: Changes to deployment args require a pod restart. Kubernetes handles this automatically when you update the deployment spec.
 
 ## Best Practices
 
 - Use the negated label absence strategy (`!sharding.fluxcd.io/key`) for simplicity
-- Apply the same exclusion pattern consistently across all controller types
+- Apply the same exclusion pattern consistently across all controller types that support sharding
 - Store the configuration in Git as Kustomize patches for reproducibility
 - Test exclusion before deploying shards to production
 - Monitor for duplicate reconciliation events after configuration changes
