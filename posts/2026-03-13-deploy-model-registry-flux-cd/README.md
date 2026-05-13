@@ -20,7 +20,7 @@ This guide covers deploying MLflow with a PostgreSQL backend and S3-compatible a
 
 - Kubernetes cluster with Flux CD v2 bootstrapped to your Git repository
 - A PostgreSQL database (or the ability to deploy one in-cluster)
-- An S3-compatible object store (AWS S3, MinIO, or GCS) for artifact storage
+- An S3-compatible object store (AWS S3 or MinIO) for artifact storage
 - kubectl access to the cluster
 
 ## Step 1: Create the Namespace and Secrets
@@ -47,6 +47,10 @@ kubectl create secret generic mlflow-s3 \
   --from-literal=AWS_ACCESS_KEY_ID=minio-access-key \
   --from-literal=AWS_SECRET_ACCESS_KEY=minio-secret-key \
   -n mlflow
+
+kubectl create secret generic mlflow-basic-auth \
+  --from-literal=auth="$(htpasswd -nb mlflow 'change-me')" \
+  -n mlflow
 ```
 
 ## Step 2: Deploy MLflow Tracking Server
@@ -72,17 +76,17 @@ spec:
         - name: mlflow
           image: ghcr.io/mlflow/mlflow:v2.11.3
           command:
-            - mlflow
-            - server
-            - "--host=0.0.0.0"
-            - "--port=5000"
-            # PostgreSQL backend for experiment tracking
-            - "--backend-store-uri=$(MLFLOW_DB_URL)"
-            # S3 artifact store
-            - "--default-artifact-root=s3://mlflow-artifacts/"
-            # Serve artifact proxy for UI downloads
-            - "--serve-artifacts"
-            - "--artifacts-destination=s3://mlflow-artifacts/"
+            - /bin/sh
+            - -c
+          args:
+            - |
+              pip install --no-cache-dir psycopg2-binary boto3 &&
+              exec mlflow server \
+                --host=0.0.0.0 \
+                --port=5000 \
+                --backend-store-uri="$MLFLOW_DB_URL" \
+                --serve-artifacts \
+                --artifacts-destination=s3://mlflow-artifacts/
           ports:
             - containerPort: 5000
               name: http
@@ -172,7 +176,9 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
----
+```
+
+```yaml
 # clusters/my-cluster/flux-kustomization-mlflow.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -203,6 +209,13 @@ kubectl rollout status deployment/mlflow -n mlflow
 # Register a model via Python SDK
 python3 -c "
 import mlflow
+import mlflow.sklearn
+from sklearn.datasets import load_iris
+from sklearn.linear_model import LogisticRegression
+
+X, y = load_iris(return_X_y=True)
+model = LogisticRegression(max_iter=200).fit(X, y)
+
 mlflow.set_tracking_uri('http://mlflow.internal.example.com')
 with mlflow.start_run():
     mlflow.log_param('lr', 0.001)
@@ -210,10 +223,10 @@ with mlflow.start_run():
     mlflow.sklearn.log_model(model, 'model', registered_model_name='my-classifier')
 "
 
-# Promote model to production via REST API
-curl -X POST http://mlflow.internal.example.com/api/2.0/mlflow/model-versions/transition-stage \
+# Promote model to a production alias via REST API
+curl -X POST http://mlflow.internal.example.com/api/2.0/mlflow/registered-models/alias \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-classifier", "version": "1", "stage": "Production"}'
+  -d '{"name": "my-classifier", "alias": "champion", "version": "1"}'
 ```
 
 ## Best Practices
