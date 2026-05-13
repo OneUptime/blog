@@ -34,6 +34,15 @@ spec:
   url: https://metallb.github.io/metallb
 ---
 # clusters/production/infrastructure/metallb.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -193,9 +202,9 @@ metadata:
   namespace: ingress-nginx
   annotations:
     # Request a specific IP from the pool
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
     # Or specify which pool to use
-    metallb.universe.tf/address-pool: "web-pool"
+    metallb.io/address-pool: "web-pool"
 spec:
   type: LoadBalancer
   selector:
@@ -242,7 +251,7 @@ kubectl get service test-lb
 # arp -n 192.168.1.200  # Should show the MAC of a cluster node
 
 # Check MetalLB speaker logs for ARP activity
-kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=20 | grep -i arp
+kubectl logs -n metallb-system -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=speaker --tail=20 | grep -i arp
 ```
 
 ## Best Practices
