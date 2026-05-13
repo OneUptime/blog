@@ -26,7 +26,7 @@ This guide deploys Vector as a DaemonSet agent collecting Kubernetes logs, enric
 ## Step 1: Add the Vector HelmRepository
 
 ```yaml
-# infrastructure/sources/vector-helm.yaml
+# infrastructure/logging/vector-helm.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -108,7 +108,7 @@ spec:
           source: |
             if is_string(.message) {
               parsed, err = parse_json(.message)
-              if err == null {
+              if err == null && is_object(parsed) {
                 . = merge(., parsed)
               }
             }
@@ -139,7 +139,7 @@ spec:
             codec: json
           buffer:
             type: disk
-            max_size: 268435456  # 256 MiB
+            max_size: 268435488  # ~256 MiB
 
         # Ship system logs to a separate index
         elasticsearch_system:
@@ -164,7 +164,7 @@ spec:
 
 ## Step 4: Deploy Vector Aggregator (Optional)
 
-For large clusters, run a separate Vector aggregator that agents forward to, reducing Elasticsearch connection overhead.
+For large clusters, run a separate Vector aggregator and configure agents to forward to it, reducing Elasticsearch connection overhead.
 
 ```yaml
 # infrastructure/logging/vector-aggregator.yaml
@@ -195,6 +195,7 @@ spec:
         vector_agent_input:
           type: vector
           address: "0.0.0.0:6000"
+          version: "2"
 
       sinks:
         elasticsearch_out:
@@ -243,16 +244,16 @@ kubectl get daemonset vector-agent -n logging
 kubectl logs -l app.kubernetes.io/name=vector -n logging --tail=30
 
 # Query Elasticsearch to confirm data
-kubectl exec -n logging -it \
-  $(kubectl get pod -n logging -l app=elasticsearch -o name | head -1) -- \
-  curl -s "http://localhost:9200/vector-app-*/_count" | jq .
+kubectl run es-check -n logging --rm -i --restart=Never \
+  --image=curlimages/curl --command -- \
+  curl -s "http://elasticsearch-master.logging.svc.cluster.local:9200/vector-app-*/_count" | jq .
 ```
 
 ## Best Practices
 
 - Use disk-based buffers (`type: disk`) in Vector sinks to survive pod restarts without losing events.
 - Use the `route` transform to send different log streams to different sinks, keeping indexes lean and query performance high.
-- Test Vector configurations locally using `vector validate --config vector.yaml` before committing to Git.
+- Test Vector configurations locally using `vector validate vector.yaml` before committing to Git.
 - Enable Vector's `acknowledgements` setting on sinks so the source waits for delivery confirmation before advancing the read offset.
 - Scrape Vector's Prometheus metrics endpoint to monitor pipeline throughput and error rates.
 
