@@ -40,7 +40,7 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: "7.*"
+      version: "10.*"
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -131,10 +131,6 @@ Update the HelmRelease to mount the credentials Secret as environment variables 
 ```yaml
 # Patch the Grafana HelmRelease to inject Loki credentials as environment variables
 # Add this to the values section of your grafana/helm-release.yaml
-extraEnvFrom:
-  - secretRef:
-      name: grafana-loki-credentials
-      # Map secret keys to the expected environment variable names
 envValueFrom:
   LOKI_USERNAME:
     secretKeyRef:
@@ -152,6 +148,7 @@ Reconcile all data source ConfigMaps from Git using a dedicated Flux Kustomizati
 
 ```yaml
 # clusters/my-cluster/grafana-datasources.yaml - Flux Kustomization for Grafana data sources
+# The dependsOn entry requires a Flux Kustomization named grafana.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
