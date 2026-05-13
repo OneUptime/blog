@@ -113,7 +113,7 @@ if [ "$TOTAL_NODES" -ne "$CILIUM_PODS" ]; then
   for node in $ALL_NODES; do
     if ! echo "$CILIUM_NODES" | grep -q "$node"; then
       echo "Missing Cilium on node: $node"
-      kubectl get node $node -o jsonpath='{.spec.taints}' | \
+      kubectl get node $node -o jsonpath-as-json='{.spec.taints}' | \
         python3 -c "import sys,json; t=json.load(sys.stdin); print('Taints:', t)"
     fi
   done
