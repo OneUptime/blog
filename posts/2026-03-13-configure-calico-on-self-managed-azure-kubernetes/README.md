@@ -10,7 +10,7 @@ Description: Learn how to install and configure Calico on a self-managed Kuberne
 
 ## Introduction
 
-Running self-managed Kubernetes on Azure Virtual Machines lets you use Calico's full feature set without the constraints of AKS managed networking. You can configure Calico with its own IPAM, choose your encapsulation mode based on your VNet architecture, and leverage BGP peering with Azure's virtual network gateway.
+Running self-managed Kubernetes on Azure Virtual Machines lets you use Calico's full feature set without the constraints of AKS managed networking. You can configure Calico with its own IPAM, choose your encapsulation mode based on your VNet architecture, and integrate with Azure routing through User Defined Routes or Azure Route Server designs when you choose a non-overlay architecture.
 
 Unlike AKS, self-managed Kubernetes on Azure gives you control over the control plane configuration, allowing you to set custom pod CIDRs, use Calico's multi-pool IPAM, and enable Calico Enterprise features that are not available in the managed AKS Calico integration.
 
@@ -75,8 +75,11 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 Deploy Calico using the Tigera operator.
 
 ```bash
+# Install the Calico CRDs
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+
 # Install the Tigera operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 ```
 
 ```yaml
@@ -119,10 +122,11 @@ az network nsg rule create \
   --nsg-name cluster-nsg \
   --name allow-calico-vxlan \
   --protocol Udp \
+  --direction Inbound \
   --priority 1000 \
-  --destination-port-range 4789 \
-  --source-address-prefix VirtualNetwork \
-  --destination-address-prefix VirtualNetwork \
+  --destination-port-ranges 4789 \
+  --source-address-prefixes VirtualNetwork \
+  --destination-address-prefixes VirtualNetwork \
   --access Allow
 
 # Allow Calico Typha communication
@@ -131,21 +135,26 @@ az network nsg rule create \
   --nsg-name cluster-nsg \
   --name allow-calico-typha \
   --protocol Tcp \
+  --direction Inbound \
   --priority 1001 \
-  --destination-port-range 5473 \
-  --source-address-prefix VirtualNetwork \
-  --destination-address-prefix VirtualNetwork \
+  --destination-port-ranges 5473 \
+  --source-address-prefixes VirtualNetwork \
+  --destination-address-prefixes VirtualNetwork \
   --access Allow
 ```
 
-## Step 5: Verify Calico and Apply First Policies
+## Step 5: Verify Calico and Test Connectivity
 
-Confirm the installation and deploy your first network policies.
+Confirm the installation and deploy a test workload.
 
 ```bash
 # Install calicoctl
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 \
   -o calicoctl && chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
+
+# Configure calicoctl to use the Kubernetes API datastore
+export DATASTORE_TYPE=kubernetes
+export KUBECONFIG=$HOME/.kube/config
 
 # Verify Calico node status
 calicoctl node status
@@ -165,7 +174,7 @@ kubectl run curl-test -n test --image=curlimages/curl --rm -it -- curl nginx-svc
 - Use VXLAN encapsulation on Azure to avoid needing to configure User Defined Routes for pod traffic
 - Configure Azure Accelerated Networking on VM NICs to improve VXLAN performance
 - Apply Azure NSG rules before joining nodes - Calico initialization requires network connectivity
-- Use Azure Private DNS for in-cluster DNS instead of public DNS for better performance
+- Use CoreDNS for in-cluster service discovery, and Azure Private DNS for private Azure zones or custom internal domains
 - Back up kubeadm certificates and etcd regularly on self-managed clusters
 
 ## Conclusion
