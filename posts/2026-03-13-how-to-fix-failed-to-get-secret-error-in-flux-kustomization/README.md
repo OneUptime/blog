@@ -20,7 +20,7 @@ or:
 failed to get secret 'flux-system/git-credentials': secrets "git-credentials" is forbidden: User "system:serviceaccount:flux-system:kustomize-controller" cannot get resource "secrets" in API group "" in the namespace "flux-system"
 ```
 
-This error means the Flux kustomize-controller cannot retrieve a Kubernetes secret it needs, either because the secret does not exist or because the controller lacks permissions to read it.
+This error means the Flux kustomize-controller cannot retrieve a Kubernetes secret referenced by the Kustomization, either because the secret does not exist or because the controller lacks permissions to read it.
 
 ## Root Causes
 
@@ -30,11 +30,11 @@ The most straightforward cause is that the referenced secret has not been create
 
 ### 2. Secret Is in the Wrong Namespace
 
-The secret exists but is in a different namespace than what the Kustomization expects. Secret references in Flux are namespace-scoped.
+The secret exists but is in a different namespace than what the Kustomization expects. Secret references in a Flux Kustomization are namespace-scoped and must exist in the same namespace as the Kustomization resource.
 
 ### 3. RBAC Permissions Are Missing
 
-The kustomize-controller service account does not have permission to read secrets in the target namespace. This can happen when custom RBAC policies restrict cross-namespace access.
+The kustomize-controller service account does not have permission to read secrets in the Kustomization namespace. This can happen when custom RBAC policies restrict access to secrets.
 
 ### 4. Secret Was Deleted or Replaced
 
@@ -101,14 +101,14 @@ kubectl create secret generic git-credentials \
 If the secret is in the wrong namespace, recreate it in the correct one:
 
 ```bash
-kubectl get secret my-secret -n wrong-namespace -o yaml | \
-  sed 's/namespace: wrong-namespace/namespace: correct-namespace/' | \
+kubectl get secret my-secret -n wrong-namespace -o json | \
+  jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields, .metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | .metadata.namespace="correct-namespace"' | \
   kubectl apply -f -
 ```
 
 ### Fix 3: Grant RBAC Permissions
 
-Create a Role and RoleBinding to allow the kustomize-controller to read secrets in the target namespace:
+Create a Role and RoleBinding to allow the kustomize-controller to read secrets in the Kustomization namespace:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
