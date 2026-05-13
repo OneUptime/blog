@@ -27,16 +27,16 @@ vault write pki/root/generate/internal \
 
 # Create a role for Typha certificates
 vault write pki/roles/calico-typha \
-  allowed_domains="calico-typha,calico-felix" \
+  allowed_domains="calico-typha,calico-typha.calico-system.svc,calico-typha.calico-system.svc.cluster.local,calico-felix" \
   allow_bare_domains=true \
   allow_subdomains=false \
   max_ttl="2160h"
 
 # Issue Typha server certificate
-vault write pki/issue/calico-typha \
+vault write -format=json pki/issue/calico-typha \
   common_name=calico-typha \
   alt_names="calico-typha.calico-system.svc,calico-typha.calico-system.svc.cluster.local" \
-  format=pem_bundle > /tmp/typha-server.json
+  format=pem > /tmp/typha-server.json
 
 # Extract cert and key
 jq -r '.data.certificate' /tmp/typha-server.json > /etc/calico/pki/typha-server.crt
@@ -44,7 +44,12 @@ jq -r '.data.private_key' /tmp/typha-server.json > /etc/calico/pki/typha-server.
 jq -r '.data.issuing_ca' /tmp/typha-server.json > /etc/calico/pki/typha-ca.crt
 
 # Issue Felix client certificate
-vault write pki/issue/calico-typha common_name=calico-felix > /tmp/felix-client.json
+vault write -format=json pki/issue/calico-typha \
+  common_name=calico-felix \
+  format=pem > /tmp/felix-client.json
+
+jq -r '.data.certificate' /tmp/felix-client.json > /etc/calico/pki/felix-client.crt
+jq -r '.data.private_key' /tmp/felix-client.json > /etc/calico/pki/felix-client.key
 ```
 
 ### Using cert-manager with an External Issuer
@@ -63,6 +68,8 @@ spec:
       kubernetes:
         role: calico
         mountPath: /v1/auth/kubernetes
+        serviceAccountRef:
+          name: vault-issuer
 EOF
 ```
 
@@ -75,22 +82,22 @@ For hard way installations where Felix runs as a binary, certificates are copied
 for node in $(kubectl get nodes -o name | grep worker); do
   NODE_IP=$(kubectl get $node -o jsonpath='{.status.addresses[0].address}')
   ssh ubuntu@$NODE_IP "sudo mkdir -p /etc/calico/tls"
-  scp /etc/calico/pki/typha-ca.crt ubuntu@$NODE_IP:/etc/calico/tls/typha-ca.crt
-  scp /etc/calico/pki/felix-client.crt ubuntu@$NODE_IP:/etc/calico/tls/felix.crt
-  scp /etc/calico/pki/felix-client.key ubuntu@$NODE_IP:/etc/calico/tls/felix.key
-  ssh ubuntu@$NODE_IP "sudo chmod 600 /etc/calico/tls/felix.key"
+  scp /etc/calico/pki/typha-ca.crt /etc/calico/pki/felix-client.crt /etc/calico/pki/felix-client.key ubuntu@$NODE_IP:/tmp/
+  ssh ubuntu@$NODE_IP "sudo install -m 644 /tmp/typha-ca.crt /etc/calico/tls/typha-ca.crt"
+  ssh ubuntu@$NODE_IP "sudo install -m 644 /tmp/felix-client.crt /etc/calico/tls/felix.crt"
+  ssh ubuntu@$NODE_IP "sudo install -m 600 /tmp/felix-client.key /etc/calico/tls/felix.key"
 done
 ```
 
 Configure Felix with custom paths.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{
-    "typhaCAFile": "/etc/calico/tls/typha-ca.crt",
-    "typhaCertFile": "/etc/calico/tls/felix.crt",
-    "typhaKeyFile": "/etc/calico/tls/felix.key"
-  }}'
+sudo tee -a /etc/calico/felix.cfg >/dev/null <<EOF
+TyphaCAFile = /etc/calico/tls/typha-ca.crt
+TyphaCertFile = /etc/calico/tls/felix.crt
+TyphaKeyFile = /etc/calico/tls/felix.key
+TyphaCN = calico-typha
+EOF
 ```
 
 ## Option 3: Per-Node Felix Certificates
@@ -105,15 +112,16 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
 
   openssl x509 -req -in /etc/calico/pki/felix-$node.csr \
     -CA /etc/calico/pki/typha-ca.crt -CAkey /etc/calico/pki/typha-ca.key \
-    -CAcreateserial -out /etc/calico/pki/felix-$node.crt -days 365
+    -CAcreateserial -out /etc/calico/pki/felix-$node.crt -days 365 \
+    -extfile <(printf "extendedKeyUsage=clientAuth\nsubjectAltName=URI:spiffe://cluster.local/calico/felix\n")
 done
 ```
 
-Update `TYPHA_CLIENTCN` to use a prefix match instead of an exact CN.
+Use an exact URI SAN match for Typha authorization while keeping the per-node CN for log context.
 
 ```bash
-# Use TYPHA_CLIENTURISAN for more flexible matching if supported
-# Or use a shared CN with per-node SANs for differentiation
+TYPHA_CLIENTCN=""
+TYPHA_CLIENTURISAN="spiffe://cluster.local/calico/felix"
 ```
 
 ## Option 4: Intermediate CA for Typha
