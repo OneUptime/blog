@@ -30,7 +30,7 @@ No new events appear on the source or downstream Kustomizations.
 ### Verify the remote repository has the commit
 
 ```bash
-git log --oneline origin/main -5
+git ls-remote origin refs/heads/main
 ```
 
 ### Check the source controller logs
@@ -75,9 +75,9 @@ If the interval is set to 30 minutes or more, there is a natural delay before Fl
 
 A `.sourceignore` file in the repository may be excluding the directories or files you changed.
 
-### 5. Git server rate limiting
+### 5. Git server throttling or transient failures
 
-GitHub and GitLab impose API rate limits. If the source controller is rate-limited, it silently skips fetches.
+Git providers can throttle requests or return transient errors. When this happens, source-controller reports the failure in the GitRepository status, Kubernetes events, and controller logs.
 
 ### 6. Network policy blocking egress
 
@@ -90,7 +90,8 @@ A NetworkPolicy in the `flux-system` namespace may be blocking outbound connecti
 Check if the secret exists and is valid:
 
 ```bash
-kubectl get secret -n flux-system -l toolkit.fluxcd.io/name=my-repo
+SECRET_NAME=$(kubectl get gitrepository my-repo -n flux-system -o jsonpath='{.spec.secretRef.name}')
+kubectl get secret "$SECRET_NAME" -n flux-system
 ```
 
 Test the credentials:
@@ -185,7 +186,8 @@ spec:
   secretRef:
     name: receiver-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: my-repo
 ```
 
@@ -193,6 +195,7 @@ Expose the receiver endpoint:
 
 ```bash
 kubectl get svc -n flux-system webhook-receiver
+kubectl get receiver github-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
 ```
 
 Add the webhook URL to your GitHub repository settings.
@@ -220,8 +223,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    - to: []
-      ports:
+    - ports:
         - port: 443
           protocol: TCP
         - port: 22
@@ -244,7 +246,7 @@ flux get sources git my-repo
 
 1. **Use deploy keys with no expiry** for Git authentication in production clusters.
 2. **Set up webhook receivers** instead of relying solely on polling for faster change detection.
-3. **Monitor source controller logs** for authentication failures and rate limiting.
+3. **Monitor source controller logs** for authentication failures and provider throttling.
 4. **Alert on source staleness** when the artifact revision has not changed beyond a threshold.
 5. **Document your `.sourceignore`** so team members understand which files are excluded.
 
