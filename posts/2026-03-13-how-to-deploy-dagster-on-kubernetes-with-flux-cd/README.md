@@ -45,6 +45,11 @@ spec:
 # clusters/production/secrets/dagster-secrets.yaml
 # Encrypt with SOPS before committing
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: dagster
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: dagster-postgresql-secret
@@ -52,7 +57,6 @@ metadata:
 type: Opaque
 stringData:
   postgresql-password: "change-me-in-production"
-  postgresql-postgres-password: "change-me-in-production"
 ```
 
 ## Step 3: Deploy the Dagster Stack
@@ -66,12 +70,13 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
+  releaseName: dagster
   targetNamespace: dagster
   createNamespace: true
   chart:
     spec:
       chart: dagster
-      version: "1.6.x"
+      version: "1.13.x"
       sourceRef:
         kind: HelmRepository
         name: dagster
@@ -84,7 +89,7 @@ spec:
     global:
       postgresqlSecretName: dagster-postgresql-secret
 
-    # Dagster web server (Dagit)
+    # Dagster web server
     dagsterWebserver:
       replicaCount: 1
       resources:
@@ -94,14 +99,19 @@ spec:
         limits:
           cpu: 2000m
           memory: 2Gi
-      ingress:
-        enabled: true
-        ingressClassName: nginx
-        annotations:
-          cert-manager.io/cluster-issuer: letsencrypt-prod
-          nginx.ingress.kubernetes.io/auth-type: basic
-          nginx.ingress.kubernetes.io/auth-secret: dagster-basic-auth
+
+    # Ingress for the Dagster web server
+    ingress:
+      enabled: true
+      ingressClassName: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+        nginx.ingress.kubernetes.io/auth-type: basic
+        nginx.ingress.kubernetes.io/auth-secret: dagster-basic-auth
+      dagsterWebserver:
         host: dagster.myorg.com
+        path: "/*"
+        pathType: ImplementationSpecific
         tls:
           enabled: true
           secretName: dagster-tls
@@ -125,23 +135,20 @@ spec:
     # PostgreSQL for run history and event logs
     postgresql:
       enabled: true
+      existingSecret: dagster-postgresql-secret
       image:
+        repository: "library/postgres"
         tag: "15"
-      auth:
-        username: dagster
-        database: dagster
-        existingSecret: dagster-postgresql-secret
-        secretKeys:
-          adminPasswordKey: postgresql-postgres-password
-          userPasswordKey: postgresql-password
-      primary:
-        persistence:
-          enabled: true
-          size: 20Gi
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
+      postgresqlUsername: dagster
+      postgresqlDatabase: dagster
+      persistence:
+        enabled: true
+        size: 20Gi
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+    generatePostgresqlPasswordSecret: false
 
     # Run launcher: use Kubernetes Jobs for pipeline execution
     runLauncher:
@@ -162,15 +169,16 @@ spec:
                   memory: 4Gi
             podSpecConfig:
               serviceAccountName: dagster-run-runner
-          # Keep completed jobs for debugging
-          jobTtlSecondsAfterFinished: 86400
+            jobSpecConfig:
+              # Keep completed jobs for debugging
+              ttlSecondsAfterFinished: 86400
 
     # Celery executor alternative (uncomment if needed)
     # celery:
     #   enabled: true
 
     # User code deployments (your pipeline code)
-    userDeployments:
+    dagster-user-deployments:
       enabled: true
       deployments:
         # Data engineering pipelines
@@ -237,10 +245,16 @@ metadata:
 rules:
   - apiGroups: ["batch"]
     resources: [jobs]
-    verbs: [create, get, list, watch, delete, patch]
+    verbs: [create, get, list, watch, delete, deletecollection, patch, update]
+  - apiGroups: ["batch"]
+    resources: [jobs/status]
+    verbs: [get, list, watch]
   - apiGroups: [""]
-    resources: [pods, pods/log]
-    verbs: [get, list, watch, delete]
+    resources: [pods, events]
+    verbs: [create, get, list, watch, delete, deletecollection, patch, update]
+  - apiGroups: [""]
+    resources: [pods/log, pods/status]
+    verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [secrets, configmaps]
     verbs: [get, list]
@@ -252,8 +266,22 @@ metadata:
   namespace: dagster-runs
 subjects:
   - kind: ServiceAccount
-    name: dagster-service-account
+    name: dagster
     namespace: dagster
+roleRef:
+  kind: Role
+  name: dagster-run-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dagster-run-runner-rolebinding
+  namespace: dagster-runs
+subjects:
+  - kind: ServiceAccount
+    name: dagster-run-runner
+    namespace: dagster-runs
 roleRef:
   kind: Role
   name: dagster-run-role
@@ -276,7 +304,6 @@ spec:
     name: app-repo
   path: ./clusters/production/apps/dagster
   prune: true
-  wait: true
   timeout: 20m
   healthChecks:
     - apiVersion: apps/v1
@@ -285,7 +312,7 @@ spec:
       namespace: dagster
     - apiVersion: apps/v1
       kind: Deployment
-      name: dagster-dagster-daemon
+      name: dagster-daemon
       namespace: dagster
 ```
 
@@ -305,7 +332,7 @@ kubectl port-forward -n dagster svc/dagster-dagster-webserver 3000:80
 # Open http://localhost:3000 and check Code Locations
 
 # View daemon logs for schedule and sensor activity
-kubectl logs -n dagster -l component=daemon -f
+kubectl logs -n dagster -l component=dagster-daemon -f
 
 # Monitor pipeline run jobs
 kubectl get jobs -n dagster-runs -w
