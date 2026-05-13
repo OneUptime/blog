@@ -18,7 +18,7 @@ This guide covers strategies for making legacy firewalls compatible with Calico 
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.x
+- Kubernetes cluster with Calico v3.x, Calico IPAM enabled, and IPReservation support
 - Documentation of existing firewall rules referencing pod or node IPs
 - `calicoctl` and `kubectl` CLIs installed
 - Cluster admin permissions and access to firewall management
@@ -42,12 +42,12 @@ sudo iptables -L -n | grep "10.244"  # Replace with your pod CIDR
 grep -r "10.244" /etc/firewall-rules/  # Replace with firewall config path
 ```
 
-## Step 2: Use Node-Scoped IP Pools to Stabilize Pod CIDRs
+## Step 2: Use Node-Group-Scoped IP Pools to Stabilize Pod CIDRs
 
-Configure Calico IP pools with node selectors so firewall rules can target stable node-based CIDRs instead of individual pod IPs.
+Configure Calico IP pools with node selectors so firewall rules can target stable node-group CIDRs instead of individual pod IPs.
 
 ```yaml
-# calico-ipam/node-scoped-pools.yaml - Assign predictable CIDR blocks per node group
+# calico-ipam/node-group-pools.yaml - Assign predictable CIDR ranges per node group
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -59,7 +59,7 @@ spec:
   ipipMode: CrossSubnet
   natOutgoing: true
   disabled: false
-  # Restrict to production-labeled nodes so CIDRs stay predictable
+  # Restrict this pool to production-labeled nodes so workload CIDRs stay predictable
   nodeSelector: "environment == 'production'"
 ```
 
@@ -69,6 +69,15 @@ Use Calico IP reservation and pod IP annotations for services that legacy firewa
 
 ```yaml
 # workloads/payment-processor.yaml - Assign a fixed IP to avoid firewall rule churn
+apiVersion: projectcalico.org/v3
+kind: IPReservation
+metadata:
+  name: payment-processor-fixed-ip
+spec:
+  # Prevent automatic IPAM allocations from using the manually assigned address
+  reservedCIDRs:
+    - 10.64.1.100
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -126,10 +135,12 @@ After deploying equivalent Calico policies, remove legacy firewall rules one at 
 
 ```bash
 # Validate that the Calico policy is enforced before removing the firewall rule
-# Test from a pod in the allowed CIDR
+# Run this from an environment whose source IP is in the allowed CIDR, or schedule
+# the test pod on nodes whose egress preserves the expected source address
 kubectl run fw-test --image=busybox --rm -it -- wget -qO- https://10.64.1.100:8443/health
 
-# After confirming Calico policy works, remove the corresponding iptables rule
+# After confirming Calico policy and any default-deny policy work as expected,
+# remove the corresponding iptables rule
 # Document each rule removal in a change management ticket
 sudo iptables -D FORWARD -s 10.1.2.0/24 -d 10.64.1.100 -p tcp --dport 8443 -j ACCEPT
 
@@ -148,4 +159,4 @@ kubectl run fw-test --image=busybox --rm -it -- wget -qO- https://10.64.1.100:84
 
 ## Conclusion
 
-Migrating legacy firewalls to work with Calico IPAM requires addressing the fundamental challenge of dynamic pod IPs. By using node-scoped IP pools for CIDR stability, reserved IPs for critical services, and Calico network policies to replace firewall rules, you can safely transition from static IP-based security controls to a dynamic, label-based policy model.
+Migrating legacy firewalls to work with Calico IPAM requires addressing the fundamental challenge of dynamic pod IPs. By using node-group-scoped IP pools for CIDR stability, reserved IPs for critical services, and Calico network policies to replace firewall rules, you can safely transition from static IP-based security controls to a dynamic, label-based policy model.
