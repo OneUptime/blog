@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Typha, Kubernetes, Networking, TLS, Configuration, Hard Way
 
-Description: A guide to configuring Typha TLS parameters including CN verification, cipher suites, and TLS version requirements in a manually installed Calico cluster.
+Description: A guide to configuring Typha TLS parameters including CN verification and certificate identity requirements in a manually installed Calico cluster.
 
 ---
 
 ## Introduction
 
-After generating TLS certificates and creating Kubernetes Secrets, configuring how Typha validates client certificates and which TLS versions are acceptable provides additional security controls. Typha supports CN-based client verification (requiring Felix to present a certificate with a specific Common Name), minimum TLS version enforcement, and cipher suite selection. These controls harden the mTLS setup beyond the basic certificate exchange.
+After generating TLS certificates and creating Kubernetes Secrets, configuring how Typha validates client certificates provides additional security controls. Typha supports CN-based client verification (requiring Felix to present a certificate with a specific Common Name) and URI SAN-based verification. These controls harden the mTLS setup beyond the basic certificate exchange.
 
 ## Step 1: Configure Required Client CN
 
@@ -31,32 +31,47 @@ kubectl get secret calico-felix-typha-tls -n calico-system \
   openssl x509 -noout -subject | grep "CN ="
 ```
 
-## Step 2: Set Minimum TLS Version
+## Step 2: Confirm TLS Version and Cipher Policy
 
-Require TLS 1.3 to disable older, potentially vulnerable TLS versions.
+Calico Typha does not expose a `TYPHA_MINTLSVERSION` or cipher-suite configuration parameter for Felix-to-Typha connections. The supported Typha TLS controls are the CA file, server certificate and key, and the required Felix client identity (`TYPHA_CLIENTCN` or `TYPHA_CLIENTURISAN`).
 
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
-  TYPHA_MINTLSVERSION=VersionTLS13
+kubectl get deployment/calico-typha -n calico-system -o yaml | \
+  grep -E "TYPHA_CAFILE|TYPHA_SERVERCERTFILE|TYPHA_SERVERKEYFILE|TYPHA_CLIENTCN|TYPHA_CLIENTURISAN"
 ```
 
-Valid values: `VersionTLS12`, `VersionTLS13`.
+If your environment requires explicit TLS version or cipher-suite enforcement for this connection, enforce that outside of Typha with your platform's TLS policy controls.
 
 ## Step 3: Configure TLS on the Felix Side
 
 Felix configuration parameters for TLS connections to Typha.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{
-    "typhaCAFile": "/felix-tls/ca.crt",
-    "typhaCertFile": "/felix-tls/tls.crt",
-    "typhaKeyFile": "/felix-tls/tls.key",
-    "typhaName": "calico-typha"
-  }}'
+kubectl patch daemonset calico-node -n calico-system --type=strategic --patch '{
+  "spec": {"template": {"spec": {
+    "containers": [{
+      "name": "calico-node",
+      "env": [
+        {"name": "FELIX_TYPHACAFILE", "value": "/felix-tls/ca.crt"},
+        {"name": "FELIX_TYPHACERTFILE", "value": "/felix-tls/tls.crt"},
+        {"name": "FELIX_TYPHAKEYFILE", "value": "/felix-tls/tls.key"},
+        {"name": "FELIX_TYPHACN", "value": "calico-typha"}
+      ],
+      "volumeMounts": [{
+        "name": "felix-typha-tls",
+        "mountPath": "/felix-tls",
+        "readOnly": true
+      }]
+    }],
+    "volumes": [{
+      "name": "felix-typha-tls",
+      "secret": {"secretName": "calico-felix-typha-tls"}
+    }]
+  }}}
+}'
 ```
 
-The `typhaName` field specifies the expected server name (SNI) that Felix uses when connecting to Typha. It must match the CN or SAN in Typha's server certificate.
+The `FELIX_TYPHACN` setting specifies the expected Common Name that Felix uses when authenticating Typha. It must match the CN in Typha's server certificate. If you use URI SAN identities instead, set `FELIX_TYPHAURISAN` to the Typha URI SAN value.
 
 ## Step 4: Verify Certificate-to-Configuration Alignment
 
@@ -67,11 +82,12 @@ kubectl get secret calico-typha-tls -n calico-system \
   -o jsonpath='{.data.tls\.crt}' | base64 -d | \
   openssl x509 -noout -text | grep -A5 "Subject:\|Subject Alternative"
 
-# Felix configuration typhaName
-calicoctl get felixconfiguration default -o yaml | grep -i "typhaName\|typhaCertFile"
+# Felix TLS configuration
+kubectl get daemonset/calico-node -n calico-system -o yaml | \
+  grep -i "FELIX_TYPHACN\|FELIX_TYPHAURISAN\|FELIX_TYPHACERTFILE"
 ```
 
-The `typhaName` in FelixConfiguration must match the Typha server certificate's CN or one of its SANs.
+The Felix Typha identity setting must match the Typha server certificate: `FELIX_TYPHACN` for Common Name verification, or `FELIX_TYPHAURISAN` for URI SAN verification.
 
 ## Step 5: Configure Certificate Path for Binary Felix
 
@@ -96,7 +112,7 @@ TyphaAddr = calico-typha.calico-system.svc.cluster.local:5473
 TyphaCAFile = /etc/calico/typha-ca.crt
 TyphaCertFile = /etc/calico/felix.crt
 TyphaKeyFile = /etc/calico/felix.key
-TyphaName = calico-typha
+TyphaCN = calico-typha
 ```
 
 ## Step 6: Restart Components After TLS Configuration Changes
@@ -113,9 +129,9 @@ kubectl rollout status daemonset/calico-node -n calico-system
 ## Step 7: Verify TLS Configuration Is Active
 
 ```bash
-kubectl logs -n calico-system deployment/calico-typha | grep -i "tls version\|cipher\|certificate" | tail -10
+kubectl logs -n calico-system deployment/calico-typha | grep -i "tls\|certificate\|client" | tail -10
 ```
 
 ## Conclusion
 
-Configuring Typha TLS beyond the basic certificate setup involves enforcing specific Felix client CN values, setting a minimum TLS version, and ensuring that the server name in Felix's configuration matches the Typha server certificate. For binary-based Felix installations, certificates must be distributed to each node manually and referenced in the local Felix configuration file. Together these configurations create a hardened mTLS setup that meets security audit requirements for production Calico clusters.
+Configuring Typha TLS beyond the basic certificate setup involves enforcing specific Felix client CN values and ensuring that the Typha identity in Felix's configuration matches the Typha server certificate. For binary-based Felix installations, certificates must be distributed to each node manually and referenced in the local Felix configuration file. Together these configurations create a hardened mTLS setup that meets security audit requirements for production Calico clusters.
