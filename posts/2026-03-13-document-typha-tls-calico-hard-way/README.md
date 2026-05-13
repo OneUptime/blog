@@ -24,20 +24,28 @@ Updated by: platform-team
 
 | Certificate | Subject | Issuer | Not After | Secret Name | Namespace |
 |-------------|---------|--------|-----------|-------------|-----------|
-| Typha CA | CN=calico-typha-ca | Self | 2035-03-13 | calico-typha-tls (ca.crt) | calico-system |
-| Typha Server | CN=calico-typha | CN=calico-typha-ca | 2027-03-13 | calico-typha-tls (tls.crt) | calico-system |
-| Felix Client | CN=calico-felix | CN=calico-typha-ca | 2027-03-13 | calico-felix-typha-tls (tls.crt) | calico-system |
+| Typha CA | CN=Calico Typha CA | Self | 2027-03-13 | calico-typha-ca (typhaca.crt) | kube-system |
+| Typha Server | CN=calico-typha | CN=Calico Typha CA | 2027-03-13 | calico-typha-certs (typha.crt) | kube-system |
+| calico/node Client | CN=calico-node | CN=Calico Typha CA | 2027-03-13 | calico-node-certs (calico-node.crt) | kube-system |
 ```
 
 Generate the current state with:
 
 ```bash
-for secret in calico-typha-tls calico-felix-typha-tls; do
-  echo "=== $secret ==="
-  kubectl get secret $secret -n calico-system \
-    -o jsonpath='{.data.tls\.crt}' | base64 -d | \
-    openssl x509 -noout -subject -issuer -enddate
-done
+echo "=== calico-typha-ca ==="
+kubectl get configmap calico-typha-ca -n kube-system \
+  -o jsonpath='{.data.typhaca\.crt}' | \
+  openssl x509 -noout -subject -issuer -enddate
+
+echo "=== calico-typha-certs ==="
+kubectl get secret calico-typha-certs -n kube-system \
+  -o jsonpath='{.data.typha\.crt}' | base64 -d | \
+  openssl x509 -noout -subject -issuer -enddate
+
+echo "=== calico-node-certs ==="
+kubectl get secret calico-node-certs -n kube-system \
+  -o jsonpath='{.data.calico-node\.crt}' | base64 -d | \
+  openssl x509 -noout -subject -issuer -enddate
 ```
 
 ## Certificate Rotation Runbook
@@ -49,25 +57,25 @@ done
 
 **Prerequisites:**
 - Access to /etc/calico/pki/ on the control plane
-- kubectl access to the cluster with edit permissions on calico-system namespace
-- Calico CA private key (/etc/calico/pki/typha-ca.key)
+- kubectl access to the cluster with edit permissions on kube-system namespace
+- Calico Typha CA private key (/etc/calico/pki/typhaca.key)
 
 **Rotation Steps:**
 
 1. Generate new server certificate
-   openssl req -newkey rsa:4096 -keyout typha-server-new.key ...
-   openssl x509 -req -in typha-server-new.csr ...
+   openssl req -newkey rsa:4096 -keyout typha.key -nodes -out typha.csr -subj "/CN=calico-typha"
+   openssl x509 -req -in typha.csr -CA typhaca.crt -CAkey typhaca.key -CAcreateserial -out typha.crt -days 365
 
 2. Update the Kubernetes Secret
-   kubectl create secret generic calico-typha-tls ... --dry-run=client | kubectl apply -f -
+   kubectl create secret generic calico-typha-certs -n kube-system --from-file=typha.key --from-file=typha.crt --dry-run=client -o yaml | kubectl apply -f -
 
 3. Restart Typha
-   kubectl rollout restart deployment/calico-typha -n calico-system
-   kubectl rollout status deployment/calico-typha -n calico-system
+   kubectl rollout restart deployment/calico-typha -n kube-system
+   kubectl rollout status deployment/calico-typha -n kube-system
 
 4. Verify connections recovered
-   # Wait 60 seconds, then check connection count
-   kubectl exec -n calico-system deployment/calico-typha -- wget -qO- http://localhost:9093/metrics | grep typha_connections_active
+   # Wait 60 seconds, then check connection count if Typha metrics are enabled
+   kubectl exec -n kube-system deployment/calico-typha -- wget -qO- http://localhost:9091/metrics | grep typha_connections_active
 
 5. Update certificate inventory (above)
 
@@ -85,25 +93,20 @@ For compliance audits, document the following:
 **mTLS Enforcement:**
 - Typha requires client certificates: YES
   Evidence: TYPHA_CAFILE, TYPHA_SERVERCERTFILE, TYPHA_SERVERKEYFILE configured
-  Command: kubectl get deployment calico-typha -n calico-system -o yaml | grep TYPHA_CA
+  Command: kubectl get deployment calico-typha -n kube-system -o yaml | grep TYPHA_CA
 
 **CN Verification:**
 - Client CN enforcement: YES
-  Required CN: calico-felix
-  Evidence: TYPHA_CLIENTCN=calico-felix configured
-  Command: kubectl get deployment calico-typha -n calico-system -o yaml | grep TYPHA_CLIENTCN
-
-**Minimum TLS Version:**
-- TLS 1.3 required: YES
-  Evidence: TYPHA_MINTLSVERSION=VersionTLS13
-  Command: kubectl get deployment calico-typha -n calico-system -o yaml | grep TYPHA_MINTLS
+  Required CN: calico-node
+  Evidence: TYPHA_CLIENTCN=calico-node configured
+  Command: kubectl get deployment calico-typha -n kube-system -o yaml | grep TYPHA_CLIENTCN
 
 **Certificate Validity:**
-- Server cert expiry: [run: kubectl get secret calico-typha-tls ...]
-- Client cert expiry: [run: kubectl get secret calico-felix-typha-tls ...]
+- Server cert expiry: [run: kubectl get secret calico-typha-certs ...]
+- Client cert expiry: [run: kubectl get secret calico-node-certs ...]
 
 **CA Key Protection:**
-- CA key location: /etc/calico/pki/typha-ca.key (control plane only)
+- CA key location: /etc/calico/pki/typhaca.key (control plane only)
 - CA key permissions: 600 (root-owned)
 - CA key NOT in Kubernetes Secret: CONFIRMED
 ```
@@ -111,16 +114,19 @@ For compliance audits, document the following:
 ## Troubleshooting Quick Reference for On-Call
 
 ```bash
-# Typha TLS quick diagnosis (copy-paste for on-call use)
+# Typha TLS quick diagnosis (copy-paste for on-call use; connection check requires Typha metrics)
 
 echo "=== Cert Expiry ===" && \
-  kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -enddate -noout && \
+  kubectl get secret calico-typha-certs -n kube-system -o jsonpath='{.data.typha\.crt}' | base64 -d | openssl x509 -enddate -noout && \
+  kubectl get secret calico-node-certs -n kube-system -o jsonpath='{.data.calico-node\.crt}' | base64 -d | openssl x509 -enddate -noout && \
 echo "=== CA Match ===" && \
-  T=$(kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}'); \
-  F=$(kubectl get secret calico-felix-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}'); \
-  [ "$T" = "$F" ] && echo "MATCH" || echo "MISMATCH" && \
+  CA=$(mktemp); T=$(mktemp); N=$(mktemp); \
+  kubectl get configmap calico-typha-ca -n kube-system -o jsonpath='{.data.typhaca\.crt}' > "$CA"; \
+  kubectl get secret calico-typha-certs -n kube-system -o jsonpath='{.data.typha\.crt}' | base64 -d > "$T"; \
+  kubectl get secret calico-node-certs -n kube-system -o jsonpath='{.data.calico-node\.crt}' | base64 -d > "$N"; \
+  openssl verify -CAfile "$CA" "$T" "$N"; rm -f "$CA" "$T" "$N" && \
 echo "=== Connections ===" && \
-  kubectl exec -n calico-system deployment/calico-typha -- wget -qO- http://localhost:9093/metrics | grep typha_connections_active
+  kubectl exec -n kube-system deployment/calico-typha -- wget -qO- http://localhost:9091/metrics | grep typha_connections_active
 ```
 
 ## Conclusion
