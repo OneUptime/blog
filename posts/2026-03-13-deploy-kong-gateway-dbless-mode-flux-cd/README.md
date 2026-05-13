@@ -21,8 +21,9 @@ This guide deploys Kong in DB-less mode using Flux CD HelmRelease, with the decl
 - A Kubernetes cluster with Flux CD bootstrapped
 - kubectl with cluster-admin access
 - A Git repository connected to Flux CD
+- A Flux `HelmRepository` for the Kong chart repository
 - Basic understanding of Kong routing concepts (services, routes, plugins)
-- The Kong Ingress Controller for Kubernetes-native configuration (optional)
+- The Kong Ingress Controller for Kubernetes-native configuration (optional alternative)
 
 ## Step 1: Create the Kong Declarative Configuration
 
@@ -39,7 +40,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: flux
 data:
-  kong.yaml: |
+  kong.yml: |
     _format_version: "3.0"
     _transform: true
 
@@ -92,8 +93,8 @@ data:
             - Authorization
             - Content-Type
 
-      # Request ID for tracing
-      - name: request-id
+      # Correlation ID for tracing
+      - name: correlation-id
         config:
           header_name: X-Request-ID
           generator: uuid
@@ -101,7 +102,7 @@ data:
 
 ## Step 2: Deploy Kong in DB-less Mode
 
-Configure the HelmRelease to run Kong in DB-less mode, mounting the ConfigMap as the configuration source.
+Configure the HelmRelease to run Kong in DB-less mode, using the ConfigMap as the configuration source.
 
 ```yaml
 # infrastructure/kong/helmrelease.yaml
@@ -125,19 +126,11 @@ spec:
     # DB-less mode - no database required
     env:
       database: "off"
-      # Path to the declarative configuration file
-      declarative_config: /kong/declarative/kong.yaml
 
-    # Mount the ConfigMap containing the declarative config
-    volumes:
-      - name: kong-config
-        configMap:
-          name: kong-declarative-config
-
-    volumeMounts:
-      - name: kong-config
-        mountPath: /kong/declarative
-        readOnly: true
+    # Load the ConfigMap containing the declarative config.
+    # The ConfigMap must contain a key named kong.yml.
+    dblessConfig:
+      configMap: kong-declarative-config
 
     # Disable Admin API writes (not supported in DB-less mode)
     admin:
@@ -159,9 +152,10 @@ spec:
     # DB-less mode is stateless - scale horizontally
     replicaCount: 3
 
-    # Ingress controller still works with DB-less mode
+    # Disable the Ingress Controller for file-based declarative config.
+    # If you enable it, manage routes with Kubernetes resources instead.
     ingressController:
-      enabled: true
+      enabled: false
 
     resources:
       requests:
@@ -209,28 +203,15 @@ spec:
   timeout: 5m
 ```
 
-## Step 4: Hot-Reload Kong Configuration
+## Step 4: Reload Kong Configuration
 
-When you update the ConfigMap in Git, Flux applies the change. Kong can be configured to reload its configuration without a restart.
-
-```yaml
-# infrastructure/kong/helmrelease.yaml (addition to values)
-# Add to the existing HelmRelease values:
-    # Enable config reloading on ConfigMap changes
-    # Kong polls for config changes every 60 seconds in DB-less mode
-    env:
-      database: "off"
-      declarative_config: /kong/declarative/kong.yaml
-      # Enable configuration hash checking for hot reload
-      declarative_config_hash_enabled: "true"
-```
+When you update the ConfigMap in Git, Flux applies the change. Externally supplied ConfigMaps are not hashed or tracked in Kong's Deployment annotations, so roll the Deployment after Flux applies the update.
 
 ```bash
-# Trigger immediate config reload after Flux applies ConfigMap changes
+# Reload config after Flux applies ConfigMap changes
 kubectl rollout restart deployment/kong-kong -n kong
 
-# Or wait for Kong's polling interval (60s by default)
-# Monitor logs for config reload
+# Monitor logs for the restarted pods
 kubectl logs -n kong -l app=kong -f | grep "configuration"
 ```
 
@@ -258,20 +239,30 @@ curl http://localhost:8080/api/v1/health
 
 ## Step 6: Add Kubernetes Ingress Resources
 
-Complement the declarative config with Kong Ingress Controller resources for Kubernetes-native routing.
+If you prefer Kubernetes-native routing, enable the Kong Ingress Controller and manage routes with Kubernetes resources instead of the file-based declarative config shown above.
 
 ```yaml
 # apps/backend/api-ingress.yaml
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit-policy
+  namespace: backend
+config:
+  minute: 1000
+  policy: local
+plugin: rate-limiting
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-server-ingress
   namespace: backend
   annotations:
-    kubernetes.io/ingress.class: kong
     # Kong-specific plugin annotation
     konghq.com/plugins: rate-limit-policy
 spec:
+  ingressClassName: kong
   rules:
     - host: api.example.com
       http:
@@ -288,8 +279,8 @@ spec:
 ## Best Practices
 
 - Store the Kong declarative configuration in a dedicated file within your Git repository; avoid embedding complex YAML inside a ConfigMap as a string - use Kustomize ConfigMapGenerator instead.
-- Use `configMapGenerator` in Kustomize to automatically update the ConfigMap hash when the Kong config changes, triggering pod restarts automatically.
-- Validate your Kong declarative config locally with `deck validate` before committing to Git to catch syntax errors before they reach production.
+- If you use `configMapGenerator`, make sure the generated ConfigMap name is also reflected in the HelmRelease value, or disable the generated name suffix and roll the Deployment after ConfigMap changes.
+- Validate your Kong declarative config locally with `deck file validate` before committing to Git to catch syntax errors before they reach production.
 - Version your API configuration using Git tags; when a routing change causes issues, `git revert` immediately rolls back the Kong configuration.
 - Monitor Kong metrics in Prometheus; DB-less mode exposes the same Prometheus endpoint as database mode.
 - Use Kong's plugin ordering feature to explicitly define the execution order of multiple plugins on the same route.
