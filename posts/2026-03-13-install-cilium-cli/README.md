@@ -102,11 +102,11 @@ With the CLI installed, deploy Cilium to your cluster:
 cilium install
 
 # Install a specific version
-cilium install --version 1.15.0
+cilium install --version 1.19.3
 
 # Install with custom values
 cilium install \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --set ipam.mode=kubernetes \
   --set kubeProxyReplacement=true \
   --set hubble.relay.enabled=true \
@@ -132,7 +132,7 @@ cilium hubble enable
 cilium hubble ui
 
 # Upgrade Cilium to a new version
-cilium upgrade --version 1.15.1
+cilium upgrade --version 1.19.3
 
 # View Cilium configuration
 cilium config view
@@ -146,7 +146,7 @@ cilium uninstall
 
 ## Best Practices
 
-- Pin the Cilium CLI version to match your cluster's Cilium version for compatibility
+- Use a Cilium CLI release that is compatible with your cluster's Cilium version
 - Run `cilium connectivity test` after every Cilium upgrade to verify network policies are working
 - Use `cilium sysdump` to collect diagnostic information when troubleshooting network issues
 - Install the Hubble CLI alongside the Cilium CLI for network flow observability
