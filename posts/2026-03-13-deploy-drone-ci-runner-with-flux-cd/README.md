@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Drone CI, CI/CD, Continuous Integration
 
-Description: Deploy Drone CI runners on Kubernetes using Flux CD so your pipeline workloads run in autoscaling pods fully managed through Git.
+Description: Deploy Drone CI runners on Kubernetes using Flux CD so your pipeline workloads run in ephemeral pods fully managed through Git.
 
 ---
 
 ## Introduction
 
-Drone CI is a lightweight, container-native CI/CD platform that executes each pipeline step inside its own Docker container. Its Kubernetes runner variant schedules pipeline jobs as native Kubernetes pods, making it an excellent fit for teams that want CI workloads to participate in cluster scheduling and resource management.
+Drone CI is a lightweight, container-native CI/CD platform that executes each pipeline step inside its own container. Its Kubernetes runner variant schedules pipeline jobs as native Kubernetes pods, making it an excellent fit for teams that want CI workloads to participate in cluster scheduling and resource management.
 
 Using Flux CD to manage Drone runners means your runner fleet configuration is stored in Git alongside the rest of your infrastructure. Whether you are scaling from one runner to ten or adjusting CPU limits for build pods, every change goes through a pull request, is reviewed, and is applied by Flux without manual `helm upgrade` commands.
 
-This guide deploys the Drone Kubernetes runner using its official Helm chart and wires the deployment to an existing Drone server.
+This guide deploys the Drone Kubernetes runner using the archived official Helm chart and wires the deployment to an existing Drone server. The Kubernetes runner and its Helm chart are deprecated upstream, so use this pattern only when you already depend on Drone Kubernetes pipelines.
 
 ## Prerequisites
 
 - Kubernetes cluster (v1.26+) with Flux CD bootstrapped
-- A running Drone server (self-hosted or Drone Cloud) with an RPC secret
+- A running self-hosted Drone server (1.6.0 or later) with an RPC secret
 - `flux` and `kubectl` CLIs configured
 - Sealed Secrets or External Secrets Operator for managing the RPC secret
 
@@ -65,7 +65,7 @@ spec:
   chart:
     spec:
       chart: drone-runner-kube
-      version: ">=0.1.0 <1.0.0"
+      version: "0.1.10"
       sourceRef:
         kind: HelmRepository
         name: drone
@@ -83,9 +83,8 @@ spec:
       DRONE_RUNNER_NAME: kube-runner
 
     # Load the RPC secret from the pre-created Kubernetes secret
-    extraEnvFrom:
-      - secretRef:
-          name: drone-rpc-secret
+    extraSecretNamesForEnvFrom:
+      - drone-rpc-secret
 
     # RBAC so the runner can create/watch pods in the drone namespace
     rbac:
@@ -106,27 +105,14 @@ spec:
 
 ## Step 4: Configure Default Pipeline Pod Settings
 
-You can supply a `drone-runner-kube` config map to define default resource requests for pipeline pods:
+You can set Kubernetes runner environment variables to define default resource requests and limits for pipeline pods:
 
 ```yaml
-# clusters/my-cluster/drone/runner-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: drone-runner-kube-config
-  namespace: drone
-data:
-  config.yaml: |
-    kind: pipeline
-    type: kubernetes
-    # Default resource profile applied to all steps
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
+# Add these under spec.values.env in drone-runner-release.yaml
+DRONE_RESOURCE_REQUEST_CPU: "100"
+DRONE_RESOURCE_REQUEST_MEMORY: 128MiB
+DRONE_RESOURCE_LIMIT_CPU: "1000"
+DRONE_RESOURCE_LIMIT_MEMORY: 1GiB
 ```
 
 ## Step 5: Create the Kustomization
