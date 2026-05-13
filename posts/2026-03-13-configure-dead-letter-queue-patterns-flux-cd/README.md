@@ -37,7 +37,7 @@ graph LR
 
 ## Step 2: Kafka DLQ Pattern with Strimzi
 
-Kafka doesn't have native DLQ support - the pattern is implemented at the application layer. Create a DLQ topic and have consumers publish failed messages there:
+Kafka topics do not automatically dead-letter failed records for ordinary consumers - outside frameworks such as Kafka Connect, the pattern is implemented at the application layer. Create a DLQ topic and have consumers publish failed messages there:
 
 ```yaml
 # infrastructure/messaging/topics/orders-main.yaml
@@ -110,7 +110,7 @@ data:
     3. Retry consumer reads `orders-retry-1`, checks timestamp >= 30s
     4. If retry count < MAX_RETRIES (3): re-publish to `orders-retry-1` with incremented count
     5. If retry count >= MAX_RETRIES: publish to `orders-dead-letter` with failure reason header
-    6. Alert fires when `orders-dead-letter` has unread messages > threshold
+    6. Alert fires when `orders-dead-letter` has records or consumer lag > threshold
 ```
 
 ## Step 3: RabbitMQ DLQ Pattern with Topology Operator
@@ -120,6 +120,20 @@ RabbitMQ has native DLQ support via `x-dead-letter-exchange`:
 ```yaml
 # infrastructure/messaging/rabbitmq/topology/dlq-setup.yaml
 
+# Main exchange
+apiVersion: rabbitmq.com/v1beta1
+kind: Exchange
+metadata:
+  name: orders-exchange
+  namespace: rabbitmq
+spec:
+  name: orders.topic
+  type: topic
+  durable: true
+  rabbitmqClusterReference:
+    name: production
+    namespace: rabbitmq
+---
 # Dead letter exchange
 apiVersion: rabbitmq.com/v1beta1
 kind: Exchange
@@ -161,7 +175,7 @@ spec:
   source: dlx
   destination: dead-letter
   destinationType: queue
-  routingKey: "#"   # catch all routing keys
+  routingKey: orders.failed
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -184,8 +198,23 @@ spec:
     x-dead-letter-exchange: dlx
     x-dead-letter-routing-key: orders.failed
     # Max redelivery attempts before dead-lettering
-    delivery-limit: 5        # quorum queue setting
+    x-delivery-limit: 5      # quorum queue optional argument
     x-message-ttl: 86400000  # 24 hours max age
+---
+# Bind main queue to the main exchange
+apiVersion: rabbitmq.com/v1beta1
+kind: Binding
+metadata:
+  name: orders-main-binding
+  namespace: rabbitmq
+spec:
+  source: orders.topic
+  destination: orders.main
+  destinationType: queue
+  routingKey: orders.*
+  rabbitmqClusterReference:
+    name: production
+    namespace: rabbitmq
 ```
 
 ## Step 4: DLQ Inspector Job (Alerting)
@@ -217,6 +246,7 @@ spec:
                   COUNT=$(curl -s -u admin:${RMQ_PASSWORD} \
                     http://production.rabbitmq.svc.cluster.local:15672/api/queues/%2F/dead-letter \
                     | grep -o '"messages":[0-9]*' | head -1 | cut -d: -f2)
+                  COUNT=${COUNT:-0}
 
                   echo "DLQ message count: $COUNT"
 
@@ -272,20 +302,19 @@ spec:
                 MSG=$(curl -s -u $AUTH \
                   -XPOST "${BASE_URL}/queues/%2F/dead-letter/get" \
                   -H "Content-Type: application/json" \
-                  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}')
+                  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"base64"}')
 
                 [ "$(echo $MSG | grep -c 'payload')" -eq "0" ] && break
 
                 PAYLOAD=$(echo $MSG | grep -o '"payload":"[^"]*"' | cut -d'"' -f4)
-                ROUTING_KEY=$(echo $MSG | grep -o '"routing_key":"[^"]*"' | cut -d'"' -f4)
 
                 # Re-publish to main exchange
                 curl -s -u $AUTH \
-                  -XPOST "${BASE_URL}/exchanges/%2F/orders.topic/publish" \
+                  -XPUT "${BASE_URL}/exchanges/%2F/orders.topic/publish" \
                   -H "Content-Type: application/json" \
-                  -d "{\"properties\":{},\"routing_key\":\"${ROUTING_KEY}\",\"payload\":\"${PAYLOAD}\",\"payload_encoding\":\"string\"}"
+                  -d "{\"properties\":{},\"routing_key\":\"orders.requeued\",\"payload\":\"${PAYLOAD}\",\"payload_encoding\":\"base64\"}"
 
-                echo "Requeued message with routing key: $ROUTING_KEY"
+                echo "Requeued message to orders.main"
               done
               echo "Requeue complete"
           env:
@@ -320,8 +349,8 @@ spec:
 ## Best Practices
 
 - Always configure a DLQ for all queues handling business-critical messages - never silently discard failures.
-- Set `x-max-delivery-count` (RabbitMQ quorum queues) or implement retry counting in Kafka consumers to prevent infinite processing loops.
-- Alert immediately when DLQ depth exceeds zero - a DLQ with messages means your system has unprocessed errors that need attention.
+- Set `x-delivery-limit` (RabbitMQ quorum queues) or implement retry counting in Kafka consumers to prevent infinite processing loops.
+- Alert immediately when DLQ depth, Kafka DLQ records, or Kafka DLQ consumer lag exceeds zero - a DLQ with messages means your system has unprocessed errors that need attention.
 - Never auto-requeue from DLQ without first diagnosing and fixing the root cause - requeuing broken messages creates infinite loops.
 - Log the failure reason as a message header when sending to DLQ to aid debugging.
 
