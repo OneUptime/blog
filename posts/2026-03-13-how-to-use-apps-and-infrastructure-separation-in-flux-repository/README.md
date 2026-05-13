@@ -186,7 +186,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -196,7 +196,8 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ```
 
 ### Configs
@@ -218,7 +219,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Multi-Layer Dependencies
