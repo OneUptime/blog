@@ -50,7 +50,7 @@ kubectl exec -n flux-system deploy/helm-controller -- du -sh /tmp/*
 Check for leftover temporary directories from chart rendering:
 
 ```bash
-kubectl exec -n flux-system deploy/helm-controller -- find /tmp -type d -name "helm-*" | wc -l
+kubectl exec -n flux-system deploy/helm-controller -- find /tmp -type d -name "helm*" | wc -l
 ```
 
 ## Step 3: Identify Causes
@@ -74,7 +74,7 @@ flux get helmreleases --all-namespaces
 Identify which charts are the largest by checking chart sizes in the Source Controller:
 
 ```bash
-kubectl exec -n flux-system deploy/source-controller -- du -sh /data/helmchart/*
+kubectl exec -n flux-system deploy/source-controller -- du -sh /data/helmchart/*/*
 ```
 
 ### Many Simultaneous Reconciliations
@@ -124,7 +124,7 @@ For releases with excessive revisions, delete old ones:
 
 NAMESPACE=default
 RELEASE=my-app
-kubectl get secrets -n $NAMESPACE -l name=$RELEASE,owner=helm --sort-by=.metadata.creationTimestamp -o name | head -n -3 | xargs kubectl delete -n $NAMESPACE
+kubectl get secrets -n $NAMESPACE -l name=$RELEASE,owner=helm --sort-by=.metadata.creationTimestamp -o name | head -n -3 | while read -r secret; do kubectl delete -n $NAMESPACE "$secret"; done
 ```
 
 ### Set maxHistory on HelmReleases
@@ -182,25 +182,37 @@ patches:
       kind: Deployment
       name: helm-controller
     patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/resources/limits/ephemeral-storage
-        value: 2Gi
-      - op: add
-        path: /spec/template/spec/containers/0/resources/requests/ephemeral-storage
-        value: 500Mi
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: helm-controller
+      spec:
+        template:
+          spec:
+            containers:
+            - name: manager
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1Gi
+                  ephemeral-storage: 2Gi
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                  ephemeral-storage: 500Mi
 ```
 
 ### Reduce Concurrency
 
-Lower the number of concurrent operations to reduce peak disk usage:
+Lower the number of concurrent operations to reduce peak disk usage. If `--concurrent` is not already set, add it to the controller arguments:
 
 ```bash
 kubectl patch deployment helm-controller -n flux-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--concurrent=3"}]'
 ```
 
-### Mount a Dedicated Temporary Volume
+### Limit the Temporary Volume
 
-For clusters with constrained node storage, mount a dedicated volume for temporary files:
+Flux already mounts an `emptyDir` volume named `temp` at `/tmp` for the Helm Controller. For clusters with constrained node storage, set a size limit on that volume:
 
 ```yaml
 apiVersion: apps/v1
@@ -211,11 +223,6 @@ metadata:
 spec:
   template:
     spec:
-      containers:
-      - name: manager
-        volumeMounts:
-        - name: temp
-          mountPath: /tmp
       volumes:
       - name: temp
         emptyDir:
