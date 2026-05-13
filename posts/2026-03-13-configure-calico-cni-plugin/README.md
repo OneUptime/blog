@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Plugin, Configuration
 
-Description: A comprehensive guide to configuring the Calico CNI plugin, covering network configuration files, IPAM settings, policy enforcement modes, and container interface naming.
+Description: A comprehensive guide to configuring the Calico CNI plugin, covering network configuration files, IPAM settings, policy configuration, and container settings.
 
 ---
 
@@ -72,7 +72,7 @@ graph TD
 
 ## Step 1: Configure IPAM Settings
 
-Calico's IPAM plugin supports several modes:
+Calico's default IPAM plugin supports pool selection and IPv4/IPv6 assignment options:
 
 ```json
 "ipam": {
@@ -84,17 +84,19 @@ Calico's IPAM plugin supports several modes:
 }
 ```
 
-For cross-subnet-aware assignment (avoids cross-AZ allocation):
+For per-node assignment from the Kubernetes `Node.spec.podCIDR`, use `host-local` IPAM with `usePodCidr`:
 
 ```json
 "ipam": {
-  "type": "calico-ipam",
-  "assign_ipv4": "true",
-  "assign_ipv6": "false",
-  "ipv4_pools": ["prod-pool"],
-  "subnet": "usePodCidr"
+  "type": "host-local",
+  "subnet": "usePodCidr",
+  "routes": [
+    {"dst": "0.0.0.0/0"}
+  ]
 }
 ```
+
+For topology-aware assignment with Calico IPAM, create IP pools with `nodeSelector` rules and reference those pools by name or CIDR as needed.
 
 ## Step 2: Configure MTU
 
@@ -110,7 +112,7 @@ Or use 0 (auto-detect from Felix configuration):
 "mtu": 0
 ```
 
-## Step 3: Configure Container Interface Name
+## Step 3: Configure Container Settings
 
 ```json
 "container_settings": {
@@ -118,7 +120,7 @@ Or use 0 (auto-detect from Felix configuration):
 }
 ```
 
-The container interface name defaults to `eth0`. For multi-interface pods, configure accordingly.
+The container interface name is provided to the plugin by the container runtime through the CNI request. Calico's `container_settings` block controls settings inside the container network namespace, such as whether IP forwarding is allowed.
 
 ## Step 4: Configure Logging
 
