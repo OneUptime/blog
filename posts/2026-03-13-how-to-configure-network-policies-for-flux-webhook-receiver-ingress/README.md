@@ -33,10 +33,10 @@ kubectl get receivers -n flux-system
 
 ## Understanding the Webhook Receiver Architecture
 
-When a Receiver is configured, the notification-controller exposes a webhook endpoint at:
+When a Receiver is configured, the notification-controller reports a generated webhook path in `.status.webhookPath`. The endpoint is:
 
 ```bash
-http://webhook-receiver.flux-system.svc.cluster.local/hook/<receiver-token>
+http://webhook-receiver.flux-system.svc.cluster.local<webhook-path>
 ```
 
 External services (GitHub, GitLab, etc.) send POST requests to this endpoint through your ingress controller. The flow is:
@@ -239,7 +239,7 @@ metadata:
   name: flux-webhook
   namespace: flux-system
   annotations:
-    nginx.ingress.kubernetes.io/whitelist-source-range: "140.82.112.0/20,185.199.108.0/22,192.30.252.0/22"
+    nginx.ingress.kubernetes.io/whitelist-source-range: "192.30.252.0/22,185.199.108.0/22,140.82.112.0/20,143.55.64.0/20,2a0a:a440::/29,2606:50c0::/32"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
@@ -260,7 +260,7 @@ spec:
                   number: 80
 ```
 
-The whitelist-source-range annotation limits access to GitHub webhook IPs. Get the current list:
+The whitelist-source-range annotation limits access to GitHub webhook IPs. GitHub changes these ranges over time, so get the current list before applying the Ingress:
 
 ```bash
 curl -s https://api.github.com/meta | jq -r '.hooks[]'
@@ -268,15 +268,15 @@ curl -s https://api.github.com/meta | jq -r '.hooks[]'
 
 ## Verification
 
-Test that the webhook endpoint is accessible through the ingress:
+Test that the webhook endpoint is reachable through the ingress. Replace `<webhook-path>` with the value from the Receiver status, such as `/hook/bed6d00b...`:
 
 ```bash
-curl -X POST https://flux-webhook.example.com/hook/<receiver-token> \
+curl -X POST https://flux-webhook.example.com<webhook-path> \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
 
-Check the notification-controller logs for the incoming request:
+This request is not a provider-signed webhook payload, so it may be rejected by the receiver validation. Check the notification-controller logs for the incoming request or validation error:
 
 ```bash
 kubectl logs -n flux-system deployment/notification-controller --tail=20
