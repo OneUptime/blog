@@ -14,20 +14,28 @@ The kube-prometheus-stack Helm chart is the de facto standard for deploying a co
 
 Deploying it via Flux CD gives you a GitOps-managed observability platform where every Prometheus rule, Grafana dashboard, and Alertmanager receiver is version-controlled. Changes go through your normal code review workflow before being applied to the cluster.
 
-This guide walks through deploying kube-prometheus-stack with persistent storage, custom alert rules, and a Slack notification channel.
+This guide walks through deploying kube-prometheus-stack with persistent storage and a Slack notification channel.
 
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD bootstrapped
-- A StorageClass that supports `ReadWriteOnce` PVCs (for Prometheus and Grafana persistence)
+- A StorageClass that supports `ReadWriteOnce` PVCs (for Prometheus, Alertmanager, and Grafana persistence)
 - A Slack webhook URL for alert notifications
 - `flux` and `kubectl` CLIs installed
+- SOPS decryption configured for Flux if you commit the Slack webhook Secret encrypted
 
-## Step 1: Create the Alertmanager Slack Secret
+## Step 1: Create the Monitoring Namespace and Alertmanager Slack Secret
 
 Store the Slack webhook URL in an encrypted Secret.
 
 ```yaml
+# clusters/my-cluster/monitoring/namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
 # clusters/my-cluster/monitoring/alertmanager-secret.yaml
 
 apiVersion: v1
@@ -71,11 +79,16 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: ">=55.0.0 <56.0.0"
+      version: ">=84.0.0 <85.0.0"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
+  valuesFrom:
+    - kind: Secret
+      name: alertmanager-slack-webhook
+      valuesKey: slack_api_url
+      targetPath: alertmanager.config.global.slack_api_url
   values:
     # Prometheus configuration
     prometheus:
@@ -94,8 +107,11 @@ spec:
                   storage: 50Gi
         # Scrape all ServiceMonitors and PodMonitors across namespaces
         serviceMonitorSelectorNilUsesHelmValues: false
+        serviceMonitorNamespaceSelector: {}
         podMonitorSelectorNilUsesHelmValues: false
+        podMonitorNamespaceSelector: {}
         ruleSelectorNilUsesHelmValues: false
+        ruleNamespaceSelector: {}
 
     # Grafana configuration
     grafana:
@@ -121,8 +137,6 @@ spec:
                 requests:
                   storage: 5Gi
       config:
-        global:
-          slack_api_url: "${SLACK_API_URL}"
         route:
           group_by: ["alertname", "namespace"]
           group_wait: 30s
@@ -154,20 +168,22 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      # Replace with the Secret that contains your SOPS age or OpenPGP key
+      name: sops-age
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: kube-prometheus-stack-grafana
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kube-prometheus-stack
       namespace: monitoring
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: prometheus-kube-prometheus-stack-prometheus
-      namespace: monitoring
+  timeout: 5m
 ```
 
 ## Best Practices
 
-- Use `serviceMonitorSelectorNilUsesHelmValues: false` so Prometheus picks up ServiceMonitors from all namespaces, not just the ones with the Helm chart labels.
+- Use `serviceMonitorSelectorNilUsesHelmValues: false` with an empty namespace selector so Prometheus picks up ServiceMonitors from all namespaces, not just the ones with the Helm chart labels.
 - Store the Grafana admin password and Alertmanager webhook URL in SOPS-encrypted Secrets.
 - Set `retentionSize` alongside `retention` to prevent Prometheus from filling the PVC if metric volume spikes.
 - Enable `prune: true` in the Kustomization so alert rules and dashboards removed from Git are deleted from the cluster.
