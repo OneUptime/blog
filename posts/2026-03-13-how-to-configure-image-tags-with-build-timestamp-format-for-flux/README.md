@@ -31,7 +31,7 @@ Several timestamp formats work well for image tagging:
 - Prefixed timestamp: `build-1710345622`
 - Date with separator: `2026-03-13-143022`
 
-All of these formats share a key property: lexicographic or numerical ordering corresponds to chronological ordering.
+All of these formats can be ordered chronologically when you choose the matching policy and extraction strategy: use numerical ordering for pure or extracted numeric timestamps, and alphabetical ordering for fixed-width non-numeric timestamp strings. Date-only tags identify the day, so use a more precise format if you can build more than one image per day.
 
 ## Setting Up the ImageRepository
 
@@ -206,7 +206,7 @@ flux get image policy my-app-ts-sha
 To see the latest selected tag:
 
 ```bash
-kubectl -n flux-system get imagepolicy my-app-ts-sha -o jsonpath='{.status.latestImage}'
+kubectl -n flux-system get imagepolicy my-app-ts-sha -o jsonpath='{.status.latestRef.tag}'
 ```
 
 ## Conclusion
