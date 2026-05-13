@@ -10,7 +10,7 @@ Description: How to configure the Calico Node resource to manage per-node BGP se
 
 ## Introduction
 
-The Calico Node resource represents a node in the Calico data model and stores per-node configuration including BGP router ID, AS number overrides, and IP addresses used for peering. While most node settings are auto-populated by the `calico-node` DaemonSet during startup, explicit Node resource configuration is required when overriding defaults - such as assigning a specific BGP AS number to a node, configuring additional IP addresses, or setting the IPv4 address used for tunnel endpoints.
+The Calico Node resource represents a node in the Calico data model and stores per-node configuration including AS number overrides and IP addresses used for peering. While most node settings are auto-populated by the `calico-node` DaemonSet during startup, explicit Node resource configuration is required when overriding defaults - such as assigning a specific BGP AS number to a node or configuring the IPv4 or IPv6 address used for BGP.
 
 Understanding the Node resource is essential for advanced BGP configurations, multi-homed nodes, and environments where auto-detection produces incorrect results.
 
@@ -52,9 +52,9 @@ spec:
 calicoctl apply -f node1-override.yaml
 ```
 
-## Step 3: Set Tunnel IP Address
+## Step 3: Review Tunnel IP Addresses
 
-When using VXLAN or IP-in-IP, Calico uses `ipv4VXLANTunnelAddr` for tunnel endpoints. This is normally auto-assigned but can be set manually:
+When using encapsulation, Calico stores tunnel endpoint addresses on the Node resource. `ipv4VXLANTunnelAddr` is used for VXLAN, and `bgp.ipv4IPIPTunnelAddr` is used for IP-in-IP. These fields are system configured and should not be updated manually:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -64,6 +64,7 @@ metadata:
 spec:
   bgp:
     ipv4Address: 192.168.1.10/24
+    ipv4IPIPTunnelAddr: 192.168.0.1
   ipv4VXLANTunnelAddr: 10.0.1.5
 ```
 
@@ -87,7 +88,7 @@ graph LR
     A[calico-node DaemonSet] -->|auto-populates| B[Node Resource]
     B -->|bgp.ipv4Address| C[BGP Peering]
     B -->|asNumber override| D[Per-node AS]
-    B -->|ipv4VXLANTunnelAddr| E[VXLAN Tunnel]
+    B -->|ipv4VXLANTunnelAddr / bgp.ipv4IPIPTunnelAddr| E[Tunnel Endpoint]
     F[calicoctl apply] -->|manual override| B
 ```
 
@@ -97,13 +98,13 @@ graph LR
 # Verify the node resource has the correct values
 calicoctl get node node1 -o yaml
 
-# Check Felix has picked up the change
+# Check calico-node logs for the change
 kubectl logs -n calico-system ds/calico-node --tail=20 | grep "node1\|BGP\|AS"
 
-# Verify BGP sessions are established
+# Verify BGP sessions are established from the node
 calicoctl node status
 ```
 
 ## Conclusion
 
-The Calico Node resource provides per-node BGP and tunnel configuration that overrides global defaults. Most fields are auto-populated by calico-node, but explicit configuration is needed for AS number overrides, multi-homed nodes with specific peering addresses, or when auto-detection picks the wrong interface. Changes to Node resources take effect within seconds as Felix and BIRD pick up the updated configuration.
+The Calico Node resource provides per-node BGP configuration and records system-managed tunnel configuration. Most fields are auto-populated by calico-node, but explicit configuration is needed for AS number overrides, multi-homed nodes with specific peering addresses, or when auto-detection picks the wrong interface. Changes to Node resources take effect as calico-node components such as confd, BIRD, and Felix pick up the updated configuration.
