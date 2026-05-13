@@ -45,32 +45,30 @@ Flux CD scope:
 - Deploys and reconciles Kubernetes manifests, Helm charts, and Kustomizations
 - Manages container image updates via Image Automation
 - Sends deployment notifications
-- Does NOT manage cloud infrastructure (VPCs, databases, IAM roles)
+- Does NOT directly run Terraform/OpenTofu or provision cloud primitives such as VPCs, databases, and IAM roles
 
 ## Step 2: What Spacelift Does
 
 Spacelift manages infrastructure automation pipelines:
 
-```yaml
-# Spacelift Stack (managed via UI or API)
+```hcl
+# Spacelift Stack managed with the Spacelift Terraform provider
 # Spacelift runs Terraform plans/applies triggered by Git events
-stack:
-  name: production-infrastructure
-  repository: your-org/terraform-repo
-  branch: main
-  project_root: environments/production
-  runner_image: hashicorp/terraform:1.7
-  autodeploy: true
-  trigger_rules:
-    - push:
-        branches: [main]
+resource "spacelift_stack" "production_infrastructure" {
+  name              = "production-infrastructure"
+  repository        = "terraform-repo"
+  branch            = "main"
+  project_root      = "environments/production"
+  autodeploy        = true
+  terraform_version = "1.7.0"
+}
 ```
 
 Spacelift scope:
-- Runs Terraform, Pulumi, CloudFormation plans and applies
+- Runs Terraform/OpenTofu, Pulumi, CloudFormation, Ansible, and Kubernetes workflows
 - Manages drift detection for IaC (not just Kubernetes)
 - Provides approval workflows and policy enforcement (OPA)
-- Can also manage Kubernetes via kubectl runs
+- Can also manage Kubernetes via Kubernetes stacks backed by kubectl/Kustomize
 - Has a commercial SaaS model
 
 ## Step 3: Where They Overlap
@@ -115,6 +113,7 @@ metadata:
   name: gatekeeper
   namespace: gatekeeper-system
 spec:
+  interval: 15m
   chart:
     spec:
       chart: gatekeeper
@@ -122,6 +121,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: gatekeeper
+      interval: 5m
 ```
 
 **Spacelift** has built-in OPA policy support for Terraform plan approval:
@@ -130,10 +130,13 @@ spec:
 # Spacelift OPA policy for Terraform
 package spacelift
 
-deny[msg] {
-  resource := input.terraform.resource_changes[_]
+deny contains msg if {
+  some resource in input.terraform.resource_changes
   resource.type == "aws_security_group"
-  resource.change.after.ingress[_].from_port == 22
+  some ingress in resource.change.after.ingress
+  ingress.from_port <= 22
+  ingress.to_port >= 22
+  "0.0.0.0/0" in ingress.cidr_blocks
   msg := "SSH access from 0.0.0.0/0 is not allowed"
 }
 ```
