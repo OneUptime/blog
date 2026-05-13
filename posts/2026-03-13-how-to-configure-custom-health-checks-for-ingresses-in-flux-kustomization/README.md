@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, Health Check, Ingresses, Kustomization
 
-Description: Learn how to configure custom health checks for Ingress resources in Flux Kustomization to verify routing rules and TLS are properly established.
+Description: Learn how to configure custom health checks for Ingress resources in Flux Kustomization to verify that an Ingress has been assigned an address.
 
 ---
 
 ## Introduction
 
-Kubernetes Ingress resources define how external traffic reaches your services. An Ingress that is created but not yet reconciled by the ingress controller, or one waiting for TLS certificate provisioning, can leave your application inaccessible. Flux Kustomization health checks let you verify that Ingress resources are fully configured and assigned an address before marking a deployment as complete.
+Kubernetes Ingress resources define how external traffic reaches your services. An Ingress that is created but not yet reconciled by the ingress controller can leave your application inaccessible. Flux Kustomization custom health checks let you verify that Ingress resources are assigned an address before marking a deployment as complete.
 
 ## Prerequisites
 
@@ -22,7 +22,9 @@ Kubernetes Ingress resources define how external traffic reaches your services. 
 
 ## How Flux Checks Ingress Health
 
-Flux considers an Ingress resource healthy when it has been assigned an address. Specifically, Flux checks the `status.loadBalancer.ingress` field of the Ingress resource. Once the ingress controller processes the Ingress and populates this field with an IP address or hostname, Flux marks it as healthy.
+Ingress is not one of the built-in Kubernetes kinds that Flux health checks handle by default. To health check an Ingress, define a `healthChecks` entry for the resource and add a custom CEL expression in `healthCheckExprs`.
+
+The expression can check the `status.loadBalancer.ingress` field of the Ingress resource. Once the ingress controller processes the Ingress and populates this field with an IP address or hostname, Flux marks it as healthy.
 
 If no address is assigned within the timeout period, the health check fails.
 
@@ -49,6 +51,12 @@ spec:
       kind: Ingress
       name: web-app
       namespace: production
+  healthCheckExprs:
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      current: >-
+        has(status.loadBalancer.ingress) &&
+        status.loadBalancer.ingress.exists(address, has(address.ip) || has(address.hostname))
 ```
 
 The corresponding Ingress:
@@ -119,13 +127,19 @@ spec:
       kind: Deployment
       name: api
       namespace: production
+  healthCheckExprs:
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      current: >-
+        has(status.loadBalancer.ingress) &&
+        status.loadBalancer.ingress.exists(address, has(address.ip) || has(address.hostname))
 ```
 
 Combine Ingress health checks with Deployment health checks to ensure both the backend pods and the routing rules are ready.
 
 ## Ingress with TLS Certificate Provisioning
 
-When using cert-manager to provision TLS certificates, the Ingress may take extra time to become ready while the certificate is issued:
+When using cert-manager to provision TLS certificates, the Ingress address and the TLS certificate are separate readiness signals. The Ingress health check below waits for the ingress controller to assign an address; if you also need to wait for certificate issuance, add a health check for the cert-manager `Certificate` resource.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -176,9 +190,23 @@ spec:
       kind: Ingress
       name: secure-app
       namespace: production
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      name: secure-app-tls
+      namespace: production
+  healthCheckExprs:
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      current: >-
+        has(status.loadBalancer.ingress) &&
+        status.loadBalancer.ingress.exists(address, has(address.ip) || has(address.hostname))
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      failed: status.conditions.filter(condition, condition.type == 'Ready').all(condition, condition.status == 'False')
+      current: status.conditions.filter(condition, condition.type == 'Ready').all(condition, condition.status == 'True')
 ```
 
-Certificate issuance through ACME (Let's Encrypt) can take 1-3 minutes, so a 10-minute timeout provides adequate buffer.
+Certificate issuance through ACME (Let's Encrypt) commonly takes a few minutes, so a 10-minute timeout provides a practical buffer.
 
 ## Ordering Ingress Controller Before Ingresses
 
@@ -240,6 +268,12 @@ spec:
       kind: Deployment
       name: web-app
       namespace: production
+  healthCheckExprs:
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      current: >-
+        has(status.loadBalancer.ingress) &&
+        status.loadBalancer.ingress.exists(address, has(address.ip) || has(address.hostname))
 ```
 
 This dependency chain ensures: ingress controller is running, cert-manager is ready, and then the application with its Ingress is deployed and health-checked.
@@ -301,6 +335,12 @@ healthChecks:
     kind: Ingress
     name: multi-host
     namespace: production
+healthCheckExprs:
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    current: >-
+      has(status.loadBalancer.ingress) &&
+      status.loadBalancer.ingress.exists(address, has(address.ip) || has(address.hostname))
 ```
 
 A single health check entry covers all hosts defined in the Ingress.
@@ -341,4 +381,4 @@ Common Ingress health check failure causes:
 
 ## Conclusion
 
-Custom health checks for Ingress resources in Flux Kustomization ensure that your routing rules are fully processed and assigned an address before the deployment is considered complete. This is particularly important when TLS certificates need provisioning or when applications depend on external access being available. By combining Ingress health checks with dependency chains that include the ingress controller and cert-manager, you build a deployment pipeline that guarantees full connectivity from the internet to your application pods.
+Custom health checks for Ingress resources in Flux Kustomization ensure that your Ingress is assigned an address before the deployment is considered complete. This is particularly useful when applications depend on external access being available. By combining Ingress health checks with dependency chains that include the ingress controller and cert-manager, you build a deployment pipeline that waits for the main Kubernetes readiness signals before continuing.
