@@ -10,7 +10,7 @@ Description: Learn how to configure a Flux Receiver for Harbor webhook events to
 
 ## Introduction
 
-Harbor is an open-source container registry widely adopted in enterprise Kubernetes environments for its security scanning, access control, and replication features. When using Flux with Harbor as your container registry, you can configure a Receiver to respond to Harbor webhook events, triggering immediate reconciliation when new images are pushed or artifacts are signed.
+Harbor is an open-source container registry widely adopted in enterprise Kubernetes environments for its security scanning, access control, and replication features. When using Flux with Harbor as your container registry, you can configure a Receiver to respond to Harbor webhook events, triggering immediate reconciliation when new images are pushed or scan events are emitted.
 
 This guide covers how to set up a Flux Receiver for Harbor webhook events, configure the webhook in Harbor, and integrate it with Flux image automation for a complete image-driven deployment pipeline.
 
@@ -18,7 +18,7 @@ This guide covers how to set up a Flux Receiver for Harbor webhook events, confi
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller accessible from your Harbor instance
 - A Harbor registry with at least one project and repository
@@ -78,11 +78,9 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
-      name: my-app
 ```
 
-The `harbor` type tells the notification controller to expect Harbor's webhook payload format and validate the authentication header accordingly.
+The `harbor` type tells the notification controller to expect Harbor's webhook payload format and validate the `Authorization` header against the token in the referenced Secret.
 
 ## Setting Up Image Automation with Harbor
 
@@ -167,17 +165,9 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
-      name: my-app
-    - kind: ImageUpdateAutomation
-      name: flux-system
-    - kind: GitRepository
-      name: flux-system
-    - kind: Kustomization
-      name: apps
 ```
 
-When a new image is pushed to Harbor, this triggers the full chain: image scanning, policy evaluation, Git commit with the updated tag, and cluster reconciliation.
+When a new image is pushed to Harbor, this triggers the ImageRepository reconciliation. If the new tag matches your ImagePolicy and your manifests use Flux image policy markers, Flux image automation can then commit the updated tag to Git, after which the normal GitRepository and Kustomization reconciliation chain applies the change.
 
 ## Multiple Projects in One Receiver
 
@@ -200,19 +190,13 @@ spec:
       name: backend-api
     - kind: ImageRepository
       name: data-service
-    - kind: ImagePolicy
-      name: frontend-app
-    - kind: ImagePolicy
-      name: backend-api
-    - kind: ImagePolicy
-      name: data-service
 ```
 
 Configure webhooks in each Harbor project pointing to the same Receiver webhook URL.
 
 ## Integrating with Harbor Scan Results
 
-You can create a receiver that responds to scan completion events, ensuring only scanned images trigger deployments:
+You can create a receiver that reconciles after scan completion events:
 
 ```yaml
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -227,11 +211,9 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
-      name: my-app
 ```
 
-In Harbor, configure the webhook to trigger on "Scanning completed" events instead of push events. This way, reconciliation only happens after the image has been scanned for vulnerabilities.
+In Harbor, configure the webhook to trigger on "Scanning completed" events instead of push events. This way, reconciliation happens after the image scan completes. Flux does not evaluate Harbor vulnerability results by itself, so enforcing vulnerability gates requires an additional policy or admission control step.
 
 ## Ingress Configuration
 
@@ -259,7 +241,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -284,8 +266,8 @@ kubectl logs -n flux-system deployment/notification-controller --tail=50 -f
 Check that the ImageRepository detected the new tag:
 
 ```bash
-flux get image repository my-app -n flux-system
-flux get image policy my-app -n flux-system
+flux get images repository my-app -n flux-system
+flux get images policy my-app -n flux-system
 ```
 
 In Harbor, check the webhook logs under the project's Webhook section for delivery status.
@@ -300,7 +282,7 @@ Verify the Receiver status:
 kubectl describe receiver harbor-receiver -n flux-system
 ```
 
-Check that Harbor can reach the notification controller. Test connectivity from the Harbor host if possible. Ensure the auth header in Harbor matches the token in your Kubernetes secret.
+Check that Harbor can reach the notification controller. Test connectivity from the Harbor host if possible. Ensure the Auth Header value in Harbor matches the token in your Kubernetes secret.
 
 Review notification controller logs:
 
@@ -312,4 +294,4 @@ Ensure the Harbor webhook is enabled and not paused in the project settings.
 
 ## Conclusion
 
-Configuring a Flux Receiver for Harbor webhook events integrates your enterprise container registry directly with your GitOps deployment pipeline. When new images are pushed to Harbor, the Receiver triggers immediate reconciliation of your image automation resources, eliminating scanning delays. Combined with Harbor's vulnerability scanning, you can build a deployment pipeline that only promotes scanned images to production. This integration is particularly valuable for enterprise environments where Harbor serves as the central container registry and security scanning is a deployment requirement.
+Configuring a Flux Receiver for Harbor webhook events integrates your enterprise container registry directly with your GitOps deployment pipeline. When new images are pushed to Harbor, the Receiver triggers immediate reconciliation of your image repository resources, reducing polling delays. Combined with Harbor's vulnerability scanning and an enforcement policy, you can build a deployment pipeline that only promotes scanned images to production. This integration is particularly valuable for enterprise environments where Harbor serves as the central container registry and security scanning is a deployment requirement.
