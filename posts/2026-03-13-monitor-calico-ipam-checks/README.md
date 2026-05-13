@@ -12,17 +12,19 @@ Description: Monitor Calico IPAM health with Prometheus alerts on IP utilization
 
 Calico IPAM monitoring focuses on two signals: utilization (are we running out of IPs?) and consistency (are there leaked allocations?). Both signals are invisible to standard Kubernetes monitoring - TigeraStatus does not report IPAM utilization, and kubelet events only show exhaustion after it occurs. Dedicated IPAM monitoring catches these issues before pod scheduling fails.
 
-## Felix IPAM Prometheus Metrics
+## Calico IPAM Prometheus Metrics
 
 ```bash
-# Felix exposes IPAM-related metrics on port 9091
+# Felix exposes metrics on port 9091, but Calico IPAM usage is not a built-in Felix metric.
+# Export IPAM metrics from calicoctl output with a small CronJob or exporter.
 
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node -- \
-  wget -qO- http://localhost:9091/metrics | grep -i ipam
+calicoctl ipam show --show-blocks
+calicoctl ipam check --show-problem-ips
 
-# Key metrics:
-# _owned          - Blocks assigned to this node
-# felix_ipam_allocations_per_second - IP allocation rate
+# Example custom metrics to export:
+# calico_ipam_utilization_percent - Percent of pool addresses in use
+# calico_ipam_ips_in_use          - Number of pool addresses in use
+# calico_ipam_check_inconsistencies - IPAM check problem count
 ```
 
 ## Prometheus Alerts for IPAM
@@ -87,7 +89,7 @@ spec:
     {
       "title": "IP Allocation Rate",
       "type": "graph",
-      "targets": [{"expr": "rate(felix_ipam_allocations_per_second[5m])"}]
+      "targets": [{"expr": "deriv(calico_ipam_ips_in_use[5m])"}]
     }
   ]
 }
@@ -98,7 +100,7 @@ spec:
 ```mermaid
 flowchart LR
     A[Weekly ipam check CronJob] -->|exit code| B[Prometheus pushgateway]
-    C[Felix metrics :9091] --> D[Prometheus]
+    C[IPAM exporter or CronJob metrics] --> D[Prometheus]
     B --> D
     D --> E[Grafana IPAM dashboard]
     D --> F[Alertmanager]
@@ -109,4 +111,4 @@ flowchart LR
 
 ## Conclusion
 
-IPAM monitoring requires tracking both utilization (from Felix metrics or a custom exporter) and consistency (from weekly ipam check CronJobs). The 85% utilization warning gives adequate time to add a new IPPool before exhaustion. The consistency alert fires after inconsistencies persist for an hour, catching scenarios where ipam check finds issues but they resolve on the next run versus genuine leaks that accumulate over days.
+IPAM monitoring requires tracking both utilization (from `calicoctl ipam show` exported as custom metrics) and consistency (from weekly `calicoctl ipam check` CronJobs). The 85% utilization warning gives adequate time to add a new IPPool before exhaustion. The consistency alert fires after inconsistencies persist for an hour, catching scenarios where ipam check finds issues but they resolve on the next run versus genuine leaks that accumulate over days.
