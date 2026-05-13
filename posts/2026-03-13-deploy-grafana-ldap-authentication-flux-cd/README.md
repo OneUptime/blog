@@ -10,9 +10,9 @@ Description: Learn how to configure Grafana with LDAP authentication on Kubernet
 
 ## Introduction
 
-Integrating Grafana with an LDAP directory such as Active Directory or OpenLDAP centralizes user management and removes the need for local accounts. Users log in with their existing corporate credentials, and group membership maps directly to Grafana roles.
+Integrating Grafana with an LDAP directory such as Active Directory or OpenLDAP centralizes user management and removes the need to manage local passwords. Users log in with their existing corporate credentials, and group membership maps directly to Grafana roles.
 
-Managing LDAP credentials and the LDAP configuration file as Flux-reconciled Kubernetes Secrets ensures that sensitive data never sits in plain text in your cluster. Combined with a HelmRelease, the entire Grafana deployment-including its authentication configuration-lives in Git.
+Managing LDAP credentials and the LDAP configuration file as Flux-reconciled Kubernetes Secrets ensures that sensitive data never sits in plain text in your Git repository when encrypted with SOPS or Sealed Secrets. Combined with a HelmRelease, the entire Grafana deployment-including its authentication configuration-lives in Git.
 
 This guide shows how to structure the Flux resources, reference an LDAP config file from a Secret, and validate the integration end-to-end.
 
@@ -71,18 +71,18 @@ stringData:
 
 ## Step 2: Create the HelmRepository
 
-Point Flux at the official Grafana Helm chart repository.
+Point Flux at the Grafana community Helm chart repository.
 
 ```yaml
 # clusters/my-cluster/grafana/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: grafana
+  name: grafana-community
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://grafana.github.io/helm-charts
+  url: https://grafana-community.github.io/helm-charts
 ```
 
 ## Step 3: Deploy Grafana with LDAP Enabled via HelmRelease
@@ -101,13 +101,13 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: ">=7.0.0 <8.0.0"
+      version: ">=12.0.0 <13.0.0"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
   values:
-    # Enable LDAP authentication and disable the built-in login form
+    # Enable LDAP authentication
     grafana.ini:
       auth.ldap:
         enabled: true
@@ -118,6 +118,7 @@ spec:
     extraSecretMounts:
       - name: ldap-config
         secretName: grafana-ldap-secret
+        defaultMode: 0440
         mountPath: /etc/grafana/ldap.toml
         subPath: ldap.toml
         readOnly: true
@@ -135,7 +136,7 @@ spec:
 Wire all resources with a Flux Kustomization that enforces health checks.
 
 ```yaml
-# clusters/my-cluster/grafana/kustomization.yaml
+# clusters/my-cluster/flux-system/grafana-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -160,7 +161,7 @@ spec:
 - Always encrypt LDAP credentials with SOPS or Sealed Secrets before committing to Git.
 - Use `use_ssl: true` and verify the LDAP server certificate in production.
 - Map at least three Grafana roles (Admin, Editor, Viewer) to LDAP groups to avoid granting excessive permissions.
-- Test the LDAP connection with `grafana-cli admin reset-admin-password` after deployment to confirm connectivity.
+- Test the LDAP connection by signing in with an LDAP user and checking the Grafana logs for LDAP authentication errors.
 - Store the `ldap.toml` inside a Secret (not a ConfigMap) so Kubernetes RBAC controls access.
 
 ## Conclusion
