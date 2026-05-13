@@ -10,15 +10,15 @@ Description: A complete step-by-step guide to installing the Calico CNI plugin o
 
 ## Introduction
 
-Minikube is a popular tool for running a single-node Kubernetes cluster locally. By default, Minikube uses its own CNI configuration, but it supports switching to Calico for developers who need network policy enforcement or want to mirror production networking setups. Installing Calico on Minikube enables realistic local testing of network-policy-dependent applications.
+Minikube is a popular tool for running a single-node Kubernetes cluster locally. By default, Minikube uses Kindnet, but it supports switching to Calico for developers who need network policy enforcement or want to mirror production networking setups. Installing Calico on Minikube enables realistic local testing of network-policy-dependent applications.
 
-Calico provides full Kubernetes NetworkPolicy support as well as its own GlobalNetworkPolicy extension. On Minikube, Calico runs in the same manner as on production clusters, making it an excellent choice for validating CNI-dependent configurations locally. The installation uses the `--cni` flag introduced in newer versions of the Minikube CLI.
+Calico provides full Kubernetes NetworkPolicy support as well as its own GlobalNetworkPolicy extension. On Minikube, Calico runs in the same manner as on production clusters, making it an excellent choice for validating CNI-dependent configurations locally. The installation uses the `--cni` flag in the Minikube CLI.
 
 This guide covers both the Minikube CNI flag method and the manual manifest-based installation method, giving you flexibility based on your Minikube version and requirements.
 
 ## Prerequisites
 
-- Minikube v1.25+ installed
+- A current Minikube release installed, using a Kubernetes version supported by your Calico version
 - kubectl installed and configured
 - Docker or a compatible VM driver for Minikube
 - Internet access to pull Calico manifests
@@ -28,7 +28,7 @@ This guide covers both the Minikube CNI flag method and the manual manifest-base
 Start Minikube with no CNI so you can install Calico manually:
 
 ```bash
-minikube start --network-plugin=cni --cni=false
+minikube start --network-plugin=cni
 ```
 
 Alternatively, use the built-in Calico support:
@@ -44,7 +44,7 @@ If using the built-in option, skip to Step 4.
 For manual installation, apply the official Calico manifest:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 ```
 
 ## Step 3: Wait for Calico Pods to Start
