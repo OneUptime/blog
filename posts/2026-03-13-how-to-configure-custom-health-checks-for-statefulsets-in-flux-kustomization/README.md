@@ -278,22 +278,22 @@ When a StatefulSet health check fails, investigate with these commands:
 ```bash
 # Check Kustomization status
 
-flux get kustomization database
+flux get kustomizations postgres-cluster
 
 # Check StatefulSet rollout status
-kubectl rollout status statefulset/postgresql -n database
+kubectl rollout status statefulset/postgres -n database
 
 # Check individual pod status
 kubectl get pods -n database -l app=postgres
 
 # Check events for stuck pods
-kubectl describe pod postgresql-0 -n database
+kubectl describe pod postgres-0 -n database
 
 # Check PVC status (PVCs must bind before pods can start)
 kubectl get pvc -n database
 
 # Check pod logs
-kubectl logs postgresql-0 -n database --tail=50
+kubectl logs postgres-0 -n database --tail=50
 ```
 
 Common StatefulSet health check failure causes include:
