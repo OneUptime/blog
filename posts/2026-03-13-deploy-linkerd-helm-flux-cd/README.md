@@ -23,23 +23,34 @@ This guide covers deploying Linkerd using Helm charts with Flux CD, including ce
 - `step` CLI or cert-manager for Linkerd's trust anchor certificate
 - Linkerd CLI installed locally for validation
 
-## Step 1: Create Linkerd Trust Anchor Certificate
+## Step 1: Create Linkerd Identity Certificates
 
-Linkerd requires a trust anchor (root CA) certificate. Generate it locally and store in a Secret:
+Linkerd requires a trust anchor (root CA) certificate and an issuer certificate/key pair. Generate them locally and store them in a Secret:
 
 ```bash
 # Generate trust anchor (valid for 10 years)
-
 step certificate create root.linkerd.cluster.local ca.crt ca.key \
   --profile root-ca \
   --no-password \
   --insecure \
   --not-after=87600h
 
+# Generate issuer certificate signed by the trust anchor
+step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
+  --profile intermediate-ca \
+  --not-after=8760h \
+  --no-password \
+  --insecure \
+  --ca ca.crt \
+  --ca-key ca.key
+
 # Store as a Kubernetes Secret (use SOPS to encrypt for GitOps)
-kubectl create secret tls linkerd-trust-anchor \
-  --cert=ca.crt \
-  --key=ca.key \
+kubectl create namespace linkerd --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic linkerd-identity \
+  --from-file=ca.crt=ca.crt \
+  --from-file=issuer.crt=issuer.crt \
+  --from-file=issuer.key=issuer.key \
   --namespace=linkerd
 ```
 
@@ -102,6 +113,19 @@ spec:
   dependsOn:
     - name: linkerd-crds
       namespace: linkerd
+  valuesFrom:
+    - kind: Secret
+      name: linkerd-identity
+      valuesKey: ca.crt
+      targetPath: identityTrustAnchorsPEM
+    - kind: Secret
+      name: linkerd-identity
+      valuesKey: issuer.crt
+      targetPath: identity.issuer.tls.crtPEM
+    - kind: Secret
+      name: linkerd-identity
+      valuesKey: issuer.key
+      targetPath: identity.issuer.tls.keyPEM
   chart:
     spec:
       chart: linkerd-control-plane
@@ -112,12 +136,6 @@ spec:
         namespace: flux-system
       interval: 12h
   values:
-    # Identity configuration using the trust anchor secret
-    identity:
-      issuer:
-        scheme: kubernetes.io/tls
-    identityTrustAnchorsPEM: |
-      # Populated from the trust anchor certificate (use valuesFrom in production)
     # Control plane resources
     controllerResources:
       cpu:
@@ -132,6 +150,7 @@ spec:
     # Enable high availability
     controllerReplicas: 3
     enablePodAntiAffinity: true
+    highAvailability: true
     # Prometheus for metrics
     prometheusUrl: http://prometheus.monitoring.svc.cluster.local:9090
 ```
@@ -139,6 +158,12 @@ spec:
 ## Step 5: Deploy the Linkerd Viz Extension
 
 ```yaml
+# clusters/my-cluster/linkerd/namespace-viz.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: linkerd-viz
+---
 # clusters/my-cluster/linkerd/helmrepository-viz.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
