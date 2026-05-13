@@ -55,13 +55,15 @@ kubectl get networkpolicy -n <namespace>
 kubectl describe networkpolicy -n <namespace>
 
 # Check for GlobalNetworkPolicy (Calico-specific)
+calicoctl get networkpolicy -n <namespace> -o yaml
 calicoctl get globalnetworkpolicy -o yaml
 ```
 
 **Step 3: Test without policy (temporarily)**
 
 ```bash
-# Create a test pod without any NetworkPolicy applied
+# Create a test pod with labels that are not selected by pod-specific policies.
+# Namespace-wide default-deny policies may still apply.
 kubectl run diag-pod --image=busybox --restart=Never -- sleep 300
 kubectl exec diag-pod -- ping -c 3 <target-pod-ip>
 ```
@@ -78,8 +80,8 @@ ssh $NODE_A "ip route show | grep <destination-pod-cidr>"
 
 ```bash
 # On the source node
-ssh <node-name> "iptables -L cali-INPUT -n -v | head -30"
-ssh <node-name> "iptables -L cali-OUTPUT -n -v | head -30"
+ssh <node-name> "iptables -L cali-FORWARD -n -v | head -30"
+ssh <node-name> "iptables-save | grep -E 'cali-fw|cali-tw|cali-pi|cali-po' | head -50"
 ```
 
 **Step 6: Check IPIP/VXLAN encapsulation**
@@ -91,7 +93,7 @@ calicoctl get ippool -o yaml | grep -E "ipipMode|vxlanMode|cidr"
 **Step 7: Check node firewall rules**
 
 ```bash
-# On the node, verify IPIP traffic is allowed
+# On the node, verify VXLAN or IPIP traffic is allowed
 ssh <node-name> "iptables -L -n | grep -E '4789|tunl|ipip'"
 ```
 
@@ -110,13 +112,13 @@ flowchart TD
 
 ## Solution
 
-After identifying the layer causing the failure, apply the targeted fix (see companion Fix post). The most common cause is a default-deny NetworkPolicy blocking ICMP - adding an explicit allow for ICMP typically restores connectivity within seconds.
+After identifying the layer causing the failure, apply the targeted fix (see companion Fix post). The most common cause is a default-deny NetworkPolicy blocking ICMP - adding an explicit allow for ICMP in Calico NetworkPolicy typically restores connectivity within seconds.
 
 ## Prevention
 
 - Test pod-to-pod connectivity after applying any new NetworkPolicy
 - Document expected communication patterns before implementing default-deny
-- Use Calico network policy audit mode to understand traffic before blocking it
+- Use Calico staged network policies to preview traffic behavior before blocking it
 
 ## Conclusion
 
