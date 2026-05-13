@@ -18,7 +18,7 @@ This guide provides practical techniques for monitor Tiered Policies in your Kub
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.29+ (open source Calico added the `Tier` resource in v3.29)
 - `calicoctl` and `kubectl` installed
 - Basic understanding of Calico network policy concepts
 
@@ -30,19 +30,25 @@ kubectl patch felixconfiguration default --type=merge -p '{"spec":{"prometheusMe
 
 ## Step 2: Key Metrics
 
+Felix exposes its metrics on port `9091`. The metrics below are all available in open source Calico (per the Felix Prometheus reference). Note that open source Calico does not expose a per-policy denied-packet counter — those metrics (`calico_denied_packets`, `cnx_policy_rule_packets`) are only available in Calico Cloud / Enterprise.
+
 ```promql
-# Denied packets rate
+# Total policies in the cluster (across all tiers)
+felix_cluster_num_policies
 
-rate(felix_denied_packets_total[5m])
+# Total tiers in the cluster
+felix_cluster_num_tiers
 
-# Active policies
-felix_active_network_policies
+# Active policies programmed on this host
+felix_active_local_policies
 
-# Policy evaluation rate
-rate(felix_policy_evaluation_total[5m])
+# Iptables rules programmed by Felix (proxy for total programmed rules)
+felix_iptables_rules
 ```
 
 ## Step 3: Set Up Alerts
+
+Because open source Felix does not expose a denied-packets counter, the alerts below focus on signals that *are* available: sudden drops in cluster-wide policy or tier counts (often the first symptom of an accidental delete or a bad rollout), and Felix dataplane errors.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -53,18 +59,32 @@ spec:
   groups:
     - name: calico.policy
       rules:
-        - alert: HighDenialRate
-          expr: rate(felix_denied_packets_total[5m]) > 50
+        - alert: PolicyCountDropped
+          expr: delta(felix_cluster_num_policies[10m]) < -5
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "High packet denial rate for Tiered Policies policies"
+            summary: "Cluster-wide Calico policy count dropped sharply — possible accidental delete"
+        - alert: TierCountDropped
+          expr: delta(felix_cluster_num_tiers[10m]) < 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A Calico tier was removed — verify this was intentional"
+        - alert: FelixIptablesSaveErrors
+          expr: rate(felix_iptables_save_errors[5m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Felix is failing to program iptables — policy enforcement may be stale"
 ```
 
 ## Step 4: Grafana Dashboard
 
-Track denial rates, policy evaluation counts, and active policy counts on a single dashboard to quickly spot anomalies related to Tiered Policies policy changes.
+Track cluster-wide policy and tier counts, per-host active policy counts, and iptables rule counts on a single dashboard to quickly spot anomalies related to Tiered Policies changes. If you are on Calico Cloud / Enterprise, add `calico_denied_packets` and `cnx_policy_rule_packets` panels for per-rule allow/deny visibility.
 
 ## Architecture
 
