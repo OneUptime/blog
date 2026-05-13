@@ -10,7 +10,7 @@ Description: Configure Fluent Bit to archive Kubernetes logs to AWS S3 using Flu
 
 ## Introduction
 
-Shipping logs to AWS S3 is a common requirement for long-term retention and compliance. S3 offers virtually unlimited storage at low cost, and logs stored there can be queried with Amazon Athena, processed with AWS Glue, or ingested into a SIEM. Fluent Bit's S3 output plugin writes log chunks directly to S3 in a configurable format (JSON Lines, Parquet via AWS Kinesis Firehose, etc.) with built-in upload buffering and retry logic.
+Shipping logs to AWS S3 is a common requirement for long-term retention and compliance. S3 offers virtually unlimited storage at low cost, and logs stored there can be queried with Amazon Athena, processed with AWS Glue, or ingested into a SIEM. Fluent Bit's S3 output plugin writes log chunks directly to S3 as newline-delimited JSON, with optional compression formats such as gzip and built-in upload buffering and retry logic.
 
 Managing the S3 output configuration through Flux CD ensures that bucket names, IAM role annotations, and upload intervals are version-controlled. AWS IAM credentials are injected via IRSA (IAM Roles for Service Accounts) or environment variables from Kubernetes Secrets - never stored in plaintext in Git.
 
@@ -27,20 +27,18 @@ This guide configures Fluent Bit's S3 output plugin as a Flux HelmRelease on an 
 
 Create an IAM role that allows the Fluent Bit service account to write to your S3 bucket.
 
+Save this as `iam-policy.json`:
+
 ```json
-// iam-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:ListBucket"
+        "s3:PutObject"
       ],
       "Resource": [
-        "arn:aws:s3:::my-logs-bucket",
         "arn:aws:s3:::my-logs-bucket/*"
       ]
     }
@@ -55,12 +53,12 @@ aws iam create-policy \
   --policy-name FluentBitS3Policy \
   --policy-document file://iam-policy.json
 
-# Create IAM role with IRSA trust policy (replace with your cluster OIDC URL)
+# Create IAM role with IRSA trust policy (replace cluster name and account ID)
 eksctl create iamserviceaccount \
   --name fluent-bit \
   --namespace logging \
   --cluster my-cluster \
-  --attach-policy-arn arn:aws:iam::123456789:policy/FluentBitS3Policy \
+  --attach-policy-arn arn:aws:iam::123456789012:policy/FluentBitS3Policy \
   --approve
 ```
 
@@ -132,13 +130,15 @@ spec:
             bucket                        my-logs-bucket
             region                        us-east-1
             # S3 object key prefix - uses strftime formatting
-            s3_key_format                 /kubernetes/%Y/%m/%d/%H/$TAG[1].json.gz
+            s3_key_format                 kubernetes/%Y/%m/%d/%H/$TAG/$UUID.json.gz
             # Compress with gzip before uploading
             compression                   gzip
             # Upload a new object every 5 minutes
             upload_timeout                5m
-            # Minimum object size before uploading (100 MB)
-            upload_chunk_size             100000000
+            # Target final S3 object size
+            total_file_size               100M
+            # Multipart part size before compression
+            upload_chunk_size             30M
             # Use multipart upload for large objects
             use_put_object                Off
             # Local buffer directory for in-progress uploads
@@ -146,10 +146,10 @@ spec:
             store_dir_limit_size          2G
             # Retry on failure
             Retry_Limit                   5
-            # Add a unique suffix to prevent key collisions between pods
+            # Keep Fluent Bit's dynamic key behavior enabled
             static_file_path              Off
 
-    # Persistent storage for S3 upload buffer
+    # Local storage for S3 upload buffer
     extraVolumes:
       - name: s3-buffer
         emptyDir:
@@ -179,7 +179,7 @@ Use the `rewrite_tag` filter to route logs from different namespaces to differen
             Match           kube.prod
             bucket          my-logs-bucket
             region          us-east-1
-            s3_key_format   /production/%Y/%m/%d/%H/$TAG.json.gz
+            s3_key_format   production/%Y/%m/%d/%H/$TAG/$UUID.json.gz
             compression     gzip
             upload_timeout  5m
 
@@ -188,7 +188,7 @@ Use the `rewrite_tag` filter to route logs from different namespaces to differen
             Match           kube.staging
             bucket          my-logs-bucket-staging
             region          us-east-1
-            s3_key_format   /staging/%Y/%m/%d/%H/$TAG.json.gz
+            s3_key_format   staging/%Y/%m/%d/%H/$TAG/$UUID.json.gz
             compression     gzip
             upload_timeout  10m
 ```
@@ -197,8 +197,9 @@ Use the `rewrite_tag` filter to route logs from different namespaces to differen
 
 Apply an S3 lifecycle policy outside of Flux to automatically delete old logs:
 
+Save this as `s3-lifecycle.json`:
+
 ```json
-// s3-lifecycle.json
 {
   "Rules": [
     {
@@ -243,7 +244,7 @@ spec:
 ## Step 6: Verify S3 Uploads
 
 ```bash
-# Check Fluent Bit S3 output metrics
+# Check that the Fluent Bit HTTP metrics endpoint is available
 kubectl exec -n logging daemonset/fluent-bit -- \
   curl -s http://localhost:2020/api/v1/metrics | jq '.output'
 
