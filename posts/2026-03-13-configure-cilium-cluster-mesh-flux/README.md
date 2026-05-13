@@ -44,21 +44,18 @@ Each cluster in the mesh must have a unique ID (1-255):
 ## Step 2: Enable Cluster Mesh API Server
 
 ```yaml
-# clusters/cluster-west/cilium/helmrelease-clustermesh.yaml
+# clusters/cluster-west/cilium/helmrelease.yaml (existing, add these values)
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cilium-clustermesh
+  name: cilium
   namespace: cilium
 spec:
   interval: 1h
-  dependsOn:
-    - name: cilium
-      namespace: cilium
   chart:
     spec:
       chart: cilium
-      version: "1.15.*"
+      version: "1.19.*"
       sourceRef:
         kind: HelmRepository
         name: cilium
@@ -85,15 +82,16 @@ spec:
 After both clusters have the Cluster Mesh API server running:
 
 ```bash
-# Connect cluster-east to cluster-west
+# Connect cluster-west to cluster-east
 # Run from a machine with kubeconfig access to both clusters
 cilium clustermesh connect \
+  --context west-cluster-context \
   --destination-context east-cluster-context \
-  --source-context west-cluster-context
+  --namespace cilium
 
 # Verify the connection
-cilium clustermesh status --context west-cluster-context
-# Expected: Connected: 1 cluster(s)
+cilium clustermesh status --context west-cluster-context --namespace cilium
+# Expected: the east cluster is listed as connected
 ```
 
 Store the connection secret in Git (encrypted with SOPS):
@@ -101,11 +99,11 @@ Store the connection secret in Git (encrypted with SOPS):
 ```bash
 # Extract the generated credentials
 kubectl get secret cilium-clustermesh -n cilium \
-  -o jsonpath='{.data}' > /tmp/cluster-mesh-creds.json
+  -o yaml > clusters/cluster-west/cilium/cluster-mesh-secret.yaml
 
 # Encrypt and commit (example with SOPS)
-sops --encrypt /tmp/cluster-mesh-creds.json > \
-  clusters/cluster-west/cilium/cluster-mesh-secret.enc.yaml
+sops --encrypt --in-place \
+  clusters/cluster-west/cilium/cluster-mesh-secret.yaml
 ```
 
 ## Step 4: Export Global Services
@@ -122,8 +120,10 @@ metadata:
   annotations:
     # Export this service to be globally load-balanced across clusters
     service.cilium.io/global: "true"
-    # Prefer local cluster replicas, fall back to remote
+    # Share this service's backends with other clusters
     service.cilium.io/shared: "true"
+    # Prefer local cluster replicas, fall back to remote
+    service.cilium.io/affinity: "local"
 spec:
   selector:
     app: user-service
@@ -142,6 +142,7 @@ metadata:
   annotations:
     service.cilium.io/global: "true"
     service.cilium.io/shared: "true"
+    service.cilium.io/affinity: "local"
 spec:
   selector:
     app: user-service
@@ -209,11 +210,11 @@ spec:
 kubectl get deployment clustermesh-apiserver -n cilium
 
 # Verify cluster connectivity
-cilium clustermesh status
+cilium clustermesh status --namespace cilium
 
 # List remote endpoints visible to local cluster
 kubectl exec -n cilium daemonset/cilium -- \
-  cilium node list | grep east
+  cilium-dbg node list | grep east
 
 # Test cross-cluster service access
 kubectl exec -n production deploy/api-service -- \
@@ -222,14 +223,14 @@ kubectl exec -n production deploy/api-service -- \
 
 # View global service endpoint distribution
 kubectl exec -n cilium daemonset/cilium -- \
-  cilium service list | grep global
+  cilium-dbg service list --clustermesh-affinity
 ```
 
 ## Best Practices
 
 - Assign each cluster a unique `cluster-id` (1-255) before enabling Cluster Mesh - changing cluster IDs after mesh creation requires re-initialization.
 - Use non-overlapping pod CIDR ranges across all meshed clusters - Cilium's flat network requires unique pod IPs across the entire mesh.
-- Use `service.cilium.io/shared: "true"` for active-active services and `service.cilium.io/global: "true"` with only local endpoints for active-passive failover.
+- Use `service.cilium.io/shared: "true"` for active-active services and `service.cilium.io/shared: "false"` when a cluster should consume remote backends without exporting its local backends.
 - Apply cross-cluster network policies with `io.cilium.k8s.policy.cluster` label selectors to control which remote clusters can access local services.
 - Monitor Cluster Mesh connectivity with `cilium clustermesh status` and alert on disconnected clusters - a disconnected cluster continues to serve local traffic but loses cross-cluster resilience.
 
