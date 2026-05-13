@@ -65,7 +65,7 @@ spec:
 
 ## Step 2: Create the Canary Resource
 
-Configure the Flagger Canary resource. WebSocket traffic flows over HTTP, so the standard HTTP configuration works. The important addition is setting appropriate timeouts in the Istio traffic policy to accommodate long-lived WebSocket connections:
+Configure the Flagger Canary resource. WebSocket connections start with an HTTP/1.1 upgrade request, so the standard HTTP routing configuration can route the initial handshake. The important addition is avoiding route or connection timeouts that are shorter than your expected WebSocket sessions:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -83,13 +83,14 @@ spec:
     targetPort: http
     trafficPolicy:
       connectionPool:
-        http:
-          h2UpgradePolicy: UPGRADE
         tcp:
           maxConnections: 1000
+          idleTimeout: 0s
+        http:
+          h2UpgradePolicy: DO_NOT_UPGRADE
+          idleTimeout: 0s
       tls:
         mode: ISTIO_MUTUAL
-    timeout: 3600s
   analysis:
     interval: 1m
     threshold: 5
@@ -108,13 +109,13 @@ spec:
 
 Key configuration points:
 
-- `timeout: 3600s` prevents Istio from terminating long-lived WebSocket connections.
-- `h2UpgradePolicy: UPGRADE` allows HTTP/1.1 to HTTP/2 upgrades, which is relevant for WebSocket connections.
+- `idleTimeout: 0s` disables the connection pool idle timeout so idle-but-open WebSocket connections are not closed by the upstream connection pool. If you do not want to disable it, set it higher than the longest expected idle period.
+- `h2UpgradePolicy: DO_NOT_UPGRADE` keeps the upstream connection as HTTP/1.1. Standard WebSocket servers usually expect the RFC 6455 HTTP/1.1 upgrade handshake; HTTP/2 WebSocket tunneling requires explicit Extended CONNECT support in the proxy path.
 - The analysis interval is set to `1m` instead of `30s` because WebSocket metrics arrive less frequently than typical HTTP request metrics.
 
 ## Step 3: Configure Istio for WebSocket Support
 
-Istio supports WebSocket connections by default. The HTTP upgrade mechanism works through the Envoy proxy without additional configuration. However, you should verify that the DestinationRule does not interfere with WebSocket connections:
+Istio supports WebSocket upgrades through Envoy. Flagger creates and reconciles the Istio VirtualService and DestinationRules from the Canary `service` spec, so place the traffic policy in the Canary resource rather than manually editing Flagger-generated objects. If you manage a DestinationRule yourself, verify that it does not interfere with WebSocket connections:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -129,16 +130,18 @@ spec:
       tcp:
         maxConnections: 1000
         connectTimeout: 30s
+        idleTimeout: 0s
       http:
-        h2UpgradePolicy: UPGRADE
+        h2UpgradePolicy: DO_NOT_UPGRADE
         maxRequestsPerConnection: 0
+        idleTimeout: 0s
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
 ```
 
-Setting `maxRequestsPerConnection: 0` ensures connections are not closed after a fixed number of requests, which is essential for persistent WebSocket connections.
+Setting `maxRequestsPerConnection: 0` leaves the upstream HTTP connection unlimited by request count, and `idleTimeout: 0s` disables idle connection timeout. If you use a finite idle timeout instead, set it higher than your WebSocket heartbeat interval or expected idle period.
 
 ## Step 4: Define WebSocket-Specific Metrics
 
@@ -207,7 +210,7 @@ spec:
       terminationGracePeriodSeconds: 30
 ```
 
-This gives active connections 15 seconds to close gracefully before the pod is terminated.
+This delays the TERM signal for 15 seconds while Kubernetes removes the pod from service endpoints. The full `terminationGracePeriodSeconds` budget includes both the `preStop` hook and application shutdown, so the application should still handle SIGTERM and close WebSocket sessions gracefully.
 
 ## WebSocket Canary Traffic Flow
 
@@ -249,4 +252,4 @@ Because WebSocket connections are persistent, consider using a longer analysis i
 
 ## Conclusion
 
-Flagger supports canary deployments for WebSocket services through Istio's native WebSocket handling. The main considerations are setting appropriate connection timeouts, using longer analysis intervals to account for persistent connections, and implementing graceful connection draining. Traffic shifting applies to new connections only, so plan your rollout duration accordingly. With proper configuration of connection pools, timeouts, and termination grace periods, you can safely roll out updates to WebSocket services without disrupting active client sessions.
+Flagger supports canary deployments for WebSocket services through Istio's native WebSocket handling. The main considerations are setting appropriate connection idle timeouts, using longer analysis intervals to account for persistent connections, and implementing graceful connection draining. Traffic shifting applies to new connections only, so plan your rollout duration accordingly. With proper configuration of connection pools, timeouts, and termination grace periods, you can safely roll out updates to WebSocket services without disrupting active client sessions.
