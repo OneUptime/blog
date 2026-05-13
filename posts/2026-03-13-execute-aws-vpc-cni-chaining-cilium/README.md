@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
-Description: Learn how to chain Cilium onto AWS VPC CNI on Amazon EKS to gain Cilium's advanced network policy enforcement and observability features while retaining native VPC networking and pod IP addressing.
+Description: Learn how to chain Cilium onto AWS VPC CNI on Amazon EKS to gain Cilium's network policy enforcement and observability features while retaining native VPC networking and pod IP addressing.
 
 ---
 
 ## Introduction
 
-AWS VPC CNI assigns each Kubernetes pod a real VPC IP address, enabling native routing within the VPC without encapsulation overhead. However, VPC CNI's network policy support is limited. By chaining Cilium onto VPC CNI, you retain native VPC networking while gaining Cilium's eBPF-based L3/L4/L7 network policy enforcement, Hubble observability, and transparent encryption.
+AWS VPC CNI assigns each Kubernetes pod a real VPC IP address, enabling native routing within the VPC without encapsulation overhead. However, VPC CNI's network policy support is limited compared with Cilium's policy model. By chaining Cilium onto VPC CNI, you retain native VPC networking while gaining Cilium's eBPF-based L3/L4 network policy enforcement and Hubble observability. Some advanced Cilium features, including L7 policy and IPsec transparent encryption, are limited in CNI chaining mode.
 
-CNI chaining means Cilium runs as a meta-plugin on top of VPC CNI. VPC CNI handles IP allocation and basic connectivity; Cilium handles policy enforcement and observability via eBPF.
+CNI chaining means Cilium runs as a chained plugin on top of VPC CNI. VPC CNI handles IP allocation and basic connectivity; Cilium handles policy enforcement and observability via eBPF.
 
 ## Prerequisites
 
-- Amazon EKS cluster (Kubernetes 1.26+)
-- AWS VPC CNI add-on installed and functional
+- Amazon EKS cluster on a Kubernetes version supported by your Cilium release
+- AWS VPC CNI add-on 1.11.2 or newer installed and functional
 - `kubectl` and `cilium` CLIs installed
 - `helm` installed for Cilium deployment
 
@@ -46,16 +46,15 @@ helm repo update
 # Install Cilium with AWS VPC CNI chaining mode
 # This does NOT replace VPC CNI; it chains onto it
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.4 \
   --namespace kube-system \
   --set cni.chainingMode=aws-cni \
   --set cni.exclusive=false \
-  --set tunnel=disabled \
   --set enableIPv4Masquerade=false \
-  --set routingMode=native \
-  --set endpointRoutes.enabled=true \
-  --set kubeProxyReplacement=false
+  --set routingMode=native
 ```
+
+Restart existing non-`hostNetwork` pods after installation. The new CNI chaining configuration is applied when pods are created, so policy enforcement will not apply to pods that were already running before Cilium was installed.
 
 ## Step 3: Verify Cilium is Running in Chaining Mode
 
@@ -67,7 +66,7 @@ cilium status --wait
 cilium status
 
 # Verify that the chaining configuration is active
-kubectl get configmap cilium-config -n kube-system -o yaml | grep chaining-mode
+kubectl get configmap cilium-config -n kube-system -o yaml | grep cni-chaining-mode
 ```
 
 ## Step 4: Verify CNI Chain Configuration
@@ -116,18 +115,18 @@ spec:
 # Apply the policy
 kubectl apply -f allow-http-ingress.yaml
 
-# Confirm policy is enforced
-cilium policy get
+# Confirm the CiliumNetworkPolicy exists
+kubectl get cnp allow-http-ingress -n default
 ```
 
 ## Best Practices
 
 - Use `cni.exclusive=false` so Cilium does not delete the VPC CNI configuration during installation.
-- Set `kubeProxyReplacement=false` when chaining; kube-proxy replacement requires Cilium to be the primary CNI.
+- Keep kube-proxy running unless you have explicitly planned and tested Cilium kube-proxy replacement for your cluster.
 - Test connectivity before and after enabling network policies with `cilium connectivity test`.
-- Use Hubble (`cilium hubble ui`) to observe traffic flows and verify policy enforcement visually.
+- Enable Hubble UI first (`cilium hubble enable --ui`), then use `cilium hubble ui` to observe traffic flows and verify policy enforcement visually.
 - Consider migrating to Cilium as the primary CNI (replacing VPC CNI) for full eBPF-based networking benefits on EKS.
 
 ## Conclusion
 
-Chaining Cilium onto AWS VPC CNI is an incremental path to advanced network security on EKS. You retain native VPC IP addressing while immediately gaining eBPF-based L7 policy enforcement and Hubble flow observability, without disrupting your existing VPC routing or requiring node replacement.
+Chaining Cilium onto AWS VPC CNI is an incremental path to advanced network security on EKS. You retain native VPC IP addressing while gaining eBPF-based policy enforcement and Hubble flow observability, without disrupting your existing VPC routing or requiring node replacement.
