@@ -52,7 +52,7 @@ spec:
   chart:
     spec:
       chart: opencost
-      version: "1.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: opencost
@@ -62,17 +62,21 @@ spec:
       prometheus:
         # Point OpenCost to your Prometheus instance
         internal:
-          enabled: false
-        external:
           enabled: true
-          url: http://prometheus-operated.monitoring.svc.cluster.local:9090
+          namespaceName: monitoring
+          serviceName: prometheus-operated
+          port: 9090
       # Configure cloud provider pricing
-      cloudProvider:
+      customPricing:
+        enabled: true
         # Use 'aws', 'gcp', 'azure', or 'custom'
         provider: "aws"
-    # Enable the OpenCost UI
-    ui:
-      enabled: true
+      metrics:
+        serviceMonitor:
+          enabled: true
+      # Enable the OpenCost UI
+      ui:
+        enabled: true
 ```
 
 ## Step 2: Label Flux-Managed Resources for Cost Attribution
@@ -104,6 +108,7 @@ spec:
         namespace: flux-system
   values:
     # Propagate cost labels to pod templates for per-pod cost attribution
+    # when the chart supports podLabels
     podLabels:
       team: platform
       environment: production
@@ -117,22 +122,22 @@ Use the OpenCost API to generate cost reports broken down by Flux deployment.
 
 ```bash
 # Port-forward to OpenCost service
-kubectl port-forward -n opencost svc/opencost 9090:9090 &
+kubectl port-forward -n opencost svc/opencost 9003:9003 &
 
 # Get total cluster cost for the last 7 days
-curl -s "http://localhost:9090/allocation/compute?window=7d" | \
+curl -s "http://localhost:9003/allocation/compute?window=7d" | \
   jq '.data[0] | to_entries | sort_by(-.value.totalCost) | .[0:10][] | {name: .key, cost: .value.totalCost}'
 
 # Get costs broken down by team label
-curl -s "http://localhost:9090/allocation/compute?window=7d&aggregate=label:team" | \
+curl -s "http://localhost:9003/allocation/compute?window=7d&aggregate=label:team" | \
   jq '.data[0] | to_entries[] | {team: .key, cost: (.value.totalCost | . * 100 | round / 100)}'
 
 # Get costs for a specific namespace (corresponding to a Flux deployment)
-curl -s "http://localhost:9090/allocation/compute?window=7d&aggregate=namespace&filter=namespace:production" | \
-  jq '.data[0]'
+curl -s "http://localhost:9003/allocation/compute?window=7d&aggregate=namespace" | \
+  jq '.data[0].production'
 
 # Get daily cost breakdown for the last 30 days
-curl -s "http://localhost:9090/allocation/compute?window=30d&step=1d&aggregate=label:flux-kustomization" | \
+curl -s "http://localhost:9003/allocation/compute?window=30d&step=1d&aggregate=label:flux-kustomization" | \
   jq '.data[] | to_entries[] | {kustomization: .key, daily_cost: .value.totalCost}'
 ```
 
@@ -159,8 +164,9 @@ spec:
     - alert: NamespaceCostBudgetExceeded
       expr: |
         sum by (namespace) (
-          node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
-          * on(node) group_left() node_total_hourly_cost
+          container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost
+          +
+          container_memory_allocation_bytes * on(node) group_left() node_ram_hourly_cost / (1024 * 1024 * 1024)
         ) > 5
       for: 30m
       labels:
@@ -173,7 +179,7 @@ spec:
 ## Best Practices
 
 - Add `team`, `environment`, and `cost-center` labels to all Flux HelmRelease and Kustomization resources for accurate cost attribution
-- Propagate labels from HelmReleases to pod templates using `podLabels` in Helm values to enable per-workload cost tracking
+- Propagate labels from HelmReleases to pod templates using chart-supported values such as `podLabels` to enable per-workload cost tracking
 - Set monthly cost budgets per namespace or team and alert when they are exceeded
 - Review cost reports weekly to identify pods with overprovisioned CPU/memory requests
 - Use OpenCost's efficiency metrics to find pods consuming less than 50% of their requested resources
