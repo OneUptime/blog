@@ -52,11 +52,10 @@ spec:
 ## Performance Tuning
 
 ```bash
-# Tune Felix for high-connection workloads
+# Tune Felix for high-connection workloads on the eBPF dataplane
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "ipSetSize": 1048576,
-    "maxIpsetSize": 1048576,
+    "bpfMapSizeConntrack": 1048576,
     "prometheusMetricsEnabled": true
   }
 }'
