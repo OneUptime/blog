@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Canary, Kubernetes, StatefulSet, Progressive Delivery
 
-Description: Learn how to configure a Flagger Canary resource for Kubernetes StatefulSets to safely roll out updates to stateful applications like databases and caches.
+Description: Learn the current limitations around Flagger Canary resources for Kubernetes StatefulSets and how to prepare validation patterns for future support.
 
 ---
 
@@ -12,12 +12,12 @@ Description: Learn how to configure a Flagger Canary resource for Kubernetes Sta
 
 StatefulSets manage stateful applications in Kubernetes, providing stable network identities and persistent storage for each pod. Updating stateful workloads like databases, message queues, and caches carries higher risk than updating stateless Deployments because data integrity and ordering guarantees must be maintained.
 
-> **Important**: As of Flagger v1.x, the Canary CRD's `targetRef.kind` field only accepts `Deployment`, `DaemonSet`, or `Service` as valid values. `StatefulSet` is **not** a supported `targetRef.kind`. There is an open feature request ([GitHub issue #410](https://github.com/weaveworks/flagger/issues/410)) and a closed pull request ([PR #1391](https://github.com/fluxcd/flagger/pull/1391)) for StatefulSet support, but neither has been merged into the official Flagger release. The patterns described in this guide (iteration-based analysis, health check webhooks, and custom Prometheus metrics) remain valid approaches once official StatefulSet support is added. For current production use, manage StatefulSet rollouts using native Kubernetes rolling update strategies combined with Flagger-monitored sidecar Deployments or external validation tooling.
+> **Important**: As of Flagger v1.x, the Canary CRD's `targetRef.kind` field only accepts `Deployment`, `DaemonSet`, or `Service` as valid values. `StatefulSet` is **not** a supported `targetRef.kind`. There is an open feature request ([GitHub issue #410](https://github.com/weaveworks/flagger/issues/410)) and a closed pull request ([PR #1391](https://github.com/fluxcd/flagger/pull/1391)) for StatefulSet support, but neither has been merged into the official Flagger release. Do not apply a Canary that targets a StatefulSet in a production cluster; Kubernetes will reject it against the current Flagger CRD. The patterns described in this guide (iteration-based analysis, health check webhooks, and custom Prometheus metrics) are planning patterns that would need to be revalidated once official StatefulSet support is added. For current production use, manage StatefulSet rollouts using native Kubernetes rolling update strategies combined with Flagger-monitored sidecar Deployments or external validation tooling.
 
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.22+)
-- Flagger installed in your cluster (v1.30+)
+- Flagger installed in your cluster, if you are using a supported Deployment or DaemonSet workaround
 - A supported service mesh or ingress controller
 - kubectl configured to access your cluster
 - A StorageClass configured for dynamic provisioning
@@ -25,7 +25,7 @@ StatefulSets manage stateful applications in Kubernetes, providing stable networ
 
 ## Setting Up the Target StatefulSet
 
-Here is an example StatefulSet for a Redis cluster:
+Here is an example StatefulSet for Redis:
 
 ```yaml
 # statefulset.yaml
@@ -54,8 +54,6 @@ spec:
           ports:
             - containerPort: 6379
               name: redis
-            - containerPort: 9121
-              name: metrics
           resources:
             requests:
               cpu: 100m
@@ -89,9 +87,6 @@ spec:
     - port: 6379
       targetPort: redis
       name: redis
-    - port: 9121
-      targetPort: metrics
-      name: metrics
 ```
 
 Apply these resources:
@@ -103,7 +98,7 @@ kubectl apply -f statefulset.yaml
 
 ## Creating the Canary Resource for a StatefulSet
 
-Set the `targetRef.kind` to `StatefulSet`:
+The following manifest shows what a StatefulSet Canary might look like if Flagger adds official support in the future. Do **not** apply this manifest against current Flagger releases because `StatefulSet` is not accepted by the Canary CRD:
 
 ```yaml
 # canary-statefulset.yaml
@@ -129,15 +124,6 @@ spec:
     interval: 1m
     threshold: 3
     iterations: 10
-    metrics:
-      - name: request-success-rate
-        thresholdRange:
-          min: 99
-        interval: 1m
-      - name: request-duration
-        thresholdRange:
-          max: 100
-        interval: 1m
     webhooks:
       - name: redis-check
         type: pre-rollout
@@ -147,7 +133,7 @@ spec:
           cmd: "redis-cli -h redis-canary.cache ping | grep PONG"
 ```
 
-Apply the Canary:
+Current Flagger releases will reject this Canary:
 
 ```bash
 kubectl apply -f canary-statefulset.yaml
@@ -155,12 +141,12 @@ kubectl apply -f canary-statefulset.yaml
 
 ## How StatefulSet Canary Analysis Works
 
-Like DaemonSets, StatefulSets use iteration-based analysis rather than traffic weight shifting. Flagger evaluates the canary version over a defined number of iterations before deciding to promote or rollback.
+Flagger uses `analysis.iterations` for blue/green and A/B testing strategies. If StatefulSet support is added in the future, a StatefulSet rollout would likely need an iteration-based analysis model rather than HTTP traffic weight shifting. Flagger would evaluate the canary version over a defined number of iterations before deciding to promote or rollback.
 
 ```mermaid
 graph TD
     A[Update StatefulSet image] --> B[Flagger detects change]
-    B --> C[Scale canary StatefulSet]
+    B --> C[Run implementation-specific StatefulSet rollout step]
     C --> D[Run pre-rollout webhooks]
     D --> E[Run analysis iteration]
     E --> F{Metrics pass?}
@@ -177,11 +163,11 @@ graph TD
 
 ### Persistent Volume Handling
 
-Flagger does not duplicate PersistentVolumeClaims during canary analysis. The primary and canary StatefulSets maintain separate PVCs. Be aware of data consistency implications when running both versions simultaneously.
+The current Flagger controller does not implement StatefulSet canaries, so it does not define any PVC cloning or sharing behavior for StatefulSet analysis. Any future StatefulSet implementation would need explicit handling for PVC identity, data consistency, and whether primary and canary pods can safely run at the same time.
 
 ### Ordered Pod Management
 
-StatefulSets support two pod management policies: `OrderedReady` and `Parallel`. Flagger respects the configured policy during canary operations:
+StatefulSets support two pod management policies: `OrderedReady` and `Parallel`. A future Flagger implementation would need to preserve the ordering semantics configured on the StatefulSet:
 
 ```yaml
 spec:
@@ -190,12 +176,13 @@ spec:
 
 ### Headless Services
 
-StatefulSets typically use headless Services (with `clusterIP: None`). Flagger creates separate headless services for primary and canary:
+StatefulSets typically use headless Services (with `clusterIP: None`). Flagger can generate headless services for supported workloads when `spec.service.headless` is set to `true`, but current releases do not generate StatefulSet-specific primary and canary headless services:
 
 ```yaml
-# Flagger creates these automatically:
-# redis-primary - headless service for primary pods
-# redis-canary  - headless service for canary pods
+service:
+  port: 6379
+  targetPort: redis
+  headless: true
 ```
 
 ## Adding Health Checks with Webhooks
@@ -229,7 +216,7 @@ analysis:
 
 ## Monitoring StatefulSet Canary Progress
 
-Track the canary analysis:
+If Flagger adds StatefulSet support in the future, you would track the canary analysis with the normal Canary commands:
 
 ```bash
 # Watch canary status
@@ -238,11 +225,11 @@ kubectl get canary redis -n cache -w
 # View detailed events
 kubectl describe canary redis -n cache
 
-# Check StatefulSet pod status (note the ordered naming)
+# Check StatefulSet pod status
 kubectl get pods -n cache -l app=redis
 ```
 
-Expected output during analysis:
+For supported workloads, Flagger reports status in the Canary resource:
 
 ```text
 NAME     STATUS        WEIGHT   LASTTRANSITIONTIME
@@ -251,7 +238,7 @@ redis    Progressing   0        2026-03-13T10:15:00Z
 
 ## Triggering a StatefulSet Canary Update
 
-Update the container image to start a canary release:
+This command is valid for a native Kubernetes StatefulSet rolling update, but it will not start a Flagger canary in current Flagger releases:
 
 ```bash
 kubectl set image statefulset/redis \
@@ -261,7 +248,7 @@ kubectl set image statefulset/redis \
 
 ## Example with Custom Prometheus Metrics
 
-For a database workload, you might want to monitor query latency and connection counts:
+For a database workload, you might want to monitor memory usage or connection counts with custom metrics. Redis does not expose Prometheus metrics from the `redis:7.0` image by itself, so this example assumes you have deployed a Redis exporter that publishes Redis memory metrics:
 
 ```yaml
 analysis:
@@ -269,10 +256,6 @@ analysis:
   threshold: 5
   iterations: 15
   metrics:
-    - name: request-success-rate
-      thresholdRange:
-        min: 99
-      interval: 1m
     - name: redis-memory-usage
       templateRef:
         name: redis-memory
@@ -295,11 +278,13 @@ spec:
     type: prometheus
     address: http://prometheus.monitoring:9090
   query: |
-    redis_memory_used_ratio{
-      kubernetes_pod_name=~"{{ target }}-[0-9]+"
-    } * 100
+    100 * (
+      redis_memory_used_bytes{pod=~"{{ target }}-[0-9]+"}
+      /
+      redis_memory_max_bytes{pod=~"{{ target }}-[0-9]+"}
+    )
 ```
 
 ## Conclusion
 
-Configuring Flagger for StatefulSets follows the iteration-based analysis pattern similar to DaemonSets. The key considerations are handling persistent volumes, respecting pod ordering, and implementing thorough health checks that verify data integrity. By combining Flagger's automated analysis with custom webhooks for stateful validation, you can significantly reduce the risk of rolling out updates to your most critical stateful workloads.
+Flagger does not currently support StatefulSets as Canary targets. If support is added in a future release, StatefulSet canaries will need careful handling for persistent volumes, pod ordering, and health checks that verify data integrity. Until then, use native Kubernetes StatefulSet rolling updates and pair them with external validation, or model the validation around a supported Flagger target such as a Deployment or DaemonSet.
