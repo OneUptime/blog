@@ -19,7 +19,7 @@ This guide covers monitoring the Calico IPv6 control plane, validating IPv6 BGP 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.23+ and IPv6 or dual-stack enabled
-- Nodes with IPv6 addresses on their primary interfaces
+- Nodes with IPv6 addresses that are reachable from the other nodes
 - `calicoctl` v3.27+ installed
 - `kubectl` with admin access
 - Understanding of IPv6 addressing and BGP for IPv6 (AFI/SAFI 2/1)
@@ -42,14 +42,14 @@ calicoctl get felixconfiguration default -o yaml | grep -i "ipv6\|IPv6"
 calicoctl get nodes -o yaml | grep -E "ipv6Address:|bgp:" -A2
 
 # Check that IPv6 IP pools are active
-calicoctl get ippools -o wide | grep -v "10\.\|172\.\|192\."  # Show only IPv6 pools
+calicoctl get ippools -o wide | awk 'NR == 1 || $2 ~ /:/'  # Show only IPv6 pools
 ```
 
 ## Step 2: Monitor IPv6 BGP Sessions
 
 Check BGP session health for IPv6 address family.
 
-Verify IPv6 BGP peering status using BIRD2 (Calico's BGP daemon):
+Verify IPv6 BGP peering status using BIRD/BIRD6 (Calico's BGP daemon):
 
 ```bash
 # Check BGP session status including IPv6 peers
@@ -58,10 +58,10 @@ calicoctl node status
 # Get detailed BGP session status from BIRD
 kubectl exec -n calico-system \
   $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1) \
-  -- birdcl show protocols all | grep -A10 "ipv6\|Established\|Active"
+  -- birdcl -s /var/run/calico/bird6.ctl show protocols all | grep -A10 "Established\|Active"
 
 # Check IPv6 BGP peer configuration
-calicoctl get bgppeers -o yaml | grep -E "peerIP:|asNumber:" | grep ":"  # IPv6 peers have colons
+calicoctl get bgppeers -o yaml | awk '/peerIP: .*:/,/asNumber:/'  # IPv6 peers have colons
 ```
 
 ## Step 3: Validate IPv6 Route Propagation
@@ -82,7 +82,7 @@ kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
 # Check BIRD routing table for IPv6 routes
 kubectl exec -n calico-system \
   $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1) \
-  -- birdcl show route protocol kernel6 | head -20
+  -- birdcl -s /var/run/calico/bird6.ctl show route | head -20
 ```
 
 ## Step 4: Test IPv6 Pod Connectivity
@@ -100,8 +100,8 @@ kubectl run ipv6-test-2 --image=nicolaka/netshoot \
   --overrides='{"spec":{"nodeName":"<node-2>"}}' -- sleep 3600
 
 # Get IPv6 addresses
-POD1_IPV6=$(kubectl get pod ipv6-test-1 -o jsonpath='{.status.podIPs[1].ip}')
-POD2_IPV6=$(kubectl get pod ipv6-test-2 -o jsonpath='{.status.podIPs[1].ip}')
+POD1_IPV6=$(kubectl get pod ipv6-test-1 -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ':' | head -1)
+POD2_IPV6=$(kubectl get pod ipv6-test-2 -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ':' | head -1)
 
 echo "Pod1 IPv6: $POD1_IPV6"
 echo "Pod2 IPv6: $POD2_IPV6"
@@ -113,7 +113,7 @@ kubectl exec ipv6-test-2 -- ping6 -c4 $POD1_IPV6
 
 ## Step 5: Create IPv6 Control Plane Alerts
 
-Set up Prometheus alerts specific to IPv6 control plane health.
+Set up Prometheus alerts specific to IPv6 control plane health when Calico BGP metrics are exported.
 
 Configure alerting rules for IPv6-specific failures:
 
@@ -131,23 +131,21 @@ spec:
     - alert: CalicoIPv6BGPSessionDown
       # Alert if any IPv6 BGP session goes down
       expr: |
-        felix_bgp_num_node_to_node_peers_established_total < 
-        felix_bgp_num_node_to_node_peers_total
+        bgp_peers{ip_version="IPv6",status!="Established"} > 0
       for: 3m
       labels:
         severity: critical
         address_family: ipv6
       annotations:
         summary: "One or more IPv6 BGP sessions are not established"
-    - alert: CalicoIPv6RouteInstallFailed
+    - alert: CalicoDataplaneFailures
       expr: |
-        rate(felix_ipset_errors_total[5m]) > 0
+        rate(felix_int_dataplane_failures[5m]) > 0
       for: 2m
       labels:
         severity: warning
-        address_family: ipv6
       annotations:
-        summary: "Calico Felix IPv6 route installation failures detected"
+        summary: "Calico Felix dataplane update failures detected"
 ```
 
 Apply the IPv6 alerts:
@@ -160,7 +158,7 @@ kubectl apply -f ipv6-controlplane-alerts.yaml
 
 - Always test IPv6 connectivity explicitly after cluster upgrades since IPv6 regressions can be invisible in IPv4-first monitoring
 - Monitor BIRD6 (IPv6 BGP daemon) separately from BIRD4 since they can fail independently
-- Use Hubble to observe IPv6 flows in addition to IPv4 flows for complete dual-stack visibility
+- Use Calico flow logs to observe IPv6 flows in addition to IPv4 flows for complete dual-stack visibility
 - Ensure your monitoring infrastructure (Prometheus, Grafana) is accessible via IPv6 to avoid monitoring blind spots
 - Configure OneUptime monitors targeting IPv6 endpoints of critical services to validate IPv6 reachability
 
