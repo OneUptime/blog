@@ -51,6 +51,7 @@ Create a `.sops.yaml` file in the root of your Flux repository that lists all th
 ```yaml
 creation_rules:
   - path_regex: .*\.yaml$
+    encrypted_regex: ^(data|stringData)$
     age: >-
       age1platform...,
       age1appteam...,
@@ -82,7 +83,7 @@ sops --encrypt --in-place secret.yaml
 SOPS reads the `.sops.yaml` file and encrypts the secret for all three keys. You can verify this by inspecting the `sops` metadata block at the bottom of the encrypted file:
 
 ```bash
-sops --decrypt --extract '["sops"]' secret.yaml
+sed -n '/^sops:/,$p' secret.yaml
 ```
 
 ## Configuring Flux to Decrypt with a Specific Key
@@ -124,14 +125,17 @@ For multi-environment setups, you can assign different keys to different cluster
 ```yaml
 creation_rules:
   - path_regex: environments/staging/.*\.yaml$
+    encrypted_regex: ^(data|stringData)$
     age: >-
       age1staging...,
       age1backup...
   - path_regex: environments/production/.*\.yaml$
+    encrypted_regex: ^(data|stringData)$
     age: >-
       age1production...,
       age1backup...
   - path_regex: .*\.yaml$
+    encrypted_regex: ^(data|stringData)$
     age: >-
       age1platform...,
       age1backup...
