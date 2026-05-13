@@ -18,6 +18,7 @@ Deploying Rook-Ceph block storage through Flux CD gives you GitOps-managed stora
 
 - Rook-Ceph operator and CephCluster deployed (see object store post for operator setup)
 - Flux CD bootstrapped to your Git repository
+- VolumeSnapshot CRDs and snapshot controller installed if you plan to use snapshots
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Create a CephBlockPool
@@ -70,13 +71,16 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
-  imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
+  imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 mountOptions:
@@ -92,13 +96,16 @@ parameters:
   clusterID: rook-ceph
   pool: nvme-pool
   imageFormat: "2"
-  imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
+  imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Retain   # retain data on PVC deletion for NVMe tier
 allowVolumeExpansion: true
 ```
@@ -116,9 +123,7 @@ metadata:
 driver: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/name: "$(volumesnapshotnamespace)/$(volumesnapshotname)"
-  csi.storage.k8s.io/volumesnapshot/namespace: "$(volumesnapshotnamespace)"
-  csi.storage.k8s.io/volumesnapshot/contentname: "$(volumesnapshotcontentname)"
+  pool: replicapool
   csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 deletionPolicy: Delete
@@ -220,7 +225,8 @@ kubectl get storageclass rook-ceph-block -o yaml
 ## Best Practices
 
 - Set `reclaimPolicy: Retain` for production database PVCs to prevent data loss on accidental PVC deletion.
-- Enable `allowVolumeExpansion: true` on all StorageClasses to support online volume expansion without pod restart.
+- Enable `allowVolumeExpansion: true` on all StorageClasses to support dynamic volume expansion.
+- Use only `layering` for broad kernel compatibility, or enable `fast-diff,object-map,deep-flatten,exclusive-lock` only when your Kubernetes nodes run Linux 5.4 or later.
 - Use `deviceClass: nvme` for database storage pools and `ssd` or `hdd` for less latency-sensitive workloads.
 - Create volume snapshots before database upgrades and maintenance operations.
 - Monitor Ceph pool usage with `ceph df` and set up Prometheus alerts when any pool exceeds 80% capacity.
