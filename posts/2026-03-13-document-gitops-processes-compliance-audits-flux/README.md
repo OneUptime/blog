@@ -81,7 +81,7 @@ Create a controls matrix that maps compliance requirements to specific technical
 | Control ID | Requirement | Implementation | Evidence Location |
 |-----------|-------------|----------------|-------------------|
 | AU-2 (FedRAMP) | Audit event logging | Flux events forwarded to SIEM | Elasticsearch flux-events-* index |
-| AU-3 (FedRAMP) | Content of audit records | Events include who/what/when/outcome | SIEM query: `reason:ReconciliationSucceeded` |
+| AU-3 (FedRAMP) | Content of audit records | Flux events include what/when/outcome; Git and PR records identify who | SIEM query: `reason:ReconciliationSucceeded` |
 | PCI Req 10 | Log all access and changes | Git commit history + Flux events | Git log + audit database |
 | HIPAA 164.312(b) | Audit controls | Full Flux event logging enabled | Audit webhook configuration |
 ```
@@ -158,6 +158,8 @@ Create a guide for collecting audit evidence on demand:
 
 START_DATE=${1:-"90 days ago"}
 END_DATE=${2:-"today"}
+SEARCH_START=$(date -d "$START_DATE" +%F)
+SEARCH_END=$(date -d "$END_DATE" +%F)
 OUTPUT_DIR="audit-evidence-$(date +%Y-%m-%d)"
 
 mkdir -p "$OUTPUT_DIR"
@@ -189,6 +191,8 @@ git log --oneline -10 -- .github/CODEOWNERS \
 echo "4. Collecting PR approval records..."
 gh pr list \
   --state merged \
+  --search "merged:$SEARCH_START..$SEARCH_END" \
+  --limit 1000 \
   --json number,title,mergedAt,mergedBy,reviews \
   --jq '[.[] | {
     number: .number,
@@ -225,23 +229,24 @@ fleet-infra/
 │   ├── evidence-collection-guide.md     # How to collect audit evidence
 │   ├── reports/                         # Generated compliance reports
 │   │   └── .gitkeep
-│   └── exceptions/                      # Documented policy exceptions
-│       └── exception-register.md
+│   ├── exceptions/                      # Documented policy exceptions
+│   │   └── exception-register.md
+│   └── manifests/                       # Optional Kubernetes compliance metadata
 ```
 
 ```yaml
 # clusters/production/flux-system/compliance-kustomization.yaml
-# The compliance documentation directory is also managed by Flux
-# so any changes to it go through PR review
+# Optional Kubernetes manifests that publish compliance metadata are managed by Flux.
+# Markdown policy documents remain versioned and reviewed through Git.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: compliance-docs
+  name: compliance-metadata
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./compliance
-  prune: false           # Never prune compliance documents
+  path: ./compliance/manifests
+  prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -266,9 +271,9 @@ Create a guide specifically for walking an auditor through your controls:
 
 2. **Requirement**: Unauthorized changes are detected and corrected.
 
-   **Evidence**: Query the SIEM for Flux "pruned" events:
-   `reason:Synced AND message:*pruned*`
-   Each event represents an unauthorized resource that Flux removed.
+   **Evidence**: Query the SIEM for Flux pruning or reconciliation events:
+   `reason:ReconciliationSucceeded AND message:*prun*`
+   A pruning event can indicate drift or a resource removed because it is no longer in Git; correlate it with Git history before treating it as unauthorized.
 
    **Verification**: Confirm the event log contains all expected fields (timestamp, resource, action).
 
