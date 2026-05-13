@@ -23,7 +23,7 @@ NAME        REVISION    SUSPENDED   READY   MESSAGE
 my-app                  False       Unknown Reconciliation in progress
 ```
 
-The `READY` column stays at `Unknown` and the `MESSAGE` stays at `Reconciliation in progress` for an extended period, well beyond your configured interval and timeout.
+The `READY` column stays at `Unknown` and the `MESSAGE` stays at `Reconciliation in progress` for an extended period, often across multiple interval windows or without reaching a clear timeout failure.
 
 ## Diagnostic Commands
 
@@ -65,7 +65,7 @@ kubectl get kustomization my-app -n flux-system -o jsonpath='{.metadata.finalize
 
 ### 1. Health checks timing out
 
-Flux waits for all deployed resources to become healthy. If a Deployment, StatefulSet, or other resource never reaches a healthy state, the Kustomization stays in `Progressing`.
+When `spec.wait: true` is enabled, Flux waits for all reconciled resources to become healthy. If `spec.healthChecks` is configured, Flux waits for those referenced resources instead. If a Deployment, StatefulSet, or other checked resource never reaches a healthy state, the Kustomization stays in `Progressing` until it times out and reports a failure.
 
 ```bash
 kubectl get pods -n my-app-namespace
@@ -131,6 +131,12 @@ Trigger a manual reconciliation to reset the state:
 flux reconcile kustomization my-app --with-source
 ```
 
+For HelmReleases:
+
+```bash
+flux reconcile helmrelease my-app
+```
+
 ### Fix 4: Fix the unhealthy downstream resource
 
 Identify which resource is not becoming healthy and fix it directly:
@@ -148,6 +154,13 @@ If reconciliation is completely stuck, suspend and resume the resource:
 ```bash
 flux suspend kustomization my-app
 flux resume kustomization my-app
+```
+
+For HelmReleases:
+
+```bash
+flux suspend helmrelease my-app
+flux resume helmrelease my-app
 ```
 
 ## Prevention Strategies
