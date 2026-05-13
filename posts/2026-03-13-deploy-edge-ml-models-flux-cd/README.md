@@ -34,18 +34,23 @@ Store model files as OCI artifacts alongside their deployment manifests.
 MODEL_VERSION="v2.3.0"
 MODEL_NAME="defect-detector"
 
-# Build model artifact directory
-mkdir -p /tmp/model-artifact/models
-cp models/${MODEL_NAME}.onnx /tmp/model-artifact/models/
-cp models/${MODEL_NAME}-config.json /tmp/model-artifact/models/
+# Build a Triton model repository and include the deployment manifests
+mkdir -p /tmp/model-artifact/model-repository/${MODEL_NAME}/1
+cp models/${MODEL_NAME}.onnx /tmp/model-artifact/model-repository/${MODEL_NAME}/1/model.onnx
+cp models/${MODEL_NAME}-config.pbtxt /tmp/model-artifact/model-repository/${MODEL_NAME}/config.pbtxt
+cp -R apps /tmp/model-artifact/
+
+GIT_REVISION="$(git rev-parse HEAD)"
 
 # Push model + deployment manifests as OCI artifact
 flux push artifact \
   oci://my-registry.example.com/ml-models/${MODEL_NAME}:${MODEL_VERSION} \
   --path=/tmp/model-artifact \
   --source=https://github.com/my-org/ml-models \
-  --revision="${MODEL_VERSION}" \
-  --annotations="model.accuracy=0.94,model.framework=onnx,model.size-mb=45"
+  --revision="${MODEL_VERSION}@sha1:${GIT_REVISION}" \
+  --annotations="model.accuracy=0.94" \
+  --annotations="model.framework=onnx" \
+  --annotations="model.size-mb=45"
 
 # Verify the artifact
 flux pull artifact \
@@ -55,7 +60,7 @@ flux pull artifact \
 
 ## Step 2: Configure the Inference Server Deployment
 
-Use ONNX Runtime or Triton Inference Server to serve the model on edge hardware.
+Use Triton Inference Server to serve the ONNX model on edge hardware.
 
 ```yaml
 # apps/base/ml-inference/deployment.yaml
@@ -93,21 +98,25 @@ spec:
             - |
               flux pull artifact \
                 oci://my-registry.example.com/ml-models/defect-detector:${MODEL_VERSION} \
-                --output=/models
+                --output=/workspace
+              cp -R /workspace/model-repository/* /models/
           volumeMounts:
             - name: model-storage
               mountPath: /models
       containers:
         - name: inference-server
-          image: mcr.microsoft.com/onnxruntime/server:latest
+          image: nvcr.io/nvidia/tritonserver:24.04-py3
+          command:
+            - tritonserver
           args:
-            - --model_path=/models/defect-detector.onnx
-            - --address=0.0.0.0:8001
+            - --model-repository=/models
           ports:
+            - containerPort: 8000
+              name: http
             - containerPort: 8001
               name: grpc
             - containerPort: 8002
-              name: http
+              name: metrics
           resources:
             requests:
               cpu: 500m
@@ -115,13 +124,14 @@ spec:
             limits:
               cpu: 2000m
               memory: 2Gi
+              nvidia.com/gpu: 1
           volumeMounts:
             - name: model-storage
               mountPath: /models
           readinessProbe:
             httpGet:
               path: /v2/health/ready
-              port: 8002
+              port: 8000
             initialDelaySeconds: 30
             periodSeconds: 10
       volumes:
@@ -163,7 +173,7 @@ spec:
     name: defect-detector-model
   postBuild:
     substitute:
-      MODEL_VERSION: "${MODEL_VERSION}"
+      MODEL_VERSION: "v2.3.0"
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -205,13 +215,44 @@ spec:
         app: defect-detector
         slot: blue
     spec:
+      initContainers:
+        - name: model-downloader
+          image: my-registry.example.com/model-downloader:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              flux pull artifact \
+                oci://my-registry.example.com/ml-models/defect-detector:v2.2.0 \
+                --output=/workspace
+              cp -R /workspace/model-repository/* /models/
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
       containers:
         - name: inference-server
-          image: mcr.microsoft.com/onnxruntime/server:latest
+          image: nvcr.io/nvidia/tritonserver:24.04-py3
+          command:
+            - tritonserver
+          args:
+            - --model-repository=/models
+          ports:
+            - containerPort: 8000
+              name: http
+            - containerPort: 8001
+              name: grpc
+            - containerPort: 8002
+              name: metrics
           # Blue slot runs v2.2.0
           env:
             - name: MODEL_VERSION
               value: "v2.2.0"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+      volumes:
+        - name: model-storage
+          emptyDir: {}
 ```
 
 ```yaml
@@ -226,8 +267,27 @@ spec:
     app: defect-detector
     slot: blue  # Switch to "green" after validation
   ports:
-    - port: 8001
+    - name: http
+      port: 8000
+      targetPort: 8000
+    - name: grpc
+      port: 8001
       targetPort: 8001
+---
+# Candidate Service used by the validation Job
+apiVersion: v1
+kind: Service
+metadata:
+  name: defect-detector-green
+  namespace: ml-inference
+spec:
+  selector:
+    app: defect-detector
+    slot: green
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
 ```
 
 ## Step 5: Automate Model Accuracy Validation
@@ -247,7 +307,7 @@ spec:
         - name: validator
           image: my-registry.example.com/model-validator:latest
           args:
-            - --model-endpoint=http://defect-detector-green:8002
+            - --model-endpoint=http://defect-detector-green:8000
             - --test-dataset=/validation-data/test-set.json
             - --accuracy-threshold=0.92
             - --latency-threshold-ms=50
