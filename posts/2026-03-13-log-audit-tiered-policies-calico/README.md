@@ -22,10 +22,10 @@ This guide provides practical techniques for log audit Tiered Policies in your K
 - `calicoctl` and `kubectl` installed
 - Basic understanding of Calico network policy concepts
 
-## Step 1: Enable Flow Logging
+## Step 1: Configure Policy Log Output
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"flowLogsEnabled":true}}'
+kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logPrefix":"calico-packet %t %p "}}'
 ```
 
 ## Step 2: Add Log Actions to Policy
@@ -50,16 +50,16 @@ spec:
     - Ingress
 ```
 
-## Step 3: Ship Logs to Central Store
+## Step 3: View Kernel Log Output
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logSeveritySys":"info"}}'
+journalctl -k -g "calico-packet"
 ```
 
 ## Step 4: Query and Alert
 
 ```bash
-grep "CALICO.*DENY" /var/log/calico/flow-logs/*.log | tail -20
+grep "calico-packet" /var/log/syslog /var/log/kern.log | tail -20
 ```
 
 ## Architecture
