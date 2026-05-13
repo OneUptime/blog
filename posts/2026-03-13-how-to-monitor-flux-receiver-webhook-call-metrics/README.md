@@ -8,7 +8,7 @@ Description: A complete guide to monitoring Flux Receiver webhook calls using Pr
 
 ---
 
-Monitoring your Flux Receiver webhook calls is essential for understanding whether webhooks are arriving reliably, how long they take to process, and whether authentication failures indicate a misconfiguration or an attack. The Flux notification-controller exposes Prometheus metrics out of the box, giving you visibility into every webhook interaction.
+Monitoring your Flux Receiver webhook calls is essential for understanding whether webhooks are arriving reliably, how long they take to process, and whether authentication failures indicate a misconfiguration or an attack. The Flux notification-controller exposes Prometheus metrics out of the box for controller operations, while per-request webhook details are best monitored through controller logs.
 
 This guide covers how to scrape these metrics, build dashboards, and set up alerts for common failure scenarios.
 
@@ -29,9 +29,9 @@ kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus
 
 ## Step 1: Understand the Available Metrics
 
-The Flux notification-controller exposes metrics on port 8080 at the `/metrics` endpoint. Key metrics related to Receivers include:
+The Flux notification-controller exposes controller metrics on port 8080 at the `/metrics` endpoint. Receiver readiness is a resource-state signal that can be exported through kube-state-metrics when Flux custom resource metrics are configured. Key metrics related to Receivers include:
 
-- `gotk_reconcile_condition`: The status of Receiver reconciliation (Ready/Not Ready).
+- `gotk_resource_info`: The current state of Flux custom resources, including Receiver readiness, when Flux custom resource metrics are enabled in kube-state-metrics.
 - `gotk_reconcile_duration_seconds`: How long it takes to reconcile a Receiver resource.
 - `controller_runtime_reconcile_total`: Total reconciliation count by controller and result.
 - `controller_runtime_reconcile_errors_total`: Total reconciliation errors.
@@ -130,11 +130,14 @@ Check that Prometheus is scraping the target:
 # Port-forward to Prometheus
 kubectl -n monitoring port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 &
 
-# Query a metric
-curl -s "http://localhost:9090/api/v1/query?query=gotk_reconcile_condition" | python3 -m json.tool | head -20
+# Query a controller metric
+curl -s "http://localhost:9090/api/v1/query?query=gotk_reconcile_duration_seconds_count" | python3 -m json.tool | head -20
+
+# If Flux custom resource metrics are enabled in kube-state-metrics, query Receiver state
+curl -s "http://localhost:9090/api/v1/query?query=gotk_resource_info%7Bcustomresource_kind%3D%22Receiver%22%7D" | python3 -m json.tool | head -20
 ```
 
-You should see metrics with labels like `kind="Receiver"` and `name="github-receiver"`.
+You should see controller metrics with labels like `kind="Receiver"` and `name="github-receiver"`. If kube-state-metrics is exporting Flux resource state, you should also see `gotk_resource_info` series with labels like `customresource_kind="Receiver"`, `name="github-receiver"`, and `ready="True"`.
 
 ## Step 4: Create Grafana Dashboards
 
@@ -143,8 +146,8 @@ You should see metrics with labels like `kind="Receiver"` and `name="github-rece
 Flux provides an official Grafana dashboard. Import it using the dashboard ID:
 
 ```bash
-# The official Flux Control Plane dashboard ID
-# Import via Grafana UI: Dashboards > Import > Enter ID 16714
+# The official Flux Cluster Stats dashboard ID
+# Import via Grafana UI: Dashboards > Import > Enter ID 14936
 ```
 
 ### Custom Receiver Webhook Dashboard
@@ -155,7 +158,7 @@ For a dashboard focused specifically on Receiver webhook activity, create a cust
 
 ```promql
 # PromQL: Current readiness status of all Receivers
-gotk_reconcile_condition{type="Ready", kind="Receiver"}
+max by (exported_namespace, name) (gotk_resource_info{customresource_kind="Receiver", ready="True"}) or max by (exported_namespace, name) (gotk_resource_info{customresource_kind="Receiver", ready!="True"} * 0)
 ```
 
 Display as a stat panel with value mappings: 1 = Ready (green), 0 = Not Ready (red).
@@ -182,7 +185,7 @@ Display as a time series graph with red color. Any non-zero value warrants inves
 
 ```promql
 # PromQL: 95th percentile reconciliation duration
-histogram_quantile(0.95, rate(gotk_reconcile_duration_seconds_bucket{kind="Receiver"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(gotk_reconcile_duration_seconds_bucket{kind="Receiver"}[5m])))
 ```
 
 Display as a time series graph showing latency trends.
@@ -218,7 +221,7 @@ Save this as a dashboard JSON and import it into Grafana:
       "type": "stat",
       "targets": [
         {
-          "expr": "gotk_reconcile_condition{type=\"Ready\", kind=\"Receiver\"}",
+          "expr": "max by (exported_namespace, name) (gotk_resource_info{customresource_kind=\"Receiver\", ready=\"True\"}) or max by (exported_namespace, name) (gotk_resource_info{customresource_kind=\"Receiver\", ready!=\"True\"} * 0)",
           "legendFormat": "{{name}}"
         }
       ]
@@ -267,7 +270,7 @@ spec:
       rules:
         # Alert when a Receiver is not ready for more than 5 minutes
         - alert: FluxReceiverNotReady
-          expr: gotk_reconcile_condition{type="Ready", kind="Receiver", status="False"} == 1
+          expr: gotk_resource_info{customresource_kind="Receiver", ready!="True"} == 1
           for: 5m
           labels:
             severity: warning
@@ -357,9 +360,9 @@ kubectl -n flux-system get servicemonitor notification-controller
 # Check PrometheusRule is loaded
 kubectl -n flux-system get prometheusrule flux-receiver-alerts
 
-# Verify metrics endpoint is accessible
+# Verify the notification-controller metrics endpoint is accessible
 kubectl -n flux-system port-forward svc/notification-controller 8080:8080 &
-curl -s http://localhost:8080/metrics | grep gotk_reconcile
+curl -s http://localhost:8080/metrics | grep gotk_reconcile_duration
 ```
 
 Send a test webhook and watch the metrics change in Grafana.
@@ -376,12 +379,12 @@ kubectl -n monitoring get prometheus -o jsonpath='{.items[0].spec.serviceMonitor
 
 The ServiceMonitor must have labels that match this selector.
 
-### gotk_reconcile_condition metric missing
+### gotk_resource_info metric missing
 
-Ensure the notification-controller is running a recent version that exposes this metric. Older versions may not include it.
+Ensure kube-state-metrics is configured to export Flux custom resource metrics. The notification-controller exposes controller metrics, but Flux resource-state metrics such as `gotk_resource_info` are collected from the Kubernetes API by kube-state-metrics.
 
 ```bash
-kubectl -n flux-system get deploy notification-controller -o jsonpath='{.spec.template.spec.containers[0].image}'
+kubectl -n monitoring get deploy -l app.kubernetes.io/name=kube-state-metrics
 ```
 
 ### Alerts not firing
