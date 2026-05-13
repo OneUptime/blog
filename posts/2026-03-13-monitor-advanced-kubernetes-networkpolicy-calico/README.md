@@ -10,7 +10,7 @@ Description: Monitor advanced Kubernetes NetworkPolicy patterns using Calico for
 
 ## Introduction
 
-Monitor Advanced Kubernetes NetworkPolicy Impact with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle advanced k8s networkpolicy while maintaining strict access controls.
+Monitor Advanced Kubernetes NetworkPolicy Impact with Calico requires careful policy design in Calico to balance security with performance and availability. Calico enforces the Kubernetes `networking.k8s.io/v1` NetworkPolicy API, and the `projectcalico.org/v3` API provides additional flexibility when you need Calico-specific policy features while maintaining strict access controls.
 
 This guide covers monitor Advanced K8s NetworkPolicy in Calico with production-ready configurations.
 
@@ -18,6 +18,7 @@ This guide covers monitor Advanced K8s NetworkPolicy in Calico with production-r
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
+- Namespaces labeled to match the selectors used in the policy, such as `environment=production` on the `production` namespace and `team=observability` on the observability namespace
 
 ## Core Configuration
 
