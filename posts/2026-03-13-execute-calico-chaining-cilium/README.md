@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
-Description: Learn how to chain Cilium onto an existing Calico CNI deployment to augment it with eBPF-based observability and L7 policy enforcement as an intermediate migration step before fully replacing Calico.
+Description: Learn how to chain Cilium onto an existing Calico CNI deployment to augment it with eBPF-based observability and Cilium policy enforcement as an intermediate migration step before fully replacing Calico.
 
 ---
 
 ## Introduction
 
-Organizations running Calico as their CNI may want to adopt Cilium's eBPF-based L7 policy enforcement and Hubble observability without a full CNI replacement-especially in production clusters where replacing the CNI requires node restarts. CNI chaining with Calico allows Cilium to run as a secondary plugin, handling policy enforcement while Calico continues to manage IP allocation and routing.
+Organizations running Calico as their CNI may want to adopt Cilium's eBPF-based policy enforcement and Hubble observability without a full CNI replacement-especially in production clusters where replacing the CNI requires node restarts. CNI chaining with Calico allows Cilium to run as a secondary plugin, handling Cilium policy enforcement while Calico continues to manage IP allocation and routing.
 
 This guide is intended as a transition path: Cilium chains onto Calico, you validate Cilium policies alongside Calico policies, then complete the migration by removing Calico and promoting Cilium to the primary CNI.
 
@@ -18,7 +18,7 @@ This guide is intended as a transition path: Cilium chains onto Calico, you vali
 
 - Kubernetes cluster with Calico CNI installed and functional
 - `kubectl`, `cilium`, and `helm` CLIs installed
-- Calico version 3.x with BGP or VXLAN networking
+- Calico version 3.x with BGP or VXLAN networking using veth interfaces
 
 ## Step 1: Verify Calico Status
 
@@ -38,11 +38,53 @@ kubectl get networkpolicies -A
 calicoctl node status
 ```
 
-## Step 2: Install Cilium in Generic CNI Chaining Mode
+## Step 2: Install Cilium in Calico CNI Chaining Mode
 
-Cilium does not have a dedicated Calico chaining mode; use the generic chaining mode instead.
+The Cilium Calico chaining guide uses the `generic-veth` chaining mode with a custom CNI configuration. Save the manifest below as `chaining.yaml` and adjust the Calico plugin settings to match your existing Calico CNI configuration before applying it.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cni-configuration
+  namespace: kube-system
+data:
+  cni-config: |-
+    {
+      "name": "generic-veth",
+      "cniVersion": "0.3.1",
+      "plugins": [
+        {
+          "type": "calico",
+          "log_level": "info",
+          "datastore_type": "kubernetes",
+          "mtu": 1440,
+          "ipam": {
+            "type": "calico-ipam"
+          },
+          "policy": {
+            "type": "k8s"
+          },
+          "kubernetes": {
+            "kubeconfig": "/etc/cni/net.d/calico-kubeconfig"
+          }
+        },
+        {
+          "type": "portmap",
+          "snat": true,
+          "capabilities": {"portMappings": true}
+        },
+        {
+          "type": "cilium-cni"
+        }
+      ]
+    }
+```
 
 ```bash
+# Apply the chained CNI configuration
+kubectl apply -f chaining.yaml
+
 # Add the Cilium Helm repository
 helm repo add cilium https://helm.cilium.io/
 helm repo update
@@ -50,14 +92,14 @@ helm repo update
 # Install Cilium in generic chaining mode on top of Calico
 # Cilium will handle policy enforcement; Calico manages networking
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --namespace kube-system \
   --set cni.chainingMode=generic-veth \
-  --set cni.exclusive=false \
-  --set kubeProxyReplacement=false \
-  --set hostServices.enabled=false \
-  --set externalIPs.enabled=false \
-  --set hostPort.enabled=false
+  --set cni.customConf=true \
+  --set cni.configMap=cni-configuration \
+  --set routingMode=native \
+  --set enableIPv4Masquerade=false \
+  --set kubeProxyReplacement=false
 ```
 
 ## Step 3: Verify Cilium is Running
@@ -71,12 +113,12 @@ cilium status --wait
 
 # Confirm both Calico and Cilium appear in the CNI config
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls /etc/cni/net.d/
+  ls /host/etc/cni/net.d/
 ```
 
 ## Step 4: Apply CiliumNetworkPolicies
 
-With Cilium running in chaining mode, CiliumNetworkPolicies are enforced via eBPF alongside any existing Calico NetworkPolicies.
+With Cilium running in chaining mode, CiliumNetworkPolicies are enforced alongside any existing Calico NetworkPolicies. Some advanced Cilium features, including L7 policy, can be limited in CNI chaining mode, so validate them in your environment before relying on them.
 
 ```yaml
 # CiliumNetworkPolicy for L7 HTTP enforcement - not possible with Calico alone
@@ -107,7 +149,7 @@ spec:
 ```bash
 # Apply and verify the L7 policy
 kubectl apply -f allow-api-get-only.yaml
-cilium policy get
+kubectl get ciliumnetworkpolicies -n production
 ```
 
 ## Step 5: Run Connectivity Tests
@@ -116,18 +158,19 @@ cilium policy get
 # Run the Cilium connectivity test suite to verify the chained setup works
 cilium connectivity test
 
-# Check for any dropped flows in Hubble
-cilium hubble observe --verdict DROPPED
+# Check for any dropped flows in Hubble, if Hubble is enabled
+hubble observe --verdict DROPPED
 ```
 
 ## Best Practices
 
 - Test the chained setup in a non-production cluster before applying it to production.
-- Use `cni.exclusive=false` so Cilium does not remove the Calico CNI configuration.
+- Use `cni.customConf=true` and `cni.configMap=cni-configuration` so Cilium writes the chained Calico and Cilium CNI configuration.
+- Restart existing workload pods after installing the chained CNI configuration; the new chaining configuration only applies when a pod sandbox is recreated.
 - Calico and Cilium NetworkPolicies are enforced independently; a packet must pass both to reach its destination.
 - Use this chaining setup as a temporary migration step, not a permanent architecture; maintaining two CNI policy engines adds complexity.
 - Plan the full Calico-to-Cilium migration with node draining and rolling restarts; the chaining mode is the validation step.
 
 ## Conclusion
 
-Chaining Cilium onto Calico provides an incremental migration path that lets you validate Cilium's L7 policies and Hubble observability without disrupting existing Calico networking. Once validated, complete the migration by replacing Calico entirely and enabling Cilium's full eBPF datapath.
+Chaining Cilium onto Calico provides an incremental migration path that lets you validate Cilium policies and Hubble observability without disrupting existing Calico networking. Once validated, complete the migration by replacing Calico entirely and enabling Cilium's full eBPF datapath.
