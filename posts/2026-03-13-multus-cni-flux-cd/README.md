@@ -44,7 +44,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  path: ./deployments/multus-daemonset.yml  # Single file in the multus repo
+  path: ./deployments  # Directory containing multus-daemonset.yml in the multus repo
   prune: false  # Don't prune DaemonSets that remove CNI plugins
   sourceRef:
     kind: GitRepository
@@ -90,8 +90,7 @@ spec:
       serviceAccountName: multus
       containers:
         - name: kube-multus
-          image: ghcr.io/k8snetworkplumbingwg/multus-cni:v4.0.2-thick
-          command: ["/usr/src/multus-cni/bin/multus-daemon"]
+          image: ghcr.io/k8snetworkplumbingwg/multus-cni:v4.0.2
           resources:
             requests:
               cpu: "100m"
@@ -131,6 +130,7 @@ spec:
 # infrastructure/multus/network-attachments.yaml
 
 # macvlan network for data plane traffic
+# (master: eth1 is the secondary NIC on the node)
 apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:
@@ -142,7 +142,7 @@ spec:
       "cniVersion": "0.3.1",
       "name": "macvlan-data",
       "type": "macvlan",
-      "master": "eth1",          # Secondary NIC on the node
+      "master": "eth1",
       "mode": "bridge",
       "ipam": {
         "type": "host-local",
@@ -193,19 +193,20 @@ spec:
       labels:
         app: nfv-router
       annotations:
-        # Attach additional networks
+        # Attach additional networks (interface is the name inside the pod;
+        # ips assigns a static address when the NAD uses static IPAM)
         k8s.v1.cni.cncf.io/networks: |
           [
             {
               "name": "macvlan-data",
               "namespace": "production",
-              "interface": "net1"  # Interface name inside the pod
+              "interface": "net1"
             },
             {
               "name": "ipvlan-storage",
               "namespace": "production",
               "interface": "net2",
-              "ips": ["10.20.0.100/24"]  # Static IP for this pod
+              "ips": ["10.20.0.100/24"]
             }
           ]
     spec:
