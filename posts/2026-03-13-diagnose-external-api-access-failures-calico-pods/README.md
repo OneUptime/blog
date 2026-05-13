@@ -50,9 +50,9 @@ A default-deny policy without an egress exception is the most common cause of ex
 ```bash
 # Check for default-deny GlobalNetworkPolicies
 calicoctl get globalnetworkpolicies -o yaml | \
-  grep -B 5 -A 20 "policyTypes:"
+  grep -B 5 -A 20 "types:"
 
-# A policy with policyTypes including Egress but no egress rules creates an implicit deny
+# A policy with types including Egress but no egress rules isolates matching pods for egress
 # Look for policies that apply to the failing pod's namespace and labels
 
 # Check namespace-scoped NetworkPolicies for the pod
@@ -71,9 +71,10 @@ calicoctl get globalnetworkpolicies -o yaml | \
   grep -B 2 -A 5 "53"
 
 # Test DNS from within the pod explicitly
-kubectl exec api-diag -- dig @10.96.0.10 api.example.com  # CoreDNS ClusterIP
+DNS_IP=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+kubectl exec api-diag -- dig @"${DNS_IP}" api.example.com
 
-# Check CoreDNS is receiving queries
+# Check CoreDNS is receiving queries if query logging is enabled
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=20 | \
   grep "api.example.com"
 ```
@@ -104,7 +105,7 @@ If the external API server requires connection from a specific IP range, pod IPs
 ```bash
 # Find what source IP the pod appears to use externally
 kubectl exec api-diag -- curl -s https://ifconfig.me
-# Should show node IP if NAT is working
+# Should show the node IP or another configured egress/NAT IP if NAT is working
 # If shows pod IP: NAT is not applied - external API may reject it
 
 # Check IP pool NAT setting
@@ -112,9 +113,13 @@ calicoctl get ippools -o yaml | grep natOutgoing
 
 # Check iptables masquerade on the node
 POD_NODE=$(kubectl get pod api-diag -o jsonpath='{.spec.nodeName}')
-CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=${POD_NODE} -o name | head -1)
-kubectl exec -n calico-system "${CALICO_POD}" -- \
+CALICO_NS=$(kubectl get pods -A -l k8s-app=calico-node \
+  --field-selector spec.nodeName="${POD_NODE}" \
+  -o jsonpath='{.items[0].metadata.namespace}')
+CALICO_POD=$(kubectl get pods -n "${CALICO_NS}" -l k8s-app=calico-node \
+  --field-selector spec.nodeName="${POD_NODE}" \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n "${CALICO_NS}" "${CALICO_POD}" -- \
   iptables -t nat -L cali-nat-outgoing -n
 ```
 
