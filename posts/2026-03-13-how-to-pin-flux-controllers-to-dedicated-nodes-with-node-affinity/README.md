@@ -10,7 +10,7 @@ Description: Use Kubernetes node affinity rules to schedule Flux controllers on 
 
 ## Why Pin Flux Controllers to Specific Nodes
 
-In large clusters, Flux controllers compete with application workloads for CPU, memory, and I/O. When a source-controller pod lands on a node that is already running memory-intensive applications, reconciliation latency suffers. By pinning Flux controllers to dedicated nodes, you guarantee that they have consistent access to resources and are not affected by noisy neighbors.
+In large clusters, Flux controllers compete with application workloads for CPU, memory, and I/O. When a source-controller pod lands on a node that is already running memory-intensive applications, reconciliation latency suffers. By pinning Flux controllers to dedicated nodes, you help ensure that they have consistent access to resources and reduce the impact of noisy neighbors.
 
 ## Labeling Dedicated Nodes
 
@@ -170,4 +170,4 @@ The NODE column should show your dedicated infrastructure nodes.
 
 ## Summary
 
-Pinning Flux controllers to dedicated nodes with node affinity eliminates resource contention with application workloads. Use required affinity for strict isolation or preferred affinity for flexibility. Combine with node taints and tolerations for complete workload separation.
+Pinning Flux controllers to dedicated nodes with node affinity reduces resource contention with application workloads. Use required affinity for strict placement or preferred affinity for flexibility. Combine with node taints and tolerations for stronger workload separation.
