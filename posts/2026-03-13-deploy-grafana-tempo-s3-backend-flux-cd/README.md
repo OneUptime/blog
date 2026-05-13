@@ -19,7 +19,7 @@ This guide deploys Tempo in microservices mode with an S3 backend and integrates
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD bootstrapped
-- S3-compatible bucket (AWS S3, MinIO, GCS)
+- S3-compatible bucket (AWS S3 or MinIO; use Tempo's GCS backend for Google Cloud Storage)
 - IAM credentials with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`
 - Grafana deployed and accessible
 - `flux` and `kubectl` CLIs installed
@@ -100,22 +100,19 @@ spec:
           region: us-east-1
           insecure: false
 
-    # Configure OTLP gRPC and HTTP ingestion endpoints
-    distributor:
-      config:
-        receivers:
-          otlp:
-            protocols:
-              grpc:
-                endpoint: 0.0.0.0:4317
-              http:
-                endpoint: 0.0.0.0:4318
+    # Enable OTLP gRPC and HTTP ingestion endpoints
+    traces:
+      otlp:
+        grpc:
+          enabled: true
+        http:
+          enabled: true
 
-    # Enable TraceQL search
-    querier:
+    # Tune TraceQL search concurrency
+    queryFrontend:
       config:
         search:
-          external_endpoints: []
+          concurrent_jobs: 1000
 
     compactor:
       config:
@@ -124,8 +121,9 @@ spec:
           block_retention: 72h
 
     # Expose Tempo metrics for Prometheus scraping
-    serviceMonitor:
-      enabled: true
+    metaMonitoring:
+      serviceMonitor:
+        enabled: true
 ```
 
 ## Step 4: Configure Grafana Datasource for Tempo
@@ -148,7 +146,7 @@ data:
     datasources:
       - name: Tempo
         type: tempo
-        url: http://tempo-query-frontend.monitoring.svc:3100
+        url: http://tempo-query-frontend.monitoring.svc:3200
         jsonData:
           tracesToLogsV2:
             datasourceUid: loki
@@ -177,7 +175,7 @@ spec:
 ## Best Practices
 
 - Set `block_retention` to align with your observability SLO; 72h is reasonable for debugging but extend for compliance requirements.
-- Enable `serviceMonitor: true` to track Tempo's ingestion and query latency in Grafana dashboards.
+- Enable `metaMonitoring.serviceMonitor.enabled: true` to track Tempo's ingestion and query latency in Grafana dashboards.
 - Use `tracesToLogsV2` in the Grafana datasource to link traces directly to Loki log lines by trace ID.
 - Configure S3 lifecycle rules to expire objects after `block_retention + buffer_period` to avoid orphaned objects.
 - Use a dedicated S3 bucket for Tempo separate from Loki and Mimir to simplify cost attribution and lifecycle management.
