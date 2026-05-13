@@ -24,39 +24,43 @@ This guide covers configure DoS Defense in Calico with practical configurations 
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: HostEndpoint
 metadata:
-  name: dos-defense-rate-limit
+  name: production-web-host
+  labels:
+    apply-dos-mitigation: 'true'
 spec:
-  order: 50
-  selector: app == 'web-frontend'
-  ingress:
-    - action: Allow
-      source:
-        nets:
-          - 0.0.0.0/0
-      destination:
-        ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
-    - action: Allow
-  types:
-    - Ingress
+  node: worker-1
+  interfaceName: eth0
+  expectedIPs:
+    - 10.0.0.10
 ---
 # Block known bad actors
 
 apiVersion: projectcalico.org/v3
+kind: GlobalNetworkSet
+metadata:
+  name: dos-deny-list
+  labels:
+    dos-deny-list: 'true'
+spec:
+  nets:
+    - 198.51.100.0/24  # Known attack source
+    - 203.0.113.0/24
+---
+apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: dos-block-bad-actors
+  name: dos-mitigation
 spec:
   order: 10
-  selector: app == 'web-frontend'
+  selector: apply-dos-mitigation == 'true'
+  doNotTrack: true
+  applyOnForward: true
   ingress:
     - action: Deny
       source:
-        nets:
-          - 198.51.100.0/24  # Known attack source
-          - 203.0.113.0/24
+        selector: dos-deny-list == 'true'
   types:
     - Ingress
 ```
@@ -67,18 +71,18 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Enable Felix Prometheus metrics if they are not already enabled
+calicoctl patch felixconfiguration default --patch '{"spec":{"prometheusMetricsEnabled": true}}'
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# Monitor Felix metrics on a node
+curl -s http://localhost:9091/metrics | grep felix_active_local
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+## eBPF and XDP Acceleration
 
 ```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Enable the eBPF dataplane for accelerated policy enforcement
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF", "bpfNetworkBootstrap":"Enabled", "kubeProxyManagement":"Enabled"}}}'
 ```
 
 ## Architecture
