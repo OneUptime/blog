@@ -10,9 +10,9 @@ Description: Learn how to monitor IP address allocation, pool utilization, and I
 
 ## Introduction
 
-Azure Delegated IPAM is an IP address management mode available with Azure CNI Powered by Cilium where Cilium manages pod IP allocation directly from delegated subnets rather than the traditional Azure CNI per-node pre-allocation model. This significantly improves IP efficiency by allocating addresses on demand and returning them when pods are deleted.
+Azure Delegated IPAM is an IP address management mode available with Azure CNI Powered by Cilium where the delegated IPAM plugin manages pod IP allocation from Azure pod subnets rather than the traditional Azure CNI per-node pre-allocation model. This significantly improves IP efficiency by allocating addresses in batches as nodes need them and returning them when pods are deleted.
 
-Monitoring Azure Delegated IPAM with Cilium requires tracking IP allocation from delegated subnets, monitoring for IP exhaustion across availability zones, and ensuring that Cilium's IPAM controller is healthy and responding to pod lifecycle events. Failures in delegated IPAM can cause pod scheduling failures and network connectivity issues.
+Monitoring Azure Delegated IPAM with Cilium requires tracking IP allocation from delegated pod subnets, monitoring for IP exhaustion across node pools and zones, and ensuring that the delegated IPAM path is healthy and responding to pod lifecycle events. Failures in delegated IPAM can cause pod scheduling failures and network connectivity issues.
 
 This guide covers monitoring tools and techniques for Azure Delegated IPAM with Cilium, including Cilium IPAM metrics, Azure subnet utilization, and alerting strategies for IP exhaustion.
 
@@ -33,14 +33,14 @@ Check Cilium's IPAM mode and delegation configuration:
 ```bash
 # Verify Cilium is using Azure delegated IPAM
 
-cilium config view | grep -E "ipam|azure-subnet-id"
+cilium config view | grep -E "ipam|local-router-ipv4"
 
-# Check the Cilium IPAM status
-kubectl exec -n kube-system -it $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium ipam list
+# Check the Cilium agent IPAM status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --all-addresses
 
-# View current IP allocation from delegated subnets
-kubectl get ciliumnodes -o yaml | grep -A10 "ipam:"
+# View the AKS NodeNetworkConfig resources that back delegated IP allocation
+kubectl get nodenetworkconfigs -n kube-system -o wide
+kubectl get nodenetworkconfigs -n kube-system -o yaml | grep -A20 "networkContainers:"
 ```
 
 ## Step 2: Monitor IP Pool Utilization
@@ -50,18 +50,15 @@ Track how many IPs from delegated subnets are in use versus available.
 Query Cilium node IPAM allocation status across all nodes:
 
 ```bash
-# List all CiliumNodes and their IP allocation status
-kubectl get ciliumnodes -o custom-columns=\
-NAME:.metadata.name,\
-USED:.spec.ipam.podCIDRs,\
-AVAILABLE:.status.ipam.available
+# List AKS NodeNetworkConfig allocation status
+kubectl get nodenetworkconfigs -n kube-system -o wide
 
-# Check Azure subnet remaining IPs via Azure CLI
+# Check Azure subnet prefixes and the number of attached IP configurations via Azure CLI
 az network vnet subnet show \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
   --name podSubnet \
-  --query "{available: ipConfigurations | length(@), total: addressPrefix}" \
+  --query "{usedIpConfigurations: ipConfigurations | length(@), prefixes: addressPrefixes || [addressPrefix], delegations: delegations[].serviceName}" \
   --output table
 ```
 
@@ -71,11 +68,14 @@ Monitor IPAM allocation metrics using Prometheus queries:
 # Port-forward to Prometheus for IPAM metric queries
 kubectl port-forward svc/prometheus -n monitoring 9090:9090 &
 
-# Key IPAM metrics to monitor:
-# cilium_ipam_ips_total{type="available"} - available IPs per node
-# cilium_ipam_ips_total{type="used"} - used IPs per node
-# cilium_ipam_allocation_failures_total - IPAM allocation failures
+# Key Cilium operator IPAM metrics to monitor when they are exposed:
+# cilium_operator_ipam_available_ips - available IPs per target node
+# cilium_operator_ipam_used_ips - used IPs per target node
+# cilium_operator_ipam_needed_ips - IPs needed to satisfy node allocation
+# cilium_operator_ipam_nodes{category="at-capacity"} - nodes unable to allocate more IPs
 ```
+
+For AKS-managed delegated IPAM, also enable Azure CNI subnet usage monitoring with Container Insights by setting `azure_subnet_ip_usage.enabled` to `true` in the Container Insights agent configuration. Azure's Subnet IP Usage workbook is the authoritative view for pod subnet utilization.
 
 ## Step 3: Set Up IPAM Alerts
 
@@ -95,22 +95,21 @@ spec:
   - name: cilium-ipam
     interval: 30s
     rules:
-    - alert: CiliumIPAMPoolNearExhaustion
+    - alert: CiliumIPAMNodeAtCapacity
       expr: |
-        (cilium_ipam_ips_total{type="available"} / 
-         (cilium_ipam_ips_total{type="available"} + cilium_ipam_ips_total{type="used"})) < 0.15
+        cilium_operator_ipam_nodes{category="at-capacity"} > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Cilium IPAM pool on {{ $labels.node }} is below 15% available IPs"
-    - alert: CiliumIPAMAllocationFailures
-      expr: rate(cilium_ipam_allocation_failures_total[5m]) > 0
+        summary: "Cilium operator reports one or more IPAM nodes at capacity"
+    - alert: CiliumIPAMNeedsIPs
+      expr: cilium_operator_ipam_needed_ips > 0
       for: 2m
       labels:
         severity: critical
       annotations:
-        summary: "Cilium IPAM allocation failures detected on {{ $labels.node }}"
+        summary: "Cilium IPAM needs additional IPs for {{ $labels.target_node }}"
 ```
 
 Apply the alert rules:
@@ -119,6 +118,8 @@ Apply the alert rules:
 kubectl apply -f ipam-alert-rules.yaml
 ```
 
+These Prometheus rules require the Cilium operator IPAM metrics to be scraped. If those metrics are not present in your managed AKS environment, create the equivalent exhaustion alerts from Azure Monitor's Subnet IP Usage data instead.
+
 ## Step 4: Monitor Delegated Subnet Health in Azure
 
 Track the delegated subnet's IP usage at the Azure network layer.
@@ -126,20 +127,22 @@ Track the delegated subnet's IP usage at the Azure network layer.
 Use Azure CLI to monitor subnet delegation health and IP consumption:
 
 ```bash
-# Check current IP allocations in the delegated pod subnet
-az network nic list \
-  --resource-group myNodeResourceGroup \
-  --query "[].ipConfigurations[].{ip: privateIpAddress, subnet: subnet.id}" \
-  --output table
+# Check resources with IP configurations attached to the delegated pod subnet
+az network vnet subnet show \
+  --resource-group myResourceGroup \
+  --vnet-name myVNet \
+  --name podSubnet \
+  --query "ipConfigurations[].id" \
+  --output tsv
 
 # Monitor pod subnet address space utilization
 az network vnet subnet list \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
-  --query "[].{name: name, prefix: addressPrefix, delegations: delegations[].serviceName}" \
+  --query "[].{name: name, prefixes: addressPrefixes || [addressPrefix], delegations: delegations[].serviceName, usedIpConfigurations: ipConfigurations | length(@)}" \
   --output table
 
-# Check if the subnet delegation to Cilium is correctly configured
+# Check if the pod subnet delegation for AKS is correctly configured
 az network vnet subnet show \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
@@ -172,10 +175,10 @@ kubectl get pods -n default -o wide | grep -v "Running\|Completed"
 
 - Size delegated subnets with 2x the expected pod count to allow for rolling updates and bursting
 - Use separate delegated subnets per node pool to isolate IP exhaustion blast radius
-- Enable Azure IPAM metrics in Cilium and create dashboards for per-subnet utilization
+- Enable Azure CNI subnet usage monitoring in Container Insights and create dashboards for per-subnet utilization
 - Set up OneUptime monitors on pod scheduling times as an indirect IPAM health indicator
 - Regularly review Azure subnet utilization reports to plan CIDR expansion before exhaustion
 
 ## Conclusion
 
-Monitoring Azure Delegated IPAM with Cilium requires visibility at both the Cilium IPAM layer and the Azure subnet layer. By combining Cilium's built-in IPAM metrics with Azure network monitoring and proactive alerts for IP exhaustion, you can ensure reliable pod scheduling and prevent IP availability outages. Integrate with OneUptime to monitor pod startup times as a business-level indicator of IPAM health in your AKS clusters.
+Monitoring Azure Delegated IPAM with Cilium requires visibility at both the Cilium IPAM layer and the Azure subnet layer. By combining exposed Cilium IPAM metrics, NodeNetworkConfig inspection, Azure subnet usage monitoring, and proactive alerts for IP exhaustion, you can ensure reliable pod scheduling and prevent IP availability outages. Integrate with OneUptime to monitor pod startup times as a business-level indicator of IPAM health in your AKS clusters.
