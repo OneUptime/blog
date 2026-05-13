@@ -14,7 +14,7 @@ The image-reflector-controller scans container image registries to discover new 
 
 ## Why Concurrency Matters
 
-Each ImageRepository reconciliation involves an API call to a container registry. Registries like Docker Hub, GitHub Container Registry, or AWS ECR may respond in tens to hundreds of milliseconds per request. When you track many images, sequential scanning means the controller spends most of its time waiting on network responses.
+Each ImageRepository reconciliation involves one or more API calls to a container registry. Registries like Docker Hub, GitHub Container Registry, or AWS ECR may respond in tens to hundreds of milliseconds per request. When you track many images, low concurrency means the controller can spend much of its time waiting on network responses.
 
 ## Configuring the Concurrent Flag
 
@@ -70,12 +70,12 @@ git push
 
 Before cranking up concurrency, consider the rate limits of your container registries:
 
-- Docker Hub: 100 pulls per 6 hours for unauthenticated users, 200 for authenticated
-- GitHub Container Registry: 5,000 requests per hour for authenticated users
-- AWS ECR: generally generous but varies by account
-- Google Artifact Registry: similar to ECR
+- Docker Hub: 100 pulls per 6 hours for unauthenticated users, 200 for authenticated Personal users, and unlimited pull rate for authenticated Pro, Team, and Business users, subject to fair use
+- GitHub Container Registry: authenticate for private images and monitor for throttling; GitHub does not publish a fixed per-hour pull request limit for GHCR in its Container registry documentation
+- AWS ECR: default pull-related API quotas are high, such as 2,000 BatchGetImage requests per second per Region
+- Google Artifact Registry: request quotas are enforced per project and per user; a Docker pull usually makes multiple HTTP requests that count against those quotas
 
-If you set concurrency too high you may hit rate limits and start seeing errors. A good approach is to set concurrency to match the number of distinct registries you use, so that scanning across different registries happens in parallel while requests to the same registry are naturally serialized.
+If you set concurrency too high you may hit rate limits and start seeing errors. Flux does not serialize requests per registry, so keep concurrency lower when many ImageRepositories point to the same rate-limited registry.
 
 ## Sizing Recommendations
 
@@ -111,7 +111,7 @@ spec:
 
 ```bash
 kubectl get deployment image-reflector-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n'
+  -o jsonpath='{range .spec.template.spec.containers[0].args[*]}{.}{"\n"}{end}'
 ```
 
 ## Summary
