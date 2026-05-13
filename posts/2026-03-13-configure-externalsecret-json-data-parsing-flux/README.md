@@ -46,7 +46,7 @@ Use `remoteRef.property` to extract specific fields from a JSON secret:
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-json-extract.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-db-secrets
@@ -81,7 +81,7 @@ spec:
 
 ## Step 3: Extract Nested JSON Fields
 
-For deeply nested JSON structures, use dot notation or bracket notation in the `property` field:
+For deeply nested JSON structures, use GJSON path syntax in the `property` field:
 
 **Secret value (Vault KV):**
 ```json
@@ -97,7 +97,7 @@ For deeply nested JSON structures, use dot notation or bracket notation in the `
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-nested-json.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-nested-config
@@ -111,11 +111,11 @@ spec:
     name: myapp-nested
     creationPolicy: Owner
   data:
-    # Use dot notation to access nested fields
+    # Use GJSON paths to access nested fields
     - secretKey: DB_HOST
       remoteRef:
         key: myapp/config
-        # Access prod.database.host using dot notation
+        # Access prod.database.host using a GJSON path
         property: prod.database.host
     - secretKey: DB_PASSWORD
       remoteRef:
@@ -129,7 +129,7 @@ Use `dataFrom.extract` to explode all top-level JSON fields into Kubernetes Secr
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-datafrom-extract.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-full-config
@@ -145,10 +145,10 @@ spec:
   dataFrom:
     - extract:
         key: myapp/database
-        # conversionStrategy controls how JSON keys are mapped to Secret keys
-        # None: use keys as-is (host, password, ssl_mode)
-        # Unicode: sanitize keys to valid Secret key format
-        conversionStrategy: None
+        # conversionStrategy controls how JSON keys are converted to Secret keys
+        # Default: use Kubernetes-compatible keys as-is (host, password, ssl_mode)
+        # Unicode: encode invalid characters to reduce key collisions
+        conversionStrategy: Default
         decodingStrategy: None
 ```
 
@@ -156,11 +156,11 @@ The resulting Kubernetes Secret will contain keys: `host`, `port`, `username`, `
 
 ## Step 5: Decode Base64-Encoded JSON Values
 
-If the external store contains base64-encoded values within the JSON:
+If the external store contains base64-encoded values for every extracted JSON field:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-base64-decode.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-encoded-secrets
@@ -183,7 +183,7 @@ spec:
 ## Step 6: Manage via Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/apps/myapp/kustomization.yaml
+# clusters/my-cluster/apps/myapp-secrets.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -217,10 +217,10 @@ kubectl get secret myapp-db -n default \
 ## Best Practices
 
 - Group logically related secrets into a single JSON object in the external store rather than creating many flat secrets; it reduces secret count and simplifies rotation.
-- Use `conversionStrategy: Unicode` when your JSON keys contain characters invalid in Kubernetes Secret key names (spaces, dots in unusual positions).
+- Use `conversionStrategy: Unicode` when your JSON keys contain characters invalid in Kubernetes Secret key names, such as spaces or slashes, and you need to reduce collision risk.
 - Document the expected JSON schema of each external secret in a comment on the `ExternalSecret` manifest so future developers know what structure is expected.
 - Prefer `dataFrom.extract` for application config objects to keep `ExternalSecret` manifests concise and automatically adapt to new fields added to the JSON.
-- Test JSON property path expressions locally using the ESO `kubectl` plugin before committing to Git.
+- Test JSON property path expressions with GJSON-compatible tooling or in a non-production namespace before committing to Git.
 
 ## Conclusion
 
