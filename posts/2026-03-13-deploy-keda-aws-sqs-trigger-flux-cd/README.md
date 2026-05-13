@@ -20,7 +20,7 @@ This guide covers configuring KEDA with the AWS SQS trigger using Flux CD, inclu
 
 - KEDA deployed on your Kubernetes cluster (EKS or self-managed on AWS)
 - An AWS SQS queue
-- IAM permissions for KEDA to call `sqs:GetQueueAttributes` and `sqs:GetQueueUrl`
+- IAM permissions for KEDA to call `sqs:GetQueueAttributes` and `sqs:GetQueueUrl`; your worker also needs SQS consumer permissions such as `sqs:ReceiveMessage` and `sqs:DeleteMessage`
 - Flux CD v2 bootstrapped to your Git repository
 
 ## Step 1: Configure AWS IAM for KEDA (IRSA)
@@ -38,9 +38,7 @@ aws iam create-policy \
       "Effect": "Allow",
       "Action": [
         "sqs:GetQueueAttributes",
-        "sqs:GetQueueUrl",
-        "sqs:ReceiveMessage",
-        "sqs:DeleteMessage"
+        "sqs:GetQueueUrl"
       ],
       "Resource": "arn:aws:sqs:us-east-1:123456789:my-task-queue"
     }]
@@ -52,6 +50,7 @@ eksctl create iamserviceaccount \
   --namespace keda \
   --cluster my-cluster \
   --attach-policy-arn arn:aws:iam::123456789:policy/KedaSQSPolicy \
+  --override-existing-serviceaccounts \
   --approve
 ```
 
@@ -61,7 +60,7 @@ Using IRSA (recommended):
 
 ```yaml
 # clusters/my-cluster/keda-sqs/trigger-auth-irsa.yaml
-# With IRSA, KEDA uses the pod's IAM role automatically
+# With IRSA, KEDA uses the KEDA operator service account's IAM role by default
 # No secret needed - the TriggerAuthentication uses pod identity
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -70,7 +69,7 @@ metadata:
   namespace: app
 spec:
   podIdentity:
-    provider: aws-eks  # Use IRSA from EKS pod identity
+    provider: aws  # Use IRSA from AWS pod identity
 ```
 
 Alternatively, using static credentials (use SOPS to encrypt):
@@ -125,9 +124,9 @@ spec:
       metadata:
         # Full SQS queue URL
         queueURL: https://sqs.us-east-1.amazonaws.com/123456789/my-task-queue
-        # AWS region
-        queueLength: "5"
         # Scale 1 replica per N messages visible in the queue
+        queueLength: "5"
+        # AWS region
         awsRegion: us-east-1
         # Include messages in-flight when calculating queue depth
         scaleOnInFlight: "true"
@@ -139,6 +138,14 @@ spec:
 
 ```yaml
 # clusters/my-cluster/keda-sqs/worker-deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sqs-worker-sa
+  namespace: app
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/sqs-worker-role
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -154,7 +161,9 @@ spec:
       labels:
         app: sqs-worker
     spec:
-      serviceAccountName: sqs-worker-sa  # Annotated with IRSA role
+      serviceAccountName: sqs-worker-sa
+      # Allow graceful shutdown to finish processing current messages
+      terminationGracePeriodSeconds: 60
       containers:
         - name: worker
           image: myregistry/sqs-worker:v1.1.0
@@ -174,8 +183,6 @@ spec:
             limits:
               cpu: "1"
               memory: "512Mi"
-          # Allow graceful shutdown to finish processing current messages
-          terminationGracePeriodSeconds: 60
 ```
 
 ## Step 5: Create the Flux Kustomization
