@@ -38,7 +38,7 @@ When migrating from client-side apply to SSA, existing resources have field owne
 
 ### 4. Multiple Kustomizations Managing Overlapping Resources
 
-If two or more Kustomizations attempt to manage the same resource, their field managers will conflict.
+If two or more Kustomizations attempt to manage the same resource, Flux can report ownership or reconciliation conflicts. Keep each resource in one Kustomization whenever possible.
 
 ## Diagnostic Steps
 
@@ -70,24 +70,12 @@ If an HPA targets the same Deployment, it will manage `spec.replicas`.
 
 ## How to Fix
 
-### Fix 1: Force Apply to Take Ownership
+### Fix 1: Force Conflicts for a One-Time Ownership Transfer
 
-Configure the Kustomization to force-apply and take ownership of conflicting fields:
+If Flux should own the field, apply the manifest once with server-side apply, Flux's field manager, and `--force-conflicts`:
 
-```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./apps/my-app
-  prune: true
-  force: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
+```bash
+kubectl apply --server-side --force-conflicts --field-manager=kustomize-controller -f deployment.yaml
 ```
 
 ### Fix 2: Remove the Conflicting Field from Flux Manifests
@@ -117,39 +105,45 @@ spec:
 
 ### Fix 3: Transfer Field Ownership
 
-Use kubectl to apply with the `--field-manager` flag matching Flux's manager, which transfers ownership:
+Use kubectl to apply with the `--field-manager` flag matching Flux's manager. Add `--force-conflicts` when you intentionally want Flux to take ownership from another manager:
 
 ```bash
-kubectl apply --field-manager=kustomize-controller --server-side -f deployment.yaml
+kubectl apply --server-side --force-conflicts --field-manager=kustomize-controller -f deployment.yaml
 ```
 
 ### Fix 4: Clear Existing Field Managers
 
-Remove the old field manager entries:
+As a last resort, clear the object's managed fields. Kubernetes clears `managedFields` when you overwrite it with a list containing one empty entry:
 
 ```bash
-kubectl get deployment my-app -n default -o json | \
-  jq 'del(.metadata.managedFields[] | select(.manager == "kubectl-client-side-apply"))' | \
-  kubectl apply -f -
+kubectl patch deployment my-app -n default --type=merge \
+  -p '{"metadata":{"managedFields":[{}]}}'
 ```
 
-### Fix 5: Use fieldManagerPolicy in Kustomization
+### Fix 5: Use the Flux SSA Merge Policy for Non-Overlapping Fields
 
-Configure the field manager policy to force ownership:
+If another tool adds fields that do not overlap with the fields in Git, annotate or label the resource with Flux's SSA merge policy:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
-  namespace: flux-system
+  namespace: default
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: merge
 spec:
-  interval: 10m
-  path: ./apps/my-app
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: app
+          image: my-app:1.0.0
 ```
 
 ### Fix 6: Force Reconciliation
