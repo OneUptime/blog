@@ -10,7 +10,7 @@ Description: An explanation of the Cilium community support ecosystem - Slack, G
 
 ## Introduction
 
-Cilium is a complex, rapidly evolving project with a rich ecosystem of support resources. Knowing which resource to use for which type of problem is a skill in itself. Slack is best for quick questions and community discussion. GitHub Issues is best for bug reports and feature requests. The official documentation handles most configuration questions. Enterprise support through Isovalent (the company behind Cilium) handles production incidents. Understanding the purpose and scope of each channel helps you get help faster and contribute more effectively.
+Cilium is a complex, rapidly evolving project with a rich ecosystem of support resources. Knowing which resource to use for which type of problem is a skill in itself. Slack is best for quick questions and community discussion. GitHub Issues is best for bug reports and feature requests. The official documentation handles most configuration questions. Commercial support, such as Isovalent Enterprise for Cilium, handles production incidents. Understanding the purpose and scope of each channel helps you get help faster and contribute more effectively.
 
 The Cilium community is notably active and welcoming. The core team is present on the Cilium Slack and responds regularly to questions. The GitHub repository has a rapid issue response time compared to many open-source projects. This community responsiveness means that if you ask a well-formed question in the right place, you will likely get a useful answer quickly.
 
@@ -26,10 +26,10 @@ This post explains each help channel in detail, provides guidance on when to use
 ```mermaid
 graph TD
     Q[I need help with Cilium] --> Q1{Type of issue?}
-    Q1 -->|Quick question| SL[Slack: cilium.io/slack]
+    Q1 -->|Quick question| SL[Slack: slack.cilium.io]
     Q1 -->|Bug report| GH[GitHub Issues]
     Q1 -->|How to configure| DOC[docs.cilium.io]
-    Q1 -->|Production outage| ENT[Enterprise Support - Isovalent]
+    Q1 -->|Production outage| ENT[Commercial Support]
     Q1 -->|Security vulnerability| SEC[security@cilium.io]
 ```
 
@@ -49,8 +49,8 @@ cilium sysdump
 # Or collect specific information
 kubectl get pods -n kube-system -l k8s-app=cilium
 kubectl logs -n kube-system ds/cilium --tail=50
-kubectl exec -n kube-system ds/cilium -- cilium status
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 ```
 
 ## Formatting a Good Bug Report
@@ -60,7 +60,7 @@ kubectl exec -n kube-system ds/cilium -- cilium endpoint list
 cilium sysdump --output-filename cilium-sysdump-$(date +%Y%m%d)
 
 # Include Kubernetes version
-kubectl version --short
+kubectl version
 
 # Include node information
 kubectl get nodes -o wide
@@ -74,7 +74,7 @@ kubectl get configmap -n kube-system cilium-config -o yaml
 ```bash
 # Most configuration questions are answered in docs.cilium.io
 # Key sections:
-# - Installation: https://docs.cilium.io/en/stable/installation/
+# - Installation: https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default/
 # - Network Policy: https://docs.cilium.io/en/stable/network/kubernetes/
 # - Troubleshooting: https://docs.cilium.io/en/stable/operations/troubleshooting/
 # - API Reference: https://docs.cilium.io/en/stable/cmdref/
