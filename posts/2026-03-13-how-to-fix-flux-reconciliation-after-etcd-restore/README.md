@@ -50,26 +50,35 @@ kubectl logs -n flux-system deployment/kustomize-controller | grep "conflict\|mo
 ### Verify the Flux inventory against actual cluster state
 
 ```bash
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries}' | jq -r '.[].id' | while read id; do
-  ns=$(echo $id | cut -d_ -f1)
-  name=$(echo $id | cut -d_ -f2)
-  gvk=$(echo $id | cut -d_ -f3-)
-  echo -n "Checking $id: "
-  kubectl get $gvk $name -n $ns 2>&1 | head -1
+kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries}' | jq -r '.[] | [.id, .v] | @tsv' | while IFS=$'\t' read id version; do
+  ns=$(echo "$id" | cut -d_ -f1)
+  name=$(echo "$id" | cut -d_ -f2)
+  group=$(echo "$id" | cut -d_ -f3)
+  kind=$(echo "$id" | cut -d_ -f4)
+  resource="$kind"
+  if [ -n "$group" ]; then
+    resource="$kind.$group"
+  fi
+  echo -n "Checking $id ($version): "
+  if [ -n "$ns" ]; then
+    kubectl get "$resource" "$name" -n "$ns" 2>&1 | head -1
+  else
+    kubectl get "$resource" "$name" 2>&1 | head -1
+  fi
 done
 ```
 
 ### Check the etcd restore timestamp
 
 ```bash
-kubectl get events --all-namespaces --sort-by='.lastTimestamp' | head -20
+kubectl get events --all-namespaces --sort-by='.lastTimestamp' | tail -20
 ```
 
 ## Common Root Causes
 
 ### 1. Stale resource versions
 
-The etcd restore brings back old resource versions. When Flux tries to update resources, it gets optimistic locking conflicts because the resource versions do not match.
+The etcd restore brings back old API objects and resource versions. Existing client watches and controller caches may no longer match the restored API server state, which can show up as optimistic locking conflicts until the controllers reconnect and reconcile from the restored state.
 
 ### 2. Inventory mismatch
 
@@ -77,7 +86,7 @@ Resources created between the backup time and restore time are missing from the 
 
 ### 3. Source controller artifact lost
 
-The source controller stores artifacts on a PVC. If the PVC was restored to the old state, the latest fetched source may be gone.
+The source controller stores artifacts on local storage. By default this is an `emptyDir`, but some installations configure a PVC for persistent artifact storage. If persistent artifact storage was restored to the old state, the latest fetched source may be gone.
 
 ### 4. Flux controllers using stale cached state
 
@@ -111,7 +120,10 @@ kubectl wait --for=condition=available -n flux-system deployment --all --timeout
 The source controller needs to re-fetch the latest source artifacts:
 
 ```bash
-flux reconcile source git --all
+for source in $(kubectl get gitrepositories.source.toolkit.fluxcd.io -n flux-system -o jsonpath='{.items[*].metadata.name}'); do
+  echo "Reconciling source $source"
+  flux reconcile source git "$source"
+done
 ```
 
 Verify the sources are up to date:
@@ -127,22 +139,22 @@ If the inventory is stale, clear it and let Flux rebuild:
 ```bash
 for ks in $(kubectl get kustomizations -n flux-system -o jsonpath='{.items[*].metadata.name}'); do
   echo "Resetting inventory for $ks"
-  kubectl patch kustomization $ks -n flux-system --type=json -p='[{"op":"remove","path":"/status/inventory"}]' 2>/dev/null || true
+  kubectl patch kustomization $ks -n flux-system --subresource=status --type=json -p='[{"op":"remove","path":"/status/inventory"}]' 2>/dev/null || true
 done
 ```
 
-### Fix 4: Force reconciliation with conflict resolution
+### Fix 4: Reconcile and handle immutable-field conflicts
 
-Use the force flag to overwrite resource version conflicts:
+Trigger reconciliation again after the controllers and sources are refreshed:
 
 ```bash
 for ks in $(kubectl get kustomizations -n flux-system -o jsonpath='{.items[*].metadata.name}'); do
-  echo "Force reconciling $ks"
-  flux reconcile kustomization $ks --with-source --force 2>/dev/null || true
+  echo "Reconciling $ks"
+  flux reconcile kustomization $ks --with-source 2>/dev/null || true
 done
 ```
 
-Or temporarily enable force on all Kustomizations:
+If reconciliation fails because immutable fields changed, temporarily enable `spec.force` on the affected Kustomizations. Flux uses this setting to replace resources when patching fails due to immutable field changes:
 
 ```bash
 for ks in $(kubectl get kustomizations -n flux-system -o jsonpath='{.items[*].metadata.name}'); do
