@@ -34,7 +34,7 @@ Istio supports several mTLS modes through PeerAuthentication policies:
 The mode is set through PeerAuthentication resources:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -68,7 +68,7 @@ spec:
       tls:
         mode: ISTIO_MUTUAL
     gateways:
-      - my-gateway.istio-system.svc.cluster.local
+      - istio-system/my-gateway
     hosts:
       - my-app.example.com
   analysis:
@@ -90,7 +90,7 @@ The `ISTIO_MUTUAL` mode tells the Envoy proxy to use Istio's automatically provi
 You can enable strict mTLS per namespace instead of mesh-wide:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -122,7 +122,7 @@ When migrating from PERMISSIVE to STRICT mTLS, there is a transition period wher
 3. Then switch to STRICT mode:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -168,7 +168,7 @@ Verify that the `trafficPolicy.tls.mode` is set to `ISTIO_MUTUAL`.
 If your application has ports that should not use mTLS (for example, a metrics port scraped by Prometheus outside the mesh), exclude them at the PeerAuthentication level:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: my-app
@@ -184,7 +184,7 @@ spec:
       mode: DISABLE
 ```
 
-This keeps port 9090 in plaintext mode while enforcing mTLS on all other ports. Flagger's traffic routing occurs on the service port, which remains encrypted.
+This keeps workload port 9090 in plaintext mode while enforcing mTLS on all other workload ports. Flagger's traffic routing occurs on the application port, which remains encrypted.
 
 ## Common Issues and Troubleshooting
 
@@ -198,7 +198,7 @@ If you see `upstream connect error or disconnect/reset before headers` in the Is
 
 ### Certificate Not Ready
 
-During canary initialization, the new canary pod needs a valid Istio certificate. If Flagger starts sending traffic before the certificate is provisioned, requests fail. Increase the Canary's `skipAnalysis` or add a pre-rollout webhook that waits for readiness:
+During canary initialization, the new canary pod needs a valid Istio certificate. If Flagger starts sending traffic before the certificate is provisioned, requests fail. Add a readiness probe that only passes when the application is ready, or add a pre-rollout webhook that waits for readiness:
 
 ```yaml
     webhooks:
@@ -230,7 +230,7 @@ spec:
     port: 80
     targetPort: 8080
     gateways:
-      - my-gateway.istio-system.svc.cluster.local
+      - istio-system/my-gateway
       - mesh
     hosts:
       - my-app.example.com
