@@ -25,7 +25,7 @@ This guide walks through creating and applying HostEndpoint resources along with
 
 ## Understanding Host Endpoints
 
-A HostEndpoint resource in Calico represents a network interface on a Kubernetes node. When a HostEndpoint is created, Calico begins enforcing policy on that interface. If no policy explicitly allows traffic, it will be denied by default once the failsafe rules are considered.
+A HostEndpoint resource in Calico represents a network interface on a Kubernetes node. When a HostEndpoint is created, Calico begins enforcing policy on that interface. For host endpoints without an allow-all profile, traffic is denied by default if no policy explicitly allows it, once the failsafe rules are considered. Automatically created host endpoints include Calico's default allow profile, so add explicit policy before relying on them for enforcement.
 
 ```mermaid
 graph TD
@@ -40,20 +40,17 @@ graph TD
 
 ## Step 1: Enable Automatic Host Endpoint Creation
 
-Calico can automatically create HostEndpoint resources for all node interfaces when using the `all-interfaces` mode. This is the recommended approach for most clusters.
+Calico can automatically create wildcard HostEndpoint resources for Kubernetes nodes. These use `interfaceName: "*"` to secure all interfaces in the host network namespace and are the recommended approach for most clusters.
 
 ```bash
-kubectl patch felixconfiguration default \
-  --type=merge \
-  --patch='{"spec":{"interfacePrefix":"cali"}}'
+calicoctl patch kubecontrollersconfiguration default \
+  --patch='{"spec":{"controllers":{"node":{"hostEndpoint":{"autoCreate":"Enabled"}}}}}'
 ```
 
-Enable automatic host endpoint management via the Calico operator or by patching the Installation resource:
+Add a label to the Kubernetes nodes so policies can select the automatically created host endpoints:
 
 ```bash
-kubectl patch installation default \
-  --type=merge \
-  -p '{"spec":{"nonPrivilegedNetwork":false}}'
+kubectl label nodes --all kubernetes-host=true
 ```
 
 ## Step 2: Create a HostEndpoint Resource
@@ -66,7 +63,7 @@ kind: HostEndpoint
 metadata:
   name: node1-eth0
   labels:
-    node: node1
+    kubernetes-host: "true"
     role: worker
 spec:
   interfaceName: eth0
@@ -91,19 +88,26 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-cluster-internal
 spec:
-  selector: "has(node)"
+  selector: "has(kubernetes-host)"
   order: 0
   ingress:
     - action: Allow
       protocol: TCP
       destination:
-        ports: [22, 6443, 2379, 2380, 10250, 10255]
+        ports: [22, 179, 6443, 2379, 2380, 5473, 10250]
     - action: Allow
       protocol: UDP
       destination:
-        ports: [53, 4789]
+        ports: [68, 4789]
   egress:
     - action: Allow
+      protocol: TCP
+      destination:
+        ports: [179, 6443, 2379, 2380, 5473, 10250]
+    - action: Allow
+      protocol: UDP
+      destination:
+        ports: [53, 67, 4789]
 ```
 
 ```bash
@@ -120,12 +124,16 @@ kind: GlobalNetworkPolicy
 metadata:
   name: deny-all-host
 spec:
-  selector: "has(node)"
+  selector: "has(kubernetes-host)"
   order: 1000
   ingress:
     - action: Deny
   egress:
     - action: Deny
+```
+
+```bash
+calicoctl apply -f deny-all-host.yaml
 ```
 
 ## Conclusion
