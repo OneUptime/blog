@@ -20,7 +20,7 @@ This guide configures complete TLS termination using the Kubernetes Gateway API,
 
 - A Kubernetes cluster with Flux CD bootstrapped
 - A Gateway API implementation deployed (Envoy Gateway, Contour, or similar)
-- cert-manager deployed and configured with a ClusterIssuer
+- cert-manager deployed with Gateway API support enabled and configured with a ClusterIssuer
 - kubectl with cluster-admin access
 - A domain name with DNS pointing to your Gateway's LoadBalancer IP
 
@@ -124,9 +124,6 @@ kind: Gateway
 metadata:
   name: production-gateway
   namespace: envoy-gateway-system
-  annotations:
-    # Reference the cert-manager Certificate resource
-    cert-manager.io/cluster-issuer: letsencrypt-prod
   labels:
     app.kubernetes.io/managed-by: flux
 spec:
@@ -144,6 +141,7 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
+      hostname: api.example.com
       tls:
         mode: Terminate
         certificateRefs:
@@ -196,20 +194,20 @@ spec:
 
 ## Step 6: Grant Cross-Namespace Certificate Access
 
-When HTTPRoutes in application namespaces need to reference certificates in the gateway namespace, use ReferenceGrant.
+When a Gateway needs to reference a certificate Secret in a different namespace, create a ReferenceGrant in the Secret's namespace.
 
 ```yaml
 # infrastructure/gateway/reference-grants.yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
-  name: allow-backend-to-gateway
-  namespace: envoy-gateway-system
+  name: allow-gateway-to-tls-secret
+  namespace: tls
 spec:
   from:
     - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: backend
+      kind: Gateway
+      namespace: envoy-gateway-system
   to:
     - group: ""
       kind: Secret
