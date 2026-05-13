@@ -10,7 +10,7 @@ Description: Kubernetes networking fundamentals explained from a Calico user's p
 
 ## Introduction
 
-Kubernetes imposes a specific networking model on all CNI plugins: every pod gets its own IP, every pod can reach every other pod without NAT (unless policy prevents it), and every node can reach every pod IP. This model is what makes Kubernetes networking portable across providers - but it is CNI plugins like Calico that actually implement it.
+Kubernetes imposes a specific networking model on all CNI plugins: every pod gets its own IP, every pod can reach every other pod without NAT (unless policy prevents it), and agents on a node can reach the pods on that node. This model is what makes Kubernetes networking portable across providers - but it is CNI plugins like Calico that actually implement it.
 
 Understanding Kubernetes networking from a Calico perspective means understanding both the requirements the Kubernetes model imposes and the specific mechanisms Calico uses to satisfy them. This post covers the networking model, the CNI interface, and how Calico maps its components to each Kubernetes networking requirement.
 
@@ -34,7 +34,7 @@ Calico satisfies each of these:
 | Requirement | Calico Mechanism |
 |---|---|
 | Unique pod IP | IPAM via `IPPool` resources |
-| No-NAT pod-to-pod | BGP routing or VXLAN overlay |
+| No-NAT pod-to-pod | BGP routing or IP-in-IP/VXLAN overlay |
 | Node-to-pod communication | Routes programmed by Felix on each node |
 | Service IP space | kube-proxy (iptables) or Calico eBPF |
 
@@ -47,10 +47,10 @@ graph TD
     Kubelet[kubelet] -->|CNI ADD call| CNI[Calico CNI Plugin]
     CNI --> IPAM[1. Allocate IP from IPPool]
     CNI --> NETNS[2. Create veth pair\nConnect pod to host network]
-    CNI --> FELIX[3. Notify Felix\nProgram routes and policies]
+    CNI --> WEP[3. Create workload endpoint\nFelix watches and programs routes/policies]
 ```
 
-1. **IP allocation**: The Calico IPAM plugin selects an IP from the configured `IPPool` and records the allocation in the Calico datastore
+1. **IP allocation**: The Calico IPAM plugin selects an IP from the available `IPPool` resources and records the allocation in the Calico datastore
 2. **Network namespace setup**: A veth pair is created - one end in the pod's network namespace, one end on the host - giving the pod its network interface
 3. **Routing**: Felix programs a host route for the pod's IP pointing to the pod's veth interface
 
@@ -81,15 +81,15 @@ Calico supports three cross-node routing modes:
 
 ## Network Policy Integration
 
-Calico implements both the Kubernetes `NetworkPolicy` resource and its own extended `CalicNetworkPolicy` and `GlobalNetworkPolicy` resources. Both are enforced by Felix, which programs iptables (or eBPF) rules on each node based on policy resources stored in the datastore.
+Calico implements both the Kubernetes `NetworkPolicy` resource and its own extended Calico `NetworkPolicy` and `GlobalNetworkPolicy` resources. Both are enforced by Felix, which programs iptables (or eBPF) rules on each node based on policy resources stored in the datastore.
 
 ## Best Practices
 
-- Always size your `IPPool` CIDR large enough for your maximum expected pod count per node
+- Always size your `IPPool` CIDR large enough for your maximum expected cluster-wide pod count
 - Prefer VXLAN mode in cloud environments where BGP is not available
 - Use `calicoctl ipam show` to monitor IP allocation and detect exhaustion before it becomes an outage
 - Understand the `natOutgoing` setting - disabling it requires that your network fabric can route pod CIDRs
 
 ## Conclusion
 
-Kubernetes defines a networking model and leaves the implementation to CNI plugins. Calico implements this model through IPAM (`IPPool`), veth-pair network namespace setup, Felix-managed routes, and a BGP or VXLAN overlay for cross-node traffic. Understanding these mechanisms gives you the foundation to troubleshoot networking issues, design IP plans, and make informed dataplane decisions for your cluster.
+Kubernetes defines a networking model and leaves the implementation to CNI plugins. Calico implements this model through IPAM (`IPPool`), veth-pair network namespace setup, Felix-managed routes, and BGP routing or an IP-in-IP/VXLAN overlay for cross-node traffic. Understanding these mechanisms gives you the foundation to troubleshoot networking issues, design IP plans, and make informed dataplane decisions for your cluster.
