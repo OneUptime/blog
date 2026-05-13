@@ -24,41 +24,43 @@ This guide covers migrate DoS Defense in Calico with practical configurations an
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: HostEndpoint
 metadata:
-  name: dos-defense-rate-limit
+  name: production-host
+  labels:
+    apply-dos-mitigation: 'true'
 spec:
-  order: 50
-  selector: app == 'web-frontend'
-  ingress:
-    - action: Allow
-      source:
-        nets:
-          - 0.0.0.0/0
-      destination:
-        ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
-    - action: Allow
-  types:
-    - Ingress
+  interfaceName: eth0
+  node: jasper
+  expectedIPs: ['10.0.0.1']
 ---
 # Block known bad actors
 
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: GlobalNetworkSet
 metadata:
   name: dos-block-bad-actors
+  labels:
+    dos-deny-list: 'true'
 spec:
-  order: 10
-  selector: app == 'web-frontend'
+  nets:
+    - 198.51.100.0/24  # Known attack source
+    - 203.0.113.0/24
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: dos-defense-deny-list
+spec:
+  selector: apply-dos-mitigation == 'true'
+  doNotTrack: true
+  applyOnForward: true
+  types:
+    - Ingress
   ingress:
     - action: Deny
       source:
-        nets:
-          - 198.51.100.0/24  # Known attack source
-          - 203.0.113.0/24
-  types:
-    - Ingress
+        selector: dos-deny-list == 'true'
 ```
 
 ## Implementation
@@ -67,18 +69,18 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Confirm Felix has active local policies
+curl -s http://node-ip:9091/metrics | grep felix_active_local_policies
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# Check the deny-list entries in real-time
+watch -n1 'calicoctl get globalnetworkset dos-block-bad-actors -o yaml'
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+## eBPF Dataplane (Calico with eBPF dataplane)
 
 ```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Enable eBPF dataplane with the Tigera Operator
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
 ```
 
 ## Architecture
