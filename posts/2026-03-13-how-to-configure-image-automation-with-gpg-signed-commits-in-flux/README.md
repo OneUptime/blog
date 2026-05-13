@@ -122,9 +122,9 @@ For GitHub, add the GPG public key to verify signed commits:
 3. Click New GPG key
 4. Paste the content of `flux-gpg-public.key`
 
-For a service account or bot, you can also add the key to the organization level.
+For a service account or bot, add the key to that GitHub user account.
 
-To mark commits as verified in GitHub, the email in the GPG key must match the commit author email configured in the ImageUpdateAutomation.
+To mark commits as verified in GitHub, the email in the GPG key must match the commit email configured in the ImageUpdateAutomation and be verified on the GitHub account that owns the GPG key.
 
 ## Configuring Branch Protection for Signed Commits
 
@@ -185,8 +185,9 @@ kubectl -n flux-system create secret generic gpg-signing-key \
   --from-file=git.asc=new-flux-gpg-private.key \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart the image automation controller to pick up the new key
-kubectl -n flux-system rollout restart deployment image-automation-controller
+# Trigger the automation so the next commit uses the new key
+kubectl -n flux-system annotate --field-manager=flux-client-side-apply --overwrite \
+  imageupdateautomation/image-updates reconcile.fluxcd.io/requestedAt="$(date +%s)"
 ```
 
 ## Verifying Signed Commits
@@ -213,7 +214,7 @@ If commits are not being signed, check the following:
    kubectl -n flux-system logs deployment/image-automation-controller
    ```
 
-3. Ensure the key email matches the commit author email in the automation spec.
+3. Ensure the key email matches the commit email in the automation spec and is verified on the Git account that owns the GPG key.
 
 4. Verify the key has not expired.
 
