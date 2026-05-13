@@ -12,7 +12,7 @@ Description: Deploy IIS web server Windows containers to Kubernetes using Flux C
 
 Internet Information Services (IIS) remains one of the most widely deployed web server platforms in enterprise environments. Thousands of ASP.NET Web Forms applications, classic ASP sites, and WCF services run on IIS and cannot easily be migrated to Linux without significant rework. Containerizing these applications and running them in Kubernetes provides the operational consistency of modern container orchestration while preserving the IIS runtime.
 
-Flux CD manages IIS container deployments with the same GitOps workflow as any other workload. Configuration changes - application pool settings, HTTPS bindings, custom error pages - are committed to Git and reconciled onto Windows nodes automatically. This guide covers deploying an IIS container with custom configuration, setting up TLS, and configuring health probes appropriate for IIS startup times.
+Flux CD manages IIS container deployments with the same GitOps workflow as any other workload. Configuration changes - application pool settings, Ingress TLS settings, custom error pages - are committed to Git and reconciled onto Windows nodes automatically. This guide covers deploying an IIS container with custom configuration, setting up TLS, and configuring health probes appropriate for IIS startup times.
 
 ## Prerequisites
 
@@ -100,8 +100,6 @@ spec:
           ports:
             - containerPort: 80
               protocol: TCP
-            - containerPort: 443
-              protocol: TCP
 
           env:
             - name: ASPNET_ENV
@@ -146,6 +144,25 @@ spec:
         - name: registry-credentials
 ```
 
+Add a Service for the Deployment so the Ingress can route traffic to the IIS pods:
+
+```yaml
+# apps/base/windows-workloads/iis-app/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: iis-app
+  namespace: windows-workloads
+spec:
+  selector:
+    app: iis-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+```
+
 ## Step 3: Configure IIS via Kubernetes ConfigMap
 
 Manage IIS configuration files through Git.
@@ -182,16 +199,21 @@ data:
     </configuration>
 ```
 
-Mount the ConfigMap into the container:
+Mount the ConfigMap into the container. Windows containers must mount the whole ConfigMap volume, so copy the file into the IIS site before starting IIS:
 
 ```yaml
 # Add to deployment spec
 containers:
   - name: iis-app
+    command:
+      - powershell.exe
+      - -NoProfile
+      - -Command
+      - Copy-Item C:\iis-config\web.config C:\inetpub\wwwroot\myapp\web.config -Force; C:\ServiceMonitor.exe w3svc
     volumeMounts:
       - name: iis-config
-        mountPath: C:\inetpub\wwwroot\myapp\web.config
-        subPath: web.config
+        mountPath: C:\iis-config
+        readOnly: true
 volumes:
   - name: iis-config
     configMap:
