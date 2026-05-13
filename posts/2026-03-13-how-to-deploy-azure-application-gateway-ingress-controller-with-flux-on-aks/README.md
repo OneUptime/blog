@@ -23,10 +23,11 @@ If you are starting a new project, evaluate Application Gateway for Containers f
 ## Prerequisites
 
 - An Azure subscription
-- An AKS cluster running Kubernetes 1.24 or later
-- Azure CLI version 2.40 or later
+- An AKS cluster running a currently supported Kubernetes version
+- Azure CLI version 2.47 or later
 - Flux CLI version 2.0 or later bootstrapped on the cluster
 - An Azure Application Gateway instance in the same virtual network as your AKS cluster or a peered network
+- AKS OIDC issuer and workload identity enabled if using workload identity authentication
 
 ## Step 1: Create an Application Gateway
 
@@ -63,25 +64,30 @@ APPGW_ID=$(az network application-gateway show \
 az aks enable-addons \
   --resource-group my-resource-group \
   --name my-flux-cluster \
-  --addons ingress-appgw \
+  --addon ingress-appgw \
   --appgw-id "$APPGW_ID"
 ```
 
-Alternatively, you can deploy AGIC via Helm for more control over the configuration. The following steps show the Helm-based approach managed by Flux.
+If you use the AKS add-on, do not also install AGIC with Helm. Alternatively, you can deploy AGIC via Helm for more control over the configuration. The following steps show the Helm-based approach managed by Flux.
 
-## Step 3: Add the AGIC Helm Repository to Flux
+## Step 3: Add the AGIC OCI Repository to Flux
 
-Create a HelmRepository source:
+Create an OCIRepository source:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: agic
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://appgwithub.blob.core.windows.net/ingress-azure-helm-package/
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  url: oci://mcr.microsoft.com/azure-application-gateway/charts/ingress-azure
+  ref:
+    semver: ">=1.7.0 <2.0.0"
 ```
 
 ## Step 4: Create a HelmRelease for AGIC
@@ -96,13 +102,10 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: ingress-azure
-      version: "1.7.*"
-      sourceRef:
-        kind: HelmRepository
-        name: agic
+  releaseName: ingress-azure
+  chartRef:
+    kind: OCIRepository
+    name: agic
   targetNamespace: kube-system
   values:
     appgw:
@@ -112,7 +115,7 @@ spec:
       usePrivateIP: false
     armAuth:
       type: workloadIdentity
-      identityClientID: "${IDENTITY_CLIENT_ID}"
+      identityClientID: "${AGIC_CLIENT_ID}"
     rbac:
       enabled: true
     verbosityLevel: 3
@@ -120,9 +123,15 @@ spec:
 
 ## Step 5: Configure Workload Identity for AGIC
 
-If using workload identity authentication, create a managed identity and federated credential:
+If using workload identity authentication, enable workload identity on the AKS cluster, then create a managed identity and federated credential before reconciling the HelmRelease:
 
 ```bash
+az aks update \
+  --resource-group my-resource-group \
+  --name my-flux-cluster \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
 az identity create \
   --resource-group my-resource-group \
   --name agic-identity \
@@ -155,7 +164,7 @@ az identity federated-credential create \
   --resource-group my-resource-group \
   --issuer "$AKS_OIDC_ISSUER" \
   --subject system:serviceaccount:kube-system:ingress-azure \
-  --audience api://AzureADTokenExchange
+  --audiences api://AzureADTokenExchange
 ```
 
 ## Step 6: Deploy an Application with Ingress
