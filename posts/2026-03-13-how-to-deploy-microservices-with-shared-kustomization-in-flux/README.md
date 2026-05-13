@@ -12,9 +12,9 @@ Description: Learn how to use a single Kustomization resource to deploy all micr
 
 Managing multiple microservices in a Kubernetes environment can become complex quickly, especially when they share common configuration or live in the same repository. Flux CD's Kustomization resource provides a powerful mechanism to deploy all microservices together from a single source, reducing operational overhead while maintaining consistency.
 
-A shared Kustomization approach works best when your microservices are closely coupled, share the same release cadence, or when you want atomic deployments where all services update together. This pattern is common in monorepos where a single Git commit contains changes across multiple services.
+A shared Kustomization approach works best when your microservices are closely coupled, share the same release cadence, or when you want all services to reconcile as one deployment unit. This pattern is common in monorepos where a single Git commit contains changes across multiple services.
 
-In this guide you will learn how to configure a single Kustomization resource that reconciles all microservices from a monorepo. You will structure your repository so Flux reads a root kustomization.yaml that references each service directory, and you will verify that Flux reconciles the full stack on every commit.
+In this guide you will learn how to configure a single Kustomization resource that reconciles all microservices from a monorepo. You will structure your repository so Flux reads a root kustomization.yaml that references each service directory, and you will verify that Flux reconciles the full stack when the source revision changes.
 
 ## Prerequisites
 
@@ -30,6 +30,7 @@ Organize your repository so all microservice manifests live under a common direc
 ```plaintext
 apps/
 ├── kustomization.yaml        # Root kustomization referencing all services
+├── namespace.yaml
 ├── frontend/
 │   ├── kustomization.yaml
 │   ├── deployment.yaml
@@ -60,18 +61,29 @@ kind: Kustomization
 
 # Reference each microservice directory
 resources:
+  - namespace.yaml
   - frontend/
   - backend-api/
   - auth-service/
   - notification-service/
 
 # Apply common labels to all resources
-commonLabels:
-  app.kubernetes.io/managed-by: flux
-  environment: production
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: flux
+      environment: production
+    includeTemplates: true
 
 # Apply a common namespace to all resources
 namespace: microservices
+```
+
+```yaml
+# apps/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: microservices
 ```
 
 ## Step 3: Create Individual Service Kustomizations
@@ -88,9 +100,11 @@ resources:
   - service.yaml
 
 # Service-specific labels
-commonLabels:
-  app.kubernetes.io/name: backend-api
-  app.kubernetes.io/component: api
+labels:
+  - pairs:
+      app.kubernetes.io/name: backend-api
+      app.kubernetes.io/component: api
+    includeSelectors: true
 ```
 
 ```yaml
@@ -156,7 +170,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  # Retry on failure with exponential backoff
+  # Retry failed reconciliations every two minutes
   retryInterval: 2m
   timeout: 5m
   sourceRef:
@@ -167,7 +181,7 @@ spec:
   prune: true
   # Wait for all resources to become ready
   wait: true
-  # Create the namespace if it does not exist
+  # Apply all namespaced resources to the microservices namespace
   targetNamespace: microservices
 ```
 
@@ -181,7 +195,7 @@ kubectl apply -f clusters/production/sources/monorepo.yaml
 kubectl apply -f clusters/production/apps.yaml
 
 # Check the Kustomization status
-flux get kustomization all-microservices
+flux get kustomizations
 
 # Watch reconciliation events
 flux events --for Kustomization/all-microservices
@@ -202,7 +216,7 @@ When you push a change to any microservice, Flux reconciles the entire shared Ku
 flux reconcile kustomization all-microservices --with-source
 
 # Watch the reconciliation progress
-flux get kustomization all-microservices --watch
+flux get kustomizations --watch
 
 # Describe for detailed status
 kubectl describe kustomization all-microservices -n flux-system
@@ -212,11 +226,11 @@ kubectl describe kustomization all-microservices -n flux-system
 
 - Use `prune: true` to automatically remove resources deleted from Git
 - Set `wait: true` to ensure health checks pass before marking reconciliation successful
-- Apply `commonLabels` at the root kustomization.yaml to tag all resources uniformly
-- Use `targetNamespace` in the Flux Kustomization to keep all services isolated
+- Apply `labels` at the root kustomization.yaml to tag all resources uniformly
+- Use `targetNamespace` in the Flux Kustomization to keep all services isolated, and make sure the namespace already exists or is included in the manifests
 - Add `retryInterval` to handle transient failures gracefully
 - Keep individual service kustomization.yaml files focused on service-specific configuration only
 
 ## Conclusion
 
-A shared Kustomization resource in Flux CD simplifies the deployment of multiple microservices from a monorepo by treating them as a single deployable unit. This approach reduces the number of Flux objects you need to manage and ensures all services are always deployed together from the same Git commit. While it sacrifices independent rollout control per service, it is an excellent choice for tightly coupled services or teams that prefer atomic deployments.
+A shared Kustomization resource in Flux CD simplifies the deployment of multiple microservices from a monorepo by treating them as a single deployable unit. This approach reduces the number of Flux objects you need to manage and ensures all services are reconciled together from the same Git commit. While it sacrifices independent rollout control per service, it is an excellent choice for tightly coupled services or teams that prefer shared deployments.
