@@ -10,7 +10,7 @@ Description: Learn how to safely upgrade Flux CD using the Flux Operator with co
 
 ## Introduction
 
-Upgrading Flux CD is a routine maintenance task that keeps your GitOps infrastructure secure and up to date with the latest features and bug fixes. The Flux Operator simplifies this process by allowing you to update the Flux version through a simple change to the FluxInstance resource. The operator handles the rolling update of all Flux components, ensuring minimal disruption to your GitOps workflows.
+Upgrading Flux CD is a routine maintenance task that keeps your GitOps infrastructure secure and up to date with the latest features and bug fixes. The Flux Operator simplifies this process by allowing you to update the Flux version through a simple change to the FluxInstance resource. The operator applies the updated Flux component manifests and checks their health, helping minimize disruption to your GitOps workflows.
 
 This guide covers the complete Flux upgrade process using the Flux Operator, including pre-upgrade checks, performing the upgrade, validating the new version, and rolling back if issues arise.
 
@@ -19,6 +19,7 @@ This guide covers the complete Flux upgrade process using the Flux Operator, inc
 Before you begin, ensure you have:
 
 - The Flux Operator installed on your Kubernetes cluster.
+- The Flux Operator updated to the latest version.
 - A running FluxInstance managing your Flux installation.
 - `kubectl` installed and configured.
 - Access to the Flux release notes for the target version.
@@ -68,7 +69,7 @@ Update the FluxInstance resource with the new version.
 # Upgrade to a specific version
 kubectl patch fluxinstance flux -n flux-system \
   --type merge \
-  -p '{"spec":{"distribution":{"version":"2.5.0"}}}'
+  -p '{"spec":{"distribution":{"version":"2.8.x"}}}'
 ```
 
 ### Method 2: Using kubectl apply
@@ -85,7 +86,7 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.5.0"
+    version: "2.8.x"
     registry: ghcr.io/fluxcd
   components:
     - source-controller
@@ -107,9 +108,9 @@ If your FluxInstance is managed through GitOps, update the version in your Git r
 
 ```bash
 # Edit the FluxInstance manifest in your repository
-# Update spec.distribution.version to "2.5.0"
+# Update spec.distribution.version to "2.8.x"
 git add clusters/production/flux-instance.yaml
-git commit -m "Upgrade Flux to v2.5.0"
+git commit -m "Upgrade Flux to v2.8.x"
 git push
 ```
 
@@ -129,7 +130,7 @@ kubectl logs -l app.kubernetes.io/name=flux-operator \
   -n flux-system -f
 ```
 
-The Flux Operator will update each controller deployment one at a time. The old pods will be terminated as new pods with the updated version become ready.
+The Flux Operator will apply the generated manifests for the selected version and wait for the Flux components to pass health checks. The controller Deployments will replace their pods according to their configured Kubernetes rollout strategies.
 
 ## Validating the Upgrade
 
@@ -164,7 +165,7 @@ If the upgrade introduces issues, roll back to the previous version by updating 
 # Rollback to the previous version
 kubectl patch fluxinstance flux -n flux-system \
   --type merge \
-  -p '{"spec":{"distribution":{"version":"2.4.0"}}}'
+  -p '{"spec":{"distribution":{"version":"2.7.x"}}}'
 
 # Watch the rollback
 kubectl get pods -n flux-system -w
@@ -188,19 +189,19 @@ For organizations managing multiple clusters, use a staged upgrade strategy to m
 # clusters/development/flux-instance-patch.yaml
 spec:
   distribution:
-    version: "2.5.0"
+    version: "2.8.x"
 
 # Stage 2: Staging cluster (after development validation)
 # clusters/staging/flux-instance-patch.yaml
 spec:
   distribution:
-    version: "2.5.0"
+    version: "2.8.x"
 
 # Stage 3: Production clusters (after staging validation)
 # base/flux-instance.yaml
 spec:
   distribution:
-    version: "2.5.0"
+    version: "2.8.x"
 ```
 
 Commit each stage change separately, validating the upgrade at each stage before proceeding to the next.
@@ -212,7 +213,17 @@ Configure the Flux Operator to notify your team when upgrades complete or fail b
 ```yaml
 # upgrade-notification.yaml
 # Alert for Flux upgrade events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: slack
+  namespace: flux-system
+spec:
+  type: slack
+  secretRef:
+    name: slack-webhook
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-upgrade-alerts
@@ -225,17 +236,6 @@ spec:
     - kind: FluxInstance
       name: flux
       namespace: flux-system
----
-apiVersion: notification.toolkit.fluxcd.io/v1
-kind: Provider
-metadata:
-  name: slack
-  namespace: flux-system
-spec:
-  type: slack
-  channel: deployments
-  secretRef:
-    name: slack-webhook-url
 ```
 
 ## Handling Breaking Changes
@@ -252,4 +252,4 @@ Update any resources using deprecated API versions before upgrading Flux to avoi
 
 ## Conclusion
 
-Upgrading Flux using the Flux Operator is a straightforward process that involves updating the version field in the FluxInstance resource. The operator handles the rolling update of all components, minimizing downtime. By following a staged upgrade strategy across environments, validating at each stage, and having a clear rollback plan, you can upgrade Flux with confidence. The declarative nature of the FluxInstance resource means upgrades are tracked in version control and can be managed through the same GitOps workflows used for your applications.
+Upgrading Flux using the Flux Operator is a straightforward process that involves updating the version field in the FluxInstance resource. The operator applies the updated component manifests and validates their health, minimizing downtime. By following a staged upgrade strategy across environments, validating at each stage, and having a clear rollback plan, you can upgrade Flux with confidence. The declarative nature of the FluxInstance resource means upgrades are tracked in version control and can be managed through the same GitOps workflows used for your applications.
