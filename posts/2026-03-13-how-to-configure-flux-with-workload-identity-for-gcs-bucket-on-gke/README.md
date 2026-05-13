@@ -14,8 +14,8 @@ Flux supports Google Cloud Storage buckets as a source for Kubernetes manifests 
 
 Before you begin, ensure you have the following:
 
-- A GKE cluster with Workload Identity enabled
-- Flux installed on the cluster (v2.0 or later)
+- A GKE cluster with Workload Identity Federation for GKE enabled
+- Flux installed on the cluster with the `source.toolkit.fluxcd.io/v1` and `kustomize.toolkit.fluxcd.io/v1` APIs
 - Google Cloud CLI (`gcloud`) configured with appropriate permissions
 - A GCS bucket containing your Kubernetes manifests
 - `kubectl` configured to access your GKE cluster
@@ -48,6 +48,10 @@ gcloud iam service-accounts create flux-gcs-reader \
 Grant the service account read access to the bucket:
 
 ```bash
+gcloud storage buckets add-iam-policy-binding gs://my-flux-manifests \
+  --member="serviceAccount:flux-gcs-reader@my-project.iam.gserviceaccount.com" \
+  --role="roles/storage.bucketViewer"
+
 gcloud storage buckets add-iam-policy-binding gs://my-flux-manifests \
   --member="serviceAccount:flux-gcs-reader@my-project.iam.gserviceaccount.com" \
   --role="roles/storage.objectViewer"
@@ -94,10 +98,11 @@ spec:
   interval: 5m
   provider: gcp
   bucketName: my-flux-manifests
+  endpoint: storage.googleapis.com
   region: us-central1
 ```
 
-The `provider: gcp` field tells the source-controller to use GCP metadata-based authentication rather than looking for a secret reference.
+The `provider: gcp` field tells the source-controller to use GCP authentication rather than the generic S3-compatible provider. Because this is controller-level Workload Identity, leave `serviceAccountName` unset and do not add a `secretRef`.
 
 ## Step 6: Create a Kustomization That Uses the Bucket
 
