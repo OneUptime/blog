@@ -33,16 +33,19 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-multicluster
-  namespace: linkerd-multicluster
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: linkerd-multicluster
+  install:
+    createNamespace: true
   dependsOn:
     - name: linkerd-control-plane
       namespace: linkerd
   chart:
     spec:
       chart: linkerd-multicluster
-      version: "30.12.*"
+      version: "30.11.*"
       sourceRef:
         kind: HelmRepository
         name: linkerd
@@ -54,8 +57,13 @@ spec:
       enabled: true
       serviceType: LoadBalancer
       replicas: 2
+    # Deploy a service-mirror controller for each target cluster this cluster consumes
+    controllers:
+      - link:
+          ref:
+            name: east
 ---
-# Same HelmRelease applies to cluster-east with identical config
+# On cluster-east, add a controller that references west if you want bidirectional mirroring
 ```
 
 ## Step 2: Create the Cluster Link (Gateway)
@@ -64,10 +72,9 @@ After both clusters have multicluster installed, create the Link resource:
 
 ```bash
 # On cluster-west: create a link to cluster-east
-# This generates credentials for cluster-east to trust cluster-west's gateway
-linkerd multicluster link \
+# This generates a Link resource and kubeconfig credentials for west to watch east
+linkerd --context=east multicluster link-gen \
   --cluster-name east \
-  --kubeconfig ~/.kube/config-east \
   > clusters/cluster-west/linkerd-multicluster/link-to-east.yaml
 ```
 
@@ -89,12 +96,13 @@ spec:
     path: /ready
     period: 3s
     port: "4191"
-  remoteDiscoverySelector:
+  selector:
     matchLabels:
       # Only mirror services with this label from the east cluster
       mirror.linkerd.io/exported: "true"
   targetClusterName: east
   targetClusterDomain: cluster.local
+  targetClusterLinkerdNamespace: linkerd
 ```
 
 ## Step 3: Export Services for Cross-Cluster Discovery
@@ -144,7 +152,13 @@ metadata:
   name: api-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
         - name: api
@@ -160,7 +174,7 @@ spec:
 ```yaml
 # clusters/cluster-west/apps/cross-cluster-split.yaml
 # Split traffic between local and remote user-service
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: HTTPRoute
 metadata:
   name: user-service-split
@@ -169,7 +183,8 @@ spec:
   parentRefs:
     - name: user-service
       kind: Service
-      group: ""
+      group: core
+      port: 8080
   rules:
     - backendRefs:
         # 70% local, 30% cross-cluster
@@ -208,7 +223,7 @@ spec:
 kubectl get link -n linkerd-multicluster
 
 # Verify gateway is running
-kubectl get gateway -n linkerd-multicluster
+linkerd multicluster gateways
 
 # Check mirrored services appeared in cluster-west
 kubectl get services -n production | grep east
@@ -224,7 +239,7 @@ linkerd viz stat service/user-service-east -n production
 ## Best Practices
 
 - Use the same trust anchor CA for both clusters during Linkerd installation - multicluster mTLS requires a shared root of trust.
-- Commit the `Link` resource YAML to Git after generating it with `linkerd multicluster link`, so the cluster relationship is version-controlled.
+- Commit the generated `Link` and credential Secret YAML to Git after generating it with `linkerd multicluster link-gen`, so the cluster relationship is version-controlled.
 - Use the `mirror.linkerd.io/exported: "true"` label sparingly - only export services that other clusters genuinely need to call, not all services.
 - Use Linkerd's HTTPRoute to split traffic between local and remote instances for active-active deployments, allowing gradual traffic shifts between clusters.
 - Monitor cross-cluster latency with `linkerd viz stat service/user-service-east` - cross-cluster calls add network RTT, so ensure your timeouts are set appropriately.
