@@ -1,20 +1,20 @@
-# How to Configure Flagger Istio DestinationRule Subsets
+# How to Configure Flagger Istio DestinationRules
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Istio, DestinationRule, Subset, Canary, Kubernetes, Progressive Delivery, Traffic Policy
+Tags: Flagger, Istio, DestinationRule, Canary, Kubernetes, Progressive Delivery, Traffic Policy
 
-Description: Learn how Flagger manages Istio DestinationRule subsets during canary deployments and how to configure traffic policies for primary and canary workloads.
+Description: Learn how Flagger manages Istio DestinationRules during canary deployments and how to configure traffic policies for primary and canary workloads.
 
 ---
 
 ## Introduction
 
-When Flagger operates with Istio, it creates and manages DestinationRule resources alongside VirtualServices. DestinationRules define traffic policies that apply to traffic after routing has occurred. They control connection pool settings, outlier detection, load balancing, and TLS settings for specific service subsets.
+When Flagger operates with Istio, it creates and manages DestinationRule resources alongside VirtualServices. DestinationRules define traffic policies that apply to traffic after routing has occurred. They control connection pool settings, outlier detection, load balancing, and TLS settings for specific services.
 
-Flagger automatically creates DestinationRule subsets for the primary and canary workloads. Understanding how these subsets work lets you configure connection pooling, circuit breaking, and other traffic policies that affect canary behavior during progressive delivery.
+Flagger automatically creates DestinationRules for the primary and canary services. Understanding how these DestinationRules work lets you configure connection pooling, circuit breaking, and other traffic policies that affect canary behavior during progressive delivery.
 
-This guide covers how Flagger manages DestinationRule subsets, how to customize traffic policies, and common configuration patterns.
+This guide covers how Flagger manages DestinationRules, how to customize traffic policies, and common configuration patterns.
 
 ## Prerequisites
 
@@ -25,28 +25,29 @@ This guide covers how Flagger manages DestinationRule subsets, how to customize 
 
 ## How Flagger Creates DestinationRules
 
-When you create a Canary resource, Flagger generates a DestinationRule with subsets that identify the primary and canary workloads. The VirtualService references these subsets in its routing rules.
+When you create a Canary resource, Flagger generates DestinationRules for the primary and canary services. The VirtualService routes traffic to those services with weighted routing rules.
 
-For a Canary targeting a Deployment named `my-app`, Flagger creates a DestinationRule like:
+For a Canary targeting a Deployment named `my-app`, Flagger creates DestinationRules like:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
-  name: my-app
+  name: my-app-primary
   namespace: default
 spec:
-  host: my-app
-  subsets:
-    - name: primary
-      labels:
-        app: my-app-primary
-    - name: canary
-      labels:
-        app: my-app
+  host: my-app-primary
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: my-app-canary
+  namespace: default
+spec:
+  host: my-app-canary
 ```
 
-The subsets use label selectors to distinguish between primary and canary pods. Flagger manages the labels on the Deployments to ensure correct subset matching.
+Flagger also creates Kubernetes Services for the primary and canary workloads. These services use label selectors to distinguish between primary and canary pods, and the generated VirtualService routes to `my-app-primary` and `my-app-canary`.
 
 ## Adding Traffic Policies through the Canary Spec
 
@@ -90,7 +91,7 @@ spec:
     stepWeight: 10
 ```
 
-Flagger applies these traffic policies to the generated DestinationRule, affecting both primary and canary subsets.
+Flagger applies these traffic policies to the generated primary and canary DestinationRules.
 
 ## Connection Pool Settings
 
@@ -250,16 +251,17 @@ spec:
           cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.default:80/"
 ```
 
-## Inspecting the Generated DestinationRule
+## Inspecting the Generated DestinationRules
 
-After applying a Canary resource, inspect the DestinationRule that Flagger creates:
+After applying a Canary resource, inspect the DestinationRules that Flagger creates:
 
 ```bash
-kubectl get destinationrule my-app -o yaml
+kubectl get destinationrule my-app-primary -o yaml
+kubectl get destinationrule my-app-canary -o yaml
 ```
 
-This shows the full DestinationRule with subsets and traffic policies as configured through the Canary spec.
+This shows the full DestinationRules with traffic policies as configured through the Canary spec.
 
 ## Conclusion
 
-Flagger automatically manages Istio DestinationRule subsets for primary and canary workloads during progressive delivery. Through the Canary resource's `trafficPolicy` field, you can configure connection pooling, outlier detection, load balancing, and TLS settings that apply to the generated DestinationRule. These traffic policies work alongside Flagger's metric-based analysis to provide both mesh-level resilience and progressive delivery safety. Understanding the DestinationRule configuration helps you tune how Istio handles traffic to your services during and after canary deployments.
+Flagger automatically manages Istio DestinationRules for primary and canary workloads during progressive delivery. Through the Canary resource's `trafficPolicy` field, you can configure connection pooling, outlier detection, load balancing, and TLS settings that apply to the generated DestinationRules. These traffic policies work alongside Flagger's metric-based analysis to provide both mesh-level resilience and progressive delivery safety. Understanding the DestinationRule configuration helps you tune how Istio handles traffic to your services during and after canary deployments.
