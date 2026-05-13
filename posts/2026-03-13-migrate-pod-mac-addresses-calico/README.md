@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, MAC Address, Networking, CNI
 
-Description: Safely change MAC address configuration in Calico without causing existing pods to lose network connectivity.
+Description: Safely set pod MAC addresses in Calico without causing existing pods to lose network connectivity.
 
 ---
 
 ## Introduction
 
-Calico assigns MAC addresses to pod virtual ethernet (veth) interfaces using a configurable scheme. By default, Calico uses a fixed MAC address prefix (ee:ee:ee:ee:ee:ee modified with interface-specific bytes) for all pod interfaces. This design works well for most environments but requires attention in networks where MAC addresses have security implications or in environments with physical switches that track ARP/MAC bindings.
+Calico normally allows the operating system to assign MAC addresses to pod virtual ethernet (veth) interfaces. When a pod needs a specific MAC address, Calico CNI supports setting one with the `cni.projectcalico.org/hwAddr` pod annotation. This design works well for most environments but requires attention in networks where MAC addresses have security implications or in environments with physical switches that track ARP/MAC bindings.
 
 Understanding Calico's MAC address assignment is important for debugging layer-2 networking issues, configuring certain network security controls, and ensuring compatibility with network monitoring tools that track device identity by MAC address.
 
@@ -30,20 +30,21 @@ kubectl exec test-pod -- ip link show eth0
 # View the corresponding veth on the host
 ip link | grep -A1 cali
 
-# Verify MAC address uniqueness across pods
-kubectl get pods -A -o wide | while read ns pod rest; do
-  mac=$(kubectl exec -n ${ns} ${pod} -- ip link show eth0 2>/dev/null |     grep -oP '([0-9a-f]{2}:){5}[0-9a-f]{2}' | head -1)
+# Verify MAC address uniqueness across running pods
+kubectl get pods -A --field-selector=status.phase=Running --no-headers | while read ns pod rest; do
+  mac=$(kubectl exec -n ${ns} ${pod} -- ip link show eth0 2>/dev/null | grep -oP '([0-9a-f]{2}:){5}[0-9a-f]{2}' | head -1)
   echo "${ns}/${pod}: ${mac}"
 done | sort -t: -k2
 ```
 
-## Configure MAC Prefix
+## Configure Pod MAC Address
 
-Calico allows configuring the MAC prefix used for pod interfaces:
+Calico allows configuring a specific MAC address for a pod by adding the annotation before the pod is created:
 
-```bash
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"deviceRouteProtocol":80}}'
+```yaml
+metadata:
+  annotations:
+    cni.projectcalico.org/hwAddr: "1c:0c:0a:c0:ff:ee"
 ```
 
 ## Check for MAC Conflicts
@@ -58,7 +59,7 @@ arp -n | awk '{print $3}' | sort | uniq -d
 ```mermaid
 graph LR
     subgraph Pod
-        ETH0[eth0\nee:ee:ee:xx:xx:xx]
+        ETH0[eth0\nconfigured or OS-assigned MAC]
     end
     subgraph Node
         VETH[caliXXXXXXXX\nhost side of veth pair]
@@ -70,4 +71,4 @@ graph LR
 
 ## Conclusion
 
-Calico's MAC address management for pods uses deterministic assignment based on interface identifiers, ensuring unique MACs within a node. Monitoring for MAC conflicts and understanding the MAC assignment scheme helps diagnose layer-2 networking issues and configure security controls appropriately in your Kubernetes environment.
+Calico's MAC address management for pods supports explicit assignment with a pod annotation when the application needs a stable MAC address. Monitoring for MAC conflicts and understanding the MAC assignment scheme helps diagnose layer-2 networking issues and configure security controls appropriately in your Kubernetes environment.
