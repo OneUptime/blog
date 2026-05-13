@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Proxy, HTTP Proxy, Networking
+Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Proxy, HTTP Proxy, Networking, OCI
 
 Description: Learn how to configure Flux CD to route source controller traffic through an HTTP proxy using a proxy secret.
 
@@ -10,7 +10,7 @@ Description: Learn how to configure Flux CD to route source controller traffic t
 
 ## Introduction
 
-In many enterprise environments, outbound internet access from Kubernetes clusters is restricted and must pass through an HTTP proxy. Flux CD source controller supports proxy configuration through a dedicated Kubernetes secret, allowing Git and Helm repository connections to route through your corporate proxy. This guide covers how to set up an HTTP proxy secret for Flux.
+In many enterprise environments, outbound internet access from Kubernetes clusters is restricted and must pass through an HTTP proxy. Flux CD source controller supports proxy configuration through a dedicated Kubernetes secret, allowing Git, OCI, and bucket source connections to route through your corporate proxy. This guide covers how to set up an HTTP proxy secret for Flux.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ In many enterprise environments, outbound internet access from Kubernetes cluste
 
 ## Understanding Flux Proxy Configuration
 
-Flux source controller reads proxy settings from a secret referenced in `GitRepository`, `HelmRepository`, or `Bucket` resources. The secret must contain the proxy URL in a specific key format that the source controller understands.
+Flux source controller reads proxy settings from a secret referenced in `GitRepository`, `OCIRepository`, or `Bucket` resources. The secret must contain the proxy URL in a specific key format that the source controller understands.
 
 ## Step 1: Create the Proxy Secret Without Authentication
 
@@ -89,26 +89,28 @@ spec:
     name: flux-http-proxy
 ```
 
-## Step 5: Reference the Proxy Secret in a HelmRepository
+## Step 5: Reference the Proxy Secret in an OCIRepository
 
-The same approach works for Helm repositories.
+The same approach works for OCI repositories.
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: bitnami
+  name: podinfo
   namespace: flux-system
 spec:
   interval: 30m
-  url: https://charts.bitnami.com/bitnami
+  url: oci://ghcr.io/stefanprodan/manifests/podinfo
+  ref:
+    tag: latest
   proxySecretRef:
     name: flux-http-proxy
 ```
 
 ## Step 6: Reference the Proxy Secret in a Bucket Source
 
-For S3-compatible bucket sources:
+For Amazon S3 bucket sources:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -118,9 +120,10 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  provider: generic
+  provider: aws
   bucketName: my-flux-artifacts
   endpoint: s3.amazonaws.com
+  region: us-east-1
   proxySecretRef:
     name: flux-http-proxy
 ```
@@ -175,12 +178,12 @@ Inspect the source controller logs for proxy-related errors:
 kubectl logs -n flux-system deploy/source-controller | grep -i proxy
 ```
 
-## Cluster-Wide vs Per-Resource Proxy
+## Controller-Wide vs Per-Resource Proxy
 
-The `proxySecretRef` approach configures the proxy on a per-resource basis. If you need a cluster-wide proxy for all Flux operations, you can set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables on the source controller deployment. However, the per-resource approach is more flexible and recommended for most setups.
+The `proxySecretRef` approach configures the proxy on a per-resource basis. If you need a controller-wide proxy for source controller operations, you can set the `HTTP_PROXY` and `HTTPS_PROXY` environment variables on the source controller deployment. However, the per-resource approach is more flexible and recommended for most setups.
 
 ```yaml
-# Cluster-wide alternative (patch source-controller deployment)
+# Controller-wide alternative (patch source-controller deployment)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -200,4 +203,4 @@ spec:
 
 ## Conclusion
 
-Configuring an HTTP proxy secret in Flux allows the source controller to fetch Git repositories, Helm charts, and bucket artifacts through a corporate proxy. By using `proxySecretRef`, you keep the proxy configuration declarative and manageable within your GitOps workflow.
+Configuring an HTTP proxy secret in Flux allows the source controller to fetch Git repositories, OCI artifacts, and bucket artifacts through a corporate proxy. By using `proxySecretRef`, you keep the proxy configuration declarative and manageable within your GitOps workflow.
