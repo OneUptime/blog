@@ -12,7 +12,7 @@ Description: Go beyond the defaults and customize Typha for your specific enviro
 
 A default Typha deployment works, but it does not account for the shape of your cluster: the number of nodes, availability zones, dedicated infrastructure node pools, or resource constraints of your control plane. Customizing Typha scheduling and resource allocation is the difference between a Typha deployment that merely runs and one that reliably serves Felix agents during node failures, upgrades, and traffic spikes.
 
-This post covers node affinity, resource tuning, HorizontalPodAutoscaler configuration, and topology spread constraints for Typha in a manifest-based Calico installation.
+This post covers node affinity, resource tuning, replica counts, and topology spread constraints for Typha in a manifest-based Calico installation.
 
 ---
 
@@ -50,6 +50,7 @@ spec:
       labels:
         k8s-app: calico-typha
     spec:
+      hostNetwork: true
       serviceAccountName: calico-typha
       # Allow Typha to run on infra nodes that may have taints
       tolerations:
@@ -59,12 +60,11 @@ spec:
         - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
       affinity:
-        # Prefer infra nodes, but fall back to any node if none are available
+        # Require infra nodes; pods remain Pending if matching nodes are unavailable
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
                   - key: node-role
                     operator: In
                     values: ["infra"]
@@ -144,6 +144,7 @@ spec:
       labels:
         k8s-app: calico-typha
     spec:
+      hostNetwork: true
       serviceAccountName: calico-typha
       # Spread evenly across zones; allow 1 pod skew maximum
       topologySpreadConstraints:
