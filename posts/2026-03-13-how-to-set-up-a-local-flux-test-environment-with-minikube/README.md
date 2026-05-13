@@ -14,7 +14,7 @@ Minikube is a popular tool for running a single-node Kubernetes cluster locally.
 
 ## Prerequisites
 
-- A hypervisor or container runtime (Docker, VirtualBox, or HyperKit)
+- A hypervisor or container runtime (Docker, VirtualBox, or HyperKit). If you need the ingress addon with the Docker driver, use Linux; on macOS or Windows, use a VM driver for ingress testing.
 - kubectl installed
 - Flux CLI installed (v2.0 or later)
 - A GitHub personal access token
@@ -46,7 +46,7 @@ minikube start \
   --cpus=4 \
   --memory=8192 \
   --disk-size=40g \
-  --kubernetes-version=v1.30.0 \
+  --kubernetes-version=stable \
   --profile=flux-test
 
 # Verify the cluster is running
@@ -201,11 +201,11 @@ minikube ip --profile=flux-test
 # Add to /etc/hosts
 echo "$(minikube ip --profile=flux-test) web-app.local" | sudo tee -a /etc/hosts
 
+# Test the Ingress endpoint, or open http://web-app.local in a browser
+curl http://web-app.local
+
 # Or use minikube tunnel for LoadBalancer services
 minikube tunnel --profile=flux-test
-
-# Open the application in a browser
-minikube service web-app -n demo --profile=flux-test
 ```
 
 ## Step 8: Test Flux Features
