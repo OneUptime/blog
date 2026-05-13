@@ -54,7 +54,7 @@ parameters:
   iops: "3000"
   throughput: "125"
   encrypted: "true"
-  kmsKeyId: ""   # use default EBS CMK
+  # Omit kmsKeyId to use the default AWS managed key for EBS in the Region
 ---
 # AWS EKS: io2 (high IOPS for databases)
 apiVersion: storage.k8s.io/v1
@@ -103,6 +103,8 @@ parameters:
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 ---
@@ -121,13 +123,15 @@ parameters:
   pool: myfs-replicated
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 ```
 
 ## Step 3: Use Kustomize for Environment-Specific Default Classes
 
-Production uses expensive SSD as default; staging uses cheaper standard:
+Production uses gp3 as the default; staging keeps gp3 at its baseline performance:
 
 ```yaml
 # infrastructure/storage/storageclasses/production/kustomization.yaml
@@ -156,7 +160,7 @@ patches:
     patch: |
       - op: replace
         path: /parameters/iops
-        value: "1000"   # lower IOPS in staging to reduce costs
+        value: "3000"   # gp3 baseline IOPS included with the volume price
 ```
 
 ## Step 4: Handle the Default StorageClass Change Pattern
@@ -182,7 +186,7 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 ```
 
-Both changes go in a single commit. Flux applies them atomically.
+Put both changes in a single commit so Flux reconciles the old and new default settings together.
 
 ## Step 5: Flux Kustomization
 
@@ -241,7 +245,7 @@ kubectl get pv $(kubectl get pvc test-pvc -o jsonpath='{.spec.volumeName}')
 
 - Use `volumeBindingMode: WaitForFirstConsumer` for block storage to ensure volumes are provisioned in the same zone as the pod.
 - Use `reclaimPolicy: Retain` for production database StorageClasses to prevent accidental data loss on PVC deletion.
-- Never have two StorageClasses with `is-default-class: "true"` simultaneously - this causes unpredictable PVC provisioning behavior.
+- Avoid having two StorageClasses with `is-default-class: "true"` simultaneously. Kubernetes allows it for migration, but PVCs without an explicit `storageClassName` use the most recently created default StorageClass.
 - Include the CSI driver version in StorageClass comments so you know which driver version the parameters were tested against.
 - Document allowed access modes (`ReadWriteOnce`, `ReadWriteMany`) in StorageClass metadata labels for discoverability.
 
