@@ -12,7 +12,7 @@ Description: Learn how to use JSON 6902 patches in Flux HelmRelease post-rendere
 
 JSON Patch, defined in RFC 6902, provides a way to describe modifications to a JSON document using a sequence of operations. In the context of Flux HelmRelease post-renderers, JSON 6902 patches allow you to make precise, targeted changes to the Kubernetes resources produced by a Helm chart without modifying the chart itself.
 
-Unlike strategic merge patches, which require you to specify the full path structure of the resource, JSON 6902 patches use explicit operations like add, remove, replace, move, copy, and test. This makes them ideal for modifying arrays, removing specific fields, or making changes that strategic merge patches cannot express.
+Unlike strategic merge patches, which use a partial Kubernetes object structure and merge semantics, JSON 6902 patches use explicit operations like add, remove, replace, move, copy, and test. This makes them ideal for modifying arrays, removing specific fields, or making changes that strategic merge patches cannot express.
 
 This guide demonstrates how to configure JSON 6902 patches in Flux HelmRelease post-renderers.
 
@@ -20,7 +20,7 @@ This guide demonstrates how to configure JSON 6902 patches in Flux HelmRelease p
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed (v2.0 or later)
+- A Kubernetes cluster with Flux CD installed (v2.3 or later for the `helm.toolkit.fluxcd.io/v2` API shown below)
 - A HelmRelease deployed through Flux
 - kubectl access to the cluster
 - Familiarity with JSON Patch operations (RFC 6902)
@@ -65,7 +65,7 @@ JSON 6902 supports six operations. Here are examples of each within a HelmReleas
 
 ### Add Operation
 
-The add operation inserts a new value at the specified path:
+The add operation inserts a new value at the specified path. The parent object or array must already exist:
 
 ```yaml
 postRenderers:
@@ -83,7 +83,7 @@ postRenderers:
               value: "8080"
 ```
 
-Note that forward slashes in field names must be escaped as `~1` in JSON Patch paths. So `prometheus.io/scrape` becomes `prometheus.io~1scrape`.
+This example assumes that `/spec/template/metadata/annotations` already exists. If it does not, add the annotations map first. Note that forward slashes in field names must be escaped as `~1` in JSON Patch paths. So `prometheus.io/scrape` becomes `prometheus.io~1scrape`.
 
 ### Replace Operation
 
@@ -174,6 +174,8 @@ postRenderers:
 
 The `-` at the end of the path (`/env/-`) appends the new element to the end of the array.
 
+This example assumes that the `env` array already exists. If it does not, add `/spec/template/spec/containers/0/env` with the complete list of environment variables first.
+
 ## Adding Volume Mounts and Volumes
 
 A common use case is adding volumes and volume mounts to containers produced by a Helm chart:
@@ -199,6 +201,8 @@ postRenderers:
                 mountPath: /etc/custom-config
                 readOnly: true
 ```
+
+This example assumes that the `volumes` and `volumeMounts` arrays already exist. If they do not, add those array fields first instead of appending with `/-`.
 
 ## Modifying Resource Requests and Limits
 
