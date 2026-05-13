@@ -10,16 +10,19 @@ Description: A guide to migrating existing workloads from another CNI plugin to 
 
 ## Introduction
 
-Migrating from an existing CNI plugin - such as Flannel or Weave - to Calico on a self-managed DigitalOcean cluster requires careful planning. The CNI plugin manages pod IP assignment and network routing, so switching it means all existing pod IPs will change and pods must be restarted. The key is to migrate in a controlled, node-by-node sequence to minimize service disruption.
+Migrating from Flannel or Canal to Calico on a self-managed DigitalOcean cluster requires careful planning. The CNI plugin manages pod IP assignment and network routing, so switching it means pod IPs can change and pods may be restarted during the migration. The key is to use Calico's supported live migration workflow so nodes move over in a controlled sequence.
 
-DigitalOcean Droplets allow you to drain, reconfigure, and re-add nodes without replacing the underlying VM, which simplifies the migration process. You can move one node at a time while the rest of the cluster continues to serve traffic on the existing CNI.
+DigitalOcean Droplets allow you to operate directly on the underlying nodes, which simplifies self-managed cluster maintenance. For Flannel or Canal clusters that meet the migration requirements, Calico's migration controller can move one node at a time while the rest of the cluster continues to serve traffic.
 
-This guide covers the full migration workflow from a non-Calico CNI to Calico on a self-managed DigitalOcean Kubernetes cluster.
+This guide covers the supported migration workflow from Flannel or Canal to Calico on a self-managed DigitalOcean Kubernetes cluster. If your cluster uses another CNI, such as Weave, the supported approach is to create a new Calico-backed cluster and migrate workloads to it.
 
 ## Prerequisites
 
-- A running self-managed Kubernetes cluster on DigitalOcean Droplets with a non-Calico CNI
+- A running self-managed Kubernetes cluster on DigitalOcean Droplets with Flannel VXLAN or Canal
+- Flannel v0.9.1 or later, or Canal v3.7.0 or later
+- Flannel installed as a Kubernetes DaemonSet using the Kubernetes API datastore, with DirectRouting disabled
 - `kubectl` with cluster admin access
+- `calicoctl` configured for the cluster
 - A backup of current network configuration and running workload manifests
 - A maintenance window or canary deployment strategy
 
@@ -35,62 +38,46 @@ kubectl get networkpolicies -A -o yaml > network-policies-backup.yaml
 Document your current pod CIDR:
 
 ```bash
-kubectl cluster-info dump | grep -m1 cluster-cidr
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
 ```
 
-## Step 2: Remove the Existing CNI
+## Step 2: Confirm the Existing CNI
 
-Remove the current CNI DaemonSet. This will disrupt networking on all nodes once the pods terminate.
+Do not manually delete the Flannel DaemonSet before starting the migration. Confirm that Flannel is running as a DaemonSet and note its namespace and name.
 
 ```bash
-# Example for Flannel
-
-kubectl delete -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
-
-# Remove CNI config files on each node
-# SSH into each node and run:
-rm -f /etc/cni/net.d/10-flannel.conflist
+kubectl get daemonsets -A | grep -E 'flannel|canal'
+kubectl get configmap -A | grep -E 'flannel|canal'
 ```
 
 ## Step 3: Install Calico
 
-Apply the Calico operator and Installation CR.
+Apply the Calico Flannel migration manifest, then start the migration controller.
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
-
-cat <<EOF | kubectl apply -f -
-apiVersion: operator.tigera.io/v1
-kind: Installation
-metadata:
-  name: default
-spec:
-  calicoNetwork:
-    ipPools:
-    - blockSize: 26
-      cidr: 192.168.0.0/16
-      encapsulation: VXLANCrossSubnet
-      natOutgoing: Enabled
-      nodeSelector: all()
-EOF
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/flannel-migration/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/flannel-migration/migration-job.yaml
 ```
 
-## Step 4: Restart Pods Node by Node
+## Step 4: Monitor the Node-by-Node Migration
 
-Cordon and drain one node at a time, letting Calico assign new IPs when pods restart.
+The migration controller updates nodes one at a time. Monitor the migration job and controller logs until the job reports one completion.
 
 ```bash
-kubectl cordon <node-name>
-kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
-# Wait for Calico to initialize on the node
-kubectl uncordon <node-name>
+kubectl get jobs -n kube-system flannel-migration
+kubectl get pods -n kube-system -l k8s-app=flannel-migration-controller
+kubectl logs -n kube-system -l k8s-app=flannel-migration-controller
 ```
 
-Repeat for each node in sequence.
+After the job completes, remove the migration job.
+
+```bash
+kubectl delete -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/flannel-migration/migration-job.yaml
+```
 
 ## Step 5: Verify Connectivity
 
-After all nodes have been cycled, verify that pods have Calico-assigned IPs and can communicate.
+After the migration completes, verify that pods have Calico-managed IPs and can communicate.
 
 ```bash
 kubectl get pods -A -o wide
@@ -98,15 +85,16 @@ calicoctl ipam show
 kubectl exec -it <pod-a> -- ping -c3 <pod-b-ip>
 ```
 
-## Step 6: Apply Calico Network Policies
+## Step 6: Apply Network Policies
 
-Re-apply your network policies in Calico format, adding any Calico-specific enhancements.
+Re-apply your Kubernetes NetworkPolicy manifests. If you also use Calico-specific policies, apply those separately.
 
 ```bash
 kubectl apply -f network-policies-backup.yaml
-calicoctl get networkpolicy -A
+kubectl get networkpolicy --all-namespaces
+calicoctl get networkpolicy --all-namespaces -o wide
 ```
 
 ## Conclusion
 
-Migrating existing workloads to Calico on self-managed DigitalOcean Kubernetes requires removing the old CNI, installing Calico, and cycling pods node by node to pick up new Calico-assigned IPs. Taking a methodical, node-at-a-time approach and verifying connectivity at each stage makes this migration manageable and reversible.
+Migrating existing workloads from Flannel or Canal to Calico on self-managed DigitalOcean Kubernetes requires using Calico's migration manifest and controller so nodes move over one at a time. Taking a methodical approach and verifying connectivity at each stage makes this migration manageable and reversible.
