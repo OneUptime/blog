@@ -60,7 +60,7 @@ spec:
 
   # Interface settings
   interfacePrefix: "cali"           # Prefix for Calico-created interfaces
-  deviceRouteSourceAddress: ""      # Source IP for routes (usually auto)
+  # deviceRouteSourceAddress: "10.0.0.10"  # Optional source IP hint for routes
 
   # Performance settings
   iptablesRefreshInterval: "90s"    # How often to refresh iptables rules
@@ -84,20 +84,38 @@ spec:
 
 ## Step 2: Configure Node IP Detection
 
-Felix must correctly detect the node's IP address:
+Calico must correctly detect the node's IP address for inter-node routing:
 
 ```bash
 # View current node IPs registered in Calico
 calicoctl get nodes -o wide
 ```
 
-Configure auto-detection method via DaemonSet environment variable:
+For operator-based installations, configure auto-detection in the Installation resource:
+
+```yaml
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    nodeAddressAutodetectionV4:
+      interface: eth.*             # Use matching interface regex
+      # Or:
+      # kubernetes: NodeInternalIP
+      # canReach: 8.8.8.8
+      # cidrs:
+      #   - 10.0.0.0/8
+```
+
+For manifest-based installations, configure the auto-detection method via DaemonSet environment variable:
 
 ```yaml
 # In calico-node DaemonSet
 env:
   - name: IP_AUTODETECTION_METHOD
-    value: "interface=eth0"         # Use specific interface
+    value: "interface=eth.*"        # Use matching interface regex
     # Or:
     # value: "first-found"          # Use first non-loopback interface
     # value: "can-reach=8.8.8.8"   # Use interface that can reach target
@@ -110,9 +128,10 @@ env:
 # Check current dataplane
 kubectl get felixconfiguration default -o jsonpath='{.spec.bpfEnabled}'
 
-# Enable eBPF (requires kernel 5.3+)
-kubectl patch installation default \
-  --type=merge \
+# Enable eBPF with the operator (requires a supported distribution and kernel;
+# for generic distributions, Calico currently requires Linux kernel 5.10+)
+kubectl patch installation.operator.tigera.io default \
+  --type merge \
   -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
 
 # Verify eBPF is enabled
