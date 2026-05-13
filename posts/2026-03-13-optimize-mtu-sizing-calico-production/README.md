@@ -32,9 +32,9 @@ ip link set eth0 mtu 9000
 # Make it persistent (example for NetworkManager)
 nmcli connection modify eth0 802-3-ethernet.mtu 9000
 
-# Update Calico for jumbo frame support
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"mtu":9000,"vxlanMTU":8950}}'
+# Update Calico for jumbo frame support (operator-based install)
+kubectl patch installation default --type=merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":9000}}}'
 ```
 
 ## Choose Optimal Encapsulation Mode
@@ -43,7 +43,7 @@ calicoctl patch felixconfiguration default --type merge \
 |----------|-----------------|-------------------------------|
 | BGP-capable network | None (native) | 1500 |
 | L2-only network | VXLAN | 1450 |
-| Mixed environment | CrossSubnet IP-in-IP | 1480 within subnet |
+| Mixed environment | CrossSubnet IP-in-IP | 1480 |
 | Cloud provider | VXLAN CrossSubnet | Provider-dependent |
 
 Set the optimal encapsulation:
