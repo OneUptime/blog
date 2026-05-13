@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, WireGuard, Encryption, Node Security, eBPF
 
-Description: Configure Cilium's WireGuard node-to-node encryption to encrypt all traffic between Kubernetes nodes including system and kubelet communications.
+Description: Configure Cilium's WireGuard node-to-node encryption to encrypt node-to-node, node-to-pod, and pod-to-node traffic between eligible Kubernetes nodes.
 
 ---
 
 ## Introduction
 
-Cilium's transparent encryption by default only encrypts traffic between pods crossing node boundaries. Node-to-Node Encryption extends this to include node-level traffic-kubelet health checks, system daemons, and other host-network communications between nodes.
+When WireGuard transparent encryption is enabled, Cilium's default encryption scope only encrypts traffic between Cilium-managed pods crossing node boundaries. Node-to-Node Encryption extends this to include node-to-node, pod-to-node, and node-to-pod traffic, such as kubelet health checks, system daemons, and other host-network communications between eligible nodes.
 
-This is particularly important in environments where the underlying network infrastructure cannot be trusted, such as shared hosting environments, multi-tenant data centers, or when regulatory requirements mandate encryption of all inter-node communications.
+This is particularly important in environments where the underlying network infrastructure cannot be trusted, such as shared hosting environments, multi-tenant data centers, or when regulatory requirements mandate encryption of inter-node communications. Cilium's node-to-node WireGuard mode is currently beta, and control-plane nodes opt out by default to avoid locking worker nodes out of the Kubernetes API during WireGuard key updates.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ This is particularly important in environments where the underlying network infr
 ## Standard Pod Encryption vs Node-to-Node
 
 ```bash
-# Standard pod encryption (default)
+# Standard pod encryption (default WireGuard scope)
 
 --set encryption.enabled=true \
 --set encryption.type=wireguard
@@ -70,34 +70,34 @@ flowchart TD
 
 ## Verify Node-to-Node Encryption
 
-Check that both pod CIDRs AND node IPs are encrypted in the WireGuard configuration:
+Check that pod IPs or pod CIDRs and remote node IP addresses are included in the WireGuard peer configuration:
 
 ```bash
 # Run on a node
 wg show cilium_wg0 | grep "allowed ips"
 ```
 
-With node-to-node encryption, the allowed IPs should include both pod CIDRs and node IP addresses.
+With node-to-node encryption, the allowed IPs should include both pod IPs or pod CIDRs and remote node IP addresses for nodes that have not opted out.
 
 ## Check Encryption Status
 
 ```bash
 kubectl exec -n kube-system ds/cilium -- \
-  cilium-dbg encrypt status
+  cilium-dbg status | grep Encryption
 ```
 
-Expected: Lists both pod-to-pod and node-level encryption as active.
+Expected: Shows WireGuard as the encryption type and reports node encryption as enabled.
 
 ## Verify Kubelet Traffic is Encrypted
 
-Capture traffic from the API server to kubelet port:
+Capture traffic between worker nodes for kubelet port:
 
 ```bash
-# On a node - should show WireGuard UDP packets, not cleartext kubelet traffic
+# On a worker node - should not show cleartext kubelet traffic to another encrypted worker node
 sudo tcpdump -i <node-interface> -n tcp port 10250
 ```
 
-If node-to-node encryption is working, kubelet API traffic (port 10250) won't appear as plaintext.
+If node-to-node encryption is working between those nodes, kubelet traffic (port 10250) won't appear as plaintext on the underlying node interface. Traffic to or from control-plane nodes is not encrypted by Cilium node-to-node encryption unless you change the default opt-out selector.
 
 ## Performance Considerations
 
@@ -110,4 +110,4 @@ kubectl top nodes
 
 ## Conclusion
 
-WireGuard node-to-node encryption in Cilium extends transport security from pod-level to the entire node communication surface. This provides defense-in-depth for environments where the network fabric cannot be trusted, encrypting both application and system communications between Kubernetes nodes.
+WireGuard node-to-node encryption in Cilium extends transport security from pod-level traffic to node-to-node, pod-to-node, and node-to-pod traffic for participating nodes. This provides defense-in-depth for environments where the network fabric cannot be trusted, encrypting both application and system communications between Kubernetes nodes while preserving documented exceptions such as the default control-plane opt-out.
