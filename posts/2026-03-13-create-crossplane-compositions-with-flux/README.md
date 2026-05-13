@@ -10,7 +10,7 @@ Description: Create and manage Crossplane Compositions using Flux CD to expose o
 
 ## Introduction
 
-Crossplane Compositions are the mechanism that transforms raw cloud provider resources into higher-level platform abstractions. Instead of requiring developers to understand the details of an RDS instance, a Composition lets you define a single `PostgreSQLDatabase` resource that provisions the database, its security group, its parameter group, and any other dependencies automatically. This is the foundation of an internal developer platform built on Kubernetes.
+Crossplane Compositions are the mechanism that transforms raw cloud provider resources into higher-level platform abstractions. Instead of requiring developers to understand the details of an RDS instance, a Composition lets you define a single `PostgreSQLInstance` resource that provisions the database, its subnet group, and any other dependencies automatically. This is the foundation of an internal developer platform built on Kubernetes.
 
 Managing Compositions through Flux means your platform's infrastructure abstractions are version-controlled and continuously reconciled. When a platform engineer updates a Composition, the change flows through a pull request, is reviewed, and is applied automatically. Developers consuming the platform see updated behavior without manual intervention.
 
@@ -18,7 +18,7 @@ This guide walks through defining a Composition for a PostgreSQL database on AWS
 
 ## Prerequisites
 
-- Crossplane with the AWS provider installed
+- Crossplane with the AWS provider and `function-patch-and-transform` installed
 - Flux CD bootstrapped on the cluster
 - Basic understanding of Crossplane XRDs and Compositions
 - `kubectl` and `flux` CLIs
@@ -29,14 +29,12 @@ Before writing YAML, define what the Composition will expose and what it will cr
 
 ```mermaid
 graph TD
-    A[Developer creates PostgreSQLDatabase] --> B[Crossplane sees XR]
+    A[Developer creates PostgreSQLInstance] --> B[Crossplane sees XR]
     B --> C[Composition matches XR]
     C --> D[Creates RDS DBSubnetGroup]
     C --> E[Creates RDS DBInstance]
-    C --> F[Creates EC2 SecurityGroup]
     D --> G[AWS Resources provisioned]
     E --> G
-    F --> G
 ```
 
 ## Step 2: Create the CompositeResourceDefinition
@@ -46,17 +44,14 @@ The XRD defines the API schema that developers use to request infrastructure.
 ```yaml
 # infrastructure/crossplane/compositions/postgresql/xrd.yaml
 
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xpostgresqlinstances.platform.example.com
+  name: postgresqlinstances.platform.example.com
 spec:
   group: platform.example.com
+  scope: Namespaced
   names:
-    kind: XPostgreSQLInstance
-    plural: xpostgresqlinstances
-  # Expose a namespaced claim resource for developers
-  claimNames:
     kind: PostgreSQLInstance
     plural: postgresqlinstances
   versions:
@@ -69,6 +64,8 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - parameters
               properties:
                 parameters:
                   type: object
@@ -97,56 +94,73 @@ spec:
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: xpostgresqlinstances.platform.example.com
+  name: postgresqlinstances.platform.example.com
   labels:
     provider: aws
     db: postgresql
 spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
-    kind: XPostgreSQLInstance
-  resources:
-    # Provision the RDS DB Instance
-    - name: rdsinstance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-east-1
-            engine: postgres
-            skipFinalSnapshot: true
-            publiclyAccessible: false
-            autoMinorVersionUpgrade: true
-            providerConfigRef:
-              name: default
-      patches:
-        # Patch storage from the composite resource spec
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.storageGB
-          toFieldPath: spec.forProvider.allocatedStorage
-        # Patch the engine version
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.dbVersion
-          toFieldPath: spec.forProvider.engineVersion
-        # Patch the instance class
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.instanceClass
-          toFieldPath: spec.forProvider.instanceClass
-    # Create a subnet group for the RDS instance
-    - name: subnetgroup
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: SubnetGroup
-        spec:
-          forProvider:
-            region: us-east-1
-            description: "Managed by Crossplane"
-            subnetIds:
-              - subnet-abc123
-              - subnet-def456
-            providerConfigRef:
-              name: default
+    kind: PostgreSQLInstance
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Create a subnet group for the RDS instance
+          - name: subnetgroup
+            base:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: SubnetGroup
+              spec:
+                forProvider:
+                  region: us-east-1
+                  description: "Managed by Crossplane"
+                  subnetIds:
+                    - subnet-abc123
+                    - subnet-def456
+                providerConfigRef:
+                  kind: ProviderConfig
+                  name: default
+          # Provision the RDS DB Instance
+          - name: rdsinstance
+            base:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-1
+                  engine: postgres
+                  username: postgres
+                  autoGeneratePassword: true
+                  passwordSecretRef:
+                    name: my-app-db-password
+                    key: password
+                  skipFinalSnapshot: true
+                  publiclyAccessible: false
+                  autoMinorVersionUpgrade: true
+                  dbSubnetGroupNameSelector:
+                    matchControllerRef: true
+                providerConfigRef:
+                  kind: ProviderConfig
+                  name: default
+            patches:
+              # Patch storage from the composite resource spec
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.storageGB
+                toFieldPath: spec.forProvider.allocatedStorage
+              # Patch the engine version
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.dbVersion
+                toFieldPath: spec.forProvider.engineVersion
+              # Patch the instance class
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.instanceClass
+                toFieldPath: spec.forProvider.instanceClass
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -170,7 +184,7 @@ spec:
     - name: crossplane-providers-aws
 ```
 
-## Step 5: Test with a Claim
+## Step 5: Test with a Composite Resource
 
 ```yaml
 # apps/my-app/database.yaml
@@ -189,27 +203,27 @@ spec:
 ## Step 6: Verify the Composition
 
 ```bash
-# Apply the claim
+# Apply the composite resource
 kubectl apply -f apps/my-app/database.yaml
 
 # Watch the composite resource status
-kubectl get xpostgresqlinstances --watch
+kubectl get postgresqlinstances -n my-app --watch
 
 # Check the composed resources
-kubectl get instances.rds.aws.upbound.io
+kubectl get instances.rds.aws.m.upbound.io -n my-app
 
 # Get events for debugging
-kubectl describe xpostgresqlinstance my-app-db-xxxxx
+kubectl describe postgresqlinstance my-app-db -n my-app
 ```
 
 ## Best Practices
 
 - Version your Compositions (e.g., `v1alpha1`, `v1beta1`, `v1`) and maintain backward compatibility when updating schemas.
-- Use `readinessChecks` in Compositions to define when a composed resource is considered ready, providing accurate status propagation to the claim.
+- Use `readinessChecks` in Compositions to define when a composed resource is considered ready, providing accurate status propagation to the composite resource.
 - Keep Compositions focused: one Composition should provision a logically complete unit of infrastructure, not an entire application stack.
 - Use `patchSets` to avoid repeating the same patches across multiple resources in the same Composition.
 - Store Compositions in a dedicated path (`infrastructure/crossplane/compositions/`) and use a separate Flux Kustomization for them so updates can be applied independently.
 
 ## Conclusion
 
-You have defined a reusable Crossplane Composition managed by Flux CD. Developers can now self-serve PostgreSQL databases by applying a simple claim manifest. The platform team controls the implementation through Compositions in Git. Flux continuously reconciles the Composition definitions, so updates propagate automatically without manual deployment steps.
+You have defined a reusable Crossplane Composition managed by Flux CD. Developers can now self-serve PostgreSQL databases by applying a simple composite resource manifest. The platform team controls the implementation through Compositions in Git. Flux continuously reconciles the Composition definitions, so updates propagate automatically without manual deployment steps.
