@@ -14,14 +14,14 @@ The helm-controller manages HelmRelease resources by rendering Helm charts, inst
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.25 or later)
-- Flux CLI installed (v2.0 or later)
+- A running Kubernetes cluster supported by your Flux release (v1.33 or later for Flux v2.8)
+- Flux CLI installed (v2.3 or later)
 - kubectl configured with cluster access
 - Flux bootstrapped on the cluster
 
 ## Why Shard the Helm Controller
 
-Helm chart rendering and installation is more compute-intensive than kustomize builds. Each HelmRelease reconciliation involves template rendering, diffing against the live state, and potentially running Helm upgrade operations. With many HelmReleases, the single controller's work queue grows, increasing reconciliation intervals and delaying deployments.
+Helm chart rendering and installation is more compute-intensive than kustomize builds. Each HelmRelease reconciliation involves template rendering, comparing the desired chart version and values with the stored release state, and potentially running Helm upgrade operations. With many HelmReleases, the single controller's work queue grows, increasing reconciliation intervals and delaying deployments.
 
 ## Step 1: Deploy a Helm Controller Shard
 
@@ -48,7 +48,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/helm-controller:v1.1.0
+          image: ghcr.io/fluxcd/helm-controller:v1.5.0
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-1
@@ -112,7 +112,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/helm-controller:v1.1.0
+          image: ghcr.io/fluxcd/helm-controller:v1.5.0
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-2
