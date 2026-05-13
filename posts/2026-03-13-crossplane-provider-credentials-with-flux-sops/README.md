@@ -40,7 +40,8 @@ brew install age
 brew install sops
 
 # Linux
-curl -Lo /usr/local/bin/sops https://github.com/getsops/sops/releases/latest/download/sops-v3-linux.amd64
+SOPS_VERSION=v3.12.2
+curl -Lo /usr/local/bin/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
 chmod +x /usr/local/bin/sops
 ```
 
@@ -69,8 +70,8 @@ kubectl create secret generic sops-age \
   --namespace=flux-system \
   --from-file=age.agekey=./age.agekey
 
-# Delete the local key file (the cluster now holds the only copy)
 # Store a backup in your organization's secrets manager (e.g., AWS Secrets Manager)
+# Then delete the local key file
 rm ./age.agekey
 ```
 
@@ -84,9 +85,11 @@ creation_rules:
   # Encrypt all files matching *-credentials.yaml under infrastructure/crossplane
   - path_regex: infrastructure/crossplane/.*-credentials\.yaml$
     age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    encrypted_regex: '^(data|stringData)$'
   # Encrypt all secrets under the secrets/ directory
   - path_regex: secrets/.*\.yaml$
     age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    encrypted_regex: '^(data|stringData)$'
 ```
 
 ## Step 5: Create and Encrypt Provider Credentials
@@ -110,6 +113,7 @@ EOF
 # Encrypt the file with SOPS using the age public key
 sops --encrypt \
   --age age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --encrypted-regex '^(data|stringData)$' \
   /tmp/aws-provider-secret.yaml \
   > infrastructure/crossplane/providers/aws/aws-provider-credentials.yaml
 
