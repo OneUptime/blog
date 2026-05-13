@@ -1,18 +1,18 @@
-# How to Configure Image Automation Include Paths for Specific Directories in Flux
+# How to Configure Image Automation Paths for Specific Directories in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Image-automation, Include-Paths, GitOps, Kubernetes
+Tags: Flux, Image-automation, Update-Path, GitOps, Kubernetes
 
-Description: Learn how to configure Flux ImageUpdateAutomation to only scan and update image tags in specific directories using include paths.
+Description: Learn how to configure Flux ImageUpdateAutomation to only scan and update image tags in specific directories using update paths.
 
 ---
 
 ## Introduction
 
-In large repositories with multiple environments, clusters, or applications, you may want Flux image automation to only update manifests in specific directories. The `update.path` field provides a basic directory scope, but when you need more granular control, you can use include paths to restrict which directories the automation scans for image policy markers.
+In large repositories with multiple environments, clusters, or applications, you may want Flux image automation to only update manifests in specific directories. The `update.path` field scopes which directory tree the automation scans for image policy markers.
 
-This guide shows you how to configure include paths in Flux ImageUpdateAutomation to target specific directories within your repository.
+This guide shows you how to configure `update.path` in Flux ImageUpdateAutomation to target specific directories within your repository.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ spec:
 
 This scans everything under `./clusters/production` including both `apps/` and `infrastructure/`.
 
-## Using Include Paths for Specific Subdirectories
+## Using Update Paths for Specific Subdirectories
 
 To restrict the automation to only the `apps/` directory within production, keeping infrastructure manifests unaffected:
 
@@ -270,14 +270,14 @@ spec:
     strategy: Setters
 ```
 
-Staging gets direct commits while production changes go through a pull request branch.
+Staging gets direct commits while production changes are pushed to a separate branch that you can use for a pull request.
 
 ## Verifying Path Configuration
 
 Check which files the automation would scan:
 
 ```bash
-find ./clusters/production/apps -name "*.yaml" -o -name "*.yml" | head -20
+find ./clusters/production/apps \( -name "*.yaml" -o -name "*.yml" \) | head -20
 ```
 
 Verify the automation is running against the correct path:
@@ -289,4 +289,4 @@ kubectl -n flux-system describe imageupdateautomation production-app-updates
 
 ## Conclusion
 
-Include paths in Flux ImageUpdateAutomation give you precise control over which directories are scanned for image policy markers. By scoping each automation resource to a specific directory, you can apply different update intervals, commit authors, and push strategies to different parts of your repository. This is especially valuable in multi-environment and multi-team setups where different areas of the repository have different update cadences and approval requirements.
+The `update.path` field in Flux ImageUpdateAutomation gives you control over which directory tree is scanned for image policy markers. By scoping each automation resource to a specific directory, you can apply different update intervals, commit authors, and push strategies to different parts of your repository. This is especially valuable in multi-environment and multi-team setups where different areas of the repository have different update cadences and approval requirements.
