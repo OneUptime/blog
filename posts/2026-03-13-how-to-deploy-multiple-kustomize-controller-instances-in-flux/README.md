@@ -14,8 +14,8 @@ The kustomize-controller reconciles Kustomization resources by building kustomiz
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.25 or later)
-- Flux CLI installed (v2.0 or later)
+- A running Kubernetes cluster supported by your Flux version
+- Flux CLI installed and compatible with your installed Flux version
 - kubectl configured with cluster access
 - Flux bootstrapped on the cluster
 
@@ -57,7 +57,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.4
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-1
@@ -118,7 +118,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.4
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-2
