@@ -92,9 +92,20 @@ metadata:
   name: flask-config
   namespace: my-flask-app
 data:
-  FLASK_ENV: "production"
+  APP_ENV: "production"
   LOG_LEVEL: "INFO"
   CORS_ORIGINS: "https://app.example.com"
+---
+# deploy/secret.yaml
+# For GitOps, encrypt this manifest with SOPS or another secret-management tool before committing it.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: flask-secrets
+  namespace: my-flask-app
+type: Opaque
+stringData:
+  SECRET_KEY: "replace-with-a-generated-secret"
 ---
 # deploy/deployment.yaml
 apiVersion: apps/v1
