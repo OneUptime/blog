@@ -26,7 +26,8 @@ Datree goes beyond schema validation by checking Kubernetes manifests against co
 curl https://get.datree.io | /bin/bash
 
 # macOS (Homebrew)
-brew install datree
+brew tap datreeio/datree
+brew install datreeio/datree/datree
 
 # Verify installation
 datree version
@@ -81,10 +82,10 @@ kustomize build overlays/production | datree test --schema-version 1.30.0 -
 
 ## Step 5: Configure Custom Policies
 
-Create a Datree policy configuration file for Flux-specific rules.
+Create a Datree policy-as-code configuration file for Flux-specific rules.
 
 ```yaml
-# .datree/policy.yaml
+# policies.yaml
 apiVersion: v1
 policies:
   - name: flux-production
@@ -121,6 +122,9 @@ customRules:
               - Kustomization
           apiVersion:
             pattern: "kustomize.toolkit.fluxcd.io"
+        required:
+          - kind
+          - apiVersion
       then:
         properties:
           spec:
@@ -129,11 +133,20 @@ customRules:
                 const: true
             required:
               - prune
+        required:
+          - spec
+```
+
+Publish the policy file, or pass it explicitly when running Datree locally.
+
+```bash
+datree publish policies.yaml
+datree test --policy-config policies.yaml --policy "flux-production" manifests/*.yaml
 ```
 
 ## Step 6: Skip Flux CRDs
 
-When validating standard Kubernetes resources from Flux, skip CRD validation for Flux-specific resources.
+When validating manifests that include Flux-specific resources, skip schema failures for CRDs that do not have schemas available.
 
 ```bash
 # Skip Flux resource types
