@@ -10,17 +10,17 @@ Description: Migrate Calico pre-DNAT policies for host traffic control before de
 
 ## Introduction
 
-Pre-DNAT policies in Calico are applied before Destination NAT translation, meaning they operate on the original destination IP of incoming traffic rather than the translated pod IP. This is critical for protecting Kubernetes NodePort and LoadBalancer services because traffic arrives at the node IP before being forwarded to pods.
+Pre-DNAT policies in Calico are applied before Destination NAT translation, meaning they operate on the original destination IP of incoming traffic rather than the translated pod IP. This is critical for protecting Kubernetes NodePort and NodePort-backed LoadBalancer services because traffic arrives at the node IP before being forwarded to pods.
 
 Calico's `projectcalico.org/v3` GlobalNetworkPolicy supports `preDNAT: true` to enable pre-DNAT policy evaluation. This allows you to block or allow traffic based on the external-facing node IP and port before Kubernetes routes it to pods.
 
-This guide covers migrate pre-DNAT policies in Calico for controlling external access to NodePort and LoadBalancer services.
+This guide covers migrate pre-DNAT policies in Calico for controlling external access to NodePort and NodePort-backed LoadBalancer services.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
-- Host endpoints configured for the target nodes
+- Host endpoints configured for the target nodes and labeled to match the policy selector
 
 ## Core Configuration
 
@@ -36,6 +36,7 @@ spec:
   selector: node == 'production-node'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -43,6 +44,7 @@ spec:
       destination:
         ports: [30000, 30001]
     - action: Deny
+      protocol: TCP
       destination:
         ports: [30000, 30001]
   types:
@@ -80,5 +82,4 @@ to NodeIP:30000] -->|Pre-DNAT Policy Evaluated| B{preDNAT Policy}
 
 ## Conclusion
 
-Pre-DNAT policies in Calico are the correct tool for protecting NodePort and LoadBalancer services from unauthorized external access. By applying policies before DNAT translation, you evaluate traffic against the original destination IP and can enforce source IP-based access controls that survive the address translation process. Always test pre-DNAT policies carefully and ensure your management traffic is explicitly allowed before applying any deny rules.
-
+Pre-DNAT policies in Calico are the correct tool for protecting NodePort and NodePort-backed LoadBalancer services from unauthorized external access. By applying policies before DNAT translation, you evaluate traffic against the original destination IP and can enforce source IP-based access controls that survive the address translation process. Always test pre-DNAT policies carefully and ensure your management traffic is explicitly allowed before applying any deny rules.
