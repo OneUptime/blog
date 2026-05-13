@@ -25,21 +25,67 @@ This guide walks through setting up Skipper, installing Flagger with the Skipper
 
 ## Step 1: Install Skipper
 
-Install Skipper as the ingress controller using its Helm chart or manifests:
+Skipper is not available as an official Helm chart. Install Skipper as the ingress controller using manifests:
 
 ```bash
-helm repo add skipper https://registry.opensource.zalan.do/skipper
-helm repo update
-
 kubectl create namespace skipper
-helm install skipper skipper/skipper \
-  --namespace skipper \
-  --set skipper.enablePrometheusMetrics=true
 ```
 
-Alternatively, you can deploy Skipper as a DaemonSet for production environments:
+Deploy Skipper as a DaemonSet:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: skipper-ingress
+  namespace: skipper
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: skipper-ingress
+rules:
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - services
+      - endpoints
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: skipper-ingress
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: skipper-ingress
+subjects:
+  - kind: ServiceAccount
+    name: skipper-ingress
+    namespace: skipper
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -54,6 +100,7 @@ spec:
       labels:
         app: skipper-ingress
     spec:
+      serviceAccountName: skipper-ingress
       containers:
         - name: skipper-ingress
           image: registry.opensource.zalan.do/teapot/skipper:latest
@@ -65,12 +112,45 @@ spec:
             - -address=:9999
             - -proxy-preserve-host
             - -serve-host-metrics
+            - -serve-route-metrics
+            - -route-response-metrics
+            - -route-backend-metrics
+            - -route-backend-error-counters
             - -enable-connection-metrics
-            - -enable-prometheus-metrics
+            - -metrics-flavour=prometheus
+            - -histogram-metric-buckets=.01,1,10,100
           ports:
             - containerPort: 9999
               hostPort: 9999
               name: ingress-port
+            - containerPort: 9911
+              name: metrics-port
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skipper-ingress
+  namespace: skipper
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "9911"
+    prometheus.io/scrape: "true"
+spec:
+  selector:
+    app: skipper-ingress
+  ports:
+    - name: http
+      port: 9999
+      targetPort: 9999
+    - name: metrics
+      port: 9911
+      targetPort: 9911
+```
+
+Apply the resources:
+
+```bash
+kubectl apply -f skipper.yaml
 ```
 
 Verify Skipper is running:
@@ -84,6 +164,9 @@ kubectl get pods -n skipper
 Skipper exports metrics in Prometheus format. Install Prometheus:
 
 ```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
 helm install prometheus prometheus-community/prometheus \
   --namespace monitoring \
   --create-namespace \
@@ -99,11 +182,16 @@ Install Flagger with the Skipper provider:
 
 ```bash
 helm repo add flagger https://flagger.app
+helm repo update
+
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
 
 helm upgrade -i flagger flagger/flagger \
   --namespace skipper \
+  --set crd.create=false \
   --set meshProvider=skipper \
-  --set metricsServer=http://prometheus-server.monitoring:80
+  --set metricsServer=http://prometheus-server.monitoring:80 \
+  --set selectorLabels=app
 ```
 
 ## Step 4: Install the Load Tester
@@ -178,6 +266,7 @@ metadata:
   name: podinfo
   namespace: default
 spec:
+  provider: skipper
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -216,6 +305,7 @@ spec:
         url: http://flagger-loadtester.test/
         timeout: 5s
         metadata:
+          type: cmd
           cmd: >
             hey -z 1m -q 10 -c 2
             -host podinfo.example.com
@@ -259,7 +349,7 @@ kubectl apply -f canary.yaml
 
 ## How Skipper Traffic Routing Works with Flagger
 
-Flagger manages traffic splitting by adding Skipper-specific annotations to the Ingress resource. During canary analysis, Flagger creates a canary Ingress and updates the annotations to control traffic distribution.
+Flagger manages traffic splitting by adding Skipper-specific annotations to a generated canary Ingress resource. During canary analysis, Flagger creates a canary Ingress from the referenced apex Ingress and updates the annotations on the canary Ingress to control traffic distribution.
 
 Skipper uses the `zalando.org/backend-weights` annotation for traffic splitting:
 
@@ -269,7 +359,7 @@ metadata:
     zalando.org/backend-weights: '{"podinfo-primary": 90, "podinfo-canary": 10}'
 ```
 
-Flagger updates this annotation at each analysis step, increasing the canary weight according to the step weight configuration.
+Flagger updates this annotation at each analysis step on the generated `podinfo-canary` Ingress, increasing the canary weight according to the step weight configuration.
 
 ## Step 8: Trigger a Canary Deployment
 
@@ -285,13 +375,11 @@ Watch the canary progress:
 kubectl describe canary podinfo
 ```
 
-Check the Ingress annotations during analysis:
+You should see the `zalando.org/backend-weights` annotation updating on the generated `podinfo-canary` Ingress as the canary progresses:
 
 ```bash
-kubectl get ingress podinfo -o jsonpath='{.metadata.annotations}'
+kubectl get ingress podinfo-canary -o jsonpath='{.metadata.annotations}'
 ```
-
-You should see the `zalando.org/backend-weights` annotation updating as the canary progresses.
 
 ## Custom Metrics for Skipper
 
@@ -301,26 +389,23 @@ Skipper exports route-level metrics that you can query in Prometheus. Create Met
 apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
-  name: skipper-success-rate
+  name: skipper-latency
   namespace: default
 spec:
   provider:
     type: prometheus
     address: http://prometheus-server.monitoring:80
   query: |
-    sum(rate(
-      skipper_serve_host_duration_seconds_count{
-        host="{{ target }}.default",
-        code!~"5.."
-      }[{{ interval }}]
-    ))
-    /
-    sum(rate(
-      skipper_serve_host_duration_seconds_count{
-        host="{{ target }}.default"
-      }[{{ interval }}]
-    ))
-    * 100
+    histogram_quantile(0.99,
+      sum(
+        rate(
+          skipper_serve_route_duration_seconds_bucket{
+            route=~"{{ printf "kube(ew)?_%s__%s_canary__.*__%s_canary(_[0-9]+)?" namespace ingress service }}",
+            le="+Inf"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    )
 ```
 
 The exact metric names depend on your Skipper configuration and version. Check the available metrics in your Prometheus instance.
@@ -356,4 +441,4 @@ Flagger preserves these annotations when managing the Ingress during canary anal
 
 ## Conclusion
 
-Flagger integrates with Skipper ingress controller through annotation-based traffic management. The setup involves installing Skipper with Prometheus metrics enabled, deploying Flagger with the Skipper mesh provider, and creating Canary resources with an `ingressRef` pointing to the managed Ingress. Flagger controls traffic distribution by updating the `zalando.org/backend-weights` annotation on the Ingress resource, allowing progressive traffic shifting during canary analysis. This annotation-based approach works within standard Kubernetes Ingress resources, requiring no custom routing resources.
+Flagger integrates with Skipper ingress controller through annotation-based traffic management. The setup involves installing Skipper with Prometheus metrics enabled, deploying Flagger with the Skipper mesh provider, and creating Canary resources with an `ingressRef` pointing to the managed Ingress. Flagger controls traffic distribution by creating a canary Ingress and updating the `zalando.org/backend-weights` annotation on that generated Ingress, allowing progressive traffic shifting during canary analysis. This annotation-based approach works within standard Kubernetes Ingress resources, requiring no custom routing resources.
