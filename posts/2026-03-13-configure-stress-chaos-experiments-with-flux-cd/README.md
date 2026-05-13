@@ -25,7 +25,7 @@ This guide covers CPU stress, memory stress, and combined resource stress experi
 
 ## Step 1: Configure a CPU Stress Experiment
 
-CPU stress spawns worker goroutines that consume CPU cycles, simulating a CPU-bound process or noisy neighbor.
+CPU stress spawns worker threads that consume CPU cycles, simulating a CPU-bound process or noisy neighbor.
 
 ```yaml
 # clusters/my-cluster/chaos-experiments/cpu-stress.yaml
@@ -82,7 +82,7 @@ spec:
       workers: 2
       # Allocate 256MB of memory per worker
       size: "256MB"
-      # Time between allocation spikes
+      # Optional: limit how long the underlying stress process runs
       options:
         - "--timeout=30"
   duration: "3m"
@@ -184,9 +184,9 @@ kubectl describe stresschaos cpu-stress-api -n chaos-mesh
 ## Best Practices
 
 - Always validate that your pods have `resources.requests` and `resources.limits` set before running stress experiments.
-- Test CPU stress at thresholds just above your HPA `targetCPUUtilizationPercentage` to verify scale-out triggers correctly.
+- Test CPU stress at thresholds just above your HPA CPU utilization target to verify scale-out triggers correctly.
 - Use memory stress with a `size` slightly below the pod's memory limit first, then increase to confirm OOMKilled is handled gracefully.
-- Combine stress experiments with your observability stack to capture CPU throttling events (look for `cpu_throttled_seconds_total` in Prometheus).
+- Combine stress experiments with your observability stack to capture CPU throttling events (look for `container_cpu_cfs_throttled_seconds_total` in Prometheus).
 - Use `mode: one` before `mode: all` to observe the impact of a single stressed pod before stressing the entire deployment.
 
 ## Conclusion
