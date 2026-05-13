@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Timoni, OCI, Registry, Publishing
 
-Description: Learn how to publish custom Timoni modules to OCI registries for distribution and consumption across Flux-managed clusters.
+Description: Learn how to publish custom Timoni modules to OCI registries for distribution and use in Timoni workflows that support Flux-managed clusters.
 
 ---
 
 ## Introduction
 
-Once you have created a Timoni module, publishing it to an OCI registry makes it available for consumption across your organization. OCI registries provide versioned, immutable storage for modules, enabling teams to pull specific versions and ensuring reproducible deployments. Timoni leverages the same OCI distribution specification used by container images, meaning your modules can be stored alongside your application images in existing registries.
+Once you have created a Timoni module, publishing it to an OCI registry makes it available for consumption across your organization. OCI registries provide versioned storage for modules, and registries that enforce immutable version tags enable teams to pull specific versions for reproducible deployments. Timoni leverages the same OCI distribution specification used by container images, meaning your modules can be stored alongside your application images in existing registries.
 
 This guide covers publishing Timoni modules to various OCI registries, managing versions, setting up CI/CD publishing pipelines, and configuring access controls.
 
@@ -77,7 +77,7 @@ Push with additional metadata:
 timoni mod push ./my-flux-app \
   oci://ghcr.io/your-org/modules/my-flux-app \
   --version 1.0.0 \
-  --source "https://github.com/your-org/timoni-modules" \
+  --annotation "org.opencontainers.image.source=https://github.com/your-org/timoni-modules" \
   --annotation "org.opencontainers.image.description=Flux GitOps deployment module" \
   --annotation "org.opencontainers.image.authors=Platform Team"
 ```
@@ -103,12 +103,13 @@ timoni mod push ./my-flux-app \
   --version 1.0.1
 ```
 
-Also push a `latest` tag for convenience:
+Timoni tags stable releases as `latest` by default. You can make this explicit:
 
 ```bash
 timoni mod push ./my-flux-app \
   oci://ghcr.io/your-org/modules/my-flux-app \
-  --version latest
+  --version 1.0.0 \
+  --latest=true
 ```
 
 ## Step 4: List Published Versions
@@ -170,7 +171,7 @@ jobs:
           timoni mod push ./modules/my-flux-app \
             oci://ghcr.io/${{ github.repository_owner }}/modules/my-flux-app \
             --version ${VERSION} \
-            --source "${{ github.server_url }}/${{ github.repository }}"
+            --annotation "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}"
 ```
 
 ### GitLab CI
@@ -181,7 +182,7 @@ publish-module:
   stage: publish
   image: alpine:latest
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
   before_script:
     - apk add --no-cache curl
     - curl -sSL https://github.com/stefanprodan/timoni/releases/latest/download/timoni_linux_amd64.tar.gz | tar xz
@@ -189,22 +190,21 @@ publish-module:
   script:
     - timoni registry login $CI_REGISTRY --username $CI_REGISTRY_USER --password $CI_REGISTRY_PASSWORD
     - VERSION=${CI_COMMIT_TAG#v}
-    - timoni mod push ./modules/my-flux-app
-        oci://$CI_REGISTRY/$CI_PROJECT_PATH/modules/my-flux-app
+    - |
+      timoni mod push ./modules/my-flux-app \
+        oci://$CI_REGISTRY/$CI_PROJECT_PATH/modules/my-flux-app \
         --version $VERSION
 ```
 
 ## Step 6: Configure Consumer Access
 
-For private registries, consumers need pull credentials. Document how to set up access:
+For private registries, Timoni consumers need pull credentials. Document how to set up access:
 
 ```bash
-# Create pull credentials on the consuming cluster
-kubectl create secret docker-registry module-registry-creds \
-  -n flux-system \
-  --docker-server=ghcr.io \
-  --docker-username=flux-bot \
-  --docker-password=token-with-read-packages-scope
+# Authenticate before pulling or applying modules
+echo $GITHUB_TOKEN | timoni registry login ghcr.io \
+  --username flux-bot \
+  --password-stdin
 ```
 
 Consumers can then pull and use the module:
@@ -221,7 +221,11 @@ timoni apply my-app oci://ghcr.io/your-org/modules/my-flux-app \
 Generate documentation for your published module:
 
 ```bash
-timoni mod values oci://ghcr.io/your-org/modules/my-flux-app --version 1.0.0
+timoni mod pull oci://ghcr.io/your-org/modules/my-flux-app \
+  --version 1.0.0 \
+  --output /tmp/my-flux-app
+
+timoni mod show config /tmp/my-flux-app --output /tmp/my-flux-app/README.md
 ```
 
 Include a clear README in your module source that describes the available values, their types, defaults, and examples.
