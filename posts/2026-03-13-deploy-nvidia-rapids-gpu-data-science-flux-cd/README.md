@@ -10,7 +10,7 @@ Description: Deploy NVIDIA RAPIDS GPU-accelerated data science tools using Flux 
 
 ## Introduction
 
-NVIDIA RAPIDS is a suite of GPU-accelerated data science libraries including cuDF (pandas-compatible DataFrames), cuML (scikit-learn-compatible ML), cuGraph (graph analytics), and cuSpatial (geospatial analytics). RAPIDS can accelerate traditional data science workflows by 10-100x compared to CPU-only processing.
+NVIDIA RAPIDS is a suite of GPU-accelerated data science libraries including cuDF (pandas-compatible DataFrames), cuML (scikit-learn-compatible ML), and cuGraph (graph analytics). RAPIDS can accelerate traditional data science workflows by 10-100x compared to CPU-only processing.
 
 Deploying RAPIDS through Flux CD enables data science teams to access GPU-accelerated notebooks and batch processing jobs through a governed, reproducible infrastructure. Resource quotas, image versions, and environment configurations are all version-controlled, making it easy to promote environments and audit changes.
 
@@ -18,7 +18,7 @@ This guide covers deploying RAPIDS JupyterLab and batch processing capabilities 
 
 ## Prerequisites
 
-- Kubernetes cluster with NVIDIA GPU nodes (Pascal architecture or newer)
+- Kubernetes cluster with NVIDIA GPU nodes using Volta architecture or newer (compute capability 7.0+)
 - NVIDIA GPU Operator or device plugin installed
 - Flux CD v2 bootstrapped to your Git repository
 - A storage class supporting ReadWriteOnce volumes for notebooks
@@ -65,7 +65,7 @@ spec:
       containers:
         - name: rapids-notebook
           # RAPIDS notebooks image with JupyterLab and all RAPIDS libraries
-          image: nvcr.io/nvidia/rapidsai/notebooks:24.04-cuda12.2-py3.11
+          image: nvcr.io/nvidia/rapidsai/notebooks:26.04-cuda12-py3.13
           ports:
             - containerPort: 8888
               name: jupyter
@@ -134,7 +134,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: rapids-etl
-          image: nvcr.io/nvidia/rapidsai/base:24.04-cuda12.2-py3.11
+          image: nvcr.io/nvidia/rapidsai/base:26.04-cuda12-py3.13
           command:
             - python
             - /scripts/etl_job.py
@@ -224,21 +224,21 @@ kubectl port-forward svc/rapids-notebook 8888:8888 -n rapids
 
 # In a notebook, test cuDF acceleration:
 # import cudf
-# df = cudf.read_csv('/data/large_dataset.csv')
+# df = cudf.read_csv('/home/rapids/notebooks/work/large_dataset.csv')
 # print(df.groupby('category').agg({'value': 'sum'}))
 
 # Compare with pandas timing:
 # import pandas as pd
 # import time
 # start = time.time()
-# pdf = pd.read_csv('/data/large_dataset.csv')
+# pdf = pd.read_csv('/home/rapids/notebooks/work/large_dataset.csv')
 # pdf.groupby('category').agg({'value': 'sum'})
 # print(f"Pandas: {time.time() - start:.2f}s")
 ```
 
 ## Best Practices
 
-- Pin RAPIDS image versions to a specific CUDA and Python combination (e.g., `24.04-cuda12.2-py3.11`) to avoid compatibility issues with your GPU driver version.
+- Pin RAPIDS image versions to a specific RAPIDS, CUDA major, and Python combination (e.g., `26.04-cuda12-py3.13`) to avoid compatibility issues with your GPU driver version.
 - Use ReadWriteOnce PVCs for per-user notebook storage and ReadWriteMany shared storage (NFS/EFS) for large shared datasets.
 - Apply ResourceQuota to the `rapids` namespace to prevent a single notebook user from monopolizing all GPU capacity.
 - For production ETL pipelines, use Argo Workflows or Kubernetes CronJobs (managed by Flux) rather than interactive notebooks.
