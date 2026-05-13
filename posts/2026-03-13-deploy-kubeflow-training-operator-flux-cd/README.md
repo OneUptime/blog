@@ -23,7 +23,7 @@ This guide covers deploying the Kubeflow Training Operator using Flux CD and run
 - kubectl access to the cluster
 - Basic familiarity with distributed ML training concepts
 
-## Step 1: Create the Namespace and HelmRepository
+## Step 1: Create the Namespace and GitRepository
 
 ```yaml
 # clusters/my-cluster/training-operator/namespace.yaml
@@ -35,52 +35,43 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: flux
 ---
-# clusters/my-cluster/training-operator/helmrepository.yaml
+# clusters/my-cluster/training-operator/gitrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: kubeflow
-  namespace: kubeflow
-spec:
-  interval: 12h
-  url: https://kubeflow.github.io/training-operator
-```
-
-## Step 2: Deploy the Training Operator via HelmRelease
-
-```yaml
-# clusters/my-cluster/training-operator/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+kind: GitRepository
 metadata:
   name: training-operator
-  namespace: kubeflow
+  namespace: flux-system
 spec:
-  interval: 1h
-  chart:
-    spec:
-      chart: training-operator
-      version: "1.7.*"
-      sourceRef:
-        kind: HelmRepository
-        name: kubeflow
-        namespace: kubeflow
-      interval: 12h
-  values:
-    # Enable all job types
-    replicaCount: 1
-    image:
-      repository: kubeflow/training-operator
-      tag: "v1.7.0"
-    # Enable PyTorchJob, TFJob, MPIJob, XGBoostJob
-    gang-scheduler-name: ""
-    # Enable monitoring
-    monitoring:
-      prometheus:
-        enabled: true
+  interval: 12h
+  url: https://github.com/kubeflow/training-operator
+  ref:
+    tag: v1.8.1
 ```
 
-## Step 3: Create the Flux Kustomization
+## Step 2: Deploy the Training Operator via Flux Kustomization
+
+```yaml
+# clusters/my-cluster/training-operator/training-operator-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: training-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  path: ./manifests/overlays/standalone
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: training-operator
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: training-operator
+      namespace: kubeflow
+```
+
+## Step 3: Create the Local Kustomize File
 
 ```yaml
 # clusters/my-cluster/training-operator/kustomization.yaml
@@ -88,27 +79,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - helmrepository.yaml
-  - helmrelease.yaml
----
-# clusters/my-cluster/flux-kustomization-training-operator.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: training-operator
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./clusters/my-cluster/training-operator
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: training-operator
-      namespace: kubeflow
+  - gitrepository.yaml
+  - training-operator-kustomization.yaml
 ```
 
 ## Step 4: Submit a PyTorchJob via Flux
@@ -117,6 +89,11 @@ Manage your training jobs declaratively by committing them to Git:
 
 ```yaml
 # clusters/my-cluster/training-jobs/pytorch-job.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-workloads
+---
 apiVersion: kubeflow.org/v1
 kind: PyTorchJob
 metadata:
@@ -207,7 +184,7 @@ kubectl logs -l training.kubeflow.org/job-name=resnet-training \
 - Use Flux-managed PyTorchJob manifests for production training runs so every job configuration is version-controlled and reproducible.
 - Set `restartPolicy: OnFailure` for workers so the Training Operator restarts failed workers automatically without losing the master state.
 - Apply ResourceQuota to training namespaces to prevent runaway training jobs from consuming all GPU resources.
-- Use the `--gang-scheduler-name` flag with Volcano or Koordinator gang schedulers to prevent deadlocks in distributed training where partial worker sets cannot make progress.
+- Use the `--gang-scheduler-name` flag with Volcano or Kubernetes Scheduler Plugins coscheduling to prevent deadlocks in distributed training where partial worker sets cannot make progress.
 - Store training checkpoints in a shared PVC or object storage so jobs can resume from the latest checkpoint after a pod failure.
 
 ## Conclusion
