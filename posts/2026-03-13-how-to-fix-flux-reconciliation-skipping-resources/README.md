@@ -50,7 +50,7 @@ kustomize build ./path/to/app/ | kubectl diff -f -
 ### Check what Flux actually built
 
 ```bash
-kubectl logs -n flux-system deployment/kustomize-controller | grep "my-app" | grep "applied"
+flux build kustomization my-app --path ./path/to/app/
 ```
 
 ### List the resources Flux thinks it manages
@@ -87,11 +87,11 @@ spec:
 
 ### 3. Namespace scope filtering
 
-If the Kustomization has `targetNamespace` set, resources in other namespaces may be silently skipped or applied to the wrong namespace.
+If the Kustomization has `targetNamespace` set, Flux sets the namespace of namespaced objects to that value, so a resource may be applied in a different namespace than the one you are checking.
 
 ### 4. Kustomize patches removing resources
 
-Strategic merge patches or JSON patches might inadvertently remove or null out resources.
+Kustomize patches might inadvertently delete resources or remove fields from the generated output.
 
 ### 5. Conditional generation not producing output
 
@@ -145,7 +145,7 @@ If using `targetNamespace`, verify it is correct and the resources are compatibl
 kubectl get kustomization my-app -n flux-system -o jsonpath='{.spec.targetNamespace}'
 ```
 
-For cluster-scoped resources like ClusterRoles, you may need a separate Kustomization without `targetNamespace`.
+Cluster-scoped resources like ClusterRoles are not namespaced, but namespaced resources in the same Kustomization will be rewritten to the `targetNamespace`.
 
 ### Fix 4: Debug patches
 
@@ -158,15 +158,15 @@ kustomize build ./path/to/app/ > without-patches.yaml
 diff with-patches.yaml without-patches.yaml
 ```
 
-### Fix 5: Force a full re-apply
+### Fix 5: Trigger a reconciliation
 
-If the inventory is stale, force Flux to re-apply everything:
+If you need Flux to reconcile immediately, trigger a reconciliation:
 
 ```bash
-flux reconcile kustomization my-app --with-source --force
+flux reconcile kustomization my-app --with-source
 ```
 
-Or annotate the Kustomization to trigger a full reconciliation:
+Or annotate the Kustomization to trigger a reconciliation:
 
 ```bash
 kubectl annotate kustomization my-app -n flux-system reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
@@ -175,7 +175,7 @@ kubectl annotate kustomization my-app -n flux-system reconcile.fluxcd.io/request
 ## Prevention Strategies
 
 1. **Use CI validation** to compare the kustomize build output against expected resources before merging.
-2. **Avoid manual resource lists** where possible. Use the directory-based approach where all YAML files in a directory are automatically included.
+2. **Avoid manual resource lists** where possible. If your Flux Kustomization points at plain manifests without a `kustomization.yaml`, Flux can generate one and include the YAML files under that path automatically.
 3. **Review the Flux inventory** after each deployment to confirm all expected resources are tracked.
 4. **Use the flux diff kustomization** command to preview what will change before applying:
 
