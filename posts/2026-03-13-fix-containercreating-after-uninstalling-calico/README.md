@@ -12,7 +12,7 @@ Description: Fix pods stuck in ContainerCreating after Calico uninstall by remov
 
 Fixing ContainerCreating after Calico uninstall depends on the intended state: are you migrating to a new CNI plugin, or was the Calico removal accidental? Each scenario requires a different response, but both share the need to restore a functioning CNI configuration on each affected node.
 
-The fastest resolution is to install a replacement CNI immediately. If the cluster must stay on Calico, reinstalling the calico-node DaemonSet restores functionality. The key action in either case is ensuring that only one CNI config file exists in `/etc/cni/net.d/` and that it references available CNI binaries.
+The fastest resolution is to install a replacement CNI immediately. If the cluster must stay on Calico, reinstalling the calico-node DaemonSet restores functionality. The key action in either case is ensuring that only one primary CNI config is active in `/etc/cni/net.d/` and that it references available CNI binaries.
 
 ## Symptoms
 
@@ -48,7 +48,7 @@ for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
 done
 
 # Install Flannel
-kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
 # Wait for Flannel to deploy
 kubectl rollout status daemonset kube-flannel-ds -n kube-flannel
@@ -58,7 +58,9 @@ kubectl rollout status daemonset kube-flannel-ds -n kube-flannel
 
 ```bash
 # Reinstall Calico
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+# Use the same Calico version your cluster was running.
+CALICO_VERSION=v3.32.0
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/calico.yaml
 
 # Wait for calico-node to be ready
 kubectl rollout status daemonset calico-node -n kube-system --timeout=120s
@@ -88,10 +90,10 @@ for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
 done
 ```
 
-**Fix 4: Re-schedule stuck pods after CNI fix**
+**Fix 4: Re-check or re-create stuck pods after CNI fix**
 
 ```bash
-# Delete stuck pods so they restart with working CNI
+# If pods do not recover after the CNI is healthy, delete them so their controllers recreate them
 kubectl get pods --all-namespaces | grep ContainerCreating | \
   awk '{print $1 " " $2}' | while read NS POD; do
   kubectl delete pod $POD -n $NS
@@ -112,7 +114,7 @@ flowchart TD
     C --> D[Install replacement CNI]
     D --> E[Restart kubelet on each node]
     B -- Unintentional removal --> F[Reinstall Calico DaemonSet]
-    E & F --> G[Delete stuck ContainerCreating pods]
+    E & F --> G[Re-check or re-create stuck ContainerCreating pods]
     G --> H[Verify pods start successfully]
 ```
 
@@ -124,4 +126,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing ContainerCreating after Calico uninstall requires either installing a replacement CNI or reinstalling Calico, then ensuring the CNI config in `/etc/cni/net.d/` references available CNI binaries. Delete stuck ContainerCreating pods after the CNI is fixed - they will not automatically retry scheduling.
+Fixing ContainerCreating after Calico uninstall requires either installing a replacement CNI or reinstalling Calico, then ensuring the CNI config in `/etc/cni/net.d/` references available CNI binaries. After the CNI is fixed, delete any pods that do not recover promptly so their controllers recreate them with working networking.
