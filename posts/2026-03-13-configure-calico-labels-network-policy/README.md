@@ -12,7 +12,7 @@ Description: A step-by-step guide to using Calico labels effectively to create p
 
 Labels are the foundation of every Calico network policy. Without well-designed labels, your policies become brittle, hard to maintain, and prone to misconfiguration. Calico's selector syntax allows you to build rich, expressive rules that target specific workloads based on any combination of labels - but this power is only as good as the label strategy behind it.
 
-Calico extends the standard Kubernetes label system with additional selectors for namespace labels, service account labels, and even custom Calico-specific metadata. The `projectcalico.org/v3` API's selector field supports boolean expressions, making it possible to write rules like "allow traffic from pods that are in the frontend tier AND have the environment=production label."
+Calico extends the standard Kubernetes label system with additional selectors for namespace labels and service account labels, plus automatic Calico labels such as `projectcalico.org/name` for matching namespaces and service accounts by name. The `projectcalico.org/v3` API's selector field supports boolean expressions, making it possible to write rules like "allow traffic from pods that are in the frontend tier AND have the environment=production label."
 
 This guide covers how to design a label taxonomy for network policies, how to apply labels consistently, and how to write Calico policy selectors that are both precise and maintainable.
 
@@ -46,6 +46,9 @@ metadata:
   name: frontend
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: frontend
   template:
     metadata:
       labels:
@@ -53,6 +56,13 @@ spec:
         tier: web
         environment: production
         team: platform
+        version: v2
+    spec:
+      containers:
+        - name: frontend
+          image: nginx:1.27
+          ports:
+            - containerPort: 8080
 ```
 
 ## Step 3: Write Policy Selectors Using Labels
@@ -78,11 +88,14 @@ spec:
 
 ## Step 4: Use Namespace Labels for Cross-Namespace Policies
 
-```yaml
-# Label the namespace
-kubectl label namespace production environment=production team=platform
+Label the source namespace:
+```bash
+kubectl label namespace observability team=observability
+```
 
-# Use namespace selector in policy
+Use namespace selector in policy:
+
+```yaml
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -104,8 +117,8 @@ spec:
 ## Step 5: Use Boolean Expressions for Complex Rules
 
 ```yaml
-# Allow traffic from any web pod that is NOT in the legacy tier
-selector: tier == 'web' && tier != 'legacy'
+# Allow traffic from any web pod that is not running a legacy version
+selector: tier == 'web' && has(version) && version != 'legacy'
 
 # Allow from frontend OR monitoring
 ingress:
