@@ -10,9 +10,9 @@ Description: Log Audit zero trust network policies in Calico to enforce the prin
 
 ## Introduction
 
-Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. Every connection is evaluated against explicit policy rules, and nothing is permitted by default. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
+Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. With a default-deny policy stack in place, every connection is evaluated against explicit policy rules, and nothing is permitted by default. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
 
-Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and comprehensive logging of every traffic decision.
+Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and log rules for traffic that reaches the final deny policy.
 
 This guide covers log audit zero trust network policies in Calico, including the full policy stack from global defaults to workload-specific microsegmentation.
 
@@ -35,6 +35,12 @@ metadata:
 spec:
   order: 10000
   selector: all()
+  ingress:
+    - action: Log
+    - action: Deny
+  egress:
+    - action: Log
+    - action: Deny
   types:
     - Ingress
     - Egress
@@ -56,14 +62,11 @@ spec:
       protocol: TCP
       destination:
         ports: [53]
-  ingress:
     - action: Allow
-      source:
-        nets: ["10.0.0.0/8"]
+      protocol: TCP
       destination:
-        ports: [10250]
+        ports: [443, 6443]
   types:
-    - Ingress
     - Egress
 ---
 # Layer 3: Application-specific allow rules
@@ -77,6 +80,7 @@ spec:
   selector: tier == 'api'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'frontend'
       destination:
@@ -105,12 +109,13 @@ echo "Should timeout (no frontend->DB allow): $?"
 
 ```mermaid
 flowchart TD
-    ALL[All Traffic] --> GD{GlobalNetworkPolicy\nDefault Deny\norder=10000}
-    GD -->|DNS Traffic| DNS[Allow DNS :53]
-    GD -->|Kubelet| KUB[Allow Kubelet :10250]
-    GD -->|App Traffic| APP{Application\nNetworkPolicy}
+    ALL[All Traffic] --> SYS{GlobalNetworkPolicy\nSystem Allows\norder=1}
+    SYS -->|DNS Traffic| DNS[Allow DNS :53]
+    SYS -->|Kubernetes API| API[Allow API server :443/:6443]
+    SYS -->|App Traffic| APP{Application\nNetworkPolicy\norder=100}
     APP -->|Explicit Allow| PERMIT[Traffic Permitted]
-    APP -->|No Match| DENY[DENIED - Zero Trust]
+    APP -->|No Match| GD{GlobalNetworkPolicy\nLog and Deny\norder=10000}
+    GD --> DENY[DENIED - Zero Trust]
 ```
 
 ## Conclusion
