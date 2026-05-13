@@ -51,10 +51,10 @@ Once you know which metric is failing, validate the query directly against Prome
 kubectl port-forward svc/prometheus -n monitoring 9090:9090
 ```
 
-Then query the metric in the Prometheus UI or via the API. For the built-in request-success-rate metric, check that your application is actually returning successful responses.
+Then query the metric in the Prometheus UI or via the API. For a request-success-rate check, verify that the metric source used by your mesh, ingress controller, or custom MetricTemplate is actually reporting successful responses.
 
 ```bash
-# Query request success rate from Prometheus API
+# Query request success rate from Prometheus API for an application HTTP counter
 curl -s 'http://localhost:9090/api/v1/query' \
   --data-urlencode 'query=sum(rate(http_requests_total{namespace="test",status!~"5.*"}[1m]))/sum(rate(http_requests_total{namespace="test"}[1m]))*100'
 ```
@@ -68,7 +68,7 @@ A common cause of rollback is insufficient traffic to the canary. When traffic v
 ```bash
 # Check the total request rate to the canary
 curl -s 'http://localhost:9090/api/v1/query' \
-  --data-urlencode 'query=sum(rate(http_requests_total{namespace="test",pod=~"podinfo-canary.*"}[1m]))'
+  --data-urlencode 'query=sum(rate(http_requests_total{namespace="test",pod=~"podinfo-.*",pod!~"podinfo-primary-.*"}[1m]))'
 ```
 
 If the request rate is very low (below 1 request per second), the metrics become unreliable. A single 5xx response out of 10 total requests gives a 90 percent success rate, which would fail a 99 percent threshold.
@@ -172,7 +172,7 @@ kubectl get metrictemplates -n <namespace>
 kubectl get metrictemplate <name> -n <namespace> -o yaml
 ```
 
-Ensure that the query returns a single scalar value. Queries that return vectors or no data will cause metric evaluation to fail.
+Ensure that the query returns at least one numeric value. Flagger expects a `float64` result, returns an error when no values are found, and uses the first result if a Prometheus query returns multiple series, so aggregate custom queries to a single series to avoid ambiguous evaluations.
 
 ## Conclusion
 
