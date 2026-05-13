@@ -16,8 +16,9 @@ The risk during migration is that the new IP may not be reachable if BGP routes 
 
 ## Prerequisites
 
-- Calico BGP configured with service advertisement
-- LoadBalancer IP pool created and advertised
+- Calico BGP configured with `serviceLoadBalancerIPs` for the advertised CIDR
+- Calico LoadBalancer controller enabled
+- LoadBalancer IP pool created with `allowedUses: LoadBalancer`
 - External DNS control for service cutover
 
 ## Phase 1: Assign LoadBalancer IP Without Changing DNS
@@ -33,6 +34,7 @@ metadata:
     projectcalico.org/ipv4pools: '["external-lb-pool"]'
 spec:
   type: LoadBalancer
+  loadBalancerClass: calico
   selector:
     app: my-app
   ports:
@@ -56,7 +58,7 @@ curl -v http://${LB_IP}:80/health
 
 ## Phase 3: Gradual DNS Migration
 
-Update DNS with low TTL and split traffic:
+Update DNS with low TTL and split traffic using weighted DNS if your DNS provider supports it:
 
 ```bash
 # Add new LB IP as secondary DNS record
@@ -76,9 +78,11 @@ Once validation is complete, update DNS to point fully to the new IP:
 ```bash
 # Update DNS record
 # Monitor service for 30 minutes
-# Remove old NodePort or cloud LB
+# Remove old NodePort allocation if it is no longer needed
+kubectl patch svc my-service --type merge \
+  -p '{"spec":{"allocateLoadBalancerNodePorts":false}}'
 kubectl patch svc my-service --type json \
-  -p '[{"op":"remove","path":"/spec/ports/1"}]'
+  -p '[{"op":"remove","path":"/spec/ports/0/nodePort"}]'
 ```
 
 ## Migration Timeline
