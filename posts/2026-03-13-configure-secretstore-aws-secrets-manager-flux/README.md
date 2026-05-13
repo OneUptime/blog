@@ -48,7 +48,7 @@ Create an IAM policy in AWS that grants read access to specific secret paths:
 
 ## Step 2: Configure IRSA (Recommended for EKS)
 
-Annotate the ESO service account with the IAM role ARN to use IRSA:
+Create a service account in the same namespace as the `SecretStore` and annotate it with the IAM role ARN to use IRSA:
 
 ```yaml
 # clusters/my-cluster/external-secrets/irsa-service-account.yaml
@@ -56,8 +56,8 @@ Annotate the ESO service account with the IAM role ARN to use IRSA:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: external-secrets
-  namespace: external-secrets
+  name: aws-secretstore-auth
+  namespace: default
   annotations:
     # Link the Kubernetes service account to the IAM role via IRSA
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ExternalSecretsRole
@@ -67,7 +67,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-aws.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -82,8 +82,7 @@ spec:
         # Use IRSA: reference the annotated service account
         jwt:
           serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets
+            name: aws-secretstore-auth
 ```
 
 ## Step 4: Configure SecretStore with Static Credentials (Non-EKS)
@@ -98,7 +97,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: aws-credentials
-  namespace: external-secrets
+  namespace: default
 type: Opaque
 stringData:
   access-key-id: "REPLACE_WITH_SOPS_ENCRYPTED_VALUE"
@@ -107,7 +106,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-aws-static.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager-static
@@ -154,7 +153,7 @@ spec:
 # Check SecretStore status
 kubectl get secretstore aws-secrets-manager -n default
 
-# View detailed status including last sync time
+# View detailed status, conditions, and events
 kubectl describe secretstore aws-secrets-manager -n default
 
 # Expected condition:
@@ -168,7 +167,7 @@ kubectl describe secretstore aws-secrets-manager -n default
 
 ```yaml
 # Test that the SecretStore can read a secret from AWS
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test-aws-secret
