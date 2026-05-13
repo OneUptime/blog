@@ -80,9 +80,9 @@ patches:
         value: 512Mi
 ```
 
-### Recursive or Circular Kustomization References
+### Recursive or Circular Kustomization Dependencies
 
-If Kustomizations reference each other in a circular manner, the controller can enter an infinite loop and eventually crash:
+If Flux Kustomizations depend on each other in a circular manner, the affected Kustomizations will never be applied because each one waits for another dependency to become ready. This usually appears as a reconciliation failure rather than a controller pod crash:
 
 ```bash
 flux get kustomizations
@@ -92,13 +92,13 @@ Review your Kustomization dependency chains to ensure there are no circular refe
 
 ### SOPS Decryption Failures
 
-If the Kustomize Controller is configured to decrypt SOPS-encrypted secrets and the decryption keys are missing or misconfigured, the controller may crash during startup:
+If the Kustomize Controller is configured to decrypt SOPS-encrypted secrets and the decryption keys are missing or misconfigured, the affected Kustomization reconciliation will fail:
 
 ```bash
 kubectl logs -n flux-system deploy/kustomize-controller | grep -i "sops\|decrypt\|pgp\|age\|kms"
 ```
 
-Verify that the decryption secret exists and is properly referenced:
+Verify that the configured decryption secret exists and is properly referenced. For example:
 
 ```bash
 kubectl get secret -n flux-system sops-gpg
@@ -107,7 +107,7 @@ kubectl get secret -n flux-system sops-age
 
 ### Invalid Kustomize Overlays
 
-Malformed kustomization.yaml files in your repositories can cause the controller to panic:
+Malformed kustomization.yaml files in your repositories can cause Kustomization reconciliation to fail:
 
 ```bash
 kubectl logs -n flux-system deploy/kustomize-controller | grep -i "panic\|fatal\|invalid"
@@ -127,10 +127,10 @@ The Kustomize Controller reconciles multiple Kustomizations concurrently. If the
 kubectl get deploy kustomize-controller -n flux-system -o jsonpath='{.spec.template.spec.containers[0].args}'
 ```
 
-Look for the `--concurrent` flag. Reduce concurrency if the controller is under memory pressure:
+Look for the `--concurrent` flag. The default is `4`; reduce concurrency if the controller is under memory pressure:
 
 ```bash
-kubectl patch deployment kustomize-controller -n flux-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--concurrent=5"}]'
+kubectl patch deployment kustomize-controller -n flux-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--concurrent=2"}]'
 ```
 
 ## Step 5: Check Events and Node Resources
@@ -174,4 +174,4 @@ flux get kustomizations
 
 ## Summary
 
-Kustomize Controller pod crashes are commonly caused by memory exhaustion from large manifests, SOPS decryption failures, circular dependencies, or excessive concurrency. Systematic log analysis and proper resource configuration will resolve most crash scenarios. Breaking large Kustomizations into smaller units and validating overlays before deployment are effective preventive measures.
+Kustomize Controller pod crashes are commonly caused by memory exhaustion from large manifests or excessive concurrency, while SOPS decryption failures, circular dependencies, and invalid overlays usually show up as failed Kustomization reconciliations. Systematic log analysis and proper resource configuration will resolve most crash scenarios. Breaking large Kustomizations into smaller units and validating overlays before deployment are effective preventive measures.
