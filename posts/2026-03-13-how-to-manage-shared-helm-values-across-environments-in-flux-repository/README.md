@@ -26,6 +26,9 @@ flux-repo/
 │   │   └── bitnami.yaml
 │   └── releases/
 │       └── nginx/
+│           ├── Chart.yaml
+│           ├── values.yaml
+│           ├── helmrelease.yaml
 │           ├── base-values.yaml
 │           ├── staging-values.yaml
 │           └── production-values.yaml
@@ -40,7 +43,29 @@ flux-repo/
 
 ## Approach 1: Using Multiple valuesFiles
 
-Flux HelmRelease supports multiple values sources that are merged in order. Define shared values in a base file and environment-specific overrides in separate files:
+Flux HelmRelease supports multiple chart values files with `spec.chart.spec.valuesFiles` when those files are present in the chart source artifact. The files are merged in order, with later files overriding earlier files. Define shared values in a base file and environment-specific overrides in separate files:
+
+```yaml
+# apps/staging/nginx-release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: nginx
+  namespace: default
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: ./helm/releases/nginx
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+        namespace: flux-system
+      valuesFiles:
+        - values.yaml
+        - base-values.yaml
+        - staging-values.yaml
+```
 
 ```yaml
 # helm/releases/nginx/base-values.yaml
@@ -99,6 +124,8 @@ autoscaling:
   targetCPUUtilizationPercentage: 70
 ```
 
+When you are installing a third-party chart from a `HelmRepository`, `valuesFiles` must refer to files inside that chart. Standalone values files stored elsewhere in the Flux repository should be loaded through ConfigMaps or Secrets with `valuesFrom`.
+
 ## Approach 2: Using valuesFrom with ConfigMaps
 
 Store shared values in a ConfigMap and reference them from the HelmRelease:
@@ -109,7 +136,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-shared-values
-  namespace: flux-system
+  namespace: default
 data:
   values.yaml: |
     image:
@@ -123,6 +150,20 @@ data:
       enabled: true
       serviceMonitor:
         enabled: true
+```
+
+```yaml
+# apps/staging/env-values-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-env-values
+  namespace: default
+data:
+  values.yaml: |
+    replicaCount: 2
+    image:
+      tag: "1.25-staging"
 ```
 
 Then reference it in the HelmRelease:
@@ -200,7 +241,7 @@ Staging overlay patches the values:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../helm/releases/nginx
+  - ../../helm/releases/nginx/helmrelease.yaml
 patches:
   - target:
       kind: HelmRelease
@@ -224,7 +265,7 @@ Production overlay with higher values:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../helm/releases/nginx
+  - ../../helm/releases/nginx/helmrelease.yaml
 patches:
   - target:
       kind: HelmRelease
@@ -270,6 +311,7 @@ spec:
     substitute:
       ENVIRONMENT: production
       REPLICA_COUNT: "5"
+      IMAGE_TAG: "1.25.4"
 ```
 
 Then use variables in HelmRelease values:
@@ -299,7 +341,7 @@ spec:
 
 ## Choosing the Right Approach
 
-- **Multiple valuesFiles**: Best when values differences are substantial and you want clear separation.
+- **Multiple valuesFiles**: Best when values differences are substantial and the values files are packaged with the chart source artifact.
 - **valuesFrom ConfigMaps**: Best when shared values need to be consumed by multiple HelmReleases.
 - **Kustomize patches**: Best when you already use Kustomize overlays and want to keep everything in one pattern.
 - **Variable substitution**: Best for simple value differences like replica counts, image tags, and feature flags.
