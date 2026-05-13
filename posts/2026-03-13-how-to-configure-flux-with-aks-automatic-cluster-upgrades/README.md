@@ -23,7 +23,7 @@ This guide covers configuring AKS automatic upgrades, setting up maintenance win
 
 ## Step 1: Configure Auto-Upgrade Channel
 
-AKS offers several auto-upgrade channels. Choose the one that matches your risk tolerance:
+AKS offers several cluster auto-upgrade channels, plus a separate node OS upgrade channel. Choose the one that matches your risk tolerance:
 
 ```bash
 # Patch: auto-upgrades to the latest patch version (e.g., 1.28.3 -> 1.28.5)
@@ -45,14 +45,14 @@ az aks update \
   --name my-flux-cluster \
   --auto-upgrade-channel rapid
 
-# Node-image: only upgrades the node OS image, not Kubernetes version
+# NodeImage: upgrades the node OS image, not the Kubernetes version
 az aks update \
   --resource-group my-resource-group \
   --name my-flux-cluster \
-  --auto-upgrade-channel node-image
+  --node-os-upgrade-channel NodeImage
 ```
 
-For most production clusters running Flux, `patch` or `stable` channels are recommended. They provide security updates without introducing breaking API changes.
+For most production clusters running Flux, the `patch` channel is recommended. It provides Kubernetes patch updates without introducing minor-version API changes. The `stable` channel can move the cluster to the latest supported patch release on the second-latest minor version, but Microsoft documents it as no longer recommended and planned for deprecation.
 
 ## Step 2: Set Up a Maintenance Window
 
@@ -102,7 +102,7 @@ A `max-surge` of 1 means one extra node is provisioned during upgrades. This ens
 
 ## Step 4: Deploy Pod Disruption Budgets Through Flux
 
-Ensure your Flux-managed workloads have Pod Disruption Budgets to survive node drains during upgrades:
+Ensure your replicated Flux-managed workloads have Pod Disruption Budgets so node drains during upgrades can proceed predictably:
 
 ```yaml
 apiVersion: policy/v1
@@ -122,10 +122,11 @@ metadata:
   name: flux-source-controller-pdb
   namespace: flux-system
 spec:
-  minAvailable: 1
+  maxUnavailable: 1
   selector:
     matchLabels:
-      app: source-controller
+      app.kubernetes.io/component: source-controller
+      app.kubernetes.io/part-of: flux
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -133,10 +134,11 @@ metadata:
   name: flux-kustomize-controller-pdb
   namespace: flux-system
 spec:
-  minAvailable: 1
+  maxUnavailable: 1
   selector:
     matchLabels:
-      app: kustomize-controller
+      app.kubernetes.io/component: kustomize-controller
+      app.kubernetes.io/part-of: flux
 ```
 
 ## Step 5: Version-Pin Helm Charts for Compatibility
@@ -213,7 +215,7 @@ spec:
 Configure Flux to send notifications when reconciliation fails, which could indicate upgrade compatibility issues:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -224,7 +226,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: upgrade-watch
@@ -290,7 +292,7 @@ flux logs --level=error
 
 **Flux controllers down after upgrade**: If Flux controllers are not running after a cluster upgrade, check if the Flux CRDs are still present. Some upgrade paths may require re-bootstrapping Flux.
 
-**Deprecated API errors**: After a Kubernetes minor version upgrade, previously deprecated APIs may be removed. Use `kubectl convert` or update your manifests to use current API versions before the upgrade.
+**Deprecated API errors**: After a Kubernetes minor version upgrade, previously deprecated APIs may be removed. Use the `kubectl convert` plugin or update your manifests to use current API versions before the upgrade.
 
 **PDB blocking upgrades**: If Pod Disruption Budgets are too restrictive, node drains will stall. Ensure PDBs allow at least one pod to be evicted during maintenance.
 
