@@ -10,7 +10,7 @@ Description: Set up Flux CD with KubeEdge for edge-cloud collaboration, managing
 
 ## Introduction
 
-KubeEdge extends Kubernetes to edge environments by running a lightweight edge agent (EdgeCore) on edge devices that communicates with a cloud-side component (CloudCore). This architecture enables Kubernetes-native management of edge devices even with unreliable connectivity - EdgeCore caches workload state locally so pods keep running even when the connection to the cloud is severed.
+KubeEdge extends Kubernetes to edge environments by running a lightweight edge agent (EdgeCore) on edge devices that communicates with a cloud-side component (CloudCore). This architecture enables Kubernetes-native management of edge devices even with unreliable connectivity - EdgeCore's MetaManager stores workload metadata locally so pods keep running even when the connection to the cloud is severed.
 
 Integrating Flux CD with KubeEdge creates a powerful GitOps-driven edge computing platform. Flux runs in the cloud-side Kubernetes cluster and reconciles workload definitions that KubeEdge then distributes to edge nodes. This gives you Git as the single source of truth for both cloud and edge workloads.
 
@@ -83,8 +83,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Validate edge workloads before applying
-  validation: client
   postBuild:
     substitute:
       EDGE_NAMESPACE: "edge-workloads"
@@ -137,7 +135,7 @@ spec:
 
 ## Step 4: Manage KubeEdge Device Models with Flux
 
-KubeEdge uses DeviceModel and DeviceInstance CRDs to manage IoT devices. Manage these through Flux.
+KubeEdge uses DeviceModel and Device resources to manage IoT devices. Manage these through Flux.
 
 ```yaml
 # apps/edge/devices/temperature-sensor-model.yaml
@@ -150,22 +148,21 @@ spec:
   properties:
     - name: temperature
       description: "Current temperature reading in Celsius"
-      type:
-        double:
-          accessMode: ReadOnly
-          defaultValue: 0.0
+      type: DOUBLE
+      accessMode: ReadOnly
+      unit: Celsius
     - name: humidity
       description: "Relative humidity percentage"
-      type:
-        double:
-          accessMode: ReadOnly
-          defaultValue: 0.0
+      type: DOUBLE
+      accessMode: ReadOnly
+      unit: Percent
+  protocol: modbus
 ```
 
 ```yaml
 # apps/edge/devices/site-001-sensor.yaml
 apiVersion: devices.kubeedge.io/v1beta1
-kind: DeviceInstance
+kind: Device
 metadata:
   name: temp-sensor-001
   namespace: edge-workloads
@@ -173,15 +170,32 @@ spec:
   deviceModelRef:
     name: temperature-sensor
   nodeName: edge-device-001
+  properties:
+    - name: temperature
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 2
+          limit: 1
+    - name: humidity
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 3
+          limit: 1
   protocol:
-    modbus:
-      slaveID: 1
-  propertyVisitors:
-    - propertyName: temperature
-      modbus:
-        register: CoilRegister
-        offset: 2
-        limit: 1
+    protocolName: modbus
+    configData:
+      ip: 192.0.2.10
+      port: 1502
 ```
 
 ## Step 5: Handle Edge-Specific Secrets
@@ -234,8 +248,8 @@ spec:
 ## Best Practices
 
 - Use `nodeSelector: node-role.kubernetes.io/edge: ""` for all edge-targeted workloads to prevent them from scheduling on cloud nodes.
-- Set `imagePullPolicy: IfNotPresent` on edge deployments - EdgeCore caches images locally for offline operation.
-- Store DeviceModel and DeviceInstance resources in Git for full GitOps coverage of device configuration.
+- Set `imagePullPolicy: IfNotPresent` on edge deployments so the container runtime can reuse images already present on the edge node during offline operation.
+- Store DeviceModel and Device resources in Git for full GitOps coverage of device configuration.
 - Use separate namespaces for cloud workloads and edge workloads for clear separation and RBAC.
 - Monitor KubeEdge CloudCore metrics to track edge node connectivity rates.
 - Design edge workloads to operate autonomously when disconnected from the cloud.
