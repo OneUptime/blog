@@ -42,7 +42,7 @@ Look at the Status section of the describe output. The conditions and events wil
 Flagger logs contain detailed information about each analysis step. Check the logs for errors or warnings related to your canary.
 
 ```bash
-# View Flagger logs filtered for your canary
+# View Flagger logs
 kubectl logs -l app.kubernetes.io/name=flagger \
   -n <flagger-namespace> --tail=100
 
@@ -72,7 +72,7 @@ If the canary pods are not ready, Flagger will not advance the analysis. Common 
 
 ## Step 4: Verify Metrics Availability
 
-Flagger requires metrics to evaluate the canary. If the metrics server is unreachable or the queries return no data, the analysis will stall.
+Flagger requires metrics to evaluate the canary. If the metrics server is unreachable or the queries return no data, the analysis will halt advancement and eventually fail when the configured threshold is reached.
 
 ```bash
 # Test Prometheus connectivity from within the cluster
@@ -85,14 +85,15 @@ Check that the metric queries used in your Canary resource return data. You can 
 ```bash
 # Test the request-success-rate metric query
 kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s 'http://prometheus.monitoring:9090/api/v1/query?query=sum(rate(http_requests_total{namespace="test"}[1m]))'
+  curl -G -s 'http://prometheus.monitoring:9090/api/v1/query' \
+    --data-urlencode 'query=sum(rate(http_requests_total{namespace="test"}[1m]))'
 ```
 
-If the queries return empty results, the canary has no data to analyze and will remain stuck. Common causes include missing Prometheus scrape annotations, incorrect metric names, or pods not receiving traffic.
+If the queries return empty results, the canary has no data to analyze and Flagger will report metric check failures such as `no values found` before eventually rolling back. Common causes include missing Prometheus scrape annotations, incorrect metric names, or pods not receiving traffic.
 
 ## Step 5: Check the Progress Deadline
 
-The `progressDeadlineSeconds` setting in the Canary resource determines how long Flagger will wait before marking the canary as failed. If this is set too low, the canary might not have enough time to receive traffic and produce metrics.
+The `progressDeadlineSeconds` setting in the Canary resource determines how long Flagger will wait for the canary deployment to make progress before rolling it back. If this is set too low, the rollout can fail before the workload is ready; if it is set too high, a rollout with unhealthy pods can appear stuck in Progressing for longer than expected.
 
 ```yaml
 # Check your progress deadline setting
@@ -124,7 +125,7 @@ If the canary service is not reachable, check the service selector labels and ve
 
 ## Step 7: Check Webhooks
 
-If your Canary resource includes webhooks (such as load test webhooks or confirmation webhooks), a failing webhook will block progression.
+If your Canary resource includes webhooks (such as load test webhooks or confirmation webhooks), a failing webhook can block progression. Confirmation webhooks pause until they return HTTP 200, while pre-rollout and rollout webhook failures increment failed checks and can eventually roll back the canary.
 
 ```bash
 # Check if the load tester is running
