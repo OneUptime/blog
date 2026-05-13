@@ -31,17 +31,24 @@ Flux controllers expose Prometheus metrics on port 8080 at the `/metrics` endpoi
 
 ## Step 1: Expose Metrics from Shard Controllers
 
-Ensure each shard deployment has the Prometheus annotations and the metrics port configured.
+Ensure each shard deployment has the Prometheus annotations and the metrics port configured. For example, use a Kustomize strategic merge patch like this:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kustomize-controller-shard-1
+  name: kustomize-controller-shard1
   namespace: flux-system
+  labels:
+    app: kustomize-controller-shard1
 spec:
+  selector:
+    matchLabels:
+      app: kustomize-controller-shard1
   template:
     metadata:
+      labels:
+        app: kustomize-controller-shard1
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -77,13 +84,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kustomize-controller-shard-1-metrics
+  name: kustomize-controller-shard1-metrics
   namespace: flux-system
   labels:
     app.kubernetes.io/part-of: flux-shards
 spec:
   selector:
-    app: kustomize-controller-shard-1
+    app: kustomize-controller-shard1
   ports:
     - name: http-prom
       port: 8080
@@ -92,13 +99,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kustomize-controller-shard-2-metrics
+  name: kustomize-controller-shard2-metrics
   namespace: flux-system
   labels:
     app.kubernetes.io/part-of: flux-shards
 spec:
   selector:
-    app: kustomize-controller-shard-2
+    app: kustomize-controller-shard2
   ports:
     - name: http-prom
       port: 8080
@@ -112,7 +119,7 @@ Use PromQL to query queue depth across all shards.
 ```promql
 # Current queue depth per shard controller
 
-workqueue_depth{namespace="flux-system", job=~".*shard.*"}
+workqueue_depth{namespace="flux-system", pod=~".*shard.*"}
 
 # Queue depth by controller name
 workqueue_depth{namespace="flux-system"} > 0
@@ -121,9 +128,9 @@ workqueue_depth{namespace="flux-system"} > 0
 rate(workqueue_adds_total{namespace="flux-system"}[5m])
 
 # Average queue wait time per shard
-rate(workqueue_queue_duration_seconds_sum{namespace="flux-system"}[5m])
+sum by (pod, name) (rate(workqueue_queue_duration_seconds_sum{namespace="flux-system"}[5m]))
 /
-rate(workqueue_queue_duration_seconds_count{namespace="flux-system"}[5m])
+sum by (pod, name) (rate(workqueue_queue_duration_seconds_count{namespace="flux-system"}[5m]))
 ```
 
 ## Step 4: Create Prometheus Alerting Rules
@@ -141,7 +148,7 @@ spec:
     - name: flux-shard-queue
       rules:
         - alert: FluxShardQueueDepthHigh
-          expr: workqueue_depth{namespace="flux-system"} > 50
+          expr: workqueue_depth{namespace="flux-system", pod=~".*shard.*"} > 50
           for: 10m
           labels:
             severity: warning
@@ -150,7 +157,7 @@ spec:
             description: "Controller {{ $labels.pod }} has a queue depth of {{ $value }} for more than 10 minutes."
 
         - alert: FluxShardQueueDepthCritical
-          expr: workqueue_depth{namespace="flux-system"} > 100
+          expr: workqueue_depth{namespace="flux-system", pod=~".*shard.*"} > 100
           for: 5m
           labels:
             severity: critical
@@ -161,7 +168,9 @@ spec:
         - alert: FluxShardReconciliationSlow
           expr: |
             histogram_quantile(0.99,
-              rate(controller_runtime_reconcile_time_seconds_bucket{namespace="flux-system"}[5m])
+              sum by (pod, controller, le) (
+                rate(controller_runtime_reconcile_time_seconds_bucket{namespace="flux-system", pod=~".*shard.*"}[5m])
+              )
             ) > 300
           for: 15m
           labels:
@@ -172,9 +181,9 @@ spec:
 
         - alert: FluxShardQueueImbalanced
           expr: |
-            max(workqueue_depth{namespace="flux-system", job=~".*shard.*"})
+            max(workqueue_depth{namespace="flux-system", pod=~".*shard.*"})
             /
-            (avg(workqueue_depth{namespace="flux-system", job=~".*shard.*"}) + 1)
+            (avg(workqueue_depth{namespace="flux-system", pod=~".*shard.*"}) + 1)
             > 3
           for: 15m
           labels:
@@ -198,7 +207,7 @@ Build a dashboard to visualize shard performance.
         "type": "timeseries",
         "targets": [
           {
-            "expr": "workqueue_depth{namespace='flux-system'}",
+            "expr": "workqueue_depth{namespace='flux-system', pod=~'.*shard.*'}",
             "legendFormat": "{{ pod }}"
           }
         ]
@@ -208,7 +217,7 @@ Build a dashboard to visualize shard performance.
         "type": "timeseries",
         "targets": [
           {
-            "expr": "rate(controller_runtime_reconcile_total{namespace='flux-system'}[5m])",
+            "expr": "rate(controller_runtime_reconcile_total{namespace='flux-system', pod=~'.*shard.*'}[5m])",
             "legendFormat": "{{ pod }} - {{ result }}"
           }
         ]
@@ -218,7 +227,7 @@ Build a dashboard to visualize shard performance.
         "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(controller_runtime_reconcile_time_seconds_bucket{namespace='flux-system'}[5m]))",
+            "expr": "histogram_quantile(0.99, sum by (pod, controller, le) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace='flux-system', pod=~'.*shard.*'}[5m])))",
             "legendFormat": "{{ pod }}"
           }
         ]
@@ -228,7 +237,7 @@ Build a dashboard to visualize shard performance.
         "type": "timeseries",
         "targets": [
           {
-            "expr": "rate(workqueue_queue_duration_seconds_sum{namespace='flux-system'}[5m]) / rate(workqueue_queue_duration_seconds_count{namespace='flux-system'}[5m])",
+            "expr": "sum by (pod, name) (rate(workqueue_queue_duration_seconds_sum{namespace='flux-system', pod=~'.*shard.*'}[5m])) / sum by (pod, name) (rate(workqueue_queue_duration_seconds_count{namespace='flux-system', pod=~'.*shard.*'}[5m]))",
             "legendFormat": "{{ pod }}"
           }
         ]
@@ -244,7 +253,7 @@ For quick checks without Grafana, query metrics directly.
 
 ```bash
 # Port-forward to a shard controller's metrics endpoint
-kubectl port-forward deployment/kustomize-controller-shard-1 \
+kubectl port-forward deployment/kustomize-controller-shard1 \
   -n flux-system 8080:8080 &
 
 # Query queue depth
