@@ -31,7 +31,7 @@ Generate a new age key:
 age-keygen -o age.agekey
 ```
 
-This outputs something like:
+This writes an identity file named `age.agekey` and prints the public key to stderr. The identity file looks like:
 
 ```bash
 # created: 2026-03-13T10:00:00Z
@@ -55,12 +55,12 @@ creation_rules:
 
 Having both keys means files can be decrypted by either GPG or age during the transition period.
 
-## Step 3: Re-encrypt Files with Both Keys
+## Step 3: Update Files with Both Keys
 
 Use `sops updatekeys` to add the age key to existing GPG-encrypted files:
 
 ```bash
-find . -name "*.yaml" -exec grep -l "sops:" {} \; | while read f; do
+find . -name "*.yaml" -exec grep -l "sops:" {} \; | while IFS= read -r f; do
   echo "Updating keys for $f"
   sops updatekeys -y "$f"
 done
@@ -127,7 +127,7 @@ creation_rules:
 Run `updatekeys` again to remove GPG from all files:
 
 ```bash
-find . -name "*.yaml" -exec grep -l "sops:" {} \; | while read f; do
+find . -name "*.yaml" -exec grep -l "sops:" {} \; | while IFS= read -r f; do
   sops updatekeys -y "$f"
 done
 ```
@@ -194,18 +194,16 @@ Automate the full migration:
 #!/bin/bash
 set -euo pipefail
 
-AGE_PUBLIC_KEY="age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
-
 echo "Finding SOPS-encrypted files..."
-FILES=$(find . -name "*.yaml" -exec grep -l "sops:" {} \;)
-TOTAL=$(echo "$FILES" | wc -l)
+mapfile -t FILES < <(find . -name "*.yaml" -exec grep -l "sops:" {} \;)
+TOTAL=${#FILES[@]}
 
 echo "Found $TOTAL encrypted files"
 echo "Updating keys to include age recipient..."
 
 COUNT=0
 FAILED=0
-for f in $FILES; do
+for f in "${FILES[@]}"; do
   COUNT=$((COUNT + 1))
   if sops updatekeys -y "$f" 2>/dev/null; then
     echo "[$COUNT/$TOTAL] Updated: $f"
