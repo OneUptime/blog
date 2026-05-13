@@ -29,13 +29,18 @@ Maintain a comprehensive reference table:
 
 | Path Prefix | Contents | Written By | Read By | RBAC Role |
 |-------------|----------|-----------|---------|-----------|
-| `/calico/v1/policy/tier/` | Network policies and tiers | calicoctl, API server | Felix | calico-admin |
-| `/calico/v1/policy/profile/` | Calico profiles | calicoctl, API server | Felix | calico-admin |
-| `/calico/v1/host/<node>/` | Node registration, workloads | Felix, CNI | Felix | calico-felix, calico-cni |
-| `/calico/v1/ipam/v2/` | IP address allocations | CNI plugin | CNI plugin | calico-cni |
-| `/calico/v1/config/` | Global Felix configuration | calicoctl, operator | Felix, CNI | calico-admin |
-| `/calico/felix/v1/` | Per-node Felix status | Felix | Felix | calico-felix |
-| `/calico/bgp/v1/` | BGP peer configuration | calicoctl | BGP daemon | calico-admin |
+| `/calico/resources/v3/projectcalico.org/tiers/` | Calico tiers | calicoctl, API server | Felix | calico-admin |
+| `/calico/resources/v3/projectcalico.org/networkpolicies/<namespace>/` | Namespaced Calico network policies | calicoctl, API server | Felix | calico-admin |
+| `/calico/resources/v3/projectcalico.org/globalnetworkpolicies/` | Global Calico network policies | calicoctl, API server | Felix | calico-admin |
+| `/calico/resources/v3/projectcalico.org/profiles/` | Calico profiles | calicoctl, API server | Felix | calico-admin |
+| `/calico/resources/v3/projectcalico.org/nodes/<node>` | Node resources | calico/node, calicoctl, API server | Felix, BGP daemon | calico-felix |
+| `/calico/resources/v3/projectcalico.org/workloadendpoints/<namespace>/` | Workload endpoints | CNI plugin, calico/node | Felix | calico-cni, calico-felix |
+| `/calico/ipam/v2/` | IPAM blocks, handles, affinities, and IPAM configuration | CNI plugin, calico/node | CNI plugin, calico/node | calico-cni |
+| `/calico/resources/v3/projectcalico.org/felixconfigurations/` | Felix configuration resources | calicoctl, operator, API server | Felix | calico-admin |
+| `/calico/felix/v1/host/<node>/endpoint/` | Host endpoint status | Felix | Felix | calico-felix |
+| `/calico/felix/v2/<region>/host/<node>/` | Felix status reports and workload endpoint status | Felix | Felix | calico-felix |
+| `/calico/resources/v3/projectcalico.org/bgppeers/` | BGP peer resources | calicoctl, API server | BGP daemon | calico-admin |
+| `/calico/resources/v3/projectcalico.org/bgpconfigurations/` | BGP configuration resources | calicoctl, API server | BGP daemon | calico-admin |
 ```
 
 ## Documentation Component 2: Data Lifecycle
@@ -43,14 +48,14 @@ Maintain a comprehensive reference table:
 ```mermaid
 graph TD
     subgraph Creation
-        A[New Policy Applied] --> B[Written to /calico/v1/policy/]
-        C[New Pod Scheduled] --> D[IP Allocated /calico/v1/ipam/]
-        E[Node Joins] --> F[Host entry /calico/v1/host/nodename/]
+        A[New Policy Applied] --> B[Written to /calico/resources/v3/projectcalico.org/networkpolicies/]
+        C[New Pod Scheduled] --> D[IP Allocated /calico/ipam/v2/]
+        E[Node Joins] --> F[Node resource /calico/resources/v3/projectcalico.org/nodes/nodename]
     end
     subgraph Deletion
         G[Policy Deleted] --> H[Removed from etcd]
-        I[Pod Terminated] --> J[IP Released /calico/v1/ipam/]
-        K[Node Removed] --> L[Run: calicoctl delete node]
+        I[Pod Terminated] --> J[IP Released /calico/ipam/v2/]
+        K[Node Removed] --> L[Run: calicoctl delete node nodename]
     end
 ```
 
@@ -82,7 +87,7 @@ etcdctl snapshot save calico-etcd-$(date +%Y%m%d).db
 ## Key Monitoring Queries for etcdv3 Paths
 
 ### Check data freshness
-etcdctl get /calico/felix/v1/host/<nodename>/last_updated
+etcdctl get /calico/felix/v2/<region>/host/<nodename>/last_reported_status
 
 ### Count total Calico keys
 etcdctl get /calico/ --prefix --keys-only | wc -l
@@ -91,7 +96,7 @@ etcdctl get /calico/ --prefix --keys-only | wc -l
 calicoctl ipam show
 
 ### Check for stale node entries
-for h in $(etcdctl get /calico/v1/host/ --prefix --keys-only | awk -F/ '{print $5}' | sort -u); do
+for h in $(etcdctl get /calico/resources/v3/projectcalico.org/nodes/ --prefix --keys-only | awk -F/ '{print $7}' | sort -u); do
   kubectl get node $h &>/dev/null || echo "Stale: $h"
 done
 ```
@@ -104,12 +109,12 @@ Document every structural change to etcd path usage:
 ## etcdv3 Path Change Log
 
 ### 2026-01-15 - Calico v3.27 upgrade
-- New path: /calico/v1/policy/globalnetworksets/ added for GlobalNetworkSet resources
-- Deprecated path: /calico/v1/netset/ - migrated automatically by upgrade
+- New path: /calico/resources/v3/projectcalico.org/globalnetworksets/ added for GlobalNetworkSet resources
+- Deprecated path: /calico/v1/netset/ - replaced by /calico/resources/v3/projectcalico.org/networksets/ after v3 resource migration
 
 ### 2025-06-01 - Added IPAM secondary pool
 - New IPAM block range added: 172.20.0.0/16
-- New entries appear under /calico/v1/ipam/v2/host/*/ipv4/block/172.20.*/
+- New entries appear under /calico/ipam/v2/assignment/ipv4/block/172.20.* and /calico/ipam/v2/host/*/
 ```
 
 ## Conclusion
