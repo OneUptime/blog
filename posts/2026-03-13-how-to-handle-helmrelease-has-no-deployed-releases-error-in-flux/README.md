@@ -61,9 +61,9 @@ flux reconcile helmrelease my-app -n production
 
 Flux will detect that no release exists and perform a fresh install. This is the cleanest approach but means you lose all release history.
 
-## Solution 2: Configure Install Remediation to Handle the Edge Case
+## Solution 2: Configure Install and Upgrade Remediation to Handle the Edge Case
 
-To prevent this from happening in the future, configure your HelmRelease with install remediation:
+To prevent this from happening in the future, configure your HelmRelease with install and upgrade remediation:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -168,14 +168,14 @@ spec:
       remediateLastFailure: true
 ```
 
-Also configure the Helm release history limit to prevent accumulation of old failed releases:
+Also review the Helm release history limit. Flux defaults to keeping five release revisions, but you can set this explicitly if you want a different retention policy:
 
 ```yaml
 spec:
   maxHistory: 5
 ```
 
-This keeps only the last five release versions, reducing the chance of state accumulation issues.
+This keeps only the last five release versions. Avoid setting the limit too low, because pruning too aggressively can remove rollback targets you may need during recovery.
 
 ## Conclusion
 
