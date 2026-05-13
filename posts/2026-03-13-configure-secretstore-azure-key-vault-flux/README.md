@@ -21,7 +21,7 @@ This guide covers configuring a `SecretStore` for Azure Key Vault using Workload
 - External Secrets Operator deployed via Flux HelmRelease
 - An Azure Key Vault with secrets populated
 - For Workload Identity: AKS cluster with OIDC issuer and Workload Identity enabled
-- For service principal: an Azure App Registration with Key Vault access policy
+- For service principal: an Azure App Registration with Key Vault access policy or Azure RBAC role
 
 ## Step 1: Configure Azure Workload Identity (Recommended for AKS)
 
@@ -33,9 +33,24 @@ Enable Workload Identity on your AKS cluster and create a managed identity:
 az aks update --resource-group myRG --name myAKS \
   --enable-oidc-issuer --enable-workload-identity
 
+AKS_OIDC_ISSUER=$(az aks show --resource-group myRG --name myAKS \
+  --query "oidcIssuerProfile.issuerUrl" -o tsv)
+
 # Create a managed identity for ESO
 az identity create --name eso-identity \
   --resource-group myRG --location eastus
+
+MANAGED_IDENTITY_CLIENT_ID=$(az identity show --name eso-identity \
+  --resource-group myRG --query clientId -o tsv)
+
+# Trust the Kubernetes service account used by the SecretStore
+az identity federated-credential create \
+  --name eso-workload-identity \
+  --identity-name eso-identity \
+  --resource-group myRG \
+  --issuer "$AKS_OIDC_ISSUER" \
+  --subject system:serviceaccount:default:workload-identity-sa \
+  --audiences api://AzureADTokenExchange
 
 # Grant Key Vault access to the managed identity
 az keyvault set-policy --name my-keyvault \
@@ -44,28 +59,25 @@ az keyvault set-policy --name my-keyvault \
   --secret-permissions get list
 ```
 
-## Step 2: Annotate the ESO Service Account
+## Step 2: Create the Workload Identity Service Account
 
 ```yaml
 # clusters/my-cluster/external-secrets/service-account.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: external-secrets
-  namespace: external-secrets
+  name: workload-identity-sa
+  namespace: default
   annotations:
     # Link to the Azure managed identity via Workload Identity
     azure.workload.identity/client-id: "YOUR_MANAGED_IDENTITY_CLIENT_ID"
-  labels:
-    # Required label for Workload Identity mutation webhook
-    azure.workload.identity/use: "true"
 ```
 
 ## Step 3: Configure a SecretStore for Azure Key Vault (Workload Identity)
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-azure.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-key-vault
@@ -79,8 +91,7 @@ spec:
       vaultUrl: "https://my-keyvault.vault.azure.net"
       authType: WorkloadIdentity
       serviceAccountRef:
-        name: external-secrets
-        namespace: external-secrets
+        name: workload-identity-sa
 ```
 
 ## Step 4: Configure with Service Principal (Non-AKS Clusters)
@@ -94,7 +105,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: azure-sp-credentials
-  namespace: external-secrets
+  namespace: default
 type: Opaque
 stringData:
   client-id: "YOUR_APP_REGISTRATION_CLIENT_ID"
@@ -103,7 +114,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-azure-sp.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-key-vault-sp
@@ -151,7 +162,7 @@ kubectl get secretstore azure-key-vault -n default -o wide
 
 # Test with an ExternalSecret referencing a Key Vault secret
 kubectl apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test-azure-secret
@@ -177,7 +188,7 @@ kubectl get secret test-kv-secret -n default
 ## Best Practices
 
 - Use Workload Identity on AKS instead of service principals to avoid managing client secrets that expire.
-- Grant the managed identity or service principal only `get` and `list` permissions on the Key Vault, not `set` or `delete`.
+- Grant the managed identity or service principal only `get` and `list` permissions on access policy-based Key Vaults, not `set` or `delete`. For Azure RBAC-enabled vaults, assign a minimal role such as Key Vault Secrets User.
 - Use separate Key Vaults (or secret name prefixes) for different environments (dev, staging, prod) and configure corresponding SecretStores per environment cluster.
 - Store service principal credentials using SOPS or Sealed Secrets if you must use service principal auth outside AKS.
 - Enable Key Vault diagnostic logging to Azure Monitor to audit all secret access by the ESO service account.
