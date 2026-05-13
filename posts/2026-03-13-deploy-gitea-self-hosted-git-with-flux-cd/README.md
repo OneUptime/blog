@@ -72,7 +72,7 @@ spec:
   chart:
     spec:
       chart: gitea
-      version: ">=10.0.0 <11.0.0"
+      version: ">=12.0.0 <13.0.0"
       sourceRef:
         kind: HelmRepository
         name: gitea-charts
@@ -90,22 +90,34 @@ spec:
           ROOT_URL: https://gitea.example.com
           SSH_DOMAIN: gitea-ssh.example.com
           SSH_PORT: 22
-          START_SSH_SERVER: false   # Use the Kubernetes SSH service
+          START_SSH_SERVER: true    # Required for the Kubernetes SSH service
         repository:
           DEFAULT_BRANCH: main
         service:
           DISABLE_REGISTRATION: true   # Invite-only after initial setup
 
-    # Use external PostgreSQL (bundled chart)
+      additionalConfigFromEnvs:
+        - name: GITEA__database__PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: gitea-db-secret
+              key: password
+
+    # Use the bundled PostgreSQL chart
     postgresql-ha:
       enabled: false
 
     postgresql:
       enabled: true
-      auth:
-        existingSecret: gitea-db-secret
-        username: gitea
-        database: gitea
+      global:
+        postgresql:
+          auth:
+            existingSecret: gitea-db-secret
+            username: gitea
+            database: gitea
+            secretKeys:
+              adminPasswordKey: postgres-password
+              userPasswordKey: password
       primary:
         persistence:
           size: 20Gi
@@ -117,7 +129,7 @@ spec:
     # HTTP ingress
     ingress:
       enabled: true
-      ingressClassName: nginx
+      className: nginx
       hosts:
         - host: gitea.example.com
           paths:
@@ -202,7 +214,7 @@ Flux will create the repository in Gitea and push the bootstrap manifests automa
 ## Best Practices
 
 - Set `DISABLE_REGISTRATION: true` after the initial admin account is created to prevent unauthorized sign-ups.
-- Enable Gitea Actions (`ACTIONS: true` in the `gitea.config` block) for native CI/CD without a separate runner.
+- Enable Gitea Actions (`actions.ENABLED: true` in the `gitea.config` block) and deploy the dedicated Actions runner chart for native CI/CD.
 - Use `gitea backup` to export repositories and database periodically; store backups in object storage.
 - Configure SMTP settings via `gitea.config.mailer` for email notifications and password resets.
 - For high-availability, enable `postgresql-ha` instead of the single-instance PostgreSQL.
