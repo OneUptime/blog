@@ -43,14 +43,17 @@ helm upgrade cilium cilium/cilium --reuse-values \
 
 | Metric | Description |
 |--------|-------------|
-| `cilium_operator_gateway_api_addresses_total` | Total addresses allocated to gateways |
+| `cilium_operator_feature_adv_connect_and_lb_gateway_api_enabled` | Whether Gateway API support is enabled in the Cilium operator |
+| `cilium_operator_lbipam_ips_used` | LB-IPAM addresses currently allocated per pool |
+| `cilium_operator_lbipam_ips_available` | LB-IPAM addresses still available per pool |
+| `cilium_operator_lbipam_services_unsatisfied` | LoadBalancer services that could not get requested IPs |
 | `cilium_k8s_client_api_calls_total` | API calls made by Cilium operator |
 | `cilium_operator_process_cpu_seconds_total` | Operator CPU usage |
 
-Query for gateway-related API operations:
+Query for Cilium operator API activity:
 
 ```bash
-rate(cilium_k8s_client_api_calls_total{api_call=~".*gateway.*"}[5m])
+sum by (method, return_code) (rate(cilium_k8s_client_api_calls_total[5m]))
 ```
 
 ## Architecture
@@ -83,19 +86,19 @@ hubble observe --verdict DROPPED --namespace <namespace>
 
 ## Create an Alert for IP Allocation Failures
 
-In Alertmanager, create a rule to detect stale gateway conditions:
+In Prometheus, create a rule to detect LB-IPAM allocation failures:
 
 ```yaml
 groups:
   - name: cilium-gateway
     rules:
-      - alert: GatewayAddressNotProgrammed
-        expr: kube_gateway_status_conditions{type="Programmed",status="False"} > 0
+      - alert: CiliumLBIPAMServicesUnsatisfied
+        expr: cilium_operator_lbipam_services_unsatisfied > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Gateway {{ $labels.name }} address not programmed"
+          summary: "Cilium LB-IPAM has unsatisfied LoadBalancer services"
 ```
 
 ## Conclusion
