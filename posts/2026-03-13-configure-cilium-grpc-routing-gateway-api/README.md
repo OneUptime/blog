@@ -12,18 +12,22 @@ Description: Configure gRPC routing in Cilium's Gateway API implementation using
 
 Cilium's Gateway API implementation supports GRPCRoute resources, enabling native gRPC routing at the gateway level. GRPCRoute provides gRPC-aware routing rules including service name matching, method-level routing, and header-based routing-all without requiring application-level load balancing.
 
-GRPCRoute is part of the Gateway API experimental specification and requires the experimental CRDs to be installed alongside the standard ones.
+GRPCRoute is part of the Gateway API Standard Channel and requires the standard Gateway API CRDs to be installed.
 
 ## Prerequisites
 
-- Cilium with Gateway API enabled
-- Experimental Gateway API CRDs installed
+- Cilium with Gateway API enabled and `gatewayAPI.enableAlpn=true`
+- Standard Gateway API CRDs installed
 - gRPC backend services deployed
 
-## Install Experimental CRDs
+## Install Gateway API CRDs
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/experimental-install.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_referencegrants.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_grpcroutes.yaml
 ```
 
 ## Architecture
@@ -38,7 +42,7 @@ flowchart TD
 
 ## Deploy a TLS Gateway for gRPC
 
-gRPC over HTTP/2 typically uses TLS:
+gRPC over HTTP/2 typically uses TLS. Cilium requires ALPN support for HTTP/2 negotiation on TLS Gateway listeners:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -61,7 +65,7 @@ spec:
 ## Create a GRPCRoute
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: echo-grpc-route
@@ -81,6 +85,8 @@ spec:
           port: 50051
 ```
 
+For plaintext HTTP/2 from the Gateway to backend pods, set the backend Service port's `appProtocol` to `kubernetes.io/h2c`.
+
 ## Make a gRPC Test Request
 
 ```bash
@@ -90,6 +96,7 @@ GATEWAY_IP=$(kubectl get gateway grpc-gateway -n grpc-demo \
   -o jsonpath='{.status.addresses[0].value}')
 
 grpcurl -d '{"message": "hello"}' \
+  -insecure \
   -authority grpc.example.com \
   ${GATEWAY_IP}:443 echo.EchoService/Echo
 ```
@@ -125,4 +132,4 @@ spec:
 
 ## Conclusion
 
-Configuring gRPC routing in Cilium's Gateway API provides native protocol-level routing for gRPC services. GRPCRoute resources enable service and method-level routing rules that integrate with Cilium's eBPF datapath, delivering high-performance gRPC load balancing without external proxy dependencies.
+Configuring gRPC routing in Cilium's Gateway API provides native protocol-level routing for gRPC services. GRPCRoute resources enable service and method-level routing rules that integrate with Cilium's eBPF datapath and Envoy proxy, delivering high-performance gRPC load balancing without a separate ingress controller.
