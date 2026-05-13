@@ -23,7 +23,7 @@ Organizations running workloads on AWS typically use multiple accounts to isolat
 
 The multi-account setup uses the following structure:
 
-- **Management Account**: Hosts the Git repository and CI/CD pipeline
+- **Management Account**: Owns shared AWS resources like ECR and the CI/CD pipeline
 - **Development Account**: Runs the development EKS cluster
 - **Staging Account**: Runs the staging EKS cluster
 - **Production Account**: Runs the production EKS cluster
@@ -50,6 +50,13 @@ fleet-infra/
   │   │   └── kustomization.yaml
   │   └── production/
   │       └── kustomization.yaml
+  ├── apps/                          # Applications per environment
+  │   ├── dev/
+  │   │   └── kustomization.yaml
+  │   ├── staging/
+  │   │   └── kustomization.yaml
+  │   └── production/
+  │       └── kustomization.yaml
   └── clusters/                      # Cluster-specific entry points
       ├── dev-cluster/
       │   ├── flux-system/
@@ -64,14 +71,14 @@ fleet-infra/
 
 ## Step 2: Configure Cross-Account IAM Roles
 
-Create IAM roles in each target account that Flux can assume for accessing shared resources like ECR in the management account.
+Create IAM roles in each target account that Flux can use for accessing shared resources like ECR in the management account.
 
-In the management account, create a trust policy:
+In the management account, grant the Flux source-controller roles in the target accounts access to the shared ECR repository:
 
 ```bash
-# In the management account - create ECR access role
+# In the management account - grant target account roles access to the ECR repository
 
-cat <<EOF > flux-ecr-trust-policy.json
+cat <<EOF > ecr-repository-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -79,58 +86,46 @@ cat <<EOF > flux-ecr-trust-policy.json
       "Effect": "Allow",
       "Principal": {
         "AWS": [
-          "arn:aws:iam::111111111111:root",
-          "arn:aws:iam::222222222222:root",
-          "arn:aws:iam::333333333333:root"
+          "arn:aws:iam::111111111111:role/FluxSourceControllerRole",
+          "arn:aws:iam::222222222222:role/FluxSourceControllerRole",
+          "arn:aws:iam::333333333333:role/FluxSourceControllerRole"
         ]
       },
-      "Action": "sts:AssumeRole"
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:ListImages"
+      ],
+      "Resource": "*"
     }
   ]
 }
 EOF
 
-aws iam create-role \
-  --role-name FluxECRCrossAccountAccess \
-  --assume-role-policy-document file://flux-ecr-trust-policy.json
-
-aws iam attach-role-policy \
-  --role-name FluxECRCrossAccountAccess \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+aws ecr set-repository-policy \
+  --repository-name charts \
+  --policy-text file://ecr-repository-policy.json
 ```
 
-In each target account, create an IRSA role for Flux:
+In each target account, associate an IAM OIDC provider for the cluster and create an IRSA role for Flux:
 
 ```bash
 # In each target account (dev, staging, production)
+eksctl utils associate-iam-oidc-provider \
+  --cluster=<cluster-name> \
+  --approve
+
 eksctl create iamserviceaccount \
   --cluster=<cluster-name> \
   --namespace=flux-system \
   --name=source-controller \
-  --attach-policy-arn=arn:aws:iam::<target-account-id>:policy/FluxAssumeRolePolicy \
+  --role-name=FluxSourceControllerRole \
+  --attach-policy-arn=arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly \
   --override-existing-serviceaccounts \
   --approve
-```
-
-Create the assume role policy in each target account:
-
-```bash
-cat <<EOF > flux-assume-role-policy.json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "sts:AssumeRole",
-      "Resource": "arn:aws:iam::<management-account-id>:role/FluxECRCrossAccountAccess"
-    }
-  ]
-}
-EOF
-
-aws iam create-policy \
-  --policy-name FluxAssumeRolePolicy \
-  --policy-document file://flux-assume-role-policy.json
 ```
 
 ## Step 3: Bootstrap Flux on Each Cluster
@@ -258,7 +253,6 @@ spec:
     name: flux-system
   path: ./infrastructure/production
   prune: true
-  wait: true
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -329,9 +323,9 @@ patches:
             whenUnsatisfiable: DoNotSchedule
 ```
 
-## Step 7: Set Up Cross-Account ECR Image Access
+## Step 7: Set Up Cross-Account ECR OCI Artifact Access
 
-Configure Flux to pull images from a shared ECR registry in the management account:
+Configure Flux to pull OCI artifacts, such as Helm charts, from a shared ECR registry in the management account:
 
 ```yaml
 # base/sources/ecr-registry.yaml
@@ -386,7 +380,7 @@ Configure Flux notifications to alert on deployments across all clusters:
 
 ```yaml
 # clusters/production-cluster/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -397,7 +391,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-alerts
@@ -411,7 +405,8 @@ spec:
       name: "*"
     - kind: HelmRelease
       name: "*"
-  summary: "Production cluster event"
+  eventMetadata:
+    summary: "Production cluster event"
 ```
 
 ## Step 10: Commit and Push
@@ -450,10 +445,9 @@ flux get helmreleases -A
 If cross-account access is not working:
 
 ```bash
-# Test assume role from target account
-aws sts assume-role \
-  --role-arn arn:aws:iam::<management-account-id>:role/FluxECRCrossAccountAccess \
-  --role-session-name test
+# Verify the ECR repository policy in the management account
+aws ecr get-repository-policy \
+  --repository-name charts
 
 # Check Flux source-controller logs for auth errors
 kubectl logs -n flux-system deployment/source-controller --tail=50
