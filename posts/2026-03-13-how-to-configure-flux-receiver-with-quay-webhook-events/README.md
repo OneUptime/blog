@@ -18,7 +18,7 @@ This guide covers configuring a Flux Receiver for Quay webhook events, setting u
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller accessible from Quay (via ingress or LoadBalancer)
 - A Quay.io account or self-hosted Quay instance with a repository
@@ -31,15 +31,18 @@ Before starting, ensure you have:
 Quay supports repository notifications that fire on specific events:
 
 - **Push to Repository**: Triggered when a new image tag is pushed
-- **Package Vulnerability Found**: Triggered when a security scan detects vulnerabilities
-- **Dockerfile Build Completed**: Triggered when a Quay build finishes
-- **Dockerfile Build Failed**: Triggered when a build fails
+- **Image build queued**: Triggered when a Quay build is queued
+- **Image build started**: Triggered when a Quay build starts
+- **Image build success**: Triggered when a Quay build finishes successfully
+- **Image build failed**: Triggered when a Quay build fails
+- **Image build cancelled**: Triggered when a Quay build is cancelled
+- **Image expiry trigger**: Triggered when an image is due to expire
 
-For deployment automation, the "Push to Repository" event is the primary trigger.
+For deployment automation, the "Push to Repository" event is the primary trigger. Flux's Quay Receiver supports Quay repository push notifications only.
 
 ## Creating the Webhook Secret
 
-Create the Kubernetes secret for webhook authentication:
+Create the Kubernetes secret used to generate the Receiver webhook path:
 
 ```bash
 TOKEN=$(openssl rand -hex 32)
@@ -75,13 +78,15 @@ spec:
   secretRef:
     name: quay-webhook-token
   resources:
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImagePolicy
       name: my-app
 ```
 
-The `quay` type instructs the notification controller to parse Quay's webhook payload format and validate the request accordingly.
+The `quay` type instructs the notification controller to parse Quay's repository push payload format. The controller performs minimal validation by unmarshalling the JSON request body to the expected format, then requests reconciliation for the listed resources.
 
 ## Setting Up Image Automation Resources
 
@@ -148,7 +153,7 @@ In the Quay web UI:
    - **Webhook URL**: Enter your full webhook URL
 5. Click "Create Notification"
 
-For Quay.io, the notification configuration is per-repository. For organizations, you can set up organization-level notifications if your plan supports it.
+For Quay.io, the notification configuration is per-repository, including repositories owned by an organization.
 
 ## Full Deployment Chain Configuration
 
@@ -165,15 +170,20 @@ spec:
   secretRef:
     name: quay-webhook-token
   resources:
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: my-app
-    - kind: ImagePolicy
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImagePolicy
       name: my-app
-    - kind: ImageUpdateAutomation
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageUpdateAutomation
       name: flux-system
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: flux-system
-    - kind: Kustomization
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
       name: apps
 ```
 
@@ -194,17 +204,23 @@ spec:
   secretRef:
     name: quay-webhook-token
   resources:
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: frontend
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: backend
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: worker
-    - kind: ImagePolicy
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImagePolicy
       name: frontend
-    - kind: ImagePolicy
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImagePolicy
       name: backend
-    - kind: ImagePolicy
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImagePolicy
       name: worker
 ```
 
