@@ -110,7 +110,7 @@ The `hosts` field specifies the fully qualified domain name (FQDN) of the servic
 
 ## Step 4: Configure Cross-Namespace Service Discovery
 
-Services in the `frontend` namespace need to reach the backend using its FQDN. Create an Istio `ServiceEntry` or use Kubernetes DNS directly:
+Services in the `frontend` namespace need to reach the backend using its Kubernetes DNS name. Because the backend is a Kubernetes Service in the cluster, an Istio `ServiceEntry` is not required:
 
 ```yaml
 # Frontend deployment calling backend across namespaces
@@ -144,12 +144,12 @@ spec:
 
 The frontend uses `backend-api.backend.svc.cluster.local` to reach the backend. Istio's VirtualService in the `backend` namespace will handle traffic splitting for canary analysis.
 
-## Step 5: Export the VirtualService Across Namespaces
+## Step 5: Check VirtualService Visibility Across Namespaces
 
-By default, Istio VirtualServices are scoped to their namespace. To make the canary routing visible to the `frontend` namespace, configure the VirtualService with `exportTo`:
+By default, Istio VirtualServices are exported to all namespaces when `exportTo` is omitted. If your mesh or an existing VirtualService limits visibility, make sure the canary routing is visible to the `frontend` namespace by configuring the VirtualService with `exportTo`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-api
@@ -174,7 +174,7 @@ spec:
           weight: 0
 ```
 
-Note: Flagger manages this VirtualService automatically. If you need cross-namespace export, you may need to patch the VirtualService after Flagger creates it, or use Istio's mesh-wide configuration to allow cross-namespace routing by default.
+Note: Flagger manages this VirtualService automatically and reconciles it from the Canary service spec. Direct changes to the generated VirtualService can be overwritten, so prefer leaving the default all-namespace visibility in place or using Istio's mesh-wide default export configuration when you need a durable visibility setting.
 
 ## Step 6: Configure RBAC for Flagger
 
@@ -253,7 +253,7 @@ graph LR
 If you use Istio Sidecar resources to limit the scope of service discovery, make sure the frontend namespace can discover backend services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
