@@ -4,19 +4,20 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, QoS, Networking, Bandwidth
 
-Description: Configure Quality of Service controls in Calico to limit pod bandwidth and prioritize traffic for critical workloads using tc and eBPF.
+Description: Configure Quality of Service controls in Calico to limit pod bandwidth for critical workloads.
 
 ---
 
 ## Introduction
 
-Quality of Service (QoS) controls in Calico allow you to limit and prioritize pod network bandwidth to prevent noisy neighbors from consuming all available bandwidth and to ensure critical workloads receive the resources they need. Calico implements QoS using Linux traffic control (tc) to apply bandwidth limits to pod veth interfaces.
+Quality of Service (QoS) controls in Calico allow you to limit pod network bandwidth to prevent noisy neighbors from consuming all available bandwidth and to ensure critical workloads receive the resources they need. Calico applies bandwidth limits to pod interfaces using Linux traffic control mechanisms.
 
-Pod bandwidth annotations provide a straightforward way to specify limits: annotate pods with the desired ingress and egress bandwidth limits, and Calico applies the corresponding tc rules when the pod interface is created. This integration with standard Kubernetes bandwidth annotations makes QoS configuration accessible without deep networking knowledge.
+Pod bandwidth annotations provide a straightforward way to specify limits: annotate pods with the desired ingress and egress bandwidth limits, and Calico applies the corresponding rules. Calico also honors the Kubernetes bandwidth plugin annotations when Calico-specific QoS annotations are not present, making upgrades from bandwidth-plugin based configurations straightforward.
 
 ## Prerequisites
 
-- Calico v3.20+ with bandwidth plugin enabled
+- Calico v3.30+ for native QoS controls, or Calico configured with the Kubernetes bandwidth CNI plugin
+- Linux kernel 6.6+ when using the Calico eBPF data plane for bandwidth QoS
 - kubectl access
 - iperf3 for testing (optional)
 
@@ -30,12 +31,13 @@ kind: Pod
 metadata:
   name: bandwidth-limited-pod
   annotations:
-    kubernetes.io/ingress-bandwidth: "10M"
-    kubernetes.io/egress-bandwidth: "10M"
+    qos.projectcalico.org/ingressBandwidth: "10M"
+    qos.projectcalico.org/egressBandwidth: "10M"
 spec:
   containers:
   - name: app
-    image: nginx
+    image: networkstatic/iperf3
+    command: ["sleep", "3600"]
 ```
 
 ## Verify QoS Rules are Applied
@@ -46,9 +48,9 @@ spec:
 NODE=
 POD_UID=
 
-# List tc qdiscs on the calico interface
+# List tc rules on the calico interface
 tc qdisc show dev cali<iface>
-tc class show dev cali<iface>
+tc filter show dev cali<iface>
 ```
 
 ## Test Bandwidth Limiting with iperf3
@@ -71,8 +73,8 @@ graph TD
         APP[Application] --> ETH0[eth0]
     end
     subgraph Node
-        VETH[cali interface] -->|tc tbf\négress limit| NETWORK[Network]
-        NETWORK -->|tc ingress\npolicing| VETH
+        VETH[cali interface] -->|tc tbf\negress limit| NETWORK[Network]
+        NETWORK -->|tc ingress\nshaping| VETH
     end
     ETH0 <-->|veth pair| VETH
 ```
