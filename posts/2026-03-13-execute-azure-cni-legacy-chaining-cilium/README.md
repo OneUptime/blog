@@ -12,13 +12,13 @@ Description: Learn how to chain Cilium onto Azure CNI (legacy mode) on Azure Kub
 
 Azure CNI (legacy mode) assigns pods VNet IP addresses directly, enabling direct routing within Azure VNet without NAT or overlays. While effective for connectivity, Azure CNI's native network policy implementation has limitations in terms of granularity and observability.
 
-Chaining Cilium onto Azure CNI gives AKS clusters eBPF-based L3/L4/L7 network policy enforcement, Hubble flow observability, and transparent mTLS-while Azure CNI continues to manage VNet IP allocation and basic pod connectivity.
+Chaining Cilium onto Azure CNI gives AKS clusters eBPF-based L3/L4 network policy enforcement and Hubble flow observability while Azure CNI continues to manage VNet IP allocation and basic pod connectivity. Some advanced Cilium features, including L7 policy and transparent encryption, are limited in chained CNI deployments.
 
 ## Prerequisites
 
 - AKS cluster with Azure CNI (legacy) configured
 - `kubectl`, `cilium`, and `helm` CLIs installed
-- Node access (nodes must support eBPF - Linux kernel 5.4+ on AKS nodes)
+- Node access (nodes must support eBPF - Linux kernel 5.10+ or an equivalent distribution kernel)
 
 ## Step 1: Verify Azure CNI Configuration
 
@@ -34,28 +34,66 @@ kubectl get pods -o wide -n default
 
 # Check current CNI configuration on a node
 # Connect via kubectl debug or az aks command invoke
-kubectl debug node/<node-name> -it --image=ubuntu -- cat /etc/cni/net.d/10-azure.conflist
+kubectl debug node/<node-name> -it --image=ubuntu -- cat /host/etc/cni/net.d/10-azure.conflist
 ```
 
 ## Step 2: Install Cilium in Azure CNI Chaining Mode
 
+Create the CNI chain configuration that keeps Azure CNI first and adds Cilium as the chained plugin. Save it as `chaining.yaml`.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cni-configuration
+  namespace: kube-system
+data:
+  cni-config: |-
+    {
+      "cniVersion": "0.3.0",
+      "name": "azure",
+      "plugins": [
+        {
+          "type": "azure-vnet",
+          "mode": "transparent",
+          "ipam": {
+             "type": "azure-vnet-ipam"
+           }
+        },
+        {
+          "type": "portmap",
+          "capabilities": {"portMappings": true},
+          "snat": true
+        },
+        {
+           "name": "cilium",
+           "type": "cilium-cni"
+        }
+      ]
+    }
+```
+
 ```bash
+# Apply the CNI chain configuration
+kubectl apply -f chaining.yaml
+
 # Add the Cilium Helm repository
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium chained onto Azure CNI
-# azure-cni chaining mode preserves Azure CNI IP management
+# generic-veth chaining mode preserves Azure CNI IP management
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --namespace kube-system \
-  --set cni.chainingMode=azure-cni \
+  --set cni.chainingMode=generic-veth \
+  --set cni.customConf=true \
   --set cni.exclusive=false \
-  --set tunnel=disabled \
+  --set nodeinit.enabled=true \
+  --set cni.configMap=cni-configuration \
+  --set routingMode=native \
   --set enableIPv4Masquerade=false \
-  --set endpointRoutes.enabled=true \
-  --set kubeProxyReplacement=false \
-  --set azure.resourceGroup="my-aks-rg"
+  --set endpointRoutes.enabled=true
 ```
 
 ## Step 3: Validate the Installation
@@ -68,7 +106,13 @@ cilium status --wait
 cilium connectivity test
 
 # Check that both CNI plugins appear in the chain
-kubectl get configmap cilium-config -n kube-system -o yaml | grep -E "chaining|cni"
+kubectl get configmap cni-configuration -n kube-system -o yaml | grep -E "azure-vnet|cilium-cni|portmap"
+
+# Restart already-running non-host-network pods if the cluster was not created
+# with the node.cilium.io/agent-not-ready taint
+kubectl get pods --all-namespaces \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,HOSTNETWORK:.spec.hostNetwork \
+  --no-headers=true | grep '<none>' | awk '{print "-n "$1" "$2}' | xargs -L 1 -r kubectl delete pod
 ```
 
 ## Step 4: Deploy a CiliumNetworkPolicy
@@ -100,7 +144,7 @@ spec:
 ```bash
 # Apply and verify
 kubectl apply -f backend-ingress-policy.yaml
-cilium policy get
+kubectl get ciliumnetworkpolicy -n app backend-ingress-policy -o yaml
 ```
 
 ## Step 5: Enable Hubble for Flow Observability
@@ -119,11 +163,11 @@ cilium hubble ui
 
 ## Best Practices
 
-- Confirm the AKS node pool uses Ubuntu (not Windows) nodes; Cilium's eBPF requires Linux kernel 5.4+, which all modern AKS Ubuntu node pools provide.
+- Confirm the AKS node pool uses Linux (not Windows) nodes; Cilium requires Linux kernel 5.10+ or an equivalent distribution kernel.
 - Keep `cni.exclusive=false` to prevent Cilium from removing the Azure CNI configuration.
 - Use `cilium connectivity test` after installation to verify end-to-end connectivity before applying network policies.
-- Monitor Cilium agent logs on AKS nodes for Azure API rate-limiting errors if running large node pools.
-- Plan a migration to Cilium as the primary CNI (Azure CNI Overlay + Cilium) for the full eBPF datapath on newer AKS node pools.
+- Monitor Cilium agent and node-init logs on AKS nodes for CNI chaining or Azure CNI transparent-mode errors.
+- Plan a migration to Azure CNI Powered by Cilium for a managed Cilium dataplane on newer AKS node pools.
 
 ## Conclusion
 
