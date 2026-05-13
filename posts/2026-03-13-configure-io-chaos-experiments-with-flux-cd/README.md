@@ -48,7 +48,8 @@ spec:
     - postgres
   # Apply latency to the data directory
   volumePath: /var/lib/postgresql/data
-  # Inject 100ms latency on all IO operations
+  path: /var/lib/postgresql/data/**/*
+  # Inject 100ms latency on read and write operations
   delay: "100ms"
   # Apply to both read and write operations
   methods:
@@ -80,7 +81,8 @@ spec:
   containerNames:
     - redis
   volumePath: /data
-  # Return EIO (Input/output error) for 10% of IO operations
+  path: /data/**/*
+  # Return EIO (Input/output error) for 10% of write operations
   errno: 5
   percent: 10
   methods:
@@ -110,6 +112,7 @@ spec:
   containerNames:
     - fileserver
   volumePath: /uploads
+  path: /uploads/**/*
   attr:
     # Simulate files appearing empty
     size: 0
@@ -146,6 +149,7 @@ spec:
     containerNames:
       - postgres
     volumePath: /var/lib/postgresql/data
+    path: /var/lib/postgresql/data/**/*
     delay: "200ms"
     percent: 100
     methods:
@@ -192,7 +196,7 @@ kubectl logs -n default -l app=postgres --since=10m
 - Always test IO chaos in a staging environment with a copy of production data to understand actual impact before running in production.
 - Start with low `percent` values (5-10%) and short durations before increasing the fault rate.
 - Combine IO latency with application-level query timeout metrics to measure the exact latency at which queries begin failing.
-- Use `methods: [write]` before `methods: [read, write]` since write failures are generally safer to simulate first.
+- Use `methods: [write]` before `methods: [read, write]` to start with a narrower fault scope.
 - Ensure your database backup processes run before scheduling IO chaos experiments.
 
 ## Conclusion
