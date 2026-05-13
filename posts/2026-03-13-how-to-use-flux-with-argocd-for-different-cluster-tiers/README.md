@@ -15,7 +15,7 @@ Flux and ArgoCD are both mature GitOps tools, and there are valid reasons to use
 Each tool has strengths that complement the other:
 
 - **Flux** excels at infrastructure management, Helm controller operations, dependency ordering, and multi-tenancy through Kustomization resources.
-- **ArgoCD** excels at application deployment visualization, progressive delivery UIs, RBAC for developer self-service, and application-level sync status dashboards.
+- **ArgoCD** excels at application deployment visualization, RBAC for developer self-service, and application-level sync status dashboards.
 
 A common pattern is to use Flux for platform and infrastructure management on all clusters, and ArgoCD for application deployments that development teams interact with.
 
@@ -26,12 +26,12 @@ graph TD
         C[ArgoCD Server] -->|Deploys Apps| D[App Deployments]
     end
     subgraph "Staging Cluster"
-        E[Flux Agent] -->|Infrastructure| F[CRDs, Controllers, Policies]
-        G[ArgoCD Agent] -->|Applications| H[Team Apps]
+        E[Flux Controllers] -->|Infrastructure| F[CRDs, Controllers, Policies]
+        G[ArgoCD Target] -->|Applications| H[Team Apps]
     end
     subgraph "Production Cluster"
-        I[Flux Agent] -->|Infrastructure| J[CRDs, Controllers, Policies]
-        K[ArgoCD Agent] -->|Applications| L[Team Apps]
+        I[Flux Controllers] -->|Infrastructure| J[CRDs, Controllers, Policies]
+        K[ArgoCD Target] -->|Applications| L[Team Apps]
     end
     A --> E
     A --> I
@@ -113,7 +113,7 @@ spec:
   chart:
     spec:
       chart: argo-cd
-      version: "6.x"
+      version: "9.x"
       sourceRef:
         kind: HelmRepository
         name: argocd
@@ -132,9 +132,8 @@ spec:
       ingress:
         enabled: true
         ingressClassName: nginx
-        hosts:
-          - argocd.${cluster_domain}
-        tls:
+        hostname: argocd.${cluster_domain}
+        extraTls:
           - secretName: argocd-tls
             hosts:
               - argocd.${cluster_domain}
@@ -311,7 +310,7 @@ metadata:
   name: team-alpha-frontend
   labels:
     app.kubernetes.io/managed-by: flux
-    argocd.argoproj.io/managed-by: argocd  # Allow ArgoCD to deploy into it
+    argocd.argoproj.io/managed-by: argocd  # Mark the namespace for an ArgoCD instance named argocd
 ---
 apiVersion: v1
 kind: ResourceQuota
@@ -329,7 +328,7 @@ spec:
 
 ### ArgoCD Resource Tracking Exclusion
 
-Configure ArgoCD to ignore Flux-managed resources:
+Configure ArgoCD to ignore Flux custom resources:
 
 ```yaml
 # ArgoCD ConfigMap
@@ -360,7 +359,7 @@ graph TD
         C[Shared Services Cluster]
     end
     subgraph "Tier 3 - Workload"
-        D[ArgoCD Agent + Flux Infra]
+        D[ArgoCD Targets + Flux Infra]
         E[Dev Cluster]
         F[Staging Cluster]
         G[Production Cluster]
