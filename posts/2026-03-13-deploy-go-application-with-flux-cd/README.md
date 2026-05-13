@@ -10,7 +10,7 @@ Description: Deploy a compiled Go application to Kubernetes using Flux CD GitOps
 
 ## Introduction
 
-Go produces statically compiled binaries with no external runtime dependencies, making it one of the easiest languages to containerize efficiently. A Go HTTP server binary can run in a scratch or distroless container, resulting in images that are often under 20 MB. This footprint, combined with Go's fast startup time (typically under 100ms), makes Go applications excellent candidates for Kubernetes microservices that need to scale quickly.
+Go can produce statically compiled binaries with no external runtime dependencies, making it one of the easiest languages to containerize efficiently. A Go HTTP server binary can run in a scratch or distroless container, resulting in images that are often under 20 MB. This footprint, combined with Go's fast startup time (typically under 100ms), makes Go applications excellent candidates for Kubernetes microservices that need to scale quickly.
 
 Flux CD brings GitOps discipline to your Go deployments. Instead of running `kubectl apply` after each build, Flux continuously reconciles the cluster against your Git repository. The image automation controller watches your container registry for new tags and automatically commits image tag updates back to Git, closing the loop between your CI pipeline and your Kubernetes cluster.
 
@@ -25,13 +25,14 @@ This guide covers the Go multi-stage Dockerfile, Kubernetes manifest design, and
 
 ## Step 1: Containerize the Go Application
 
-Go's static compilation makes distroless containers practical. The image contains only the binary and essential system certificates.
+Go's support for static compilation makes distroless containers practical. The image contains only the binary and the minimal files provided by the distroless static base image, such as certificates and timezone data.
 
 ```dockerfile
 # Dockerfile - multi-stage: compile on full Go image, run on distroless
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
+ARG VERSION=dev
 
 # Download dependencies first (cached separately from source)
 COPY go.mod go.sum ./
@@ -71,12 +72,14 @@ import (
     "os"
 )
 
+var version = "dev"
+
 func main() {
     mux := http.NewServeMux()
 
     mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+        json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
     })
 
     mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
