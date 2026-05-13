@@ -22,7 +22,7 @@ Before you begin, ensure you have the following:
 
 ## Understanding GKE Ingress
 
-GKE includes a built-in Ingress controller (`gce` class) that creates Google Cloud Load Balancers. There is no need to install a separate controller. When you create an Ingress resource with the `kubernetes.io/ingress.class: gce` annotation or `ingressClassName: gce`, GKE automatically provisions an external HTTP(S) Load Balancer.
+GKE includes a built-in Ingress controller (`gce` class) that creates Google Cloud Load Balancers. There is no need to install a separate controller. When you create an Ingress resource with the `kubernetes.io/ingress.class: gce` annotation, GKE automatically provisions an external HTTP(S) Load Balancer. Although the annotation is deprecated in Kubernetes, GKE continues to use it and ignores the `ingressClassName` field.
 
 For internal traffic, use `gce-internal` to create an Internal HTTP(S) Load Balancer.
 
@@ -97,8 +97,10 @@ kind: Service
 metadata:
   name: my-app
   namespace: default
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: my-app
   ports:
@@ -206,7 +208,7 @@ spec:
     healthyThreshold: 2
     unhealthyThreshold: 3
     type: HTTP
-    requestPath: /healthz
+    requestPath: /
     port: 80
   connectionDraining:
     drainingTimeoutSec: 60
@@ -222,8 +224,9 @@ metadata:
   namespace: default
   annotations:
     cloud.google.com/backend-config: '{"default": "my-app-backend"}'
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: my-app
   ports:
@@ -310,7 +313,7 @@ flux get kustomizations ingress
 
 ### Common Issues
 
-**Ingress stuck with no IP address**: The load balancer takes 3-5 minutes to provision. If it takes longer, check the GKE Ingress controller logs and ensure the Service is of type `NodePort`.
+**Ingress stuck with no IP address**: The load balancer takes 3-5 minutes to provision. If it takes longer, check the GKE Ingress controller logs and ensure the Service is either of type `NodePort` or uses `ClusterIP` with NEGs enabled.
 
 **Certificate stuck in Provisioning**: The managed certificate requires DNS to point to the load balancer IP. Ensure your DNS A record for the domain matches the static IP address.
 
