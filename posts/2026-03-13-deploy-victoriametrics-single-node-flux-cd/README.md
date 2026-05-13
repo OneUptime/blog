@@ -76,13 +76,11 @@ spec:
         dedup.minScrapeInterval: "15s"
         # Enable VictoriaMetrics web UI
         http.pathPrefix: ""
-        # Snapshot support for backups
-        snapshotCreateURL: ""
 
       persistentVolume:
         enabled: true
         size: 100Gi
-        storageClass: "standard"
+        storageClassName: "standard"
         accessModes:
           - ReadWriteOnce
 
@@ -100,17 +98,13 @@ spec:
         ingressClassName: nginx
         hosts:
           - name: victoriametrics.internal.example.com
-            path: /
+            path:
+              - /
             port: http
 
       # Prometheus metrics for VictoriaMetrics itself
       serviceMonitor:
         enabled: true
-        namespace: monitoring
-
-    # VMAgent for scraping (alternative to Prometheus)
-    vmagent:
-      enabled: false  # Use existing Prometheus remote write instead
 ```
 
 ## Step 3: Configure Prometheus Remote Write to VictoriaMetrics
@@ -164,8 +158,8 @@ spec:
         name: victoriametrics
         namespace: flux-system
   values:
-    remoteWriteUrls:
-      - http://victoria-metrics-single-server.monitoring.svc.cluster.local:8428/api/v1/write
+    remoteWrite:
+      - url: http://victoria-metrics-single-server.monitoring.svc.cluster.local:8428/api/v1/write
 
     config:
       global:
@@ -216,8 +210,8 @@ data:
         isDefault: true
         jsonData:
           timeInterval: "30s"
-          # Enable MetricsQL functions (VictoriaMetrics extensions)
-          queryType: range
+          httpMethod: POST
+          prometheusType: Prometheus
 ```
 
 ## Step 6: Apply with Flux and Verify
@@ -260,7 +254,7 @@ curl "http://localhost:8428/api/v1/query?query=up"
 curl http://localhost:8428/api/v1/status/tsdb | jq '.data.topMetricsCountByMetricName[0:5]'
 
 # Check storage usage
-curl http://localhost:8428/api/v1/status/active_queries
+curl http://localhost:8428/metrics | grep '^vm_data_size_bytes'
 
 # Verify Flux reconciliation
 flux get helmrelease victoria-metrics-single -n monitoring
