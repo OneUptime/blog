@@ -87,7 +87,7 @@ metadata:
   namespace: test
 data:
   validate.sh: |
-    #!/bin/bash
+    #!/usr/bin/env bash
     set -euo pipefail
 
     CANARY_URL="$1"
@@ -124,13 +124,13 @@ Mount the ConfigMap in the load tester by updating its Helm values or patching t
 ```yaml
 # Helm values for flagger-loadtester
 
-extraVolumes:
+volumes:
   - name: test-scripts
     configMap:
       name: canary-test-scripts
       defaultMode: 0755
 
-extraVolumeMounts:
+volumeMounts:
   - name: test-scripts
     mountPath: /scripts
 ```
@@ -209,7 +209,7 @@ Compare canary performance against a known baseline:
 
             for i in $(seq 1 $SAMPLES); do
               LATENCY=$(curl -sf -o /dev/null -w "%{time_total}" "$CANARY/api/v1/ping")
-              LATENCY_MS=$(echo "$LATENCY * 1000" | bc | cut -d. -f1)
+              LATENCY_MS=$(awk "BEGIN { printf \"%d\", $LATENCY * 1000 }")
               TOTAL_MS=$((TOTAL_MS + LATENCY_MS))
             done
 
