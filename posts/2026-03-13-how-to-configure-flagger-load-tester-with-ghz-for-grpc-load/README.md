@@ -58,7 +58,6 @@ spec:
           cmd: >
             ghz --insecure
             --call my.package.MyService/MyMethod
-            --total 1000
             --rps 50
             --duration 1m
             my-grpc-app-canary.default:9090
@@ -72,7 +71,7 @@ Understanding the `ghz` flags helps you configure appropriate gRPC load:
 
 - `--call`: The fully qualified gRPC method to call (format: `package.Service/Method`)
 - `--insecure`: Use plaintext connection (no TLS). Required for in-cluster testing unless mTLS is handled by the mesh.
-- `--total`: Total number of requests to send. Mutually exclusive with `--duration` for controlling when to stop.
+- `--total`: Total number of requests to send. If `--duration` is specified, `ghz` ignores `--total`.
 - `--duration`: Run for the specified duration (e.g., `1m`, `30s`).
 - `--rps`: Target requests per second (rate limiting).
 - `--concurrency`: Number of concurrent workers (default: 50).
