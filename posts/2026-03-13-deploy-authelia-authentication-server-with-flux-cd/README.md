@@ -18,7 +18,7 @@ Flux CD manages the Authelia deployment, configuration, and secret references de
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.26+) with Flux CD bootstrapped
+- Kubernetes cluster (v1.30+) with Flux CD bootstrapped
 - ingress-nginx Ingress controller
 - Redis (for session storage) - included in the Helm chart
 - `flux` and `kubectl` CLIs configured
@@ -32,10 +32,10 @@ kubectl create namespace authelia
 
 kubectl create secret generic authelia-secrets \
   --namespace authelia \
-  --from-literal=jwt-secret=$(openssl rand -hex 32) \
-  --from-literal=session-secret=$(openssl rand -hex 32) \
-  --from-literal=storage-encryption-key=$(openssl rand -hex 32) \
-  --from-literal=redis-password=$(openssl rand -hex 16)
+  --from-literal=identity_validation.reset_password.jwt.hmac.key=$(openssl rand -hex 32) \
+  --from-literal=session.encryption.key=$(openssl rand -hex 32) \
+  --from-literal=storage.encryption.key=$(openssl rand -hex 32) \
+  --from-literal=session.redis.password.txt=$(openssl rand -hex 16)
 ```
 
 ## Step 2: Add the Authelia Helm Repository
@@ -67,11 +67,13 @@ data:
   configuration.yaml: |
     ---
     theme: light
-    default_redirection_url: https://home.example.com
 
     server:
-      host: 0.0.0.0
-      port: 9091
+      address: tcp://0.0.0.0:9091/
+      endpoints:
+        authz:
+          auth-request:
+            implementation: AuthRequest
 
     log:
       level: info
@@ -87,21 +89,27 @@ data:
       file:
         path: /config/users_database.yml
         password:
-          algorithm: argon2id
-          iterations: 1
-          salt_length: 16
-          parallelism: 8
-          memory: 64
+          algorithm: argon2
+          argon2:
+            variant: argon2id
+            iterations: 3
+            memory: 65536
+            parallelism: 4
+            key_length: 32
+            salt_length: 16
 
     # Session configuration (Redis backend)
     session:
       name: authelia_session
-      domain: example.com
       same_site: lax
       expiration: 1h
       inactivity: 5m
+      cookies:
+        - domain: example.com
+          authelia_url: https://auth.example.com
+          default_redirection_url: https://home.example.com
       redis:
-        host: authelia-redis-master
+        host: authelia-redis-master.authelia.svc.cluster.local
         port: 6379
 
     # Regulation - lock out brute-force attempts
@@ -113,12 +121,12 @@ data:
     # SQLite storage (use PostgreSQL for production)
     storage:
       local:
-        path: /data/db.sqlite3
+        path: /config/db.sqlite3
 
     # Notification backend (file for testing, SMTP for production)
     notifier:
       filesystem:
-        filename: /tmp/notification.txt
+        filename: /config/notification.txt
 
     # Access control - who can access what
     access_control:
@@ -138,8 +146,8 @@ data:
 ## Step 4: Create the Users Database Secret
 
 ```bash
-# Generate password hash (argon2id) - install argon2 CLI first
-# echo -n "UserPassword1!" | argon2 salt -id -v 19 -m 16 -t 2 -p 1 -l 32 -e
+# Generate password hash (argon2id) with the Authelia CLI
+# docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'UserPassword1!'
 
 kubectl create secret generic authelia-users \
   --namespace authelia \
@@ -147,7 +155,7 @@ kubectl create secret generic authelia-users \
 users:
   admin:
     displayname: "Admin User"
-    password: "$argon2id$v=19$m=65536,t=1,p=8$..."  # Replace with real hash
+    password: "$argon2id$v=19$m=65536,t=3,p=4$..."  # Replace with real hash
     email: admin@example.com
     groups:
       - admins
@@ -169,7 +177,7 @@ spec:
   chart:
     spec:
       chart: authelia
-      version: ">=0.9.0 <0.10.0"
+      version: ">=0.10.50 <0.11.0"
       sourceRef:
         kind: HelmRepository
         name: authelia
@@ -178,33 +186,54 @@ spec:
     # Mount secrets from Kubernetes secrets
     secret:
       existingSecret: authelia-secrets
-      jwt:
-        key: jwt-secret
-      session:
-        key: session-secret
-      storageEncryptionKey:
-        key: storage-encryption-key
 
     # Mount configuration from ConfigMap
     configMap:
       existingConfigMap: authelia-config
       key: configuration.yaml
+      session:
+        cookies:
+          - domain: example.com
+            subdomain: auth
+        redis:
+          enabled: true
+          deploy: true
+          host: authelia-redis-master.authelia.svc.cluster.local
+          password:
+            disabled: false
 
     # Mount users database
-    secret:
-      existingSecret: authelia-users
+    pod:
+      extraVolumes:
+        - name: authelia-users
+          secret:
+            secretName: authelia-users
+      extraVolumeMounts:
+        - name: authelia-users
+          mountPath: /config/users_database.yml
+          subPath: users_database.yml
+          readOnly: true
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
 
     # Bundled Redis
     redis:
       enabled: true
       auth:
         existingSecret: authelia-secrets
-        existingSecretPasswordKey: redis-password
+        existingSecretPasswordKey: session.redis.password.txt
 
     ingress:
       enabled: true
-      ingressClassName: nginx
-      hostname: auth.example.com
+      className: nginx
+      rulesOverride:
+        - host: auth.example.com
+          path: /
       tls:
         enabled: true
         secret: authelia-tls
@@ -212,20 +241,12 @@ spec:
     persistence:
       enabled: true
       size: 1Gi
-
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
 ```
 
 ## Step 6: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/authelia/kustomization.yaml
+# clusters/my-cluster/authelia-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -246,8 +267,9 @@ spec:
 # Ingress for a protected application
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/auth-url: "https://auth.example.com/api/verify"
-    nginx.ingress.kubernetes.io/auth-signin: "https://auth.example.com/?rd=$target_url"
+    nginx.ingress.kubernetes.io/auth-method: "GET"
+    nginx.ingress.kubernetes.io/auth-url: "http://authelia.authelia.svc.cluster.local/api/authz/auth-request"
+    nginx.ingress.kubernetes.io/auth-signin: "https://auth.example.com?rm=$request_method"
     nginx.ingress.kubernetes.io/auth-response-headers: "Remote-User,Remote-Groups,Remote-Name,Remote-Email"
 ```
 
