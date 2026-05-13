@@ -60,7 +60,7 @@ jobs:
           # Install kubeconform for schema validation
           KUBECONFORM_VERSION="v0.6.4"
           curl -sL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar xz -C /usr/local/bin/
+            | sudo tar xz -C /usr/local/bin/
 
           # Install kustomize
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
@@ -70,32 +70,36 @@ jobs:
           # Install flux CLI for Flux-specific validation
           curl -s https://fluxcd.io/install.sh | sudo bash
 
+          # Install PyYAML for the syntax check
+          python3 -m pip install --user pyyaml
+
       - name: Validate YAML syntax
         run: |
           # Find all YAML files and check they parse correctly
-          find . -name '*.yaml' -o -name '*.yml' | xargs -I {} python3 -c "
-          import yaml, sys
-          try:
-              yaml.safe_load_all(open('{}'))
-              print('OK: {}')
-          except yaml.YAMLError as e:
-              print(f'ERROR: {} - {e}')
-              sys.exit(1)
-          "
+          python3 - <<'PY'
+          import pathlib
+          import sys
+          import yaml
 
-      - name: Run flux validate
-        run: |
-          # Flux CLI can validate Flux CRDs specifically
-          flux validate --path=clusters/production/
+          failed = False
+          for path in pathlib.Path(".").rglob("*"):
+              if path.suffix not in (".yaml", ".yml"):
+                  continue
+              try:
+                  with path.open() as f:
+                      list(yaml.safe_load_all(f))
+                  print(f"OK: {path}")
+              except yaml.YAMLError as e:
+                  print(f"ERROR: {path} - {e}")
+                  failed = True
+
+          if failed:
+              sys.exit(1)
+          PY
 
       - name: Render and validate with kubeconform
         run: |
-          # Download Flux CRD schemas for kubeconform
-          mkdir -p /tmp/flux-schemas
-          curl -sL https://github.com/fluxcd/flux2/releases/latest/download/install.yaml \
-            | kubectl apply --dry-run=client -f - 2>/dev/null || true
-
-          # Render each kustomization and validate schema
+          # Render each kustomization and validate schema, including Flux CRDs from the CRDs catalog
           find . -name kustomization.yaml | while read kustomization; do
             dir=$(dirname "$kustomization")
             echo "Validating: $dir"
@@ -114,7 +118,7 @@ jobs:
 ```yaml
       - name: Validate Flux resources
         run: |
-          # Check all GitRepository resources have valid URLs and intervals
+          # Check all GitRepository resources use the current stable API version
           find . -name '*.yaml' -exec grep -l 'kind: GitRepository' {} \; | while read f; do
             echo "Checking GitRepository in $f"
             # Ensure apiVersion is correct
@@ -138,8 +142,12 @@ For the strongest validation, run against an actual API server:
       - name: Server-side dry run
         if: github.event_name == 'pull_request'
         env:
-          KUBECONFIG: ${{ secrets.TEST_CLUSTER_KUBECONFIG }}
+          TEST_CLUSTER_KUBECONFIG: ${{ secrets.TEST_CLUSTER_KUBECONFIG }}
         run: |
+          # Write the kubeconfig secret to a file and point kubectl at it
+          echo "$TEST_CLUSTER_KUBECONFIG" > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+
           # Apply all manifests in dry-run mode
           find . -name '*.yaml' -not -path '*/flux-system/*' | while read f; do
             # Skip Flux bootstrap files that reference cluster-specific secrets
@@ -147,7 +155,7 @@ For the strongest validation, run against an actual API server:
               echo "Skipping secret file: $f"
               continue
             fi
-            kubectl apply --dry-run=server -f "$f" 2>&1 | grep -v "^$" || true
+            kubectl apply --dry-run=server -f "$f"
           done
 ```
 
@@ -158,11 +166,10 @@ For the strongest validation, run against an actual API server:
         run: |
           # Build the target and base manifests to generate a diff for reviewers
           git fetch origin main
-          git stash
-
-          kustomize build clusters/production/ > /tmp/base.yaml
-          git stash pop
+          git worktree add /tmp/base origin/main
+          kustomize build /tmp/base/clusters/production/ > /tmp/base.yaml
           kustomize build clusters/production/ > /tmp/head.yaml
+          git worktree remove /tmp/base
 
           echo "## Manifest Diff" >> $GITHUB_STEP_SUMMARY
           echo '```diff' >> $GITHUB_STEP_SUMMARY
