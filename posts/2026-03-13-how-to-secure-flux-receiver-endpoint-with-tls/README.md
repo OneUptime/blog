@@ -115,7 +115,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -203,7 +203,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -278,7 +278,7 @@ spec:
           from: Same
 ```
 
-cert-manager can automatically provision certificates for Gateway resources when the appropriate annotations are set.
+cert-manager can automatically provision certificates for Gateway resources when Gateway API support is enabled and the appropriate annotations are set.
 
 ## Enforcing TLS-Only Access
 
@@ -290,13 +290,13 @@ annotations:
   nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 ```
 
-You can also configure HSTS headers:
+You can also configure HSTS headers in the ingress-nginx controller ConfigMap:
 
 ```yaml
-annotations:
-  nginx.ingress.kubernetes.io/hsts: "true"
-  nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
-  nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+data:
+  hsts: "true"
+  hsts-max-age: "31536000"
+  hsts-include-subdomains: "true"
 ```
 
 ## Verification
@@ -304,10 +304,10 @@ annotations:
 Test that HTTPS works and HTTP is redirected:
 
 ```bash
-# This should return a 301 redirect to HTTPS
+# This should return a redirect to HTTPS, such as 308 with ingress-nginx defaults
 curl -s -o /dev/null -w "%{http_code}" http://flux-webhook.example.com/hook/test
 
-# This should return 200 (with a valid webhook path and signature)
+# This should reach the HTTPS endpoint; the exact status depends on the Receiver path and webhook signature
 curl -s -o /dev/null -w "%{http_code}" https://flux-webhook.example.com/hook/test
 ```
 
