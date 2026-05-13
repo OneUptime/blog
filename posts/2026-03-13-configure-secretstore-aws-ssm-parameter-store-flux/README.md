@@ -75,7 +75,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-ssm.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-parameter-store
@@ -86,11 +86,8 @@ spec:
       # Use ParameterStore instead of SecretsManager
       service: ParameterStore
       region: us-east-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets
+      # No auth block is needed when the ESO controller pod uses IRSA.
+      # The AWS SDK credential chain uses the annotated ServiceAccount.
 ```
 
 ## Step 4: Sync Individual Parameters
@@ -99,7 +96,7 @@ Reference individual SSM parameters by their full path:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-ssm.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-config-ssm
@@ -131,7 +128,7 @@ Use `dataFrom` with `find` to sync all parameters under a path prefix:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-ssm-bulk.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-all-params
@@ -149,7 +146,7 @@ spec:
         # Sync all parameters under this path prefix
         path: /myapp/prod
         # Convert parameter names to valid Secret keys
-        # /myapp/prod/database-url -> DATABASE_URL
+        # Unicode preserves valid characters and encodes invalid ones such as '/'
         conversionStrategy: Unicode
         decodingStrategy: None
 ```
