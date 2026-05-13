@@ -53,6 +53,14 @@ data:
 ```
 
 ```yaml
+# apps/overlays/device-site-001/kustomization.yaml
+resources:
+  - ../../base/iot-device
+patches:
+  - path: configmap-patch.yaml
+```
+
+```yaml
 # apps/overlays/device-site-001/configmap-patch.yaml
 # Site-specific calibration values
 apiVersion: v1
@@ -185,7 +193,7 @@ data:
 
 ## Step 5: Implement Configuration Validation
 
-Validate device configuration before Flux applies it to prevent misconfigurations.
+Combine Kubernetes API validation during Flux apply with CI validation before merge to prevent misconfigurations.
 
 ```yaml
 # clusters/edge-site-001/apps.yaml - with validation
@@ -201,8 +209,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Validate manifests against schema before applying
-  validation: server
+  # Flux validates manifests against the Kubernetes API during apply
   # Health check - verify config agent picked up the change
   healthChecks:
     - apiVersion: apps/v1
@@ -229,8 +236,8 @@ jobs:
       - name: Validate temperature offset range
         run: |
           for file in apps/overlays/*/configmap-patch.yaml; do
-            OFFSET=$(grep temperature-offset "$file" | grep -oP '[\-0-9.]+')
-            if (( $(echo "$OFFSET > 5.0 || $OFFSET < -5.0" | bc -l) )); then
+            OFFSET=$(awk -F'"' '/temperature-offset:/ { print $2 }' "$file")
+            if awk -v offset="$OFFSET" 'BEGIN { exit !(offset > 5.0 || offset < -5.0) }'; then
               echo "ERROR: $file has unreasonable temperature-offset: $OFFSET"
               exit 1
             fi
