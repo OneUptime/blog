@@ -35,28 +35,31 @@ Every Typha deployment should have a written document that explains why the curr
 
 ## Scaling Formula
 The standard Calico scaling formula is used:
-  desired_replicas = max(2, ceil(node_count / 200))
+  desired_replicas = min(20, max(3, ceil(node_count / 200)))
 
 ## Current Configuration
 - Node count at last review: 450 nodes
 - Desired replicas (formula): ceil(450 / 200) = 3
 - Actual replicas deployed: 3
 - Last reviewed: 2026-03-13
-- Next review threshold: cluster reaches 600 nodes (triggers move to 4 replicas)
+- Next review threshold: cluster exceeds 600 nodes (triggers move to 4 replicas)
 
 ## Override Rationale
 None - formula-driven count matches zone count (3 AZs), so no override needed.
 If cluster were in 2 AZs with 450 nodes, formula gives 3 replicas but we would
-round down to 2 to match zone count, and monitor connection load carefully.
+keep 3 replicas to preserve the production minimum, and use anti-affinity to
+spread them as evenly as the available zones allow.
 
 ## Resource Sizing
 - CPU request: 500m (leaves burst headroom for reconnection storms)
 - Memory request: 256Mi (steady state for ~150 connections + policy cache)
 - Memory limit: 512Mi (allows headroom for reconnection spikes)
 
-## Connection Cap
+## Connection Rebalancing Guardrail
 TYPHA_MAXCONNECTIONSLOWERLIMIT=150 per pod
-(cap = node_count / replicas * 1.1 = 450 / 3 * 1.1 = 165, rounded down to 150)
+(minimum dynamic connection limit when Kubernetes connection rebalancing is
+enabled; the active limit may be raised above this based on node and Typha
+counts)
 ```
 
 ---
@@ -74,20 +77,18 @@ echo "" >> typha-config-snapshot.yaml
 
 # Capture the Deployment spec
 kubectl get deployment calico-typha -n kube-system -o yaml \
-  | grep -v "resourceVersion\|uid\|creationTimestamp\|generation\|annotations:" \
   >> typha-config-snapshot.yaml
 
 echo "---" >> typha-config-snapshot.yaml
 
 # Capture the FelixConfiguration
-calicoctl get felixconfiguration default -o yaml \
+calicoctl get felixconfiguration default -o yaml --export \
   >> typha-config-snapshot.yaml
 
 echo "---" >> typha-config-snapshot.yaml
 
 # Capture the PDB
 kubectl get pdb calico-typha-pdb -n kube-system -o yaml \
-  | grep -v "resourceVersion\|uid\|creationTimestamp" \
   >> typha-config-snapshot.yaml
 
 echo "Snapshot saved to typha-config-snapshot.yaml"
@@ -103,18 +104,19 @@ Document the exact steps to change Typha replica counts:
 # Typha Scaling Runbook
 
 ## When to Scale Up
-- Cluster reaches `current_replicas * 200` nodes
-- Any Typha pod shows > 180 active connections (approaching the configured cap)
+- Cluster exceeds `current_replicas * 200` nodes
+- Any Typha pod shows sustained connection counts above the expected per-pod share by more than 20%
 - CPU or memory usage consistently above 80% of the limit
 
 ## When to Scale Down
-- Cluster shrinks below `(current_replicas - 1) * 200` nodes for 7+ days
+- Cluster shrinks below `(current_replicas - 1) * 200` nodes for 7+ days and
+  the new count remains at least 3 for production clusters
 - All Typha pods show < 50 active connections (inefficient resource use)
 
 ## Scale Up Procedure
 
 1. Calculate new replica count:
-   new_replicas = max(2, ceil(node_count / 200))
+   new_replicas = min(20, max(3, ceil(node_count / 200)))
 
 2. Round to nearest zone multiple if multi-zone cluster:
    new_replicas = ceil(new_replicas / zone_count) * zone_count
@@ -137,7 +139,7 @@ Document the exact steps to change Typha replica counts:
 
 ## Scale Down Procedure
 Same steps as scale up, but verify connection counts before scaling down:
-- Ensure no pod has connections > new_replicas * (node_count / new_replicas) * 1.2
+- Ensure no pod has connections > (node_count / new_replicas) * 1.2
 - Scale down 1 replica at a time if total change is 2+
 ```
 
@@ -151,14 +153,15 @@ Keep a chronological record of every Typha scaling event:
 # Typha Scaling Change Log
 
 ## 2026-03-13 - Initial deployment
-- Replicas: 2
+- Replicas: 3
 - Cluster size: 120 nodes
-- Reason: Initial setup; 2 replicas for HA with cluster below 200-node threshold
+- Reason: Initial setup; 3 replicas for production HA with cluster below 200-node threshold
 
 ## 2026-06-01 - Scale up to 3
-- Replicas: 2 → 3
+- Replicas: 3
 - Cluster size: 210 nodes
-- Reason: Crossed 200-node threshold; also aligns with 3-zone AZ configuration
+- Reason: Crossed 200-node threshold; existing 3 replicas still satisfy the
+  production minimum and align with the 3-zone AZ configuration
 - Engineer: platform-team
 
 ## 2026-09-15 - Scale up to 5
@@ -177,7 +180,7 @@ Keep a chronological record of every Typha scaling event:
 - Update the scaling rationale document every time you change the replica count, not just when you deploy Typha.
 - Store the configuration snapshot in the same Git repository as your cluster manifests so it is versioned alongside code changes.
 - Make the scaling runbook a PR review requirement for any Typha Deployment change - this forces engineers to check the runbook before making changes.
-- Include the change log review as part of your quarterly cluster audit; a long gap in the log often indicates the autoscaler is working but no one is reviewing its decisions.
+- Include the change log review as part of your quarterly cluster audit; a long gap in the log often indicates no scaling changes were needed or automation is changing replicas without the rationale being reviewed.
 - Link the runbook from Prometheus alert annotations so on-call engineers have immediate access during incidents.
 
 ---
