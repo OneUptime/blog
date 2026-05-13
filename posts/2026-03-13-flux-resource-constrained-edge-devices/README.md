@@ -32,7 +32,7 @@ Before optimizing, establish a baseline.
 
 kubectl top pods -n flux-system
 
-# Example output (default installation):
+# Example output (installation with image automation enabled):
 # NAME                                 CPU(cores)   MEMORY(bytes)
 # helm-controller-xxx                  12m          62Mi
 # image-automation-controller-xxx      8m           48Mi
@@ -61,13 +61,14 @@ The most impactful optimization is not running controllers you do not need.
 # image-automation-controller: Only if using ImageUpdateAutomation
 
 # Bootstrap with only required controllers
+# Flux reads the GitHub token from the GITHUB_TOKEN environment variable.
+export GITHUB_TOKEN=<my-token>
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/edge-site-001 \
-  --components=source-controller,kustomize-controller \
-  --token-env=GITHUB_TOKEN
+  --components=source-controller,kustomize-controller
 
 # Or disable controllers on an existing installation
 kubectl scale deployment helm-controller \
@@ -95,13 +96,6 @@ spec:
     spec:
       containers:
         - name: manager
-          args:
-            - --storage-path=/data
-            - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
-            # Limit concurrent operations
-            - --concurrent=2
-            - --kube-api-burst=10
-            - --kube-api-qps=5
           resources:
             requests:
               cpu: 10m
@@ -120,10 +114,6 @@ spec:
     spec:
       containers:
         - name: manager
-          args:
-            - --concurrent=2
-            - --kube-api-burst=10
-            - --kube-api-qps=5
           resources:
             requests:
               cpu: 10m
@@ -145,6 +135,13 @@ patches:
     target:
       kind: Deployment
       name: "(source|kustomize)-controller"
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=2
+    target:
+      kind: Deployment
+      name: kustomize-controller
 ```
 
 ## Step 4: Tune Reconciliation Parameters for Low CPU
@@ -187,7 +184,7 @@ spec:
 
 ## Step 5: Use OCI Artifacts to Reduce Memory Pressure
 
-Git cloning requires significant memory for unpacking. OCI artifact pulls are more memory-efficient.
+Git cloning can require significant memory for unpacking large repositories. OCI artifact pulls can be more memory-efficient for packaged deployment artifacts.
 
 ```bash
 # Measure memory during a Git clone reconciliation
@@ -197,11 +194,11 @@ watch -n1 "kubectl top pods -n flux-system"
 # Trigger reconciliation and observe peak memory
 flux reconcile source git flux-system
 
-# OCI pull uses significantly less peak memory
+# OCI pull can use less peak memory for packaged artifacts
 flux reconcile source oci fleet-edge-apps
 ```
 
-Switch to OCIRepository for the lowest memory profile:
+Switch to OCIRepository for a lower memory profile when you can package the desired state as an OCI artifact:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
