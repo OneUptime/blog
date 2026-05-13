@@ -17,9 +17,9 @@ Mayastor requires nodes with NVMe devices and uses CPU cores dedicated to storag
 ## Prerequisites
 
 - Kubernetes v1.26+ with Flux CD bootstrapped
-- Worker nodes with NVMe devices and at least 1 GiB of hugepages configured
-- Linux kernel 5.13+ recommended for best performance
-- `kubectl` and `flux` CLIs installed
+- Worker nodes with NVMe devices and at least 2 GiB of 2 MiB hugepages configured
+- Linux kernel 5.15+ recommended, with the `nvme-tcp` kernel module loaded
+- `kubectl`, `flux`, and the `kubectl openebs` plugin installed
 
 ## Step 1: Configure Hugepages on Nodes
 
@@ -63,6 +63,11 @@ spec:
 
 ```yaml
 # infrastructure/storage/mayastor/mayastor.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openebs
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -73,7 +78,7 @@ spec:
   chart:
     spec:
       chart: openebs
-      version: "3.10.0"
+      version: "4.4.0"
       sourceRef:
         kind: HelmRepository
         name: openebs
@@ -84,33 +89,38 @@ spec:
     crds: CreateReplace
   values:
     # Enable Mayastor engine
+    engines:
+      replicated:
+        mayastor:
+          enabled: true
+      local:
+        lvm:
+          enabled: false
+        zfs:
+          enabled: false
+        rawfile:
+          enabled: false
+    loki:
+      enabled: false
+    alloy:
+      enabled: false
     mayastor:
-      enabled: true
       io_engine:
         # CPU cores dedicated to storage I/O
         cpuCount: "2"
         # Hugepages settings
-        hugepages2Mi: "1024"   # 1024 × 2 MiB = 2 GiB
         nodeSelector:
           openebs.io/engine: mayastor
+          kubernetes.io/arch: amd64
         resources:
           limits:
             cpu: "2"
             memory: "1Gi"
-            # Request NVMe device access
-            hugepages-2Mi: "2Gi"
+            hugepages2Mi: "2Gi"
           requests:
             cpu: "2"
             memory: "1Gi"
-            hugepages-2Mi: "2Gi"
-
-    # Disable other engines
-    cstor:
-      enabled: false
-    localprovisioner:
-      enabled: false
-    ndm:
-      enabled: true
+            hugepages2Mi: "2Gi"
 ```
 
 ## Step 4: Create DiskPools
@@ -119,7 +129,7 @@ After the operator is running, create DiskPools on each storage node:
 
 ```yaml
 # infrastructure/storage/mayastor/diskpools.yaml
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-node-1
@@ -127,9 +137,9 @@ metadata:
 spec:
   node: storage-node-1
   disks:
-    - uring:///dev/nvme0n1   # NVMe device path
+    - uring:///dev/disk/by-id/nvme-<device-id>   # stable NVMe device link
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-node-2
@@ -137,9 +147,9 @@ metadata:
 spec:
   node: storage-node-2
   disks:
-    - uring:///dev/nvme0n1
+    - uring:///dev/disk/by-id/nvme-<device-id>
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-node-3
@@ -147,7 +157,7 @@ metadata:
 spec:
   node: storage-node-3
   disks:
-    - uring:///dev/nvme0n1
+    - uring:///dev/disk/by-id/nvme-<device-id>
 ```
 
 ## Step 5: Create StorageClasses
@@ -200,7 +210,7 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
-      name: openebs-io-engine
+      name: openebs-mayastor-io-engine
       namespace: openebs
 ```
 
@@ -208,7 +218,7 @@ spec:
 
 ```bash
 # Check DiskPools are online
-kubectl get diskpool -n openebs
+kubectl get dsp -n openebs
 
 # Create a test PVC
 kubectl apply -f - <<EOF
@@ -229,7 +239,7 @@ EOF
 kubectl get pvc mayastor-test-pvc
 
 # Check Mayastor volume
-kubectl get mayastorvolume -n openebs
+kubectl openebs mayastor -n openebs get volumes
 
 # Benchmark with fio
 kubectl run fio-bench --image=wallnerryan/fiotools \
@@ -242,7 +252,7 @@ kubectl run fio-bench --image=wallnerryan/fiotools \
 - Dedicate at least 2 CPU cores to Mayastor's I/O engine - these cores are polled 100% of the time for minimal latency.
 - Configure hugepages in the Linux kernel boot parameters (`GRUB_CMDLINE_LINUX`) rather than `sysctl` to ensure they are allocated before NUMA memory fragmentation occurs.
 - Use `repl: "3"` only when you have NVMe devices on at least 3 nodes - synchronous 3-way replication adds write latency when nodes are geographically separated.
-- Monitor Mayastor volume health with `kubectl get mayastorvolume -n openebs` and alert on degraded state.
+- Monitor Mayastor volume health with `kubectl openebs mayastor -n openebs get volumes` and alert on degraded state.
 - Benchmark with `fio` before going to production to verify your NVMe devices and hugepages configuration are correct.
 
 ## Conclusion
