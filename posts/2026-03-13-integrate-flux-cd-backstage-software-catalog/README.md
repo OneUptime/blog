@@ -29,8 +29,14 @@ In this guide you will configure the Backstage Kubernetes plugin to surface Flux
 ```bash
 # In your Backstage app directory
 
-yarn --cwd packages/app add @backstage/plugin-kubernetes
+yarn --cwd packages/app add @backstage/plugin-kubernetes @backstage/plugin-kubernetes-react
 yarn --cwd packages/backend add @backstage/plugin-kubernetes-backend
+```
+
+Register the backend plugin in `packages/backend/src/index.ts`:
+
+```typescript
+backend.add(import('@backstage/plugin-kubernetes-backend'));
 ```
 
 Configure the plugin in `app-config.yaml`:
@@ -59,13 +65,13 @@ kubernetes:
       apiVersion: v1
       plural: kustomizations
     - group: helm.toolkit.fluxcd.io
-      apiVersion: v2beta2
+      apiVersion: v2
       plural: helmreleases
     - group: source.toolkit.fluxcd.io
       apiVersion: v1
       plural: gitrepositories
     - group: image.toolkit.fluxcd.io
-      apiVersion: v1beta2
+      apiVersion: v1
       plural: imagepolicies
 ```
 
@@ -108,6 +114,8 @@ spec:
   system: acme-platform
 ```
 
+Make sure the Flux custom resources and workloads carry the matching `backstage.io/kubernetes-id: my-service` label, or replace `backstage.io/kubernetes-id` with a `backstage.io/kubernetes-label-selector` annotation that matches the labels you already use.
+
 ## Step 3: Configure RBAC for Backstage Service Account
 
 Backstage needs read access to Flux custom resources in all namespaces it monitors.
@@ -119,6 +127,27 @@ kind: ClusterRole
 metadata:
   name: backstage-flux-reader
 rules:
+  - apiGroups: ["*"]
+    resources:
+      - pods
+      - pods/log
+      - configmaps
+      - services
+      - deployments
+      - replicasets
+      - horizontalpodautoscalers
+      - ingresses
+      - statefulsets
+      - limitranges
+      - resourcequotas
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
   - apiGroups: ["kustomize.toolkit.fluxcd.io"]
     resources: ["kustomizations"]
     verbs: ["get", "list", "watch"]
@@ -131,11 +160,8 @@ rules:
   - apiGroups: ["image.toolkit.fluxcd.io"]
     resources: ["imagepolicies", "imagerepositories"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
-    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["pods", "events", "services"]
+    resources: ["events"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -160,7 +186,7 @@ Extend Backstage's entity page with a Flux status card that shows reconciliation
 // packages/app/src/components/FluxStatusCard/FluxStatusCard.tsx
 import React from 'react';
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { useKubernetesObjects } from '@backstage/plugin-kubernetes';
+import { useKubernetesObjects } from '@backstage/plugin-kubernetes-react';
 import { Card, CardHeader, CardContent, Chip } from '@material-ui/core';
 
 export const FluxStatusCard = () => {
@@ -169,7 +195,13 @@ export const FluxStatusCard = () => {
 
   const kustomizations = kubernetesObjects?.items?.flatMap(cluster =>
     cluster.resources?.flatMap(resource =>
-      resource.type === 'kustomizations' ? resource.resources : []
+      resource.type === 'customresources'
+        ? resource.resources.filter(
+            (item: any) =>
+              item.apiVersion === 'kustomize.toolkit.fluxcd.io/v1' &&
+              item.kind === 'Kustomization',
+          )
+        : []
     ) ?? []
   ) ?? [];
 
@@ -229,7 +261,7 @@ const serviceEntityPage = (
 ## Best Practices
 
 - Use Backstage's built-in Kubernetes plugin view for raw Flux object inspection and build custom cards for curated summaries
-- Sync your catalog-info.yaml annotations with the Flux object names to avoid mismatches
+- Keep your catalog-info.yaml annotations in sync with the labels or selectors on the Flux objects and workloads to avoid mismatches
 - Configure read-only Backstage service accounts - the portal should display state, not modify it
 - Add a direct link from Backstage to the platform's GitOps repository for the selected service
 - Surface Flux alerts and notifications in Backstage using a webhook integration with the Backstage events API
