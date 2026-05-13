@@ -134,16 +134,13 @@ Reference it as optional in the Kustomization:
 
 ```yaml
 postBuild:
-  substitute:
-    ENABLE_NEW_UI: "false"
-    NEW_API_VERSION: "v1"
   substituteFrom:
     - kind: ConfigMap
       name: feature-flags
       optional: true
 ```
 
-On clusters without the `feature-flags` ConfigMap, the inline default values are used. On clusters where you create the ConfigMap, its values override the defaults.
+On clusters without the `feature-flags` ConfigMap, use default values in the manifests, such as `${ENABLE_NEW_UI:=false}` and `${NEW_API_VERSION:=v1}`. On clusters where you create the ConfigMap, its values are used for those variables.
 
 ## Use Case: Team-Specific Customization
 
@@ -164,9 +161,9 @@ postBuild:
 
 Only the ConfigMap for the relevant team needs to exist on a given cluster.
 
-## Combining Optional ConfigMaps with Inline Defaults
+## Combining Optional ConfigMaps with Manifest Defaults
 
-A robust pattern is to define sensible defaults inline and use optional ConfigMaps for overrides:
+A robust pattern is to define sensible defaults in the manifests and use optional ConfigMaps for overrides:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -183,24 +180,21 @@ spec:
     name: flux-system
   postBuild:
     substitute:
-      REPLICAS: "2"
-      LOG_LEVEL: "info"
-      CACHE_TTL: "300"
-      RATE_LIMIT: "100"
+      var_substitution_enabled: "true"
     substituteFrom:
       - kind: ConfigMap
         name: cluster-overrides
         optional: true
 ```
 
-This guarantees all variables have values even if no ConfigMap exists. When a cluster needs different values, create the ConfigMap with only the variables you want to override.
+This enables substitution while allowing manifest expressions like `${REPLICAS:=2}`, `${LOG_LEVEL:=info}`, `${CACHE_TTL:=300}`, and `${RATE_LIMIT:=100}` to provide fallback values if no ConfigMap exists. When a cluster needs different values, create the ConfigMap with only the variables you want to override.
 
 ## Precedence with Optional ConfigMaps
 
 The precedence rules still apply with optional ConfigMaps:
 
 1. Inline `substitute` values have the highest priority
-2. Earlier `substituteFrom` entries override later ones
+2. Later `substituteFrom` entries override earlier ones
 3. Optional entries that do not exist are simply skipped
 
 ```yaml
@@ -209,12 +203,12 @@ postBuild:
     VAR_A: "inline"           # Highest priority
   substituteFrom:
     - kind: ConfigMap
-      name: primary           # Second priority
+      name: fallback          # Lowest priority
     - kind: ConfigMap
       name: secondary         # Third priority
       optional: true
     - kind: ConfigMap
-      name: fallback          # Lowest priority
+      name: primary           # Second priority
       optional: true
 ```
 
@@ -223,13 +217,13 @@ postBuild:
 Check which ConfigMaps exist:
 
 ```bash
-kubectl get configmap -n flux-system -l app.kubernetes.io/managed-by=flux
+kubectl get configmap cluster-config team-overrides -n flux-system
 ```
 
-Check the Kustomization status to see if optional ConfigMaps were found:
+Check the Kustomization status to confirm reconciliation succeeded:
 
 ```bash
-flux get kustomization my-app
+flux get kustomizations -n flux-system
 kubectl get kustomization my-app -n flux-system -o yaml
 ```
 
