@@ -29,7 +29,7 @@ The ordering for a typical release cycle looks like this: `1.2.0-alpha.1 < 1.2.0
 
 ## Tracking Only Stable Releases
 
-By default, a SemVer range in Flux will match pre-release tags if they fall within the range. To track only stable releases and exclude pre-releases, use a range that does not explicitly include them:
+By default, a SemVer range in Flux skips pre-release tags unless the range explicitly includes a pre-release comparator. To track only stable releases and exclude pre-releases, use a range that does not explicitly include them:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -80,12 +80,14 @@ metadata:
 spec:
   imageRepositoryRef:
     name: my-app
+  filterTags:
+    pattern: '^1\.2\.0-rc\..*'
   policy:
     semver:
       range: ">=1.2.0-rc.0 <1.2.0"
 ```
 
-This range includes all release candidate tags for version `1.2.0` but excludes the final `1.2.0` stable release. If the registry has `1.2.0-rc.1`, `1.2.0-rc.2`, and `1.2.0`, it selects `1.2.0-rc.2`.
+This filter limits the candidates to release candidate tags for version `1.2.0`, and the range excludes the final `1.2.0` stable release. If the registry has `1.2.0-rc.1`, `1.2.0-rc.2`, and `1.2.0`, it selects `1.2.0-rc.2`.
 
 ## Tracking Beta and RC Together
 
@@ -100,12 +102,14 @@ metadata:
 spec:
   imageRepositoryRef:
     name: my-app
+  filterTags:
+    pattern: '^1\.3\.0-(beta|rc)\..*'
   policy:
     semver:
       range: ">=1.3.0-beta.0 <1.3.0"
 ```
 
-Since `beta` sorts before `rc` lexically, this range captures both beta and rc pre-releases for version `1.3.0`.
+The filter limits the candidates to beta and rc tags for version `1.3.0`. Since `beta` sorts before `rc` lexically, this range captures both beta and rc pre-releases for that version.
 
 ## Using Pre-Release Tags in Staging Environments
 
