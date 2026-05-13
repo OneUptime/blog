@@ -12,7 +12,7 @@ Description: Deploy Sentry error tracking and monitoring platform to Kubernetes 
 
 Sentry is the leading open-source application monitoring platform that captures errors, traces slow transactions, and surfaces performance bottlenecks in real time. Running Sentry on-premises is common for organizations with strict data residency requirements or those handling sensitive application data that cannot leave their network perimeter.
 
-Deploying Sentry on Kubernetes is non-trivial-it comprises multiple services including the web server, workers, Celery beat scheduler, Snuba (event processing), Relay (ingest), Kafka, Redis, PostgreSQL, ClickHouse, and Zookeeper. The official Sentry Helm chart manages this complexity, and Flux CD ensures the entire multi-component deployment is reconciled from a single Git source of truth.
+Deploying Sentry on Kubernetes is non-trivial-it comprises multiple services including the web server, task workers, task scheduler, Snuba (event processing), Relay (ingest), Kafka, Redis, PostgreSQL, and ClickHouse. The `sentry-kubernetes` Helm chart manages this complexity, and Flux CD ensures the entire multi-component deployment is reconciled from a single Git source of truth.
 
 This guide uses the `sentry-kubernetes` Helm chart to deploy the self-hosted Sentry stack.
 
@@ -21,6 +21,7 @@ This guide uses the `sentry-kubernetes` Helm chart to deploy the self-hosted Sen
 - Kubernetes cluster (v1.26+) with at least 8 GB of RAM and 4 CPU cores for Sentry's dependencies
 - Flux CD bootstrapped in the cluster
 - Persistent storage (at least 100 GB recommended)
+- An external ClickHouse instance for Snuba event storage
 - An Ingress controller installed
 - `flux` and `kubectl` CLIs configured
 
@@ -35,7 +36,7 @@ kubectl create secret generic sentry-secret \
   --namespace sentry \
   --from-literal=secret-key=$(openssl rand -hex 32) \
   --from-literal=user-password=SentryAdmin123! \
-  --from-literal=user-email=admin@example.com
+  --from-literal=clickhouse-password=CHANGE_ME
 ```
 
 ## Step 2: Add the Sentry Helm Repository
@@ -68,22 +69,43 @@ spec:
   chart:
     spec:
       chart: sentry
-      version: ">=23.0.0 <24.0.0"
+      version: ">=31.0.0 <32.0.0"
       sourceRef:
         kind: HelmRepository
         name: sentry
         namespace: flux-system
   values:
     # Load the secret key from the pre-created secret
-    existingSecret: sentry-secret
-    existingSecretKey: secret-key
+    sentry:
+      existingSecret: sentry-secret
+      existingSecretKey: secret-key
+
+      # Sentry web resource limits
+      web:
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+
+      # Task worker resource limits
+      taskWorker:
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
 
     # Initial admin user
     user:
       create: true
+      email: admin@example.com
       existingSecret: sentry-secret
-      existingSecretUserKey: user-email
-      existingSecretPasswordKey: user-password
+      existingSecretKey: user-password
 
     # Use bundled PostgreSQL (enable external for production)
     postgresql:
@@ -103,13 +125,16 @@ spec:
     kafka:
       enabled: true
 
-    # ClickHouse for analytics storage
-    clickhouse:
-      enabled: true
-      clickhouse:
-        persistentVolumeClaim:
-          dataPersistentVolume:
-            storage: 50Gi
+    # External ClickHouse for Snuba event storage
+    externalClickhouse:
+      host: clickhouse.example.internal
+      tcpPort: 9000
+      httpPort: 8123
+      username: default
+      existingSecret: sentry-secret
+      existingSecretKey: clickhouse-password
+      database: default
+      singleNode: true
 
     # Relay for event ingestion
     relay:
@@ -128,26 +153,6 @@ spec:
         - secretName: sentry-tls
           hosts:
             - sentry.example.com
-
-    # Sentry web resource limits
-    web:
-      resources:
-        requests:
-          cpu: 300m
-          memory: 512Mi
-        limits:
-          cpu: "1"
-          memory: 2Gi
-
-    # Worker resource limits
-    worker:
-      resources:
-        requests:
-          cpu: 300m
-          memory: 512Mi
-        limits:
-          cpu: "1"
-          memory: 2Gi
 ```
 
 ## Step 4: Create the Kustomization
@@ -180,10 +185,10 @@ flux get helmreleases -n sentry --watch
 kubectl get jobs -n sentry --watch
 
 # Check web pod logs
-kubectl logs -n sentry -l app=sentry-web -f
+kubectl logs -n sentry -l app.kubernetes.io/component=web -f
 ```
 
-The initial boot will run database migrations and ClickHouse schema setup. This can take 5–15 minutes on first run.
+The initial boot will run database migrations and Snuba ClickHouse schema setup. This can take 5–15 minutes on first run.
 
 ## Step 6: Verify Sentry is Operational
 
@@ -192,14 +197,14 @@ The initial boot will run database migrations and ClickHouse schema setup. This 
 kubectl get pods -n sentry
 ```
 
-Expected running pods: `sentry-web`, `sentry-worker`, `sentry-cron`, `sentry-relay`, `sentry-snuba-*`, `sentry-kafka-*`, `sentry-redis-*`, `sentry-postgresql-*`, `sentry-clickhouse-*`.
+Expected running pods include `sentry-web`, `sentry-taskworker-*`, `sentry-task-scheduler`, `sentry-relay`, `sentry-snuba-*`, `sentry-kafka-*`, `sentry-redis-*`, and `sentry-postgresql-*`.
 
 Navigate to `https://sentry.example.com` and log in with the admin credentials.
 
 ## Best Practices
 
 - For production, replace bundled PostgreSQL with an external managed database (AWS RDS, Cloud SQL) to benefit from automated backups and high availability.
-- Configure SMTP in the Helm values (`email.from`, `email.host`) for notifications and user invitations.
+- Configure SMTP in the Helm values (`mail.from`, `mail.host`) for notifications and user invitations.
 - Enable Slack or PagerDuty integrations in Sentry settings for on-call alerting.
 - Set up Sentry projects per application and configure alert rules to avoid alert fatigue.
 - Monitor ClickHouse disk usage closely-event data grows quickly in high-traffic environments.
