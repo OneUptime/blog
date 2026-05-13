@@ -145,6 +145,20 @@ spec:
 Here is a complete example that deploys a stateful application while protecting its storage from garbage collection:
 
 ```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: database
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -167,22 +181,15 @@ spec:
           ports:
             - containerPort: 5432
           volumeMounts:
-            - name: data
+            - name: postgres-data
               mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-        annotations:
-          kustomize.toolkit.fluxcd.io/prune: disabled
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 100Gi
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data
 ```
 
-In this example, the volumeClaimTemplates include the prune-disabled annotation. If the StatefulSet is ever removed from Git, the PVCs created by the StatefulSet will not be pruned by Flux.
+In this example, the PersistentVolumeClaim is applied directly by Flux and includes the prune-disabled annotation. If the StatefulSet and PVC manifests are ever removed from Git, Flux will skip pruning the PVC.
 
 ## Verifying Exclusion
 
@@ -193,7 +200,7 @@ flux reconcile kustomization my-app
 kubectl get kustomization my-app -n flux-system -o yaml
 ```
 
-Resources with the prune-disabled annotation will still appear in the inventory but will be skipped during the pruning phase. You can also check the Flux logs for messages about skipped resources:
+The Kustomization inventory shows the resources Flux tracks for garbage collection, and resources with the prune-disabled annotation are skipped during the pruning phase. You can also check the Flux logs for messages about skipped resources:
 
 ```bash
 kubectl logs -n flux-system deployment/kustomize-controller | grep -i prune
@@ -205,7 +212,7 @@ Resources excluded from garbage collection remain in the cluster indefinitely un
 
 The prune-disabled annotation must be present on the resource in the cluster, not just in Git. If a resource was already applied without the annotation, you need to first update it with the annotation before removing it from Git.
 
-When using volumeClaimTemplates in StatefulSets, the annotation on the template applies to newly created PVCs but may not retroactively apply to existing ones. You may need to manually add the annotation to existing PVCs.
+When using volumeClaimTemplates in StatefulSets, remember that the PVCs are created by the Kubernetes StatefulSet controller rather than applied directly by Flux. Flux does not prune those child PVCs from its Kustomization inventory; Kubernetes StatefulSet PVC retention is controlled by `persistentVolumeClaimRetentionPolicy`, and the default behavior is to retain the PVCs when the StatefulSet is deleted.
 
 ## Conclusion
 
