@@ -48,7 +48,7 @@ sum by (src_namespace) (rate(calico_flow_denials_total[5m]))
   "title": "Namespace Isolation Dashboard",
   "panels": [
     {"title": "Namespace Label Coverage", "type": "stat",
-     "targets": [{"expr": "count(kube_namespace_labels{label_environment!=""}) / count(kube_namespace_info) * 100"}]},
+     "targets": [{"expr": "count(kube_namespace_labels{label_environment!=\"\"}) / count(kube_namespace_info) * 100"}]},
     {"title": "Cross-NS Denials/sec", "type": "graph",
      "targets": [{"expr": "rate(felix_denied_packets_total[5m])"}]},
     {"title": "Active Namespace Policies", "type": "stat",
