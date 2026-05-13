@@ -26,25 +26,26 @@ Good VPP documentation covers the hardware requirements that must be met before 
 ## Calico VPP Hardware Requirements
 
 ### CPU Requirements
-- x86_64 architecture with SSE4.2 and AVX2 support
+- CPU architecture supported by the Calico and VPP images in use
+- Document any CPU feature requirements for your VPP build and NIC driver combination
 - Recommended: Allocate 1-2 cores exclusively to VPP per node
 - Isolated from Linux scheduler via isolcpus kernel parameter
 
 ### Memory Requirements
-- Hugepages: 2GB minimum for 1G NIC, 4-8GB for 10G+ NICs
-- Hugepage size: 2MB (standard) or 1GB (large page support)
+- Hugepages: at least 512 x 2MB pages when using DPDK or native VPP drivers that require hugepages
+- Hugepage size: 2MB standard; 1GB hugepages may be used where supported and configured
 
 ### Network Interface Requirements
 | Requirement | Why |
 |-------------|-----|
-| DPDK support | Required for full VPP performance |
-| SR-IOV support | Optional: enables hardware VF offload |
-| RSS support | Required for multi-queue VPP workers |
+| DPDK or supported native VPP driver | Needed for the highest-performance uplink modes |
+| SR-IOV support | Optional: enables VF-based configurations |
+| Multi-queue/RSS support | Needed to distribute traffic across multiple VPP workers |
 
 ### Verified Hardware
 | NIC Model | Driver | Performance |
 |-----------|--------|-------------|
-| Intel X550 | ixgbe/i40e | 10G line rate |
+| Intel X550 | ixgbe | 10G line rate |
 | Mellanox ConnectX-5 | mlx5 | 25G line rate |
 | Intel E810 | ice | 100G line rate |
 ```
@@ -113,12 +114,12 @@ cat /proc/cmdline | tr ' ' '\n' | grep -E "isolcpus|nohz_full"
 
 ### Response Steps
 1. Use out-of-band console access (IPMI/iDRAC) to reach the node
-2. Check VPP process: systemctl status vpp
-3. Review VPP logs: journalctl -u vpp -n 100
+2. Check the Calico VPP containers: crictl ps -a --name calico-vpp-node
+3. Review the VPP container logs: crictl logs <vpp-container-id> | tail -n 100
 4. If VPP startup failed, check hugepages: grep HugePages_Free /proc/meminfo
 5. Emergency recovery - stop VPP and restore Linux networking:
-   systemctl stop vpp
-   # Calico VPP manager will detect VPP is down and attempt recovery
+   crictl stop <vpp-container-id>
+   # vpp-manager restores Linux interface configuration when VPP stops
    kubectl delete pod -n calico-vpp-dataplane -l app=calico-vpp-node \
      --field-selector spec.nodeName=affected-node
 ```
