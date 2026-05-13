@@ -41,26 +41,30 @@ spec:
 
 ## Step 2: Create the GitHub OAuth Secret
 
-Store the GitHub OAuth credentials as a Kubernetes Secret (use SOPS in production).
+Store the GitHub OAuth credentials as Flux Helm values in a Kubernetes Secret (use SOPS in production).
 
 ```yaml
-# clusters/production/secrets/jupyterhub-oauth-secret.yaml
+# clusters/production/apps/jupyterhub/jupyterhub-oauth-secret.yaml
 # Encrypt this with SOPS before committing to Git
 apiVersion: v1
 kind: Secret
 metadata:
-  name: jupyterhub-oauth
-  namespace: jupyterhub
+  name: jupyterhub-oauth-values
+  namespace: flux-system
 type: Opaque
 stringData:
-  clientId: "your-github-oauth-client-id"
-  clientSecret: "your-github-oauth-client-secret"
+  values.yaml: |
+    hub:
+      config:
+        GitHubOAuthenticator:
+          client_id: "your-github-oauth-client-id"
+          client_secret: "your-github-oauth-client-secret"
 ```
 
 ## Step 3: Deploy JupyterHub
 
 ```yaml
-# clusters/production/apps/jupyterhub-helmrelease.yaml
+# clusters/production/apps/jupyterhub/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -69,16 +73,20 @@ metadata:
 spec:
   interval: 1h
   targetNamespace: jupyterhub
-  createNamespace: true
   chart:
     spec:
       chart: jupyterhub
-      version: "3.x"
+      version: "4.3.x"
       sourceRef:
         kind: HelmRepository
         name: jupyterhub
+  valuesFrom:
+    - kind: Secret
+      name: jupyterhub-oauth-values
+      valuesKey: values.yaml
   # Allow more time for JupyterHub to install
   install:
+    createNamespace: true
     timeout: 15m
   upgrade:
     timeout: 15m
@@ -88,16 +96,6 @@ spec:
       config:
         # GitHub OAuth authenticator
         GitHubOAuthenticator:
-          client_id:
-            valueFrom:
-              secretKeyRef:
-                name: jupyterhub-oauth
-                key: clientId
-          client_secret:
-            valueFrom:
-              secretKeyRef:
-                name: jupyterhub-oauth
-                key: clientSecret
           oauth_callback_url: "https://jupyter.myorg.com/hub/oauth_callback"
           # Restrict to your organization's members
           allowed_organizations:
@@ -242,6 +240,8 @@ spec:
 ```bash
 # Apply all JupyterHub resources
 kubectl apply -f clusters/production/sources/jupyterhub.yaml
+kubectl apply -f clusters/production/apps/jupyterhub-kustomization.yaml
+flux reconcile kustomization jupyterhub --with-source -n flux-system
 flux reconcile helmrelease jupyterhub --with-source -n flux-system
 
 # Watch the installation progress
@@ -266,13 +266,13 @@ To add or modify user resource profiles, update the HelmRelease in Git.
 
 ```bash
 # After pushing the profile changes to Git
-flux reconcile helmrelease jupyterhub --with-source
+flux reconcile helmrelease jupyterhub --with-source -n flux-system
 
 # Existing user servers are not affected until they restart
 # New profile options are available immediately to new sessions
 
 # View the current values applied
-helm get values jupyterhub -n jupyterhub
+helm get values jupyterhub-jupyterhub -n flux-system
 ```
 
 ## Best Practices
