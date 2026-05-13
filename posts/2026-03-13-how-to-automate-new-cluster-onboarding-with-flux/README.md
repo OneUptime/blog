@@ -33,7 +33,7 @@ Before onboarding a new cluster, you need:
 - A provisioned Kubernetes cluster with kubeconfig access
 - The `flux` CLI installed
 - The `kubectl` CLI configured with access to the new cluster
-- A GitHub personal access token or deploy key for the fleet repository
+- A GitHub personal access token exported as `GITHUB_TOKEN` for `flux bootstrap github`
 - The fleet repository cloned locally
 
 ## Cluster Onboarding Script
@@ -336,7 +336,7 @@ generate_sops_key() {
 
 ## CI/CD Pipeline for Onboarding
 
-Automate the onboarding through a CI/CD pipeline using GitHub Actions:
+Automate the onboarding through a CI/CD pipeline using GitHub Actions. Store the GitHub token in a repository secret named `FLUX_GITHUB_TOKEN`:
 
 ```yaml
 # .github/workflows/onboard-cluster.yaml
@@ -373,19 +373,25 @@ jobs:
     steps:
       - name: Checkout fleet repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.FLUX_GITHUB_TOKEN }}
 
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure cluster access
         run: |
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=${PWD}/kubeconfig" >> "$GITHUB_ENV"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Generate cluster configuration
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLUX_GITHUB_TOKEN }}
         run: |
           ./scripts/onboard-cluster.sh \
             "${{ github.event.inputs.cluster_name }}" \
