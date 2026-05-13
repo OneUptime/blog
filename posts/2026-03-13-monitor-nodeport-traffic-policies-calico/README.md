@@ -41,10 +41,10 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
       destination:
-        ports: [30000-32767]
+        ports: ["30000:32767"]
     - action: Deny
       destination:
-        ports: [30000-32767]
+        ports: ["30000:32767"]
   types:
     - Ingress
 ```
