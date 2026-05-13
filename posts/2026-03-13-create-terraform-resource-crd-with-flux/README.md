@@ -12,9 +12,9 @@ Description: Define Terraform resources using the Tofu Controller CRD managed by
 
 The Tofu Controller's `Terraform` custom resource is the bridge between your Git-hosted Terraform modules and actual infrastructure provisioning. Each `Terraform` object specifies which module to run, where the state lives, what variables to use, and whether to apply automatically or wait for approval. Flux CD watches the source repository and triggers reconciliation whenever the module changes.
 
-Understanding the full schema of the `Terraform` CRD is essential for writing effective GitOps Terraform workflows. Unlike running `terraform apply` in a CI/CD pipeline, the CRD approach allows the Tofu Controller to detect drift between the Terraform state and the actual infrastructure, and automatically reconcile it on a schedule.
+Understanding the core schema of the `Terraform` CRD is essential for writing effective GitOps Terraform workflows. Unlike running `terraform apply` in a CI/CD pipeline, the CRD approach allows the Tofu Controller to detect drift between the Terraform state and the actual infrastructure, and automatically reconcile it on a schedule.
 
-This guide walks through the complete `Terraform` CRD schema with practical examples for common use cases.
+This guide walks through the core `Terraform` CRD fields with practical examples for common use cases.
 
 ## Prerequisites
 
@@ -68,7 +68,7 @@ spec:
   workspace: s3-application-bucket-production
 
   # approvePlan: "auto" automatically applies plans
-  # approvePlan: "manual" requires explicit approval
+  # Omit approvePlan or set it to "" to require explicit approval
   approvePlan: "auto"
 
   # Variables to pass to the Terraform module
@@ -80,7 +80,7 @@ spec:
     - name: versioning_enabled
       value: "true"
 
-  # Where to store Terraform state (defaults to Kubernetes Secret)
+  # Store human-readable plan output in a Kubernetes ConfigMap
   storeReadablePlan: human
 
   # Write Terraform outputs to a Kubernetes Secret
@@ -148,9 +148,21 @@ spec:
 
 ## Step 4: Use a Specific Git Tag or Commit
 
-Pin Terraform modules to specific Git refs for production environments.
+Pin Terraform modules to specific Git refs for production environments by creating a separate Flux source for the pinned ref.
 
 ```yaml
+# infrastructure/sources/terraform-modules-v1-2-3.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: terraform-modules-v1-2-3
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/your-org/terraform-modules
+  ref:
+    tag: v1.2.3
+---
 # infrastructure/terraform/database-pinned.yaml
 apiVersion: infra.contrib.fluxcd.io/v1alpha2
 kind: Terraform
@@ -161,15 +173,13 @@ spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
-    name: terraform-modules
+    name: terraform-modules-v1-2-3
     namespace: flux-system
   path: ./modules/rds
   workspace: production-rds
   approvePlan: "auto"
 
-  # Target a specific tagged version of the module
-  # Override the source's ref for this specific resource
-  # Note: this requires the GitRepository to include the tag in its range
+  # This resource uses the module version checked out by terraform-modules-v1-2-3
   vars:
     - name: db_instance_class
       value: db.t3.medium
@@ -179,7 +189,7 @@ spec:
       value: "true"
 ```
 
-## Step 5: Configure Retry and Timeout Behavior
+## Step 5: Configure Runner Termination and Drift Detection
 
 ```yaml
 # infrastructure/terraform/long-running.yaml
@@ -198,8 +208,8 @@ spec:
   workspace: production-eks
   approvePlan: "auto"
 
-  # Timeout for individual plan and apply operations
-  # EKS cluster creation can take 15-20 minutes
+  # Grace period for the runner pod to shut Terraform down cleanly
+  # Large infrastructure changes can need more than the 30-second default
   runnerTerminationGracePeriodSeconds: 1800  # 30 minutes
 
   # Disable drift detection for resources managed manually
@@ -241,14 +251,14 @@ spec:
 # List all Terraform resources
 kubectl get terraform -n flux-system
 
-# Check the plan output
+# Check the pending plan ID
 kubectl get terraform s3-application-bucket -n flux-system \
-  -o jsonpath='{.status.plan.planJSON}' | jq .
+  -o jsonpath='{.status.plan.pending}'
 
-# Get the human-readable plan
-kubectl get secret s3-application-bucket-plan \
+# Get the human-readable plan stored by storeReadablePlan: human
+kubectl get configmap tfplan-s3-application-bucket-production-s3-application-bucket \
   -n flux-system \
-  -o jsonpath='{.data.plan}' | base64 -d
+  -o jsonpath='{.data.tfplan}'
 
 # Check the outputs
 kubectl get secret s3-bucket-outputs \
@@ -259,8 +269,8 @@ kubectl get secret s3-bucket-outputs \
 
 - Use `workspace` to isolate Terraform state between environments. Naming convention `{resource-name}-{environment}` works well.
 - Use `writeOutputsToSecret` for all Terraform outputs that other resources need. This makes Terraform outputs accessible to Kubernetes workloads without requiring Terraform CLI access.
-- Set `approvePlan: "auto"` for non-production environments and `approvePlan: "manual"` for production to enforce human review of infrastructure changes.
-- Use `storeReadablePlan: human` to store human-readable plan output in a Kubernetes Secret for debugging and audit purposes.
+- Set `approvePlan: "auto"` for non-production environments and omit `approvePlan` or set it to `""` for production to enforce human review of infrastructure changes.
+- Use `storeReadablePlan: human` to store human-readable plan output in a Kubernetes ConfigMap for debugging and audit purposes.
 - Pin production module versions using specific Git tags rather than tracking `main` to prevent unreviewed changes from being applied automatically.
 
 ## Conclusion
