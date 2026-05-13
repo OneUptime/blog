@@ -56,14 +56,14 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^prod-(?P<version>.*)'
+    pattern: '^prod-v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+.*)$'
     extract: '$version'
   policy:
     semver:
       range: '>=1.0.0'
 ```
 
-In this configuration, `filterTags.pattern` uses a named capture group `(?P<version>.*)` to extract the version portion after the `prod-` prefix. The `extract` field tells Flux to use the captured group named `version` for policy evaluation. The `policy.semver.range` then selects the highest semantic version from the filtered set.
+In this configuration, `filterTags.pattern` uses a named capture group `(?P<version>[0-9]+\.[0-9]+\.[0-9]+.*)` to extract the semantic version portion after the `prod-` or `prod-v` prefix. The `extract` field tells Flux to use the captured group named `version` for policy evaluation. The `policy.semver.range` then selects the highest semantic version from the filtered set.
 
 ### Staging Environment
 
@@ -79,7 +79,7 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^staging-(?P<version>.*)'
+    pattern: '^staging-v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+.*)$'
     extract: '$version'
   policy:
     semver:
@@ -131,12 +131,14 @@ The status section will show the latest selected image:
 
 ```yaml
 status:
-  latestImage: registry.example.com/my-app:prod-v1.5.2
+  latestRef:
+    image: registry.example.com/my-app
+    tag: prod-v1.5.2
 ```
 
 ## Marking Deployments for Updates
 
-To have Flux automatically update your deployment manifests, add a marker comment in your YAML:
+To have Flux automatically update your deployment manifests when an `ImageUpdateAutomation` is configured, add a marker comment in your YAML:
 
 ```yaml
 apiVersion: apps/v1
@@ -163,10 +165,10 @@ If the policy does not select the expected tag, check the following:
 kubectl -n flux-system describe imagerepository my-app
 ```
 
-2. Check that your regex pattern matches the tags in your registry. You can list discovered tags:
+2. Check that your regex pattern matches the tags in your registry. You can view the latest scanned tag sample:
 
 ```bash
-kubectl -n flux-system get imagerepository my-app -o jsonpath='{.status.lastScanResult}'
+kubectl -n flux-system get imagerepository my-app -o jsonpath='{.status.lastScanResult.latestTags}'
 ```
 
 3. Ensure the extracted portion of the tag is valid for the chosen policy type. For semver policies, the extracted string must be a valid semantic version.
