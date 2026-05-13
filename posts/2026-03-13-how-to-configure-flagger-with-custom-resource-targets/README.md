@@ -1,40 +1,40 @@
-# How to Configure Flagger with Custom Resource Targets
+# How to Configure Flagger with Supported Resource Targets
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Kubernetes, Custom Resources, Progressive Delivery
+Tags: Flagger, Canary, Kubernetes, DaemonSet, Progressive Delivery
 
-Description: Learn how to configure Flagger to perform canary deployments on custom resources beyond standard Deployments, including DaemonSets and custom controllers.
+Description: Learn how to configure Flagger to perform canary deployments on supported Kubernetes workload targets beyond standard Deployments, including DaemonSets.
 
 ---
 
 ## Introduction
 
-Flagger typically targets Kubernetes Deployments for canary analysis and progressive delivery. However, many teams use custom resource types such as Rollouts, StatefulSets-like CRDs, or operator-managed workloads. Flagger supports targeting custom resources through its `targetRef` field, as long as the custom resource follows certain conventions for scaling and pod template management.
+Flagger typically targets Kubernetes Deployments for canary analysis and progressive delivery. It also supports DaemonSets, and it can target Knative Services when the Knative provider is used. Flagger's generic `targetRef` field does not mean that arbitrary operator-managed custom resources can be used as workload targets.
 
-This guide explains how to configure Flagger to work with custom resource targets, covering the requirements, configuration, and common patterns.
+This guide explains how to configure Flagger to work with supported non-Deployment targets, covering the requirements, configuration, and common patterns.
 
 ## Prerequisites
 
 - A Kubernetes cluster (v1.25 or later)
 - Flagger installed (v1.37 or later)
 - A service mesh or ingress controller supported by Flagger
-- The custom resource controller installed in your cluster
+- Knative Serving installed if you want to target Knative Services
 - kubectl configured to access your cluster
 
-## Step 1: Understand Custom Resource Requirements
+## Step 1: Understand Supported Target Requirements
 
-For Flagger to manage a custom resource, the resource must:
+For Flagger to manage a target workload, the resource must be one of the target kinds implemented by Flagger:
 
-1. Have a `spec.template` field containing a PodTemplateSpec (similar to a Deployment).
-2. Support the `/scale` subresource for scaling replicas.
-3. Be watchable by Flagger (the API group and version must be accessible).
+1. `apps/v1` `Deployment`
+2. `apps/v1` `DaemonSet`
+3. `serving.knative.dev/v1` `Service` when `spec.provider` is set to `knative`
 
-Flagger creates a copy of the target resource (the primary) and manages the original as the canary. It detects changes to the pod template and triggers analysis.
+For Deployments and DaemonSets, Flagger creates a copy of the target resource (the primary) and manages the original as the canary. It detects changes to the pod template and triggers analysis.
 
 ## Step 2: Configure Flagger with a DaemonSet Target
 
-Flagger supports DaemonSets as targets. Since DaemonSets cannot be scaled, Flagger uses a different strategy. Here is a Canary resource targeting a DaemonSet:
+Flagger supports DaemonSets as targets. Since DaemonSets do not have a replica count, Flagger scales them down by adding a node selector that prevents pods from being scheduled. Here is a Canary resource targeting a DaemonSet:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -68,26 +68,24 @@ spec:
           cmd: "hey -z 1m -q 10 -c 2 http://logging-agent-canary.default:8080/"
 ```
 
-Note the use of `iterations` instead of `maxWeight`/`stepWeight`. Since DaemonSets run on every node, weight-based traffic shifting does not apply. Instead, Flagger runs the analysis for a fixed number of iterations.
+Note the use of `iterations` instead of `maxWeight`/`stepWeight`. In Flagger this selects a blue/green-style analysis that runs for a fixed number of iterations before promotion.
 
-## Step 3: Target a Custom CRD
+## Step 3: Target a Knative Service
 
-To target a custom resource managed by an operator, specify its API group, version, and kind in the `targetRef`:
+To target a Knative Service, set the Canary provider to `knative` and use the Knative Service API group, version, and kind in the `targetRef`:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: my-custom-app
+  name: podinfo
   namespace: default
 spec:
+  provider: knative
   targetRef:
-    apiVersion: myoperator.example.com/v1alpha1
-    kind: MyApp
-    name: my-custom-app
-  service:
-    port: 8080
-    targetPort: http
+    apiVersion: serving.knative.dev/v1
+    kind: Service
+    name: podinfo
   analysis:
     interval: 30s
     threshold: 5
@@ -100,54 +98,53 @@ spec:
         interval: 1m
 ```
 
-Your custom resource must have this general structure:
+The target Knative Service should contain the application pod template:
 
 ```yaml
-apiVersion: myoperator.example.com/v1alpha1
-kind: MyApp
+apiVersion: serving.knative.dev/v1
+kind: Service
 metadata:
-  name: my-custom-app
+  name: podinfo
   namespace: default
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: my-custom-app
   template:
     metadata:
       labels:
-        app: my-custom-app
+        app: podinfo
     spec:
       containers:
         - name: app
-          image: myregistry/my-custom-app:1.0.0
+          image: ghcr.io/stefanprodan/podinfo:6.0.0
           ports:
-            - name: http
-              containerPort: 8080
+            - containerPort: 9898
+              protocol: TCP
+          command:
+            - ./podinfo
+            - --port=9898
 ```
 
-## Step 4: Grant Flagger RBAC for Custom Resources
+## Step 4: Grant Flagger RBAC for Supported Resources
 
-Flagger needs permissions to read, create, and update your custom resources. Add a ClusterRole:
+Flagger's installation manifests include permissions for its supported Kubernetes resources. If you install Flagger in a restricted namespace or customize its RBAC, make sure it can manage the target resource and the primary copy it creates. For DaemonSets, the relevant permissions include:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: flagger-custom-resources
+  name: flagger-daemonsets
 rules:
-  - apiGroups: ["myoperator.example.com"]
-    resources: ["myapps", "myapps/scale"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: flagger-custom-resources
+  name: flagger-daemonsets
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: flagger-custom-resources
+  name: flagger-daemonsets
 subjects:
   - kind: ServiceAccount
     name: flagger
@@ -156,7 +153,9 @@ subjects:
 
 ## Step 5: Handle Scale Subresource
 
-If your custom resource supports the `/scale` subresource, Flagger can scale the primary and canary independently. Verify that the CRD has the scale subresource enabled:
+Flagger does not use an arbitrary custom resource's `/scale` subresource as a generic rollout target. For Deployments, it patches `.spec.replicas`; for DaemonSets, it uses a node selector to temporarily prevent the canary DaemonSet from scheduling pods when it needs to scale it down.
+
+The Kubernetes `/scale` subresource is still useful for custom resources that are managed by other controllers or by HPAs. A CRD scale subresource is configured like this:
 
 ```yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -169,12 +168,6 @@ spec:
     - name: v1alpha1
       served: true
       storage: true
-      subresources:
-        status: {}
-        scale:
-          specReplicasPath: .spec.replicas
-          statusReplicasPath: .status.replicas
-          labelSelectorPath: .status.labelSelector
       schema:
         openAPIV3Schema:
           type: object
@@ -187,29 +180,47 @@ spec:
                 template:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              properties:
+                replicas:
+                  type: integer
+                labelSelector:
+                  type: string
+      subresources:
+        status: {}
+        scale:
+          specReplicasPath: .spec.replicas
+          statusReplicasPath: .status.replicas
+          labelSelectorPath: .status.labelSelector
+  scope: Namespaced
+  names:
+    plural: myapps
+    singular: myapp
+    kind: MyApp
 ```
 
 The `specReplicasPath`, `statusReplicasPath`, and `labelSelectorPath` fields tell Kubernetes how to map the scale subresource to fields in your custom resource.
 
-## Step 6: Using AutoscalerRef with Custom Targets
+## Step 6: Using AutoscalerRef with Deployment Targets
 
-If your custom resource uses an HPA for autoscaling, reference it in the Canary spec:
+If your Deployment uses an HPA for autoscaling, reference it in the Canary spec:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: my-custom-app
+  name: podinfo
   namespace: default
 spec:
   targetRef:
-    apiVersion: myoperator.example.com/v1alpha1
-    kind: MyApp
-    name: my-custom-app
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
   autoscalerRef:
     apiVersion: autoscaling/v2
     kind: HorizontalPodAutoscaler
-    name: my-custom-app
+    name: podinfo
   service:
     port: 8080
   analysis:
@@ -226,20 +237,20 @@ spec:
 
 Flagger will create a copy of the HPA for the primary resource and manage scaling for both primary and canary workloads.
 
-## Custom Resource Canary Flow
+## Supported Target Canary Flow
 
 ```mermaid
 graph TD
-    A[Custom Resource Updated] --> B[Flagger detects template change]
-    B --> C[Scale up canary replica]
-    C --> D[Run analysis iterations]
+    A[Target Resource Updated] --> B[Flagger detects template change]
+    B --> C[Prepare canary target]
+    C --> D[Run analysis checks]
     D --> E{Metrics pass threshold?}
-    E -->|yes| F[Increase traffic weight]
+    E -->|yes| F[Advance rollout strategy]
     F --> D
     E -->|no| G[Rollback to primary]
-    F -->|max weight reached| H[Promote canary to primary]
+    F -->|strategy complete| H[Promote canary to primary]
 ```
 
 ## Conclusion
 
-Flagger can target any Kubernetes resource that follows the Deployment-like conventions of having a pod template spec and supporting the scale subresource. When using custom CRDs, ensure the resource structure matches what Flagger expects, grant appropriate RBAC permissions, and verify that the scale subresource is configured in the CRD. For workloads that cannot be scaled (like DaemonSets), use iteration-based analysis instead of weight-based traffic shifting.
+Flagger can target the workload kinds implemented by its controllers, including Deployments and DaemonSets, and Knative Services when using the Knative provider. When using DaemonSets, make sure the target follows Flagger's selector conventions and that Flagger has RBAC permissions to manage the generated primary DaemonSet. For blue/green-style rollouts, use iteration-based analysis instead of weight-based traffic shifting.
