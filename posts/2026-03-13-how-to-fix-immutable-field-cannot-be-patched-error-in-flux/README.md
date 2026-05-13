@@ -40,11 +40,11 @@ Changing the `matchLabels` selector on a Deployment or StatefulSet triggers this
 
 ### 3. Job Spec Changes
 
-Jobs are largely immutable once created. Any change to the Job spec will result in this error.
+Jobs are largely immutable once created. Most changes to the Job pod template, such as changing the container image, command, or environment, will result in this error.
 
 ### 4. Service Type Changes
 
-Changing a Service from ClusterIP to NodePort or LoadBalancer may fail if the `clusterIP` field is set.
+Changing a Service from ClusterIP to NodePort or LoadBalancer usually preserves the existing `clusterIP`. The immutable field error occurs when the manifest tries to change or unset `clusterIP`, including during Service type changes.
 
 ## Diagnostic Steps
 
@@ -74,7 +74,7 @@ kubectl logs -n flux-system deploy/kustomize-controller --since=5m | grep "immut
 
 ### Fix 1: Use Replace Strategy for Jobs
 
-For resources like Jobs that are largely immutable, configure Flux to delete and recreate them when changes are detected by using the `Replace` force strategy:
+For resources like Jobs that are largely immutable, configure Flux to delete and recreate them when patching fails because of immutable field changes by using force replacement:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -128,7 +128,7 @@ spec:
 
 ### Fix 5: Use Helm for Complex Lifecycle Management
 
-For resources with complex update patterns, use HelmReleases which have built-in support for handling immutable field changes:
+For resources with complex update patterns, use HelmReleases and enable Helm's force upgrade behavior:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -149,8 +149,8 @@ spec:
     force: true
 ```
 
-The `upgrade.force` option in HelmRelease causes Helm to delete and recreate resources when an upgrade fails due to immutable fields.
+The `upgrade.force` option in HelmRelease causes Helm to force resource updates through a replacement strategy.
 
 ## Prevention
 
-Avoid changing immutable fields on Kubernetes resources unless you intend to recreate them. Use naming conventions that include versions or hashes for resources that need to be replaced rather than updated. Document which fields are immutable for the resource types used in your cluster. Consider using `force: true` on Kustomizations that manage resources with frequently changing immutable fields, such as Jobs or CronJobs.
+Avoid changing immutable fields on Kubernetes resources unless you intend to recreate them. Use naming conventions that include versions or hashes for resources that need to be replaced rather than updated. Document which fields are immutable for the resource types used in your cluster. Consider using `force: true` temporarily on Kustomizations, or the `kustomize.toolkit.fluxcd.io/force: enabled` annotation on specific resources, when you need Flux to replace resources with immutable field changes.
