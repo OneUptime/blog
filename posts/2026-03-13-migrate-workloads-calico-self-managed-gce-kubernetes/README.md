@@ -10,9 +10,9 @@ Description: Migrate existing workloads to Calico on self-managed Kubernetes clu
 
 ## Introduction
 
-Google Compute Engine provides an excellent foundation for self-managed Kubernetes clusters, with native VPC routing that Calico can leverage to avoid overlay encapsulation overhead. Unlike GKE, self-managed clusters on GCE give you complete control over the CNI plugin, enabling you to adopt Calico for enterprise-grade network policy, multi-pool IPAM, and BGP route advertisement directly into GCE's VPC.
+Google Compute Engine provides an excellent foundation for self-managed Kubernetes clusters, with native VPC routing that Calico can use when Google Cloud routes already cover the pod network. Unlike GKE, self-managed clusters on GCE give you complete control over the CNI plugin, enabling you to adopt Calico for enterprise-grade network policy, multi-pool IPAM, and BGP-based routing between cluster nodes.
 
-One of the unique advantages of running Calico on GCE is the ability to use Calico's native routing mode, where GCE VPC routes carry pod network prefixes without any encapsulation. This results in lower latency and higher throughput compared to VXLAN or IP-in-IP overlay networks.
+One of the unique advantages of running Calico on GCE is the ability to use Calico without overlay encapsulation when GCE VPC routes, created by the Kubernetes GCE cloud provider route controller or by explicit static routes, carry pod network prefixes. This avoids VXLAN or IP-in-IP overhead on the pod data path.
 
 This guide walks you through migrating your existing CNI to Calico on GCE, configuring native routing with GCE VPC, and validating workload connectivity using `calicoctl`.
 
@@ -21,13 +21,14 @@ This guide walks you through migrating your existing CNI to Calico on GCE, confi
 - Self-managed Kubernetes cluster on GCE VMs (kubeadm recommended)
 - `kubectl` with cluster-admin access
 - `calicoctl` v3.27+ installed
-- `gcloud` CLI authenticated with compute.routes permission
+- `gcloud` CLI authenticated with permissions to list and manage Compute Engine routes
 - GCE VPC with sufficient IP space for Calico pod CIDRs
+- GCE instances created with IP forwarding enabled, and a Kubernetes GCE cloud provider route controller or equivalent static routes for pod CIDRs
 - SSH access to GCE instances or OS Login configured
 
 ## Step 1: Review GCE VPC Route Limits
 
-GCE VPC has a default limit of 250 dynamic routes per VPC. Plan your pod CIDR block sizes to stay within this limit.
+GCE VPC route-based pod networking consumes static routes in the VPC network, usually one route per node pod CIDR. Check your project's current static routes quota and plan the node pod CIDR allocation to stay within it.
 
 Check current VPC route usage before proceeding:
 
@@ -89,7 +90,7 @@ spec:
     bgp: Enabled
     ipPools:
     - blockSize: 26
-      cidr: 192.168.0.0/16    # Must not overlap with GCE VNet or service CIDRs
+      cidr: 192.168.0.0/16    # Must not overlap with GCE VPC subnet or service CIDRs
       encapsulation: None       # Use native GCE VPC routing
       natOutgoing: Enabled
       nodeSelector: all()
@@ -101,19 +102,19 @@ Apply the installation configuration:
 kubectl create -f calico-gce-installation.yaml
 ```
 
-## Step 4: Configure GCE Routes for Pod CIDRs
+## Step 4: Verify GCE Routes for Pod CIDRs
 
-Calico will automatically create GCE VPC routes for pod CIDRs when using native routing with the `gce` cloud provider annotation.
+Calico does not create Google Cloud VPC routes from the Installation resource. For non-encapsulated pod networking on GCE, the Kubernetes GCE cloud provider route controller or your own automation must create routes to each node's pod CIDR.
 
-Verify that Calico has programmed GCE VPC routes for each node's pod CIDR:
+Verify that GCE VPC routes exist for each node's pod CIDR:
 
 ```bash
-# List GCE routes created by Calico for pod networks
+# List GCE routes for pod networks
 gcloud compute routes list \
-  --filter="network=YOUR_VPC_NAME AND description~calico" \
+  --filter="network=YOUR_VPC_NAME" \
   --format="table(name,destRange,nextHopInstance)"
 
-# Check Calico node status to confirm route programming
+# Check Calico node status to confirm BGP sessions and local routing
 calicoctl node status
 
 # Verify IP pool allocation
@@ -131,7 +132,7 @@ Uncordon nodes and test end-to-end pod connectivity:
 kubectl uncordon <gce-node-name>
 
 # Deploy a test pod to verify network connectivity
-kubectl run nettest --image=nicolaka/netshoot --rm -it -- bash
+kubectl run nettest --image=nicolaka/netshoot --rm -it --command -- bash
 
 # Inside the pod, test cross-node connectivity
 ping <pod-on-another-node-ip>
@@ -140,7 +141,7 @@ curl http://kubernetes.default.svc.cluster.local
 
 ## Best Practices
 
-- Use a block size of `/26` or larger to reduce the number of GCE VPC routes needed
+- Keep Kubernetes node pod CIDR allocations coarse enough to stay within the GCE static routes quota
 - Enable Calico's node-to-node mesh for small clusters; use route reflectors for large clusters
 - Set `natOutgoing: Enabled` on all IP pools to ensure pods can reach the internet
 - Monitor GCE VPC route count against the quota limit using OneUptime custom monitors
