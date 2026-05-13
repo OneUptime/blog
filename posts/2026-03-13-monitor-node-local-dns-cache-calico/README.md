@@ -115,7 +115,7 @@ kubectl run dns-test --image=nicolaka/netshoot --rm -it -- \
 
 # Verify the node-local DNS agent is responding
 kubectl run dns-test --image=curlimages/curl --rm -it -- \
-  curl -s "http://169.254.20.10:8080/metrics" | grep "coredns_cache"
+  curl -s "http://169.254.20.10:9253/metrics" | grep "coredns_cache"
 
 # Check DNS query latency before and after NodeLocal DNSCache
 kubectl run latency-test --image=nicolaka/netshoot --rm -it -- \
@@ -210,7 +210,7 @@ calicoctl get globalnetworkpolicies | grep dns
 
 - Always create Calico policies allowing DNS before applying other restrictive policies
 - Monitor the NodeLocal DNSCache cache hit rate - a low hit rate may indicate TTL configuration issues
-- Set the NodeLocal DNSCache memory limit high enough to maintain a warm cache (default 70Mi is often too low)
+- Set explicit memory requests and limits on the NodeLocal DNSCache DaemonSet (the upstream manifest only requests 5Mi and sets no limit), sizing them to comfortably hold the working set of cached records
 - Use Calico's high-priority policy ordering for DNS allow rules so they take effect before namespace-level deny policies
 - Monitor DNS query latency with OneUptime by checking response times for service discovery endpoints
 
