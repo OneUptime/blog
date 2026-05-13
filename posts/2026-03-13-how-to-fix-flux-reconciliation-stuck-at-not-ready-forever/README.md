@@ -8,7 +8,7 @@ Description: Diagnose and resolve Flux Kustomizations or HelmReleases that remai
 
 ---
 
-When a Flux Kustomization or HelmRelease enters a `Not Ready` state and stays there indefinitely, your GitOps pipeline is effectively broken. Unlike the `Progressing` state where Flux is still trying, `Not Ready` usually means Flux has given up after encountering an error. This post covers how to identify the underlying cause and restore reconciliation.
+When a Flux Kustomization or HelmRelease enters a `Not Ready` state and stays there indefinitely, your GitOps pipeline is effectively broken. Unlike the `Progressing` state where Flux is actively reconciling, `Not Ready` means the `Ready` condition is false because reconciliation, dependency checks, or health checks are failing. Flux will keep retrying on its reconciliation interval unless the resource is suspended. This post covers how to identify the underlying cause and restore reconciliation.
 
 ## Symptoms
 
@@ -74,7 +74,7 @@ kubectl logs -n flux-system deployment/kustomize-controller | grep "validation"
 
 ### 3. Source not available
 
-If the GitRepository or HelmRepository source is not ready, the Kustomization cannot proceed.
+If the GitRepository, HelmRepository, or other referenced source is not ready, the dependent Kustomization or HelmRelease cannot proceed.
 
 ```bash
 flux get sources git -A
@@ -104,7 +104,7 @@ Check the error message in the Kustomization status. Common build errors include
 
 ```bash
 # Get the exact error
-flux get kustomization my-app
+kubectl describe kustomization my-app -n flux-system
 ```
 
 Fix the manifests in your Git repository. If the error references a missing resource, ensure all referenced files exist:
@@ -193,7 +193,7 @@ flux reconcile kustomization my-app --with-source
 4. **Set up a Flux notification provider** to send alerts to Slack or other channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: on-call
