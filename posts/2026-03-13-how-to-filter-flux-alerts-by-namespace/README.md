@@ -16,7 +16,7 @@ This guide covers how to configure Flux Alerts that filter by namespace, includi
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD v2.0 or later
+- A Kubernetes cluster bootstrapped with a current Flux CD release
 - The notification controller deployed and running
 - A Provider resource configured for your notification channel
 - Flux resources deployed across multiple namespaces
@@ -31,7 +31,7 @@ Each entry in `spec.eventSources` can include a `namespace` field. When specifie
 To receive alerts for all Kustomizations in a specific namespace, use the `*` wildcard for the name:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-namespace-alert
@@ -53,7 +53,7 @@ The `name: '*'` wildcard matches all Kustomization resources in the `production`
 You can combine multiple namespace-scoped entries to monitor several namespaces:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: app-namespaces-alert
@@ -84,7 +84,7 @@ This Alert captures events from both Kustomizations and HelmReleases across the 
 A common production pattern is routing alerts from different namespaces to different notification channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: prod-alerts
@@ -101,7 +101,7 @@ spec:
       name: '*'
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-alerts
@@ -118,7 +118,7 @@ spec:
       name: '*'
       namespace: staging
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: dev-alerts
@@ -143,7 +143,7 @@ Production errors go to PagerDuty for immediate response. Staging and developmen
 You can mix wildcard namespace entries with specifically named entries:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: targeted-alert
@@ -168,7 +168,7 @@ This captures all Kustomization events in `production` plus events from a specif
 You can also filter source controller resources like GitRepository and HelmRepository by namespace:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: source-alerts
@@ -193,7 +193,7 @@ This captures source-level errors like failed Git clones or Helm repository inde
 Here is an example provider for reference:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -218,14 +218,14 @@ stringData:
 Check your alerts are ready:
 
 ```bash
-kubectl get alerts -n flux-system
+flux get alerts --namespace flux-system
 ```
 
 ```text
-NAME              AGE   READY   STATUS
-prod-alerts       15s   True    Initialized
-staging-alerts    15s   True    Initialized
-dev-alerts        15s   True    Initialized
+NAME            READY   MESSAGE
+prod-alerts     True    Initialized
+staging-alerts  True    Initialized
+dev-alerts      True    Initialized
 ```
 
 Test by reconciling a resource in one of the watched namespaces:
@@ -234,7 +234,7 @@ Test by reconciling a resource in one of the watched namespaces:
 flux reconcile kustomization my-app --namespace production
 ```
 
-Only the production alert should fire; staging and dev alerts should remain silent.
+Only alerts whose event source and severity filters match the production Kustomization event should fire; staging and dev alerts should remain silent.
 
 ## Troubleshooting
 
@@ -245,7 +245,7 @@ If alerts are not firing for a specific namespace, verify the following:
    kubectl get kustomizations -n production
    ```
 
-2. The Alert resource is in a namespace that has visibility to the target namespace. Alerts in `flux-system` can typically reference any namespace.
+2. Cross-namespace references are enabled for the notification controller. If the controller was started with `--no-cross-namespace-refs=true`, an Alert can only reference event sources in the same namespace as the Alert object.
 
 3. The event source kind matches the actual resource API kind. Use `Kustomization` (not `kustomize`) and `HelmRelease` (not `helmrelease`).
 
