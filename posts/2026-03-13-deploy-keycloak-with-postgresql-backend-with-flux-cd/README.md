@@ -12,7 +12,7 @@ Description: Deploy Keycloak identity provider with a PostgreSQL database backen
 
 Keycloak is the leading open-source identity and access management solution. It provides single sign-on (SSO), identity brokering, social login, user federation via LDAP/AD, and fine-grained authorization for modern applications. Organizations use Keycloak to centralize authentication across dozens of internal and customer-facing services.
 
-Running Keycloak on Kubernetes with a dedicated PostgreSQL backend-rather than the embedded H2 database-gives you production-grade reliability with proper connection pooling, transactions, and point-in-time recovery. Flux CD manages the entire stack declaratively: a version bump to Keycloak or PostgreSQL is a one-line change in Git that Flux rolls out safely.
+Running Keycloak on Kubernetes with a dedicated PostgreSQL backend-rather than the embedded H2 database-gives you production-grade durability with transactions, backups, and point-in-time recovery. Flux CD manages the application stack declaratively: a version bump to Keycloak or PostgreSQL is a one-line change in Git that Flux rolls out safely.
 
 This guide deploys Keycloak in production mode using the Bitnami Helm chart, backed by a separate PostgreSQL release, both managed by Flux CD.
 
@@ -113,7 +113,7 @@ spec:
         name: bitnami
         namespace: flux-system
   values:
-    # Production mode requires HTTPS
+    # Ingress terminates HTTPS; proxy=edge lets Keycloak run HTTP behind it
     production: true
     proxy: edge   # Trust proxy headers from the Ingress controller
 
@@ -134,10 +134,12 @@ spec:
       existingSecret: keycloak-db-secret
       existingSecretPasswordKey: password
 
-    # Hostname for Keycloak (used in token issuers)
-    hostname:
-      hostname: auth.example.com
-      adminHostname: auth.example.com
+    # Hostname for Keycloak (used in frontend URLs and token issuers)
+    extraEnvVars:
+      - name: KC_HOSTNAME
+        value: https://auth.example.com
+      - name: KC_HOSTNAME_ADMIN
+        value: https://auth.example.com
 
     ingress:
       enabled: true
@@ -177,7 +179,7 @@ spec:
 ## Step 5: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/keycloak/kustomization.yaml
+# clusters/my-cluster/keycloak.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -222,7 +224,7 @@ sequenceDiagram
   participant PostgreSQL
 
   User->>App: Request protected resource
-  App->>Keycloak: Redirect to /auth (OIDC)
+  App->>Keycloak: Redirect to /realms/<realm>/protocol/openid-connect/auth
   User->>Keycloak: Enter credentials
   Keycloak->>PostgreSQL: Verify user & session
   Keycloak->>App: Return authorization code
@@ -237,7 +239,7 @@ sequenceDiagram
 - Use Keycloak's built-in theme system to brand the login page to match your organization's design.
 - Configure `replicaCount: 2+` and enable the `cache.enabled: true` setting for distributed session management across pods.
 - Set up realm-level events logging and forward to your SIEM or log aggregation system.
-- Rotate the PostgreSQL password via secret update and let Flux trigger a rolling restart of the Keycloak pods.
+- Rotate the PostgreSQL password via secret update, then reconcile the release or restart the Keycloak pods so environment variables pick up the new value.
 
 ## Conclusion
 
