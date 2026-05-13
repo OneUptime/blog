@@ -64,16 +64,16 @@ kubectl -n kube-system rollout restart daemonset/cilium
 
 ## Step 3: Enable Fragment Tracking for UDP Policies
 
-When applying network policies to UDP traffic, enable fragment tracking to handle fragmented UDP packets correctly.
+When applying network policies to UDP traffic, verify that fragment tracking is enabled so fragmented UDP packets are handled correctly.
 
 ```bash
-# Enable fragment tracking in Cilium configuration
-# This is required for L4 policy enforcement on fragmented UDP traffic
+# Enable IPv4 fragment tracking in Cilium configuration if it was disabled
+# Cilium enables IPv4 fragment tracking by default in current releases
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set enableIPv4FragmentsTracking=true \
-  --set fragmentmapDynamicSizeRatio=0.0025
+  --set fragmentTracking=true \
+  --set extraConfig.bpf-fragments-map-max=65536
 ```
 
 ```yaml
@@ -87,9 +87,9 @@ metadata:
 data:
   # Enable tracking of IP fragments for correct L4 policy enforcement
   enable-ipv4-fragment-tracking: "true"
-  # Set the fraction of total memory to use for the fragment map
-  # Default is 0.0025 (0.25% of total memory)
-  bpf-fragment-map-dynamic-size-ratio: "0.0025"
+  # Set the maximum number of fragmented datagrams to track
+  # Cilium validates this value between 256 and 65536 entries
+  bpf-fragments-map-max: "65536"
 ```
 
 ## Step 4: Diagnose Fragmentation Issues
@@ -97,8 +97,8 @@ data:
 Use Cilium and network tools to identify fragmentation problems.
 
 ```bash
-# Check for fragment-related drops in Cilium's eBPF maps
-cilium monitor --type drop | grep -i frag
+# Check for fragment-related drops in Cilium's datapath events
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop | grep -i frag
 
 # Use Hubble to observe flows with fragmentation indicators
 hubble observe --follow --output json | jq 'select(.flow.l4.UDP != null)'
@@ -126,8 +126,14 @@ sudo sysctl -w net.ipv4.ip_no_pmtu_disc=0
 echo "net.ipv4.ip_no_pmtu_disc = 0" | sudo tee -a /etc/sysctl.d/99-cilium.conf
 sudo sysctl --system
 
-# Verify Cilium is propagating the correct MSS (Maximum Segment Size) to TCP
-cilium config view | grep mss
+# Enable Cilium's PMTU handling for ICMP fragmentation-needed replies
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set pmtuDiscovery.enabled=true
+
+# Verify Cilium PMTU configuration
+cilium config view | grep -i pmtu
 ```
 
 ## Best Practices
@@ -135,7 +141,7 @@ cilium config view | grep mss
 - Always set Cilium's MTU explicitly based on your network topology rather than relying on auto-detection
 - Enable fragment tracking when applying L4 policies to UDP-heavy workloads (DNS, video streaming, etc.)
 - Test cross-node large packet transfers after any MTU configuration change: `ping -M do -s 1400 <pod-ip>`
-- Monitor the `bpf_fragment_map` utilization - if it fills up, fragments will be dropped
+- Monitor the `cilium_bpf_map_pressure` metrics for `cilium_ipv4_frag_datagrams` and `cilium_ipv6_frag_datagrams` - if the fragment maps fill up, fragments can be dropped
 - Coordinate MTU settings with cloud provider networking documentation (each cloud has different encapsulation overhead)
 
 ## Conclusion
