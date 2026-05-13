@@ -25,7 +25,7 @@ This guide covers key techniques to maximize the performance of Calico host endp
 
 ## Optimization 1: Use eBPF Dataplane
 
-The eBPF dataplane processes packets significantly faster than iptables for large rule sets. If your nodes support it (Linux kernel 5.3+), switch to eBPF:
+The eBPF dataplane processes packets significantly faster than iptables for large rule sets. If your nodes support it (Linux kernel 5.10+, or Red Hat 8.4 with kernel 4.18.0-305+), switch to eBPF:
 
 ```bash
 kubectl patch installation default \
@@ -128,14 +128,14 @@ Pre-label nodes with aggregated labels:
 kubectl label node worker-1 security-zone=prod-frontend-us
 ```
 
-## Optimization 5: Tune Felix Batch Settings
+## Optimization 5: Tune Felix Refresh Intervals
 
-Configure Felix to process policy updates in batches to reduce CPU spikes:
+Felix periodically re-syncs iptables rules, routes, and IP sets to ensure they match the desired state. On large clusters with many policies, these refreshes can cause CPU spikes. Increasing the refresh intervals above their defaults (90s for iptables, routes, and IP sets) reduces CPU usage at the cost of slightly slower recovery from drift:
 
 ```bash
 kubectl patch felixconfiguration default \
   --type=merge \
-  --patch='{"spec":{"routeTableRange":{"min":1,"max":250},"iptablesRefreshInterval":"90s"}}'
+  --patch='{"spec":{"iptablesRefreshInterval":"300s","routeRefreshInterval":"300s","ipsetsRefreshInterval":"300s"}}'
 ```
 
 ## Conclusion
