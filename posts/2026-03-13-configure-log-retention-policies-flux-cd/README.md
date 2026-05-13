@@ -10,7 +10,7 @@ Description: Manage log retention policies for Elasticsearch and OpenSearch usin
 
 ## Introduction
 
-Log data grows rapidly and without lifecycle management it consumes ever-increasing storage and degrades query performance. Elasticsearch and OpenSearch both provide Index Lifecycle Management (ILM) - a policy engine that automatically rolls over, shrinks, and deletes indices as they age. Configuring ILM through Flux CD brings the same GitOps discipline to data governance that you apply to application deployments.
+Log data grows rapidly and without lifecycle management it consumes ever-increasing storage and degrades query performance. Elasticsearch provides Index Lifecycle Management (ILM), and OpenSearch provides Index State Management (ISM), policy engines that automatically roll over, shrink, and delete indices as they age. Configuring these policies through Flux CD brings the same GitOps discipline to data governance that you apply to application deployments.
 
 When retention policies live in Git, your team has an auditable record of what data you commit to keeping and for how long. Compliance teams can review and approve retention policies through pull requests. Changes to retention windows - from 30 days to 90 days for a new regulatory requirement - are tracked with the same rigor as code changes.
 
@@ -85,12 +85,6 @@ data:
               "forcemerge": { "max_num_segments": 1 }
             }
           },
-          "cold": {
-            "min_age": "60d",
-            "actions": {
-              "freeze": {}
-            }
-          },
           "delete": {
             "min_age": "90d",
             "actions": { "delete": {} }
@@ -102,7 +96,7 @@ data:
 
 ## Step 2: Create a Job to Apply ILM Policies
 
-Use a Kubernetes Job triggered by a Flux Kustomization to apply policies on startup and after any config change.
+Use a Kubernetes Job triggered by a Flux Kustomization to apply policies on startup and after policy changes.
 
 ```yaml
 # infrastructure/logging/apply-ilm-policies-job.yaml
@@ -112,11 +106,14 @@ metadata:
   name: apply-ilm-policies
   namespace: logging
   annotations:
-    # Recreate the Job when the ConfigMap changes (use a hash annotation in practice)
-    checksum/config: "{{ include (print $.Template.BasePath \"/ilm-policy-configmap.yaml\") . | sha256sum }}"
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   ttlSecondsAfterFinished: 600
   template:
+    metadata:
+      annotations:
+        # Change this value when the policy ConfigMap changes so Flux replaces the Job and reruns it.
+        retention.oneuptime.com/policy-version: "2026-03-13-01"
     spec:
       restartPolicy: OnFailure
       volumes:
@@ -227,9 +224,10 @@ data:
             "transitions": []
           }
         ],
-        "ism_template": [
-          { "index_patterns": ["app-logs-*"], "priority": 100 }
-        ]
+        "ism_template": {
+          "index_patterns": ["app-logs-*"],
+          "priority": 100
+        }
       }
     }
 ```
@@ -250,6 +248,7 @@ spec:
     name: flux-system
   path: ./infrastructure/logging/retention
   prune: true
+  wait: true
   dependsOn:
     - name: elasticsearch
 ```
@@ -274,9 +273,9 @@ kubectl exec -n logging elasticsearch-master-0 -- \
 
 - Always link index templates to ILM/ISM policies so new indices automatically inherit the lifecycle policy.
 - Use rollover aliases rather than pointing directly at index names so clients continue working across rollovers.
-- Store the policy JSON in a ConfigMap with a content hash annotation on the Job to trigger re-application when policies change.
+- Store the policy JSON in a ConfigMap and update a Job pod template annotation, or use a Kustomize-generated ConfigMap name, to trigger re-application when policies change.
 - Test retention policies in a development cluster with accelerated time (set `index.lifecycle.poll_interval` to `1m`) before applying to production.
-- Document your retention periods in comments within the policy JSON for compliance auditability.
+- Document your retention periods in adjacent YAML comments or policy description fields for compliance auditability.
 
 ## Conclusion
 
