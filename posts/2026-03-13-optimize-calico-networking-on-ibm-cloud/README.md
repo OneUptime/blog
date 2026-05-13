@@ -10,7 +10,7 @@ Description: Performance optimization strategies for Calico networking on IBM Cl
 
 ## Introduction
 
-IBM Cloud offers several hardware and software options that directly impact Calico networking performance. IBM Cloud VPC provides high-bandwidth instance profiles with up to 100 Gbps network performance. The choice between VXLAN overlay and native routing, the eBPF dataplane availability, and correct MTU configuration all contribute to achieving optimal pod network throughput.
+IBM Cloud offers several hardware and software options that directly impact Calico networking performance. IBM Cloud VPC provides high-bandwidth instance profiles with up to 80 Gbps network performance on virtual server instances (and higher on bare metal profiles). The choice between VXLAN overlay and native routing, the eBPF dataplane availability, and correct MTU configuration all contribute to achieving optimal pod network throughput.
 
 For IKS clusters, IBM manages the Calico version and some configuration, but you can still optimize IP pool block sizes, enable eBPF on supported worker profiles, and tune Felix parameters. For self-managed clusters, the full optimization toolkit is available.
 
@@ -27,8 +27,8 @@ IBM Cloud VPC instance profiles with high network bandwidth:
 | Profile | vCPU | Network Bandwidth | Notes |
 |---------|------|-------------------|-------|
 | bx2-8x32 | 8 | 16 Gbps | Balanced |
-| cx2-16x32 | 16 | 24 Gbps | Compute-optimized |
-| mx2-32x256 | 32 | 24 Gbps | Memory-optimized |
+| cx2-16x32 | 16 | 32 Gbps | Compute-optimized |
+| mx2-32x256 | 32 | 64 Gbps | Memory-optimized |
 | bx2-64x256 | 64 | 80 Gbps | High-throughput |
 
 ```bash
@@ -40,7 +40,7 @@ ibmcloud is instance-profiles --output json | \
 
 ## Optimization 2: Enable eBPF Dataplane
 
-For IKS workers running Ubuntu 20.04 or later (check kernel version ≥ 5.8):
+For IKS workers running Ubuntu 22.04 or later (check kernel version ≥ 5.10; RHEL 8.4+ with kernel 4.18.0-305+ also supported via backports):
 
 ```bash
 # Check kernel version on worker nodes
@@ -81,18 +81,18 @@ calicoctl patch ippool default-ipv4-ippool \
 
 ## Optimization 4: Configure MTU for IBM Cloud VPC
 
-IBM Cloud VPC standard MTU is 1500 bytes:
+IBM Cloud VPC standard MTU is 1500 bytes. For operator-installed Calico (the default in IKS), set MTU on the Installation resource:
 
 ```bash
 # VXLAN mode: subtract 50 bytes
-kubectl patch felixconfiguration default \
+kubectl patch installation default \
   --type=merge \
-  --patch='{"spec":{"mtu":1450}}'
+  -p '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 
 # Native routing (no VXLAN): full 1500 bytes
-kubectl patch felixconfiguration default \
+kubectl patch installation default \
   --type=merge \
-  --patch='{"spec":{"mtu":1500}}'
+  -p '{"spec":{"calicoNetwork":{"mtu":1500}}}'
 ```
 
 ## Optimization 5: Reduce Felix Policy Recalculation
