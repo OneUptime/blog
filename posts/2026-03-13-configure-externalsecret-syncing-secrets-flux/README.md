@@ -10,11 +10,11 @@ Description: Create ExternalSecret resources to sync secrets from external store
 
 ## Introduction
 
-The `ExternalSecret` resource is the central building block of the External Secrets Operator. It defines which secrets to fetch from an external store, how to map them to Kubernetes Secret keys, and how frequently to refresh them. Understanding how to configure `ExternalSecret` effectively lets you model any secret synchronization pattern - single values, multiple values from one secret, bulk imports from a path, and cross-namespace references.
+The `ExternalSecret` resource is the central building block of the External Secrets Operator. It defines which secrets to fetch from an external store, how to map them to Kubernetes Secret keys, and how frequently to refresh them. Understanding how to configure `ExternalSecret` effectively lets you model common secret synchronization patterns - single values, multiple values from one secret, and bulk imports from a path.
 
 When managed through Flux CD, `ExternalSecret` resources live alongside the application manifests that consume them. A Deployment and its `ExternalSecret` are committed together, reviewed together, and reconciled together. This eliminates the common pain of deploying an application and manually creating secrets separately.
 
-This guide covers all the major `ExternalSecret` configuration patterns: single key mapping, multi-key mapping, bulk dataFrom imports, and computed keys.
+This guide covers common `ExternalSecret` configuration patterns: single key mapping, multi-key mapping, bulk dataFrom imports, and mixing individual keys with bulk imports.
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ The simplest case: pull one value from the external store into one Kubernetes Se
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-simple.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-api-key
@@ -55,7 +55,7 @@ spec:
     name: myapp-api-key
     # ESO owns the lifecycle of this Secret
     creationPolicy: Owner
-    # Delete the Secret when ExternalSecret is deleted
+    # Delete the Secret if all provider-side secrets are deleted
     deletionPolicy: Delete
   data:
     - secretKey: api-key        # Key in the Kubernetes Secret
@@ -70,7 +70,7 @@ Pull several values from different external secrets into one Kubernetes Secret:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-multi.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-credentials
@@ -108,7 +108,7 @@ Use `dataFrom` to import all fields from an external secret as individual Kubern
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-datafrom.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-all-secrets
@@ -135,7 +135,7 @@ Combine bulk import with individual overrides:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-mixed.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-mixed
@@ -180,7 +180,7 @@ spec:
     # Ensure SecretStore is ready before creating ExternalSecrets
     - name: secret-stores
   healthChecks:
-    - apiVersion: external-secrets.io/v1beta1
+    - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
       name: myapp-credentials
       namespace: default
@@ -207,9 +207,9 @@ kubectl get secret myapp-credentials -n default \
 ## Best Practices
 
 - Always set `creationPolicy: Owner` so ESO manages the Secret lifecycle and prevents orphaned Secrets.
-- Set `deletionPolicy: Delete` to clean up Kubernetes Secrets when the `ExternalSecret` is deleted via Flux pruning.
+- Use `creationPolicy: Owner` when you want Kubernetes garbage collection to remove the Secret after the `ExternalSecret` is deleted via Flux pruning.
 - Use `dataFrom.extract` for application config objects that contain many key-value pairs to avoid verbose manifest files.
-- Add `ExternalSecret` resources to Flux health checks so dependent Deployments wait for secrets to be populated.
+- Add `ExternalSecret` resources to Flux health checks so the Kustomization only becomes Ready after secrets are populated; use `dependsOn` from later Kustomizations when workloads must wait on that readiness.
 - Set `refreshInterval` based on secret sensitivity: shorter intervals for credentials that rotate frequently, longer for stable API keys.
 
 ## Conclusion
