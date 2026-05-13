@@ -115,6 +115,9 @@ metadata:
 spec:
   interval: 10m
   url: oci://registry.example.com/charts/my-chart
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     tag: "1.2.0"
   secretRef:
