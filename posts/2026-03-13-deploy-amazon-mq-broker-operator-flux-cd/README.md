@@ -62,6 +62,24 @@ aws iam create-policy \
           "mq:DeleteUser"
         ],
         "Resource": "*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:CreateNetworkInterface",
+          "ec2:CreateNetworkInterfacePermission",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DeleteNetworkInterfacePermission",
+          "ec2:DetachNetworkInterface",
+          "ec2:DescribeInternetGateways",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeNetworkInterfacePermissions",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs"
+        ],
+        "Resource": "*"
       }
     ]
   }'
@@ -89,7 +107,7 @@ spec:
   chart:
     spec:
       chart: mq-chart
-      version: "1.0.10"
+      version: "1.2.3"
       sourceRef:
         kind: HelmRepository
         name: ack
@@ -123,11 +141,12 @@ metadata:
   name: production-broker
   namespace: messaging
 spec:
-  brokerName: production-rabbitmq
+  name: production-rabbitmq
   deploymentMode: CLUSTER_MULTI_AZ  # HA across AZs
-  engineType: RabbitMQ
+  engineType: RABBITMQ
   engineVersion: "3.13"
   hostInstanceType: mq.m5.large     # instance size
+  publiclyAccessible: false
 
   # Multi-AZ HA
   autoMinorVersionUpgrade: true
@@ -135,9 +154,6 @@ spec:
     dayOfWeek: SUNDAY
     timeOfDay: "02:00"
     timeZone: UTC
-
-  # Storage (not configurable for RabbitMQ - AWS manages it)
-  storageType: efs   # for ActiveMQ
 
   # Network: place in private subnets
   subnetIDs:
@@ -153,13 +169,10 @@ spec:
   # User credentials from Secret
   users:
     - username: app-user
-      passwordSecretRef:
+      password:
         namespace: messaging
         name: mq-user-password
         key: password
-      consoleAccess: false
-      groups:
-        - admin
 ```
 
 ## Step 5: Create Broker User Secret
@@ -176,58 +189,42 @@ stringData:
   password: "BrokerPassword123!"
 ```
 
-## Step 6: Create an ActiveMQ Configuration (Optional)
+## Step 6: Reference an ActiveMQ Configuration (Optional)
 
-For ActiveMQ brokers, manage the broker configuration XML through a CRD:
+The ACK MQ controller exposes a `Broker` custom resource. If you already created an ActiveMQ configuration through the Amazon MQ API, AWS CLI, or another IaC tool, reference its ID and revision from the broker:
 
 ```yaml
-# infrastructure/messaging/amazon-mq/activemq-config.yaml
+# infrastructure/messaging/amazon-mq/activemq-broker.yaml
 apiVersion: mq.services.k8s.aws/v1alpha1
-kind: BrokerConfiguration
+kind: Broker
 metadata:
-  name: production-activemq-config
+  name: production-activemq
   namespace: messaging
 spec:
-  name: production-activemq-config
+  name: production-activemq
+  deploymentMode: ACTIVE_STANDBY_MULTI_AZ
   engineType: ACTIVEMQ
   engineVersion: "5.18.4"
-  # ActiveMQ XML configuration (base64-encoded)
-  data: |
-    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-    <broker schedulePeriodForDestinationPurge="10000"
-            xmlns="http://activemq.apache.org/schema/core">
-      <destinationPolicy>
-        <policyMap>
-          <policyEntries>
-            <policyEntry topic=">" producerFlowControl="true">
-              <pendingMessageLimitStrategy>
-                <constantPendingMessageLimitStrategy limit="1000"/>
-              </pendingMessageLimitStrategy>
-            </policyEntry>
-            <policyEntry queue=">" producerFlowControl="true"
-                         memoryLimit="1mb">
-              <deadLetterStrategy>
-                <individualDeadLetterStrategy queuePrefix="DLQ."
-                                              useQueueForQueueMessages="true"/>
-              </deadLetterStrategy>
-            </policyEntry>
-          </policyEntries>
-        </policyMap>
-      </destinationPolicy>
-      <systemUsage>
-        <systemUsage>
-          <memoryUsage>
-            <memoryUsage percentOfJvmHeap="70"/>
-          </memoryUsage>
-          <storeUsage>
-            <storeUsage limit="100 gb"/>
-          </storeUsage>
-          <tempUsage>
-            <tempUsage limit="50 gb"/>
-          </tempUsage>
-        </systemUsage>
-      </systemUsage>
-    </broker>
+  hostInstanceType: mq.m5.large
+  publiclyAccessible: false
+  storageType: EFS
+  configuration:
+    id: c-abc123456789
+    revision: 1
+  subnetIDs:
+    - subnet-abc123
+    - subnet-def456
+  securityGroups:
+    - sg-xyz789
+  users:
+    - username: app-user
+      password:
+        namespace: messaging
+        name: mq-user-password
+        key: password
+      consoleAccess: true
+      groups:
+        - admins
 ```
 
 ## Step 7: Flux Kustomization
@@ -247,6 +244,7 @@ spec:
   path: ./infrastructure/messaging/amazon-mq
   prune: true
   dependsOn:
+    # This must be the Flux Kustomization that applies the ACK HelmRelease.
     - name: ack-mq-controller
 ```
 
