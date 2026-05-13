@@ -118,6 +118,19 @@ spec:
         - name: registry-data
           persistentVolumeClaim:
             claimName: local-registry-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-registry-cache
+  namespace: flux-system
+spec:
+  selector:
+    app: local-registry-cache
+  ports:
+    - name: registry
+      port: 5000
+      targetPort: 5000
 ```
 
 ```yaml
@@ -129,7 +142,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
-  url: oci://localhost:5000/fleet/edge-apps
+  url: oci://local-registry-cache.flux-system.svc.cluster.local:5000/fleet/edge-apps
   ref:
     tag: latest
   insecure: true  # Local registry without TLS
@@ -155,8 +168,13 @@ check_connectivity() {
 sync_manifests() {
   echo "Network available - syncing manifests to local cache..."
 
-  # Pull latest OCI artifact from remote
-  crane pull "${REMOTE_REGISTRY}/${MANIFEST_TAG}" \
+  # Copy latest OCI artifact from remote to the local registry
+  kubectl -n flux-system port-forward svc/local-registry-cache 5000:5000 &
+  PORT_FORWARD_PID=$!
+  trap 'kill "${PORT_FORWARD_PID}"' RETURN
+  sleep 3
+
+  crane copy --insecure "${REMOTE_REGISTRY}/${MANIFEST_TAG}" \
     "${LOCAL_REGISTRY}/${MANIFEST_TAG}"
 
   # Trigger Flux to pick up the new artifact
@@ -190,7 +208,7 @@ RemainAfterExit=no
 WantedBy=network-online.target
 ```
 
-## Step 5: Use Flux Notifications for Connectivity Monitoring
+## Step 5: Use Flux Metrics for Connectivity Monitoring
 
 ```yaml
 # Alert when Flux has been unable to fetch for an extended period
@@ -205,13 +223,13 @@ spec:
       rules:
         - alert: FluxSourceStale
           expr: |
-            (time() - flux_source_info{kind="GitRepository", ready="True"}) > 7200
-          for: 5m
+            gotk_resource_info{customresource_kind="GitRepository", ready!="True"} == 1
+          for: 2h
           labels:
             severity: warning
           annotations:
-            summary: "Flux source has not updated in 2+ hours"
-            description: "Edge site may have lost connectivity to Git repository"
+            summary: "Flux GitRepository source has not been ready for 2+ hours"
+            description: "Edge site may have lost connectivity to the Git repository or registry"
 ```
 
 ## Step 6: Design Applications for Offline-First Operation
@@ -224,7 +242,13 @@ metadata:
   name: edge-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: edge-app
   template:
+    metadata:
+      labels:
+        app: edge-app
     spec:
       containers:
         - name: edge-app
@@ -248,10 +272,10 @@ spec:
 ## Best Practices
 
 - Set Flux source `interval` to match your expected connectivity window frequency.
-- Use OCI artifacts instead of Git cloning - artifacts are smaller and faster to download.
+- Use OCI artifacts instead of Git cloning when bandwidth matters - artifacts can be smaller and faster to download.
 - Pre-load a local registry cache during deployment that Flux can use when offline.
 - Design edge applications to operate in degraded mode when the network is unavailable.
-- Monitor the age of Flux's last successful source fetch as a connectivity health indicator.
+- Monitor Flux source readiness as a connectivity health indicator.
 - Use `retryInterval` that is long enough to avoid hammering a flaky connection but short enough to catch up quickly when connectivity returns.
 
 ## Conclusion
