@@ -36,7 +36,7 @@ Waiting can take a significant amount of time, especially when:
 - Resources have finalizers that require controller processing
 - Namespaces have deletion dependencies
 
-In Flux, the default behavior for uninstall does not wait. Setting `disableWait: true` explicitly ensures this behavior regardless of any defaults that may change in future versions.
+In Flux, uninstall waits for resources to be deleted by default. Setting `disableWait: true` explicitly opts out of this waiting behavior.
 
 ## Basic disableWait Configuration
 
@@ -62,7 +62,7 @@ spec:
     disableWait: true
 ```
 
-With this setting, when Flux uninstalls the release, Helm issues delete commands for all resources and immediately reports the uninstall as successful without waiting for the resources to be fully removed by Kubernetes.
+With this setting, when Flux uninstalls the release, Helm issues delete commands for all resources and reports the uninstall as successful without waiting for the resources to be fully removed by Kubernetes.
 
 ## Combining disableWait with Other Uninstall Options
 
@@ -92,7 +92,7 @@ spec:
     keepHistory: false
 ```
 
-This configuration disables both hooks and wait during uninstall, sets a timeout of 5 minutes, and removes the release history. This is the fastest possible uninstall configuration.
+This configuration disables both hooks and wait during uninstall, sets a timeout of 5 minutes, and removes the release history. This is one of the fastest uninstall configurations.
 
 ## Using disableWait with Remediation
 
@@ -125,7 +125,7 @@ spec:
     timeout: 2m
 ```
 
-When an upgrade fails and Flux triggers the uninstall remediation, the release is removed quickly without waiting for all pods to terminate. Flux then performs a fresh install on the next reconciliation cycle. This reduces the total recovery time significantly.
+When an upgrade fails and Flux triggers the uninstall remediation, the release is removed quickly without waiting for all pods to terminate. Flux can then attempt to install the release again. This reduces the total recovery time significantly.
 
 ## When to Keep Wait Enabled
 
@@ -136,7 +136,7 @@ There are situations where you should not disable the wait:
 - When PersistentVolumeClaims must be fully released before new claims can bind to the same volumes
 - When you are running in a resource-constrained environment and need to ensure resources are freed
 
-For these cases, keep `disableWait` at its default or set it to false:
+For these cases, keep `disableWait` at its default value of `false` or set it to false explicitly:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
