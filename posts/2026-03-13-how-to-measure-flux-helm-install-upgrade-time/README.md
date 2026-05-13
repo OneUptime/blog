@@ -37,14 +37,18 @@ This provides the controller-runtime view of reconciliation timing.
 ### Average Helm Reconciliation Duration
 
 ```bash
-kubectl exec -n flux-system deploy/helm-controller -- \
-  curl -s localhost:8080/metrics | \
+kubectl -n flux-system port-forward deploy/helm-controller 8080:8080
+```
+
+In another terminal:
+
+```bash
+curl -s localhost:8080/metrics | \
   grep 'gotk_reconcile_duration_seconds_sum{kind="HelmRelease"'
 ```
 
 ```bash
-kubectl exec -n flux-system deploy/helm-controller -- \
-  curl -s localhost:8080/metrics | \
+curl -s localhost:8080/metrics | \
   grep 'gotk_reconcile_duration_seconds_count{kind="HelmRelease"'
 ```
 
@@ -53,15 +57,15 @@ kubectl exec -n flux-system deploy/helm-controller -- \
 ```promql
 # Average Helm install/upgrade time
 
-rate(gotk_reconcile_duration_seconds_sum{kind="HelmRelease"}[10m])
+sum(rate(gotk_reconcile_duration_seconds_sum{kind="HelmRelease"}[10m]))
 /
-rate(gotk_reconcile_duration_seconds_count{kind="HelmRelease"}[10m])
+sum(rate(gotk_reconcile_duration_seconds_count{kind="HelmRelease"}[10m]))
 ```
 
 ```promql
 # P95 Helm install/upgrade time
 histogram_quantile(0.95,
-  rate(gotk_reconcile_duration_seconds_bucket{kind="HelmRelease"}[10m])
+  sum by (le) (rate(gotk_reconcile_duration_seconds_bucket{kind="HelmRelease"}[10m]))
 )
 ```
 
@@ -94,11 +98,11 @@ kubectl get helmrelease my-release -n my-namespace -o yaml | \
   grep -A 20 'status:'
 ```
 
-The status section includes the last attempted revision, last applied revision, and conditions with timestamps that help you reconstruct the timeline.
+The status section includes the last attempted revision, last attempted release action and duration, release history, and conditions with timestamps that help you reconstruct the timeline.
 
 ## Analyzing Helm Controller Logs
 
-Enable debug logging for detailed operation timing:
+Inspect helm-controller logs for operation details:
 
 ```bash
 kubectl logs -n flux-system deploy/helm-controller -f | \
@@ -113,7 +117,7 @@ Look for log entries that indicate:
 
 ## Comparing Install vs Upgrade Performance
 
-First installs are typically faster than upgrades because Helm does not need to calculate the diff between the existing release and the new one. To measure each type separately, look at the helm-controller logs for `install` vs `upgrade` action types.
+Install and upgrade performance varies by chart and cluster state. Upgrades often have additional work because Helm is updating an existing release instead of creating a new one. To measure each type separately, look at the helm-controller logs or `.status.history` for `install` vs `upgrade` action types.
 
 ## Common Causes of Slow Helm Operations
 
@@ -145,7 +149,7 @@ spec:
 
 ### Skip Tests
 
-Helm tests run after install and upgrade by default. Skip them to reduce reconciliation time:
+Helm tests run after install and upgrade only when enabled. Keep them disabled during benchmarking to avoid adding test execution time to the reconciliation:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
