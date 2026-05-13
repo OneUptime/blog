@@ -16,7 +16,7 @@ This guide walks you through configuring the Flux Operator to use the ControlPla
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
+- A Kubernetes cluster supported by the Enterprise Flux release you plan to run (for Flux v2.8.x, Kubernetes v1.30 through v1.35)
 - `kubectl` and `helm` CLI tools installed
 - A ControlPlane enterprise subscription with registry credentials
 - The Flux Operator installed on your cluster
@@ -28,14 +28,14 @@ If you have not already installed the Flux Operator, deploy it using Helm:
 
 ```bash
 helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
-  --namespace flux-operator-system \
+  --namespace flux-system \
   --create-namespace
 ```
 
 Verify the installation:
 
 ```bash
-kubectl get deployment -n flux-operator-system flux-operator
+kubectl get deployment -n flux-system flux-operator
 ```
 
 ## Step 2: Create Registry Credentials
@@ -63,8 +63,8 @@ kubectl create namespace flux-system --dry-run=client -o yaml | kubectl apply -f
 kubectl create secret docker-registry enterprise-registry-credentials \
   --namespace flux-system \
   --docker-server=ghcr.io \
-  --docker-username=your-username \
-  --docker-password=your-token
+  --docker-username=flux \
+  --docker-password="$ENTERPRISE_TOKEN"
 ```
 
 ## Step 3: Configure the FluxInstance with Enterprise Distribution
@@ -80,7 +80,7 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.4.x"
+    version: "2.8.x"
     registry: "ghcr.io/controlplaneio-fluxcd/distroless"
     imagePullSecret: "enterprise-registry-credentials"
     artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
@@ -120,7 +120,7 @@ kubectl apply -f flux-enterprise-instance.yaml
 
 ## Step 4: Enable FIPS Compliance
 
-For environments that require FIPS 140-2 compliance, use the FIPS-compliant image variants:
+For environments that require FIPS 140-3 compliance, use the FIPS-compliant image variants:
 
 ```yaml
 # flux-enterprise-fips.yaml
@@ -131,7 +131,7 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.4.x"
+    version: "2.8.x"
     registry: "ghcr.io/controlplaneio-fluxcd/distroless-fips"
     imagePullSecret: "enterprise-registry-credentials"
     artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
@@ -145,11 +145,20 @@ spec:
     networkPolicy: true
 ```
 
-The FIPS images use BoringCrypto for all TLS and cryptographic operations, meeting federal compliance requirements.
+The FIPS images are built with Go's FIPS 140-3 mode, and the Go runtime restricts TLS configuration to FIPS-approved settings.
 
 ## Step 5: Configure Sync with Enterprise Features
 
 Set up the sync configuration to pull your fleet manifests:
+
+If your Git repository is private, create a Git credential secret for the sync source:
+
+```bash
+echo "$GITHUB_TOKEN" | flux-operator create secret basic-auth flux-system \
+  --namespace=flux-system \
+  --username=git \
+  --password-stdin
+```
 
 ```yaml
 # flux-enterprise-sync.yaml
@@ -160,7 +169,7 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.4.x"
+    version: "2.8.x"
     registry: "ghcr.io/controlplaneio-fluxcd/distroless"
     imagePullSecret: "enterprise-registry-credentials"
     artifact: "oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests"
@@ -175,7 +184,7 @@ spec:
     networkPolicy: true
   sync:
     kind: GitRepository
-    url: "ssh://git@github.com/your-org/fleet-infra.git"
+    url: "https://github.com/your-org/fleet-infra.git"
     ref: "refs/heads/main"
     path: "clusters/production"
     pullSecret: "flux-system"
