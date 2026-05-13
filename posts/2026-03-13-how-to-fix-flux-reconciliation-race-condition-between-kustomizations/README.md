@@ -37,7 +37,7 @@ kubectl get kustomizations -n flux-system -o jsonpath='{range .items[*]}{.metada
 ### Look at timestamps for each Kustomization
 
 ```bash
-kubectl get kustomizations -n flux-system -o custom-columns=NAME:.metadata.name,READY:.status.conditions[0].status,LAST_TRANSITION:.status.conditions[0].lastTransitionTime
+kubectl get kustomizations -n flux-system -o custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,LAST_TRANSITION:.status.conditions[?(@.type=="Ready")].lastTransitionTime
 ```
 
 ### Check if CRDs are available when apps reconcile
@@ -161,6 +161,10 @@ metadata:
 spec:
   path: ./infrastructure/namespaces
   interval: 10m
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
 ```
 
 Ensure application Kustomizations depend on this:
@@ -172,9 +176,15 @@ metadata:
   name: apps
   namespace: flux-system
 spec:
+  path: ./apps
+  interval: 5m
+  prune: true
   dependsOn:
     - name: infra-namespaces
     - name: infra-controllers
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
 ```
 
 ### Fix 4: Use health checks to gate dependencies
@@ -190,13 +200,16 @@ metadata:
 spec:
   path: ./infrastructure/controllers
   interval: 10m
-  wait: true
+  prune: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
       name: cert-manager
       namespace: cert-manager
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
 ```
 
 ### Fix 5: Add retry intervals for transient races
