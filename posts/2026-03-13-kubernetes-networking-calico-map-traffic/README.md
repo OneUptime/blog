@@ -31,12 +31,12 @@ sequenceDiagram
     participant Calico
 
     Pod->>CoreDNS: DNS query (UDP to kube-dns ClusterIP)
-    Note over Calico: Calico routes UDP to CoreDNS pod via service routing
+    Note over Calico: kube-proxy or Calico eBPF handles the kube-dns Service, then Calico routes to a CoreDNS pod
     CoreDNS-->>Pod: DNS response (ClusterIP of my-service)
-    Note over Calico: Return packet routed via conntrack
+    Note over Calico: Return packet follows service reverse NAT and normal pod routing
 ```
 
-Calico is responsible for routing the UDP packet from the pod to the CoreDNS pod IP. Verify:
+The Service dataplane resolves the kube-dns ClusterIP to a CoreDNS endpoint, and Calico is responsible for routing the UDP packet to that CoreDNS pod IP. Verify:
 ```bash
 kubectl exec my-pod -- nslookup my-service.default.svc.cluster.local
 ```
@@ -82,8 +82,8 @@ ip route show | grep vxlan.calico
 graph LR
     Pod[Pod\nRequests ClusterIP 10.96.0.1:80] --> DNAT[DNAT\niptables or eBPF]
     DNAT --> BackendPod[Backend Pod\n192.168.2.10:8080]
-    BackendPod --> SNAT[SNAT\nReturn path]
-    SNAT --> Pod
+    BackendPod --> ReverseNAT[Reverse NAT\nReturn path]
+    ReverseNAT --> Pod
 ```
 
 kube-proxy (iptables mode) or Calico eBPF intercepts the packet to the ClusterIP, selects a backend pod via load balancing, and rewrites the destination IP. Verify:
@@ -91,8 +91,8 @@ kube-proxy (iptables mode) or Calico eBPF intercepts the packet to the ClusterIP
 # iptables mode: inspect DNAT rules
 sudo iptables -t nat -L KUBE-SERVICES -n | grep 10.96.0.1
 
-# eBPF mode: inspect service map
-sudo bpftool map dump name cali_v4_svc_ports | grep -A5 "10.96.0.1"
+# eBPF mode: inspect the Calico BPF NAT table from a calico-node pod
+kubectl exec -n calico-system <calico-node-pod> -- calico-node -bpf nat dump | grep -A5 "10.96.0.1"
 ```
 
 ## Scenario 5: Pod Egress to the Public Internet
@@ -105,10 +105,10 @@ graph LR
     Felix2 --> Pod
 ```
 
-With `natOutgoing: true` on the IPPool, Felix adds an iptables masquerade rule that translates the pod's RFC 1918 IP to the node's external IP for traffic destined outside the cluster CIDR.
+With `natOutgoing: true` on the IPPool, Felix adds an iptables masquerade rule that translates the pod's IP to the node IP for traffic destined outside Calico IP pools.
 
 ```bash
-sudo iptables -t nat -L CALICO-MASQ -n
+sudo iptables -t nat -L cali-nat-outgoing -n -v
 ```
 
 ## Best Practices
