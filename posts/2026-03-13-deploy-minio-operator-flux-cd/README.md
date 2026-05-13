@@ -17,14 +17,14 @@ Deploying the MinIO Operator through Flux CD gives you GitOps control over the o
 ## Prerequisites
 
 - Kubernetes v1.26+ with Flux CD bootstrapped
-- StorageClass supporting `ReadWriteOnce` PVCs
-- cert-manager for TLS certificate management
+- StorageClass for tenant PVCs with `ReadWriteOnce` and `volumeBindingMode: WaitForFirstConsumer`
+- Kubernetes CSR signing support for operator-managed TLS certificates, or cert-manager if you manage certificates separately
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Add the MinIO HelmRepository
 
 ```yaml
-# infrastructure/sources/minio-helm.yaml
+# infrastructure/storage/minio/minio-helm.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -44,6 +44,11 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: minio-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio-tenants
 ```
 
 ```yaml
@@ -77,13 +82,6 @@ spec:
         limits:
           cpu: "500m"
           memory: "512Mi"
-    console:
-      enabled: true
-      replicaCount: 1
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "128Mi"
 ```
 
 ## Step 3: Create MinIO Admin Credentials Secret
@@ -150,7 +148,7 @@ spec:
                 matchLabels:
                   v1.min.io/tenant: production
 
-  # TLS using cert-manager
+  # TLS using operator-managed automatic certificates
   requestAutoCert: true
 
   # Expose services
@@ -252,8 +250,8 @@ mc cat prod/my-bucket/hello.txt
 
 ## Best Practices
 
-- Use at least 4 servers with 4 drives each (16 drives total) for production MinIO - this is the minimum for erasure coding with good performance.
-- Enable `requestAutoCert: true` to have the operator generate TLS certificates via cert-manager automatically.
+- Use at least 4 servers for production MinIO high availability; this example uses 4 drives each (16 drives total) for a common erasure-coded layout.
+- Enable `requestAutoCert: true` to have the operator generate TLS certificates automatically using the Kubernetes certificates API.
 - Set `proxy-body-size: "0"` on the Ingress to allow large object uploads - the default 1 MiB limit will cause upload failures.
 - Monitor MinIO's bucket and drive metrics via Prometheus using the built-in `prometheusOperator: true` integration.
 - Use MinIO's Identity and Access Management (IAM) to create service accounts for applications rather than using root credentials.
