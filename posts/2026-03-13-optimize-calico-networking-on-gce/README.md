@@ -12,7 +12,7 @@ Description: Performance optimization techniques for Calico networking on GCE, i
 
 GCE's globally-distributed VPC is one of the best cloud networks for Calico native routing performance. Without encapsulation overhead and with Google's high-bandwidth backbone connecting zones, native-routed Calico on GCE can deliver near-bare-metal networking performance for Kubernetes pods. Achieving this requires selecting the right network tier, machine type, and Calico configuration.
 
-Key GCE-specific optimizations include using Tier 1 networking for premium bandwidth on network-intensive instances, configuring Calico for native routing (eliminating VXLAN overhead), enabling eBPF on GCE's supported kernel versions, and correctly sizing MTU for GCE's 1500-byte or jumbo frame networks.
+Key GCE-specific optimizations include using Tier 1 networking for premium bandwidth on network-intensive instances, configuring Calico for native routing (eliminating VXLAN overhead), enabling eBPF on GCE's supported kernel versions, and correctly sizing MTU for GCE's 1460-byte default or jumbo frame networks.
 
 ## Prerequisites
 
