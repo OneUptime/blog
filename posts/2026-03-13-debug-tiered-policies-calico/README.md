@@ -33,6 +33,7 @@ kubectl exec -n my-namespace my-pod -- curl -v --max-time 5 http://target-servic
 ```bash
 calicoctl get networkpolicies -n my-namespace -o wide
 calicoctl get globalnetworkpolicies -o wide
+calicoctl get tiers -o wide
 ```
 
 ## Step 3: Add a Temporary Log Rule
@@ -44,18 +45,24 @@ metadata:
   name: debug-log
   namespace: my-namespace
 spec:
-  order: 999
+  tier: default
+  order: 100001
   selector: all()
   ingress:
     - action: Log
+  egress:
+    - action: Log
   types:
     - Ingress
+    - Egress
 ```
 
 ## Step 4: Review Logs and Fix
 
 ```bash
-sudo journalctl | grep "CALICO" | tail -30
+sudo journalctl -k | grep "calico-packet" | tail -30
+# For the eBPF data plane:
+kubectl exec -n calico-system ds/calico-node -- bpftool prog tracelog
 # Identify the blocking rule, fix selector or order
 
 calicoctl delete networkpolicy debug-log -n my-namespace
