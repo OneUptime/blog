@@ -10,28 +10,35 @@ Description: A guide to configuring Calico settings in a DevStack-based OpenStac
 
 ## Introduction
 
-After DevStack installs Calico, the default configuration works for basic development and testing, but you may want to customize IP pools, BGP settings, or Felix configuration for specific test scenarios. DevStack's Calico configuration is managed through the same `calicoctl` and etcd-backed CRDs as production deployments, making it a realistic environment for testing configuration changes before applying them to production.
+After DevStack installs Calico, the default configuration works for basic development and testing, but you may want to customize OpenStack subnets, BGP settings, or Felix configuration for specific test scenarios. DevStack's Calico configuration is managed through Neutron configuration and the same `calicoctl` resources stored in etcd as production OpenStack deployments, making it a realistic environment for testing configuration changes before applying them to production.
 
-Understanding which configuration changes persist across DevStack re-runs (those stored in etcd) versus which are reset by `./stack.sh` (those in local.conf) is important for DevStack workflow management.
+Understanding which configuration changes are stored in etcd versus which are regenerated from `local.conf` by `./stack.sh` is important for DevStack workflow management.
 
 ## Prerequisites
 
 - DevStack with Calico installed
-- `calicoctl` installed (DevStack installs this automatically with the Calico plugin)
+- `calicoctl` installed and configured to connect to the DevStack Calico etcd datastore
 
 ## Step 1: Check Default DevStack Calico Configuration
 
 ```bash
-calicoctl get ippool -o wide
+source /opt/stack/devstack/openrc admin admin
+openstack subnet list
 calicoctl get felixconfiguration default -o yaml
 calicoctl get bgpconfiguration default -o yaml
 ```
 
-## Step 2: Modify the IP Pool for Your Test Scenario
+## Step 2: Create a Subnet for Your Test Scenario
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"cidr":"10.65.0.0/16","blockSize":26}}'
+source /opt/stack/devstack/openrc admin admin
+openstack network create --share --provider-network-type local calico-test-net
+openstack subnet create --network calico-test-net \
+  --subnet-range 10.65.0.0/24 \
+  --gateway 10.65.0.1 \
+  --dhcp \
+  --ip-version 4 \
+  calico-test-subnet
 ```
 
 ## Step 3: Configure Felix for Test Scenarios
@@ -58,10 +65,10 @@ calicoctl patch felixconfiguration default \
 
 ## Step 4: Add Configuration to local.conf for Persistence
 
-Configuration added via `calicoctl` is stored in etcd and does not persist across DevStack re-runs. Add important configuration to `local.conf` to ensure it is applied on each `stack.sh` run.
+Configuration added via `calicoctl` is stored in etcd and can persist across DevStack service restarts while the etcd data directory is retained. DevStack service configuration is regenerated from `local.conf` on each `stack.sh` run, so add important service settings there.
 
 ```bash
-cat <<EOF >> /opt/stack/devstack/local.conf
+cat <<'EOF' >> /opt/stack/devstack/local.conf
 
 [[post-config|$NEUTRON_CONF]]
 [calico]
@@ -70,7 +77,7 @@ etcd_port = 2379
 EOF
 ```
 
-## Step 5: Configure BGP for External Router Testing
+## Step 5: Configure BGP Defaults for Testing
 
 ```bash
 cat <<EOF | calicoctl apply -f -
@@ -88,13 +95,13 @@ EOF
 ## Step 6: Verify Configuration
 
 ```bash
-calicoctl get ippool default-ipv4-ippool -o yaml
 calicoctl get felixconfiguration default -o yaml
+calicoctl get bgpconfiguration default -o yaml
 source /opt/stack/devstack/openrc admin admin
-openstack network create test-net
-openstack subnet create --network test-net --subnet-range 10.65.0.0/24 test-subnet
+openstack network show calico-test-net
+openstack subnet show calico-test-subnet
 ```
 
 ## Conclusion
 
-Configuring Calico in a DevStack environment uses the same `calicoctl` commands as production. The key DevStack-specific consideration is that etcd-stored configuration (Felix settings, IP pools) persists independently of DevStack, while the Calico service configuration (plugin selection, etcd endpoint) is managed through `local.conf`. Understanding this separation helps you manage configuration across multiple DevStack re-runs effectively.
+Configuring Calico in a DevStack environment uses the same `calicoctl` commands as production OpenStack deployments. The key DevStack-specific consideration is that etcd-stored configuration, such as Felix and BGP settings, is separate from the Calico service configuration that DevStack regenerates from `local.conf`, such as plugin selection and the etcd endpoint. Understanding this separation helps you manage configuration across multiple DevStack re-runs effectively.
