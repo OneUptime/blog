@@ -14,7 +14,7 @@ Grafana Alloy is the open-source, OpenTelemetry-compatible distribution of the G
 
 Deploying Alloy via Flux CD ensures your telemetry collection configuration is version-controlled, auditable, and automatically reconciled. Any change pushed to your Git repository is reflected in the cluster without manual `kubectl apply` commands.
 
-This guide walks through bootstrapping a Flux-managed HelmRelease for Grafana Alloy, configuring a basic metrics and logs pipeline, and applying production best practices.
+This guide walks through bootstrapping a Flux-managed HelmRelease for Grafana Alloy, configuring a basic metrics pipeline, and applying production best practices.
 
 ## Prerequisites
 
@@ -63,7 +63,7 @@ spec:
   chart:
     spec:
       chart: alloy
-      version: ">=0.9.0"
+      version: ">=1.0.0 <2.0.0"
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -75,6 +75,7 @@ spec:
     alloy:
       configMap:
         # Reference a ConfigMap with Alloy River config
+        create: false
         name: alloy-config
         key: config.alloy
     serviceMonitor:
@@ -94,14 +95,31 @@ metadata:
   namespace: monitoring
 data:
   config.alloy: |
-    // Discover Kubernetes pods with Prometheus annotations
+    // Discover Kubernetes pods
     discovery.kubernetes "pods" {
       role = "pod"
     }
 
-    // Scrape discovered pods
+    // Keep only pods with prometheus.io/scrape=true
+    discovery.relabel "pods" {
+      targets = discovery.kubernetes.pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+        action        = "keep"
+        regex         = "true"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+        target_label  = "__metrics_path__"
+        regex         = "(.+)"
+      }
+    }
+
+    // Scrape relabeled pods
     prometheus.scrape "pods" {
-      targets    = discovery.kubernetes.pods.targets
+      targets    = discovery.relabel.pods.output
       forward_to = [prometheus.remote_write.default.receiver]
     }
 
@@ -118,7 +136,7 @@ data:
 Wire all resources together with a Flux Kustomization that watches the directory.
 
 ```yaml
-# clusters/my-cluster/grafana-alloy/kustomization.yaml
+# clusters/my-cluster/flux-system/grafana-alloy-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -132,8 +150,8 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: DaemonSet
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: grafana-alloy
       namespace: monitoring
 ```
@@ -142,8 +160,8 @@ spec:
 
 - Store sensitive credentials (e.g., remote write passwords) in Kubernetes Secrets managed by Flux's SOPS or Sealed Secrets integration, never in plain ConfigMaps.
 - Use `interval: 12h` on the HelmRepository to avoid excessive polling while still picking up new chart versions.
-- Pin chart versions with semantic version ranges (e.g., `>=0.9.0 <1.0.0`) to prevent breaking changes from being auto-applied.
-- Enable `serviceMonitor: true` so Alloy's own metrics are scraped by kube-prometheus-stack.
+- Pin chart versions with semantic version ranges (e.g., `>=1.0.0 <2.0.0`) to prevent breaking changes from being auto-applied.
+- Enable `serviceMonitor.enabled: true` so Alloy's own metrics are scraped by kube-prometheus-stack.
 - Use `prune: true` in the Kustomization to automatically remove resources deleted from Git.
 
 ## Conclusion
