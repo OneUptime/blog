@@ -14,7 +14,7 @@ Change freeze windows are periods during which no new changes are allowed to rea
 
 Flux CD provides a `suspend` field on every reconciliation resource. When set to `true`, Flux stops reconciling that resource entirely. The Git repository remains unchanged and the full audit trail is preserved - you are only pausing the actor that applies changes, not the record of what was committed.
 
-This guide shows how to suspend and resume Flux resources manually, how to automate freeze windows with Kubernetes CronJobs, and how to add CI checks that block PRs from merging to the Flux-watched branch during a declared freeze.
+This guide shows how to suspend and resume Flux resources manually, how to automate freeze windows with Kubernetes CronJobs, and how to add required CI checks that block PRs from merging to the Flux-watched branch during a declared freeze.
 
 ## Prerequisites
 
@@ -64,8 +64,8 @@ flux suspend kustomization infra-production
 flux suspend helmrelease --all --namespace production
 
 # Suspend image update automation so new image tags are not pushed
-flux suspend imagerepository --all --namespace flux-system
-flux suspend imageupdateautomation --all --namespace flux-system
+flux suspend image repository --all --namespace flux-system
+flux suspend image update --all --namespace flux-system
 
 # Confirm suspend status
 flux get kustomizations --all-namespaces
@@ -88,6 +88,7 @@ metadata:
 spec:
   # Every Friday at 18:00 UTC
   schedule: "0 18 * * 5"
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -120,6 +121,7 @@ metadata:
 spec:
   # Every Monday at 06:00 UTC
   schedule: "0 6 * * 1"
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -181,7 +183,7 @@ roleRef:
 
 ## Step 4: Block PRs During a Freeze with CI
 
-Add a CI check that reads a freeze flag file from the repository and fails the status check if a freeze is active, preventing PRs from merging.
+Add a CI check that reads a freeze flag file from the repository and fails the status check if a freeze is active. Configure that check as a required status check in your branch protection rules or ruleset so failed checks prevent PRs from merging.
 
 ```yaml
 # .github/workflows/freeze-check.yaml
@@ -233,8 +235,8 @@ After the freeze window ends, resume Flux reconciliation and force an immediate 
 # Resume all suspended resources
 flux resume kustomization --all --namespace flux-system
 flux resume helmrelease --all --namespace production
-flux resume imagerepository --all --namespace flux-system
-flux resume imageupdateautomation --all --namespace flux-system
+flux resume image repository --all --namespace flux-system
+flux resume image update --all --namespace flux-system
 
 # Force an immediate reconciliation rather than waiting for the interval
 flux reconcile kustomization apps-production
