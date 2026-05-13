@@ -10,7 +10,7 @@ Description: Deploy OpenCost open-source Kubernetes cost monitoring using Flux C
 
 ## Introduction
 
-OpenCost is the open-source, vendor-neutral standard for measuring and allocating Kubernetes infrastructure costs. Born as a CNCF sandbox project, it integrates directly with your existing Prometheus installation and provides a clean API and UI for understanding where your cloud spend is going. Unlike proprietary solutions, OpenCost gives you full control over your cost data without vendor lock-in.
+OpenCost is the open-source, vendor-neutral standard for measuring and allocating Kubernetes infrastructure costs. Now a CNCF Incubating project, it integrates directly with your existing Prometheus installation and provides a clean API and UI for understanding where your cloud spend is going. Unlike proprietary solutions, OpenCost gives you full control over your cost data without vendor lock-in.
 
 Deploying OpenCost through Flux CD means your cost monitoring infrastructure is treated identically to your application workloads - version controlled, peer reviewed, and automatically reconciled. When your team updates pricing configurations or allocation rules, those changes flow through Git with full traceability.
 
@@ -68,7 +68,7 @@ spec:
   chart:
     spec:
       chart: opencost
-      version: ">=1.0.0 <2.0.0"
+      version: "2.5.14"
       sourceRef:
         kind: HelmRepository
         name: opencost
@@ -107,39 +107,33 @@ spec:
             cpu: 999m
             memory: 1Gi
 
-    # ServiceMonitor for Prometheus scraping
-    serviceMonitor:
-      enabled: true
-      namespace: monitoring
+      # ServiceMonitor for Prometheus scraping
+      metrics:
+        serviceMonitor:
+          enabled: true
+          namespace: monitoring
 ```
 
 ## Step 3: Configure Cloud Provider Pricing
 
-For accurate cost data, create a ConfigMap with your cloud provider's pricing configuration.
+For custom pricing, add the pricing model to your HelmRelease values.
 
 ```yaml
-# infrastructure/opencost/pricing-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cloud-pricing-config
-  namespace: opencost
-data:
-  # AWS pricing configuration example
-  pricing.json: |
-    {
-      "provider": "aws",
-      "description": "AWS us-east-1 on-demand pricing",
-      "CPU": "0.048",
-      "spotCPU": "0.0144",
-      "RAM": "0.006",
-      "spotRAM": "0.0018",
-      "GPU": "0.95",
-      "storage": "0.04",
-      "zoneNetworkEgress": "0.01",
-      "regionNetworkEgress": "0.02",
-      "internetNetworkEgress": "0.09"
-    }
+# Add under spec.values.opencost in infrastructure/opencost/helmrelease.yaml
+customPricing:
+  enabled: true
+  provider: aws
+  costModel:
+    description: AWS us-east-1 on-demand pricing
+    CPU: 0.048
+    spotCPU: 0.0144
+    RAM: 0.006
+    spotRAM: 0.0018
+    GPU: 0.95
+    storage: 0.04
+    zoneNetworkEgress: 0.01
+    regionNetworkEgress: 0.02
+    internetNetworkEgress: 0.09
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -147,7 +141,7 @@ data:
 Define the Kustomization to apply all OpenCost resources in the correct order.
 
 ```yaml
-# infrastructure/opencost/kustomization.yaml
+# clusters/production/opencost-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -163,8 +157,8 @@ spec:
   dependsOn:
     - name: monitoring  # Ensure Prometheus is deployed first
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: opencost
       namespace: opencost
   timeout: 5m
@@ -175,14 +169,14 @@ spec:
 Once deployed, query the OpenCost API to verify cost allocation is working correctly.
 
 ```bash
-# Port-forward to the OpenCost UI
-kubectl port-forward -n opencost svc/opencost 9090:9090 &
+# Port-forward to the OpenCost API
+kubectl port-forward -n opencost svc/opencost 9003:9003 &
 
 # Query allocation data for the past 7 days
-curl "http://localhost:9090/allocation/compute?window=7d&aggregate=namespace"
+curl "http://localhost:9003/allocation/compute?window=7d&aggregate=namespace"
 
 # Check cost per namespace
-curl "http://localhost:9090/allocation/compute?window=1d&aggregate=namespace&accumulate=true"
+curl "http://localhost:9003/allocation/compute?window=1d&aggregate=namespace"
 
 # Verify Flux reconciliation
 flux get helmrelease opencost -n opencost
