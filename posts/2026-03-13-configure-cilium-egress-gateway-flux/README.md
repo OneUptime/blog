@@ -20,7 +20,7 @@ This guide covers configuring the Cilium Egress Gateway using Flux CD for stable
 
 - Kubernetes cluster with Cilium installed (1.14+) and Egress Gateway feature enabled
 - Flux CD v2 bootstrapped to your Git repository
-- Dedicated gateway nodes with elastic/static IPs assigned at the cloud provider level
+- Dedicated gateway nodes with elastic/static IPs assigned to their network interfaces at the cloud provider level
 
 ## Step 1: Enable Egress Gateway in Cilium
 
@@ -33,6 +33,9 @@ Add to your Cilium HelmRelease values:
 # (partial - add to existing values)
     egressGateway:
       enabled: true
+    bpf:
+      masquerade: true
+    kubeProxyReplacement: true
 ```
 
 Apply the change via Flux:
@@ -47,8 +50,9 @@ Label the nodes that will serve as egress gateways:
 
 ```bash
 # Label dedicated gateway nodes
-kubectl label node gateway-node-01 egress-gateway=true
-kubectl label node gateway-node-02 egress-gateway=true
+kubectl label node gateway-node-01 egress-gateway=true egress-ip=203.0.113.10
+kubectl label node gateway-node-02 egress-gateway=true egress-ip=203.0.113.11
+kubectl label node gateway-node-vpn egress-gateway=true egress-ip=10.0.1.100
 ```
 
 ## Step 3: Create CiliumEgressGatewayPolicy
@@ -78,8 +82,8 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
-    # Use the node's primary interface IP as the masquerade IP
-    # Or specify a specific IP with egressIP
+        egress-ip: "203.0.113.10"
+    # Specify the IP that Cilium should use to SNAT matching traffic
     egressIP: 203.0.113.10  # The elastic IP assigned to your gateway node
 ```
 
@@ -104,6 +108,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
+        egress-ip: "203.0.113.11"
     egressIP: 203.0.113.11  # Different static IP for data team
 ---
 # Egress for internal services to a specific on-premises CIDR
@@ -123,6 +128,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
+        egress-ip: "10.0.1.100"
     egressIP: 10.0.1.100  # Internal IP for on-prem VPN gateway
 ```
 
@@ -135,7 +141,9 @@ kind: Kustomization
 resources:
   - payment-egress.yaml
   - egress-policies.yaml
----
+```
+
+```yaml
 # clusters/my-cluster/flux-kustomization-cilium-egress.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -169,7 +177,7 @@ kubectl exec -n production deploy/payment-service -- \
 
 # Check Cilium BPF egress map
 kubectl exec -n cilium daemonset/cilium -- \
-  cilium bpf egress list
+  cilium-dbg bpf egress list
 
 # Use Hubble to observe egress flows
 hubble observe \
@@ -181,8 +189,8 @@ hubble observe \
 
 ## Best Practices
 
-- Assign elastic/static IPs to gateway nodes at the cloud provider level before creating EgressGatewayPolicy resources - the `egressIP` must already be assigned to the node's network interface.
-- Use dedicated gateway nodes (with the `egress-gateway: "true"` label) that are sized appropriately to handle the egress bandwidth of all matched pods.
+- Assign elastic/static IPs to gateway nodes at the cloud provider level before creating EgressGatewayPolicy resources - the `egressIP` must already be assigned to the selected node's network interface.
+- Use dedicated gateway nodes that are sized appropriately to handle the egress bandwidth of all matched pods, and make each `nodeSelector` match the node that owns the configured `egressIP`.
 - Create separate egress policies for different teams or services so each can have its own stable IP, enabling fine-grained firewall rules at the external service level.
 - Apply `destinationCIDRs` as specifically as possible rather than using `0.0.0.0/0` - routing all traffic through the gateway node adds latency for internal cluster traffic.
 - Monitor gateway node bandwidth and CPU usage - all matched pods' external traffic flows through the gateway node, which can become a bottleneck under heavy load.
