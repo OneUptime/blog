@@ -55,7 +55,8 @@ Create a Key Vault and key in Azure:
 ```bash
 az keyvault create \
   --name sops-flux-vault \
-  --resource-group myResourceGroup
+  --resource-group myResourceGroup \
+  --location eastus
 
 az keyvault key create \
   --vault-name sops-flux-vault \
@@ -72,7 +73,7 @@ creation_rules:
   - path_regex: .*\.yaml$
     kms: arn:aws:kms:us-east-1:123456789012:alias/sops-flux
     gcp_kms: projects/my-project/locations/global/keyRings/sops-flux/cryptoKeys/sops-key
-    azure_kv: https://sops-flux-vault.vault.azure.net/keys/sops-key/1234567890abcdef
+    azure_keyvault: https://sops-flux-vault.vault.azure.net/keys/sops-key/1234567890abcdef
     encrypted_regex: ^(data|stringData)$
 ```
 
@@ -113,14 +114,14 @@ creation_rules:
 
   # Azure AKS cluster secrets
   - path_regex: clusters/azure/.*\.yaml$
-    azure_kv: https://sops-flux-vault.vault.azure.net/keys/sops-key/1234567890abcdef
+    azure_keyvault: https://sops-flux-vault.vault.azure.net/keys/sops-key/1234567890abcdef
     encrypted_regex: ^(data|stringData)$
 
   # Shared secrets accessible from any cloud
   - path_regex: shared/.*\.yaml$
     kms: arn:aws:kms:us-east-1:123456789012:alias/sops-flux
     gcp_kms: projects/my-project/locations/global/keyRings/sops-flux/cryptoKeys/sops-key
-    azure_kv: https://sops-flux-vault.vault.azure.net/keys/sops-key/1234567890abcdef
+    azure_keyvault: https://sops-flux-vault.vault.azure.net/keys/sops-key/1234567890abcdef
     encrypted_regex: ^(data|stringData)$
 ```
 
@@ -193,8 +194,18 @@ metadata:
   namespace: flux-system
   annotations:
     azure.workload.identity/client-id: <managed-identity-client-id>
-  labels:
-    azure.workload.identity/use: "true"
+    azure.workload.identity/tenant-id: <tenant-id>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
 ```
 
 ## Combining KMS with Age as Backup
