@@ -32,7 +32,7 @@ The most frequent cause is that the AGE or PGP key used to encrypt the secret is
 
 ### 2. Malformed Base64 Encoding in the Secret
 
-If the decryption key secret itself contains improperly encoded base64 data, the controller will fail to read it. This often happens when the key is created manually and whitespace or newline characters are inadvertently included.
+If the decryption key secret itself contains improperly encoded base64 data in its `data` field, the controller will fail to read it. This often happens when the key is created manually as YAML and the private key is pasted without base64 encoding, or when an invalid base64 value is committed.
 
 ### 3. Wrong SOPS Configuration
 
@@ -58,7 +58,7 @@ Look for the specific error message associated with the failing Kustomization.
 kubectl get secret sops-age -n flux-system -o yaml
 ```
 
-Verify that the secret exists and contains a valid `age.agekey` data field.
+Verify that the secret exists and contains a valid data field ending in `.agekey`, such as `age.agekey`.
 
 ### Step 3: Validate the Key Format
 
@@ -68,7 +68,7 @@ Decode the secret data to check for formatting issues:
 kubectl get secret sops-age -n flux-system -o jsonpath='{.data.age\.agekey}' | base64 -d
 ```
 
-The output should be a valid AGE private key starting with `AGE-SECRET-KEY-`.
+The output should contain a valid AGE private key starting with `AGE-SECRET-KEY-`.
 
 ### Step 4: Verify the SOPS Configuration
 
@@ -103,7 +103,7 @@ kubectl create secret generic sops-age \
   --from-file=age.agekey=/path/to/age.key
 ```
 
-Make sure the key file does not contain trailing newlines or extra whitespace.
+If you create the Secret from a YAML manifest instead, put the private key under `stringData` or base64-encode it before placing it under `data`.
 
 ### Fix 2: Update the Kustomization to Reference the Correct Secret
 
@@ -130,12 +130,10 @@ spec:
 
 ### Fix 3: Re-encrypt Secrets with the Correct Key
 
-If the encryption key has changed, re-encrypt all secrets in your repository:
+If the encryption key has changed and your `.sops.yaml` contains the new recipient, update the keys on existing encrypted files:
 
 ```bash
-sops --encrypt --age age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-  --encrypted-regex '^(data|stringData)$' \
-  --in-place secret.yaml
+sops updatekeys -y secret.yaml
 ```
 
 ### Fix 4: Force Reconciliation
