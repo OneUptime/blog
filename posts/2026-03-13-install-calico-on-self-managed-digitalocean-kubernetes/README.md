@@ -29,9 +29,9 @@ This guide covers installing Calico on a kubeadm cluster running on DigitalOcean
 
 doctl compute firewall create \
   --name k8s-cluster-firewall \
-  --inbound-rules "protocol:tcp,ports:all,droplet_id:DROPLET1_ID droplet_id:DROPLET2_ID" \
-  --inbound-rules "protocol:udp,ports:all,droplet_id:DROPLET1_ID droplet_id:DROPLET2_ID" \
-  --inbound-rules "protocol:tcp,ports:6443,address:0.0.0.0/0,::/0" \
+  --inbound-rules "protocol:tcp,ports:all,address:<VPC_CIDR>" \
+  --inbound-rules "protocol:udp,ports:all,address:<VPC_CIDR>" \
+  --inbound-rules "protocol:tcp,ports:6443,address:0.0.0.0/0" \
   --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0" \
   --outbound-rules "protocol:udp,ports:all,address:0.0.0.0/0"
 
@@ -52,6 +52,7 @@ sudo kubeadm init \
 # Copy kubeconfig
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 # Join worker nodes (run the output kubeadm join command on each worker)
 ```
@@ -59,8 +60,9 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 ## Step 3: Install Calico Operator
 
 ```bash
-# Install the Tigera Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Install the Calico CRDs and Tigera Operator
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Wait for operator to be ready
 kubectl wait --for=condition=Available deployment/tigera-operator \
@@ -79,21 +81,31 @@ spec:
   cni:
     type: Calico
   calicoNetwork:
+    bgp: Disabled
+    nodeAddressAutodetectionV4:
+      cidrs:
+        - <VPC_CIDR>
     ipPools:
       - name: default-ipv4-ippool
         # Must match kubeadm --pod-network-cidr
         cidr: 192.168.0.0/16
-        # VXLAN is recommended for DigitalOcean (BGP not supported without VPC peering)
+        # VXLAN keeps pod routing inside the DigitalOcean VPC without advertising pod CIDRs
         encapsulation: VXLAN
         natOutgoing: Enabled
         nodeSelector: all()
     # DigitalOcean Droplets have 1500 MTU, subtract 50 for VXLAN overhead
     mtu: 1450
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
 ```
 
 ```bash
 # Apply the installation
-kubectl apply -f calico-installation-do.yaml
+kubectl create -f calico-installation-do.yaml
 
 # Monitor Calico becoming ready
 kubectl get tigerastatus --watch
@@ -112,8 +124,8 @@ kubectl get pods -n calico-system
 export CALICO_DATASTORE_TYPE=kubernetes
 export CALICO_KUBECONFIG=~/.kube/config
 
-# Verify node peering
-calicoctl node status
+# Verify Calico nodes
+calicoctl get nodes
 
 # Check the IP pool
 calicoctl get ippool -o wide
@@ -144,11 +156,11 @@ spec:
   ingress:
     - action: Allow
       source:
-        namespaceSelector: kubernetes.io/metadata.name == 'production'
+        namespaceSelector: projectcalico.org/name == 'production'
   egress:
     - action: Allow
       destination:
-        namespaceSelector: kubernetes.io/metadata.name == 'production'
+        namespaceSelector: projectcalico.org/name == 'production'
     - action: Allow
       protocol: UDP
       destination:
