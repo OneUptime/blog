@@ -69,8 +69,8 @@ kubectl run -it --rm debug --image=alpine --restart=Never -n flux-system -- \
 ### Step 4: Check MTU Settings
 
 ```bash
-kubectl run -it --rm debug --image=busybox --restart=Never -n flux-system -- \
-  ping -c 3 -M do -s 1400 github.com
+kubectl run -it --rm debug --image=alpine --restart=Never -n flux-system -- \
+  sh -c "apk add --no-cache iputils && ping -c 3 -M do -s 1400 github.com"
 ```
 
 If this fails with packet-too-big errors, MTU is likely the issue.
@@ -95,24 +95,35 @@ For other CNI plugins, consult the specific documentation for adjusting MTU valu
 
 ### Fix 2: Configure Proxy with CONNECT Support
 
-Ensure the proxy supports HTTPS CONNECT and configure it:
+Ensure the proxy supports HTTPS CONNECT and configure it with a patch:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          env:
-            - name: HTTPS_PROXY
-              value: "http://proxy.example.com:3128"
-            - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12"
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: source-controller
+        namespace: flux-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                env:
+                  - name: HTTPS_PROXY
+                    value: "http://proxy.example.com:3128"
+                  - name: NO_PROXY
+                    value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12"
+    target:
+      kind: Deployment
+      name: source-controller
+      namespace: flux-system
 ```
 
 ### Fix 3: Allowlist Flux Traffic in the Firewall
