@@ -175,6 +175,7 @@ kind: Kustomization
 resources:
   - business-hours-scaler.yaml
   - hybrid-scaler.yaml
+  - global-scaler.yaml
   - nightly-batch-scaler.yaml
 ---
 # clusters/my-cluster/flux-kustomization-keda-cron.yaml
@@ -216,7 +217,7 @@ kubectl get deployment api-server -n app -o jsonpath='{.spec.replicas}'
 - Use IANA timezone names (e.g., `America/New_York`, `Europe/London`) rather than UTC offsets in cron triggers so daylight saving time is handled automatically.
 - Combine cron with reactive scalers (Prometheus, Kafka) using multiple triggers - KEDA takes the maximum desired replicas across all active triggers.
 - Set `minReplicaCount` to 0 for batch workloads that only run during scheduled windows; use `minReplicaCount: 1` for services that must be available 24/7 at reduced capacity.
-- Test cron schedules with KEDA's `--debug` logging before deploying to production to verify timezone and schedule correctness.
+- Test cron schedules with KEDA's `--zap-log-level=debug` logging before deploying to production to verify timezone and schedule correctness.
 - Use the cron trigger to pre-scale 15-30 minutes before anticipated peaks so pods are warmed and ready before traffic arrives.
 
 ## Conclusion
