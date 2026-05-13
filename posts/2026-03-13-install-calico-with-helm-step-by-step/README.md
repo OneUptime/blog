@@ -75,11 +75,11 @@ installation:
         nodeSelector: all()
     # Optimal MTU for VXLAN
     mtu: 1450
-  # Number of Typha replicas (0 = disabled for small clusters)
+  # Enable Prometheus metrics ports for Calico node and Typha
   typhaMetricsPort: 9093
   nodeMetricsPort: 9091
 
-# Disable automatic installation of Calico API server (for custom setups)
+# Enable automatic installation of the Calico API server
 apiServer:
   enabled: true
 
@@ -99,7 +99,7 @@ helm install calico projectcalico/tigera-operator \
 
 # Verify the installation
 helm status calico -n tigera-operator
-kubectl wait --for=condition=Ready tigerastatus/calico --timeout=300s
+kubectl wait --for=condition=Available tigerastatus/calico --timeout=300s
 kubectl get pods -n calico-system
 ```
 
@@ -185,7 +185,7 @@ spec:
 - Store Helm values in Git and use Flux HelmRelease for GitOps-managed Calico lifecycle
 - Test Helm upgrades in staging before production - Calico upgrades require node-level changes
 - Use `helm diff` (helm-diff plugin) to preview changes before applying upgrades
-- Back up Calico CRD data with `calicoctl export` before major version upgrades
+- Back up Calico resources with `calicoctl get <resource> <name> -o yaml --export` before major version upgrades
 
 ## Conclusion
 
