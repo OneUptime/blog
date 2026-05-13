@@ -74,11 +74,11 @@ spec:
         name: memory
         target:
           type: Utilization
-          averageUtilization: 80  # Scale when avg memory > 80% of request (512Mi)
-          # 80% of 512Mi = ~409Mi triggers scaling
+          averageUtilization: 80  # Target avg memory at 80% of request (512Mi)
+          # 80% of 512Mi = ~409Mi before HPA tolerance and stabilization behavior
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 120  # Memory spikes can be transient; wait 2 min
+      stabilizationWindowSeconds: 120  # Smooth transient memory spikes over a 2 min window
       policies:
         - type: Pods
           value: 2
@@ -101,13 +101,13 @@ For workloads that need both CPU and memory scaling:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: myapp-combined
+  name: myapp-worker-combined
   namespace: myapp
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: myapp
+    name: myapp-worker
   minReplicas: 2
   maxReplicas: 20
   metrics:
@@ -123,7 +123,7 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
-  # HPA will scale when EITHER metric exceeds its target
+  # HPA calculates replicas for each metric and uses the highest recommendation
 ```
 
 ## Step 4: Deploy via Flux
@@ -158,9 +158,8 @@ kubectl describe hpa myapp-worker-memory -n myapp
 # Check current memory usage
 kubectl top pods -n myapp
 
-# Simulate memory pressure (careful in production!)
-kubectl run memory-hog --image=polinux/stress --rm -it --restart=Never \
-  -n myapp -- stress --vm 1 --vm-bytes 400M --timeout 60s
+# Generate application traffic or a workload that increases memory in the myapp-worker pods.
+# A standalone memory-hog pod in the namespace will not affect this HPA.
 ```
 
 ## Best Practices
