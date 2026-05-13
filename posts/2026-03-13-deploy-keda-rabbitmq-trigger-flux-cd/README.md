@@ -10,16 +10,16 @@ Description: Deploy KEDA with RabbitMQ message queue trigger using Flux CD to au
 
 ## Introduction
 
-RabbitMQ is a widely used message broker for task queues and pub/sub messaging. When queue depth grows faster than workers can process messages, you need to scale out worker pods dynamically. KEDA's RabbitMQ scaler monitors queue depth via the RabbitMQ Management API and triggers pod scaling to match demand.
+RabbitMQ is a widely used message broker for task queues and pub/sub messaging. When queue depth grows faster than workers can process messages, you need to scale out worker pods dynamically. KEDA's RabbitMQ scaler can monitor queue depth via AMQP or the RabbitMQ Management API and trigger pod scaling to match demand.
 
 Managing this autoscaling configuration through Flux CD means your queue depth thresholds, worker limits, and authentication details are all version-controlled. Scaling policy changes go through code review before affecting production.
 
-This guide covers configuring KEDA with the RabbitMQ trigger using Flux CD, supporting both HTTP (Management API) and AMQP protocol-based metrics.
+This guide covers configuring KEDA with the RabbitMQ trigger using Flux CD, supporting both HTTP (Management API) and AMQP protocol-based queue length metrics.
 
 ## Prerequisites
 
 - KEDA deployed on your Kubernetes cluster
-- RabbitMQ cluster deployed with the Management plugin enabled
+- RabbitMQ cluster deployed (enable the Management plugin if you use the HTTP protocol or the `rabbitmqadmin` test commands)
 - Flux CD v2 bootstrapped to your Git repository
 - A worker Deployment to autoscale
 
@@ -35,7 +35,7 @@ metadata:
   namespace: app
 type: Opaque
 stringData:
-  # RabbitMQ Management API connection string
+  # RabbitMQ AMQP connection string
   # Format: amqp://user:password@host:port/vhost
   host: "amqp://admin:password@rabbitmq.rabbitmq.svc.cluster.local:5672/"
 ---
@@ -77,7 +77,8 @@ spec:
         # Queue name to monitor
         queueName: task-queue
         # Scale 1 replica per N messages in the queue
-        queueLength: "5"
+        mode: QueueLength
+        value: "5"
         # vhost for the queue
         vhostName: "/"
       authenticationRef:
@@ -129,7 +130,7 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "sleep 5"]
-          terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 60
 ```
 
 ## Step 4: Add a Pod Disruption Budget
@@ -183,24 +184,25 @@ spec:
 # Check ScaledObject status
 kubectl get scaledobject rabbitmq-worker-scaler -n app
 
-# Publish test messages to trigger scaling
-kubectl exec -n rabbitmq rabbitmq-0 -- rabbitmqadmin publish \
-  exchange=amq.default routing_key=task-queue \
-  payload='{"task": "process", "id": "1"}'
+# Publish test messages to trigger scaling through the Management HTTP API
+kubectl exec -n rabbitmq rabbitmq-0 -- curl -u admin:password \
+  -H "content-type: application/json" \
+  -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish \
+  -d '{"properties":{},"routing_key":"task-queue","payload":"{\"task\":\"process\",\"id\":\"1\"}","payload_encoding":"string"}'
 
 # Watch workers scale
 kubectl get pods -n app -l app=task-worker -w
 
 # Check queue depth via Management API
-kubectl exec -n rabbitmq rabbitmq-0 -- rabbitmqadmin list queues name messages
+kubectl exec -n rabbitmq rabbitmq-0 -- rabbitmqadmin --vhost "/" queues show --name "task-queue" --columns "name,messages"
 ```
 
 ## Best Practices
 
-- Set PREFETCH_COUNT on your consumer equal to `queueLength` per replica to ensure KEDA's metric matches actual consumer throughput.
+- Set `value` to the number of queued messages one replica can handle, and tune `PREFETCH_COUNT` for your worker's processing and acknowledgement behavior.
 - Use `minReplicaCount: 0` for batch-style task workers that can tolerate cold starts, and `minReplicaCount: 1` for tasks that require low-latency response.
 - Include a `preStop` lifecycle hook and a sufficient `terminationGracePeriodSeconds` so workers finish processing in-flight messages before the pod terminates during scale-down.
-- Use a PodDisruptionBudget to prevent KEDA from scaling down too aggressively during rolling upgrades, preserving processing capacity.
+- Use a PodDisruptionBudget to limit voluntary evictions during node drains and maintenance, preserving processing capacity.
 - Prefer the `http` protocol for the RabbitMQ trigger when using the Management API - it provides richer metrics including message rates, not just queue depth.
 
 ## Conclusion
