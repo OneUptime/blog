@@ -40,7 +40,7 @@ source-controller-xxx                      0/1     CrashLoopBackOff   5         
 ### Check the cluster version
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ### Check Flux controller status
@@ -50,10 +50,10 @@ kubectl get pods -n flux-system
 kubectl describe pods -n flux-system -l app.kubernetes.io/part-of=flux
 ```
 
-### Check for deprecated API usage in your manifests
+### Check which API versions the upgraded cluster serves
 
 ```bash
-kubectl get --raw /apis | jq -r '.groups[].versions[].groupVersion'
+kubectl api-versions
 ```
 
 ### Check Flux component versions
@@ -72,12 +72,12 @@ kubectl logs -n flux-system deployment/kustomize-controller | grep -i "deprecate
 
 ### 1. Removed API versions
 
-Kubernetes removes deprecated APIs on major version upgrades. If your manifests use removed APIs, Flux cannot apply them.
+Kubernetes removes deprecated APIs on minor version upgrades. If your manifests use removed APIs, Flux cannot apply them.
 
 Common removals by version:
 - **1.22**: Removed `extensions/v1beta1` Ingress, `rbac.authorization.k8s.io/v1beta1`
 - **1.25**: Removed `policy/v1beta1` PodSecurityPolicy
-- **1.26**: Removed `autoscaling/v2beta1` HPA
+- **1.26**: Removed `autoscaling/v2beta2` HPA
 - **1.27**: Removed `storage.k8s.io/v1beta1` CSIStorageCapacity
 
 ### 2. Flux version incompatible with cluster version
@@ -124,7 +124,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 ```
 
-Note that newer API versions often have structural changes. For example, the `networking.k8s.io/v1` Ingress requires an `ingressClassName` field and a different path specification format.
+Note that newer API versions often have structural changes. For example, the `networking.k8s.io/v1` Ingress requires `pathType` for each path and uses a different backend service field format.
 
 ### Fix 2: Upgrade Flux to a compatible version
 
@@ -207,8 +207,8 @@ kubectl rollout restart -n flux-system deployment/notification-controller
 After all controllers are healthy:
 
 ```bash
-flux reconcile source git --all
-flux reconcile kustomization --all
+flux get sources git --no-header | awk '{print $1}' | xargs -n1 flux reconcile source git
+flux get kustomizations --no-header | awk '{print $1}' | xargs -n1 flux reconcile kustomization --with-source
 ```
 
 ## Prevention Strategies
@@ -216,7 +216,7 @@ flux reconcile kustomization --all
 1. **Run API deprecation checks before upgrading** using tools like `kubent` (kube-no-trouble):
 
 ```bash
-kubent --cluster
+kubent
 ```
 
 This scans your cluster for resources using deprecated APIs.
