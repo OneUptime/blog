@@ -15,7 +15,7 @@ Flapping reconciliation is when a Flux resource alternates between `Ready` and `
 The Kustomization or HelmRelease status changes back and forth:
 
 ```bash
-kubectl get events --for kustomization/my-app -n flux-system --sort-by=.lastTimestamp
+kubectl events --for Kustomization/my-app -n flux-system
 ```
 
 You see alternating patterns of success and failure events. The resource is `Ready` at one moment and `Not Ready` the next, on a repeating cycle.
@@ -25,7 +25,7 @@ You see alternating patterns of success and failure events. The resource is `Rea
 ### Watch the status in real time
 
 ```bash
-watch -n 5 'flux get kustomizations my-app'
+watch -n 5 'kubectl get kustomization my-app -n flux-system'
 ```
 
 ### Check the condition history
@@ -97,27 +97,15 @@ readinessProbe:
 
 ### Fix 2: Prevent conflicts with other controllers
 
-If an HPA or VPA is modifying fields that Flux manages, tell Flux to ignore those fields using field managers:
+If another tool adds non-overlapping fields to resources that Flux manages, tell Flux to preserve those fields with the server-side apply merge policy:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
-  namespace: flux-system
-spec:
-  force: false
-  patches:
-    - target:
-        kind: Deployment
-        name: my-app
-      patch: |
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: my-app
-          annotations:
-            kustomize.toolkit.fluxcd.io/field-manager: flux-ignore
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: Merge
 ```
 
 Alternatively, remove the conflicting fields from your Git manifests so Flux does not try to manage them.
@@ -130,7 +118,7 @@ Verify that your kustomize build produces identical output on repeated runs:
 diff <(kustomize build ./my-app/) <(kustomize build ./my-app/)
 ```
 
-If there are differences, check for generators with random suffixes or variable substitution issues.
+If there are differences, check for changing generator inputs or variable substitution issues.
 
 ### Fix 4: Add retry intervals
 
@@ -172,7 +160,7 @@ kubectl logs -n webhook-namespace deployment/webhook-server
 5. **Use Flux notification alerts** filtered on severity to detect flapping early:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flapping-detector
