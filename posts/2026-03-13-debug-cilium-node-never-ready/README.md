@@ -12,7 +12,7 @@ Description: Debug Kubernetes nodes running Cilium that never enter the Ready st
 
 A Cilium node that never becomes Ready prevents pods from scheduling and blocks cluster operations. The Cilium agent is a critical component of the node's networking stack, and failures during agent initialization prevent the node's network from functioning.
 
-Common causes include kernel version incompatibilities, missing kernel modules, low resource limits on the Cilium DaemonSet, initialization race conditions, and certificate or configuration errors. Identifying the root cause requires inspecting both the Cilium agent logs and the Kubernetes node conditions.
+Common causes include kernel version incompatibilities, missing kernel configuration options, low resource limits on the Cilium DaemonSet, initialization race conditions, and certificate or configuration errors. Identifying the root cause requires inspecting both the Cilium agent logs and the Kubernetes node conditions.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ kubectl get nodes
 kubectl describe node <node-name> | grep -A20 "Conditions:"
 ```
 
-Look for the `NetworkUnavailable` condition which is set by Cilium when it initializes:
+Look for the `NetworkUnavailable` condition. Kubernetes uses this condition to report whether node networking is configured, and a healthy Cilium agent commonly reports it as `False` with reason `CiliumIsUp`:
 
 ```bash
 kubectl get node <node-name> \
@@ -63,23 +63,23 @@ flowchart TD
 
 kubectl debug node/<node-name> -it --image=busybox -- uname -r
 
-# Check for required kernel modules
+# Check for core BPF kernel configuration options
 kubectl debug node/<node-name> -it --image=busybox -- \
-  sh -c 'grep -E "CONFIG_BPF|CONFIG_BPF_SYSCALL" /proc/config.gz 2>/dev/null || true'
+  sh -c '(zcat /proc/config.gz 2>/dev/null || cat /host/boot/config-$(uname -r) 2>/dev/null) | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL=" || true'
 ```
 
 ## Check eBPF Mount
 
 ```bash
 kubectl exec -n kube-system <cilium-pod-name> -- \
-  mount | grep bpf
+  mount | grep /sys/fs/bpf
 ```
 
-Expected: `/sys/fs/bpf type bpf`
+Expected: output similar to `none on /sys/fs/bpf type bpf`. If it is missing, check whether Cilium's BPF filesystem auto-mounting is disabled or blocked by the host configuration.
 
 ## Check Resource Limits
 
-Cilium may crash if it exceeds memory or CPU limits:
+Cilium may be OOMKilled if it exceeds its memory limit, and CPU limits can slow or throttle startup:
 
 ```bash
 kubectl describe pod -n kube-system <cilium-pod-name> | grep -A20 "Limits:"
@@ -90,8 +90,8 @@ kubectl top pod -n kube-system <cilium-pod-name>
 
 | Error | Cause |
 |-------|-------|
-| `failed to load programs` | Kernel version too old |
-| `bpf fs not mounted` | Missing `/sys/fs/bpf` mount |
+| `failed to load programs` | Kernel capability or configuration mismatch |
+| `bpf fs not mounted` | Missing `/sys/fs/bpf` mount or disabled/blocked auto-mounting |
 | `failed to obtain node MAC address` | Network interface issue |
 | `failed to start health checking` | Port conflict |
 
