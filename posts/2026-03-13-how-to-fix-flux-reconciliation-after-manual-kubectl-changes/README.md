@@ -92,15 +92,15 @@ Then reconcile:
 flux reconcile kustomization my-app --with-source
 ```
 
-### Fix 2: Force Flux to overwrite manual changes
+### Fix 2: Reconcile Flux to overwrite manual changes
 
 If the manual change was temporary and you want to revert to the Git state:
 
 ```bash
-flux reconcile kustomization my-app --with-source --force
+flux reconcile kustomization my-app --with-source
 ```
 
-Or use the `force` spec option:
+By default, Flux's server-side apply policy reconciles resources back to the desired state in Git. If the apply fails because an immutable field changed, use the `force` spec option temporarily:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -109,7 +109,7 @@ metadata:
   name: my-app
   namespace: flux-system
 spec:
-  force: true  # Overwrite field manager conflicts
+  force: true  # Replace resources when immutable field changes block patching
 ```
 
 After Flux has reconciled successfully, remove the `force: true` setting.
@@ -122,7 +122,7 @@ If server-side apply conflicts are the issue, you can transfer field ownership t
 kubectl apply --server-side --field-manager=kustomize-controller --force-conflicts -f <(kustomize build ./path/to/app/)
 ```
 
-Or set `force: true` on the Kustomization temporarily to let Flux claim the fields.
+If you need Flux to preserve non-overlapping fields added outside Git, annotate or label that resource in Git with `kustomize.toolkit.fluxcd.io/ssa: Merge`. Fields defined in the Git manifests will still be overridden by Flux.
 
 ### Fix 4: Suspend Flux before making manual changes
 
@@ -184,7 +184,7 @@ kind: ClusterPolicy
 metadata:
   name: prevent-direct-changes
 spec:
-  validationFailureAction: Enforce
+  background: false
   rules:
     - name: block-non-flux-changes
       match:
@@ -198,8 +198,17 @@ spec:
             operator: NotEquals
             value: "system:serviceaccount:flux-system:kustomize-controller"
       validate:
+        failureAction: Enforce
         message: "Direct changes to production are not allowed. Use GitOps."
-        deny: {}
+        deny:
+          conditions:
+            any:
+              - key: "{{request.operation}}"
+                operator: In
+                value:
+                  - CREATE
+                  - UPDATE
+                  - DELETE
 ```
 
 4. **Monitor drift** with regular `flux diff` checks and alert when cluster state diverges from Git.
