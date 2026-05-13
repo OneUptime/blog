@@ -22,6 +22,8 @@ Once you have deployed multiple kustomize-controller instances, you need a relia
 
 Shard assignment works through Kubernetes labels. Each shard controller watches for resources with a specific label value, and each Kustomization must have the corresponding label to be picked up by the intended shard.
 
+The label value must match the controller's `--watch-label-selector` configuration. In the examples below, the shard controllers are assumed to use selectors such as `--watch-label-selector=sharding.fluxcd.io/key=shard-1`.
+
 ```bash
 Kustomization (label: shard-1) --> kustomize-controller-shard-1
 Kustomization (label: shard-2) --> kustomize-controller-shard-2
@@ -33,6 +35,19 @@ Kustomization (no shard label) --> kustomize-controller (main)
 The simplest approach is to add shard labels directly in your Kustomization manifests.
 
 ```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: apps-repo
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: shard-1
+spec:
+  interval: 10m
+  url: https://github.com/example/apps-repo
+  ref:
+    branch: main
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -48,6 +63,8 @@ spec:
   path: ./production
   prune: true
 ```
+
+If your `source-controller` is also sharded, apply the same shard label to the referenced Source object, such as a `GitRepository`, `OCIRepository`, or `Bucket`.
 
 ## Method 2: Assign via kubectl
 
@@ -154,9 +171,9 @@ assign_by_path() {
 assign_round_robin
 ```
 
-## Method 5: Assignment via Flux Kustomization Post-Build
+## Method 5: Assignment via Flux Kustomization Common Metadata
 
-Use variable substitution in Flux to set shard labels dynamically.
+Use `commonMetadata` with variable substitution in Flux to set shard labels dynamically on the resources rendered by a parent Kustomization.
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -171,6 +188,9 @@ spec:
     name: apps-repo
   path: ./apps
   prune: true
+  commonMetadata:
+    labels:
+      sharding.fluxcd.io/key: ${SHARD_KEY}
   postBuild:
     substituteFrom:
       - kind: ConfigMap
