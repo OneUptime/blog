@@ -44,7 +44,8 @@ Or create a self-signed certificate for testing:
 ```bash
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout tls.key -out tls.crt \
-  -subj "/CN=api.example.com"
+  -subj "/CN=api.example.com" \
+  -addext "subjectAltName=DNS:api.example.com"
 
 kubectl create secret tls gateway-tls-secret \
   --key tls.key --cert tls.crt
@@ -133,6 +134,8 @@ spec:
 ```bash
 curl -v https://api.example.com/
 ```
+
+If you used the self-signed test certificate and have not added it to your local trust store, use `curl -vk https://api.example.com/` for testing only.
 
 ## Conclusion
 
