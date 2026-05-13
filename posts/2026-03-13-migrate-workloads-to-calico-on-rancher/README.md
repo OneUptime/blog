@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, Rancher, CNI
 
-Description: A step-by-step guide to replacing Canal or Flannel with Calico on Rancher-managed Kubernetes clusters, enabling advanced network policy enforcement across your Rancher fleet.
+Description: A step-by-step guide to moving workloads from Canal or Flannel clusters to Calico on Rancher-managed Kubernetes clusters, enabling advanced network policy enforcement across your Rancher fleet.
 
 ---
 
 ## Introduction
 
-Rancher by SUSE is a popular multi-cluster Kubernetes management platform that supports multiple CNI options through its RKE (Rancher Kubernetes Engine) provisioner. By default, many Rancher-managed clusters use Canal (a combination of Flannel for networking and Calico for network policy), but teams that need full Calico IPAM, BGP support, or eBPF data plane capabilities should migrate to a pure Calico deployment.
+Rancher by SUSE is a popular multi-cluster Kubernetes management platform that supports multiple CNI options through its RKE (Rancher Kubernetes Engine) provisioner. By default, many Rancher-managed clusters use Canal (a combination of Flannel for networking and Calico for network policy), but teams that need full Calico IPAM, BGP support, or, on supported RKE2 releases, eBPF data plane capabilities should migrate to a pure Calico deployment.
 
 Rancher's cluster management UI and RKE configuration make it possible to select Calico as the CNI at cluster creation time. For existing clusters, the migration path involves creating a new RKE cluster with Calico and migrating workloads, since in-place CNI replacement is not supported in most Rancher configurations.
 
-This guide covers configuring a new Rancher-managed cluster with Calico, migrating workloads from an existing cluster, and applying Calico policies through both the Rancher UI and `calicoctl`.
+This guide covers configuring a new Rancher-managed cluster with Calico, migrating workloads from an existing cluster, and applying Calico policies with `calicoctl`.
 
 ## Prerequisites
 
 - Rancher v2.7+ management server
-- RKE2 or RKE1 cluster provisioner access
+- RKE2 cluster provisioner access
 - `kubectl` configured for both source and target clusters
-- `calicoctl` v3.27+ installed
+- `calicoctl` installed at the same major/minor version as the Calico cluster
 - Rancher API access or UI access with cluster create permissions
 - Workload manifests exported from the source cluster
 
@@ -32,7 +32,7 @@ Provision a new Rancher-managed cluster with Calico as the network provider.
 Create a new RKE2 cluster via Rancher with Calico CNI selected:
 
 ```bash
-# Using the Rancher CLI to create a cluster with Calico
+# Using kubectl against the Rancher management cluster to create a cluster with Calico
 
 # Alternatively, use the Rancher UI: Cluster Management > Create > Custom > Network > Calico
 
@@ -58,35 +58,43 @@ EOF
 kubectl apply -f rancher-calico-cluster.yaml
 ```
 
-## Step 2: Configure Calico via RKE2 HelmChartConfig
+## Step 2: Configure Calico via RKE2 Chart Values
 
-Customize Calico configuration using RKE2's HelmChartConfig CRD.
+Customize Calico configuration using Rancher's RKE2 chart values.
 
 Override Calico chart values to set your desired IP pool and encapsulation:
 
 ```yaml
-# calico-helmchartconfig.yaml - customize Calico on RKE2 via Rancher
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
+# rancher-calico-cluster.yaml - add under spec.rkeConfig.chartValues
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
 metadata:
-  name: rke2-calico
-  namespace: kube-system
+  name: calico-cluster
+  namespace: fleet-default
 spec:
-  valuesContent: |-
-    installation:
-      calicoNetwork:
-        ipPools:
-        - blockSize: 26
-          cidr: 10.42.0.0/16      # Match RKE2 default pod CIDR
-          encapsulation: VXLAN
-          natOutgoing: Enabled
-          nodeSelector: all()
+  rkeConfig:
+    machineGlobalConfig:
+      cni: calico
+      disable-kube-proxy: false
+    chartValues:
+      rke2-calico:
+        installation:
+          calicoNetwork:
+            ipPools:
+            - blockSize: 26
+              cidr: 10.42.0.0/16      # Match RKE2 default pod CIDR
+              encapsulation: VXLAN
+              natOutgoing: Enabled
+              nodeSelector: all()
+    machineSelectorConfig:
+    - config:
+        protect-kernel-defaults: false
 ```
 
-Apply the HelmChartConfig to the new cluster:
+Apply the updated Rancher cluster configuration:
 
 ```bash
-kubectl --context=calico-cluster apply -f calico-helmchartconfig.yaml
+kubectl apply -f rancher-calico-cluster.yaml
 ```
 
 ## Step 3: Export Workloads from Source Cluster
@@ -98,15 +106,18 @@ Export namespace resources, excluding cluster-specific objects:
 ```bash
 # Export all application namespaces and their resources
 for ns in production staging; do
-  kubectl --context=source-cluster get all,configmaps,secrets,ingress,pvc \
+  kubectl --context=source-cluster get deploy,sts,ds,job,cronjob,svc,configmap,secret,ingress,pvc \
     -n $ns -o yaml > ${ns}-backup.yaml
 done
 
-# Export custom resource definitions used by your applications
-kubectl --context=source-cluster get crds -o yaml > app-crds.yaml
+# Export custom resource definitions used by your applications; replace these names with your app CRDs
+kubectl --context=source-cluster get crd widgets.example.com -o yaml > app-crds.yaml
 
-# Export any custom Rancher projects and namespaces
-kubectl --context=source-cluster get namespaces -o yaml > namespaces.yaml
+# Generate clean namespace manifests for the target cluster
+for ns in production staging; do
+  printf '%s\n' '---' >> namespaces.yaml
+  kubectl create namespace $ns --dry-run=client -o yaml >> namespaces.yaml
+done
 ```
 
 ## Step 4: Apply Workloads to Calico Cluster
@@ -167,7 +178,7 @@ spec:
 Apply the policies using calicoctl:
 
 ```bash
-calicoctl apply -f rancher-calico-policy.yaml
+calicoctl --context=calico-cluster apply -f rancher-calico-policy.yaml
 ```
 
 ## Best Practices
@@ -180,4 +191,4 @@ calicoctl apply -f rancher-calico-policy.yaml
 
 ## Conclusion
 
-Migrating to Calico on Rancher-managed clusters unlocks the full Calico feature set - including IPAM, BGP, and eBPF - within Rancher's multi-cluster management framework. By provisioning new clusters with Calico and migrating workloads systematically, you can achieve a clean migration without in-place CNI replacement risks. Integrate OneUptime monitoring with your Rancher environment for continuous network health validation across your entire fleet.
+Migrating to Calico on Rancher-managed clusters unlocks the full Calico feature set - including IPAM, BGP, and eBPF on supported RKE2 versions - within Rancher's multi-cluster management framework. By provisioning new clusters with Calico and migrating workloads systematically, you can achieve a clean migration without in-place CNI replacement risks. Integrate OneUptime monitoring with your Rancher environment for continuous network health validation across your entire fleet.
