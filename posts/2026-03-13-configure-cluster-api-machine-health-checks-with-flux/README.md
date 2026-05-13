@@ -10,7 +10,7 @@ Description: Manage Cluster API MachineHealthCheck resources using Flux CD to en
 
 ## Introduction
 
-MachineHealthCheck (MHC) is Cluster API's mechanism for detecting and remediating unhealthy nodes. When a node fails a health check-because it becomes NotReady, enters an Unknown state, or loses connectivity-the MHC controller deletes the corresponding Machine object. CAPI's MachineDeployment then creates a replacement node automatically, restoring the desired node count.
+MachineHealthCheck (MHC) is Cluster API's mechanism for detecting and remediating unhealthy nodes. When a node fails a health check-because it becomes NotReady, enters an Unknown state, or loses connectivity-the MHC controller marks the corresponding Machine for remediation. The Machine's owner, such as a MachineDeployment, MachineSet, or KubeadmControlPlane, then creates a replacement node automatically, restoring the desired node count.
 
 This self-healing capability is one of the most valuable features of Cluster API. Without it, a dead node requires manual detection and remediation. With a properly configured MachineHealthCheck managed by Flux, unhealthy nodes are replaced within minutes without human intervention.
 
@@ -28,7 +28,7 @@ This guide covers configuring MachineHealthChecks for different scenarios, setti
 ```yaml
 # clusters/workloads/production-cluster/machinehealthcheck-default.yaml
 
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineHealthCheck
 metadata:
   name: production-cluster-workers-default-mhc
@@ -40,29 +40,31 @@ spec:
     matchLabels:
       cluster.x-k8s.io/cluster-name: production-cluster
       pool: default
-  # Health check conditions - a machine is unhealthy if ANY of these are true
-  unhealthyConditions:
-    # Node is NotReady for more than 5 minutes
-    - type: Ready
-      status: "False"
-      timeout: 5m
-    # Node status is Unknown (kubelet not reporting) for more than 5 minutes
-    - type: Ready
-      status: "Unknown"
-      timeout: 5m
-    # Node reports MemoryPressure for more than 10 minutes
-    - type: MemoryPressure
-      status: "True"
-      timeout: 10m
-    # Node reports DiskPressure for more than 10 minutes
-    - type: DiskPressure
-      status: "True"
-      timeout: 10m
-  # Maximum number of machines that can be simultaneously remediated
-  # Prevents a bug from deleting all nodes at once
-  maxUnhealthy: 33%
-  # How long to wait before remediating (gives time for transient issues to resolve)
-  nodeStartupTimeout: 10m
+  checks:
+    # Health check conditions - a machine is unhealthy if ANY of these are true
+    unhealthyNodeConditions:
+      # Node is NotReady for more than 5 minutes
+      - type: Ready
+        status: "False"
+        timeoutSeconds: 300
+      # Node status is Unknown (kubelet not reporting) for more than 5 minutes
+      - type: Ready
+        status: "Unknown"
+        timeoutSeconds: 300
+      # Node reports MemoryPressure for more than 10 minutes
+      - type: MemoryPressure
+        status: "True"
+        timeoutSeconds: 600
+      # Node reports DiskPressure for more than 10 minutes
+      - type: DiskPressure
+        status: "True"
+        timeoutSeconds: 600
+    # How long to wait for a node to join before considering the machine unhealthy
+    nodeStartupTimeoutSeconds: 600
+  remediation:
+    triggerIf:
+      # Only remediate if the number of unhealthy machines stays within this threshold
+      unhealthyLessThanOrEqualTo: 33%
 ```
 
 ## Step 2: Create a Stricter MHC for Control Plane Nodes
@@ -71,7 +73,7 @@ Control plane nodes require special handling. Remediating multiple control plane
 
 ```yaml
 # clusters/workloads/production-cluster/machinehealthcheck-control-plane.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineHealthCheck
 metadata:
   name: production-cluster-control-plane-mhc
@@ -83,17 +85,20 @@ spec:
       cluster.x-k8s.io/cluster-name: production-cluster
       # Target only control plane machines
       cluster.x-k8s.io/control-plane: ""
-  unhealthyConditions:
-    - type: Ready
-      status: "False"
-      # Longer timeout for control plane - give etcd elections time to settle
-      timeout: 10m
-    - type: Ready
-      status: "Unknown"
-      timeout: 10m
-  # Only remediate 1 control plane node at a time to protect etcd quorum
-  maxUnhealthy: 1
-  nodeStartupTimeout: 20m
+  checks:
+    unhealthyNodeConditions:
+      - type: Ready
+        status: "False"
+        # Longer timeout for control plane - give etcd elections time to settle
+        timeoutSeconds: 600
+      - type: Ready
+        status: "Unknown"
+        timeoutSeconds: 600
+    nodeStartupTimeoutSeconds: 1200
+  remediation:
+    triggerIf:
+      # Only start remediation while at most 1 control plane node is unhealthy
+      unhealthyLessThanOrEqualTo: 1
 ```
 
 ## Step 3: Configure External Remediation
@@ -102,7 +107,7 @@ For advanced scenarios, you can delegate remediation to an external controller (
 
 ```yaml
 # clusters/workloads/production-cluster/machinehealthcheck-external.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineHealthCheck
 metadata:
   name: production-cluster-workers-external-mhc
@@ -113,24 +118,26 @@ spec:
     matchLabels:
       cluster.x-k8s.io/cluster-name: production-cluster
       pool: gpu
-  unhealthyConditions:
-    - type: Ready
-      status: "False"
-      timeout: 5m
-    - type: Ready
-      status: "Unknown"
-      timeout: 5m
-    # GPU-specific health condition from Node Problem Detector
-    - type: GPUProblem
-      status: "True"
-      timeout: 2m
-  maxUnhealthy: 50%
-  # Use external remediation instead of machine deletion
-  remediationTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: AWSRemediationTemplate
-    name: production-cluster-remediation-template
-    namespace: default
+  checks:
+    unhealthyNodeConditions:
+      - type: Ready
+        status: "False"
+        timeoutSeconds: 300
+      - type: Ready
+        status: "Unknown"
+        timeoutSeconds: 300
+      # GPU-specific health condition from Node Problem Detector
+      - type: GPUProblem
+        status: "True"
+        timeoutSeconds: 120
+  remediation:
+    triggerIf:
+      unhealthyLessThanOrEqualTo: 50%
+    # Use external remediation instead of owner-based machine remediation
+    templateRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: Metal3RemediationTemplate
+      name: production-cluster-remediation-template
 ```
 
 ## Step 4: Add Flux Kustomization for Health Checks
@@ -202,9 +209,12 @@ clusterctl get kubeconfig production-cluster > production-cluster.kubeconfig
 # Find a worker node
 kubectl --kubeconfig=production-cluster.kubeconfig get nodes
 
-# Cordon and drain the node to simulate failure
+# Cordon and drain the node before stopping kubelet
 kubectl --kubeconfig=production-cluster.kubeconfig cordon worker-node-1
-kubectl --kubeconfig=production-cluster.kubeconfig drain worker-node-1 --force
+kubectl --kubeconfig=production-cluster.kubeconfig drain worker-node-1 \
+  --ignore-daemonsets \
+  --delete-emptydir-data \
+  --force
 
 # Stop kubelet on the node to trigger Unknown status
 # (In a real scenario, this would be a hardware failure)
@@ -216,10 +226,10 @@ kubectl get machines -n default --watch
 
 ## Best Practices
 
-- Set `maxUnhealthy: 33%` for worker node pools to prevent cascading failures where a systemic issue deletes all nodes simultaneously.
-- Use `maxUnhealthy: 1` for control plane node health checks to protect etcd quorum. Never allow simultaneous remediation of multiple control plane nodes.
-- Set `nodeStartupTimeout` to accommodate your cloud provider's node provisioning time plus the time for kubelet and CNI to start. A value of 10-15 minutes works for most providers.
-- Use `RemediationTemplate` with hardware providers (Metal3) to perform hardware remediation (power cycle) before falling back to machine deletion.
+- Set `remediation.triggerIf.unhealthyLessThanOrEqualTo: 33%` for worker node pools to prevent cascading failures where a systemic issue deletes all nodes simultaneously.
+- Use `remediation.triggerIf.unhealthyLessThanOrEqualTo: 1` for control plane node health checks to protect etcd quorum. Never allow simultaneous remediation of multiple control plane nodes.
+- Set `checks.nodeStartupTimeoutSeconds` to accommodate your cloud provider's node provisioning time plus the time for kubelet and CNI to start. A value of 600-900 seconds works for most providers.
+- Use `remediation.templateRef` with hardware providers (Metal3) to perform hardware remediation (power cycle) before falling back to machine deletion.
 - Monitor `status.remediationsAllowed` to understand the safety margin. If it approaches zero, investigate the cluster health immediately.
 
 ## Conclusion
