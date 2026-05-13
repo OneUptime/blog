@@ -18,7 +18,7 @@ This guide covers configuring Istio Telemetry resources for metrics, distributed
 
 ## Prerequisites
 
-- Kubernetes cluster with Istio 1.16+ installed (Telemetry API GA)
+- Kubernetes cluster with Istio 1.22+ installed (Telemetry API v1)
 - Flux CD v2 bootstrapped to your Git repository
 - A metrics backend (Prometheus), tracing backend (Jaeger/Zipkin/Tempo), or log backend configured
 
@@ -40,7 +40,7 @@ spec:
         - name: tempo
       # Sample 1% of requests by default
       randomSamplingPercentage: 1.0
-      # Disable tracing for health check paths
+      # Keep span reporting enabled
       disableSpanReporting: false
       customTags:
         cluster:
@@ -64,9 +64,9 @@ spec:
     - providers:
         - name: prometheus
       overrides:
-        # Enable request duration histogram with custom buckets
+        # Add the request protocol tag to request duration metrics
         - match:
-            metric: REQUEST_DURATION_MILLISECONDS
+            metric: REQUEST_DURATION
             mode: CLIENT_AND_SERVER
           tagOverrides:
             request_protocol:
@@ -149,11 +149,13 @@ spec:
             destination_version:
               operation: UPSERT
               value: "destination.labels['version'] | 'unknown'"
-        # Disable grpc_response_status to reduce cardinality
+        # Remove grpc_response_status to reduce cardinality
         - match:
-            metric: GRPC_RESPONSE_STATUS
+            metric: ALL_METRICS
             mode: CLIENT_AND_SERVER
-          disabled: true
+          tagOverrides:
+            grpc_response_status:
+              operation: REMOVE
 ```
 
 ## Step 5: Configure the Tracing Provider in Istiod
