@@ -137,24 +137,20 @@ Replace the raw YAML with Timoni module values:
 values:
   git:
     url: "https://github.com/your-org/frontend"
-    ref:
-      branch: "main"
+    ref: "refs/heads/main"
     path: "./deploy/production"
-    interval: "5m"
-    secretRef:
-      name: "git-credentials"
+    interval: 5
+    token: "<git-token>"
   sync:
     prune: true
     wait: true
-    interval: "5m"
     targetNamespace: "production"
-    timeout: "5m"
-    postBuild:
-      substitute:
-        ENVIRONMENT: "production"
-      substituteFrom:
-        - kind: ConfigMap
-          name: cluster-vars
+    timeout: 5
+  substitute:
+    ENVIRONMENT: "production"
+  substituteFrom:
+    - kind: ConfigMap
+      name: cluster-vars
 ```
 
 Build to verify the generated resources match your original YAML:
@@ -165,7 +161,7 @@ timoni build app-frontend oci://ghcr.io/stefanprodan/modules/flux-git-sync \
   --namespace flux-system
 ```
 
-Compare the output with your original YAML to ensure parity.
+Compare the output with your original YAML to ensure parity, accounting for module defaults such as the generated Kustomization reconcile interval.
 
 ## Step 4: Convert Helm Release Resources
 
@@ -175,18 +171,17 @@ Compare the output with your original YAML to ensure parity.
 values:
   repository:
     url: "https://charts.bitnami.com/bitnami"
-    interval: "1h"
   chart:
     name: "redis"
     version: "18.x"
-  release:
-    interval: "10m"
+  sync:
+    interval: 10
     targetNamespace: "cache"
     createNamespace: true
-    values:
-      architecture: replication
-      replica:
-        replicaCount: 3
+  helmValues:
+    architecture: replication
+    replica:
+      replicaCount: 3
 ```
 
 Verify:
