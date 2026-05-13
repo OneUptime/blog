@@ -30,7 +30,7 @@ Egress allowed to:
   - External payment API: api.stripe.com (port 443)
   - Internal auth service in auth namespace (port 8080)
   - kube-dns (UDP/TCP 53)
-  - AWS services via VPC endpoints
+  - AWS services via published AWS IP ranges or VPC endpoints
 ```
 
 ## Step 2: Create a Default-Deny Egress Policy
@@ -148,6 +148,17 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ## Step 5: Allow Egress to AWS Services via IP Blocks
@@ -170,9 +181,9 @@ spec:
   egress:
     - to:
         - ipBlock:
-            cidr: 52.94.0.0/22  # AWS us-east-1 API endpoint range
+            cidr: 3.216.135.0/24  # AWS us-east-1 API Gateway range
         - ipBlock:
-            cidr: 54.239.0.0/17  # AWS us-east-1 services
+            cidr: 3.216.136.0/21  # AWS us-east-1 API Gateway range
       ports:
         - protocol: TCP
           port: 443
@@ -212,9 +223,9 @@ kubectl exec -n myapp deployment/myapp -- \
   curl -sf --max-time 5 https://malicious.example.com
 # Should fail with connection timeout
 
-# View Cilium flow logs for denied connections
+# View Cilium/Hubble flow logs for denied connections
 kubectl exec -n kube-system ds/cilium -- \
-  cilium monitor --type drop --related-to-endpoint myapp-pod-name
+  hubble observe --pod myapp/myapp-pod-name --verdict DROPPED
 
 # List all NetworkPolicies in the namespace
 kubectl get networkpolicies -n myapp
