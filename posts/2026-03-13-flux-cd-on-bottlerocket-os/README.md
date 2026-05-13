@@ -53,6 +53,7 @@ managedNodeGroups:
           node-labels:
             os-type: bottlerocket
             security-profile: hardened
+            bottlerocket.aws/updater-interface-version: "2.0.0"
     volumeSize: 50
     # Enable SSM for emergency access (replaces SSH on Bottlerocket)
     iam:
@@ -118,7 +119,10 @@ aws ssm start-session \
 apiclient get settings
 
 # Configure kernel parameters
-apiclient set kernel.sysctl.net.ipv4.tcp_max_syn_backlog=65536
+apiclient apply <<'EOF'
+[settings.kernel.sysctl]
+"net.ipv4.tcp_max_syn_backlog" = "65536"
+EOF
 ```
 
 ## Step 5: Manage Bottlerocket Updates via Flux
@@ -133,8 +137,30 @@ metadata:
   name: bottlerocket
   namespace: flux-system
 spec:
-  url: https://bottlerocket-os.github.io/bottlerocket-update-operator/charts
+  url: https://bottlerocket-os.github.io/bottlerocket-update-operator
   interval: 10m
+```
+
+```yaml
+# clusters/eks-bottlerocket/system/brupop-shadow-helmrelease.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: bottlerocket-shadow
+  namespace: flux-system
+spec:
+  interval: 15m
+  targetNamespace: brupop-bottlerocket-aws
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: bottlerocket-shadow
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: bottlerocket
+        namespace: flux-system
 ```
 
 ```yaml
@@ -147,6 +173,10 @@ metadata:
 spec:
   interval: 15m
   targetNamespace: brupop-bottlerocket-aws
+  dependsOn:
+    - name: bottlerocket-shadow
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: bottlerocket-update-operator
@@ -157,13 +187,13 @@ spec:
         namespace: flux-system
   values:
     # Schedule updates during maintenance windows
-    scheduler:
-      maxUnavailablePercentage: 33
+    scheduler_cron_expression: "0 0 2 * * * *"
+    max_concurrent_updates: "1"
 ```
 
 ## Step 6: Enforce Workload Security on Bottlerocket Nodes
 
-Bottlerocket's SELinux enforcement and read-only filesystem affect some workloads. Use Flux to manage pod security policies:
+Bottlerocket's SELinux enforcement and read-only filesystem affect some workloads. Use Flux to manage pod security settings:
 
 ```yaml
 # clusters/eks-bottlerocket/apps/myapp/deployment.yaml
@@ -178,6 +208,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       # Enforce non-root and read-only filesystem for Bottlerocket compatibility
       securityContext:
