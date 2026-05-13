@@ -81,7 +81,7 @@ spec:
       initContainers:
         # Pull models before the server starts accepting requests
         - name: model-puller
-          image: ollama/ollama:0.3.12
+          image: ollama/ollama:0.23.1
           command:
             - "/bin/sh"
             - "-c"
@@ -89,7 +89,10 @@ spec:
               # Start ollama serve in the background
               ollama serve &
               SERVER_PID=$!
-              sleep 5
+              trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+              until ollama list >/dev/null 2>&1; do
+                sleep 1
+              done
               # Pull desired models
               ollama pull llama3:8b
               ollama pull nomic-embed-text
@@ -110,7 +113,7 @@ spec:
               mountPath: /root/.ollama
       containers:
         - name: ollama
-          image: ollama/ollama:0.3.12
+          image: ollama/ollama:0.23.1
           ports:
             - containerPort: 11434
               name: http
@@ -125,7 +128,7 @@ spec:
               cpu: "4"
           env:
             - name: OLLAMA_HOST
-              value: "0.0.0.0"
+              value: "0.0.0.0:11434"
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
             - name: OLLAMA_MODELS
@@ -209,7 +212,7 @@ curl http://<ollama-svc-ip>:11434/api/generate \
   -H "Content-Type: application/json" \
   -d '{"model": "llama3:8b", "prompt": "What is GitOps?", "stream": false}'
 
-# Use OpenAI-compatible endpoint (Ollama v0.1.14+)
+# Use OpenAI-compatible endpoint
 curl http://<ollama-svc-ip>:11434/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
