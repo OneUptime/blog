@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Container Registry, OCI
 
-Description: Configure Kubernetes NetworkPolicies to restrict the Flux source-controller egress to only your container registries and OCI artifact repositories.
+Description: Configure Kubernetes NetworkPolicies to restrict Flux registry egress to only your container registries and OCI artifact repositories.
 
 ---
 
-Flux uses the source-controller to pull container images, Helm charts stored as OCI artifacts, and other registry-hosted content. In a default setup, the source-controller has unrestricted network access. If you want to follow the principle of least privilege, you should restrict egress to only the container registries your cluster actually uses. This prevents the controller from being used as a network pivot point if it is ever compromised.
+Flux uses the source-controller to pull OCIRepository artifacts and Helm charts stored as OCI artifacts. If you use image automation, the image-reflector-controller also scans container registries through ImageRepository resources. In a default setup, these controllers have unrestricted network access. If you want to follow the principle of least privilege, you should restrict egress to only the container registries your cluster actually uses. This prevents a controller from being used as a network pivot point if it is ever compromised.
 
-This guide demonstrates how to build NetworkPolicies that allow the Flux source-controller to access only specific container registries while blocking all other outbound traffic.
+This guide demonstrates how to build NetworkPolicies that allow the Flux registry-facing controllers to access only specific container registries while blocking all other outbound traffic.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ This guide demonstrates how to build NetworkPolicies that allow the Flux source-
 - kubectl with cluster-admin access
 - Knowledge of which container registries your Flux installation uses
 
-Identify the registries Flux accesses by listing your image automation and Helm sources:
+Identify the registries Flux accesses by listing your OCI sources, OCI Helm sources, and image automation repositories:
 
 ```bash
 # List OCI repositories
@@ -37,6 +37,8 @@ kubectl get imagerepositories -A -o jsonpath='{range .items[*]}{.spec.image}{"\n
 
 Determine the IP addresses for each registry your cluster uses.
 
+Kubernetes NetworkPolicy only supports IP blocks and pod or namespace selectors; it does not support DNS names. Public registry addresses can change frequently, so treat resolved IPs as inputs you must keep updated. If you need hostname-based egress controls, use a CNI-specific policy feature that supports FQDN rules.
+
 For Docker Hub:
 
 ```bash
@@ -49,6 +51,7 @@ For GitHub Container Registry (ghcr.io):
 
 ```bash
 dig ghcr.io +short
+curl -s https://api.github.com/meta | jq -r '.packages[]?'
 ```
 
 For Amazon ECR:
@@ -91,6 +94,8 @@ spec:
 ```bash
 kubectl apply -f default-deny-egress.yaml
 ```
+
+If your Flux installation also uses GitRepository, Bucket, webhook receivers, or notification providers, this default deny policy will block those connections until you add separate egress rules for the relevant controllers.
 
 ## Step 3: Allow DNS and Kubernetes API Server
 
@@ -153,7 +158,7 @@ spec:
 EOF
 ```
 
-## Step 4: Allow Source Controller Access to Docker Hub
+## Step 4: Allow Flux Registry Access to Docker Hub
 
 Docker Hub requires access to multiple endpoints for authentication and image pulls:
 
@@ -161,12 +166,16 @@ Docker Hub requires access to multiple endpoints for authentication and image pu
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-source-controller-dockerhub
+  name: allow-flux-registries-dockerhub
   namespace: flux-system
 spec:
   podSelector:
-    matchLabels:
-      app: source-controller
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - image-reflector-controller
   policyTypes:
     - Egress
   egress:
@@ -193,9 +202,9 @@ spec:
           port: 443
 ```
 
-Note: Docker Hub IPs change frequently. Resolve them before applying and consider automating updates.
+Note: Docker Hub IPs change frequently. Resolve the Docker Hub registry, auth, and CDN endpoints before applying and consider automating updates.
 
-## Step 5: Allow Source Controller Access to GitHub Container Registry
+## Step 5: Allow Flux Registry Access to GitHub Container Registry
 
 For ghcr.io:
 
@@ -203,12 +212,16 @@ For ghcr.io:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-source-controller-ghcr
+  name: allow-flux-registries-ghcr
   namespace: flux-system
 spec:
   podSelector:
-    matchLabels:
-      app: source-controller
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - image-reflector-controller
   policyTypes:
     - Egress
   egress:
@@ -226,7 +239,9 @@ spec:
           port: 443
 ```
 
-## Step 6: Allow Source Controller Access to Amazon ECR
+GitHub publishes IP ranges through the Meta API, but GitHub does not recommend allowlisting by IP address and notes that GitHub Packages addresses might not be fully listed. Verify the current ranges for your environment before relying on this policy.
+
+## Step 6: Allow Flux Registry Access to Amazon ECR
 
 For ECR, the controller needs to reach the ECR endpoint and the S3 backend where layers are stored:
 
@@ -234,12 +249,16 @@ For ECR, the controller needs to reach the ECR endpoint and the S3 backend where
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-source-controller-ecr
+  name: allow-flux-registries-ecr
   namespace: flux-system
 spec:
   podSelector:
-    matchLabels:
-      app: source-controller
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - image-reflector-controller
   policyTypes:
     - Egress
   egress:
@@ -256,11 +275,11 @@ spec:
           port: 443
 ```
 
-For ECR, the broad CIDR is often necessary because AWS uses many IP ranges. You can narrow this using the AWS IP ranges JSON:
+For ECR, a broad public CIDR is often used with standard Kubernetes NetworkPolicy because AWS uses many IP ranges and ECR layer downloads can involve S3. You can narrow this using the AWS IP ranges JSON, but include the relevant AWS service ranges for your region instead of EC2-only ranges:
 
 ```bash
 curl -s https://ip-ranges.amazonaws.com/ip-ranges.json | \
-  jq -r '.prefixes[] | select(.service=="EC2" and .region=="us-east-1") | .ip_prefix' | head -20
+  jq -r '.prefixes[] | select((.service=="AMAZON" or .service=="S3") and .region=="us-east-1") | .ip_prefix' | head -20
 ```
 
 ## Step 7: Allow Access to a Private Registry
@@ -271,12 +290,16 @@ If you run a private registry inside your cluster or on an internal network:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-source-controller-private-registry
+  name: allow-flux-registries-private-registry
   namespace: flux-system
 spec:
   podSelector:
-    matchLabels:
-      app: source-controller
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - image-reflector-controller
   policyTypes:
     - Egress
   egress:
@@ -307,12 +330,14 @@ Trigger a reconciliation and check that OCI artifacts and Helm charts are pulled
 ```bash
 flux reconcile source oci <oci-repo-name> -n flux-system
 flux reconcile source helm <helm-repo-name> -n flux-system
+flux reconcile image repository <image-repo-name> -n flux-system
 ```
 
-Review the source-controller logs:
+Review the source-controller and image-reflector-controller logs:
 
 ```bash
 kubectl logs -n flux-system deployment/source-controller --tail=30
+kubectl logs -n flux-system deployment/image-reflector-controller --tail=30
 ```
 
 Verify policies are active:
@@ -337,7 +362,8 @@ The registry IP may not be covered by your policy CIDR. Resolve the current IP a
 
 ```bash
 dig ghcr.io +short
-kubectl get networkpolicy allow-source-controller-ghcr -n flux-system -o yaml
+curl -s https://api.github.com/meta | jq -r '.packages[]?'
+kubectl get networkpolicy allow-flux-registries-ghcr -n flux-system -o yaml
 ```
 
 **Authentication to registry fails**
@@ -350,11 +376,11 @@ dig auth.docker.io +short
 
 **Helm chart download fails but image pull works**
 
-OCI-based Helm charts may use a different registry endpoint than container images. Check the HelmRepository URL and ensure that endpoint is allowed.
+OCI-based Helm charts may use a different registry endpoint than image automation repositories. Check the HelmRepository URL and ensure that endpoint is allowed.
 
 **ECR token refresh fails**
 
-If you use IRSA (IAM Roles for Service Accounts) with ECR, the source-controller needs access to the STS endpoint for token exchange. Add the STS endpoint to the policy:
+If you use IRSA (IAM Roles for Service Accounts) with ECR, the controller needs access to the STS endpoint for token exchange. Add the STS endpoint to the policy:
 
 ```bash
 dig sts.us-east-1.amazonaws.com +short
