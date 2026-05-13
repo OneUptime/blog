@@ -24,15 +24,15 @@ gotk_reconcile_duration_seconds_sum
 gotk_reconcile_duration_seconds_count
 ```
 
-This histogram shows how long each reconciliation takes, broken down by kind (Kustomization, HelmRelease, GitRepository, etc.) and result (success or failure).
+This histogram shows how long each reconciliation takes, broken down by kind (Kustomization, HelmRelease, GitRepository, etc.) and resource name/namespace.
 
-### Reconciliation Count
+### Resource Readiness
 
 ```promql
-gotk_reconcile_condition
+gotk_resource_info
 ```
 
-This gauge shows the current condition of each reconciled object.
+This kube-state-metrics gauge shows the current readiness of each Flux custom resource when you enable Flux custom resource metrics.
 
 ### Controller Runtime Metrics
 
@@ -51,13 +51,13 @@ These show the total number of reconciliations, their duration from the controll
 Before making any changes, capture the current reconciliation performance:
 
 ```bash
-# Get average reconciliation duration for the last hour
+# Forward the controller metrics endpoint locally
+kubectl -n flux-system port-forward deploy/kustomize-controller 8080:8080
 
-kubectl exec -n flux-system deploy/kustomize-controller -- \
-  curl -s localhost:8080/metrics | grep gotk_reconcile_duration_seconds_sum
+# In another terminal, inspect the cumulative duration counters
+curl -s localhost:8080/metrics | grep gotk_reconcile_duration_seconds_sum
 
-kubectl exec -n flux-system deploy/kustomize-controller -- \
-  curl -s localhost:8080/metrics | grep gotk_reconcile_duration_seconds_count
+curl -s localhost:8080/metrics | grep gotk_reconcile_duration_seconds_count
 ```
 
 Calculate the average: sum divided by count.
@@ -68,8 +68,8 @@ Force all Kustomizations to reconcile at once to measure throughput:
 
 ```bash
 # Annotate all Kustomizations to trigger reconciliation
-kubectl get kustomizations --all-namespaces -o name | \
-  xargs -I{} kubectl annotate {} -n flux-system \
+kubectl annotate kustomizations.kustomize.toolkit.fluxcd.io \
+  --all --all-namespaces --field-manager=flux-client-side-apply \
   reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
 ```
 
@@ -106,16 +106,16 @@ For ongoing monitoring, create a Grafana dashboard with the following queries:
 ### Average Reconciliation Duration (Last 5 Minutes)
 
 ```promql
-rate(gotk_reconcile_duration_seconds_sum[5m])
+sum(rate(gotk_reconcile_duration_seconds_sum[5m]))
 /
-rate(gotk_reconcile_duration_seconds_count[5m])
+sum(rate(gotk_reconcile_duration_seconds_count[5m]))
 ```
 
 ### P99 Reconciliation Duration
 
 ```promql
 histogram_quantile(0.99,
-  rate(gotk_reconcile_duration_seconds_bucket[5m])
+  sum by (le) (rate(gotk_reconcile_duration_seconds_bucket[5m]))
 )
 ```
 
@@ -153,12 +153,23 @@ CONTROLLERS=("source-controller" "kustomize-controller" "helm-controller")
 for controller in "${CONTROLLERS[@]}"; do
   echo "=== $controller ==="
 
-  metrics=$(kubectl exec -n "$NAMESPACE" "deploy/$controller" -- \
-    curl -s localhost:8080/metrics)
+  kubectl -n "$NAMESPACE" port-forward "deploy/$controller" 18080:8080 >/tmp/flux-benchmark-"$controller".log 2>&1 &
+  pf_pid=$!
+  sleep 2
 
-  sum=$(echo "$metrics" | grep 'gotk_reconcile_duration_seconds_sum{' | \
+  metrics=$(curl -fsS localhost:18080/metrics || true)
+  kill "$pf_pid" 2>/dev/null
+  wait "$pf_pid" 2>/dev/null || true
+
+  if [ -z "$metrics" ]; then
+    echo "  Could not read metrics"
+    echo ""
+    continue
+  fi
+
+  sum=$(echo "$metrics" | grep '^gotk_reconcile_duration_seconds_sum{' | \
     awk '{total+=$2} END {print total}')
-  count=$(echo "$metrics" | grep 'gotk_reconcile_duration_seconds_count{' | \
+  count=$(echo "$metrics" | grep '^gotk_reconcile_duration_seconds_count{' | \
     awk '{total+=$2} END {print total}')
 
   if [ "$count" != "0" ] && [ -n "$count" ]; then
@@ -169,8 +180,8 @@ for controller in "${CONTROLLERS[@]}"; do
     echo "  No reconciliations recorded"
   fi
 
-  active=$(echo "$metrics" | grep 'controller_runtime_active_workers' | \
-    awk '{print $2}')
+  active=$(echo "$metrics" | grep '^controller_runtime_active_workers' | \
+    awk '{total+=$2} END {print total+0}')
   echo "  Active workers: $active"
   echo ""
 done
