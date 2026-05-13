@@ -74,6 +74,9 @@ spec:
     # Cluster name
     fullnameOverride: pulsar
 
+    components:
+      pulsar_manager: true
+
     # ZooKeeper (coordination)
     zookeeper:
       replicaCount: 3
@@ -147,7 +150,6 @@ spec:
 
     # Pulsar Manager (Web UI)
     pulsar_manager:
-      enabled: true
       resources:
         requests:
           cpu: "200m"
@@ -157,17 +159,20 @@ spec:
 ## Step 4: Configure Pulsar Authentication
 
 ```yaml
-# Additional broker configuration for JWT authentication
-    broker:
-      configData:
-        # Enable authentication
-        authenticationEnabled: "true"
-        authenticationProviders: "org.apache.pulsar.broker.authentication.AuthenticationProviderToken"
-        # JWT secret key (use asymmetric keys for production)
-        tokenSecretKey: "file:///pulsar/keys/token/secret.key"
-        # Authorization
-        authorizationEnabled: "true"
-        superUserRoles: "admin,pulsar-client"
+# Additional Helm values for JWT authentication
+    auth:
+      authentication:
+        enabled: true
+        provider: "jwt"
+        jwt:
+          # Use asymmetric keys for production
+          usingSecretKey: false
+      authorization:
+        enabled: true
+      superUsers:
+        broker: "broker-admin"
+        proxy: "proxy-admin"
+        client: "admin"
 ```
 
 ## Step 5: Create Tenants and Namespaces via Job
@@ -186,7 +191,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: pulsar-admin
-          image: apachepulsar/pulsar:3.3.0
+          image: apachepulsar/pulsar-all:3.0.2
           command:
             - /bin/sh
             - -c
@@ -218,7 +223,7 @@ spec:
               # Set backlog quota
               $ADMIN namespaces set-backlog-quota orders/production \
                 --policy producer_request_hold \
-                --limit-size 10G
+                --limit 10G
 
               echo "Pulsar setup complete"
 ```
@@ -253,7 +258,7 @@ spec:
 # Check all components
 kubectl get pods -n pulsar
 
-# Verify brokers are in standalone mode
+# Verify brokers are registered in the cluster
 kubectl exec -n pulsar pulsar-broker-0 -- \
   bin/pulsar-admin brokers list pulsar
 
@@ -266,6 +271,7 @@ kubectl exec -n pulsar pulsar-broker-0 -- \
 kubectl exec -n pulsar pulsar-broker-0 -- \
   bin/pulsar-client consume orders/production/my-topic \
   --subscription-name test-sub \
+  --subscription-position Earliest \
   --num-messages 1
 ```
 
