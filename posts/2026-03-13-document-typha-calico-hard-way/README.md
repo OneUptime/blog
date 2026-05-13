@@ -18,7 +18,7 @@ The architecture section should explain Typha's role, when it was added to the c
 
 ### Typha Architecture Overview
 
-Typha is deployed as a Deployment with N replicas in the `calico-system` namespace. It acts as a fan-out proxy between the Kubernetes API server and Calico's Felix agents on each node.
+Typha is deployed as a Deployment with N replicas in the `kube-system` namespace. It acts as a fan-out proxy between the Kubernetes API server and Calico's Felix agents on each node.
 
 ```mermaid
 graph LR
@@ -37,21 +37,28 @@ graph LR
 ```
 
 **Current configuration:**
-- Typha replicas: `kubectl get deployment calico-typha -n calico-system -o jsonpath='{.spec.replicas}'`
+- Typha replicas: `kubectl get deployment calico-typha -n kube-system -o jsonpath='{.spec.replicas}'`
 - Felix connection target per replica: 200
-- TLS: mTLS with certificates in `calico-typha-tls` and `calico-felix-typha-tls` secrets
+- TLS: mTLS with the CA in the `calico-typha-ca` ConfigMap and certificates in the `calico-typha-certs` and `calico-node-certs` secrets
 
 ## Operations Runbooks
 
 ### Daily Health Check
+
+Run after enabling Typha Prometheus metrics with `TYPHA_PROMETHEUSMETRICSENABLED=true`.
 
 ```bash
 #!/bin/bash
 # typha-health-check.sh
 
 NODES=$(kubectl get nodes --no-headers | wc -l)
-CONNECTIONS=$(kubectl exec -n calico-system deployment/calico-typha -- \
-  wget -qO- http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active | awk '{print $2}')
+CONNECTIONS=0
+for POD in $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name); do
+  POD_CONNECTIONS=$(kubectl exec -n kube-system "$POD" -- \
+    wget -qO- http://localhost:9091/metrics 2>/dev/null | \
+    awk '/^typha_connections_streaming(\{| )/ {sum += $2} END {print sum + 0}')
+  CONNECTIONS=$((CONNECTIONS + POD_CONNECTIONS))
+done
 
 echo "Nodes: $NODES | Active Typha connections: $CONNECTIONS"
 if [ "$CONNECTIONS" -lt "$NODES" ]; then
@@ -61,12 +68,15 @@ fi
 
 ### Scale Typha
 
-Run when node count crosses a multiple of 200.
+Run when node count crosses your documented per-replica target.
 
 ```bash
 NODES=$(kubectl get nodes --no-headers | wc -l)
 REPLICAS=$(( (NODES + 199) / 200 ))
-kubectl scale deployment calico-typha -n calico-system --replicas=$REPLICAS
+if [ "$REPLICAS" -lt 3 ]; then
+  REPLICAS=3
+fi
+kubectl scale deployment calico-typha -n kube-system --replicas=$REPLICAS
 echo "Scaled Typha to $REPLICAS replicas for $NODES nodes"
 ```
 
@@ -76,24 +86,24 @@ Run annually or 30 days before certificate expiry.
 
 ```bash
 # Check expiry
-kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.tls\.crt}' | \
+kubectl get secret calico-typha-certs -n kube-system -o jsonpath='{.data.typha\.crt}' | \
   base64 -d | openssl x509 -enddate -noout
 
 # If rotation needed:
 # 1. Generate new certs (see setup runbook)
 # 2. Update secrets
-# 3. kubectl rollout restart deployment/calico-typha -n calico-system
-# 4. kubectl rollout restart daemonset/calico-node -n calico-system
+# 3. kubectl rollout restart deployment/calico-typha -n kube-system
+# 4. kubectl rollout restart daemonset/calico-node -n kube-system
 ```
 
 ## Troubleshooting Quick Reference
 
 | Symptom | First Check | Resolution |
 |---------|-------------|------------|
-| Felix can't connect to Typha | `kubectl get endpoints calico-typha -n calico-system` | Verify Typha pod is running |
-| TLS handshake failure | Compare CA certs in both secrets | Regenerate with shared CA |
-| Policy not propagating | Check `typha_updates_sent` metric | Check Typha RBAC permissions |
-| Typha OOMKilled | `kubectl describe pod -n calico-system <typha-pod>` | Increase memory limit |
+| Felix can't connect to Typha | `kubectl get endpoints calico-typha -n kube-system` | Verify Typha pod is running |
+| TLS handshake failure | Compare the CA in `calico-typha-ca` with the Typha and node certificates | Regenerate with shared CA |
+| Policy not propagating | Check `typha_updates_total` and `typha_client_latency_secs` metrics | Check Typha RBAC permissions |
+| Typha OOMKilled | `kubectl describe pod -n kube-system <typha-pod>` | Increase memory limit |
 | High propagation latency | Check `typha_ping_latency` metric | Scale Typha replicas |
 
 ## Configuration Reference
@@ -103,16 +113,16 @@ Document the current state of all Typha configuration.
 ```bash
 # Generate configuration snapshot
 echo "=== Typha Deployment ==="
-kubectl get deployment calico-typha -n calico-system -o yaml
+kubectl get deployment calico-typha -n kube-system -o yaml
 
 echo "=== Typha Service ==="
-kubectl get service calico-typha -n calico-system -o yaml
+kubectl get service calico-typha -n kube-system -o yaml
 
 echo "=== Felix Typha Configuration ==="
-calicoctl get felixconfiguration default -o yaml | grep -i typha
+kubectl get daemonset calico-node -n kube-system -o yaml | grep -i typha
 
 echo "=== Certificate Expiry ==="
-kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.tls\.crt}' | \
+kubectl get secret calico-typha-certs -n kube-system -o jsonpath='{.data.typha\.crt}' | \
   base64 -d | openssl x509 -enddate -noout
 ```
 
@@ -127,9 +137,9 @@ Incident: Calico policy propagation failure
 Severity: P1 (if new policies are not taking effect)
 
 Investigation steps:
-1. kubectl get pods -n calico-system -l k8s-app=calico-typha
-2. kubectl logs -n calico-system deployment/calico-typha | tail -50
-3. Check typha_connections_active metric
+1. kubectl get pods -n kube-system -l k8s-app=calico-typha
+2. kubectl logs -n kube-system deployment/calico-typha | tail -50
+3. Check typha_connections_streaming metric
 4. Verify TLS certificate validity
 
 Escalation: If Typha is healthy but propagation fails, escalate to Calico core team
