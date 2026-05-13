@@ -45,10 +45,17 @@ calicoctl get ippools -o yaml | grep -A2 vxlanMode
 
 Enable BGP peering while keeping existing encapsulation as a fallback:
 
+For operator-managed clusters where BGP was disabled for a VXLAN-only install, enable BGP in the `Installation` resource first:
+
+```bash
+kubectl patch installation.operator.tigera.io default --type=merge \
+  --patch '{"spec":{"calicoNetwork":{"bgp":"Enabled"}}}'
+```
+
 ```bash
 # Enable BGP (if not already enabled)
 
-calicoctl patch bgpconfiguration default --type merge \
+calicoctl patch bgpconfiguration default \
   --patch '{"spec":{"nodeToNodeMeshEnabled":true,"asNumber":64512}}'
 ```
 
@@ -73,19 +80,44 @@ calicoctl apply -f bgp-peer-tor.yaml
 Confirm all nodes have established BGP sessions before proceeding:
 
 ```bash
-calicoctl node status
+cat <<EOF | kubectl apply -f -
+apiVersion: projectcalico.org/v3
+kind: CalicoNodeStatus
+metadata:
+  name: bgp-status-node-1
+spec:
+  classes:
+    - Agent
+    - BGP
+    - Routes
+  node: node-1
+  updatePeriodSeconds: 10
+EOF
+
+kubectl get caliconodestatus bgp-status-node-1 -o yaml
+```
+
+Alternatively, run `calicoctl node status` on each node where `calico/node` is running:
+
+```bash
+sudo calicoctl node status
+```
+
+You can also check the BIRD readiness endpoint in each `calico-node` pod:
+
+```bash
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
   echo "=== $node ==="
   kubectl exec -n calico-system \
     $(kubectl get pod -n calico-system -l k8s-app=calico-node \
       --field-selector spec.nodeName=${node} -o name | head -1) \
-    -- birdcl show protocols
+    -- /bin/calico-node -bird-ready
 done
 ```
 
 ## Phase 4: Gradually Transition IP Pools
 
-Change encapsulation mode to `CrossSubnet` first (uses BGP within subnet, encapsulation across subnets):
+Change encapsulation mode to `CrossSubnet` first (uses native routing within subnet, encapsulation across subnets). For an IP-in-IP pool:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -103,10 +135,24 @@ spec:
 calicoctl apply -f ippool-crosssubnet.yaml
 ```
 
+For a VXLAN pool, use `vxlanMode: CrossSubnet` instead:
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: default-ipv4-ippool
+spec:
+  cidr: 10.244.0.0/16
+  ipipMode: Never
+  vxlanMode: CrossSubnet
+  natOutgoing: true
+```
+
 Then, after verifying connectivity, disable encapsulation entirely:
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool --type merge \
+calicoctl patch ippool default-ipv4-ippool \
   --patch '{"spec":{"ipipMode":"Never","vxlanMode":"Never"}}'
 ```
 
