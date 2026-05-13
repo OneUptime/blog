@@ -10,9 +10,9 @@ Description: Monitor for external connectivity failures related to Calico upgrad
 
 ## Introduction
 
-Monitoring for external connectivity failures after Calico upgrades requires detecting both the connectivity loss itself and the upstream Calico configuration changes that cause it. The blackbox exporter can continuously probe external endpoints from within pods, while Felix metrics expose the current state of iptables rules managed by Calico.
+Monitoring for external connectivity failures after Calico upgrades requires detecting both the connectivity loss itself and the upstream Calico configuration changes that cause it. The blackbox exporter can continuously probe external endpoints from the cluster, while Felix metrics expose the current state of iptables rules managed by Calico.
 
-Effective monitoring correlates Calico upgrade events with connectivity probe failures. By tracking the `felix_iptables_chains` metric before and after upgrades, you can detect when MASQUERADE rules are removed from the NAT table. This metric drops when natOutgoing is disabled, providing an early warning before user-facing impact.
+Effective monitoring correlates Calico upgrade events with connectivity probe failures. By tracking the `felix_iptables_rules{table="nat"}` metric before and after upgrades, you can detect when NAT table rules change. This metric can drop when natOutgoing is disabled, providing a useful corroborating signal for pod egress failures.
 
 ## Symptoms
 
@@ -42,8 +42,8 @@ spec:
   targets:
     staticConfig:
       static:
-      - https://1.1.1.1
-      - https://8.8.8.8
+      - https://one.one.one.one
+      - https://dns.google
 ```
 
 **Monitoring 2: PrometheusRule for connectivity alerts**
@@ -77,20 +77,46 @@ spec:
         description: "Felix NAT rules dropped - natOutgoing may have been disabled."
 ```
 
-**Monitoring 3: PodMonitor for Felix metrics**
+**Monitoring 3: ServiceMonitor for Felix metrics**
+
+Enable Felix metrics first. Calico serves Felix metrics on port 9091 by default when `prometheusMetricsEnabled` is set to true.
+
+```bash
+calicoctl patch felixconfiguration default --type=merge \
+  --patch '{"spec":{"prometheusMetricsEnabled":true}}'
+```
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: kube-system
+  labels:
+    app: calico-felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+  - name: metrics
+    port: 9091
+    targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+kind: ServiceMonitor
 metadata:
   name: calico-felix-nat-metrics
-  namespace: kube-system
+  namespace: monitoring
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
-  podMetricsEndpoints:
-  - port: felix-metrics-svc
+      app: calico-felix-metrics
+  namespaceSelector:
+    matchNames:
+    - kube-system
+  endpoints:
+  - port: metrics
     interval: 30s
     path: /metrics
     metricRelabelings:
@@ -126,7 +152,7 @@ kubectl get pods -n monitoring | grep blackbox
 
 # Check Felix NAT rule count
 # Query: felix_iptables_rules{table="nat"}
-# Expected: > 10 when natOutgoing is enabled
+# Expected: stable non-zero values on nodes where Felix is programming NAT rules
 ```
 
 ```mermaid
@@ -148,4 +174,4 @@ flowchart TD
 
 ## Conclusion
 
-Monitoring external connectivity after Calico upgrades combines blackbox probes for direct connectivity validation with Felix metrics for iptables rule health. Alerting on both probe failures and NAT rule decreases provides early warning of natOutgoing changes before widespread user impact.
+Monitoring external connectivity after Calico upgrades combines blackbox probes for direct connectivity validation with Felix metrics for iptables rule health. Alerting on both probe failures and NAT rule decreases provides direct detection of egress failures and a corroborating signal for natOutgoing changes.
