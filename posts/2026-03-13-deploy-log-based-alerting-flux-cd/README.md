@@ -12,7 +12,7 @@ Description: Set up log-based alerting using Elastalert2 managed by Flux CD to t
 
 Log-based alerting bridges the gap between your logging infrastructure and your incident response workflows. Rather than waiting for a user to notice an error pattern in Kibana, tools like Elastalert2 continuously query Elasticsearch or OpenSearch and fire alerts to Slack, PagerDuty, or email when rules match. Elastalert2 is the actively maintained community fork of the original Yelp Elastalert project.
 
-Managing alert rules through Flux CD means your alert definitions live in Git alongside the logging infrastructure they monitor. New rules are added through pull requests, ensuring review and preventing runaway alert noise from untested rules landing in production. Rule changes are automatically applied when Elastalert2 restarts - no manual SSH or API calls required.
+Managing alert rules through Flux CD means your alert definitions live in Git alongside the logging infrastructure they monitor. New rules are added through pull requests, ensuring review and preventing runaway alert noise from untested rules landing in production. Rule changes are automatically applied when Flux upgrades the Helm release and restarts Elastalert2 - no manual SSH or API calls required.
 
 This guide deploys Elastalert2 as a Flux HelmRelease and configures a set of common alert rules stored as ConfigMaps in Git.
 
@@ -49,80 +49,82 @@ metadata:
   namespace: logging
 type: Opaque
 stringData:
-  elasticsearch-password: "supersecret"
-  slack-webhook-url: "https://hooks.slack.com/services/T.../B.../..."
-  pagerduty-service-key: "abc123def456"
+  ES_PASSWORD: "supersecret"
+  SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/T.../B.../..."
+  PAGERDUTY_SERVICE_KEY: "abc123def456"
 ```
 
-## Step 3: Define Alert Rules as a ConfigMap
+## Step 3: Define Alert Rules as Helm Values in a ConfigMap
 
 ```yaml
-# infrastructure/logging/alert-rules-configmap.yaml
+# infrastructure/logging/alert-rules-values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: elastalert2-rules
+  name: elastalert2-rule-values
   namespace: logging
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
 data:
-  # Rule 1: Alert on high error rate
-  high-error-rate.yaml: |
-    name: High Application Error Rate
-    type: frequency
-    index: kubernetes-*
-    num_events: 50
-    timeframe:
-      minutes: 5
-    filter:
-      - term:
-          level: "error"
-    alert:
-      - slack
-    slack_webhook_url: "${SLACK_WEBHOOK_URL}"
-    slack_channel_override: "#alerts-critical"
-    slack_msg_color: danger
-    alert_text: |
-      High error rate detected!
-      {0} errors in the last 5 minutes.
-    alert_text_args:
-      - num_events
+  values.yaml: |
+    rules:
+      # Rule 1: Alert on high error rate
+      high-error-rate: |
+        name: High Application Error Rate
+        type: frequency
+        index: kubernetes-*
+        num_events: 50
+        timeframe:
+          minutes: 5
+        filter:
+          - term:
+              level: "error"
+        alert:
+          - slack
+        slack_webhook_url: "${SLACK_WEBHOOK_URL}"
+        slack_channel_override: "#alerts-critical"
+        slack_msg_color: danger
+        alert_text: |
+          High error rate detected!
+          50 or more errors occurred in the last 5 minutes.
 
-  # Rule 2: Alert on OOMKilled containers
-  oomkilled.yaml: |
-    name: Container OOMKilled
-    type: any
-    index: kubernetes-*
-    filter:
-      - term:
-          kubernetes.reason: "OOMKilled"
-    alert:
-      - slack
-    slack_webhook_url: "${SLACK_WEBHOOK_URL}"
-    slack_channel_override: "#alerts-infra"
-    alert_text: "Container OOMKilled in namespace: {0}, pod: {1}"
-    alert_text_args:
-      - kubernetes.namespace_name
-      - kubernetes.pod_name
+      # Rule 2: Alert on OOMKilled containers
+      oomkilled: |
+        name: Container OOMKilled
+        type: any
+        index: kubernetes-*
+        filter:
+          - term:
+              kubernetes.reason: "OOMKilled"
+        alert:
+          - slack
+        slack_webhook_url: "${SLACK_WEBHOOK_URL}"
+        slack_channel_override: "#alerts-infra"
+        alert_text: "Container OOMKilled in namespace: {0}, pod: {1}"
+        alert_text_args:
+          - kubernetes.namespace_name
+          - kubernetes.pod_name
 
-  # Rule 3: Alert on 5xx HTTP errors
-  http-5xx-errors.yaml: |
-    name: HTTP 5xx Errors Spike
-    type: spike
-    index: nginx-*
-    threshold_ref: 10
-    threshold_cur: 50
-    spike_height: 3
-    spike_type: up
-    timeframe:
-      hours: 1
-    filter:
-      - range:
-          response:
-            gte: 500
-            lt: 600
-    alert:
-      - pagerduty
-    pagerduty_service_key: "${PAGERDUTY_SERVICE_KEY}"
-    pagerduty_client: "Elastalert2"
+      # Rule 3: Alert on 5xx HTTP errors
+      http-5xx-errors: |
+        name: HTTP 5xx Errors Spike
+        type: spike
+        index: nginx-*
+        threshold_ref: 10
+        threshold_cur: 50
+        spike_height: 3
+        spike_type: up
+        timeframe:
+          hours: 1
+        filter:
+          - range:
+              response:
+                gte: 500
+                lt: 600
+        alert:
+          - pagerduty
+        pagerduty_service_key: "${PAGERDUTY_SERVICE_KEY}"
+        pagerduty_client_name: "Elastalert2"
 ```
 
 ## Step 4: Deploy Elastalert2 via HelmRelease
@@ -144,6 +146,10 @@ spec:
         kind: HelmRepository
         name: elastalert2
         namespace: flux-system
+  valuesFrom:
+    - kind: ConfigMap
+      name: elastalert2-rule-values
+      valuesKey: values.yaml
   values:
     replicaCount: 1
 
@@ -155,44 +161,31 @@ spec:
         cpu: "500m"
         memory: "512Mi"
 
-    # Inject credentials as environment variables
-    envFrom:
-      - secretRef:
-          name: alerting-credentials
+    # Inject alert credentials as environment variables
+    optEnv:
+      - name: SLACK_WEBHOOK_URL
+        valueFrom:
+          secretKeyRef:
+            name: alerting-credentials
+            key: SLACK_WEBHOOK_URL
+      - name: PAGERDUTY_SERVICE_KEY
+        valueFrom:
+          secretKeyRef:
+            name: alerting-credentials
+            key: PAGERDUTY_SERVICE_KEY
 
-    elastalertConfig:
-      # Elastalert2 core configuration
-      es_host: elasticsearch-master.logging.svc.cluster.local
-      es_port: 9200
-      es_username: elastic
-      es_password: "${ELASTICSEARCH_PASSWORD}"
-      # How frequently to run each rule
-      run_every:
-        minutes: 1
-      # Buffer period
-      buffer_time:
-        minutes: 15
-      # Where to store Elastalert's own state
-      writeback_index: elastalert2_status
-      alert_time_limit:
-        days: 2
+    elasticsearch:
+      host: elasticsearch-master.logging.svc.cluster.local
+      port: 9200
+      username: elastic
+      credentialsSecret: alerting-credentials
+      credentialsSecretPasswordKey: ES_PASSWORD
 
-    # Mount rules from ConfigMap
-    rules:
-      - name: high-error-rate
-        path: /opt/elastalert/rules/high-error-rate.yaml
-      - name: oomkilled
-        path: /opt/elastalert/rules/oomkilled.yaml
-      - name: http-5xx-errors
-        path: /opt/elastalert/rules/http-5xx-errors.yaml
-
-    extraVolumes:
-      - name: alert-rules
-        configMap:
-          name: elastalert2-rules
-    extraVolumeMounts:
-      - name: alert-rules
-        mountPath: /opt/elastalert/rules
+    # Elastalert2 core configuration
+    runIntervalMins: 1
+    bufferTimeMins: 15
+    writebackIndex: elastalert2_status
+    alertRetryLimitMins: 2880
 ```
 
 ## Step 5: Create the Flux Kustomization
@@ -214,8 +207,8 @@ spec:
   dependsOn:
     - name: elasticsearch
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: elastalert2
       namespace: logging
 ```
@@ -231,7 +224,8 @@ kubectl logs -n logging deployment/elastalert2 --tail=50
 
 # Manually test a rule
 kubectl exec -n logging deployment/elastalert2 -- \
-  elastalert-test-rule /opt/elastalert/rules/high-error-rate.yaml
+  elastalert-test-rule /opt/elastalert/rules/high-error-rate.yaml \
+    --config /opt/elastalert/config.yaml
 
 # Check Elastalert status index in Elasticsearch
 kubectl exec -n logging elasticsearch-master-0 -- \
@@ -243,7 +237,7 @@ kubectl exec -n logging elasticsearch-master-0 -- \
 - Test all alert rules with `elastalert-test-rule` in a development environment before merging to the main branch.
 - Use the `frequency` rule type for threshold-based alerting and `spike` for sudden changes to reduce alert fatigue.
 - Set `realert.minutes` on rules to prevent the same alert from firing repeatedly within a short window.
-- Store Slack webhook URLs and PagerDuty keys in Kubernetes Secrets - inject them as environment variables, never hardcode in ConfigMaps.
+- Store Slack webhook URLs and PagerDuty keys in Kubernetes Secrets - inject them as environment variables, never hardcode secret values in ConfigMaps.
 - Use Git tags and Flux image policies to manage Elastalert2 version upgrades systematically.
 
 ## Conclusion
