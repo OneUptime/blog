@@ -36,13 +36,16 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keda
-  namespace: keda
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: keda
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: keda
-      version: "2.14.x"
+      version: "2.19.x"
       sourceRef:
         kind: HelmRepository
         name: kedacore
@@ -67,7 +70,12 @@ spec:
     webhooks:
       enabled: true  # Enable admission webhooks
     serviceAccount:
-      create: true
+      operator:
+        create: true
+      metricServer:
+        create: true
+      webhooks:
+        create: true
 ```
 
 ## Step 2: AWS SQS ScaledObject
@@ -82,7 +90,8 @@ metadata:
   name: aws-irsa
 spec:
   podIdentity:
-    provider: aws  # Uses pod's IRSA annotation
+    provider: aws
+    identityOwner: workload  # Uses workload ServiceAccount IRSA annotation
 ---
 # ScaledObject for SQS queue
 apiVersion: keda.sh/v1alpha1
@@ -223,6 +232,9 @@ spec:
         end: "0 18 * * 1-5"    # 6 PM weekdays
         desiredReplicas: "10"   # Scale to 10 during business hours
     - type: aws-sqs-queue  # Also scale on queue depth
+      authenticationRef:
+        name: aws-irsa
+        kind: ClusterTriggerAuthentication
       metadata:
         queueURL: https://sqs.us-east-1.amazonaws.com/123456789/my-queue
         queueLength: "10"
@@ -246,7 +258,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   dependsOn:
-    - name: keda  # KEDA must be installed
+    - name: infrastructure  # Kustomization that installs KEDA
   targetNamespace: myapp
   decryption:
     provider: sops
