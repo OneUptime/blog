@@ -10,7 +10,7 @@ Description: Learn how to deploy and configure MetalLB in BGP mode on bare-metal
 
 ## Introduction
 
-MetalLB provides Kubernetes LoadBalancer services on bare metal and on-premises clusters that lack cloud provider load balancers. BGP mode is the production-recommended configuration for MetalLB, where it peers with network routers to advertise Service VIPs using the Border Gateway Protocol, enabling true load balancing and failover across multiple nodes.
+MetalLB provides Kubernetes LoadBalancer services on bare metal and on-premises clusters that lack cloud provider load balancers. BGP mode is a common production configuration for MetalLB, where it peers with network routers to advertise Service VIPs using the Border Gateway Protocol, enabling router-side ECMP load balancing and failover across multiple nodes.
 
 Managing MetalLB and its BGP configuration through Flux CD ensures that load balancer configuration changes are tracked in Git and consistently applied across cluster recreations.
 
@@ -20,7 +20,7 @@ Managing MetalLB and its BGP configuration through Flux CD ensures that load bal
 - A BGP-capable router or switch that you control
 - Flux CD bootstrapped
 - Understanding of BGP concepts (AS numbers, peer configuration)
-- MetalLB-compatible CNI (not Flannel with default configuration)
+- MetalLB-compatible CNI
 
 ## Step 1: Add MetalLB Helm Repository
 
@@ -41,6 +41,15 @@ spec:
 
 ```yaml
 # clusters/production/infrastructure/metallb.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -51,7 +60,7 @@ spec:
   chart:
     spec:
       chart: metallb
-      version: "0.14.x"
+      version: "0.15.x"
       sourceRef:
         kind: HelmRepository
         name: metallb
@@ -63,6 +72,9 @@ spec:
   values:
     # Speaker configuration (runs on each node)
     speaker:
+      # FRR mode is required for BFD-backed BGP sessions
+      frr:
+        enabled: true
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
@@ -109,7 +121,7 @@ metadata:
 spec:
   ipAddressPools:
     - production-pool
-  # Aggregate routes to reduce BGP table size
+  # Advertise individual service IPs; use a lower value such as 24 to aggregate a larger pool
   aggregationLength: 32
   # Communities to tag routes with (optional)
   communities:
@@ -120,6 +132,17 @@ spec:
 
 ```yaml
 # clusters/production/infrastructure/metallb-bgp-peers.yaml
+# BFD profile for faster failure detection
+apiVersion: metallb.io/v1beta1
+kind: BFDProfile
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  receiveInterval: 300
+  transmitInterval: 300
+  detectMultiplier: 3
+---
 # Primary router peer
 apiVersion: metallb.io/v1beta2
 kind: BGPPeer
@@ -166,9 +189,9 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: metallb-controller
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: metallb
       namespace: metallb-system
   timeout: 5m
 ---
@@ -194,6 +217,8 @@ spec:
 
 ```bash
 # Create a test service
+kubectl create deployment test --image=nginx --port=80
+
 kubectl apply -f - << 'EOF'
 apiVersion: v1
 kind: Service
@@ -214,22 +239,24 @@ kubectl get service test-lb
 # EXTERNAL-IP should show an IP from the 192.168.10.100-200 range
 
 # Verify BGP advertisement
-kubectl logs -n metallb-system -l app=metallb,component=speaker --tail=30 | grep -i bgp
+kubectl logs -n metallb-system \
+  -l app.kubernetes.io/name=metallb,app.kubernetes.io/component=speaker \
+  -c speaker --tail=30 | grep -i bgp
 
-# Check BGP peer status (requires metallb speaker access)
-kubectl exec -n metallb-system ds/metallb-speaker -- \
-  gobgp neighbor
+# Check BGP peer status in FRR mode
+kubectl exec -n metallb-system ds/metallb-speaker -c frr -- \
+  vtysh -c "show bgp summary"
 ```
 
 ## Best Practices
 
-- Use private AS numbers (64512-65534) for your cluster to avoid conflicts with public BGP infrastructure.
+- Use private AS numbers (64512-65534 or 4200000000-4294967294) for your cluster to avoid conflicts with public BGP infrastructure.
 - Configure BGP peer authentication (MD5 password) to prevent unauthorized BGP sessions.
 - Deploy MetalLB speakers on all nodes (including control plane) to ensure VIPs can be advertised from any node.
 - Use BFD (Bidirectional Forwarding Detection) alongside BGP for sub-second failover detection.
 - Assign a dedicated IP pool for each application tier (web, API, admin) to maintain IP address organization.
-- Test failover by draining a node and verifying the VIP moves to another node within the BGP hold timer.
+- Test failover by draining a node and verifying the route converges on another node within your BGP/BFD timers.
 
 ## Conclusion
 
-MetalLB in BGP mode deployed via Flux CD provides enterprise-grade load balancing for bare metal Kubernetes clusters. BGP integration ensures true multi-path load balancing and fast failover when nodes become unavailable. Managing MetalLB configuration (IP pools, BGP peers, advertisements) through Flux CD makes your network configuration as auditable and reproducible as your application deployments.
+MetalLB in BGP mode deployed via Flux CD provides production-ready load balancing for bare metal Kubernetes clusters. BGP integration enables router-side multi-path load balancing and failover when nodes become unavailable, with faster failure detection when FRR mode and BFD are configured. Managing MetalLB configuration (IP pools, BGP peers, advertisements) through Flux CD makes your network configuration as auditable and reproducible as your application deployments.
