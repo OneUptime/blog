@@ -38,11 +38,19 @@ spec:
   order: 100
   selector: all()
   ingress:
+    - action: Log
+      source:
+        selector: app == 'authorized'
     - action: Allow
       source:
         selector: app == 'authorized'
   egress:
+    - action: Log
+      protocol: TCP
+      destination:
+        ports: [443, 80]
     - action: Allow
+      protocol: TCP
       destination:
         ports: [443, 80]
   types:
@@ -60,7 +68,7 @@ calicoctl get networkpolicies -n production -o wide
 ## Step 4: Test the Policy
 
 ```bash
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://target-service:8080
+kubectl exec -n production test-pod -- curl -s --max-time 5 http://target-service
 echo "Result: $?"
 ```
 
