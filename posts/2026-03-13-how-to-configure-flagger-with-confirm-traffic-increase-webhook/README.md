@@ -73,6 +73,7 @@ Flagger sends a POST request before each traffic increase. The request body incl
   "name": "my-app",
   "namespace": "default",
   "phase": "Progressing",
+  "checksum": "85d557f47b",
   "metadata": {}
 }
 ```
@@ -85,21 +86,21 @@ The Flagger load tester provides gate endpoints that work with confirm-traffic-i
     webhooks:
       - name: traffic-gate
         type: confirm-traffic-increase
-        url: http://flagger-loadtester.test/gate/approve
+        url: http://flagger-loadtester.test/gate/check
 ```
 
 Open the gate to allow traffic increases:
 
 ```bash
 kubectl -n test exec deploy/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/open
+  curl -s -X POST -d '{"name":"my-app","namespace":"default"}' http://localhost:8080/gate/open
 ```
 
 Close the gate to pause traffic shifting:
 
 ```bash
 kubectl -n test exec deploy/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/close
+  curl -s -X POST -d '{"name":"my-app","namespace":"default"}' http://localhost:8080/gate/close
 ```
 
 When the gate is closed, Flagger holds the current traffic weight and keeps running metric checks. No traffic increase happens until the gate opens. This effectively gives you a pause button for the canary rollout.
@@ -150,7 +151,7 @@ When using custom step weights instead of a uniform stepWeight, the confirm-traf
     webhooks:
       - name: traffic-gate
         type: confirm-traffic-increase
-        url: http://flagger-loadtester.test/gate/approve
+        url: http://flagger-loadtester.test/gate/check
 ```
 
 The webhook fires before increasing from 0 to 1%, then before 1 to 5%, then before 5 to 10%, and so on. This lets you gate each custom step individually.
