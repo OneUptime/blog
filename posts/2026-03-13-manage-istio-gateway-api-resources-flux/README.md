@@ -18,7 +18,7 @@ This guide covers installing the Gateway API CRDs and managing Istio Gateway API
 
 ## Prerequisites
 
-- Kubernetes cluster with Istio installed (1.12+ for Gateway API support)
+- Kubernetes cluster with Istio installed (1.22+ for stable Gateway API mesh support)
 - Flux CD v2 bootstrapped to your Git repository
 - Gateway API CRDs installed in the cluster
 
@@ -36,7 +36,7 @@ spec:
   interval: 12h
   url: https://github.com/kubernetes-sigs/gateway-api
   ref:
-    tag: v1.1.0
+    tag: v1.4.0
   ignore: |
     /*
     !/config/crd/experimental/
@@ -59,7 +59,7 @@ spec:
 ## Step 2: Create a Gateway for Ingress
 
 ```yaml
-# clusters/my-cluster/apps/gateway.yaml
+# clusters/my-cluster/apps/routes/gateway.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -97,6 +97,14 @@ spec:
 ## Step 3: Create HTTPRoutes for Services
 
 ```yaml
+# clusters/my-cluster/apps/routes/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    gateway-access: "true"
+---
 # clusters/my-cluster/apps/routes/api-httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -167,11 +175,12 @@ metadata:
   namespace: production
 spec:
   parentRefs:
-    # Reference the mesh gateway for east-west routing
+    # Reference the Service for east-west routing
     - kind: Service
       group: ""
       name: payment-service
       namespace: production
+      port: 8080
   rules:
     - backendRefs:
         - name: payment-service-v2
@@ -180,7 +189,7 @@ spec:
         - name: payment-service-v1
           port: 8080
           weight: 20
-      # Add retry policy
+      # Mirror requests to the shadow service
       filters:
         - type: RequestMirror
           requestMirror:
@@ -196,6 +205,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - namespace.yaml
   - gateway.yaml
   - api-httproute.yaml
   - header-route.yaml
