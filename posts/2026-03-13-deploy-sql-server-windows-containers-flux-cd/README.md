@@ -10,13 +10,13 @@ Description: Deploy SQL Server in Windows containers to Kubernetes using Flux CD
 
 ## Introduction
 
-While SQL Server now has a Linux container image, many organizations continue to run SQL Server on Windows containers for compatibility with Windows-only features (SQL Server Agent, certain CLR integrations, linked servers to other Windows systems) or for consistency with their existing Windows SQL Server infrastructure. Running SQL Server in a Windows container on Kubernetes provides the same container lifecycle management as other workloads, with Flux CD ensuring the configuration is always as defined in Git.
+While SQL Server now has a Linux container image, some organizations build custom SQL Server Windows container images for development and testing scenarios that need Windows-specific integrations or consistency with existing Windows SQL Server infrastructure. Microsoft does not cover SQL Server deployments in Windows containers under its support policy, so production deployments should use a supported SQL Server platform. Running a custom SQL Server Windows container on Kubernetes provides the same container lifecycle management as other workloads, with Flux CD ensuring the configuration is always as defined in Git.
 
 Deploying SQL Server on Windows containers presents unique challenges: it is a stateful workload requiring persistent storage, it has high memory requirements, it needs careful secret management for SA passwords, and its startup time is even longer than typical Windows applications. This guide addresses all of these challenges within a Flux-managed GitOps workflow.
 
 ## Prerequisites
 
-- Kubernetes cluster with Windows Server 2022 nodes (SQL Server 2022 requires Windows Server 2022)
+- Kubernetes cluster with Windows Server 2022 nodes if your custom image is based on Windows Server 2022 LTSC
 - At least 4GB RAM and 2 CPUs available on Windows nodes for SQL Server
 - Persistent storage provisioner supporting ReadWriteOnce access mode
 - Flux CD with Sealed Secrets or ESO for secrets management
@@ -48,7 +48,7 @@ metadata:
   name: sql-server-windows
   namespace: sql-server-windows
 spec:
-  serviceName: sql-server-windows
+  serviceName: sql-server-windows-headless
   replicas: 1  # SQL Server standalone; for HA use Always On Availability Groups
   selector:
     matchLabels:
@@ -59,6 +59,8 @@ spec:
         app: sql-server-windows
         os: windows
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
         node.kubernetes.io/windows-build: "10.0.20348"  # Windows Server 2022
@@ -74,9 +76,9 @@ spec:
 
       containers:
         - name: sql-server
-          image: mcr.microsoft.com/mssql/server:2022-latest
-          # Note: Use the Windows-specific image tag if using Windows containers
-          # mcr.microsoft.com/mssql/server:2022-CU12-windows-ltsc2022
+          # Build and publish your own Windows container image for development/testing.
+          # Microsoft's mcr.microsoft.com/mssql/server tags are Linux container images.
+          image: registry.example.com/sql-server/windows:2022-ltsc2022
           imagePullPolicy: IfNotPresent
 
           ports:
@@ -88,7 +90,7 @@ spec:
               value: "Y"
             - name: MSSQL_PID
               value: "Developer"  # Use "Standard" or "Enterprise" for production
-            - name: SA_PASSWORD
+            - name: MSSQL_SA_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: sql-server-sa-password
@@ -127,7 +129,7 @@ spec:
                 - -U
                 - sa
                 - -P
-                - "$(SA_PASSWORD)"
+                - "$(MSSQL_SA_PASSWORD)"
             # SQL Server takes 2-5 minutes to initialize databases
             initialDelaySeconds: 180
             periodSeconds: 30
@@ -145,7 +147,7 @@ spec:
                 - -U
                 - sa
                 - -P
-                - "$(SA_PASSWORD)"
+                - "$(MSSQL_SA_PASSWORD)"
             initialDelaySeconds: 300
             periodSeconds: 60
             timeoutSeconds: 15
@@ -269,6 +271,8 @@ spec:
     spec:
       template:
         spec:
+          os:
+            name: windows
           nodeSelector:
             kubernetes.io/os: windows
           tolerations:
@@ -279,9 +283,9 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: mcr.microsoft.com/mssql/server:2022-latest
+              image: registry.example.com/sql-server/windows:2022-ltsc2022
               env:
-                - name: SA_PASSWORD
+                - name: MSSQL_SA_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: sql-server-sa-password
@@ -292,11 +296,8 @@ spec:
                 - |
                   $date = Get-Date -Format "yyyyMMdd-HHmmss"
                   sqlcmd -S sql-server-windows.sql-server-windows.svc.cluster.local `
-                    -U sa -P $env:SA_PASSWORD `
+                    -U sa -P $env:MSSQL_SA_PASSWORD `
                     -Q "BACKUP DATABASE [ProductionDB] TO DISK = 'C:\SQLBackup\ProductionDB-$date.bak' WITH COMPRESSION, STATS = 10"
-              volumeMounts:
-                - name: sql-backup
-                  mountPath: C:\SQLBackup
 ```
 
 ## Best Practices
@@ -310,4 +311,4 @@ spec:
 
 ## Conclusion
 
-SQL Server on Windows containers in Kubernetes, managed by Flux CD, gives you the operational benefits of Kubernetes - declarative configuration, rolling updates, health monitoring - for your Windows SQL Server workloads. The StatefulSet provides stable storage and network identity, while Flux ensures the configuration is always as defined in Git. The most critical consideration is setting `prune: false` to protect your data from accidental deletion, and using Sealed Secrets for the SA password.
+For development and testing scenarios, SQL Server on Windows containers in Kubernetes, managed by Flux CD, gives you the operational benefits of Kubernetes - declarative configuration, rolling updates, health monitoring - for your Windows SQL Server workloads. The StatefulSet provides stable storage and network identity, while Flux ensures the configuration is always as defined in Git. The most critical consideration is setting `prune: false` to protect your data from accidental deletion, and using Sealed Secrets for the SA password.
