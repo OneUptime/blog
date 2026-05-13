@@ -53,7 +53,7 @@ metadata:
   name: apps-hotfix
   namespace: flux-system
 spec:
-  interval: 30s
+  interval: 60s
   path: ./apps/production   # Same path as normal production Kustomization
   prune: false              # Do NOT prune during hotfix to avoid accidents
   sourceRef:
@@ -92,17 +92,19 @@ Document these steps in your team runbook and incident response playbook:
 ```mermaid
 flowchart TD
     A[Incident Declared] --> B[Incident Commander activates hotfix workflow]
-    B --> C[Create hotfix branch from current production commit]
+    B --> C[Create hotfix branch from current main commit]
     C --> D[Apply fix directly to hotfix branch]
-    D --> E[Resume flux-hotfix GitRepository and Kustomization]
-    E --> F[Flux detects hotfix branch in 30s]
-    F --> G[Flux applies fix to cluster]
-    G --> H[Verify fix resolves incident]
-    H --> I[Declare incident resolved]
-    I --> J[Open backport PR to main]
-    J --> K[Normal review and merge process]
-    K --> L[Delete hotfix branch]
+    D --> E[Suspend normal production Kustomization]
+    E --> F[Resume flux-hotfix GitRepository and Kustomization]
+    F --> G[Flux detects hotfix branch in 30s]
+    G --> H[Flux applies fix to cluster]
+    H --> I[Verify fix resolves incident]
+    I --> J[Declare incident resolved]
+    J --> K[Open backport PR to main]
+    K --> L[Normal review and merge process]
     L --> M[Suspend hotfix Flux resources]
+    M --> N[Delete hotfix branch]
+    N --> O[Resume normal production Kustomization]
 ```
 
 ## Step 4: Activate the Hotfix Workflow
@@ -110,7 +112,7 @@ flowchart TD
 When an incident is declared, execute these steps in order:
 
 ```bash
-# 1. Create the hotfix branch from the current production HEAD
+# 1. Create the hotfix branch from the current main branch
 git fetch origin main
 git checkout -b hotfix origin/main
 git push origin hotfix
@@ -124,7 +126,10 @@ git add apps/production/my-app/deployment.yaml
 git commit -m "hotfix: emergency image rollback for incident INC-2026-001"
 git push origin hotfix
 
-# 4. Activate the hotfix Flux resources
+# 4. Suspend the normal production Kustomization so it does not re-apply main
+flux suspend kustomization apps-production -n flux-system
+
+# 5. Activate the hotfix Flux resources
 kubectl patch gitrepository flux-hotfix \
   -n flux-system \
   --type merge \
@@ -135,7 +140,7 @@ kubectl patch kustomization apps-hotfix \
   --type merge \
   -p '{"spec":{"suspend":false}}'
 
-# 5. Watch Flux apply the fix (30s interval)
+# 6. Watch Flux apply the fix (30s source poll interval)
 flux get kustomization apps-hotfix --watch
 ```
 
@@ -181,7 +186,8 @@ kubectl patch kustomization apps-hotfix \
 # 3. Delete the hotfix branch
 git push origin --delete hotfix
 
-# 4. Verify production is now reconciled from main
+# 4. Resume and verify production is now reconciled from main
+flux resume kustomization apps-production -n flux-system
 flux reconcile kustomization apps-production
 flux get kustomization apps-production
 ```
@@ -192,6 +198,7 @@ flux get kustomization apps-production
 - Limit the list of incident commanders who can bypass PR requirements - this should be a small, named group.
 - Always require at least basic manifest validation CI even on the hotfix branch.
 - File an incident report that references the Git commit SHA of the hotfix so the change is traceable.
+- Suspend the normal production Kustomization while the hotfix Kustomization is active, otherwise Flux can reconcile `main` and overwrite the emergency change.
 - Never leave the hotfix Flux resources active after the incident is resolved - the cleanup step is mandatory.
 - Run a post-incident review to determine if the hotfix could have been applied faster through the normal workflow, and whether the normal workflow needs adjustment.
 

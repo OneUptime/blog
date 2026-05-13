@@ -100,7 +100,7 @@ For applications that need to pick up flag changes without restart, mount the Co
             name: my-app-feature-flags
 ```
 
-Kubernetes propagates ConfigMap changes to mounted volumes within ~1 minute, allowing applications that watch the file to pick up changes without restarting.
+Kubernetes eventually propagates ConfigMap changes to mounted volumes; the delay can be as long as the kubelet sync period plus the kubelet's ConfigMap cache propagation delay. Applications that watch the mounted file can pick up changes without restarting. ConfigMaps consumed as environment variables are not updated in running containers and require a Pod restart.
 
 ## Step 3: Configure the Flux Kustomization
 
@@ -193,13 +193,16 @@ After Flux reconciles a flag change, verify the ConfigMap and confirm the applic
 # Verify the ConfigMap was updated
 kubectl get configmap my-app-feature-flags -n production -o yaml
 
-# Check that pods have the new environment variable
+# If you use envFrom, restart Pods before checking the environment variable
+kubectl rollout restart deployment/my-app -n production
+kubectl rollout status deployment/my-app -n production
+
 kubectl exec -n production \
   $(kubectl get pods -n production -l app=my-app -o name | head -1) \
   -- env | grep ENABLE_NEW_CHECKOUT
 
 # Watch Flux reconcile the flag change
-flux get kustomization my-app --watch
+flux get kustomizations --watch
 
 # Check events for ConfigMap updates
 kubectl get events -n production \
