@@ -103,6 +103,12 @@ metadata:
 type: kubernetes.io/service-account-token
 ```
 
+Apply this on the spoke cluster:
+
+```bash
+kubectl apply -f flux-reconciler-token.yaml
+```
+
 Now create the kubeconfig secret on the management cluster:
 
 ```bash
@@ -301,7 +307,7 @@ flux events --for Kustomization/spoke-cluster-1-apps
 You can also set up Flux notifications to alert on failures:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: spoke-failures
