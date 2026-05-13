@@ -20,7 +20,7 @@ This guide walks through configuring automatic ECR token refresh for Flux image 
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed (v2.0 or later)
+- A Kubernetes cluster with Flux CD installed and the image automation CRDs that support `image.toolkit.fluxcd.io/v1` (or adjust the API version to match your installed Flux release)
 - The Flux image-reflector-controller and image-automation-controller installed
 - An AWS ECR repository with container images
 - AWS IAM credentials or an IRSA (IAM Roles for Service Accounts) configuration
@@ -42,7 +42,15 @@ First, create an IAM policy that grants ECR read access:
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage",
         "ecr:BatchCheckLayerAvailability",
-        "ecr:GetAuthorizationToken"
+        "ecr:GetAuthorizationToken",
+        "ecr:GetRepositoryPolicy",
+        "ecr:DescribeRepositories",
+        "ecr:ListImages",
+        "ecr:DescribeImages",
+        "ecr:GetLifecyclePolicy",
+        "ecr:GetLifecyclePolicyPreview",
+        "ecr:ListTagsForResource",
+        "ecr:DescribeImageScanFindings"
       ],
       "Resource": "*"
     }
@@ -82,21 +90,60 @@ The `provider: aws` setting tells the image-reflector-controller to use the AWS 
 
 ## Using AWS Access Keys
 
-If IRSA is not available (for example, on non-EKS clusters), you can provide AWS credentials through a Kubernetes secret:
+If IRSA is not available (for example, on non-EKS clusters), configure AWS credentials at the image-reflector-controller level. Flux does not support IAM user access keys through `ImageRepository.spec.secretRef` for ECR; mount the access key secret as standard AWS SDK environment variables on the controller.
+
+First, create the secret:
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: aws-credentials
+  name: image-reflector-controller-aws-access-key
   namespace: flux-system
 type: Opaque
 stringData:
-  aws_access_key_id: AKIAIOSFODNN7EXAMPLE
-  aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  accesskey: AKIAIOSFODNN7EXAMPLE
+  secretkey: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
 
-Then reference the secret in your ImageRepository and set the provider to aws:
+Then add a Kustomize patch for the image-reflector-controller deployment:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: image-reflector-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: image-reflector-controller-aws-access-key
+              key: accesskey
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: image-reflector-controller-aws-access-key
+              key: secretkey
+```
+
+After the change is applied, restart the controller so it picks up the new environment variables:
+
+```bash
+kubectl rollout restart deployment -n flux-system image-reflector-controller
+```
+
+Then set the provider to aws on your ImageRepository:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -108,8 +155,6 @@ spec:
   image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
   interval: 5m
   provider: aws
-  secretRef:
-    name: aws-credentials
 ```
 
 The controller uses these credentials to call `ecr:GetAuthorizationToken` and generates the Docker config needed to pull image metadata.
@@ -205,7 +250,7 @@ spec:
 Confirm that the ImageRepository is scanning successfully:
 
 ```bash
-flux get image repository my-app -n flux-system
+flux get images repository my-app -n flux-system
 ```
 
 You should see a recent last scan timestamp and no authentication errors. If there are issues, check the image-reflector-controller logs:
