@@ -29,30 +29,34 @@ The following YAML demonstrates the key pattern for Staged K8s NetworkPolicy:
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: NetworkPolicy
+kind: StagedKubernetesNetworkPolicy
 metadata:
   name: monitor-staged-k8s-networkpolicy
   namespace: production
 spec:
-  order: 100
-  selector: all()
-  ingress:
-    - action: Allow
-      source:
-        selector: app == 'authorized-source'
-      destination:
-        ports: [8080, 443]
-  egress:
-    - action: Allow
-      protocol: UDP
-      destination:
-        ports: [53]
-    - action: Allow
-      destination:
-        selector: app == 'authorized-destination'
-  types:
+  stagedAction: Set
+  podSelector: {}
+  policyTypes:
     - Ingress
     - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: authorized-source
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 443
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app: authorized-destination
 ```
 
 ## Implementation Steps
@@ -63,39 +67,39 @@ spec:
 calicoctl apply -f monitor-staged-k8s-networkpolicy.yaml
 
 # 2. Verify it's active
-calicoctl get networkpolicies -n production -o wide
+calicoctl get stagedkubernetesnetworkpolicies -n production -o wide
 
 # 3. Test connectivity
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
 echo "Exit code: $?"
 
-# 4. Check policy hit counters (if Felix metrics enabled)
-curl -s http://localhost:9091/metrics | grep felix_denied
+# 4. Check active policy counters (if Felix metrics enabled)
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 ```
 
 ## Operational Commands
 
 ```bash
 # List all relevant policies
-calicoctl get networkpolicies --all-namespaces
-calicoctl get globalnetworkpolicies
+calicoctl get stagedkubernetesnetworkpolicies --all-namespaces
+calicoctl get stagednetworkpolicies --all-namespaces
 
 # View policy details
-calicoctl get networkpolicy monitor-policy -n production -o yaml
+calicoctl get stagedkubernetesnetworkpolicy monitor-staged-k8s-networkpolicy -n production -o yaml
 
 # Delete a policy if needed
-calicoctl delete networkpolicy monitor-policy -n production
+calicoctl delete stagedkubernetesnetworkpolicy monitor-staged-k8s-networkpolicy -n production
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A[Workload Pods] -->|Traffic| B{Staged K8s NetworkPolicy Policy}
-    B -->|Allow Rule| C[Target Service]
-    B -->|Default Deny| D[Blocked]
+    A[Workload Pods] -->|Traffic| B{Staged K8s NetworkPolicy}
+    B -->|Would Allow| C[Target Service]
+    B -->|Would Deny| D[Logged, Not Blocked]
     E[calicoctl] -->|Manages| B
-    F[Felix] -->|Enforces| B
+    F[Felix] -->|Evaluates Only| B
     G[Prometheus :9091] -->|Metrics from| F
 ```
 
@@ -103,7 +107,7 @@ flowchart TD
 
 1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
 2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
-3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
+3. **Policy conflicts**: Compare with enforced policies that share the same `podSelector` to predict the effect once the staged policy is promoted
 4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress
 
 ## Conclusion
