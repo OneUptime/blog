@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Deployment Windows, Scheduling, Automation
 
-Description: Schedule deployment windows by automating Flux CD suspend and resume so that cluster changes only happen during approved time windows.
+Description: Schedule deployment windows by automating Flux CD suspend and resume so that targeted cluster changes only happen during approved time windows.
 
 ---
 
 ## Introduction
 
-Deployment windows restrict when new changes are allowed to land in production. Unlike change freezes (which block all changes), deployment windows define the affirmative periods when deployments are permitted. Outside those windows Flux is suspended; inside them Flux reconciles normally. This pattern is common in organizations that want to avoid Friday afternoon deployments, ensure an on-call engineer is always available during changes, or comply with change advisory board requirements that mandate specific change windows.
+Deployment windows restrict when new changes are allowed to land in production. Unlike change freezes (which block all changes), deployment windows define the affirmative periods when deployments are permitted. Outside those windows the targeted Flux resources are suspended; inside them Flux reconciles normally. This pattern is common in organizations that want to avoid Friday afternoon deployments, ensure an on-call engineer is always available during changes, or comply with change advisory board requirements that mandate specific change windows.
 
 Flux CD's `suspend` field, combined with Kubernetes CronJobs or external schedulers, makes deployment windows straightforward to implement. The window schedule lives in Git alongside your manifests, making it auditable and subject to the same review process as any other configuration change.
 
@@ -33,10 +33,10 @@ Allowed deployment windows (UTC):
   Friday: 09:00–12:00
   Saturday–Sunday: No deployments
 
-Outside these windows, Flux is suspended.
+Outside these windows, the targeted Flux resources are suspended.
 ```
 
-Translate this into four CronJob pairs (open/close) - one pair per window boundary.
+Translate this into two CronJob pairs (four CronJobs total) - one open and one close job for each window pattern.
 
 ## Step 2: Create the Deployment Window CronJobs
 
@@ -52,6 +52,7 @@ metadata:
   namespace: flux-system
 spec:
   schedule: "0 9 * * 1-4"    # Mon-Thu 09:00 UTC
+  timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -83,6 +84,7 @@ metadata:
   namespace: flux-system
 spec:
   schedule: "0 17 * * 1-4"   # Mon-Thu 17:00 UTC
+  timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -114,6 +116,7 @@ metadata:
   namespace: flux-system
 spec:
   schedule: "0 9 * * 5"     # Friday 09:00 UTC
+  timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -129,10 +132,13 @@ spec:
                 - -c
                 - |
                   echo "Opening Friday deployment window at $(date -u)"
-                  kubectl patch kustomization apps-production \
-                    -n flux-system \
-                    --type merge \
-                    -p '{"spec":{"suspend":false}}'
+                  for ks in apps-production infra-production; do
+                    kubectl patch kustomization "$ks" \
+                      -n flux-system \
+                      --type merge \
+                      -p '{"spec":{"suspend":false}}'
+                    echo "Resumed: $ks"
+                  done
 ---
 # Close deployment window: Fri at 12:00 UTC
 apiVersion: batch/v1
@@ -142,6 +148,7 @@ metadata:
   namespace: flux-system
 spec:
   schedule: "0 12 * * 5"    # Friday 12:00 UTC
+  timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
@@ -157,10 +164,13 @@ spec:
                 - -c
                 - |
                   echo "Closing Friday deployment window at $(date -u)"
-                  kubectl patch kustomization apps-production \
-                    -n flux-system \
-                    --type merge \
-                    -p '{"spec":{"suspend":true}}'
+                  for ks in apps-production infra-production; do
+                    kubectl patch kustomization "$ks" \
+                      -n flux-system \
+                      --type merge \
+                      -p '{"spec":{"suspend":true}}'
+                    echo "Suspended: $ks"
+                  done
 ```
 
 ## Step 3: Create the Required RBAC Resources
@@ -215,15 +225,15 @@ SUSPENDED=$(kubectl get kustomization apps-production \
   -o jsonpath='{.spec.suspend}')
 
 if [ "$SUSPENDED" = "true" ]; then
-  echo "Deployment window is CLOSED. Flux is suspended."
+  echo "Deployment window is CLOSED. apps-production is suspended."
   exit 1
 else
-  echo "Deployment window is OPEN. Flux is reconciling."
+  echo "Deployment window is OPEN. apps-production is reconciling."
   exit 0
 fi
 ```
 
-Use this in CI to prevent PR merges outside of deployment windows:
+Use this as a required CI status check to prevent PR merges outside of deployment windows:
 
 ```yaml
 # .github/workflows/window-check.yaml
@@ -304,4 +314,4 @@ echo "Emergency deployment override at $(date -u) by $(whoami)" \
 
 ## Conclusion
 
-Deployment windows with Flux CD give you the operational discipline of scheduled change management while retaining the speed of GitOps. CronJobs handle the schedule automatically, the window policy lives in Git for auditability, and CI checks prevent PRs from merging outside permitted times. The result is a deployment process that is predictable, safe, and easy to communicate to stakeholders and auditors.
+Deployment windows with Flux CD give you the operational discipline of scheduled change management while retaining the speed of GitOps. CronJobs handle the schedule automatically, the window policy lives in Git for auditability, and required CI checks can prevent PRs from merging outside permitted times. The result is a deployment process that is predictable, safe, and easy to communicate to stakeholders and auditors.
