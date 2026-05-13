@@ -25,8 +25,8 @@ Unlike traditional ingress monitoring, Gateway API monitoring benefits from the 
 | Metric | Description |
 |--------|-------------|
 | `cilium_operator_process_resident_memory_bytes` | Operator memory (reconciliation overhead) |
-| `cilium_forward_count_total` | Forwarded packets per endpoint |
-| `cilium_http_requests_total` | HTTP request counts (when L7 policy enabled) |
+| `cilium_forward_count_total` | Forwarded packets by direction |
+| `hubble_http_requests_total` | HTTP request counts (when Hubble HTTP metrics are enabled) |
 
 ## Architecture
 
@@ -46,11 +46,11 @@ flowchart LR
 Watch ingress flows:
 
 ```bash
-hubble observe --type trace --follow \
+hubble observe --protocol http --follow \
   | grep -v "kube-system"
 ```
 
-Monitor HTTP error rates:
+Monitor dropped HTTP flows:
 
 ```bash
 hubble observe --protocol http --verdict DROPPED --since 10m
@@ -62,7 +62,7 @@ HTTP request rate through Gateway:
 
 ```promql
 sum by (destination_workload) (
-  rate(cilium_forward_count_total{destination_namespace="<ns>"}[1m])
+  rate(hubble_http_requests_total{destination_namespace="<ns>"}[1m])
 )
 ```
 
@@ -74,7 +74,7 @@ groups:
     rules:
       - alert: GatewayNotProgrammed
         expr: |
-          kube_gateway_status_conditions{type="Programmed",status="False"} > 0
+          gatewayapi_gateway_status{type="Programmed"} == 0
         for: 5m
         labels:
           severity: critical
