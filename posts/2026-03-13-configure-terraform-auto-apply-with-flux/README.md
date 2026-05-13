@@ -14,7 +14,7 @@ Auto-apply is the GitOps-native way to operate Terraform. When a change is merge
 
 Auto-apply works best for infrastructure that changes frequently, has well-tested modules, and where the blast radius of an error is limited. For non-production environments, development infrastructure, or stateless resources like S3 bucket policies, auto-apply delivers rapid iteration cycles. Combined with Flux's GitOps branching strategy, merges to main are the only mechanism that changes infrastructure-no ad-hoc `terraform apply` commands that bypass review.
 
-This guide covers configuring auto-apply with appropriate safeguards including drift detection intervals, health checks, and automatic rollback patterns.
+This guide covers configuring auto-apply with appropriate safeguards including drift detection intervals, alerting, and Terraform lifecycle protections.
 
 ## Prerequisites
 
@@ -60,14 +60,15 @@ spec:
     - name: db_instance_class
       value: db.t3.micro
     - name: multi_az
-      value: "false"  # Single-AZ for cost savings in staging
+      value: false  # Single-AZ for cost savings in staging
     - name: region
       value: us-east-1
 
-  varsFrom:
-    - kind: Secret
-      name: terraform-aws-credentials-staging
-      optional: false
+  runnerPodTemplate:
+    spec:
+      envFrom:
+        - secretRef:
+            name: terraform-aws-credentials-staging
 
   # Publish outputs for consumption by other resources
   writeOutputsToSecret:
@@ -103,10 +104,11 @@ spec:
   vars:
     - name: environment
       value: production
-  varsFrom:
-    - kind: Secret
-      name: terraform-aws-credentials-production
-      optional: false
+  runnerPodTemplate:
+    spec:
+      envFrom:
+        - secretRef:
+            name: terraform-aws-credentials-production
 ```
 
 ## Step 3: Implement Safeguards with the Terraform Module
@@ -118,10 +120,13 @@ Add Terraform safeguards in the module itself to prevent destructive auto-apply 
 
 # Lifecycle rules prevent accidental destruction of critical resources
 resource "aws_db_instance" "main" {
-  identifier     = "${var.environment}-database"
-  instance_class = var.db_instance_class
-  engine         = "postgres"
-  engine_version = "15.4"
+  identifier        = "${var.environment}-database"
+  allocated_storage = 20
+  instance_class    = var.db_instance_class
+  engine            = "postgres"
+  engine_version    = "15.4"
+  username          = "appuser"
+  password          = var.db_password
 
   # These lifecycle rules prevent the auto-apply from destroying
   # the database even if the manifest is changed in a way that
@@ -166,7 +171,10 @@ spec:
 
   vars:
     - name: bucket_names
-      value: '["assets", "backups", "logs"]'
+      value:
+        - assets
+        - backups
+        - logs
     - name: environment
       value: production
 ```
@@ -190,8 +198,8 @@ spec:
       namespace: flux-system
   # Notify on both successful applies and failures
   inclusionList:
-    - ".*Apply succeeded.*"
-    - ".*Apply failed.*"
+    - ".*Applied successfully.*"
+    - ".*Apply error.*"
     - ".*Drift detected.*"
 ```
 
@@ -210,7 +218,7 @@ kubectl get terraform staging-infrastructure \
 kubectl describe terraform staging-infrastructure -n flux-system
 
 # Force an immediate reconciliation
-flux reconcile source git flux-system
+flux reconcile source git terraform-modules -n flux-system
 kubectl annotate terraform staging-infrastructure \
   -n flux-system \
   reconcile.fluxcd.io/requestedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
