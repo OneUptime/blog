@@ -55,6 +55,8 @@ spec:
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       serviceAccountName: calico-typha
+      hostNetwork: true
+      priorityClassName: system-cluster-critical
       # Prevent all Typha pods from landing in the same zone
       topologySpreadConstraints:
         - maxSkew: 1
@@ -72,8 +74,12 @@ spec:
                   k8s-app: calico-typha
               topologyKey: kubernetes.io/hostname
       tolerations:
+        # Mark the pod as a critical add-on for rescheduling
+        - key: CriticalAddonsOnly
+          operator: Exists
         # Allow Typha to run on control-plane nodes for better isolation
         - key: node-role.kubernetes.io/control-plane
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: calico-typha
@@ -86,12 +92,26 @@ spec:
               value: "none"
             - name: TYPHA_LOGSEVERITYSCREEN
               value: "info"
+            - name: TYPHA_LOGSEVERITYSYS
+              value: "none"
+            - name: TYPHA_CONNECTIONREBALANCINGMODE
+              value: "kubernetes"
+            - name: TYPHA_DATASTORETYPE
+              value: "kubernetes"
             - name: TYPHA_PROMETHEUSMETRICSENABLED
               value: "true"
             - name: TYPHA_PROMETHEUSMETRICSPORT
               value: "9093"
             - name: TYPHA_HEALTHENABLED
               value: "true"
+            - name: TYPHA_CAFILE
+              value: /calico-typha-ca/typhaca.crt
+            - name: TYPHA_CLIENTCN
+              value: calico-node
+            - name: TYPHA_SERVERCERTFILE
+              value: /calico-typha-certs/typha.crt
+            - name: TYPHA_SERVERKEYFILE
+              value: /calico-typha-certs/typha.key
           livenessProbe:
             httpGet:
               path: /liveness
@@ -112,6 +132,20 @@ spec:
             limits:
               cpu: 1000m
               memory: 512Mi
+          volumeMounts:
+            - name: calico-typha-ca
+              mountPath: "/calico-typha-ca"
+              readOnly: true
+            - name: calico-typha-certs
+              mountPath: "/calico-typha-certs"
+              readOnly: true
+      volumes:
+        - name: calico-typha-ca
+          configMap:
+            name: calico-typha-ca
+        - name: calico-typha-certs
+          secret:
+            secretName: calico-typha-certs
 ```
 
 ```bash
@@ -148,7 +182,7 @@ kubectl apply -f typha-pdb-ha.yaml
 
 ## Step 3: Enable Topology-Aware Routing for the Typha Service
 
-With topology-aware routing, Felix agents preferentially connect to a Typha pod in the same zone, reducing cross-zone bandwidth and ensuring that a zone failure does not cascade to Typha pods in other zones:
+With topology-aware routing, Felix agents can preferentially connect to a Typha pod in the same zone, reducing cross-zone bandwidth when Kubernetes can assign topology hints. Kubernetes falls back to cluster-wide routing when it cannot safely allocate hints, and the feature works best with at least 3 endpoints per zone:
 
 ```yaml
 # typha-service-topology.yaml
@@ -161,7 +195,7 @@ metadata:
   labels:
     k8s-app: calico-typha
   annotations:
-    # Enable topology-aware routing (Kubernetes 1.24+)
+    # Enable topology-aware routing
     service.kubernetes.io/topology-mode: "Auto"
 spec:
   selector:
@@ -216,7 +250,7 @@ kubectl get pods -n kube-system -l k8s-app=calico-typha \
 
 ## Conclusion
 
-True Typha high availability requires zone-aware scheduling, a PodDisruptionBudget tuned to your replica count, and topology-aware service routing. These configurations together ensure that a single zone failure does not take down your Typha cluster and that rolling node drains always maintain at least one Typha pod per zone.
+True Typha high availability requires zone-aware scheduling, a PodDisruptionBudget tuned to your replica count, and topology-aware service routing. These configurations together help ensure that a single zone failure does not take down your Typha cluster and that rolling node drains maintain enough Typha capacity while replacement pods are scheduled.
 
 ---
 
