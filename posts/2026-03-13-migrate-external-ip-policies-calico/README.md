@@ -10,11 +10,11 @@ Description: Migrate existing network policies to External IP Policies in Calico
 
 ## Introduction
 
-External IP Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to migrate External IP effectively.
+External IP rules in Calico policies provide fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to migrate External IP rules effectively.
 
-Calico's extensible policy model supports External IP through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
+Calico's extensible policy model supports External IP and CIDR matching through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
 
-This guide provides practical techniques for migrate External IP in your Kubernetes cluster, following security best practices and production-tested patterns.
+This guide provides practical techniques for migrating External IP rules in your Kubernetes cluster, following security best practices and production-tested patterns.
 
 ## Prerequisites
 
@@ -26,7 +26,10 @@ This guide provides practical techniques for migrate External IP in your Kuberne
 
 ```bash
 kubectl get networkpolicies --all-namespaces -o yaml > current-policies-backup.yaml
-calicoctl get networkpolicies --all-namespaces -o yaml >> current-policies-backup.yaml
+calicoctl get networkpolicy --all-namespaces -o yaml >> current-policies-backup.yaml
+calicoctl get globalnetworkpolicy -o yaml >> current-policies-backup.yaml
+calicoctl get networkset --all-namespaces -o yaml >> current-policies-backup.yaml
+calicoctl get globalnetworkset -o yaml >> current-policies-backup.yaml
 ```
 
 ## Step 2: Write Calico Replacement Policies
@@ -39,11 +42,12 @@ metadata:
   namespace: production
 spec:
   order: 100
-  selector: all()
+  selector: app == 'api'
   ingress:
     - action: Allow
       source:
-        selector: app == 'authorized'
+        nets:
+          - 203.0.113.0/24
   types:
     - Ingress
 ```
@@ -77,4 +81,4 @@ flowchart TD
 
 ## Conclusion
 
-Migrate External IP policies in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your External IP policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
+Migrating External IP rules in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your External IP rules are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
