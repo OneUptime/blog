@@ -64,15 +64,15 @@ kubectl exec -n flux-system deploy/source-controller -- find /data -type f -size
 
 ## Step 3: Identify Causes of Disk Exhaustion
 
-### Large Git Repositories
+### Large Git Repository Artifacts
 
-Git repositories with large binary files, extensive history, or many branches can consume significant disk space:
+Git repositories with large files or broad working trees can produce large artifact tarballs:
 
 ```bash
 kubectl get gitrepositories --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.url}{"\n"}{end}'
 ```
 
-Use the `ignore` field to exclude large files not needed for deployment:
+Use the `ignore` field to exclude large files not needed for deployment. When specified, this field overrides Flux's default exclusion list:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -111,7 +111,7 @@ kubectl logs -n flux-system deploy/source-controller | grep -i "garbage\|cleanup
 
 ### Large Helm Repository Index Files
 
-Traditional Helm repositories serve an index.yaml file that lists all available charts and versions. Popular repositories can have index files that are hundreds of megabytes:
+Traditional Helm repositories serve an index.yaml file that lists all available charts and versions. Popular repositories can have large index files, and Flux rejects indexes larger than the configured `--helm-index-max-size` limit:
 
 ```bash
 kubectl get helmrepositories --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.type}{"\t"}{.spec.url}{"\n"}{end}'
@@ -185,18 +185,10 @@ kubectl exec -n flux-system deploy/source-controller -- rm -rf /data/old-artifac
 
 ### For PersistentVolumeClaims
 
-If your storage class supports volume expansion, increase the PVC size:
+If your storage class supports volume expansion, patch the existing PVC to request a larger size:
 
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  resources:
-    requests:
-      storage: 10Gi
+```bash
+kubectl patch pvc <pvc-name> -n flux-system --type merge -p '{"spec":{"resources":{"requests":{"storage":"10Gi"}}}}'
 ```
 
 Check if the storage class allows expansion:
