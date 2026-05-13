@@ -10,14 +10,14 @@ Description: Configure Velero to use Google Cloud Storage for backups with Flux 
 
 ## Introduction
 
-Google Cloud Storage (GCS) combined with Velero provides durable, globally distributed backup storage for Kubernetes clusters running on GCP. GCS offers eleven 9s of durability, automatic versioning, object lifecycle management, and tight integration with GKE through Workload Identity. When Velero authenticates to GCS using Workload Identity, no long-lived service account key files are needed-the credential is bound to the pod's Kubernetes service account.
+Google Cloud Storage (GCS) combined with Velero provides durable, globally distributed backup storage for Kubernetes clusters running on GCP. GCS offers eleven 9s of durability, optional object versioning, object lifecycle management, and tight integration with GKE through Workload Identity. When Velero authenticates to GCS using Workload Identity, no long-lived service account key files are needed-the credential is bound to the pod's Kubernetes service account.
 
 This guide covers setting up GCS as the Velero backup backend with Workload Identity for GKE, including multi-region storage configuration and lifecycle policies for cost management.
 
 ## Prerequisites
 
-- Velero installed on a GKE cluster with Workload Identity enabled
-- Flux CD bootstrapped on the cluster
+- A GKE cluster with Workload Identity enabled
+- Flux CD bootstrapped on the cluster with a `vmware-tanzu` HelmRepository
 - A GCP project with Cloud Storage API enabled
 - `gcloud`, `kubectl`, and `gsutil` CLIs installed
 
@@ -66,6 +66,11 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${VELERO_SA_EMAIL}" \
   --role="roles/compute.storageAdmin"
 
+# Grant permission to sign URLs used by Velero CLI metadata and log commands
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${VELERO_SA_EMAIL}" \
+  --role="roles/iam.serviceAccountTokenCreator"
+
 # Allow the Kubernetes service account to impersonate the GCP service account
 # This is the Workload Identity binding
 gcloud iam service-accounts add-iam-policy-binding \
@@ -88,7 +93,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "6.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -96,7 +101,7 @@ spec:
   values:
     initContainers:
       - name: velero-plugin-for-gcp
-        image: velero/velero-plugin-for-gcp:v1.9.0
+        image: velero/velero-plugin-for-gcp:v1.14.0
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -112,6 +117,7 @@ spec:
           bucket: my-cluster-velero-backups
           config:
             project: my-gcp-project
+            serviceAccount: velero-backup@my-gcp-project.iam.gserviceaccount.com
           default: true
       volumeSnapshotLocation:
         - name: primary
@@ -231,7 +237,7 @@ kubectl get volumesnapshotlocation -n velero
 ## Best Practices
 
 - Use a multi-regional GCS bucket (`-l US`, `-l EU`, or `-l ASIA`) for maximum availability. Multi-regional storage replicates data across multiple regions automatically.
-- Enable uniform bucket-level access and disable ACLs. Uniform access is simpler, more secure, and required for Workload Identity authentication.
+- Enable uniform bucket-level access and disable ACLs. Uniform access is simpler, more secure, and keeps access controlled through IAM.
 - Use Workload Identity for GKE deployments to eliminate service account key files. The credential is managed by GKE and rotated automatically.
 - Apply GCS lifecycle rules to transition old backups through storage classes: Standard (0-30 days) → Nearline (30-90 days) → Coldline (90+ days). This can reduce storage costs by 80% for long-term retention.
 - Enable GCS object retention policies or bucket locks for compliance requirements that mandate immutable backup storage.
