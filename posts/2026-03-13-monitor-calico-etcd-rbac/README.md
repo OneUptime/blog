@@ -12,36 +12,38 @@ Description: Set up monitoring and alerting for Calico etcd RBAC to detect permi
 
 Monitoring Calico etcd RBAC health is essential for maintaining both security and reliability. Permission errors that affect Felix or the CNI plugin can cause subtle degradation - policies stop updating silently, or IP allocation slows without obvious errors in the Kubernetes event stream. On the security side, unexpected permission denied events may indicate a compromised component attempting to access unauthorized paths.
 
-A good monitoring strategy combines etcd audit logs for security events, Calico component log scraping for permission error rates, and Prometheus metrics for overall etcd connectivity health.
+A good monitoring strategy combines etcd structured logs for security-related errors, Calico component log scraping for permission error rates, and Prometheus metrics for overall etcd connectivity health.
 
 ## Prerequisites
 
-- etcd with audit logging enabled
+- etcd with structured JSON logging enabled
 - Prometheus and Grafana deployed
 - Calico component logs accessible (Loki or similar log aggregation recommended)
 - `kubectl` with cluster admin access
 
-## Step 1: Enable etcd Audit Logging
+## Step 1: Enable etcd Structured Logging
 
-Configure etcd to log all access attempts:
+etcd does not provide Kubernetes-style `--audit-log-*` flags. Configure etcd to write structured JSON logs that your log collector can scrape:
 
-```yaml
-# etcd configuration
+```bash
+# etcd command-line flags
 
---audit-log-path=/var/log/etcd/audit.log
---audit-log-maxsize=100
---audit-log-maxbackups=5
+--log-format=json
+--log-outputs=/var/log/etcd/etcd.log
+--enable-log-rotation=true
+--log-rotation-config-json='{"maxsize":100,"maxbackups":5}'
 ```
 
 Or via systemd drop-in:
 
 ```bash
-sudo tee /etc/systemd/system/etcd.service.d/audit.conf <<EOF
+sudo mkdir -p /etc/systemd/system/etcd.service.d /var/log/etcd
+sudo tee /etc/systemd/system/etcd.service.d/logging.conf <<EOF
 [Service]
-ExecStart=
-ExecStart=/usr/bin/etcd \
-  --audit-log-path=/var/log/etcd/audit.log \
-  --audit-log-maxsize=100
+Environment=ETCD_LOG_FORMAT=json
+Environment=ETCD_LOG_OUTPUTS=/var/log/etcd/etcd.log
+Environment=ETCD_ENABLE_LOG_ROTATION=true
+Environment=ETCD_LOG_ROTATION_CONFIG_JSON={\"maxsize\":100,\"maxbackups\":5}
 EOF
 sudo systemctl daemon-reload && sudo systemctl restart etcd
 ```
@@ -50,21 +52,20 @@ sudo systemctl daemon-reload && sudo systemctl restart etcd
 
 ```mermaid
 graph TD
-    A[etcd Audit Log] --> B[Log Aggregator]
+    A[etcd JSON Log] --> B[Log Aggregator]
     B --> C{Event Type}
     C -->|permission denied| D[Alert: RBAC Violation]
     C -->|authentication failed| E[Alert: Auth Failure]
-    C -->|normal access| F[Metrics Counter]
     D --> G[Investigate Source]
     E --> G
 ```
 
-Parse audit logs for permission violations:
+Parse structured logs for permission violations:
 
 ```bash
-# Count permission denied events per user in last hour
-grep "permission denied" /var/log/etcd/audit.log | \
-  jq -r '.user' | sort | uniq -c | sort -rn
+# Count permission denied messages
+jq -r 'select((.msg? // "") | test("permission denied"; "i")) | .msg' /var/log/etcd/etcd.log | \
+  sort | uniq -c | sort -rn
 ```
 
 ## Step 3: Prometheus Alerting on Component Errors
@@ -90,9 +91,10 @@ groups:
 
 ```bash
 # Check etcd cluster health via Prometheus
-# etcd exposes metrics on port 2381 by default
+# etcd exposes metrics on the client port by default, and on any URL
+# configured with --listen-metrics-urls.
 
-curl http://etcd:2381/metrics | grep -E "etcd_server_proposals|etcd_mvcc_db"
+curl http://etcd:2379/metrics | grep -E "etcd_server_proposals|etcd_disk_|etcd_network_"
 ```
 
 Key metrics to monitor:
@@ -107,23 +109,22 @@ Key metrics to monitor:
 
 Create a Grafana dashboard panel tracking Calico-to-etcd connectivity:
 
-```yaml
-# Prometheus query for Felix etcd reconnect rate
-rate(felix_etcd_reconnects_total[5m])
+```promql
+rate(felix_resyncs_started[5m])
 ```
 
-Alert on frequent reconnects:
+Alert on frequent resyncs:
 
 ```yaml
-- alert: CalicoFelixEtcdReconnecting
-  expr: rate(felix_etcd_reconnects_total[5m]) > 0.1
+- alert: CalicoFelixFrequentDatastoreResyncs
+  expr: rate(felix_resyncs_started[5m]) > 0.1
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "Felix is frequently reconnecting to etcd on {{ $labels.node }}"
+    summary: "Felix is frequently resyncing with the datastore on {{ $labels.instance }}"
 ```
 
 ## Conclusion
 
-Monitoring Calico etcd RBAC combines etcd audit logs for security events, log aggregation for permission error rates, and Prometheus metrics for connectivity health. By alerting on permission denied events, authentication failures, and frequent reconnects, you can detect both security violations and reliability issues before they impact cluster operations. Regular review of audit logs also confirms that RBAC restrictions are working as intended.
+Monitoring Calico etcd RBAC combines etcd structured logs for security-related errors, log aggregation for permission error rates, and Prometheus metrics for connectivity health. By alerting on permission denied events, authentication failures, and frequent datastore resyncs, you can detect both security violations and reliability issues before they impact cluster operations. Regular review of logs also confirms that RBAC restrictions are working as intended.
