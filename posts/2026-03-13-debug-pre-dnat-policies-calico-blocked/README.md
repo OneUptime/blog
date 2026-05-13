@@ -20,7 +20,7 @@ This guide covers debug pre-DNAT policies in Calico for controlling external acc
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
-- Host endpoints configured for the target nodes
+- Host endpoints configured for the target nodes with labels matching the policy selector
 
 ## Core Configuration
 
@@ -36,6 +36,7 @@ spec:
   selector: node == 'production-node'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -43,6 +44,7 @@ spec:
       destination:
         ports: [30000, 30001]
     - action: Deny
+      protocol: TCP
       destination:
         ports: [30000, 30001]
   types:
@@ -57,7 +59,7 @@ spec:
 calicoctl apply -f pre-dnat-policy.yaml
 
 # Verify policy is active
-calicoctl get globalnetworkpolicies -o wide | grep pre-dnat
+calicoctl get globalnetworkpolicy -o wide | grep pre-dnat
 
 # Test from allowed CIDR
 curl -s --max-time 5 http://node-ip:30000
@@ -81,4 +83,3 @@ to NodeIP:30000] -->|Pre-DNAT Policy Evaluated| B{preDNAT Policy}
 ## Conclusion
 
 Pre-DNAT policies in Calico are the correct tool for protecting NodePort and LoadBalancer services from unauthorized external access. By applying policies before DNAT translation, you evaluate traffic against the original destination IP and can enforce source IP-based access controls that survive the address translation process. Always test pre-DNAT policies carefully and ensure your management traffic is explicitly allowed before applying any deny rules.
-
