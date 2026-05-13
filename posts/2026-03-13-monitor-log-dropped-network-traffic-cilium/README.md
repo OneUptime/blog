@@ -40,10 +40,10 @@ Cilium exposes drop counts by reason:
 rate(cilium_drop_count_total[5m])
 
 # Drops by reason
-rate(cilium_drop_count_total[5m]) by (reason)
+sum by (reason) (rate(cilium_drop_count_total[5m]))
 
 # Policy-related drops
-rate(cilium_drop_count_total{reason="POLICY_DENIED"}[5m])
+rate(cilium_drop_count_total{reason="Policy denied"}[5m])
 ```
 
 ## Architecture
@@ -84,7 +84,7 @@ groups:
         annotations:
           summary: "High packet drop rate: {{ $value }} drops/sec"
       - alert: CiliumPolicyDrops
-        expr: rate(cilium_drop_count_total{reason="POLICY_DENIED"}[5m]) > 10
+        expr: rate(cilium_drop_count_total{reason="Policy denied"}[5m]) > 10
         for: 5m
         labels:
           severity: info
@@ -98,9 +98,9 @@ groups:
 # Top drop reasons
 topk(5, sum by (reason) (rate(cilium_drop_count_total[5m])))
 
-# Drop rate per namespace
-sum by (destination_namespace) (
-  rate(cilium_drop_count_total[5m])
+# Drop rate per namespace (requires Hubble metrics with destinationContext=namespace)
+sum by (destination) (
+  rate(hubble_drop_total[5m])
 )
 ```
 
