@@ -10,96 +10,38 @@ Description: Configure Flux CD controllers to emit structured JSON log output fo
 
 ## Introduction
 
-By default, Flux CD controllers emit human-readable log lines that are convenient for terminal inspection but difficult to parse programmatically in a log aggregation system. Flux supports structured JSON logging that makes every log entry a machine-parseable JSON object with consistent fields like `level`, `ts`, `msg`, `controller`, and `reconciler`. This enables powerful queries in Loki, Elasticsearch, or CloudWatch such as "show all failed reconciliations for HelmRelease resources in the last hour."
+Flux CD controllers emit structured JSON logs by default in current installations. If your installation has been customized to use console logs, Flux supports setting JSON logging explicitly so every log entry is a machine-parseable JSON object with consistent fields like `level`, `ts`, `msg`, `controllerGroup`, `controllerKind`, and `reconcileID`. This enables powerful queries in Loki, Elasticsearch, or CloudWatch such as "show all failed reconciliations for HelmRelease resources in the last hour."
 
-Enabling structured logging is also a prerequisite for meaningful log-based alerting on Flux reconciliation events. With structured output, your Elastalert or Grafana alerting rules can filter precisely on `"level":"error"` and `"controller":"helmrelease"` without relying on fragile string matching.
+Enabling structured logging is also a prerequisite for meaningful log-based alerting on Flux reconciliation events. With structured output, your ElastAlert or Grafana alerting rules can filter precisely on `"level":"error"` and `"controllerKind":"HelmRelease"` without relying on fragile string matching.
 
 This post covers configuring all Flux controllers to emit structured JSON logs, verifying the output, and correlating Flux logs with your application logs in a unified log aggregation platform.
 
 ## Prerequisites
 
-- Flux CD v0.38+ bootstrapped to your cluster
+- Flux CD bootstrapped to your cluster
 - A log aggregation stack (EFK, PLG, or CloudWatch) collecting pod logs
 - `kubectl` and `flux` CLIs installed
 - Access to the `flux-system` namespace
 
 ## Step 1: Understand Flux Controller Log Configuration
 
-Flux controllers (source-controller, kustomize-controller, helm-controller, notification-controller, image-automation-controller) accept `--log-encoding` and `--log-level` flags. These are set through the controller Deployment spec.
+Flux controllers (source-controller, kustomize-controller, helm-controller, notification-controller, and the optional image-reflector-controller and image-automation-controller) accept `--log-encoding` and `--log-level` flags. These are set through the controller Deployment spec.
 
 The `flux bootstrap` command generates these Deployments in `flux-system`. To modify them in a GitOps-compatible way, patch the Deployments in your bootstrap repository.
 
 ## Step 2: Create a Kustomize Patch for All Controllers
 
-Add a strategic merge patch to your `flux-system` Kustomization that sets structured logging on all controllers.
+Add a JSON patch to your `flux-system` Kustomization that sets structured logging on all Flux controller Deployments without replacing their existing controller-specific arguments.
 
 ```yaml
 # clusters/production/flux-system/log-format-patch.yaml
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --watch-all-namespaces
-            - --log-level=info
-            # Enable JSON structured logging
-            - --log-encoding=json
-            - --enable-leader-election
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --watch-all-namespaces
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --watch-all-namespaces
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: notification-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --watch-all-namespaces
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --log-level=info
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --log-encoding=json
 ```
 
 ## Step 3: Apply the Patch via Kustomize
@@ -118,9 +60,10 @@ patches:
     target:
       kind: Deployment
       namespace: flux-system
+      labelSelector: app.kubernetes.io/part-of=flux
 ```
 
-Commit and push. Flux will reconcile its own controllers (the source-controller updates first, then triggers the kustomize-controller to apply the patch to all others).
+Commit and push. Flux will reconcile the bootstrap Kustomization and roll the controller Deployments with the updated arguments.
 
 ## Step 4: Verify Structured Log Output
 
@@ -129,7 +72,7 @@ Commit and push. Flux will reconcile its own controllers (the source-controller 
 kubectl logs -n flux-system deployment/source-controller --tail=10
 
 # Expected output format:
-# {"level":"info","ts":"2026-03-13T12:00:00.000Z","msg":"stored artifact for commit","controller":"gitrepository","controllerGroup":"source.toolkit.fluxcd.io","controllerKind":"GitRepository","name":"flux-system","namespace":"flux-system"}
+# {"level":"info","ts":"2026-03-13T12:00:00.000Z","msg":"stored artifact for commit","controllerGroup":"source.toolkit.fluxcd.io","controllerKind":"GitRepository","name":"flux-system","namespace":"flux-system","reconcileID":"..."}
 
 # Check helm-controller for reconciliation events
 kubectl logs -n flux-system deployment/helm-controller --tail=10 | jq .
@@ -140,7 +83,6 @@ kubectl logs -n flux-system deployment/helm-controller --tail=10 | jq .
 With JSON logs flowing to Elasticsearch, use these queries:
 
 ```json
-// Kibana/OpenSearch query: all Flux errors in the last hour
 {
   "query": {
     "bool": {
@@ -185,11 +127,12 @@ data:
         rules:
           - alert: FluxReconciliationFailed
             expr: |
-              count_over_time(
+              sum(count_over_time(
                 {namespace="flux-system"}
                 | json
-                | level="error"[5m]
-              ) > 3
+                | level="error"
+                | __error__=""[5m]
+              )) > 3
             for: 2m
             labels:
               severity: warning
