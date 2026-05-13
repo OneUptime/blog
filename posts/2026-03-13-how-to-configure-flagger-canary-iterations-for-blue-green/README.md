@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Canary, Blue-Green, Iteration, Kubernetes, Progressive Delivery
 
-Description: Learn how to configure Flagger's iterations parameter for blue-green deployments where traffic switches entirely from the old version to the new version after validation.
+Description: Learn how to configure Flagger's iterations parameter for blue-green deployments where the new version is validated before promotion.
 
 ---
 
@@ -12,12 +12,12 @@ Description: Learn how to configure Flagger's iterations parameter for blue-gree
 
 Blue-green deployment is a release strategy where two identical production environments (blue and green) are maintained. At any time, only one environment serves live traffic. When a new version is ready, traffic is switched from the current environment to the new one in a single step. If something goes wrong, traffic is switched back immediately.
 
-Flagger supports blue-green deployments through the `iterations` parameter. Instead of gradually shifting traffic percentages (as with canary weight-based analysis), Flagger runs the new version alongside the old one for a defined number of analysis iterations. If all iterations pass, traffic is switched entirely to the new version.
+Flagger supports blue-green deployments through the `iterations` parameter. Instead of gradually shifting traffic percentages (as with canary weight-based analysis), Flagger runs the new version alongside the old one for a defined number of analysis iterations. If all iterations pass, Flagger promotes the new version to primary; with service mesh providers, Flagger may briefly route traffic to the canary before updating and routing back to the primary.
 
 ## Prerequisites
 
 - A running Kubernetes cluster with Flagger installed
-- A service mesh or ingress controller (Istio, Linkerd, NGINX, etc.)
+- Flagger installed with the Kubernetes provider, or a supported service mesh or ingress controller (Istio, Linkerd, NGINX, etc.)
 - kubectl access to your cluster
 - A basic Deployment and Service to target
 
@@ -77,8 +77,8 @@ spec:
 With this configuration, Flagger will:
 1. Deploy the canary version alongside the primary
 2. Run analysis checks every 30 seconds
-3. After 10 consecutive successful checks, switch all traffic to the new version
-4. If 3 checks fail consecutively, rollback
+3. After 10 successful iterations, promote the canary spec to the primary deployment
+4. If 3 checks fail during analysis, rollback
 
 ## How Blue-Green Iterations Work
 
@@ -99,9 +99,9 @@ sequenceDiagram
     F->>F: ...
     F->>F: Check metrics (iteration 10/10)
     Note over F: All iterations passed
-    F->>C: Promote: switch traffic
-    U->>C: 100% traffic (now primary)
-    Note over P: Scaled down
+    F->>P: Promote: copy canary spec to primary
+    U->>P: 100% traffic (v2 primary)
+    Note over C: Scaled down
 ```
 
 ## Complete Blue-Green Example with Webhooks
@@ -158,7 +158,7 @@ spec:
 
 ## Choosing the Right Number of Iterations
 
-The number of iterations determines how long the canary version is tested before promotion:
+The number of iterations determines the minimum scheduled analysis time before promotion:
 
 ```text
 total_analysis_time = interval * iterations
@@ -212,6 +212,7 @@ spec:
 ```
 
 With mirroring enabled, Flagger copies real production requests to the canary (responses are discarded). This lets you test the canary under real traffic patterns without affecting users.
+Use mirroring only for idempotent or duplicate-safe requests, since the canary also receives a copy of each mirrored request.
 
 ## Monitoring Blue-Green Progress
 
@@ -229,14 +230,14 @@ kubectl describe canary backend-api -n production
 kubectl logs -n flagger-system deploy/flagger -f | grep backend-api
 ```
 
-During a blue-green rollout, the canary status will show:
+During a blue-green rollout, the events and status show iteration progress:
 
 ```text
-NAME          STATUS        WEIGHT   LASTTRANSITIONTIME
-backend-api   Progressing   0        2026-03-13T10:00:00Z
+Normal  Synced  flagger  Advance backend-api.production canary iteration 1/10
+Normal  Synced  flagger  Advance backend-api.production canary iteration 2/10
 ```
 
-Note that `WEIGHT` stays at 0 during iteration-based analysis because traffic is not being shifted progressively.
+Note that `WEIGHT` is provider-dependent during blue-green rollouts; use the canary events or `.status.iterations` to track iteration-based analysis.
 
 ## Triggering a Blue-Green Deployment
 
@@ -250,4 +251,4 @@ kubectl set image deployment/backend-api \
 
 ## Conclusion
 
-Blue-green deployments with Flagger provide atomic version switches after thorough validation. By using the `iterations` parameter instead of traffic weight shifting, you ensure the new version passes all health checks before any production traffic reaches it. Choose the number of iterations based on your service's criticality and the time needed to detect potential issues. For additional safety, combine iterations with traffic mirroring to test under real production traffic patterns.
+Blue-green deployments with Flagger provide promotion after thorough validation. By using the `iterations` parameter instead of traffic weight shifting, you ensure the new version passes the configured checks before promotion. Choose the number of iterations based on your service's criticality and the time needed to detect potential issues. For additional safety, combine iterations with traffic mirroring to test under real production traffic patterns when requests are safe to duplicate.
