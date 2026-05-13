@@ -348,13 +348,13 @@ Check that namespaces are created before dependent resources:
 
 ```bash
 # Verify namespace Kustomization is ready
-flux get kustomization namespaces -n flux-system
+flux get kustomizations namespaces -n flux-system
 
-# List all namespaces managed by Flux
+# List application namespaces
 kubectl get namespaces -l purpose=application
 
 # Check dependency status
-flux get kustomization --all-namespaces
+flux get kustomizations --all-namespaces
 ```
 
 ## Handling Namespace Deletion
@@ -371,7 +371,7 @@ kind: Namespace
 metadata:
   name: critical-app
   annotations:
-    flux.kustomize.toolkit.fluxcd.io/prune: disabled
+    kustomize.toolkit.fluxcd.io/prune: disabled
 ```
 
 The `prune: disabled` annotation prevents Flux from pruning this specific namespace even if the Kustomization has `prune: true`.
