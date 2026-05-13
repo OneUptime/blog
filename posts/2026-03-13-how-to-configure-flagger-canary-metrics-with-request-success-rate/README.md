@@ -146,12 +146,14 @@ With Linkerd, Flagger uses the `response_total` metric:
 sum(rate(response_total{
   namespace="demo",
   deployment=~"podinfo",
-  classification!="failure"
+  classification!="failure",
+  direction="inbound"
 }[1m]))
 /
 sum(rate(response_total{
   namespace="demo",
-  deployment=~"podinfo"
+  deployment=~"podinfo",
+  direction="inbound"
 }[1m])) * 100
 ```
 
@@ -162,13 +164,15 @@ With NGINX ingress controller, Flagger uses `nginx_ingress_controller_requests`:
 ```promql
 sum(rate(nginx_ingress_controller_requests{
   namespace="demo",
-  ingress=~"podinfo",
+  ingress="podinfo",
+  canary!="",
   status!~"5.*"
 }[1m]))
 /
 sum(rate(nginx_ingress_controller_requests{
   namespace="demo",
-  ingress=~"podinfo"
+  ingress="podinfo",
+  canary!=""
 }[1m])) * 100
 ```
 
