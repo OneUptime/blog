@@ -19,10 +19,11 @@ Strimzi manages MirrorMaker 2 through the `KafkaMirrorMaker2` CRD, which provide
 - Two Strimzi Kafka clusters (source and target) with TLS listeners
 - Flux CD managing both clusters or at least the one where MirrorMaker runs
 - `kubectl` and `flux` CLIs installed
+- The MirrorMaker 2 namespace must contain the Kafka user and cluster CA secrets referenced by the `KafkaMirrorMaker2` resource
 
 ## Step 1: Create KafkaUsers for MirrorMaker
 
-MirrorMaker needs authenticated access to both source and target clusters:
+MirrorMaker needs authenticated access to both source and target clusters. If MirrorMaker runs in a separate namespace, copy the generated user secrets and cluster CA secrets into that namespace before applying the `KafkaMirrorMaker2` resource.
 
 ```yaml
 # infrastructure/messaging/mirrormaker/mm2-source-user.yaml
@@ -112,6 +113,7 @@ metadata:
 spec:
   version: 3.7.1
   replicas: 2
+  connectCluster: target
 
   # Define both clusters
   clusters:
@@ -158,8 +160,7 @@ spec:
           # Topic filter: mirror all except internal topics
           topics: ".*"
           topics.exclude: "__.*|connect-.*|mirrormaker2-.*"
-          # Mirror with source cluster prefix: source.orders
-          source.cluster.alias: source
+          # DefaultReplicationPolicy mirrors with the source cluster prefix: source.orders
           offset.lag.max: "100"
 
       # Sync consumer group offsets
@@ -250,10 +251,10 @@ kubectl get kafkamirrormaker2 dr-mirror -n kafka
 
 # Check replication lag
 kubectl exec -n kafka dr-mirror-mirrormaker2-0 -- \
-  curl -s http://localhost:8083/connectors/dr-mirror->target->source.MirrorSourceConnector/status | jq .
+  curl -s 'http://localhost:8083/connectors/source->target.MirrorSourceConnector/status' | jq .
 
 # Check consumer group offsets are syncing
-kubectl exec -n kafka target-kafka-0 -n kafka-target -- \
+kubectl exec -n kafka-target target-cluster-kafka-0 -- \
   kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group my-app-consumer-group \
