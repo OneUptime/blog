@@ -102,21 +102,23 @@ spec:
 Install only the Flux components you actually need at the edge.
 
 ```bash
-# Bootstrap with only source and kustomize controllers (no Helm, no image automation)
+# Create a GitHub personal access token and export it as an env var
+export GITHUB_TOKEN=<my-token>
+
+# Bootstrap with source, kustomize, and notifications (no Helm, no image automation)
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/edge-site-001 \
-  --components=source-controller,kustomize-controller \
-  --token-env=GITHUB_TOKEN
+  --components=source-controller,kustomize-controller,notification-controller
 
 # Verify minimal footprint
 kubectl get pods -n flux-system
 kubectl top pods -n flux-system
 ```
 
-The `--components` flag allows you to install only the controllers you need, saving hundreds of megabytes of RAM.
+The `--components` flag allows you to install only the controllers you need, saving memory on constrained nodes.
 
 ## Step 4: Configure for Intermittent Connectivity
 
@@ -187,7 +189,7 @@ spec:
 
 ## Step 6: Monitor Edge Cluster Health Remotely
 
-Use Flux's notification system to report edge cluster health to a central monitoring system.
+Use Flux's notification system to report edge cluster health to a central monitoring system. This requires the `notification-controller` component to be installed.
 
 ```yaml
 # Send Flux events to a central webhook
