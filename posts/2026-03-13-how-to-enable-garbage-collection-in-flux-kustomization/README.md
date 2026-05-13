@@ -25,7 +25,7 @@ Flux's Kustomization controller provides a built-in garbage collection mechanism
 
 Flux garbage collection works by maintaining an inventory of all resources applied by a Kustomization. On each reconciliation cycle, Flux compares the current set of resources in the Git repository against the stored inventory. Any resources present in the inventory but missing from the repository are flagged for deletion.
 
-This mechanism relies on labels that Flux automatically applies to every resource it manages. These labels link each resource back to the Kustomization that created it, allowing Flux to identify which resources belong to which Kustomization.
+This mechanism relies on the Kustomization's status inventory. The inventory records the object references that were successfully applied, allowing Flux to identify which resources belong to which Kustomization.
 
 ## Enabling Garbage Collection
 
@@ -143,9 +143,9 @@ kubectl get service web-app -n default
 
 Garbage collection only affects resources that Flux has applied and tracks in its inventory. Resources created manually with `kubectl apply` or by other controllers are not affected.
 
-If you have `prune: false` (the default), Flux will never delete resources from the cluster, even if they are removed from Git. This is the safer default but requires manual cleanup of removed resources.
+If you set `prune: false`, Flux will not delete resources from the cluster when they are removed from Git. This is the safer setting but requires manual cleanup of removed resources.
 
-When you first enable `prune: true` on an existing Kustomization, Flux will not immediately delete anything. It will build the inventory from the current set of resources in Git and only prune on subsequent reconciliations when resources are actually removed.
+When you enable `prune: true` on an existing Kustomization, Flux will compare the current source output with the Kustomization inventory on the next reconciliation. If the inventory contains resources that are no longer present in Git, they can be pruned.
 
 Be careful when reorganizing your Git repository structure. Moving manifests to a different path without updating the Kustomization `path` field could cause Flux to see all resources as removed and delete them from the cluster.
 
@@ -179,4 +179,4 @@ The `timeout` field controls how long Flux waits for health checks before consid
 
 ## Conclusion
 
-Enabling garbage collection in Flux Kustomization is a critical step for maintaining a clean and consistent GitOps workflow. By setting `prune: true`, you ensure that your cluster state always reflects what is defined in your Git repository. This eliminates orphaned resources, reduces security risks from abandoned workloads, and keeps your cluster tidy. Always test garbage collection behavior in a staging environment before enabling it in production, and consider using labels or annotations to protect resources that should not be pruned.
+Enabling garbage collection in Flux Kustomization is a critical step for maintaining a clean and consistent GitOps workflow. By setting `prune: true`, you ensure that your cluster state always reflects what is defined in your Git repository. This eliminates orphaned resources, reduces security risks from abandoned workloads, and keeps your cluster tidy. Always test garbage collection behavior in a staging environment before enabling it in production, and consider using the `kustomize.toolkit.fluxcd.io/prune: disabled` label or annotation to protect resources that should not be pruned.
