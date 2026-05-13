@@ -16,7 +16,7 @@ Native routing in eBPF mode eliminates the need for VXLAN or IP-in-IP encapsulat
 
 ## Prerequisites
 
-- Linux kernel 5.3+ (5.8+ recommended for full feature support)
+- Linux kernel 5.3+ (newer kernels recommended for the most complete feature support)
 - Calico v3.13+ with eBPF support
 - kube-proxy disabled or replaced by Calico eBPF
 - kubectl and calicoctl access
@@ -38,8 +38,8 @@ calicoctl patch felixconfiguration default --type merge   --patch '{"spec":{"bpf
 # Check eBPF programs loaded on a node
 kubectl exec -n calico-system ds/calico-node -- bpftool prog list | grep calico
 
-# Verify kube-proxy replacement
-kubectl exec -n calico-system ds/calico-node -- calico-node -bpf-log-level Debug
+# Verify kube-proxy replacement (inspect BPF NAT programming)
+kubectl exec -n calico-system ds/calico-node -- calico-node -bpf nat dump
 
 # Test connectivity
 kubectl run test1 --image=busybox -- sleep 3600
