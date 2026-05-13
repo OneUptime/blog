@@ -37,32 +37,38 @@ VPP uplink documentation is operationally critical because uplink misconfigurati
 
 ## Documentation Component 2: Uplink Configuration Reference
 
-```markdown
+````markdown
 ## Uplink Configuration Reference (ConfigMap: calico-vpp-config)
 
 ### Current Configuration (2026-03-13)
 ```yaml
-CALICOVPP_INTERFACES:
-  uplinkInterfaces:
-    - interfaceName: eth0
-      vppDriver: dpdk
-      newDriverName: vfio-pci
-      rxMode: adaptive
-      numRxQueues: 4
-      numTxQueues: 4
-      rxQueueSize: 4096
-      txQueueSize: 4096
+CALICOVPP_INTERFACES: |-
+  {
+    "uplinkInterfaces": [
+      {
+        "interfaceName": "eth0",
+        "vppDriver": "dpdk",
+        "newDriver": "vfio-pci",
+        "rxMode": "adaptive",
+        "rx": 4,
+        "tx": 4,
+        "rxqsz": 4096,
+        "txqsz": 4096
+      }
+    ]
+  }
+```
 
 ### Why These Settings Were Chosen
-- numRxQueues: 4 = Matches 4 isolated VPP worker cores
-- rxQueueSize: 4096 = Handles 10G burst without overflow
+- rx: 4 = Matches 4 isolated VPP worker cores
+- rxqsz: 4096 = Handles 10G burst without overflow
 - rxMode: adaptive = Best balance for mixed low/high load
-- vfio-pci = Required for IOMMU protection
-```plaintext
+- newDriver: vfio-pci = Binds the interface to vfio-pci before passing it to VPP
+````
 
 ## Documentation Component 3: Uplink Change Procedure
 
-```markdown
+````markdown
 ## Procedure: Change VPP Uplink Configuration
 
 ### Risk Level: HIGH - Can cause node network loss
@@ -82,17 +88,21 @@ CALICOVPP_INTERFACES:
    kubectl edit configmap calico-vpp-config -n calico-vpp-dataplane
 
 5. Restart VPP pod on the node:
-   kubectl delete pod -n calico-vpp-dataplane -l app=calico-vpp-node \
+   kubectl delete pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node \
      --field-selector spec.nodeName=<node>
 
 6. Verify via VPP CLI:
-   kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+   kubectl exec -n calico-vpp-dataplane \
+     "$(kubectl get pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node \
+       --field-selector spec.nodeName=<node> \
+       -o jsonpath='{.items[0].metadata.name}')" \
+     -c vpp -- \
      vppctl show hardware-interfaces
 
 7. Run traffic test before uncordoning
 8. Uncordon: kubectl uncordon <node>
 9. Update this documentation
-```plaintext
+````
 
 ## Documentation Component 4: Recovery Procedure
 
@@ -104,7 +114,9 @@ Use out-of-band console (IPMI/iDRAC/cloud console)
 
 ### Recovery Steps
 1. SSH to node via console
-2. Stop VPP: systemctl stop vpp
+2. Stop kubelet and the Calico VPP container:
+   systemctl stop kubelet
+   crictl stop $(crictl ps --name vpp -q)
 3. Re-bind NIC to Linux driver:
    dpdk-devbind.py -b ixgbe 0000:00:0a.0  # Use your actual driver name
 4. Bring interface up:
@@ -112,10 +124,8 @@ Use out-of-band console (IPMI/iDRAC/cloud console)
    dhclient eth0  # Or configure static IP
 5. Now you can SSH to the node normally
 6. Fix the VPP configuration before restarting
-```plaintext
+```
 
 ## Conclusion
 
 Documenting Calico VPP uplink configuration requires capturing hardware details (NIC model, PCI address, driver version), configuration rationale, a risk-aware change procedure with out-of-band access as a prerequisite, and an emergency recovery procedure. The out-of-band access requirement must be prominently documented - teams that skip this step are one uplink misconfiguration away from a node that requires data center or cloud provider intervention to recover.
-
-```
