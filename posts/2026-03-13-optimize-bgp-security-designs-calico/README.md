@@ -52,11 +52,13 @@ metadata:
 spec:
   importV4:
   - action: Reject
+    matchOperator: In
     cidr: 0.0.0.0/0
     prefixLength:
       min: 0
       max: 7  # Reject excessively broad routes
   - action: Reject
+    matchOperator: In
     cidr: 0.0.0.0/0
     prefixLength:
       min: 25
