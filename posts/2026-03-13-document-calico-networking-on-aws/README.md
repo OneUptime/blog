@@ -33,7 +33,7 @@ graph TD
             C[Worker Node 10.0.2.10<br/>Pod CIDR 192.168.2.0/24]
         end
         D[Security Group: k8s-workers<br/>UDP 4789 VXLAN allowed]
-        E[VPC Route Table<br/>192.168.x.x -> respective nodes]
+        E[VPC Route Table<br/>Subnet and egress routes]
     end
 ```
 
@@ -51,7 +51,8 @@ graph TD
 ### Calico Pod Network
 - **IP Pool**: 192.168.0.0/16
 - **Block Size**: /24 (256 IPs per node)
-- **Encapsulation**: CrossSubnet (VXLAN within AZ, encap across AZ)
+- **Encapsulation**: VXLANCrossSubnet (encapsulated across subnet boundaries, unencapsulated within a subnet)
+- **NAT Outgoing**: Enabled for workload-to-internet traffic
 - **Max Nodes Supported**: 256 (with /16 pool and /24 blocks)
 
 ### Reserved Ranges
@@ -75,7 +76,7 @@ graph TD
 | Protocol | Port | Source | Purpose |
 |---------|------|--------|---------|
 | UDP | 4789 | sg-workers | VXLAN encapsulation |
-| Protocol 4 | - | sg-workers | IP-in-IP (backup) |
+| Protocol 4 | - | sg-workers | IP-in-IP, if enabled |
 | TCP | 10250 | sg-control-plane | Kubelet |
 ```
 
@@ -111,7 +112,7 @@ graph TD
 |---------|-------------|-----------|
 | Cross-AZ ping fails | Source/dest check enabled | Disable on affected instance |
 | Pods can't communicate | Security group missing VXLAN rule | Add UDP 4789 rule |
-| Pods can't reach internet | NAT gateway missing or route table | Check VPC routes |
+| Pods can't reach internet | Calico outgoing NAT disabled, NAT gateway missing, or route table issue | Check Calico IP pool natOutgoing and VPC routes |
 | IP allocation fails | IP pool exhausted | Expand Calico IP pool |
 ```
 
