@@ -17,6 +17,7 @@ Managing Middleware through Flux CD creates a library of reusable gateway polici
 ## Prerequisites
 
 - Traefik deployed in your cluster (see the Traefik Let's Encrypt guide)
+- Traefik's Kubernetes CRD provider configured with `allowCrossNamespace=true` if applications will reference Middleware resources from the `traefik` namespace
 - Flux CD bootstrapped and connected to your Git repository
 - kubectl with access to your cluster
 - Basic understanding of Traefik IngressRoute resources
@@ -53,8 +54,6 @@ spec:
       X-Permitted-Cross-Domain-Policies: "none"
       Referrer-Policy: "strict-origin-when-cross-origin"
       Permissions-Policy: "camera=(), microphone=(), geolocation=()"
-    # Remove server identification headers
-    customRequestHeaders:
       X-Powered-By: ""
       Server: ""
 ```
@@ -79,7 +78,7 @@ spec:
     period: 1s
     sourceCriterion:
       ipStrategy:
-        depth: 1  # Trust the first IP in X-Forwarded-For
+        depth: 1  # Use the rightmost IP in X-Forwarded-For
 ---
 # Strict rate limit for authentication endpoints
 apiVersion: traefik.io/v1alpha1
@@ -124,7 +123,7 @@ metadata:
 spec:
   basicAuth:
     # Reference a secret containing htpasswd-formatted credentials
-    # Create with: htpasswd -nb admin STRONG_PASSWORD | base64
+    # Create with: htpasswd -nb admin STRONG_PASSWORD
     secret: traefik-dashboard-auth
     # Remove the Authorization header before forwarding to upstream
     removeHeader: true
@@ -170,7 +169,6 @@ spec:
   stripPrefix:
     prefixes:
       - /api/v1
-    forceSlash: true
 ---
 # Redirect HTTP to HTTPS
 apiVersion: traefik.io/v1alpha1
@@ -200,11 +198,8 @@ spec:
   chain:
     middlewares:
       - name: security-headers
-        namespace: traefik
       - name: rate-limit-standard
-        namespace: traefik
       - name: compress
-        namespace: traefik
 ---
 # Auth endpoint chain with strict rate limiting
 apiVersion: traefik.io/v1alpha1
@@ -216,9 +211,7 @@ spec:
   chain:
     middlewares:
       - name: security-headers
-        namespace: traefik
       - name: rate-limit-auth
-        namespace: traefik
 ```
 
 ## Step 6: Apply Middleware to IngressRoutes
@@ -281,10 +274,10 @@ spec:
 
 ## Best Practices
 
-- Store shared Middleware resources in the `traefik` namespace so they can be referenced from any application namespace; application-specific Middleware can live in application namespaces.
+- Store shared Middleware resources in the `traefik` namespace when Traefik's Kubernetes CRD provider has `allowCrossNamespace=true`; otherwise define Middleware resources in the same namespace as the IngressRoute that references them. Application-specific Middleware can live in application namespaces.
 - Use Middleware chains to compose complex policies from simple building blocks; this makes the policy library easy to understand and reduces duplication.
-- Validate Middleware configuration changes against Traefik's `/api/rawdata` endpoint before merging; invalid Middleware silently fails and leaves routes unprotected.
-- Apply security headers Middleware globally using Traefik's `http.middlewares` default configuration rather than attaching it to every IngressRoute individually.
+- Validate Middleware configuration changes against Traefik's `/api/rawdata` endpoint before merging; invalid Middleware references are logged by Traefik and can leave affected routes without the intended protection.
+- Apply security headers Middleware globally using Traefik's `entryPoints.<name>.http.middlewares` default configuration rather than attaching it to every IngressRoute individually.
 - Test rate limiting behavior under load before setting production limits; too-low limits cause legitimate traffic to be rejected; too-high limits provide no protection.
 - Document each Middleware's purpose in a label or annotation so IngressRoute authors understand what protection each chain provides.
 
