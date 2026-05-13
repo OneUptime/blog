@@ -80,12 +80,12 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: kube-system
-    - podSelector:
+      podSelector:
         matchLabels:
           k8s-app: metrics-server
     ports:
     - protocol: TCP
-      port: 4443
+      port: 10250
 ```
 
 **Fix 3: Fix incorrect namespaceSelector labels**
