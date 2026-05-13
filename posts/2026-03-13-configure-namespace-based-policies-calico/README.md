@@ -61,11 +61,11 @@ spec:
   ingress:
     - action: Allow
       source:
-        namespaceSelector: environment == 'production'
+        namespaceSelector: projectcalico.org/name == 'production'
   egress:
     - action: Allow
       destination:
-        namespaceSelector: environment == 'production'
+        namespaceSelector: projectcalico.org/name == 'production'
   types:
     - Ingress
     - Egress
@@ -97,12 +97,11 @@ spec:
 flowchart TD
     A[production ns] -->|Allowed: intra-ns| A
     B[staging ns] -->|BLOCKED by default deny| A
-    C[monitoring ns
-team=observability] -->|Allowed: metrics ports| A
+    C["monitoring ns<br/>team=observability"] -->|Allowed: metrics ports| A
     D[dev ns] -->|BLOCKED| A
-    E[kube-system ns] -->|Allowed: system traffic| A
+    E[kube-system ns] -->|Requires explicit allow rule| A
 ```
 
 ## Conclusion
 
-Namespace-based policies in Calico provide a clean organizational layer for cluster security. By labeling namespaces with meaningful metadata and writing policies that reference those labels, you create dynamic isolation that scales as your cluster grows. New namespaces get isolation automatically when you apply the right labels - no per-namespace policy changes required.
+Namespace-based policies in Calico provide a clean organizational layer for cluster security. By labeling namespaces with meaningful metadata and writing policies that reference those labels, you create dynamic isolation that scales as your cluster grows. New namespaces can be covered automatically by GlobalNetworkPolicy rules that select the right labels, while namespace-scoped NetworkPolicies should be applied to each namespace that needs local controls.
