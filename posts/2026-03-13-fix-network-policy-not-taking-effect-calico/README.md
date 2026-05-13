@@ -40,8 +40,8 @@ kubectl get networkpolicy <policy-name> -n <namespace> -o yaml | grep -A 5 "podS
 kubectl get pod <pod-name> -n <namespace> --show-labels
 
 # Fix the NetworkPolicy selector to match actual labels
-kubectl patch networkpolicy <policy-name> -n <namespace> --type=json \
-  -p='[{"op":"replace","path":"/spec/podSelector/matchLabels","value":{"app":"<correct-label>"}}]'
+kubectl patch networkpolicy <policy-name> -n <namespace> --type=merge \
+  -p='{"spec":{"podSelector":{"matchLabels":{"app":"<correct-label>"}}}}'
 
 # Or recreate with correct selector
 kubectl apply -f - <<EOF
@@ -61,11 +61,12 @@ spec:
 EOF
 ```
 
-**Fix 2: Ensure policyTypes is specified**
+**Fix 2: Ensure policyTypes includes the intended directions**
 
 ```yaml
-# Without policyTypes, Kubernetes infers the type from the rules
-# Be explicit to avoid confusion:
+# Without policyTypes, Kubernetes always includes Ingress and includes
+# Egress only when egress rules are present. Be explicit to avoid confusion,
+# especially for default-deny egress policies with no egress rules.
 spec:
   podSelector: ...
   policyTypes:
@@ -84,7 +85,7 @@ metadata:
   name: my-policy
 spec:
   order: 200  # Lower priority than your baseline policies
-  selector: ...
+  selector: all()
 ```
 
 **Fix 4: Restart Felix on the affected node to re-sync rules**
@@ -95,26 +96,25 @@ NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
 kubectl delete pod $NODE_POD -n kube-system
 
 # Wait for restart
-kubectl wait pods -n kube-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=<pod-node> \
-  --for=condition=Ready --timeout=120s
+kubectl rollout status daemonset/calico-node -n kube-system --timeout=120s
 ```
 
 **Verify policy is being enforced**
 
 ```bash
 # Deploy a test pod and verify traffic is blocked/allowed as expected
-kubectl run test-src --image=busybox --restart=Never -- sleep 120
-kubectl run test-dst --image=busybox --labels="app=<policy-target-label>" \
-  --restart=Never -- sleep 120
+kubectl run test-src -n <namespace> --image=busybox --restart=Never -- sleep 120
+kubectl run test-dst -n <namespace> --image=nginx \
+  --labels="app=<policy-target-label>" --restart=Never
 
-kubectl wait pod/test-src pod/test-dst --for=condition=Ready --timeout=60s
+kubectl wait -n <namespace> pod/test-src pod/test-dst \
+  --for=condition=Ready --timeout=60s
 
-DST_IP=$(kubectl get pod test-dst -o jsonpath='{.status.podIP}')
-kubectl exec test-src -- ping -c 2 -W 3 $DST_IP
+DST_IP=$(kubectl get pod test-dst -n <namespace> -o jsonpath='{.status.podIP}')
+kubectl exec -n <namespace> test-src -- wget -T 3 -O- http://$DST_IP
 # Expected: blocked or allowed depending on your policy intent
 
-kubectl delete pod test-src test-dst
+kubectl delete pod test-src test-dst -n <namespace>
 ```
 
 ```mermaid
@@ -130,7 +130,7 @@ flowchart TD
 ## Prevention
 
 - Always test policies with known allow/block scenarios after applying
-- Use `kubectl describe networkpolicy` to see the Resolved selector
+- Use `kubectl describe networkpolicy` to see how Kubernetes interpreted the policy
 - Set explicit policyTypes in all NetworkPolicy resources
 
 ## Conclusion
