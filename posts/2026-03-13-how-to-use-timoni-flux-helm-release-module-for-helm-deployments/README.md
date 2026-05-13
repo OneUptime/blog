@@ -10,9 +10,9 @@ Description: Learn how to use the Timoni flux-helm-release module to manage Helm
 
 ## Introduction
 
-Helm charts are the most widely used packaging format for Kubernetes applications. Managing Helm deployments through Flux requires creating HelmRepository, HelmChart, and HelmRelease resources. The Timoni flux-helm-release module encapsulates this pattern, generating all required Flux resources from a single values configuration. With CUE-based type checking, you get validation at build time rather than discovering configuration errors during deployment.
+Helm charts are the most widely used packaging format for Kubernetes applications. Managing Helm deployments through Flux requires creating HelmRepository or OCIRepository sources and HelmRelease resources. The Timoni flux-helm-release module encapsulates this pattern, generating the required Flux resources from a single values configuration. With CUE-based type checking, you get validation at build time rather than discovering configuration errors during deployment.
 
-This guide shows you how to deploy Helm charts using the Timoni flux-helm-release module, covering chart sources, values configuration, upgrades, and rollback strategies.
+This guide shows you how to deploy Helm charts using the Timoni flux-helm-release module, covering chart sources, values configuration, retries, and dependencies.
 
 ## Prerequisites
 
@@ -26,7 +26,9 @@ This guide shows you how to deploy Helm charts using the Timoni flux-helm-releas
 View the available configuration options:
 
 ```bash
-timoni mod values oci://ghcr.io/stefanprodan/modules/flux-helm-release
+timoni mod pull oci://ghcr.io/stefanprodan/modules/flux-helm-release \
+  --output ./flux-helm-release
+timoni mod show config ./flux-helm-release
 ```
 
 ## Step 2: Deploy a Chart from a Helm Repository
@@ -39,26 +41,24 @@ Create a values file for deploying a chart from a traditional Helm repository:
 values:
   repository:
     url: "https://charts.bitnami.com/bitnami"
-    type: "default"
-    interval: "1h"
   chart:
     name: "redis"
     version: "18.x"
-  release:
-    interval: "10m"
+  sync:
+    interval: 10
     targetNamespace: "cache"
     createNamespace: true
-    values:
-      architecture: replication
-      auth:
-        enabled: true
-        existingSecret: redis-credentials
-      replica:
-        replicaCount: 3
-        persistence:
-          size: 10Gi
-      metrics:
-        enabled: true
+  helmValues:
+    architecture: replication
+    auth:
+      enabled: true
+      existingSecret: redis-credentials
+    replica:
+      replicaCount: 3
+      persistence:
+        size: 10Gi
+    metrics:
+      enabled: true
 ```
 
 Build to preview the generated resources:
@@ -86,25 +86,23 @@ For charts hosted in OCI registries:
 values:
   repository:
     url: "oci://ghcr.io/your-org/charts"
-    type: "oci"
-    interval: "1h"
   chart:
     name: "my-app"
     version: "2.1.0"
-  release:
-    interval: "10m"
+  sync:
+    interval: 10
     targetNamespace: "production"
-    values:
-      replicaCount: 3
-      image:
-        repository: ghcr.io/your-org/my-app
-        tag: "v2.1.0"
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          memory: 512Mi
+  helmValues:
+    replicaCount: 3
+    image:
+      repository: ghcr.io/your-org/my-app
+      tag: "v2.1.0"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
 ```
 
 ```bash
@@ -113,9 +111,9 @@ timoni apply my-app oci://ghcr.io/stefanprodan/modules/flux-helm-release \
   --namespace flux-system
 ```
 
-## Step 4: Configure Upgrade and Rollback
+## Step 4: Configure Reconciliation Retries
 
-Set up upgrade strategies and automatic rollback:
+Set up retry behavior for failed installs or upgrades:
 
 ```yaml
 # helm-upgrade-values.yaml
@@ -125,29 +123,18 @@ values:
   chart:
     name: "postgresql"
     version: "15.x"
-  release:
-    interval: "10m"
+  sync:
+    interval: 10
+    retries: 3
     targetNamespace: "database"
     createNamespace: true
-    install:
-      remediation:
-        retries: 3
-    upgrade:
-      remediation:
-        retries: 3
-        remediateLastFailure: true
-      cleanupOnFail: true
-      crds: CreateReplace
-    rollback:
-      timeout: "5m"
-      cleanupOnFail: true
-    values:
-      auth:
-        postgresPassword: "${POSTGRES_PASSWORD}"
-        database: mydb
-      primary:
-        persistence:
-          size: 100Gi
+  helmValues:
+    auth:
+      postgresPassword: "change-me"
+      database: mydb
+    primary:
+      persistence:
+        size: 100Gi
 ```
 
 ## Step 5: Use Values from Secrets and ConfigMaps
@@ -162,21 +149,21 @@ values:
   chart:
     name: "redis"
     version: "18.x"
-  release:
-    interval: "10m"
+  sync:
+    interval: 10
     targetNamespace: "cache"
-    valuesFrom:
-      - kind: ConfigMap
-        name: redis-base-config
-        valuesKey: values.yaml
-      - kind: Secret
-        name: redis-credentials
-        valuesKey: auth-values.yaml
-        targetPath: auth
-    values:
-      architecture: replication
-      replica:
-        replicaCount: 3
+  helmValuesFrom:
+    - kind: ConfigMap
+      name: redis-base-config
+      valuesKey: values.yaml
+    - kind: Secret
+      name: redis-credentials
+      valuesKey: auth-values.yaml
+      targetPath: auth
+  helmValues:
+    architecture: replication
+    replica:
+      replicaCount: 3
 ```
 
 Create the ConfigMap and Secret first:
@@ -238,21 +225,20 @@ Configure dependency ordering:
 values:
   repository:
     url: "oci://ghcr.io/your-org/charts"
-    type: "oci"
   chart:
     name: "my-app"
     version: "2.1.0"
-  release:
-    interval: "10m"
+  sync:
+    interval: 10
     targetNamespace: "production"
-    dependsOn:
-      - name: "redis-cache"
-      - name: "postgresql"
-    values:
-      database:
-        host: postgresql.database.svc
-      cache:
-        host: redis-master.cache.svc
+  dependsOn:
+    - name: "redis-cache"
+    - name: "postgresql"
+  helmValues:
+    database:
+      host: postgresql.database.svc
+    cache:
+      host: redis-master.cache.svc
 ```
 
 ## Step 8: Monitor Helm Release Status
@@ -274,4 +260,4 @@ kubectl describe helmrelease redis-cache -n flux-system
 
 ## Conclusion
 
-The Timoni flux-helm-release module provides a consistent, validated way to manage Helm deployments through Flux. By encapsulating the HelmRepository, HelmChart, and HelmRelease resources in a single module with CUE validation, you get type-safe Helm deployment configurations that catch errors before they reach your cluster. The module supports all standard Helm deployment patterns including version pinning, upgrade strategies, rollback configuration, and external values sources, making it a reliable foundation for managing Helm-based infrastructure with GitOps.
+The Timoni flux-helm-release module provides a consistent, validated way to manage Helm deployments through Flux. By encapsulating the Flux source and HelmRelease resources in a single module with CUE validation, you get type-safe Helm deployment configurations that catch errors before they reach your cluster. The module supports common Helm deployment patterns including version pinning, reconciliation retries, dependencies, and external values sources, making it a reliable foundation for managing Helm-based infrastructure with GitOps.
