@@ -12,11 +12,11 @@ Description: How to configure Flux CD to authenticate with Azure Container Regis
 
 Azure Container Registry (ACR) is a managed container registry service in Azure. When using Flux CD to pull OCI artifacts or Helm charts stored in ACR, you need to configure authentication. Azure offers several authentication methods, and Flux has built-in support for Azure through its provider mechanism.
 
-This guide covers the recommended approach using Flux's built-in Azure provider with workload identity, as well as alternatives using ACR tokens, service principals, and admin credentials.
+This guide covers the recommended approach using Flux's built-in Azure provider with workload identity, as well as alternatives using ACR tokens and service principals.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later), preferably AKS
+- A Kubernetes cluster running a version supported by your Flux release, preferably AKS
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - An Azure Container Registry with OCI artifacts or Helm charts
@@ -59,6 +59,11 @@ IDENTITY_CLIENT_ID=$(az identity show \
   --name flux-source-controller \
   --resource-group your-resource-group \
   --query "clientId" -o tsv)
+
+IDENTITY_TENANT_ID=$(az identity show \
+  --name flux-source-controller \
+  --resource-group your-resource-group \
+  --query "tenantId" -o tsv)
 ```
 
 ### Step 3: Grant ACR Pull Access
@@ -84,7 +89,7 @@ az identity federated-credential create \
   --resource-group your-resource-group \
   --issuer $AKS_OIDC_ISSUER \
   --subject system:serviceaccount:flux-system:source-controller \
-  --audience api://AzureADTokenExchange
+  --audiences api://AzureADTokenExchange
 ```
 
 ### Step 5: Annotate the Source Controller Service Account
@@ -92,7 +97,8 @@ az identity federated-credential create \
 ```bash
 kubectl annotate serviceaccount source-controller \
   --namespace flux-system \
-  azure.workload.identity/client-id=$IDENTITY_CLIENT_ID
+  azure.workload.identity/client-id=$IDENTITY_CLIENT_ID \
+  azure.workload.identity/tenant-id=$IDENTITY_TENANT_ID
 ```
 
 Label the Source Controller pod for workload identity:
