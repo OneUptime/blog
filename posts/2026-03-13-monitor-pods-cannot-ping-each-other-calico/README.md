@@ -35,10 +35,10 @@ This guide covers deploying a synthetic connectivity probe DaemonSet, setting up
 
 calicoctl get felixconfiguration default -o yaml | grep prometheus
 
-# Check current drop counters
+# Check dataplane failure counters and ipset errors
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec $NODE_POD -n kube-system -- wget -qO- http://localhost:9091/metrics \
-  | grep "felix_iptables_dropped" | head -10
+  | grep -E "felix_int_dataplane_failures|felix_ipset_errors|felix_iptables_(restore|save)_errors" | head -10
 ```
 
 ## Solution
@@ -68,9 +68,11 @@ spec:
         - -c
         - |
           while true; do
-            # Ping the cluster DNS service
-            ping -c 1 -W 2 10.96.0.10 > /dev/null 2>&1
-            echo "DNS ping exit: $?"
+            # Probe the cluster DNS service on TCP/53. ICMP to a Service
+            # ClusterIP is not handled by kube-proxy and is unreliable, so
+            # use a TCP connect check instead of ping.
+            nc -z -w 2 10.96.0.10 53 > /dev/null 2>&1
+            echo "DNS probe exit: $?"
             sleep 10
           done
 ```
@@ -95,23 +97,23 @@ spec:
   groups:
   - name: calico.connectivity
     rules:
-    - alert: CalicoHighPolicyDropRate
+    - alert: CalicoDataplaneFailures
       expr: |
-        rate(felix_iptables_dropped_total{direction="incoming"}[5m]) > 100
+        rate(felix_int_dataplane_failures[5m]) > 0
       for: 2m
       labels:
         severity: warning
       annotations:
-        summary: "High Calico policy drop rate on {{ $labels.instance }}"
-        description: "Felix is dropping {{ $value }} packets/sec on {{ $labels.instance }}"
-    - alert: CalicoIPIPTunnelDown
+        summary: "Calico Felix dataplane failures on {{ $labels.instance }}"
+        description: "Felix is reporting {{ $value }} dataplane failures/sec on {{ $labels.instance }}"
+    - alert: CalicoIPSetErrors
       expr: |
-        felix_ipset_errors_total > 0
+        rate(felix_ipset_errors[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Calico IPSet errors on {{ $labels.instance }}"
+        summary: "Calico ipset errors on {{ $labels.instance }}"
 ```
 
 **Step 4: Synthetic pod ping CronJob**
@@ -135,7 +137,10 @@ spec:
             - /bin/sh
             - -c
             - |
-              if ! ping -c 2 -W 3 10.96.0.10; then
+              # Test DNS resolution through kube-dns. ICMP to a Service
+              # ClusterIP is not reliably handled by kube-proxy, so verify
+              # connectivity by performing an actual DNS query instead.
+              if ! nslookup kubernetes.default.svc.cluster.local 10.96.0.10; then
                 echo "CONNECTIVITY FAILURE: Cannot reach kube-dns"
                 exit 1
               fi
