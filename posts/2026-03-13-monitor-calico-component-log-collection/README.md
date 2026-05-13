@@ -36,7 +36,8 @@ spec:
 
         - alert: CalicoLogSilence
           expr: |
-            absent(fluentbit_output_records_total{name=~".*calico.*"})
+            sum(rate(fluentbit_output_proc_records_total{name=~".*calico.*"}[15m])) == 0
+            or absent(fluentbit_output_proc_records_total{name=~".*calico.*"})
           for: 15m
           annotations:
             summary: "No Calico logs have been forwarded in 15 minutes"
@@ -49,12 +50,12 @@ spec:
   "title": "Calico Log Collection Health",
   "panels": [
     {
-      "title": "Log Records per Component",
-      "type": "graph",
+      "title": "Forwarded Records per Calico Output",
+      "type": "timeseries",
       "targets": [
         {
-          "expr": "rate(fluentbit_output_records_total{tag=~\"kube.calico-system.*\"}[5m])",
-          "legendFormat": "{{tag}}"
+          "expr": "rate(fluentbit_output_proc_records_total{name=~\".*calico.*\"}[5m])",
+          "legendFormat": "{{name}}"
         }
       ]
     },
@@ -107,12 +108,16 @@ flowchart LR
 # Query Loki for last log timestamp per calico-node pod
 # Using logcli (Loki CLI tool)
 
-logcli query \
-  '{namespace="calico-system", container="calico-node"}' \
-  --limit=1 \
-  --since=1h \
-  --output=jsonl | \
-  jq -r '.labels.pod + ": " + .timestamp'
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[*].metadata.name}'); do
+  logcli query \
+    "{namespace=\"calico-system\", container=\"calico-node\", pod=\"${pod}\"}" \
+    --limit=1 \
+    --since=1h \
+    --output=jsonl \
+    --quiet | \
+    jq -r '.labels.pod + ": " + .timestamp'
+done
 
 # If any pod's last timestamp is > 10 minutes ago: log gap detected
 ```
