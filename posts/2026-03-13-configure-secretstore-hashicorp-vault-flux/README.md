@@ -31,10 +31,19 @@ This guide covers configuring a `SecretStore` for HashiCorp Vault using Kubernet
 vault auth enable kubernetes
 
 # Configure the Kubernetes auth method with cluster details
+KUBERNETES_HOST="$(kubectl config view --raw --minify --flatten \
+  -o jsonpath='{.clusters[0].cluster.server}')"
+KUBERNETES_CA_CERT="$(kubectl config view --raw --minify --flatten \
+  -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 --decode)"
+
 vault write auth/kubernetes/config \
-  kubernetes_host="https://$(kubectl get svc kubernetes -n default \
-    -o jsonpath='{.spec.clusterIP}'):443" \
-  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  kubernetes_host="$KUBERNETES_HOST" \
+  kubernetes_ca_cert="$KUBERNETES_CA_CERT"
+
+# Allow Vault to validate the ESO ServiceAccount token with the Kubernetes TokenReview API
+kubectl create clusterrolebinding external-secrets-tokenreview \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=external-secrets:external-secrets
 
 # Create a Vault policy for ESO to read secrets
 vault policy write eso-policy - <<EOF
@@ -50,15 +59,16 @@ EOF
 vault write auth/kubernetes/role/eso-role \
   bound_service_account_names=external-secrets \
   bound_service_account_namespaces=external-secrets \
-  policies=eso-policy \
-  ttl=1h
+  audience=vault \
+  token_policies=eso-policy \
+  token_ttl=1h
 ```
 
 ## Step 2: Configure the SecretStore for Vault (Kubernetes Auth)
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-vault.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: hashicorp-vault
@@ -84,6 +94,8 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 ## Step 3: Configure SecretStore with Vault Token (Static Auth)
@@ -97,7 +109,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: vault-token
-  namespace: external-secrets
+  namespace: default
 type: Opaque
 stringData:
   # A Vault token with the eso-policy attached
@@ -106,7 +118,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-vault-token.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: hashicorp-vault-token
@@ -120,7 +132,6 @@ spec:
       auth:
         tokenSecretRef:
           name: vault-token
-          namespace: external-secrets
           key: token
 ```
 
@@ -130,7 +141,7 @@ AppRole is recommended for automated systems accessing Vault from outside Kubern
 
 ```yaml
 # clusters/my-cluster/external-secrets/secretstore-vault-approle.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: hashicorp-vault-approle
@@ -147,7 +158,6 @@ spec:
           roleId: "YOUR_ROLE_ID"
           secretRef:
             name: vault-approle-secret
-            namespace: external-secrets
             key: secretId
 ```
 
@@ -179,7 +189,7 @@ kubectl get secretstore hashicorp-vault -n default
 
 # Test reading a secret from Vault
 kubectl apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: test-vault-secret
