@@ -44,7 +44,7 @@ spec:
     matchLabels:
       k8s-app: calico-typha
   podMetricsEndpoints:
-  - port: metrics
+  - port: calico-typha-metrics
     path: /metrics
     interval: 30s
   namespaceSelector:
@@ -155,7 +155,7 @@ TOTAL_CONNECTIONS=0
 for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   COUNT=$(kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics 2>/dev/null | \
-    grep typha_connections_active | awk '{print $2}')
+    grep '^typha_connections_active ' | awk '{print $2}')
   echo "  $pod: $COUNT connections"
   TOTAL_CONNECTIONS=$((TOTAL_CONNECTIONS + COUNT))
 done
