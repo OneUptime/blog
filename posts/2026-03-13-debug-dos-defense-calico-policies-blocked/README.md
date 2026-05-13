@@ -12,7 +12,7 @@ Description: Debug Calico network policies for DoS defense to protect cluster wo
 
 DoS Defense with Calico Policies is an important security consideration for production Calico deployments. The `projectcalico.org/v3` API provides the tools needed to debug DoS Defense effectively, combining Calico's network policy with proper access controls and monitoring.
 
-This guide covers debug DoS Defense in Calico with practical configurations and operational best practices.
+This guide covers debugging DoS Defense in Calico with practical configurations and operational best practices.
 
 ## Prerequisites
 
@@ -24,41 +24,43 @@ This guide covers debug DoS Defense in Calico with practical configurations and 
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: HostEndpoint
 metadata:
-  name: dos-defense-rate-limit
+  name: production-host
+  labels:
+    apply-dos-mitigation: 'true'
 spec:
-  order: 50
-  selector: app == 'web-frontend'
-  ingress:
-    - action: Allow
-      source:
-        nets:
-          - 0.0.0.0/0
-      destination:
-        ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
-    - action: Allow
-  types:
-    - Ingress
+  interfaceName: eth0
+  node: worker-1
+  expectedIPs: ['10.0.0.10']
 ---
 # Block known bad actors
 
 apiVersion: projectcalico.org/v3
+kind: GlobalNetworkSet
+metadata:
+  name: dos-deny-list
+  labels:
+    dos-deny-list: 'true'
+spec:
+  nets:
+    - 198.51.100.0/24  # Known attack source
+    - 203.0.113.0/24
+---
+apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: dos-block-bad-actors
+  name: dos-mitigation
 spec:
-  order: 10
-  selector: app == 'web-frontend'
+  selector: apply-dos-mitigation == 'true'
+  doNotTrack: true
+  applyOnForward: true
+  types:
+    - Ingress
   ingress:
     - action: Deny
       source:
-        nets:
-          - 198.51.100.0/24  # Known attack source
-          - 203.0.113.0/24
-  types:
-    - Ingress
+        selector: dos-deny-list == 'true'
 ```
 
 ## Implementation
@@ -67,18 +69,26 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Confirm the deny-list and mitigation policy are present
+calicoctl get globalnetworkset dos-deny-list -o yaml
+calicoctl get globalnetworkpolicy dos-mitigation -o yaml
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# Check Felix metrics for active host endpoints and policies on a node
+curl -s http://localhost:9091/metrics | grep -E 'felix_active_local_(endpoints|policies)'
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+For Calico Enterprise policy metrics, denied packet counters are exposed on the policy metrics endpoint:
 
 ```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Check denial rates in real-time on a compute node with policy metrics enabled
+watch -n1 'curl -s http://localhost:9081/metrics | grep calico_denied_packets'
+```
+
+## eBPF Dataplane (Calico with eBPF dataplane)
+
+```bash
+# Enable eBPF dataplane with automatic kube-proxy management
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
 ```
 
 ## Architecture
