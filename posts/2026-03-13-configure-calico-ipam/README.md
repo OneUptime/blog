@@ -28,10 +28,10 @@ The IPAM system tracks allocations in the Calico datastore (Kubernetes CRDs or e
 calicoctl ipam show --show-blocks
 
 # Check IP pool utilization
-calicoctl ipam show --show-configuration
+calicoctl ipam show
 
 # View node block assignments
-kubectl get ipamhandles -A
+kubectl get blockaffinities.crd.projectcalico.org
 
 # Check for leaked allocations
 calicoctl ipam check
@@ -78,9 +78,9 @@ calicoctl ipam check -o ipam-report.json
 calicoctl ipam check --show-all-ips
 
 # Check for orphaned allocations
-calicoctl ipam check --show-all-ips
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Conclusion
 
-Calico IPAM provides flexible, efficient IP address management for Kubernetes clusters. The block-based allocation scheme balances per-node IP availability with overall pool utilization. Regular IPAM health checks catch orphaned allocations and pool exhaustion before they cause pod scheduling failures. Monitor IP pool utilization and expand pools proactively before exhaustion affects your cluster.
+Calico IPAM provides flexible, efficient IP address management for Kubernetes clusters. The block-based allocation scheme balances per-node IP availability with overall pool utilization. Regular IPAM health checks catch orphaned allocations, while IPAM utilization checks help identify pool exhaustion before it causes pod scheduling failures. Monitor IP pool utilization and expand pools proactively before exhaustion affects your cluster.
