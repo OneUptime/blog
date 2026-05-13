@@ -39,8 +39,10 @@ metadata:
 Create the Hugging Face token secret (use External Secrets or SOPS in production):
 
 ```bash
+kubectl apply -f clusters/my-cluster/tgi/namespace.yaml
+
 kubectl create secret generic hf-credentials \
-  --from-literal=HUGGING_FACE_HUB_TOKEN=hf_xxxxxxxxxxxxxxxx \
+  --from-literal=HF_TOKEN=hf_xxxxxxxxxxxxxxxx \
   -n tgi
 ```
 
@@ -87,7 +89,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: tgi
-          image: ghcr.io/huggingface/text-generation-inference:2.0.4
+          image: ghcr.io/huggingface/text-generation-inference:3.3.7
           args:
             - "--model-id"
             - "mistralai/Mistral-7B-Instruct-v0.3"
@@ -121,11 +123,11 @@ spec:
               memory: "24Gi"
               cpu: "8"
           env:
-            - name: HUGGING_FACE_HUB_TOKEN
+            - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-credentials
-                  key: HUGGING_FACE_HUB_TOKEN
+                  key: HF_TOKEN
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
             # Point cache to PVC
@@ -134,18 +136,22 @@ spec:
           volumeMounts:
             - name: model-cache
               mountPath: /data
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 90
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 120
             periodSeconds: 15
             failureThreshold: 20
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 180
             periodSeconds: 30
       volumes:
         - name: model-cache
@@ -193,6 +199,7 @@ spec:
   interval: 5m
   path: ./clusters/my-cluster/tgi
   prune: true
+  timeout: 15m
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -212,8 +219,11 @@ flux get kustomizations tgi
 # Check pod readiness
 kubectl rollout status deployment/tgi-server -n tgi
 
+# In a separate terminal, forward the ClusterIP service for local testing
+kubectl port-forward svc/tgi-server -n tgi 8080:8080
+
 # Generate text (streaming)
-curl http://<tgi-svc-ip>:8080/generate_stream \
+curl http://localhost:8080/generate_stream \
   -H "Content-Type: application/json" \
   -d '{
     "inputs": "What is Flux CD and why use GitOps?",
@@ -225,7 +235,7 @@ curl http://<tgi-svc-ip>:8080/generate_stream \
   }'
 
 # OpenAI-compatible endpoint
-curl http://<tgi-svc-ip>:8080/v1/chat/completions \
+curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "tgi",
@@ -238,7 +248,7 @@ curl http://<tgi-svc-ip>:8080/v1/chat/completions \
 
 - Mount a PVC for `HF_HOME` so model weights (often 10-30GB) are cached across pod restarts and not re-downloaded each time.
 - Use `bitsandbytes-nf4` quantization for 4-bit loading on consumer or mid-range GPUs to reduce VRAM usage by roughly 75%.
-- Set `failureThreshold` high on readiness probes - large models can take 3-10 minutes to download and load on first run.
+- Use a startup probe with a generous `failureThreshold` - large models can take 3-10 minutes to download and load on first run.
 - For multi-GPU setups, add `--num-shard N` where N is the number of GPUs and request N `nvidia.com/gpu` resources.
 - Use Flux's SOPS integration to encrypt the Hugging Face token secret at rest in your Git repository.
 
