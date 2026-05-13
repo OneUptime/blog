@@ -14,7 +14,7 @@ This guide explains how to organize CRD installation as a first-class dependency
 
 ## The Problem
 
-Consider deploying cert-manager. The HelmRelease for cert-manager installs both the controller and its CRDs. But if you also have ClusterIssuer resources in your infrastructure configuration, those resources will fail to apply if they reconcile before cert-manager is ready.
+Consider deploying cert-manager. A HelmRelease for cert-manager can install both the controller and its CRDs when CRD installation is enabled. But if you also have ClusterIssuer resources in your infrastructure configuration, those resources will fail to apply if they reconcile before cert-manager is ready.
 
 The same issue applies to any controller that introduces CRDs: Prometheus Operator (ServiceMonitor, PodMonitor), Istio (VirtualService, Gateway), and many others.
 
@@ -163,12 +163,32 @@ For projects that provide CRDs as a separate download, reference them directly.
 Some projects publish CRDs as OCI artifacts:
 
 ```yaml
-# crds/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
+# clusters/production/crds-source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: controller-crds
+  namespace: flux-system
+spec:
+  interval: 30m
+  url: oci://ghcr.io/example/controller-crds
+  ref:
+    tag: v1.0.0
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-resources:
-  - cert-manager
-  - prometheus-operator
+metadata:
+  name: crds
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: OCIRepository
+    name: controller-crds
+  path: ./
+  prune: false
+  wait: true
+  timeout: 5m
 ```
 
 ## Installing CRDs from Git Repositories
@@ -194,7 +214,7 @@ When updating CRDs, be careful about breaking changes. A recommended workflow:
 3. Test in a staging cluster first
 4. Monitor reconciliation after the update
 
-Since CRDs have `prune: false`, old CRD versions will not be automatically removed. If you need to clean up old CRD versions, do it manually:
+Since CRDs have `prune: false`, CRD objects removed from the `crds/` directory will not be automatically deleted from the cluster. If you need to clean up an obsolete CRD, do it manually:
 
 ```bash
 kubectl delete crd old-resource.example.com
