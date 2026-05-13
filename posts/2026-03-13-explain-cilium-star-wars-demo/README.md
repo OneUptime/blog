@@ -12,7 +12,7 @@ Description: A deep-dive explanation of how the Cilium Star Wars demo works unde
 
 The Cilium Star Wars demo is more than a clever marketing exercise - it is a carefully constructed pedagogical tool that reveals how eBPF-based network policy differs fundamentally from traditional approaches. To explain the demo properly, you need to understand the mechanics behind Cilium's identity model, how eBPF programs intercept and evaluate traffic, and how `CiliumNetworkPolicy` translates label selectors into kernel-level enforcement.
 
-When Cilium assigns a security identity to a workload, it does so based on the pod's Kubernetes labels. This identity is embedded in network packets using a Kubernetes concept called the "security context" and tracked in Cilium's distributed identity store backed by etcd or Kubernetes CRD storage. Every time a packet arrives at a node, Cilium's eBPF programs look up the source identity and evaluate it against the active policies for the destination endpoint - all without leaving the kernel.
+When Cilium assigns a security identity to a workload, it does so based on the pod's Kubernetes labels. This identity is tracked in Cilium's distributed identity store backed by Kubernetes `CiliumIdentity` CRDs by default, or by an external key-value store such as etcd in kvstore mode. Nodes learn the mapping between endpoint IPs and identities through Cilium's ipcache, and in overlay modes the numeric identity can also be carried in VXLAN or Geneve metadata. When a packet is evaluated, Cilium's eBPF programs resolve the source identity and check it against the active policies for the destination endpoint - without a per-packet userspace round trip.
 
 This document explains the flow of the Star Wars demo from the perspective of the Cilium data plane, helping engineers understand not just what happens, but why Cilium can enforce policy this way without performance penalties.
 
@@ -37,15 +37,15 @@ graph LR
 ```bash
 # Inspect Cilium endpoints and their identities
 
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Check identity for a specific pod
-kubectl exec -n kube-system ds/cilium -- cilium identity list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list
 ```
 
 ## The eBPF Data Plane Explained
 
-Cilium attaches eBPF programs at TC (Traffic Control) hooks on each network interface. When the `tiefighter` pod sends a request to the `deathstar` service, the following happens:
+Cilium attaches eBPF programs at TC (Traffic Control) hooks on endpoint devices and node-facing interfaces. When the `tiefighter` pod sends a request to the `deathstar` service, the following happens:
 
 1. The packet is intercepted at the veth interface by a Cilium TC hook
 2. The source identity is looked up from a BPF map (keyed by IP address)
@@ -53,11 +53,11 @@ Cilium attaches eBPF programs at TC (Traffic Control) hooks on each network inte
 4. The packet is allowed or dropped inline, without userspace involvement
 
 ```bash
-# Inspect the eBPF programs loaded by Cilium
-kubectl exec -n kube-system ds/cilium -- cilium bpf policy get --all
+# Inspect policy BPF maps loaded by Cilium
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all
 
 # View the policy map for a specific endpoint
-kubectl exec -n kube-system ds/cilium -- cilium policy get
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get <endpoint-id>
 ```
 
 ## CiliumNetworkPolicy Structure
@@ -96,7 +96,7 @@ In traditional firewall environments, rules are tied to IP addresses. In Kuberne
 | Pod restart | Rules break | Identity preserved via labels |
 | Horizontal scaling | Manual rule updates | Automatic via label selector |
 | Cross-namespace | Complex CIDR logic | Simple label match |
-| L7 awareness | Not possible | Native HTTP/gRPC support |
+| L7 awareness | Not available in Kubernetes NetworkPolicy | Native HTTP/gRPC support |
 
 ## Conclusion
 
