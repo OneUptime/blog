@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, HTTP, Gateway API, Routing, Ingress
 
-Description: Configure HTTP routing in Cilium's Gateway API using HTTPRoute resources with path matching, header filtering, and traffic splitting.
+Description: Configure HTTP routing in Cilium's Gateway API using HTTPRoute resources with path matching, header matching, and traffic splitting.
 
 ---
 
@@ -18,6 +18,8 @@ Unlike the older Kubernetes Ingress resource, HTTPRoute provides a more expressi
 
 - Cilium with Gateway API enabled
 - Gateway API CRDs installed
+- Cilium configured with NodePort enabled or kube-proxy replacement, and the L7 proxy enabled
+- A LoadBalancer implementation, or Cilium Gateway API host network mode
 - A Gateway with an HTTP listener
 
 ## Deploy a Gateway
@@ -44,7 +46,7 @@ flowchart TD
     B --> C{HTTPRoute match}
     C -->|path: /api| D[api-service:8080]
     C -->|path: /web| E[web-service:80]
-    C -->|header: x-beta: true| F[beta-service:8080]
+    C -->|header: x-environment: staging| F[staging-service:8080]
     C -->|default| G[default-service:80]
 ```
 
@@ -128,4 +130,4 @@ curl -H "Host: api.example.com" \
 
 ## Conclusion
 
-Configuring HTTP routing in the Cilium Gateway API provides a powerful and expressive way to define ingress routing rules. Path matching, header-based routing, and traffic splitting cover the most common deployment patterns, while the consistent HTTPRoute API works identically across all Gateway API implementations.
+Configuring HTTP routing in the Cilium Gateway API provides a powerful and expressive way to define ingress routing rules. Path matching, header-based routing, and traffic splitting cover the most common deployment patterns, while the consistent HTTPRoute API provides portable semantics across conformant Gateway API implementations.
