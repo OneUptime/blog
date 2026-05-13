@@ -23,6 +23,72 @@ Building custom gateways with Calico requires understanding how to properly conf
 ## Deploy Custom Gateway
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    gateway-accessible: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-gateway-envoy
+  namespace: gateway-system
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+      - name: http_listener
+        address:
+          socket_address:
+            address: 0.0.0.0
+            port_value: 10000
+        filter_chains:
+        - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: custom_gateway
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: backend
+                  domains:
+                  - "*"
+                  - "backend.example.com"
+                  routes:
+                  - match:
+                      prefix: "/health"
+                    direct_response:
+                      status: 200
+                  - match:
+                      prefix: "/"
+                    route:
+                      cluster: backend_service
+              http_filters:
+              - name: envoy.filters.http.router
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+      - name: backend_service
+        connect_timeout: 5s
+        type: STRICT_DNS
+        load_assignment:
+          cluster_name: backend_service
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: backend.production.svc.cluster.local
+                    port_value: 8080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,10 +106,17 @@ spec:
     spec:
       containers:
       - name: gateway
-        image: envoyproxy/envoy:v1.28.0
+        image: envoyproxy/envoy:v1.38.0
         ports:
-        - containerPort: 80
-        - containerPort: 443
+        - containerPort: 10000
+        volumeMounts:
+        - name: envoy-config
+          mountPath: /etc/envoy/envoy.yaml
+          subPath: envoy.yaml
+      volumes:
+      - name: envoy-config
+        configMap:
+          name: custom-gateway-envoy
 ---
 apiVersion: v1
 kind: Service
@@ -56,9 +129,7 @@ spec:
     app: custom-gateway
   ports:
   - port: 80
-    targetPort: 80
-  - port: 443
-    targetPort: 443
+    targetPort: 10000
 ```
 
 ## Configure Calico Policies for Gateway Access
@@ -69,10 +140,24 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-custom-gateway-egress
 spec:
-  selector: app == 'custom-gateway'
+  selector: projectcalico.org/namespace == 'gateway-system' && app == 'custom-gateway'
   types:
   - Egress
   egress:
+  - action: Allow
+    protocol: UDP
+    destination:
+      namespaceSelector: projectcalico.org/name == 'kube-system'
+      selector: k8s-app == 'kube-dns'
+      ports:
+      - 53
+  - action: Allow
+    protocol: TCP
+    destination:
+      namespaceSelector: projectcalico.org/name == 'kube-system'
+      selector: k8s-app == 'kube-dns'
+      ports:
+      - 53
   - action: Allow
     protocol: TCP
     destination:
@@ -91,16 +176,16 @@ spec:
   ingress:
   - action: Allow
     source:
-      namespaceSelector: kubernetes.io/metadata.name == 'gateway-system'
+      namespaceSelector: projectcalico.org/name == 'gateway-system'
       selector: app == 'custom-gateway'
 ```
 
 ## Verify Custom Gateway Routing
 
 ```bash
-GW_IP=$(kubectl get svc -n gateway-system custom-gateway   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -v http://${GW_IP}/health
-curl -H "Host: backend.example.com" http://${GW_IP}/api/
+GW_ADDR=$(kubectl get svc -n gateway-system custom-gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -v http://${GW_ADDR}/health
+curl -H "Host: backend.example.com" http://${GW_ADDR}/api/
 ```
 
 ## Custom Gateway Architecture

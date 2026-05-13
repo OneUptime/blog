@@ -62,7 +62,7 @@ spec:
   chart:
     spec:
       chart: csi-driver-nfs
-      version: "4.9.0"
+      version: "4.13.2"
       sourceRef:
         kind: HelmRepository
         name: csi-driver-nfs
@@ -73,6 +73,13 @@ spec:
       replicas: 2
       resources:
         csiProvisioner:
+          requests:
+            cpu: "10m"
+            memory: "20Mi"
+          limits:
+            cpu: "200m"
+            memory: "200Mi"
+        csiResizer:
           requests:
             cpu: "10m"
             memory: "20Mi"
@@ -129,7 +136,7 @@ metadata:
 provisioner: nfs.csi.k8s.io
 reclaimPolicy: Delete
 volumeBindingMode: Immediate   # NFS does not require WaitForFirstConsumer
-allowVolumeExpansion: false    # NFS CSI does not support online resize
+allowVolumeExpansion: true     # CSI volume expansion is supported
 parameters:
   server: 10.0.0.100           # NFS server IP or hostname
   share: /mnt/nfs-share        # NFS export path
@@ -197,7 +204,7 @@ spec:
     - hard
   csi:
     driver: nfs.csi.k8s.io
-    # volumeHandle must be unique: server##share##subdir
+    # volumeHandle must be unique: server#share#subdir
     volumeHandle: "10.0.0.100#/mnt/nfs-share#legacy-data#"
     volumeAttributes:
       server: "10.0.0.100"
@@ -283,7 +290,7 @@ kubectl run nfs-test --image=busybox --rm -it --restart=Never \
 ## Best Practices
 
 - Install `nfs-common` (Debian) or `nfs-utils` (RHEL) on all cluster nodes before deploying the driver - the CSI node DaemonSet requires NFS utilities on the host to perform mounts.
-- Use `volumeBindingMode: Immediate` for NFS StorageClasses since NFS volumes are not zone-affine and do not require `WaitForFirstConsumer`.
+- Use `volumeBindingMode: Immediate` for NFS StorageClasses since NFS volumes are not topology-constrained and do not require `WaitForFirstConsumer`.
 - Set `reclaimPolicy: Retain` for production data StorageClasses - with `Delete`, the entire NFS subdirectory is removed when the PVC is deleted.
 - Use the `nfsvers=4.1` mount option for production to benefit from NFSv4.1 features including parallel NFS (pNFS) and better locking semantics.
 - Monitor the CSI controller and node DaemonSet pods for mount errors - NFS mount failures appear in the node DaemonSet logs and as `FailedMount` events on pods.
