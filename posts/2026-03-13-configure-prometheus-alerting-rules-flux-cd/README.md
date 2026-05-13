@@ -50,9 +50,9 @@ spec:
     - alert: APIHighErrorRate
       expr: |
         (
-          rate(http_requests_total{job="api",status=~"5.."}[5m])
+          sum(rate(http_requests_total{job="api",status=~"5.."}[5m]))
           /
-          rate(http_requests_total{job="api"}[5m])
+          sum(rate(http_requests_total{job="api"}[5m]))
         ) > 0.05
       for: 5m
       labels:
@@ -67,7 +67,7 @@ spec:
     - alert: APIHighLatency
       expr: |
         histogram_quantile(0.99,
-          rate(http_request_duration_seconds_bucket{job="api"}[5m])
+          sum by (le) (rate(http_request_duration_seconds_bucket{job="api"}[5m]))
         ) > 0.5
       for: 10m
       labels:
@@ -75,7 +75,7 @@ spec:
         team: platform
       annotations:
         summary: "API p99 latency is above 500ms"
-        description: "The 99th percentile API latency is {{ $value | humanizeDuration }}"
+        description: "The 99th percentile API latency is {{ $value | humanizeDuration }}."
 ```
 
 ## Step 2: Add Infrastructure Alerting Rules
@@ -110,7 +110,9 @@ spec:
     # Alert when node disk usage exceeds 85%
     - alert: NodeDiskPressure
       expr: |
-        (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+        (
+          1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})
+        ) > 0.85
       for: 10m
       labels:
         severity: warning
@@ -149,9 +151,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Ensure Prometheus is running before applying rules
+  # Ensure the Flux Kustomization that installs Prometheus is ready before applying rules
   dependsOn:
-    - name: kube-prometheus-stack
+    - name: monitoring-stack
 ```
 
 ## Step 4: Validate Alerting Rules
@@ -172,7 +174,7 @@ curl -s http://localhost:9090/api/v1/rules | jq '.data.groups[].rules[].name'
 # Check the alerts page: http://localhost:9090/alerts
 
 # Verify Flux is reconciling the rules correctly
-flux get kustomization prometheus-rules
+flux get kustomizations prometheus-rules
 ```
 
 ## Best Practices
