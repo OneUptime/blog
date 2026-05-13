@@ -10,12 +10,12 @@ Description: Learn how to shard Flux controllers by resource type to dedicate co
 
 ## Introduction
 
-Resource-type sharding in Flux dedicates separate controller instances to handle specific Flux custom resource types. For example, one controller instance handles only GitRepository sources while another handles only HelmRepository sources. This strategy works well when certain resource types have significantly different reconciliation patterns or volumes.
+Resource-type sharding in Flux uses controller label selectors to dedicate separate controller instances to resources that you label by type. For example, one controller instance handles resources labeled for GitRepository sources while another handles resources labeled for HelmRepository sources. This strategy works well when certain source types have significantly different reconciliation patterns or volumes.
 
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.25 or later)
-- Flux CLI installed (v2.0 or later)
+- Flux CLI installed (v2.8.x for the controller image versions shown below)
 - kubectl configured with cluster access
 - Flux bootstrapped on the cluster
 
@@ -23,7 +23,7 @@ Resource-type sharding in Flux dedicates separate controller instances to handle
 
 Resource-type sharding is most useful when:
 
-- You have a large number of HelmRelease resources that overwhelm the helm-controller
+- You have a large number of HelmRepository or HelmChart source objects that overwhelm the source-controller
 - Your GitRepository sources are numerous and have frequent commit activity
 - Different resource types have different reconciliation intervals and performance profiles
 - You want to isolate failures so that one resource type does not affect another
@@ -44,7 +44,7 @@ echo "OCIRepositories: $(kubectl get ocirepositories -A --no-headers | wc -l)"
 
 ## Step 2: Deploy a Dedicated Source Controller for Git Sources
 
-Create a source-controller instance that only handles GitRepository resources by using label selectors.
+Create a source-controller instance that handles resources labeled for Git sources by using label selectors.
 
 ```yaml
 apiVersion: apps/v1
@@ -64,7 +64,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/source-controller:v1.4.1
+          image: ghcr.io/fluxcd/source-controller:v1.8.4
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/resource-type=git
@@ -114,7 +114,7 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/source-controller:v1.4.1
+          image: ghcr.io/fluxcd/source-controller:v1.8.4
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/resource-type=helm
@@ -188,6 +188,27 @@ kubectl label gitrepository my-app-repo \
 kubectl label helmrepository bitnami \
   sharding.fluxcd.io/resource-type=helm \
   -n flux-system
+```
+
+For HelmRelease-generated HelmChart objects, set the same label under `.spec.chart.metadata.labels` so the generated HelmChart is watched by the same source-controller shard.
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m
+  chart:
+    metadata:
+      labels:
+        sharding.fluxcd.io/resource-type: helm
+    spec:
+      chart: my-app
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
 ```
 
 ## Step 6: Update the Main Source Controller
