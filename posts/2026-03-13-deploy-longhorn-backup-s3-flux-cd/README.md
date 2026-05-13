@@ -16,11 +16,12 @@ Deploying Longhorn through Flux CD gives you GitOps control over storage setting
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with `open-iscsi` installed on all nodes
+- Kubernetes v1.25+ with `open-iscsi` installed and `iscsid` running on all nodes
 - Worker nodes with available disk space for Longhorn replicas
 - AWS S3 bucket for backups
 - Flux CD bootstrapped to your Git repository
 - `kubectl` and `flux` CLIs installed
+- A `longhorn-system` namespace and `longhorn-basic-auth` secret if enabling the sample ingress
 
 ## Step 1: Add the Longhorn HelmRepository
 
@@ -41,6 +42,11 @@ spec:
 
 ```yaml
 # infrastructure/storage/longhorn/backup-secret.yaml (use SealedSecret)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: longhorn-system
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -68,7 +74,7 @@ spec:
   chart:
     spec:
       chart: longhorn
-      version: "1.6.2"
+      version: "1.11.2"
       sourceRef:
         kind: HelmRepository
         name: longhorn
@@ -87,10 +93,11 @@ spec:
       recurringJobSelector:
         enable: false
 
-    defaultSettings:
-      # Backup target: S3 bucket
+    defaultBackupStore:
       backupTarget: "s3://my-longhorn-backups@us-east-1/"
       backupTargetCredentialSecret: longhorn-backup-secret
+
+    defaultSettings:
       # Default number of replicas per volume
       defaultReplicaCount: 3
       # Allow scheduling on control-plane nodes
@@ -106,8 +113,8 @@ spec:
       # Auto cleanup recurring jobs
       autoCleanupSystemGeneratedSnapshot: true
 
-    resources:
-      manager:
+    longhornManager:
+      resources:
         requests:
           cpu: "250m"
           memory: "256Mi"
@@ -232,10 +239,19 @@ kubectl -n longhorn-system get volumes.longhorn.io
 # Check backup target is configured
 kubectl -n longhorn-system get setting backup-target
 
-# Trigger a manual backup of a specific volume
+# Create a manual backup from an existing Longhorn snapshot
 kubectl -n longhorn-system get volumes.longhorn.io
-kubectl -n longhorn-system annotate volume <volume-name> \
-  recurring-jobs.longhorn.io/manual-backup="true"
+kubectl -n longhorn-system get snapshots.longhorn.io -l longhornvolume=<volume-name>
+kubectl apply -f - <<'EOF'
+apiVersion: longhorn.io/v1beta2
+kind: Backup
+metadata:
+  name: manual-backup-example
+  namespace: longhorn-system
+spec:
+  backupMode: incremental
+  snapshotName: <snapshot-name>
+EOF
 
 # List backups in S3
 aws s3 ls s3://my-longhorn-backups/ --recursive | head -20
