@@ -75,7 +75,7 @@ sops:
   # ... metadata ...
 ```
 
-Note that with `encrypted_regex: ^(data)$`, all keys under `data` are encrypted, including non-sensitive ones like `LOG_LEVEL`. If you want to encrypt only specific keys, you need a different approach.
+Note that with a rule such as `encrypted_regex: ^(data|binaryData)$`, all keys under `data` are encrypted, including non-sensitive ones like `LOG_LEVEL`. If you want to encrypt only specific keys, you need a different approach.
 
 ## Selectively Encrypting ConfigMap Values
 
@@ -85,7 +85,7 @@ To encrypt only specific keys within a ConfigMap, use a more targeted regex or r
 creation_rules:
   - path_regex: .*configmap.*\.yaml$
     age: age1yourkey...
-    encrypted_regex: ^(data)$
+    encrypted_regex: ^(DATABASE_URL|REDIS_URL)$
 ```
 
 Alternatively, split your ConfigMap into sensitive and non-sensitive parts:
