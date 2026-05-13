@@ -10,7 +10,7 @@ Description: Use Cilium network policies to control access to Elasticsearch, pre
 
 ## Introduction
 
-Elasticsearch clusters running in Kubernetes are exposed to all pods in the cluster by default. Any pod that knows the service name can query, delete, or export index data. Cilium network policies restrict access to Elasticsearch at the network level, ensuring only authorized services can communicate with the cluster.
+Elasticsearch clusters running in Kubernetes are exposed to all pods in the cluster by default unless a network policy or Elasticsearch authentication and authorization blocks access. Any pod that knows the service name can query, delete, or export index data when Elasticsearch does not enforce its own access controls. Cilium network policies restrict access to Elasticsearch at the network level, ensuring only authorized services can communicate with the cluster.
 
 Beyond basic port-level access control, Cilium's L7 HTTP policies can restrict access to specific Elasticsearch index patterns and HTTP methods, providing fine-grained control over what each client can do.
 
@@ -18,12 +18,13 @@ Beyond basic port-level access control, Cilium's L7 HTTP policies can restrict a
 
 - Cilium with L7 HTTP policy support
 - Elasticsearch deployed in Kubernetes
+- Plain HTTP access to Elasticsearch on port 9200, or Cilium TLS visibility configured for encrypted Elasticsearch traffic
 - `kubectl` CLI
 
 ## Deploy Test Elasticsearch
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes-es/es-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/kubernetes-es/es-sw-app.yaml
 ```
 
 ## Architecture
@@ -50,41 +51,11 @@ metadata:
 spec:
   endpointSelector:
     matchLabels:
-      app: elasticsearch
+      component: elasticsearch
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: kibana
-      toPorts:
-        - ports:
-            - port: "9200"
-              protocol: TCP
-    - fromEndpoints:
-        - matchLabels:
-            app: logstash
-      toPorts:
-        - ports:
-            - port: "9200"
-              protocol: TCP
-          rules:
-            http:
-              - method: POST
-                path: "^/.*/_doc$"
-```
-
-## Apply L7 HTTP Policy
-
-Restrict which HTTP methods and paths are allowed:
-
-```yaml
-spec:
-  endpointSelector:
-    matchLabels:
-      app: elasticsearch
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            app: read-only-client
+            app: empire-hq
       toPorts:
         - ports:
             - port: "9200"
@@ -92,7 +63,48 @@ spec:
           rules:
             http:
               - method: GET
-                path: "^/allowed-index/.*"
+                path: "^/spaceship_diagnostics/_search/??.*$"
+              - method: GET
+                path: "^/troop_logs/_search/??.*$"
+    - fromEndpoints:
+        - matchLabels:
+            app: outpost
+      toPorts:
+        - ports:
+            - port: "9200"
+              protocol: TCP
+          rules:
+            http:
+              - method: PUT
+                path: "^/troop_logs/log/.*$"
+```
+
+## Apply L7 HTTP Policy
+
+Restrict which HTTP methods and paths are allowed:
+
+```yaml
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: elasticsearch-read-policy
+  namespace: default
+spec:
+  endpointSelector:
+    matchLabels:
+      component: elasticsearch
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: empire-hq
+      toPorts:
+        - ports:
+            - port: "9200"
+              protocol: TCP
+          rules:
+            http:
+              - method: GET
+                path: "^/troop_logs/_search/??.*$"
 ```
 
 ```bash
@@ -104,18 +116,18 @@ kubectl apply -f elasticsearch-policy.yaml
 ```bash
 # Authorized client - should succeed
 
-kubectl exec -it kibana-pod -- \
-  curl -s http://elasticsearch:9200/allowed-index/_search
+kubectl exec -it empire-hq -- \
+  curl -s http://elasticsearch:9200/troop_logs/_search
 
 # Unauthorized client - should fail
-kubectl exec -it unauthorized-pod -- \
+kubectl exec -it outpost -- \
   curl -s http://elasticsearch:9200/_cat/indices
 ```
 
 ## Monitor Access with Hubble
 
 ```bash
-hubble observe --to-label app=elasticsearch \
+hubble observe --to-label component=elasticsearch \
   --protocol http --follow
 ```
 
