@@ -4,13 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Linkerd, Service Profiles, Traffic Management, Retries
 
-Description: Manage Linkerd ServiceProfile resources using Flux CD GitOps to configure per-route retries, timeouts, and traffic metrics for Linkerd-meshed services.
+Description: Manage Linkerd ServiceProfile resources using Flux CD GitOps to configure per-route retries, timeouts, and traffic metrics for existing Linkerd-meshed services.
 
 ---
 
 ## Introduction
 
-Linkerd's ServiceProfile is a custom resource that defines how Linkerd should treat traffic to a specific service. It enables per-route observability (success rate, latency per endpoint), retries, timeouts, and marks which routes are safe to retry (idempotent). Without a ServiceProfile, Linkerd tracks metrics at the service level; with it, you get per-route golden metrics.
+Linkerd's ServiceProfile is a custom resource that defines how Linkerd should treat traffic to a specific service. It enables per-route observability (success rate, request volume, and latency), retries, timeouts, and marks which routes are safe to retry (idempotent). Without a ServiceProfile, Linkerd tracks metrics at the service level; with it, you get per-route golden metrics.
+
+As of Linkerd 2.16, ServiceProfiles are supported for backwards compatibility, but Gateway API resources are the recommended way to configure per-route metrics, retries, and timeouts for new Linkerd deployments.
 
 Managing ServiceProfiles through Flux CD ensures your traffic management configuration is version-controlled alongside your application code. Adding retry policies or adjusting timeouts is a pull request that can be reviewed before affecting production.
 
@@ -128,12 +130,13 @@ spec:
 
 ```bash
 # Auto-generate ServiceProfile from an OpenAPI/Swagger spec
-linkerd profile --open-api openapi.yaml api-service \
+linkerd profile --open-api openapi.yaml api-service -n production \
   > clusters/my-cluster/linkerd-profiles/api-service-generated.yaml
 
-# Generate from a running service (reads existing routes via reflection)
-linkerd profile --tap deployment/api-service \
+# Generate from a running service by observing tap data
+linkerd viz profile api-service \
   -n production \
+  --tap deployment/api-service \
   --tap-duration 30s \
   > clusters/my-cluster/linkerd-profiles/api-service-tapped.yaml
 ```
@@ -177,16 +180,16 @@ kubectl get serviceprofile -n production
 # View per-route success rate in Linkerd viz
 linkerd viz routes deployment/api-service -n production
 
-# Check effective retry rates
-linkerd viz routes deployment/api-service -n production --to svc/upstream-service
+# Check effective and actual retry rates
+linkerd viz routes deployment/api-service -n production --to svc/upstream-service -o wide
 
 # Monitor route success rates
-linkerd viz stat serviceprofile/api-service.production.svc.cluster.local -n production
+linkerd viz routes service/api-service -n production
 ```
 
 ## Best Practices
 
-- Generate initial ServiceProfiles with `linkerd profile --tap` to capture real traffic patterns before manually defining routes, then refine in Git.
+- Generate initial ServiceProfiles with `linkerd viz profile --tap` to capture real traffic patterns before manually defining routes, then refine in Git.
 - Mark GET, HEAD, and OPTIONS routes as `isRetryable: true` - these are idempotent by HTTP convention. Always mark POST, PUT, PATCH, and DELETE as `isRetryable: false` unless you know your specific endpoints are idempotent.
 - Set `retryBudget.retryRatio` to 0.2 (20% additional requests) as a starting point - monitor actual retry rates and lower the budget if your upstream service is sensitive to amplified load.
 - Name ServiceProfile resources using the fully qualified service DNS name format: `<service>.<namespace>.svc.cluster.local` - Linkerd uses this for matching.
