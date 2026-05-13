@@ -62,11 +62,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Confirm the stored policy
+calicoctl get globalnetworkpolicy configure-globalnetworkpolicy -o yaml
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Check Felix active policy metrics when Felix metrics are enabled
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 ```
 
 ## Architecture
