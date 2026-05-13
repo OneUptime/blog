@@ -27,6 +27,7 @@ The `numerical` policy in Flux CD sorts extracted values as numbers rather than 
 
 The `order` field determines sorting direction:
 - `asc` (ascending): selects the highest number (most common for build numbers)
+- `desc` (descending): selects the lowest number
 - The selected image is always the one at the end of the sort order
 
 ## Example 1: Build Number Suffix
@@ -165,7 +166,7 @@ kubectl apply -f imagepolicy.yaml
 Check the selected image:
 
 ```bash
-kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestImage}'
+kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 ```
 
 Verify the scan found tags:
@@ -191,7 +192,7 @@ If the wrong tag is selected:
 
 1. Confirm the regex matches the expected tags by testing your pattern against sample tags
 2. Verify the extracted value is purely numeric. Non-numeric characters cause the numerical policy to fail
-3. Check that `order: asc` is set. Without it, the lowest number may be selected
+3. Check that `order: asc` is set. Although `asc` is the default, setting it explicitly makes the intended highest-number selection clear
 4. Look at the ImagePolicy events for reconciliation errors:
 
 ```bash
