@@ -12,11 +12,11 @@ Description: Improve Flux controller I/O performance by mounting tmpfs volumes f
 
 Flux controllers write temporary files during reconciliation. The source-controller clones Git repositories and downloads Helm charts to a temporary directory. The kustomize-controller writes built manifests to disk before applying them. These I/O operations happen on every reconciliation cycle, and when the underlying storage is a slow network-attached disk, the latency adds up quickly.
 
-By mounting a tmpfs volume for these temporary directories, all I/O happens in memory. This eliminates disk latency entirely and can significantly reduce reconciliation times, especially in cloud environments where the default ephemeral storage is backed by network disks.
+By mounting a tmpfs volume for these temporary directories, temporary file I/O happens in memory. This avoids disk latency for those files and can significantly reduce reconciliation times, especially in cloud environments where the default ephemeral storage may be backed by network disks.
 
 ## How tmpfs Works in Kubernetes
 
-A tmpfs volume is an emptyDir volume with the `medium` field set to `Memory`. Kubernetes backs the volume with RAM instead of disk. The contents are lost when the pod restarts, which is perfectly acceptable for temporary files that are regenerated on every reconciliation.
+A tmpfs volume is an emptyDir volume with the `medium` field set to `Memory`. Kubernetes backs the volume with RAM instead of disk. The contents are lost when the pod is removed or recreated, which is perfectly acceptable for temporary files that are regenerated on every reconciliation.
 
 ## Configuring tmpfs for the Source Controller
 
@@ -125,7 +125,7 @@ The `sizeLimit` field controls how much memory the tmpfs volume can consume. Set
 - Kustomize controller: needs enough space for the largest set of rendered manifests. 512Mi is usually sufficient.
 - Helm controller: similar to the kustomize controller. 512Mi is a reasonable default.
 
-Keep in mind that tmpfs memory counts against the container's memory limits. Make sure to increase memory limits by at least the sizeLimit amount.
+Keep in mind that tmpfs memory counts against the memory limit of the container that writes the files. Make sure the controller has enough memory headroom for its normal workload plus the expected tmpfs usage, up to the configured `sizeLimit`.
 
 ## Applying the Change
 
@@ -140,8 +140,13 @@ git push
 Compare reconciliation times before and after the change using Flux metrics:
 
 ```bash
-kubectl exec -n flux-system deploy/source-controller -- \
-  curl -s localhost:8080/metrics | grep gotk_reconcile_duration_seconds
+kubectl -n flux-system port-forward deploy/source-controller 8080:8080
+```
+
+In another terminal:
+
+```bash
+curl -s http://localhost:8080/metrics | grep gotk_reconcile_duration_seconds
 ```
 
 You should see a reduction in reconciliation duration, particularly for large repositories or charts.
