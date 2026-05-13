@@ -10,7 +10,7 @@ Description: Configure Velero BackupStorageLocation resources using Flux CD to m
 
 ## Introduction
 
-The BackupStorageLocation (BSL) is the Velero resource that defines where backup data is stored. It specifies the object storage provider (AWS S3, Azure Blob, GCS), the bucket, the region, and any provider-specific configuration. Managing BSLs through Flux means your backup storage configuration is version-controlled, reproducible, and continuously reconciled.
+The BackupStorageLocation (BSL) is the Velero resource that defines where backup data is stored. It specifies the object storage provider (AWS S3, Azure Blob, GCS), the bucket, the region where applicable, and any provider-specific configuration. Managing BSLs through Flux means your backup storage configuration is version-controlled, reproducible, and continuously reconciled.
 
 Multiple BackupStorageLocations can be configured on a single cluster, enabling backup data to be sent to different buckets for different purposes: a primary location in the same region for fast restores, and a secondary location in a different region for disaster recovery. Velero's Schedule resources reference specific BSLs by name.
 
@@ -45,11 +45,8 @@ spec:
     region: us-east-1
     # Server-side encryption using AWS managed keys
     serverSideEncryption: AES256
-    # KMS key for customer-managed encryption
+    # To use SSE-KMS instead, set kmsKeyId; Velero sets serverSideEncryption to aws:kms automatically
     # kmsKeyId: arn:aws:kms:us-east-1:123456789012:key/your-key-id
-    # S3 storage class for backup objects (standard for frequent access)
-    s3Url: ""
-    publicUrl: ""
   # Use existing secret for credentials
   credential:
     name: velero-aws-credentials
@@ -123,8 +120,6 @@ spec:
   objectStorage:
     bucket: my-cluster-velero-backups-gcs
     prefix: production-cluster
-  config:
-    serviceAccount: velero@my-gcp-project.iam.gserviceaccount.com
   credential:
     name: velero-gcp-credentials
     key: cloud
@@ -153,6 +148,11 @@ spec:
       kind: BackupStorageLocation
       name: primary
       namespace: velero
+  healthCheckExprs:
+    - apiVersion: velero.io/v1
+      kind: BackupStorageLocation
+      failed: status.phase == 'Unavailable'
+      current: status.phase == 'Available'
 ```
 
 ## Step 6: Verify BSL Status
