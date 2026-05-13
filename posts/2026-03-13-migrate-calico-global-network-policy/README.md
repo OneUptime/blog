@@ -62,11 +62,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
+# Check Felix policy metrics
+curl -s http://localhost:9091/metrics | grep felix_active_local_policies
 
-# Review flow logs
-tail -f /var/log/calico/felix.log | grep "DENY"
+# Review policy logs on iptables-based deployments
+journalctl -k -f | grep calico-packet
 ```
 
 ## Architecture
