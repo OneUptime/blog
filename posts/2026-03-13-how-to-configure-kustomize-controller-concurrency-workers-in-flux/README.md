@@ -10,11 +10,11 @@ Description: Speed up manifest application across your cluster by increasing the
 
 ## The Role of the Kustomize Controller
 
-The kustomize-controller is the workhorse of a Flux installation. It takes source artifacts fetched by the source-controller, runs Kustomize builds, performs variable substitution, validates the output, and applies the resulting manifests to your Kubernetes cluster. When you have many Kustomization objects, the default single-worker configuration becomes a significant bottleneck.
+The kustomize-controller is the workhorse of a Flux installation. It takes source artifacts fetched by the source-controller, runs Kustomize builds, performs variable substitution, validates the output, and applies the resulting manifests to your Kubernetes cluster. When you have many Kustomization objects, the default worker configuration can become a significant bottleneck.
 
 ## Default Concurrency
 
-The kustomize-controller defaults to processing four Kustomizations concurrently (`--concurrent=4`). For a cluster with five or ten Kustomization objects this is usually fine. However, in multi-tenant clusters or large platform setups with 50 or more Kustomizations, sequential processing means some reconciliations wait minutes before they even start.
+The kustomize-controller defaults to processing four Kustomizations concurrently (`--concurrent=4`). For a cluster with five or ten Kustomization objects this is usually fine. However, in multi-tenant clusters or large platform setups with 50 or more Kustomizations, queued processing means some reconciliations can wait minutes before they even start.
 
 ## Increasing the Worker Count
 
@@ -25,23 +25,9 @@ The `--concurrent` flag controls how many Kustomization objects can be reconcile
 ```yaml
 # clusters/my-cluster/flux-system/kustomize-controller-patch.yaml
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            - --concurrent=20
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --concurrent=20
 ```
 
 ### Add the Patch to Your Kustomization File
@@ -117,8 +103,13 @@ spec:
 Check the controller metrics to see how many workers are active:
 
 ```bash
-kubectl exec -n flux-system deploy/kustomize-controller -- \
-  curl -s localhost:8080/metrics | grep controller_runtime_active_workers
+kubectl -n flux-system port-forward deploy/kustomize-controller 8080:8080
+```
+
+In another terminal, query the metrics endpoint:
+
+```bash
+curl -s http://localhost:8080/metrics | grep controller_runtime_active_workers
 ```
 
 If active workers consistently match the concurrency limit, consider increasing the value further or investigating whether individual Kustomizations are taking too long to reconcile.
