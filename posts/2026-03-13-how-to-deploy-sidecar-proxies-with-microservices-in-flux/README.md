@@ -10,7 +10,7 @@ Description: Learn how to inject Envoy or other sidecar proxies alongside micros
 
 ## Introduction
 
-Sidecar proxies like Envoy, Linkerd, and Nginx provide cross-cutting concerns such as mutual TLS, traffic management, observability, and circuit breaking without modifying application code. In a GitOps workflow with Flux CD, you want sidecar proxy configuration to live in Git alongside your service manifests, so the same deployment pipeline that manages your application also manages its networking layer.
+Sidecar proxies like Envoy, Linkerd's proxy, and Nginx provide cross-cutting concerns such as mutual TLS, traffic management, observability, and circuit breaking without modifying application code. In a GitOps workflow with Flux CD, you want sidecar proxy configuration to live in Git alongside your service manifests, so the same deployment pipeline that manages your application also manages its networking layer.
 
 There are two common patterns for sidecar injection in Kubernetes: automatic injection via a mutating admission webhook (used by Istio and Linkerd) and manual injection where you explicitly define the sidecar container in your Pod spec. Flux CD works well with both patterns. For manual injection, Kustomize strategic merge patches allow you to add sidecar containers to any Deployment without modifying the base manifest.
 
@@ -30,6 +30,15 @@ First, deploy the Envoy proxy infrastructure (using Istio as an example).
 ```yaml
 # clusters/production/infrastructure/istio-base-helmrelease.yaml
 
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: istio
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://istio-release.storage.googleapis.com/charts
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -38,14 +47,17 @@ metadata:
 spec:
   interval: 1h
   targetNamespace: istio-system
-  createNamespace: true
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: base
-      version: "1.20.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
+  values:
+    defaultRevision: default
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -58,7 +70,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.20.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -94,8 +106,9 @@ metadata:
   labels:
     # Istio will automatically inject Envoy into all pods in this namespace
     istio-injection: enabled
-    # Linkerd alternative:
-    # linkerd.io/inject: enabled
+  # Linkerd alternative:
+  # annotations:
+  #   linkerd.io/inject: enabled
 ```
 
 ```yaml
@@ -112,9 +125,9 @@ spec:
     name: app-repo
   path: ./apps/microservices
   prune: true
-  # Namespaces must exist before services deploy
+  # Depend on the Flux Kustomization that applies the Istio HelmReleases
   dependsOn:
-    - name: istiod
+    - name: istio-infrastructure
 ```
 
 ## Step 3: Configure Per-Pod Injection Override
@@ -137,9 +150,9 @@ spec:
     metadata:
       labels:
         app: backend-api
-      annotations:
         # Explicitly enable injection on this pod (redundant if namespace has label)
         sidecar.istio.io/inject: "true"
+      annotations:
         # Configure proxy resource limits
         sidecar.istio.io/proxyCPU: "100m"
         sidecar.istio.io/proxyMemory: "128Mi"
@@ -170,7 +183,7 @@ spec:
       # Add the Envoy sidecar container
       containers:
         - name: envoy-proxy
-          image: envoyproxy/envoy:v1.28-latest
+          image: envoyproxy/envoy:v1.38-latest
           args:
             - -c
             - /etc/envoy/envoy.yaml
@@ -180,7 +193,7 @@ spec:
             - containerPort: 9901
               name: admin
             - containerPort: 15001
-              name: outbound
+              name: proxy
           volumeMounts:
             - name: envoy-config
               mountPath: /etc/envoy
@@ -216,7 +229,9 @@ patches:
       name: backend-api
 ```
 
-## Step 5: Configure Envoy as a Traffic Interceptor
+## Step 5: Configure Envoy as a Local Reverse Proxy
+
+This example exposes Envoy on port 15001 and forwards requests to the application on `127.0.0.1:8080`. Point the Service `targetPort` or direct callers at 15001 for Envoy to be in the request path.
 
 ```yaml
 # apps/microservices/backend-api/envoy-configmap.yaml
@@ -277,14 +292,16 @@ data:
 
 ## Step 6: Apply and Verify Sidecar Injection
 
+Use the namespace label for automatic Istio injection, or use the Kustomize patch for manual Envoy injection. If you enable both on the same workload, the pod will include both proxies.
+
 ```bash
-# Apply the namespace first so injection label is set
+# Automatic Istio pattern: apply the namespace first so the injection label is set
 kubectl apply -f apps/microservices/namespace.yaml
 
-# Apply the microservice with sidecar patch
+# Reconcile the microservice Kustomization
 flux reconcile kustomization backend-api --with-source
 
-# Verify the sidecar was injected (should see 2 containers)
+# Verify the selected sidecar pattern (automatic or manual) added a proxy
 kubectl get pods -n microservices
 # NAME                           READY   STATUS    RESTARTS
 # backend-api-7d4f8c9b5d-xk2p9   2/2     Running   0
