@@ -18,9 +18,9 @@ The Flux Operator simplifies multi-cluster Flux management, enables consistent F
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster running version 1.25 or later.
+- A Kubernetes cluster running a version supported by the Flux distribution version you plan to install.
 - `kubectl` installed and configured.
-- Helm 3 installed.
+- Helm 3.8 or later installed.
 - Cluster admin permissions.
 
 ## Installing the Flux Operator with Helm
@@ -28,13 +28,8 @@ Before you begin, ensure you have:
 The recommended installation method is using the official Helm chart.
 
 ```bash
-# Add the Flux Operator Helm repository
-
-helm repo add controlplaneio-fluxcd https://controlplaneio-fluxcd.github.io/charts
-helm repo update
-
 # Install the Flux Operator
-helm install flux-operator controlplaneio-fluxcd/flux-operator \
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
   --namespace flux-system \
   --create-namespace
 ```
@@ -45,7 +40,7 @@ Verify that the Flux Operator pod is running.
 kubectl get pods -n flux-system
 ```
 
-You should see a pod named `flux-operator` in a Running state.
+You should see a `flux-operator` pod in a Running state.
 
 ## Installing with a Custom Values File
 
@@ -54,8 +49,6 @@ For production deployments, customize the installation with a values file.
 ```yaml
 # flux-operator-values.yaml
 # Custom Helm values for Flux Operator installation
-replicaCount: 1
-
 resources:
   limits:
     cpu: 500m
@@ -64,16 +57,12 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-# Enable leader election for HA setups
-leaderElection:
-  enabled: true
-
 # Configure logging
 logLevel: info
 
 # Set the image pull policy
 image:
-  pullPolicy: IfNotPresent
+  imagePullPolicy: IfNotPresent
 
 # Configure service account
 serviceAccount:
@@ -84,7 +73,7 @@ serviceAccount:
 Install with the custom values.
 
 ```bash
-helm install flux-operator controlplaneio-fluxcd/flux-operator \
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
   --namespace flux-system \
   --create-namespace \
   --values flux-operator-values.yaml
@@ -177,21 +166,23 @@ You should see the Flux controllers running alongside the Flux Operator.
 
 ## Configuring RBAC for the Flux Operator
 
-The Flux Operator needs cluster-wide permissions to manage Flux components. The Helm chart and kubectl installation methods set up the required RBAC automatically. If you need to customize RBAC, here is the ClusterRole the operator requires.
+The Flux Operator needs cluster-wide permissions to manage Flux components. The Helm chart and kubectl installation methods set up the required RBAC automatically. The Helm chart can bind the operator service account to the built-in `cluster-admin` role, which is required for FluxInstance deployment.
 
 ```yaml
 # flux-operator-rbac.yaml
-# ClusterRole for the Flux Operator
+# ClusterRoleBinding for the Flux Operator service account
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: ClusterRoleBinding
 metadata:
   name: flux-operator
-rules:
-  - apiGroups: ["*"]
-    resources: ["*"]
-    verbs: ["*"]
-  - nonResourceURLs: ["*"]
-    verbs: ["*"]
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: flux-operator
+    namespace: flux-system
 ```
 
 In production, you may want to scope these permissions more narrowly based on your security requirements.
