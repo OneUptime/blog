@@ -22,17 +22,18 @@ Managing Kafka users through Flux CD ensures that credential rotation, new servi
 
 ## Step 1: Understand KafkaUser Authentication Types
 
-Strimzi supports two authentication types for KafkaUsers:
+Strimzi supports three authentication modes for KafkaUsers. This guide uses the two modes where the User Operator generates credentials:
 
 1. **TLS** - The User Operator generates a TLS client certificate and stores it in a Kubernetes Secret. Applications use this certificate to authenticate.
 2. **SCRAM-SHA-512** - The User Operator generates a password and stores it in a Kubernetes Secret. Applications use username/password authentication.
+3. **TLS external** - The User Operator configures the Kafka user for mTLS, but you provide the certificate outside the User Operator.
 
 ## Step 2: Create a TLS-Authenticated Producer User
 
 ```yaml
 # infrastructure/messaging/users/orders-producer.yaml
 
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: orders-service-producer
@@ -77,7 +78,7 @@ spec:
 
 ```yaml
 # infrastructure/messaging/users/analytics-consumer.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: analytics-consumer
@@ -122,7 +123,7 @@ spec:
 
 ```yaml
 # infrastructure/messaging/users/platform-admin.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: platform-admin
@@ -161,20 +162,21 @@ spec:
 
 ## Step 5: Use the Generated Secret in Applications
 
-When the User Operator creates a `KafkaUser`, it generates a Kubernetes Secret containing the credentials:
+When the User Operator creates a `KafkaUser`, it generates a Kubernetes Secret with the same name in the same namespace as the `KafkaUser`.
 
 For TLS users, the Secret contains:
 - `user.crt` - client certificate
 - `user.key` - private key
 - `user.p12` - PKCS12 keystore
 - `user.password` - PKCS12 keystore password
-- `ca.crt` - CA certificate for verifying the broker
+
+The broker trust material comes from the Strimzi cluster CA Secret, such as `production-cluster-ca-cert`, which contains `ca.crt`, `ca.p12`, and `ca.password`.
 
 For SCRAM-SHA-512 users, the Secret contains:
 - `password` - the SCRAM password
-- `saslJaasConfig` - ready-to-use JAAS config string
+- `sasl.jaas.config` - ready-to-use JAAS config string
 
-Mount the Secret in your application:
+Mount the user Secret and cluster CA Secret in your application. If the application runs in a different namespace, replicate the generated Secrets into that namespace first:
 
 ```yaml
 # apps/orders-service/deployment.yaml
@@ -182,16 +184,26 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: orders-service
-  namespace: myapp
+  namespace: kafka
 spec:
+  selector:
+    matchLabels:
+      app: orders-service
   template:
+    metadata:
+      labels:
+        app: orders-service
     spec:
       volumes:
         - name: kafka-certs
           secret:
             secretName: orders-service-producer  # same name as KafkaUser
+        - name: kafka-cluster-ca
+          secret:
+            secretName: production-cluster-ca-cert
       containers:
         - name: app
+          image: ghcr.io/example/orders-service:latest
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "production-kafka-bootstrap.kafka.svc.cluster.local:9093"
@@ -199,16 +211,28 @@ spec:
               value: "SSL"
             - name: KAFKA_SSL_KEYSTORE_LOCATION
               value: "/kafka/certs/user.p12"
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: "PKCS12"
             - name: KAFKA_SSL_KEYSTORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: orders-service-producer
                   key: user.password
             - name: KAFKA_SSL_TRUSTSTORE_LOCATION
-              value: "/kafka/certs/ca.crt"
+              value: "/kafka/cluster-ca/ca.p12"
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: "PKCS12"
+            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-ca-cert
+                  key: ca.password
           volumeMounts:
             - name: kafka-certs
               mountPath: /kafka/certs
+              readOnly: true
+            - name: kafka-cluster-ca
+              mountPath: /kafka/cluster-ca
               readOnly: true
 ```
 
@@ -241,22 +265,29 @@ kubectl describe kafkauser orders-service-producer -n kafka
 
 # Verify the Secret was created
 kubectl get secret orders-service-producer -n kafka -o yaml
+kubectl get secret production-cluster-ca-cert -n kafka -o yaml
 
-# Test connectivity with TLS certificate
-kubectl exec -n kafka production-kafka-0 -- \
+# Test connectivity with TLS certificate from a pod that has the Kafka CLI and both Secrets mounted
+kubectl exec -n kafka deploy/orders-service -- sh -c '
   kafka-console-producer.sh \
-  --bootstrap-server production-kafka-bootstrap:9093 \
-  --producer.config /tmp/client.properties \
-  --topic orders
+  --bootstrap-server production-kafka-bootstrap.kafka.svc.cluster.local:9093 \
+  --producer-property security.protocol=SSL \
+  --producer-property ssl.keystore.location=/kafka/certs/user.p12 \
+  --producer-property ssl.keystore.type=PKCS12 \
+  --producer-property ssl.keystore.password="$(cat /kafka/certs/user.password)" \
+  --producer-property ssl.truststore.location=/kafka/cluster-ca/ca.p12 \
+  --producer-property ssl.truststore.type=PKCS12 \
+  --producer-property ssl.truststore.password="$(cat /kafka/cluster-ca/ca.password)" \
+  --topic orders'
 ```
 
 ## Best Practices
 
-- Use TLS authentication for production services (stronger than SCRAM) and SCRAM only for services that cannot handle TLS client certificates.
+- Use TLS authentication for production services that can handle client certificates and SCRAM only for services that cannot handle TLS client certificates.
 - Assign ACLs with minimum necessary permissions - producers should only `Write` to their specific topics, never `All`.
 - Use `patternType: prefix` for ACLs that cover multiple topics (e.g., `orders-` prefix) to avoid duplicating rules.
 - Never share `KafkaUser` credentials between services - each service gets its own user so compromised credentials can be revoked individually.
-- Rotate TLS certificates by deleting and recreating the `KafkaUser` (the operator generates new certificates automatically).
+- Rotate TLS certificates by annotating the generated user Secret with `strimzi.io/force-renew: "true"` so the User Operator renews the certificate on the next reconciliation.
 
 ## Conclusion
 
