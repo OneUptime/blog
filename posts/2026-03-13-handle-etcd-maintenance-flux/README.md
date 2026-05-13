@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, etcd, Cluster Operations, Database Maintenance
 
-Description: Perform etcd maintenance operations in a Flux-managed cluster including compaction, defragmentation, and backup/restore while maintaining GitOps integrity.
+Description: Perform etcd maintenance operations in a Flux-managed cluster including compaction, defragmentation, and backups while maintaining GitOps integrity.
 
 ---
 
@@ -12,14 +12,14 @@ Description: Perform etcd maintenance operations in a Flux-managed cluster inclu
 
 etcd is the distributed key-value store that holds the entire state of your Kubernetes cluster, including all Flux-managed resources, their statuses, and the managed field metadata that enables Flux's drift correction. When etcd becomes fragmented, grows too large, or needs maintenance, the performance of the entire cluster degrades - including Flux's ability to reconcile resources efficiently.
 
-etcd maintenance in a Flux-managed cluster requires understanding the interaction between etcd operations and Flux's reconciliation loop. During operations like defragmentation, etcd has brief unavailability windows that Flux's controllers handle with backoff retries. During backup and restore, Flux must be suspended to prevent reconciliation from interfering with the restore operation.
+etcd maintenance in a Flux-managed cluster requires understanding the interaction between etcd operations and Flux's reconciliation loop. During operations like defragmentation, etcd has brief unavailability windows that Flux's controllers handle with backoff retries. During restore operations, Flux should be suspended to prevent reconciliation from interfering with the restored cluster state.
 
-This guide covers routine etcd maintenance (compaction and defragmentation), backup procedures, and the critical restore workflow with Flux.
+This guide covers routine etcd maintenance (compaction and defragmentation), backup procedures, and keeping Flux quiet during maintenance windows.
 
 ## Prerequisites
 
 - Access to etcd endpoints and certificates
-- `etcdctl` installed and configured
+- `etcdctl`, `etcdutl`, and `jq` installed and configured
 - Flux CD v2 managing the cluster
 - kubectl with cluster-admin access
 - Sufficient disk space for etcd snapshots
@@ -74,7 +74,7 @@ echo "Compaction complete at revision $REVISION"
 
 ## Step 3: Suspend Flux Before Defragmentation
 
-Defragmentation briefly takes each etcd member offline. Suspend Flux to prevent reconciliation failures being logged during this window.
+Defragmentation briefly blocks reads and writes on the etcd member being defragmented. Suspend Flux to prevent reconciliation failures being logged during this window.
 
 ```bash
 # Suspend all Flux reconcilers
@@ -131,18 +131,19 @@ etcdctl endpoint status --write-out=table \
 
 ## Step 5: Take an etcd Backup
 
-Always take a backup before and after maintenance operations.
+Take a backup before starting maintenance and again after it completes.
 
 ```bash
 BACKUP_DATE=$(date +%Y%m%d-%H%M%S)
 BACKUP_PATH=/backup/etcd-snapshot-${BACKUP_DATE}.db
+SNAPSHOT_ENDPOINT=https://127.0.0.1:2379
 
-# Take an etcd snapshot
+# Take an etcd snapshot from a single endpoint
 etcdctl snapshot save $BACKUP_PATH \
-  --endpoints=$ETCD_ENDPOINTS
+  --endpoints=$SNAPSHOT_ENDPOINT
 
 # Verify the snapshot
-etcdctl snapshot status $BACKUP_PATH --write-out=table
+etcdutl snapshot status $BACKUP_PATH --write-out=table
 # +----------+----------+------------+------------+
 # |   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
 # +----------+----------+------------+------------+
@@ -167,6 +168,7 @@ metadata:
   namespace: kube-system
 spec:
   schedule: "0 3 * * 0"   # Weekly at 3 AM Sunday
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
       template:
@@ -179,23 +181,25 @@ spec:
               effect: NoSchedule
           containers:
             - name: etcd-maintenance
-              image: registry.k8s.io/etcd:3.5.12-0
+              image: ghcr.io/acme/etcd-maintenance:3.5.12  # Include etcdctl, jq, date, and /bin/sh
               command:
                 - /bin/sh
                 - -c
                 - |
                   # Compact to current revision
                   REVISION=$(etcdctl endpoint status \
-                    --endpoints=https://127.0.0.1:2379 \
+                    --endpoints=$ETCD_ENDPOINTS \
                     --write-out=json | jq -r '.[0].Status.header.revision')
-                  etcdctl compact $REVISION
+                  etcdctl compact $REVISION --endpoints=$ETCD_ENDPOINTS
                   # Defragment
-                  etcdctl defrag --endpoints=https://127.0.0.1:2379
+                  etcdctl defrag --endpoints=$ETCD_ENDPOINTS
                   # Take backup
-                  etcdctl snapshot save /backup/weekly-$(date +%Y%m%d).db
+                  etcdctl snapshot save /backup/weekly-$(date +%Y%m%d).db --endpoints=$ETCD_ENDPOINTS
               env:
                 - name: ETCDCTL_API
                   value: "3"
+                - name: ETCD_ENDPOINTS
+                  value: https://127.0.0.1:2379
                 - name: ETCDCTL_CACERT
                   value: /etc/kubernetes/pki/etcd/ca.crt
                 - name: ETCDCTL_CERT
@@ -249,7 +253,7 @@ echo "etcd maintenance complete. All systems nominal."
 
 ## Best Practices
 
-- Monitor etcd DB size weekly - set an alert at 4GB (the default 8GB quota allows headroom for response)
+- Monitor etcd DB size weekly - set an alert well below your configured quota (for example, 4 GiB only if the quota is 8 GiB; etcd's default storage limit is 2 GiB)
 - Schedule compaction and defragmentation monthly if you have high write rates (many reconciliations)
 - Always compress and upload etcd snapshots to off-cluster storage immediately after creation
 - Test backup restoration in a separate cluster annually to verify your backup is actually recoverable
