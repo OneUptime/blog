@@ -36,7 +36,7 @@ var queueDepth = promauto.NewGauge(prometheus.GaugeOpts{
 })
 ```
 
-Expose via `/metrics` endpoint (automatically scraped by Prometheus).
+Expose the metric from a `/metrics` endpoint so Prometheus can scrape it.
 
 ## Step 2: Configure Prometheus to Scrape the Application
 
@@ -91,7 +91,7 @@ spec:
           name:
             matches: "myapp_job_queue_depth"
             as: "job_queue_depth"  # Name exposed in custom metrics API
-          metricsQuery: 'avg(myapp_job_queue_depth{<<.LabelMatchers>>})'
+          metricsQuery: 'avg(myapp_job_queue_depth{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
 ```
 
 ## Step 4: Configure HPA with Custom Metric
@@ -164,7 +164,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   dependsOn:
-    - name: prometheus-adapter  # Custom metrics API must be available
+    - name: prometheus-adapter  # Kustomization that installs the custom metrics API
 ```
 
 ## Best Practices
