@@ -169,9 +169,9 @@ kubectl get crd certificates.cert-manager.io -o jsonpath='{.spec.versions[*].nam
 
 Update the `apiVersion` in your manifest files accordingly.
 
-### Fix 4: Add Health Checks for CRD Readiness
+### Fix 4: Add Health Checks for Operator Readiness
 
-Use health checks to ensure CRDs are fully registered before proceeding:
+Use health checks on the CRD or operator Kustomization so dependent Kustomizations that use `dependsOn` wait until it is ready:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
