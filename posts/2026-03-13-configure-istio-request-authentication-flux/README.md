@@ -34,7 +34,7 @@ metadata:
   name: jwt-auth
   namespace: production
 spec:
-  # Apply to all services in the production namespace (no selector = all pods)
+  # Apply to workloads in the production namespace with this label
   selector:
     matchLabels:
       require-auth: "true"
