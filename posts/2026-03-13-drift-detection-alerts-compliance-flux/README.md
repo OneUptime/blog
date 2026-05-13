@@ -12,7 +12,7 @@ Description: Alert on configuration drift detected by Flux CD to identify unauth
 
 Configuration drift occurs when the actual state of your cluster diverges from the desired state declared in Git. Drift can happen through manual `kubectl` commands, misconfigured automation, or bugs in other controllers that modify resources. For compliance frameworks - SOC 2, HIPAA, PCI DSS, FedRAMP - drift represents an unauthorized change that must be detected, investigated, and remediated.
 
-Flux CD continuously compares cluster state to Git state. When drift is detected, Flux either corrects it automatically (if `prune: true` is set) or marks the Kustomization as drifted. Both cases generate events that can trigger alerts. This guide shows how to configure drift detection sensitivity, set up alerting, and build a compliance response workflow for drift events.
+Flux CD continuously compares cluster state to Git state. During each reconciliation, Flux uses server-side apply dry-run to detect drift on managed resources and then applies the desired state to correct it. If `prune: true` is set, Flux also garbage-collects objects that were previously applied by the Kustomization but are no longer present in the current source revision. These reconciliations and failures generate events that can trigger alerts. This guide shows how to configure drift detection sensitivity, set up alerting, and build a compliance response workflow for drift events.
 
 ## Prerequisites
 
@@ -37,8 +37,8 @@ spec:
   # Short interval means drift is detected and corrected quickly
   interval: 5m
 
-  # prune: true removes resources not in Git (strongest drift correction)
-  # prune: false leaves extra resources but still alerts on them
+  # prune: true removes previously applied resources when they are removed from Git
+  # prune: false leaves previously applied resources in place when they are removed from Git
   prune: true
 
   sourceRef:
@@ -47,7 +47,7 @@ spec:
 
   path: ./apps/production
 
-  # Force: true allows Flux to overwrite fields managed by other controllers
+  # force: true allows Flux to recreate resources when immutable fields change
   # Use with caution - only enable if needed
   force: false
 
@@ -69,11 +69,11 @@ spec:
 
 ## Step 2: Configure Drift Alert Notifications
 
-Set up alerting for drift events. Flux generates `ReconciliationFailed` events when it cannot apply the desired state, and generates events with "drift" in the message when it corrects unauthorized changes:
+Set up alerting for reconciliation events that indicate drift correction, pruning, or failed reconciliation. Flux generates `ReconciliationFailed` events when it cannot apply the desired state, and emits reconciliation events when resources are created, configured, deleted, or pruned:
 
 ```yaml
 # clusters/production/monitoring/drift-alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-ops
@@ -84,57 +84,63 @@ spec:
   secretRef:
     name: slack-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-critical
   namespace: flux-system
 spec:
   type: pagerduty
-  secretRef:
-    name: pagerduty-integration-key   # Secret containing the routing key
+  address: https://events.pagerduty.com
+  channel: <integrationKey>   # PagerDuty Events API v2 routing key
 ---
 # Slack alert for drift detection in all production Kustomizations
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-detected-slack
   namespace: flux-system
 spec:
-  summary: "Configuration drift detected in production"
+  eventMetadata:
+    summary: "Configuration drift detected in production"
   providerRef:
     name: slack-ops
-  eventSeverity: warning
+  eventSeverity: info
   eventSources:
     - kind: Kustomization
+      name: '*'
       namespace: flux-system
   inclusionList:
-    - ".*drift.*"
     - ".*ReconciliationFailed.*"
-    - ".*pruned.*"           # Resource was pruned (unauthorized resource removed)
+    - ".*configured.*"
+    - ".*created.*"
+    - ".*deleted.*"
+    - ".*pruned.*"           # Resource was garbage-collected
 ```
 
 ```yaml
-# PagerDuty alert for persistent drift (reconciliation failing for > 15 minutes)
-apiVersion: notification.toolkit.fluxcd.io/v1
+# PagerDuty alert for failed reconciliation
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
-  name: persistent-drift-pagerduty
+  name: failed-reconciliation-pagerduty
   namespace: flux-system
 spec:
-  summary: "CRITICAL: Persistent configuration drift in production cluster"
+  eventMetadata:
+    summary: "CRITICAL: Configuration reconciliation failed in production cluster"
   providerRef:
     name: pagerduty-critical
   eventSeverity: error
   eventSources:
     - kind: Kustomization
+      name: '*'
   inclusionList:
     - ".*ReconciliationFailed.*"
 ```
 
 ## Step 3: Use flux diff to Detect Drift Proactively
 
-Run `flux diff` in CI or a scheduled job to proactively detect drift before the reconciliation interval fires:
+Run `flux diff` in CI or a scheduled job to proactively detect drift outside the normal reconciliation loop:
 
 ```yaml
 # clusters/production/monitoring/drift-check-cronjob.yaml
@@ -154,7 +160,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: drift-checker
-              image: ghcr.io/fluxcd/flux-cli:v2.4.0
+              image: ghcr.io/fluxcd/flux-cli:v2.8.6
               command:
                 - /bin/sh
                 - -c
@@ -166,16 +172,21 @@ spec:
 
                   for ks in $KUSTOMIZATIONS; do
                     echo "Checking drift for: $ks"
-                    RESULT=$(flux diff kustomization "$ks" 2>&1)
+                    RESULT=$(flux diff kustomization "$ks" --namespace flux-system 2>&1)
+                    EXIT_CODE=$?
 
-                    if echo "$RESULT" | grep -q "diff"; then
+                    if [ "$EXIT_CODE" -eq 1 ]; then
                       echo "DRIFT DETECTED in $ks:"
                       echo "$RESULT"
 
                       # Send alert via webhook
                       curl -s -X POST "$ALERT_WEBHOOK" \
                         -H "Content-Type: application/json" \
-                        -d "{\"text\":\"Drift detected in Kustomization: $ks\",\"drift\":\"$RESULT\"}"
+                        -d "{\"text\":\"Drift detected in Kustomization: $ks. Check the drift-check job logs for the diff.\"}"
+                    elif [ "$EXIT_CODE" -gt 1 ]; then
+                      echo "flux diff failed for $ks:"
+                      echo "$RESULT"
+                      exit "$EXIT_CODE"
                     fi
                   done
               env:
@@ -190,20 +201,20 @@ spec:
 
 Document the compliance response process for drift events:
 
-```markdown
+~~~markdown
 # Drift Detection Response Runbook
 
 ## Step 1: Identify the Drift
 ```bash
 # Get details of which Kustomization drifted
-flux get kustomizations --all-namespaces | grep -v Ready
+flux get kustomizations --all-namespaces --status-selector ready=false
 
 # See what changed
 flux describe kustomization <name>
 
 # Diff Git state vs cluster state
 flux diff kustomization <name>
-```plaintext
+```
 
 ## Step 2: Investigate the Cause
 - Was the change made intentionally (forgotten to commit to Git)?
@@ -220,12 +231,13 @@ git commit -m "sync: reconcile drift in <resource> (cause: <reason>)"
 flux reconcile kustomization <name> --force
 
 # Option C: Open a security incident if the change was unauthorized
-```plaintext
+```
 
 ## Step 4: Document
 - File an incident ticket with the drift details
 - Include who investigated, what the root cause was, and what remediation was applied
 - Update the runbook if a new drift pattern is discovered
+~~~
 
 ## Step 5: Implement Compliance Reporting for Drift
 
@@ -248,16 +260,16 @@ EOF
 
 # Query Kubernetes events for drift-related activity
 kubectl get events -n flux-system \
-  --sort-by='.lastTimestamp' \
+  --sort-by='.metadata.creationTimestamp' \
   -o json \
   | jq -r '.items[] |
       select(.reason == "ReconciliationFailed" or
              (.message | test("pruned|drift"))) |
-      "| \(.lastTimestamp) | \(.involvedObject.name) | \(.reason) | \(.message[:80]) |"' \
+      "| \(.eventTime // .lastTimestamp // .metadata.creationTimestamp) | \(.regarding.name // .involvedObject.name) | \(.reason) | \(.message[:80]) |"' \
   >> "$OUTPUT"
 
 echo "Drift report: $OUTPUT"
-```plaintext
+```
 
 ## Step 6: Tune Drift Sensitivity per Environment
 
@@ -268,8 +280,8 @@ Different environments need different drift sensitivity:
 # clusters/production/apps/critical-app.yaml
 spec:
   interval: 2m      # Check frequently
-  prune: true       # Auto-remove unauthorized resources
-  force: false      # Don't force-overwrite - prefer alerting
+  prune: true       # Garbage-collect resources removed from Git
+  force: false      # Don't recreate resources for immutable-field changes
 
 # Staging: moderate drift detection
 # clusters/staging/apps/app.yaml
@@ -281,8 +293,8 @@ spec:
 # clusters/development/apps/app.yaml
 spec:
   interval: 30m
-  prune: false     # Don't auto-remove in dev - developers may be experimenting
-```plaintext
+  prune: false     # Don't garbage-collect in dev - developers may be experimenting
+```
 
 ## Best Practices
 
@@ -295,5 +307,3 @@ spec:
 ## Conclusion
 
 Flux CD drift detection provides a continuous monitoring capability that is essential for compliance frameworks requiring configuration integrity controls. By combining Flux's automatic drift correction with alert notifications and a structured response runbook, you can detect unauthorized changes within minutes, remediate them quickly, and produce drift event reports that demonstrate your configuration management controls are functioning effectively.
-
-```
