@@ -14,7 +14,7 @@ Managing GPU resources in Kubernetes clusters traditionally requires manual driv
 
 Flux CD brings GitOps principles to this process, ensuring your GPU Operator configuration is version-controlled, auditable, and automatically reconciled. Any configuration drift is corrected, and new nodes joining the cluster receive GPU support automatically through the same declarative pipeline.
 
-In this guide you will learn how to deploy the NVIDIA GPU Operator using Flux CD HelmRelease, configure namespace and RBAC prerequisites, and validate that GPU resources are available to workloads.
+In this guide you will learn how to deploy the NVIDIA GPU Operator using Flux CD HelmRelease, configure namespace and Pod Security Admission prerequisites, and validate that GPU resources are available to workloads.
 
 ## Prerequisites
 
@@ -37,6 +37,7 @@ metadata:
   name: gpu-operator
   labels:
     app.kubernetes.io/managed-by: flux
+    pod-security.kubernetes.io/enforce: privileged
 ---
 # clusters/my-cluster/gpu-operator/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -65,7 +66,7 @@ spec:
   chart:
     spec:
       chart: gpu-operator
-      version: "v23.9.*"
+      version: "v26.3.*"
       sourceRef:
         kind: HelmRepository
         name: nvidia
@@ -158,7 +159,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: cuda-test
-      image: nvidia/cuda:12.3-base-ubuntu22.04
+      image: nvidia/cuda:12.3.2-base-ubuntu22.04
       command: ["nvidia-smi"]
       resources:
         limits:
@@ -174,7 +175,7 @@ kubectl delete pod gpu-test
 
 ## Best Practices
 
-- Pin the GPU Operator chart version using a semver range (e.g., `v23.9.*`) to receive patch updates automatically while avoiding breaking changes.
+- Pin the GPU Operator chart version using a semver range (e.g., `v26.3.*`) to receive patch updates automatically while avoiding breaking changes.
 - Use `prune: true` on the Flux Kustomization so removed resources are cleaned up from the cluster.
 - Store GPU Operator values in a separate `values.yaml` file and reference it with `valuesFrom` for easier review in pull requests.
 - Label GPU nodes consistently (e.g., `nvidia.com/gpu=true`) and use node selectors in non-operator workloads to avoid scheduling on non-GPU nodes.
