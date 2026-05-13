@@ -14,7 +14,7 @@ Flux HelmRelease resources define how Helm charts are deployed to your cluster. 
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
+- A Kubernetes cluster running a version supported by your Flux release. For Flux v2.3, this means Kubernetes 1.28, 1.29, or 1.30
 - Flux v2.3 or later installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository or HelmRepository source
@@ -172,7 +172,7 @@ This pattern is useful when you want to test a new chart version in staging befo
 
 ## Injecting Complex Values
 
-Post-build substitution replaces variables with string values. For complex nested Helm values, structure your manifest so that each variable maps to a single value:
+Post-build substitution loads variable values as strings, but unquoted numbers and booleans in the final YAML are parsed as YAML numbers and booleans. For complex nested Helm values, structure your manifest so that each variable maps to a single value:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -230,7 +230,6 @@ spec:
   valuesFrom:
     - kind: ConfigMap
       name: my-app-helm-values
-      targetPath: ""
   values:
     global:
       environment: ${ENVIRONMENT}
@@ -243,19 +242,19 @@ In this setup, post-build substitution handles `APP_NAMESPACE`, `CHART_VERSION`,
 After reconciliation, check that the HelmRelease was created with the correct values:
 
 ```bash
-kubectl get helmrelease -n flux-system my-app -o yaml
+kubectl get helmrelease -n web nginx -o yaml
 ```
 
 Check the Helm release status:
 
 ```bash
-flux get helmrelease my-app -n flux-system
+flux get helmreleases nginx -n web
 ```
 
-If substitution fails, the Kustomization will report an error:
+If substitution fails because the referenced ConfigMap or Secret is missing, or because strict post-build substitution is enabled and a variable is missing, the Kustomization will report an error:
 
 ```bash
-flux get kustomization nginx
+flux get kustomizations nginx
 ```
 
 ## Conclusion
