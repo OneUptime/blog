@@ -22,7 +22,7 @@ Helm chart upgrades can fail for many reasons: incompatible values, resource con
 
 ## Understanding Upgrade Remediation
 
-Upgrade remediation controls what Flux does when a Helm chart upgrade fails. The `spec.upgrade.remediation` field offers retries for configuring the number of upgrade retry attempts, strategy for choosing what to do on the last failure (rollback or uninstall), and remediateLastFailure for controlling whether to apply the strategy on the final retry.
+Upgrade remediation controls what Flux does when a Helm chart upgrade fails. The `spec.upgrade.remediation` field offers retries for configuring the number of upgrade retry attempts, a strategy for choosing what remediation action to perform between attempts (rollback or uninstall), and remediateLastFailure for controlling whether to apply the strategy after the final retry is exhausted.
 
 ## Basic Upgrade Retry Configuration
 
@@ -53,7 +53,7 @@ With `retries: 3`, Flux retries the upgrade up to 3 additional times after the i
 
 ## Configuring Rollback on Failure
 
-The `strategy: rollback` setting tells Flux to roll back to the previous successful release version when the last retry fails:
+The `strategy: rollback` setting tells Flux to roll back to the previous successful release version after a failed upgrade attempt, before Flux retries the upgrade:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -78,13 +78,13 @@ spec:
       remediateLastFailure: true
 ```
 
-With this configuration, when the upgrade attempt fails, Flux tries the upgrade again on the first and second retries. On the third retry (the last one), it rolls back to the previous version, then attempts the upgrade one more time.
+With this configuration, when the upgrade attempt fails, Flux rolls back to the previous release and then retries the upgrade. With `retries: 3`, Flux can make three retry attempts after the initial failure. If the last retry also fails, `remediateLastFailure: true` tells Flux to roll back the final failed attempt as well.
 
 ## Rollback vs Uninstall Strategy
 
 The `strategy` field accepts two values.
 
-**rollback** is recommended for most cases. It reverts to the last successful Helm release. Your application returns to its previous working state with zero data loss.
+**rollback** is recommended for most cases. It reverts to the last successful Helm release, which helps return your application to its previous working state without uninstalling the release.
 
 ```yaml
 upgrade:
@@ -94,7 +94,7 @@ upgrade:
     remediateLastFailure: true
 ```
 
-**uninstall** completely removes the Helm release and all its resources, then reinstalls. This is more destructive but can resolve issues where rollback fails due to corrupted Helm state.
+**uninstall** removes the Helm release resources, then reinstalls. This is more destructive but can resolve issues where rollback fails due to corrupted Helm state.
 
 ```yaml
 upgrade:
@@ -104,7 +104,7 @@ upgrade:
     remediateLastFailure: true
 ```
 
-Use `uninstall` only when rollback does not work, and be aware that it deletes PVCs depending on the chart configuration, which can cause data loss.
+Use `uninstall` only when rollback does not work, and be aware that it may delete chart-managed persistent resources depending on the chart configuration and resource retention policies, which can cause data loss.
 
 ## Complete HelmRelease with Install and Upgrade Remediation
 
@@ -185,7 +185,7 @@ spec:
         size: 50Gi
 ```
 
-Using `strategy: rollback` instead of `uninstall` is critical here. Rollback preserves the existing PVC and data. An uninstall could delete the PVC and destroy your database.
+Using `strategy: rollback` instead of `uninstall` is critical here. Rollback avoids uninstalling the release and reduces the risk of deleting chart-managed persistent resources. An uninstall may delete resources that your database depends on, depending on the chart and retention settings.
 
 ## Upgrade Remediation for Infrastructure Charts
 
@@ -238,17 +238,16 @@ Track upgrade attempts and rollbacks:
 
 ```bash
 # Check HelmRelease status
-
-flux get helmrelease my-app
+flux get helmreleases -n flux-system
 
 # Check upgrade failure count
 kubectl get helmrelease my-app -n flux-system -o jsonpath='{.status.upgradeFailures}'
 
-# Check the current release version
-kubectl get helmrelease my-app -n flux-system -o jsonpath='{.status.lastAppliedRevision}'
+# Check the latest successful chart version recorded by Flux
+kubectl get helmrelease my-app -n flux-system -o jsonpath='{.status.history[0].chartVersion}'
 
 # Check Helm release history for rollbacks
-helm history my-app -n default
+helm history my-app -n flux-system
 
 # Watch HelmRelease events
 kubectl get events -n flux-system --field-selector involvedObject.name=my-app --sort-by=.lastTimestamp
@@ -263,13 +262,13 @@ Sometimes the rollback itself can fail. When this happens:
 kubectl get helmrelease my-app -n flux-system -o jsonpath='{.status.conditions}' | jq .
 
 # Check Helm release state
-helm status my-app -n default
+helm status my-app -n flux-system
 
 # Check for stuck resources
-kubectl get all -n default -l app.kubernetes.io/instance=my-app
+kubectl get all -n flux-system -l app.kubernetes.io/instance=my-app
 
 # Manual rollback if needed
-helm rollback my-app 0 -n default
+helm rollback my-app 0 -n flux-system
 
 # Reset HelmRelease state
 flux suspend helmrelease my-app
@@ -312,13 +311,13 @@ When upgrades keep failing despite retries:
 
 ```bash
 # Check for resource conflicts
-kubectl get events -n default --sort-by=.lastTimestamp | tail -20
+kubectl get events -n flux-system --sort-by=.lastTimestamp | tail -20
 
 # Check pod status after upgrade attempt
-kubectl get pods -n default -l app.kubernetes.io/instance=my-app
+kubectl get pods -n flux-system -l app.kubernetes.io/instance=my-app
 
 # Check readiness probe configuration
-kubectl describe deployment my-app -n default
+kubectl describe deployment my-app -n flux-system
 
 # Check if values are valid
 helm template my-app bitnami/my-app --version 2.1.0 --values values.yaml | kubectl apply --dry-run=client -f -
@@ -328,7 +327,7 @@ Common upgrade failure causes include breaking changes in the chart requiring va
 
 ## Best Practices
 
-Here are guidelines for upgrade remediation. Always use `strategy: rollback` for production workloads to minimize downtime. Set `cleanupOnFail: true` to prevent resource leaks from failed upgrades. Use 3-5 retries for most charts, and unlimited for critical infrastructure. Set `remediateLastFailure: true` to trigger rollback before the final retry. Set upgrade timeouts based on the chart's typical upgrade duration. Never use `strategy: uninstall` for stateful workloads with persistent data. Monitor upgrade failure counts and alert when retries are exhausted.
+Here are guidelines for upgrade remediation. Always use `strategy: rollback` for production workloads to minimize downtime. Set `cleanupOnFail: true` to prevent resource leaks from failed upgrades. Use 3-5 retries for most charts, and unlimited for critical infrastructure. Set `remediateLastFailure: true` to trigger rollback after the final retry is exhausted. Set upgrade timeouts based on the chart's typical upgrade duration. Never use `strategy: uninstall` for stateful workloads with persistent data. Monitor upgrade failure counts and alert when retries are exhausted.
 
 ## Conclusion
 
