@@ -18,19 +18,19 @@ Amazon EKS provides a managed Kubernetes control plane that pairs well with Isti
 - `eksctl` CLI installed
 - `kubectl` installed
 - `helm` v3 installed
-- `istioctl` installed
+- `istioctl` 1.29.x installed
 
 ## Step 1: Create an EKS Cluster
 
 Create a new EKS cluster with `eksctl`:
 
 ```bash
-# Create an EKS cluster with two managed node groups
+# Create an EKS cluster with one managed node group
 
 eksctl create cluster \
   --name flagger-demo \
   --region us-west-2 \
-  --version 1.29 \
+  --version 1.35 \
   --nodegroup-name workers \
   --node-type m5.large \
   --nodes 3 \
@@ -78,6 +78,10 @@ helm upgrade -i flagger flagger/flagger \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 
+# Install Flagger's load tester in the default namespace
+helm upgrade -i flagger-loadtester flagger/loadtester \
+  --namespace default
+
 # Install Flagger's Grafana dashboard (optional)
 helm upgrade -i flagger-grafana flagger/grafana \
   --namespace istio-system \
@@ -96,7 +100,7 @@ Flagger needs Prometheus to query Istio telemetry metrics:
 
 ```bash
 # Install Prometheus using Istio's addon
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 
 # Verify Prometheus is running
 kubectl get pods -n istio-system -l app=prometheus
@@ -104,7 +108,7 @@ kubectl get pods -n istio-system -l app=prometheus
 
 ## Step 5: Deploy a Sample Application
 
-Create the application Deployment and Service:
+Create the application Deployment:
 
 ```yaml
 # app.yaml
@@ -178,14 +182,11 @@ spec:
     port: 9898
     targetPort: 9898
     # Istio gateway references (optional, for external traffic)
-    gateways:
-      - public-gateway.istio-system.svc.cluster.local
-    hosts:
-      - podinfo.example.com
+    # Add gateways and hosts here only after creating an Istio Gateway
     # Istio traffic policy
     trafficPolicy:
       tls:
-        mode: ISTIO_MUTUAL
+        mode: DISABLE
     # Istio retry policy
     retries:
       attempts: 3
@@ -212,6 +213,13 @@ spec:
         thresholdRange:
           max: 500
         interval: 1m
+    # Generate traffic during the analysis
+    webhooks:
+      - name: load-test
+        url: http://flagger-loadtester.default/
+        timeout: 5s
+        metadata:
+          cmd: "hey -z 1m -q 10 -c 2 http://podinfo-canary.default:9898/"
 ```
 
 Apply the Canary:
@@ -290,6 +298,7 @@ To remove the resources:
 ```bash
 kubectl delete canary podinfo -n default
 kubectl delete deployment podinfo -n default
+helm uninstall flagger-loadtester -n default
 helm uninstall flagger -n istio-system
 istioctl uninstall --purge -y
 eksctl delete cluster --name flagger-demo --region us-west-2
