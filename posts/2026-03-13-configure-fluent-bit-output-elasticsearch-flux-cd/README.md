@@ -32,8 +32,8 @@ Never put credentials in plaintext in Git. Use Sealed Secrets or External Secret
 
 # kubectl create secret generic elasticsearch-credentials \
 #   -n logging \
-#   --from-literal=username=elastic \
-#   --from-literal=password=supersecret
+#   --from-literal=ES_USERNAME=elastic \
+#   --from-literal=ES_PASSWORD=supersecret
 ```
 
 For Sealed Secrets:
@@ -46,8 +46,8 @@ metadata:
   namespace: logging
 spec:
   encryptedData:
-    username: AgBy3...  # sealed value
-    password: AgCA4...  # sealed value
+    ES_USERNAME: AgBy3...  # sealed value
+    ES_PASSWORD: AgCA4...  # sealed value
 ```
 
 ## Step 2: Configure Fluent Bit HelmRelease with Elasticsearch Output
@@ -64,7 +64,7 @@ spec:
   chart:
     spec:
       chart: fluent-bit
-      version: "0.46.7"
+      version: "0.57.5"
       sourceRef:
         kind: HelmRepository
         name: fluent
@@ -120,7 +120,7 @@ spec:
             # Target field for the log timestamp
             Time_Key          @timestamp
             Time_Key_Nanos    On
-            # Use data streams (ES 7.9+)
+            # Omit document types for Elasticsearch 8.x
             Suppress_Type_Name On
 
     # Expose Fluent Bit metrics for Prometheus
@@ -182,9 +182,10 @@ For Elasticsearch 8.x with data streams, update the output plugin:
             HTTP_Passwd       ${ES_PASSWORD}
             # Data stream settings
             Index             logs-kubernetes-default
-            # Required for ES 8.x data streams
+            Write_Operation   create
+            # Required for Elasticsearch 8.x
             Suppress_Type_Name On
-            TLS               Off
+            # Keep the TLS settings from the previous step when Elasticsearch requires HTTPS
 ```
 
 ## Step 5: Apply via Flux Kustomization
@@ -229,7 +230,7 @@ kubectl logs -n logging daemonset/fluent-bit -f | grep "\[error\]"
 
 - Always use environment variables (injected from Secrets) for credentials rather than embedding them in config files.
 - Set `Retry_Limit` to a finite number and monitor Fluent Bit's retry metrics - infinite retries can cause memory growth.
-- Use `Logstash_Format On` with date-based index names to enable Elasticsearch ILM rollover policies.
+- Use `Logstash_Format On` with date-based index names for daily indices, or use data streams/an index alias when you need Elasticsearch ILM rollover.
 - Enable `Replace_Dots On` to prevent Elasticsearch from rejecting fields with dots in their names.
 - Test your Elasticsearch output configuration in a development cluster before rolling to production.
 
