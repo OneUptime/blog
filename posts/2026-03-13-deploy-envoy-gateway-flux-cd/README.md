@@ -18,27 +18,38 @@ This guide deploys Envoy Gateway using Flux CD HelmRelease and configures the co
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD bootstrapped (Kubernetes 1.26+)
+- A Kubernetes cluster with Flux CD bootstrapped (Kubernetes 1.32+ for Envoy Gateway v1.7)
 - kubectl with cluster-admin access
 - A Git repository connected to Flux CD
 - cert-manager for TLS certificate management
 - Basic familiarity with Kubernetes Gateway API concepts (GatewayClass, Gateway, HTTPRoute)
 
-## Step 1: Add the Envoy Gateway HelmRepository
+## Step 1: Add the Envoy Gateway OCIRepository
 
-Register the Envoy Gateway Helm chart repository with Flux CD.
+Register the Envoy Gateway Helm chart OCI artifact with Flux CD.
 
 ```yaml
-# infrastructure/envoy-gateway/helmrepository.yaml
+# infrastructure/envoy-gateway/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy-gateway-system
+---
+# infrastructure/envoy-gateway/ocirepository.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: envoy-gateway
-  namespace: flux-system
+  name: gateway-helm
+  namespace: envoy-gateway-system
 spec:
   interval: 1h
-  url: https://gateway.envoyproxy.io/helm-stable
+  url: oci://docker.io/envoyproxy/gateway-helm
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    tag: v1.7.3
 ```
 
 ## Step 2: Deploy Envoy Gateway
@@ -54,15 +65,14 @@ metadata:
   namespace: envoy-gateway-system
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: gateway-helm
-      version: ">=1.0.0 <2.0.0"
-      sourceRef:
-        kind: HelmRepository
-        name: envoy-gateway
-        namespace: flux-system
-      interval: 12h
+  releaseName: eg
+  chartRef:
+    kind: OCIRepository
+    name: gateway-helm
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 5m
   values:
     # Envoy Gateway configuration
     config:
@@ -71,9 +81,6 @@ spec:
           controllerName: gateway.envoyproxy.io/gatewayclass-controller
         provider:
           type: Kubernetes
-          kubernetes:
-            rateLimitServer:
-              url: "ratelimit:8081"
         logging:
           level:
             default: info
@@ -88,10 +95,6 @@ spec:
           limits:
             cpu: 500m
             memory: 1Gi
-
-    # Enable metrics
-    metrics:
-      enabled: true
 ```
 
 ## Step 3: Create the GatewayClass
@@ -128,7 +131,7 @@ metadata:
 spec:
   gatewayClassName: envoy-gateway
   listeners:
-    # HTTP listener - redirects to HTTPS
+    # HTTP listener for redirect routes or plain HTTP services
     - name: http
       protocol: HTTP
       port: 80
@@ -245,15 +248,15 @@ kubectl describe gateway production-gateway -n envoy-gateway-system
 # List all HTTPRoutes
 kubectl get httproute -A
 
-# Get the Gateway's LoadBalancer IP
+# Get the Gateway's LoadBalancer address
 kubectl get svc -n envoy-gateway-system
 
 # Test routing
-GATEWAY_IP=$(kubectl get svc envoy-envoy-gateway-system-production-gateway \
+GATEWAY_HOST=$(kubectl get gateway production-gateway \
   -n envoy-gateway-system \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  -o jsonpath='{.status.addresses[0].value}')
 
-curl -H "Host: api.example.com" http://$GATEWAY_IP/health
+curl --connect-to api.example.com:443:$GATEWAY_HOST:443 https://api.example.com/health
 
 # Verify Flux reconciliation
 flux get kustomization envoy-gateway
@@ -265,7 +268,7 @@ flux get helmrelease envoy-gateway -n envoy-gateway-system
 - Use `allowedRoutes.namespaces.from: Selector` with namespace labels rather than `All` to control which namespaces can attach routes to your Gateway; this prevents unauthorized route attachment.
 - Implement HTTPS redirect by adding an HTTPRoute that redirects all HTTP traffic to HTTPS before exposing production services.
 - Use Gateway API's `ReferenceGrant` resource when HTTPRoutes in one namespace need to reference backends in another namespace; this prevents cross-namespace access without explicit approval.
-- Pin the GatewayClass controller name to the exact Envoy Gateway version you are running to prevent unexpected behavior during upgrades.
+- Pin the Envoy Gateway Helm chart version and keep the GatewayClass controller name aligned with the controller name configured for Envoy Gateway.
 - Monitor Envoy Gateway using its Prometheus metrics; key metrics include listener error rates, route match counts, and upstream connection latency.
 - Test Gateway API manifest portability by validating your HTTPRoute resources against the Gateway API conformance test suite.
 
