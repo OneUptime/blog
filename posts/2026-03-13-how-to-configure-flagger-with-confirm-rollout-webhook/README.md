@@ -10,9 +10,9 @@ Description: Learn how to configure a confirm-rollout webhook in Flagger to add 
 
 ## Introduction
 
-Flagger supports several webhook types that let you integrate external systems into the canary deployment lifecycle. The `confirm-rollout` webhook is called before Flagger begins routing traffic to the canary version. It acts as a gate: Flagger will not start the canary analysis until the webhook returns a successful response.
+Flagger supports several webhook types that let you integrate external systems into the canary deployment lifecycle. The `confirm-rollout` webhook is called before Flagger scales up the canary deployment. It acts as a gate: Flagger will not start the canary analysis until the webhook returns a successful response.
 
-This is useful for scenarios where you need manual approval before a deployment proceeds, want to check an external system for deployment readiness, or need to coordinate rollouts across multiple services. Flagger calls the confirm-rollout webhook repeatedly at each analysis interval until it receives a 200 response, at which point the canary analysis begins.
+This is useful for scenarios where you need manual approval before a deployment proceeds, want to check an external system for deployment readiness, or need to coordinate rollouts across multiple services. Flagger calls the confirm-rollout webhook repeatedly at each analysis interval until it receives a successful HTTP 2xx response, at which point the canary analysis begins.
 
 This guide covers how to configure confirm-rollout webhooks in your Canary resource, how to build a simple webhook receiver, and practical patterns for using this gate.
 
@@ -25,7 +25,7 @@ This guide covers how to configure confirm-rollout webhooks in your Canary resou
 
 ## How confirm-rollout Works
 
-When Flagger detects a new revision of the target Deployment, it creates the canary workload but does not start routing traffic to it. Before entering the analysis loop, Flagger calls all webhooks of type `confirm-rollout`. If any of them returns a non-200 HTTP status code, Flagger logs the response and waits until the next analysis interval to try again. The canary remains at zero traffic weight until all confirm-rollout webhooks return 200.
+When Flagger detects a new revision of the target Deployment, it pauses before scaling up the canary deployment and routing traffic to it. Before entering the analysis loop, Flagger calls all webhooks of type `confirm-rollout`. If any of them returns a timeout or non-2xx HTTP status code, Flagger logs the response and waits until the next analysis interval to try again. The canary remains at zero traffic weight until all confirm-rollout webhooks return a successful response.
 
 This means the webhook controls the start of the rollout, not the promotion. Flagger has a separate `confirm-promotion` webhook type for the promotion gate.
 
@@ -65,11 +65,12 @@ When Flagger detects a new revision, it sends an HTTP POST request to the specif
   "name": "my-app",
   "namespace": "default",
   "phase": "Progressing",
+  "checksum": "85d557f47b",
   "metadata": {}
 }
 ```
 
-If the webhook returns HTTP 200, Flagger proceeds with the canary analysis. Any other status code causes Flagger to wait and retry on the next interval tick.
+If the webhook returns HTTP 2xx, Flagger proceeds with the canary analysis. A timeout or non-2xx status code causes Flagger to wait and retry on the next interval tick.
 
 ## Using the Flagger Load Tester Gate Endpoint
 
@@ -79,21 +80,21 @@ The Flagger load tester ships with built-in gate endpoints that you can use for 
     webhooks:
       - name: confirm-rollout-gate
         type: confirm-rollout
-        url: http://flagger-loadtester.test/gate/approve
+        url: http://flagger-loadtester.test/gate/check
 ```
 
 By default, the gate is closed. To open it and allow the rollout to proceed, send a POST request to the load tester:
 
 ```bash
 kubectl -n test exec deploy/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/open
+  curl -s -d '{"name":"my-app","namespace":"default"}' http://localhost:8080/gate/open
 ```
 
 To close the gate again (for future rollouts):
 
 ```bash
 kubectl -n test exec deploy/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/close
+  curl -s -d '{"name":"my-app","namespace":"default"}' http://localhost:8080/gate/close
 ```
 
 This provides a simple manual approval mechanism without building a custom webhook service.
@@ -120,6 +121,7 @@ The metadata is included in the webhook POST request body:
   "name": "my-app",
   "namespace": "default",
   "phase": "Progressing",
+  "checksum": "85d557f47b",
   "metadata": {
     "environment": "production",
     "team": "platform",
@@ -152,7 +154,19 @@ spec:
     spec:
       containers:
         - name: gate
-          image: nginx:alpine
+          image: python:3.12-alpine
+          command:
+            - python
+            - -c
+            - |
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              class Gate(BaseHTTPRequestHandler):
+                  def do_POST(self):
+                      self.send_response(200)
+                      self.end_headers()
+                  def log_message(self, format, *args):
+                      pass
+              HTTPServer(("", 80), Gate).serve_forever()
           ports:
             - containerPort: 80
 ---
@@ -169,7 +183,7 @@ spec:
       targetPort: 80
 ```
 
-In practice, you would replace the nginx container with your own application logic that checks an external approval system, a feature flag service, or a database for deployment readiness.
+In practice, you would replace this simple HTTP handler with your own application logic that checks an external approval system, a feature flag service, or a database for deployment readiness.
 
 ## Setting a Timeout
 
