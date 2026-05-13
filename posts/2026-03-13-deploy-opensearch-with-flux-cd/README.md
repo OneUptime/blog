@@ -10,17 +10,17 @@ Description: Deploy OpenSearch search and analytics engine to Kubernetes using F
 
 ## Introduction
 
-OpenSearch is the open-source fork of Elasticsearch maintained by AWS and the community following the license change in Elasticsearch 7.10. It is API-compatible with Elasticsearch 7.x and includes security, alerting, anomaly detection, and index state management plugins out of the box without requiring a commercial license. For teams that need a self-hosted, fully open-source search and log analytics platform, OpenSearch is the leading choice.
+OpenSearch is the open-source fork of Elasticsearch 7.10.2, now supported by the OpenSearch Software Foundation under the Linux Foundation. OpenSearch 1.x is backward-compatible with Elasticsearch 7.10, and OpenSearch 2.x provides compatibility features for many Elasticsearch 7.10 clients and APIs. It includes security, alerting, anomaly detection, and index state management plugins out of the box without requiring a commercial license. For teams that need a self-hosted, fully open-source search and log analytics platform, OpenSearch is the leading choice.
 
 Deploying OpenSearch via Flux CD gives you GitOps control over cluster topology, security configuration, index templates, and plugin management. Every change to the OpenSearch cluster configuration passes through a pull request, reducing the risk of accidental misconfiguration in production.
 
-This guide deploys a production-grade OpenSearch cluster using the official Helm chart as a Flux HelmRelease, configures TLS, and sets up an Ingress for external access.
+This guide deploys an OpenSearch cluster using the official Helm chart as a Flux HelmRelease and configures TLS using the chart's demo certificates. Replace the demo certificates and plaintext secret handling before using this setup in production.
 
 ## Prerequisites
 
 - Kubernetes v1.26+ with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs (at least 50 GB available)
-- At least 6 GiB of cluster memory available
+- At least 8 GiB of cluster memory available
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Add the OpenSearch HelmRepository
@@ -73,7 +73,7 @@ spec:
     # Deploy a 3-node cluster
     replicas: 3
 
-    # OpenSearch version
+    # JVM heap size
     opensearchJavaOpts: "-Xmx1g -Xms1g"
 
     resources:
@@ -140,12 +140,12 @@ metadata:
   namespace: search
 type: Opaque
 stringData:
-  admin-password: "MyStr0ngP@ssword!"
+  admin-password: "q9Vx!mL4#rT8@pZ2"
 ```
 
 ## Step 5: Configure Index State Management
 
-Define index lifecycle policies using OpenSearch's ISM via an init Job:
+Define index lifecycle policies using OpenSearch's ISM via a one-time Kubernetes Job:
 
 ```yaml
 # infrastructure/search/opensearch-ism-job.yaml
@@ -170,12 +170,26 @@ spec:
                 https://opensearch-cluster-master:9200/_cluster/health | grep -q '"status":"green"'; do
                 echo "Waiting for OpenSearch..."; sleep 10
               done
-              # Create a 30-day rollover ISM policy
+              # Create a 30-day rollover ISM policy for logs-* indexes
               curl -s -k -XPUT \
                 -u admin:${ADMIN_PASSWORD} \
                 -H "Content-Type: application/json" \
                 https://opensearch-cluster-master:9200/_plugins/_ism/policies/30-day-rollover \
-                -d '{"policy":{"description":"Rollover after 30 days","default_state":"open","states":[{"name":"open","actions":[],"transitions":[{"state_name":"rollover","conditions":{"min_index_age":"30d"}}]},{"name":"rollover","actions":[{"rollover":{"min_index_age":"30d"}}],"transitions":[]}]}}'
+                -d '{"policy":{"description":"Rollover after 30 days","default_state":"rollover","states":[{"name":"rollover","actions":[{"rollover":{"min_index_age":"30d"}}],"transitions":[]}],"ism_template":{"index_patterns":["logs-*"],"priority":100}}}'
+
+              # Configure the rollover alias used by the rollover action
+              curl -s -k -XPUT \
+                -u admin:${ADMIN_PASSWORD} \
+                -H "Content-Type: application/json" \
+                https://opensearch-cluster-master:9200/_index_template/logs-rollover \
+                -d '{"index_patterns":["logs-*"],"template":{"settings":{"plugins.index_state_management.rollover_alias":"logs"}}}'
+
+              # Create the initial write index if it does not already exist
+              curl -s -k -XPUT \
+                -u admin:${ADMIN_PASSWORD} \
+                -H "Content-Type: application/json" \
+                https://opensearch-cluster-master:9200/logs-000001 \
+                -d '{"aliases":{"logs":{"is_write_index":true}}}' || true
           env:
             - name: ADMIN_PASSWORD
               valueFrom:
@@ -216,11 +230,11 @@ kubectl get pods -n search
 # Port-forward and verify cluster health
 kubectl port-forward -n search svc/opensearch-cluster-master 9200:9200
 
-curl -s -k -u admin:MyStr0ngP@ssword! \
+curl -s -k -u admin:q9Vx!mL4#rT8@pZ2 \
   https://localhost:9200/_cluster/health | jq .
 
 # Check installed plugins
-curl -s -k -u admin:MyStr0ngP@ssword! \
+curl -s -k -u admin:q9Vx!mL4#rT8@pZ2 \
   https://localhost:9200/_cat/plugins?v
 ```
 
