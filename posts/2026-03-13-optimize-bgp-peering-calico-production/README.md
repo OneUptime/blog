@@ -58,9 +58,9 @@ spec:
 calicoctl apply -f rr-peer.yaml
 ```
 
-## Tune BGP Timers
+## Configure Production BGP Settings
 
-Reduce hold and keepalive timers for faster failure detection:
+Calico does not expose BGP hold/keepalive timer fields on its BGPPeer or BGPConfiguration resources, so failure detection follows the underlying BIRD defaults. What you can tune at the BGPConfiguration and BGPPeer level are settings that matter for stability in production, such as the global AS number, log verbosity, and next-hop handling:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -70,11 +70,10 @@ metadata:
 spec:
   nodeToNodeMeshEnabled: false
   asNumber: 64512
-  keepOriginalNextHop: false
   logSeverityScreen: Warning
 ```
 
-For external peers, set timer values in the BGPPeer resource:
+For external peers, configure peer-specific behavior in the BGPPeer resource:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -84,16 +83,29 @@ metadata:
 spec:
   peerIP: 192.168.1.1
   asNumber: 64513
-  keepOriginalNextHop: false
+  nextHopMode: Self
 ```
 
 ## Enable Graceful Restart
 
-Configure Graceful Restart to maintain forwarding during BGP session restarts:
+Configure Graceful Restart to maintain forwarding during BGP session restarts. For the full node-to-node mesh, set `nodeMeshMaxRestartTime` on the BGPConfiguration:
 
 ```bash
 calicoctl patch bgpconfiguration default --type merge \
-  --patch '{"spec":{"gracefulRestart":{"enabled":true,"restartTime":120}}}'
+  --patch '{"spec":{"nodeMeshMaxRestartTime":"120s"}}'
+```
+
+For explicit BGPPeer resources (such as route reflector or external peers), set `maxRestartTime` on each peer:
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: external-router
+spec:
+  peerIP: 192.168.1.1
+  asNumber: 64513
+  maxRestartTime: 120s
 ```
 
 ## Route Reflector Scale Model
@@ -120,9 +132,25 @@ graph TB
 
 ## Set Prefix Limits
 
-Protect against route table exhaustion by setting prefix limits on peers:
+Calico does not implement a traditional max-prefix counter on BGPPeer, but you can protect the cluster against unexpected prefixes by using a BGPFilter (Calico v3.27+) that restricts which prefix lengths are accepted from a peer, then attaching that filter to the peer:
 
 ```yaml
+apiVersion: projectcalico.org/v3
+kind: BGPFilter
+metadata:
+  name: limit-external-prefixes
+spec:
+  importV4:
+    - action: Accept
+      matchOperator: In
+      cidr: 0.0.0.0/0
+      prefixLength:
+        min: 8
+        max: 24
+    - action: Reject
+      matchOperator: In
+      cidr: 0.0.0.0/0
+---
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
@@ -130,7 +158,8 @@ metadata:
 spec:
   peerIP: 192.168.1.1
   asNumber: 64513
-  maxRestartTime: 10s
+  filters:
+    - limit-external-prefixes
 ```
 
 ## Conclusion
