@@ -10,7 +10,7 @@ Description: Learn how to monitor Cilium's integration with Broadcom NSX network
 
 ## Introduction
 
-Broadcom NSX provides software-defined networking for enterprise data centers, and when Kubernetes is deployed in NSX-managed environments, integrating Cilium with NSX enables consistent network policy enforcement across both container and virtual machine workloads. Cilium can operate on nodes connected to NSX segments while using NSX Distributed Firewall rules alongside CiliumNetworkPolicy for defense-in-depth security.
+Broadcom NSX provides software-defined networking for enterprise data centers, and when Kubernetes is deployed in NSX-managed environments, running Cilium on NSX-backed vSphere nodes enables Kubernetes-native network policy enforcement alongside NSX controls for virtual machine workloads. Cilium can operate on nodes connected to NSX segments while using NSX Distributed Firewall rules alongside CiliumNetworkPolicy for defense-in-depth security.
 
 Monitoring this integration requires visibility into both the Cilium data plane (eBPF metrics, Hubble flows) and the NSX control plane (segment health, DFW rule hits, BGP state). Disconnects between the two layers - such as NSX segment changes that affect Cilium node connectivity - can cause subtle network disruptions that are difficult to trace without monitoring both systems simultaneously.
 
@@ -36,7 +36,7 @@ Check Cilium agent connectivity and NSX segment reachability:
 
 cilium status --wait
 
-# List Cilium endpoints and verify they have NSX-assigned IPs
+# List Cilium node IPAM and address details and verify they match the expected NSX-backed node network
 kubectl get ciliumnodes -o yaml | grep -E "ipam:|addresses:"
 
 # Test connectivity from Cilium pods to NSX gateway IPs
@@ -65,10 +65,10 @@ hubble observe --follow --all-namespaces
 
 # Filter for traffic between specific NSX segments (by IP range)
 hubble observe --follow --output json | \
-  jq 'select(.flow.ip.source | startswith("10.10.")) | 
-      {src: .flow.ip.source, dst: .flow.ip.destination, verdict: .flow.verdict}'
+  jq 'select(.flow.IP.source | startswith("10.10.")) | 
+      {src: .flow.IP.source, dst: .flow.IP.destination, verdict: .flow.verdict}'
 
-# Alert on dropped flows indicating NSX DFW blocks
+# Alert on Cilium-observed dropped flows and correlate them with NSX DFW events
 hubble observe --verdict DROPPED --follow
 ```
 
@@ -88,7 +88,7 @@ kubectl get ciliumnetworkpolicy <policy-name> -n <namespace> -o yaml
 # Check Cilium endpoint policy enforcement status
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium endpoint list --output json | \
+  -- cilium-dbg endpoint list --output json | \
   jq '.[] | {id: .id, labels: .status.labels, policy: .status.policy}'
 ```
 
@@ -155,11 +155,11 @@ spec:
     matchLabels:
       k8s-app: cilium
   endpoints:
-  - port: prometheus
+  - port: metrics
     interval: 15s
     # Key NSX-relevant metrics:
-    # - cilium_drop_count_total (drops indicating NSX DFW blocks)
-    # - cilium_forward_count_total (successful cross-segment flows)
+    # - cilium_drop_count_total (Cilium-observed drops to correlate with NSX DFW events)
+    # - cilium_forward_count_total (forwarded packets to correlate with cross-segment traffic tests)
     # - cilium_endpoint_state (endpoint health)
 ```
 
