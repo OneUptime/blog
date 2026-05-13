@@ -10,7 +10,7 @@ Description: Configure GAMMA routes within the Cilium Gateway API to enable east
 
 ## Introduction
 
-GAMMA (Gateway API for Mesh Management and Administration) within the Cilium Gateway API allows operators to define east-west routing rules that apply to traffic between services. Unlike traditional service meshes that rely on sidecars, Cilium uses eBPF to apply these rules at the kernel level.
+GAMMA (Gateway API for Mesh Management and Administration) within the Cilium Gateway API allows operators to define east-west routing rules that apply to traffic between services. Unlike traditional service meshes that rely on sidecars, Cilium intercepts service traffic without workload sidecars and routes Layer 7 traffic through its per-node Envoy proxy.
 
 The key GAMMA configuration element is the `parentRef` on an HTTPRoute pointing to a Service rather than a Gateway. This tells Cilium to intercept and route traffic destined for that Service according to the route rules, without requiring any changes to the client or server workloads.
 
@@ -18,8 +18,8 @@ This guide explains the GAMMA configuration model and how to set up common routi
 
 ## Prerequisites
 
-- Cilium 1.15+ with `gatewayAPI.enableGamma=true`
-- Gateway API CRDs with experimental support
+- Cilium 1.16+ with `gatewayAPI.enabled=true`, `kubeProxyReplacement=true`, and `l7Proxy=true`
+- Gateway API CRDs installed
 - At least two Services and Deployments to route between
 
 ## Configure Service as Route Parent
@@ -111,4 +111,4 @@ Check that `Accepted` and `ResolvedRefs` conditions are both `True`.
 
 ## Conclusion
 
-Configuring GAMMA in the Cilium Gateway API involves creating HTTPRoutes with Service parentRefs and defining rules for header-based routing, traffic splitting, or request modification. Cilium applies these rules in the eBPF datapath, delivering service mesh capabilities without sidecar proxies.
+Configuring GAMMA in the Cilium Gateway API involves creating HTTPRoutes with Service parentRefs and defining rules for header-based routing, traffic splitting, or request modification. Cilium uses its sidecar-free datapath and per-node Envoy proxy to deliver service mesh capabilities without workload sidecar proxies.
