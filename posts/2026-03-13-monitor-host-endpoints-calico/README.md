@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Host Endpoint, Security
 
-Description: Monitor Calico host endpoint policy impact using Felix metrics and node-level traffic analysis.
+Description: Monitor Calico host endpoint policy impact using Felix health checks and node-level traffic analysis.
 
 ---
 
@@ -50,6 +50,7 @@ spec:
   preDNAT: false
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -89,7 +90,7 @@ calicoctl get hostendpoints
 sudo iptables -L -n | grep CALICO
 
 # Check Felix status on node
-kubectl exec -n kube-system calico-node-xxx -- calico-node -felix-live
+kubectl exec -n kube-system calico-node-xxx -- /bin/calico-node -felix-ready
 ```
 
 ## Architecture
@@ -107,4 +108,3 @@ flowchart TD
 ## Conclusion
 
 Host Protection with Calico Host Endpoints with Calico provides a comprehensive security layer that extends beyond pod-to-pod policies to protect the underlying node infrastructure. Configure host endpoints carefully to avoid locking yourself out of the node, always test SSH and management access after applying host policies, and use staged policies to preview impact before enforcement. Host-level policies are powerful but require careful planning and testing.
-
