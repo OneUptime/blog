@@ -12,7 +12,7 @@ Description: Add cost allocation labels and tags to all Flux-managed Kubernetes 
 
 Cost allocation in Kubernetes requires a consistent labeling strategy applied to every resource in the cluster. Without standard labels like `team`, `cost-center`, `environment`, and `project`, cost monitoring tools like Kubecost and OpenCost cannot accurately attribute spending to the teams that generated it. The result is a shared cloud bill that nobody can fully explain.
 
-Flux CD's Kustomize integration provides a powerful mechanism to inject labels and annotations into every resource it manages without modifying the original YAML. Using `commonLabels` and `commonAnnotations` in Kustomize configurations, you can enforce a consistent tagging strategy across all workloads in a namespace or cluster without duplicating configuration in every manifest.
+Flux CD's Kustomize integration provides a powerful mechanism to inject labels and annotations into every resource it manages without modifying the original YAML. Using the `labels` transformer and `commonAnnotations` in Kustomize configurations, you can enforce a consistent tagging strategy across all workloads in a namespace or cluster without duplicating configuration in every manifest.
 
 This guide establishes a complete cost allocation tagging strategy using Flux CD and Kustomize. You will define label standards, apply them through Kustomize overlays, and configure cost monitoring tools to use these labels for accurate chargeback reporting.
 
@@ -51,7 +51,7 @@ Before writing YAML, agree on a label standard. Document it in your repository.
 
 ## Step 2: Apply Common Labels with Kustomize
 
-Use Kustomize's `commonLabels` to inject cost allocation tags into all resources in a namespace directory.
+Use Kustomize's `labels` transformer to inject cost allocation tags into all resources and workload pod templates in a namespace directory.
 
 ```yaml
 # apps/backend/kustomization.yaml
@@ -62,13 +62,15 @@ resources:
   - service.yaml
   - hpa.yaml
 
-# These labels are injected into ALL resources in this directory
-commonLabels:
-  team: backend
-  cost-center: cc-1002
-  environment: production
-  project: proj-api
-  business-unit: engineering
+# These labels are injected into resources and workload pod templates in this directory
+labels:
+  - pairs:
+      team: backend
+      cost-center: cc-1002
+      environment: production
+      project: proj-api
+      business-unit: engineering
+    includeTemplates: true
 
 commonAnnotations:
   cost-allocation/owner: "backend-team@company.com"
@@ -78,7 +80,7 @@ commonAnnotations:
 
 ## Step 3: Use Flux Kustomization-Level Labels
 
-For namespace-wide tagging, inject labels at the Flux Kustomization level using `commonMetadata`.
+For metadata shared by every reconciled object, inject labels at the Flux Kustomization level using `commonMetadata`.
 
 ```yaml
 # clusters/production/apps-kustomization.yaml
@@ -94,7 +96,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # CommonMetadata injects labels into all reconciled resources
+  # commonMetadata injects labels into reconciled resource metadata
   commonMetadata:
     labels:
       environment: production
@@ -104,9 +106,9 @@ spec:
       flux.weave.works/automated: "true"
 ```
 
-## Step 4: Tag Namespaces for Node-Level Cost Attribution
+## Step 4: Tag Namespaces for Namespace-Level Cost Attribution
 
-Namespace labels enable cost monitoring tools to attribute node costs to teams.
+Namespace labels help cost monitoring tools group namespace spend by team when workload labels are missing or when you report directly by namespace.
 
 ```yaml
 # infrastructure/namespaces/backend.yaml
@@ -119,9 +121,9 @@ metadata:
     cost-center: cc-1002
     environment: production
     project: proj-api
-    # Kubecost uses this label for cost allocation
+    # Optional custom allocation label if your cost reports aggregate on label:kubecost-allocation
     kubecost-allocation: backend-team
-    # OpenCost uses this label structure
+    # Kubernetes recommended labels can also be used for higher-level grouping
     app.kubernetes.io/part-of: backend-platform
   annotations:
     cost-allocation/monthly-budget-usd: "5000"
@@ -139,7 +141,6 @@ kind: ClusterPolicy
 metadata:
   name: require-cost-allocation-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-team-label
       match:
@@ -150,7 +151,8 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
-        message: "Deployments must have 'team' and 'cost-center' labels for cost allocation"
+        failureAction: Enforce
+        message: "Workloads must have 'team' and 'cost-center' labels for cost allocation"
         pattern:
           metadata:
             labels:
@@ -183,10 +185,10 @@ Once labels are applied, query your cost monitoring tool using label selectors.
 
 ```bash
 # Kubecost: Query costs by team label
-curl "http://kubecost.internal/allocation?window=30d&aggregate=label:team"
+curl "http://kubecost.internal/model/allocation?window=30d&aggregate=label:team"
 
-# OpenCost: Get namespace costs with labels
-curl "http://opencost.internal/allocation/compute?window=7d&aggregate=label:cost-center"
+# OpenCost: Query costs by cost-center label
+curl "http://opencost.internal/allocation?window=7d&aggregate=label:cost-center"
 
 # List all resources missing cost-center label
 kubectl get pods -A -l '!cost-center' --show-labels
@@ -197,7 +199,7 @@ kubectl get deployments -A -o json | jq '.items[] | select(.metadata.labels."cos
 
 ## Best Practices
 
-- Enforce labels at the Kustomization level rather than in individual manifests to reduce duplication and ensure consistency across all resources in a path.
+- Enforce labels at the Kustomization level rather than in individual manifests to reduce duplication and ensure consistency across resources in a path.
 - Include cost allocation label requirements in your pull request template so reviewers can check label compliance before merging.
 - Avoid using node labels for cost allocation in shared clusters - namespace labels combined with resource requests give more accurate attribution than node-based approaches.
 - Review label compliance monthly; label drift happens gradually as teams add new services without following standards.
