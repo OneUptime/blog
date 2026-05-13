@@ -106,7 +106,7 @@ cluster-infra   10.247.0.0/16     Infrastructure tools
 EOF
 
 # Verify no overlap between cluster CIDRs
-# Each uses a different /16 in the 10.244.0.0/13 supernet
+# Each uses a different /16 in the 10.244.0.0/14 supernet
 ```
 
 ## Step 5: Validate CIDR Planning with calicoctl
