@@ -10,9 +10,9 @@ Description: Use field managers to safely make manual changes to Flux-managed re
 
 ## Introduction
 
-Kubernetes server-side apply (SSA) is the mechanism that makes Flux's drift correction possible. Every field in a Kubernetes resource is owned by a specific field manager, and when two field managers try to own the same field, a conflict arises. Flux uses SSA to declare ownership of every field it manages from Git, ensuring those fields are always reconciled to their Git-declared values.
+Kubernetes server-side apply (SSA) is the mechanism that makes Flux's drift correction possible. Every managed field in a Kubernetes resource is owned by a specific field manager, and when one apply manager tries to change a field owned by another manager, a conflict arises. Flux uses SSA to declare ownership of every field it manages from Git, ensuring those fields are always reconciled to their Git-declared values.
 
-Understanding field managers unlocks the ability to make safe, intentional manual overrides that coexist with Flux. By using a different field manager for your manual changes, you can modify fields that Flux doesn't own without conflict. By explicitly transferring field ownership, you can control which tool manages which fields.
+Understanding field managers unlocks the ability to make safe, intentional manual overrides that coexist with Flux. By using Flux's special `flux-client-side-apply` field manager for your manual changes, you can add fields that Flux should preserve. By explicitly transferring field ownership, you can control which tool manages which fields.
 
 This guide explains the field manager model in depth and shows practical techniques for using field managers to make safe manual overrides in Flux-managed clusters.
 
@@ -32,7 +32,7 @@ Flux uses a specific field manager name when applying resources.
 kubectl get deployment my-service -n team-alpha \
   -o jsonpath='{.metadata.managedFields[*].manager}' | tr ' ' '\n'
 # Output might include:
-# kubectl-client-side-apply
+# flux-client-side-apply
 # gotk-sync-manager
 # kube-controller-manager
 
@@ -41,20 +41,22 @@ kubectl get deployment my-service -n team-alpha \
   -o json | jq '.metadata.managedFields[] | {manager: .manager, operation: .operation, fields: .fieldsV1}'
 ```
 
-Flux uses the manager name `gotk-sync-manager` (or `manager` for older versions). Any field owned by Flux will be reconciled back to its Git-declared value.
+Flux commonly appears as `gotk-sync-manager` (or `manager` in older versions) in `managedFields`. The `flux-client-side-apply` manager is a special name that Flux recognizes for kubectl-added fields. Any field owned by Flux and declared in Git will be reconciled back to its Git-declared value.
 
 ## Step 2: Make Non-Conflicting Manual Changes
 
-If you use server-side apply with a different field manager for fields that Flux doesn't own, your changes persist across reconciliations.
+If you use kubectl with the `flux-client-side-apply` field manager for fields that Flux doesn't own, your changes persist across reconciliations.
 
 ```bash
 # Add an annotation that Flux doesn't manage - no conflict
 kubectl annotate deployment my-service -n team-alpha \
+  --field-manager=flux-client-side-apply \
   ops.acme.com/last-manual-restart="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --overwrite
 
 # Add a label that Flux doesn't manage - no conflict
 kubectl label deployment my-service -n team-alpha \
+  --field-manager=flux-client-side-apply \
   ops.acme.com/debug-mode=enabled \
   --overwrite
 
@@ -65,9 +67,9 @@ kubectl get deployment my-service -n team-alpha \
 # Annotation persists - Flux doesn't own it
 ```
 
-## Step 3: Use Server-Side Apply with a Custom Field Manager
+## Step 3: Use Server-Side Apply with flux-client-side-apply
 
-For more complex manual changes, use `kubectl apply --server-side` with a custom field manager.
+For more complex manual changes under Flux's default apply behavior, use `kubectl apply --server-side` with the `flux-client-side-apply` field manager.
 
 ```yaml
 # /tmp/my-service-override.yaml
@@ -88,9 +90,9 @@ spec:
 ```
 
 ```bash
-# Apply with a custom field manager
+# Apply with Flux's special field manager for preserved kubectl changes
 kubectl apply --server-side \
-  --field-manager=ops-override \
+  --field-manager=flux-client-side-apply \
   --force-conflicts=false \
   -f /tmp/my-service-override.yaml
 
@@ -130,7 +132,7 @@ echo "WARNING: Flux will reclaim this field on next reconciliation"
 echo "Resume reconciliation after this window to restore Git state"
 ```
 
-When Flux next reconciles, it will detect a conflict on the `resources.limits.memory` field and since it owns it in Git, it will reclaim ownership and reset the value. Use this only with Flux suspended.
+When Flux next reconciles under the default `Override` policy, it will apply the Git-declared value for `resources.limits.memory` again. Use this only with Flux suspended.
 
 ## Step 5: Transfer Field Ownership from Flux to Another Manager
 
@@ -138,8 +140,9 @@ To permanently give ownership of a field to another controller (like HPA for rep
 
 ```bash
 # First, remove spec.replicas from the Git manifest
-# Then apply the manifest - Flux will no longer own spec.replicas
-# HPA can now own it
+# Do this after the HPA has written spec.replicas, or use the Kubernetes
+# handoff pattern with a temporary field manager to avoid defaulting replicas to 1
+# Then let Flux reconcile the manifest - Flux will no longer own spec.replicas
 
 # Verify field ownership transferred
 kubectl get deployment my-service -n team-alpha \
@@ -154,11 +157,11 @@ kubectl get deployment my-service -n team-alpha \
 kubectl get deployment my-service -n team-alpha \
   -o json | jq '[.metadata.managedFields[].manager] | unique'
 
-# Remove orphaned field manager entries (from old tools that no longer exist)
+# Clear managedFields if the field ownership data becomes inconsistent
 kubectl patch deployment my-service -n team-alpha \
-  --type=json \
-  -p='[{"op": "remove", "path": "/metadata/managedFields/0"}]'
-# Note: Kubernetes automatically cleans up empty managedFields entries
+  --type=merge \
+  -p='{"metadata":{"managedFields":[{}]}}'
+# Kubernetes manages this field; avoid editing it unless you are fixing broken ownership data
 
 # Reset all field managers by using kubectl apply (client-side)
 kubectl apply -f deploy/deployment.yaml
@@ -177,20 +180,21 @@ metadata:
   name: my-service
   namespace: team-alpha
   annotations:
-    # Options: Merge (use SSA merge strategy), IfNotPresent (create only), Ignore (skip)
+    # Options: Override (default), Merge, IfNotPresent, Ignore
     kustomize.toolkit.fluxcd.io/ssa: Merge
 spec:
   # ...
 ```
 
-- `Merge` (default): Flux uses server-side apply, owns all declared fields
-- `IfNotPresent`: Flux creates the resource but never updates it - manual changes persist
+- `Override` (default): Flux reconciles the resource to the Git-declared desired state
+- `Merge`: Flux preserves fields added by other tools, but still overrides fields declared in Git
+- `IfNotPresent`: Flux creates the resource if it doesn't exist, but doesn't update it afterward
 - `Ignore`: Flux skips this resource entirely - full manual control
 
 ## Best Practices
 
 - Use `kubectl get -o json | jq '.metadata.managedFields'` to understand field ownership before making changes
-- Apply manual overrides with `--field-manager=descriptive-name` so you can identify them later
+- Apply preserved kubectl changes with `--field-manager=flux-client-side-apply` so Flux recognizes them
 - Avoid using `--force-conflicts=true` without suspending Flux first - Flux will reclaim the field on next reconciliation
 - Document the intended field manager for each resource in your team runbooks
 - The cleanest long-term solution for persistent overrides is always to update the Git manifest
@@ -198,4 +202,4 @@ spec:
 
 ## Conclusion
 
-Kubernetes server-side apply field managers are the mechanism underlying both Flux's GitOps enforcement and the ability to make safe manual overrides. By understanding which fields Flux owns and using custom field managers for manual changes, operators can work alongside Flux rather than fighting it. For most override scenarios, suspending Flux, making the change, and immediately filing a Git PR is the safest and most auditable workflow. Field manager-based overrides are powerful but best reserved for cases where the field is genuinely not managed by Flux.
+Kubernetes server-side apply field managers are the mechanism underlying both Flux's GitOps enforcement and the ability to make safe manual overrides. By understanding which fields Flux owns and using the `flux-client-side-apply` field manager for manual changes, operators can work alongside Flux rather than fighting it. For most override scenarios, suspending Flux, making the change, and immediately filing a Git PR is the safest and most auditable workflow. Field manager-based overrides are powerful but best reserved for cases where the field is genuinely not managed by Flux.
