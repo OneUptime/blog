@@ -32,7 +32,7 @@ Create a `.pre-commit-config.yaml` in your repository root:
 ```yaml
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 
@@ -41,7 +41,7 @@ repos:
       - id: sops-check-encryption
         name: Check SOPS encryption
         entry: ./scripts/check-sops-encryption.sh
-        language: script
+        language: unsupported_script
         files: '(secret|credential|token|key).*\.yaml$'
         stages: [pre-commit]
 ```
@@ -93,12 +93,9 @@ set -euo pipefail
 
 echo "Checking for unencrypted secrets..."
 
-# Get list of staged files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
-
 EXIT_CODE=0
 
-for file in $STAGED_FILES; do
+while IFS= read -r -d '' file; do
   # Skip non-YAML files
   if ! echo "$file" | grep -q '\.yaml$'; then
     continue
@@ -106,19 +103,21 @@ for file in $STAGED_FILES; do
 
   # Check if the file is in a secrets directory or has a secret-like name
   if echo "$file" | grep -qiE '(secret|credential|token|cred)'; then
+    STAGED_CONTENT=$(git show ":$file")
+
     # Check for SOPS encryption markers
-    if ! grep -q "sops:" "$file"; then
+    if ! printf '%s\n' "$STAGED_CONTENT" | grep -q "sops:"; then
       echo "BLOCKED: $file is in a secrets path but is not SOPS-encrypted"
       EXIT_CODE=1
       continue
     fi
 
     # Check that sensitive fields are actually encrypted
-    if grep -qE '^\s+(data|stringData):' "$file"; then
+    if printf '%s\n' "$STAGED_CONTENT" | grep -qE '^[[:space:]]+(data|stringData):'; then
       # Look for unencrypted values under data/stringData
       IN_DATA_BLOCK=false
       while IFS= read -r line; do
-        if echo "$line" | grep -qE '^\s+(data|stringData):'; then
+        if echo "$line" | grep -qE '^[[:space:]]+(data|stringData):'; then
           IN_DATA_BLOCK=true
           continue
         fi
@@ -127,16 +126,16 @@ for file in $STAGED_FILES; do
           continue
         fi
         if [ "$IN_DATA_BLOCK" = true ]; then
-          if echo "$line" | grep -qE ':\s+[^E]' && ! echo "$line" | grep -q 'ENC\['; then
+          if echo "$line" | grep -qE ':[[:space:]]+[^[:space:]]' && ! echo "$line" | grep -q 'ENC\['; then
             echo "BLOCKED: $file has unencrypted values in data/stringData block"
             EXIT_CODE=1
             break
           fi
         fi
-      done < "$file"
+      done <<< "$STAGED_CONTENT"
     fi
   fi
-done
+done < <(git diff --cached --name-only -z --diff-filter=ACM)
 
 if [ $EXIT_CODE -eq 0 ]; then
   echo "All secret files are properly encrypted."
@@ -174,7 +173,7 @@ pre-commit:
       glob: "**/*.{yaml,yml}"
       run: |
         for file in {staged_files}; do
-          if grep -qiE '(password|api.?key|secret.?key|private.?key|token):\s+[a-zA-Z0-9]' "$file" 2>/dev/null; then
+          if grep -qiE '(password|api.?key|secret.?key|private.?key|token):[[:space:]]+[a-zA-Z0-9]' "$file" 2>/dev/null; then
             if ! grep -q "ENC\[AES256_GCM" "$file" 2>/dev/null; then
               echo "WARNING: $file may contain unencrypted sensitive data"
               exit 1
@@ -183,7 +182,7 @@ pre-commit:
         done
 
     gitleaks:
-      run: gitleaks protect --staged --no-banner
+      run: gitleaks git --pre-commit --redact --staged --no-banner
 ```
 
 Install the hooks:
@@ -201,15 +200,15 @@ Enhance your hook to detect common sensitive patterns:
 # scripts/detect-secrets.sh
 
 PATTERNS=(
-  'password:\s*["\x27]?[a-zA-Z0-9]'
-  'api[_-]?key:\s*["\x27]?[a-zA-Z0-9]'
-  'secret[_-]?key:\s*["\x27]?[a-zA-Z0-9]'
-  'access[_-]?key:\s*["\x27]?[a-zA-Z0-9]'
-  'private[_-]?key:\s*["\x27]?[a-zA-Z0-9]'
-  'token:\s*["\x27]?[a-zA-Z0-9]'
+  "password:[[:space:]]*['\"]?[a-zA-Z0-9]"
+  "api[_-]?key:[[:space:]]*['\"]?[a-zA-Z0-9]"
+  "secret[_-]?key:[[:space:]]*['\"]?[a-zA-Z0-9]"
+  "access[_-]?key:[[:space:]]*['\"]?[a-zA-Z0-9]"
+  "private[_-]?key:[[:space:]]*['\"]?[a-zA-Z0-9]"
+  "token:[[:space:]]*['\"]?[a-zA-Z0-9]"
   'BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY'
   'BEGIN CERTIFICATE'
-  'connectionstring:\s*["\x27]?[a-zA-Z0-9]'
+  "connectionstring:[[:space:]]*['\"]?[a-zA-Z0-9]"
 )
 
 EXIT_CODE=0
@@ -240,9 +239,7 @@ Instead of just blocking commits, automatically encrypt files:
 #!/bin/bash
 # .git/hooks/pre-commit (auto-encrypt variant)
 
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
-
-for file in $STAGED_FILES; do
+while IFS= read -r -d '' file; do
   if echo "$file" | grep -qiE 'secret.*\.yaml$'; then
     if ! grep -q "sops:" "$file"; then
       echo "Auto-encrypting $file..."
@@ -255,7 +252,7 @@ for file in $STAGED_FILES; do
       fi
     fi
   fi
-done
+done < <(git diff --cached --name-only -z --diff-filter=ACM)
 ```
 
 Note: auto-encryption hooks should be used cautiously. They can mask developer mistakes and may encrypt files that were intentionally left unencrypted.
