@@ -10,7 +10,7 @@ Description: Deploy FreeIPA identity management system to Kubernetes using Flux 
 
 ## Introduction
 
-FreeIPA is a comprehensive identity management solution that bundles LDAP (389 Directory Server), Kerberos, DNS, NTP, certificate authority (Dogtag), and a management UI into a single integrated system. It is the upstream project for Red Hat Identity Management and is widely used in Linux-heavy enterprise environments where Kerberos single sign-on and host-based access control are required.
+FreeIPA is a comprehensive identity management solution that bundles LDAP (389 Directory Server), Kerberos, optional DNS, certificate authority (Dogtag), and a management UI into a single integrated system. It is the upstream project for Red Hat Identity Management and is widely used in Linux-heavy enterprise environments where Kerberos single sign-on and host-based access control are required.
 
 Deploying FreeIPA in Kubernetes requires some care because it is a stateful, multi-protocol server with strict hostname and networking requirements. The container images maintained by the FreeIPA project support Kubernetes deployments, and Flux CD can manage the StatefulSet, PersistentVolumeClaim, and Service resources declaratively.
 
@@ -18,7 +18,7 @@ This guide deploys a standalone FreeIPA server using Kubernetes manifests manage
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.26+) with Flux CD bootstrapped
+- Kubernetes cluster with Flux CD bootstrapped and user namespaces enabled (`hostUsers: false`; Kubernetes v1.33+ enables the feature gate by default)
 - Persistent storage (ReadWriteOnce, at least 10 GB)
 - A resolvable hostname for the FreeIPA server (DNS or `/etc/hosts`)
 - `flux` and `kubectl` CLIs configured
@@ -39,8 +39,7 @@ metadata:
 ```bash
 kubectl create secret generic freeipa-secrets \
   --namespace freeipa \
-  --from-literal=ipa-admin-password=FreeIPA_Admin1! \
-  --from-literal=ipa-dm-password=FreeIPA_DM_Pass1!
+  --from-literal=ipa-admin-password=FreeIPA_Admin1!
 ```
 
 ## Step 3: Create the PersistentVolumeClaim
@@ -80,24 +79,24 @@ spec:
       labels:
         app: freeipa
     spec:
-      # FreeIPA requires a stable hostname matching its Kerberos realm
+      # FreeIPA requires a stable FQDN. This resolves through the headless Service as
+      # ipa.freeipa.freeipa.svc.cluster.local.
       hostname: ipa
       subdomain: freeipa
+      setHostnameAsFQDN: true
+      hostUsers: false
       containers:
         - name: freeipa
-          image: freeipa/freeipa-server:fedora-40
+          image: quay.io/freeipa/freeipa-server:rocky-9
           args:
             - ipa-server-install
-            - --unattended
-            - --realm=EXAMPLE.COM
-            - --domain=example.com
-            - --hostname=ipa.example.com
-            - --no-ntp             # NTP managed by the cluster
-            - --setup-dns
-            - --no-forwarders
+            - -U
+            - --realm=FREEIPA.SVC.CLUSTER.LOCAL
+            - --domain=freeipa.svc.cluster.local
+            - --no-ntp
           env:
-            - name: IPA_SERVER_INSTALL_OPTS
-              value: ""
+            - name: IPA_SERVER_HOSTNAME
+              value: ipa.freeipa.freeipa.svc.cluster.local
             - name: PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -118,6 +117,12 @@ spec:
             - containerPort: 88
               name: kerberos-udp
               protocol: UDP
+            - containerPort: 464
+              name: kpasswd-tcp
+              protocol: TCP
+            - containerPort: 464
+              name: kpasswd-udp
+              protocol: UDP
           volumeMounts:
             - name: freeipa-data
               mountPath: /data
@@ -127,19 +132,16 @@ spec:
               mountPath: /tmp
           # FreeIPA installation takes several minutes
           readinessProbe:
-            httpGet:
-              path: /ipa/ui/
-              port: 443
-              scheme: HTTPS
+            exec:
+              command:
+                - /usr/bin/systemctl
+                - status
+                - ipa
             initialDelaySeconds: 120
             periodSeconds: 15
             failureThreshold: 20
-          # FreeIPA requires some Linux capabilities
           securityContext:
-            capabilities:
-              add:
-                - SYS_TIME
-                - NET_ADMIN
+            readOnlyRootFilesystem: true
           resources:
             requests:
               cpu: 500m
@@ -181,7 +183,17 @@ spec:
     - name: ldaps
       port: 636
     - name: kerberos
+      protocol: TCP
       port: 88
+    - name: kerberos-udp
+      protocol: UDP
+      port: 88
+    - name: kpasswd
+      protocol: TCP
+      port: 464
+    - name: kpasswd-udp
+      protocol: UDP
+      port: 464
 ---
 # External LoadBalancer for out-of-cluster access
 apiVersion: v1
@@ -239,16 +251,16 @@ kubectl logs -n freeipa freeipa-0 -f
 # Test LDAP connectivity
 kubectl exec -n freeipa freeipa-0 -- \
   ldapsearch -H ldap://localhost -D "cn=Directory Manager" \
-  -w FreeIPA_DM_Pass1! -b "dc=example,dc=com" -s base
+  -w FreeIPA_Admin1! -b "dc=freeipa,dc=svc,dc=cluster,dc=local" -s base
 ```
 
-Access the FreeIPA web UI at the LoadBalancer IP or through an Ingress pointing to port 443.
+Access the FreeIPA web UI at the LoadBalancer IP or through an Ingress pointing to port 443. For Kerberos-aware clients, make sure the hostname `ipa.freeipa.freeipa.svc.cluster.local` resolves to the service address they use.
 
 ## Best Practices
 
 - Use a dedicated DNS entry for the FreeIPA server hostname; Kerberos is extremely sensitive to DNS resolution.
-- Enable `securityContext.capabilities` only for the FreeIPA container-do not use a permissive pod security policy cluster-wide.
-- Schedule regular backups using `ipa-backup --data` and store the archives in object storage.
+- Use Kubernetes user namespaces for the FreeIPA pod instead of privileged mode.
+- Back up the persistent `/data` volume regularly and store the archives in object storage.
 - For production, deploy FreeIPA as a replica pair for high availability, following the upstream replication documentation.
 - Integrate FreeIPA with Keycloak or Authentik via LDAP federation for OIDC/SAML SSO without modifying FreeIPA directly.
 
