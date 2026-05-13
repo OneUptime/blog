@@ -29,13 +29,14 @@ Confirm that Flagger is configured with the correct mesh provider.
 ```bash
 # Check Flagger's mesh provider setting
 
-kubectl get deployment flagger -n <flagger-namespace> -o yaml | grep meshProvider
+kubectl get deployment flagger -n <flagger-namespace> \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="flagger")].args}'
 
-# Verify the Canary resource provider matches
+# Verify any Canary resource provider override
 kubectl get canary <name> -n <namespace> -o jsonpath='{.spec.provider}'
 ```
 
-A mismatch between Flagger's installed provider and the Canary resource provider will prevent traffic management from working.
+Flagger's Helm `meshProvider` value is rendered into the controller's `-mesh-provider` argument. If `.spec.provider` is set on a Canary resource, it overrides the global provider for that Canary and must match the routing provider you expect Flagger to manage.
 
 ## Step 2: Check the Routing Resources
 
@@ -95,17 +96,19 @@ kubectl get trafficsplit -n <namespace> -o yaml
 
 ## Step 3: Verify Service Endpoints
 
-Ensure both the primary and canary services have active endpoints.
+Ensure both the primary and canary services have ready EndpointSlice endpoints.
 
 ```bash
 # Check primary service endpoints
-kubectl get endpoints <app-name>-primary -n <namespace>
+kubectl get endpointslice -n <namespace> \
+  -l kubernetes.io/service-name=<app-name>-primary -o yaml
 
 # Check canary service endpoints
-kubectl get endpoints <app-name>-canary -n <namespace>
+kubectl get endpointslice -n <namespace> \
+  -l kubernetes.io/service-name=<app-name>-canary -o yaml
 ```
 
-If either service has no endpoints, pods are either not running or their labels do not match the service selector.
+If either service has no ready endpoints, pods are either not running, not ready, or their labels do not match the service selector.
 
 ```bash
 # Verify pod labels match service selectors
@@ -119,19 +122,19 @@ Send test requests directly to the canary and primary services to confirm they a
 
 ```bash
 # Test primary service
-kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s http://<app-name>-primary.<namespace>/
+kubectl run curl-primary --image=curlimages/curl --rm -it --restart=Never \
+  --command -- curl -sS http://<app-name>-primary.<namespace>:<port>/
 
 # Test canary service
-kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s http://<app-name>-canary.<namespace>/
+kubectl run curl-canary --image=curlimages/curl --rm -it --restart=Never \
+  --command -- curl -sS http://<app-name>-canary.<namespace>:<port>/
 ```
 
 If the canary service is not reachable, investigate pod readiness and service configuration.
 
 ## Step 5: Check for Sidecar Injection Issues
 
-If using a service mesh like Istio or Linkerd, the canary pods must have the sidecar proxy injected.
+If using a sidecar-based service mesh mode like Istio sidecar mode or Linkerd, the canary pods must have the sidecar proxy injected.
 
 ```bash
 # Check if the canary pod has the sidecar
