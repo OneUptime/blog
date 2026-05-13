@@ -12,7 +12,7 @@ Description: Learn how to build, package, and push Helm charts in CI pipelines s
 
 When you own the Helm chart for your application, you need a CI pipeline that packages the chart, bumps the chart version, and pushes it to a chart registry. Flux CD can then detect the new chart version through a HelmRepository or OCIRepository source and trigger a HelmRelease reconciliation.
 
-Two approaches exist for distributing Helm charts: the traditional HTTP-based HelmRepository (serving `index.yaml`), and the modern OCI-based approach where charts are pushed as OCI artifacts to a container registry. Flux CD supports both. OCI is increasingly preferred because it reuses existing container registry infrastructure and provides stronger provenance guarantees.
+Two approaches exist for distributing Helm charts: the traditional HTTP-based HelmRepository (serving `index.yaml`), and the modern OCI-based approach where charts are pushed as OCI artifacts to a container registry. Flux CD supports both. OCI is increasingly preferred because it reuses existing container registry infrastructure and integrates well with registry authentication and signing/provenance workflows.
 
 This guide covers building and pushing Helm charts in CI using both approaches, and wiring them up with the appropriate Flux CD sources.
 
@@ -21,7 +21,7 @@ This guide covers building and pushing Helm charts in CI using both approaches, 
 - A Kubernetes cluster with Flux CD bootstrapped
 - A Helm chart repository (GitHub Pages, ChartMuseum, or OCI registry)
 - `helm` CLI version 3.8+ (for OCI support)
-- CI system with Helm installed (GitHub Actions examples used)
+- CI system with Helm and `kubectl` installed (GitHub Actions examples used)
 - `flux` CLI for verification
 
 ## Step 1: Structure Your Helm Chart
@@ -140,6 +140,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   url: oci://ghcr.io/your-org/charts/myapp
   ref:
     semver: ">=0.1.0"
@@ -158,14 +161,10 @@ metadata:
   namespace: myapp
 spec:
   interval: 10m
-  chart:
-    spec:
-      chart: myapp
-      version: ">=0.1.0"
-      sourceRef:
-        kind: OCIRepository
-        name: myapp-chart
-        namespace: flux-system
+  chartRef:
+    kind: OCIRepository
+    name: myapp-chart
+    namespace: flux-system
   values:
     replicaCount: 2
     image:
@@ -206,7 +205,7 @@ kubectl describe helmrelease myapp -n myapp
 
 - Version your charts independently from your application using a `chart-v*` tag convention so chart and app releases can be decoupled.
 - Run `helm lint` and `helm template | kubectl apply --dry-run=client` in CI to catch rendering errors before pushing.
-- Use OCI registries over HTTP chart repositories when possible; they support authentication, signing, and provenance natively.
+- Use OCI registries over HTTP chart repositories when possible; they support registry authentication and integrate with signing and provenance workflows.
 - Sign charts with Cosign in CI to enable Flux CD's OCI verification feature for supply chain security.
 - Store chart values overrides in the fleet repository as `HelmRelease.spec.values` to keep environment-specific config in Git.
 - Use `HelmRelease.spec.upgrade.remediation.retries` to handle transient upgrade failures gracefully.
