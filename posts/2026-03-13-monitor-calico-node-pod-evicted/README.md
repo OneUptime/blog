@@ -58,10 +58,10 @@ spec:
         summary: "Node {{ $labels.node }} has memory pressure"
     - alert: CalicoNodeEvicted
       expr: |
-        kube_pod_status_phase{
+        kube_pod_status_reason{
           namespace="kube-system",
           pod=~"calico-node-.*",
-          phase="Failed"
+          reason="Evicted"
         } == 1
       for: 1m
       labels:
@@ -99,7 +99,7 @@ flowchart LR
     C --> D[No eviction pressure]
     E[Node DiskPressure condition] --> F[Alert: NodeDiskPressure]
     F --> G[Urgent: prevent calico-node eviction]
-    H[calico-node pod Failed/Evicted] --> I[Alert: CalicoNodeEvicted]
+    H[calico-node pod Evicted] --> I[Alert: CalicoNodeEvicted]
     I --> J[Immediate response - restore calico-node]
 ```
 
@@ -111,4 +111,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring calico-node eviction requires three layers: disk usage trends (advance warning), node pressure conditions (urgent warning), and pod eviction events (immediate alert). Acting on disk usage alerts before pressure conditions occur prevents calico-node eviction entirely.
+Monitoring calico-node eviction requires three layers: disk usage trends (advance warning), node pressure conditions (urgent warning), and pod eviction events (immediate alert). Acting on disk usage alerts before pressure conditions occur helps prevent calico-node eviction.
