@@ -45,13 +45,13 @@ The Source Controller exposes Prometheus metrics at `/metrics`. Query for memory
 container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}
 ```
 
-To see the rate of memory growth:
+To see the memory growth trend:
 
 ```promql
-rate(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}[1h])
+deriv(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}[1h])
 ```
 
-A positive rate that does not decrease indicates a memory leak. Set up an alert for this:
+A positive slope that persists over time can indicate a memory leak. Set up an alert for this:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -65,7 +65,9 @@ spec:
     rules:
     - alert: SourceControllerMemoryLeak
       expr: |
-        predict_linear(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}[6h], 3600 * 24) > 1.5 * kube_pod_container_resource_limits{namespace="flux-system", container="manager", pod=~"source-controller.*", resource="memory"}
+        predict_linear(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}[6h], 3600 * 24)
+          > on(namespace, pod, container)
+        kube_pod_container_resource_limits{namespace="flux-system", container="manager", pod=~"source-controller.*", resource="memory"}
       for: 30m
       labels:
         severity: warning
@@ -78,21 +80,21 @@ spec:
 
 ### Large Git Repositories
 
-The Source Controller clones Git repositories into memory. Large repositories or repositories with extensive history can cause memory to grow:
+The Source Controller clones Git repositories and packages them into artifacts. Large repositories or repositories with extensive history can increase temporary disk and memory usage while artifacts are built:
 
 ```bash
 kubectl logs -n flux-system deploy/source-controller | grep -i "git\|clone\|fetch" | tail -20
 ```
 
-Check the sizes of your GitRepository sources:
+Check the artifact sizes of your GitRepository sources:
 
 ```bash
-flux get sources git --all-namespaces
+kubectl get gitrepositories --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.artifact.size}{"\n"}{end}'
 ```
 
 ### Artifact Caching
 
-The Source Controller caches fetched artifacts. If the cache is not properly bounded, it can grow without limit:
+The Source Controller stores fetched artifacts on disk under its storage path and prunes old artifacts based on its retention settings. Check `/data` to separate artifact storage growth from memory growth:
 
 ```bash
 kubectl exec -n flux-system deploy/source-controller -- du -sh /data
@@ -130,9 +132,9 @@ spec:
   interval: 10m
 ```
 
-## Step 4: Enable Go Runtime Profiling
+## Step 4: Access Go Runtime Profiling
 
-For advanced diagnosis, you can enable pprof profiling on the Source Controller to get detailed memory allocation data:
+For advanced diagnosis, you can access pprof profiling on the Source Controller to get detailed memory allocation data:
 
 ```bash
 kubectl port-forward -n flux-system deploy/source-controller 8080:8080
@@ -230,4 +232,4 @@ kubectl get pod -n flux-system -l app=source-controller -o jsonpath='{.items[0].
 
 ## Summary
 
-Source Controller memory leaks are typically caused by large Git repositories, unbounded artifact caching, oversized Helm repository index files, or bugs in specific Flux versions. Diagnosing leaks requires monitoring memory trends over time using metrics and profiling tools. Reducing source counts, increasing intervals, switching to OCI Helm repositories, and keeping Flux updated are the most effective remediation strategies.
+Source Controller memory leaks are typically caused by large Git repositories, oversized Helm repository index files, aggressive reconciliation settings, or bugs in specific Flux versions. Diagnosing leaks requires monitoring memory trends over time using metrics and profiling tools. Reducing source counts, increasing intervals, switching to OCI Helm repositories, and keeping Flux updated are the most effective remediation strategies.
