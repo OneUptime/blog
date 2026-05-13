@@ -12,7 +12,7 @@ Description: Learn how to configure Cilium to handle unmanaged pods-those not ye
 
 During a CNI migration or in environments where multiple CNIs coexist temporarily, some pods may be "unmanaged" by Cilium-they exist in the cluster but Cilium has not yet processed them as endpoints. This typically happens during rolling node upgrades, when pods predate a Cilium installation, or when running static pods that Cilium may not discover immediately.
 
-Unmanaged pods present a security consideration: if Cilium is enforcing network policies, unmanaged pods may either be completely isolated (denied all traffic) or allowed through without policy enforcement, depending on the cluster configuration. Understanding and controlling this behavior is critical for safe migrations and policy enforcement consistency.
+Unmanaged pods present a security consideration: if Cilium is enforcing network policies, pods whose networking is not managed by Cilium are not covered by Cilium security policy enforcement. Understanding and controlling this behavior is critical for safe migrations and policy enforcement consistency.
 
 This guide covers how Cilium handles unmanaged pods, how to configure the appropriate behavior, and how to migrate unmanaged pods into full Cilium management.
 
@@ -28,50 +28,36 @@ This guide covers how Cilium handles unmanaged pods, how to configure the approp
 Find pods that Cilium is not currently managing as endpoints.
 
 ```bash
-# List all pods and their Cilium endpoint status
-
-cilium endpoint list
+# List all Cilium-managed pod endpoints
+kubectl get ciliumendpoints --all-namespaces
 
 # Compare with all running pods to find any not in the endpoint list
 kubectl get pods -A -o wide
 
-# Check for pods on a specific node that aren't in Cilium's endpoint list
-cilium endpoint list | awk '{print $4}' > cilium_pods.txt
-kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' > all_pods.txt
-diff cilium_pods.txt all_pods.txt
+# Compare non-hostNetwork pod names with CiliumEndpoint names
+kubectl get ciliumendpoints -A --no-headers | awk '{print $1 "/" $2}' | sort > cilium_pods.txt
+kubectl get pods -A --field-selector spec.hostNetwork!=true \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}' \
+  | sort > all_pods.txt
+comm -23 all_pods.txt cilium_pods.txt
 
 # Check Cilium agent logs for unmanaged pod warnings
 kubectl logs -n kube-system -l k8s-app=cilium | grep -i "unmanaged\|not managed"
 ```
 
-## Step 2: Configure Cilium's Policy for Unmanaged Pods
+## Step 2: Configure Cilium's Policy Mode During Migration
 
-Set Cilium's behavior when it encounters traffic from or to unmanaged endpoints.
-
-```yaml
-# cilium-configmap-unmanaged.yaml - ConfigMap configuring unmanaged pod behavior
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cilium-config
-  namespace: kube-system
-data:
-  # Policy enforcement for unmanaged endpoints:
-  # "default" - no policy enforcement for unmanaged pods (allow all)
-  # "always"  - enforce policy for all pods including unmanaged (deny all without explicit policy)
-  # "never"   - disable policy enforcement cluster-wide
-  policy-enforcement: "default"
-
-  # Enable endpoint health checking to track managed vs unmanaged pods
-  endpoint-status: "true"
-
-  # Grace period before treating an endpoint as failed during migration
-  endpoint-gc-interval: "5m"
-```
+Set Cilium's policy enforcement mode for Cilium-managed endpoints while migration is in progress. This does not make unmanaged pods policy-enforced; unmanaged pods should still be restarted or rescheduled so that Cilium can manage their networking.
 
 ```bash
-# Apply the ConfigMap (restart Cilium DaemonSet to pick up changes)
-kubectl apply -f cilium-configmap-unmanaged.yaml
+# Policy enforcement mode for Cilium-managed endpoints:
+# "default" - endpoints start unrestricted until selected by policy
+# "always"  - enforce policy for all managed endpoints, even without matching rules
+# "never"   - disable policy enforcement cluster-wide
+kubectl patch configmap cilium-config -n kube-system --type merge \
+  --patch '{"data":{"enable-policy":"default"}}'
+
+# Restart Cilium DaemonSet to pick up the change
 kubectl rollout restart daemonset/cilium -n kube-system
 ```
 
@@ -92,7 +78,7 @@ sudo systemctl restart kubelet
 kubectl delete pod <pod-name> -n <namespace>
 
 # Verify the pod is now managed as a Cilium endpoint
-cilium endpoint list | grep <pod-name>
+kubectl get ciliumendpoint <pod-name> -n <namespace>
 ```
 
 ## Step 4: Validate All Pods Are Managed
@@ -105,27 +91,32 @@ After remediation, confirm that all pods are managed Cilium endpoints.
 TOTAL_PODS=$(kubectl get pods -A --field-selector spec.hostNetwork!=true \
   --no-headers | wc -l)
 
-# Get Cilium endpoint count (managed pods only)
-CILIUM_ENDPOINTS=$(cilium endpoint list --no-headers | grep -c "ready")
+# Get Cilium-managed pod count. CiliumEndpoint output may also include
+# cilium-health endpoints, so compare names rather than counting all CEPs.
+kubectl get ciliumendpoints -A --no-headers | awk '{print $1 "/" $2}' | sort > cilium_pods.txt
+kubectl get pods -A --field-selector spec.hostNetwork!=true \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}' \
+  | sort > all_pods.txt
+CILIUM_ENDPOINTS=$(comm -12 all_pods.txt cilium_pods.txt | wc -l)
 
 echo "Total pods: $TOTAL_PODS"
 echo "Cilium managed: $CILIUM_ENDPOINTS"
 
-# Check overall Cilium health
-cilium status --all-health
+# Check overall Cilium status
+cilium status
 
 # Verify network connectivity for a previously unmanaged pod
-kubectl exec <previously-unmanaged-pod> -- curl -s http://kubernetes.default.svc/healthz
+kubectl exec <previously-unmanaged-pod> -n <namespace> -- curl -s http://kubernetes.default.svc/healthz
 ```
 
 ## Best Practices
 
 - Always perform CNI migrations using rolling node drains rather than in-place CNI replacement
-- Monitor the Cilium endpoint list during migrations to catch any pods that fail to register
-- Use `policy-enforcement: default` during migrations to avoid disrupting traffic before all pods are managed
-- After completing migration, switch to `policy-enforcement: always` for consistent policy enforcement
+- Monitor CiliumEndpoint objects during migrations to catch any pods that fail to register
+- Use `enable-policy: default` during migrations to avoid disrupting traffic before all pods are managed
+- After completing migration, consider switching `enable-policy` to `always` for consistent default policy enforcement on managed endpoints
 - Set up a Prometheus alert when the number of Cilium endpoints is less than the expected pod count
 
 ## Conclusion
 
-Handling unmanaged pods correctly is essential for safe Cilium deployments and migrations. By understanding how Cilium discovers and registers pods as endpoints, configuring the appropriate policy enforcement mode during transitions, and systematically triggering endpoint creation for existing pods, you ensure consistent networking and policy enforcement across your entire cluster. The `cilium endpoint list` command is your primary tool for monitoring management coverage during any migration.
+Handling unmanaged pods correctly is essential for safe Cilium deployments and migrations. By understanding how Cilium discovers and registers pods as endpoints, configuring the appropriate policy enforcement mode during transitions, and systematically triggering endpoint creation for existing pods, you ensure consistent networking and policy enforcement across your entire cluster. CiliumEndpoint objects are your primary tool for monitoring management coverage during any migration.
