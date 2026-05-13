@@ -20,7 +20,7 @@ This guide covers the diagnosis steps to identify CIDR conflicts in Calico IP po
 
 - Pods on certain nodes cannot communicate with other nodes but communication works from most nodes
 - Traffic to some pod IPs is routed to physical hosts instead of pods
-- `calicoctl ipam check` reports conflicts or unreachable addresses
+- `calicoctl ipam check` reports leaked or incorrectly allocated addresses
 - Pod receives an IP that is also used by a node in `kubectl get nodes -o wide`
 
 ## Root Causes
@@ -47,24 +47,27 @@ kubectl get configmap kubeadm-config -n kube-system -o yaml | grep -E "podSubnet
 kubectl describe pod -n kube-system $(kubectl get pods -n kube-system -l component=kube-controller-manager -o name | head -1) | grep "cluster-cidr"
 ```
 
-**Step 3: List all node IPs**
+**Step 3: List all node IPs and Calico node subnets**
 
 ```bash
 kubectl get nodes -o wide
 # Note the Internal IP column
+
+calicoctl get node -o yaml | grep -E "ipv4Address|ipv6Address"
+# Note the subnet suffix on each Calico node address
 ```
 
 **Step 4: Check for CIDR overlap**
 
 ```bash
 # Get pool CIDRs
-calicoctl get ippool -o jsonpath='{range .items[*]}{.spec.cidr}{"\n"}{end}'
+kubectl get ippools -o jsonpath='{range .items[*]}{.spec.cidr}{"\n"}{end}'
 
 # Get node IPs
 kubectl get nodes -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
 
-# Manually check if any node IP falls within the pod CIDR
-# Example: if pod CIDR is 10.0.0.0/16 and node IP is 10.0.1.5 = CONFLICT
+# Manually check if any node IP or node subnet overlaps the pod CIDR
+# Example: if pod CIDR is 10.0.0.0/16 and node subnet is 10.0.1.0/24 = CONFLICT
 ```
 
 **Step 5: Run calicoctl IPAM check**
@@ -72,6 +75,8 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="In
 ```bash
 calicoctl ipam check
 ```
+
+This checks Calico IPAM allocation integrity against Kubernetes. It can help find allocation problems, but it does not replace manually comparing the configured CIDR ranges for overlap.
 
 **Step 6: Check for routing ambiguity on the node**
 
@@ -84,8 +89,8 @@ ip route show | grep -E "10\.|192\." | head -20
 ```mermaid
 flowchart TD
     A[CIDR conflict suspected] --> B[List all Calico IP pools]
-    B --> C[List all node IPs]
-    C --> D{Any node IP within pod CIDR?}
+    B --> C[List all node IPs and node subnets]
+    C --> D{Any node IP or subnet overlaps pod CIDR?}
     D -- Yes --> E[CRITICAL: Pod CIDR overlaps with node subnet]
     D -- No --> F[Check service CIDR overlap with pod CIDR]
     F --> G{Service CIDR overlaps pod CIDR?}
@@ -106,4 +111,4 @@ After confirming the overlap, apply the fix described in the companion Fix post.
 
 ## Conclusion
 
-Diagnosing Calico CIDR conflicts requires comparing IP pool CIDRs against node host IPs, service CIDRs, and other IP pools to identify overlap. `calicoctl ipam check` automates much of this comparison and should be the first diagnostic tool used when CIDR conflicts are suspected.
+Diagnosing Calico CIDR conflicts requires comparing IP pool CIDRs against node host IPs and subnets, service CIDRs, and other IP pools to identify overlap. `calicoctl ipam check` is useful for checking Calico IPAM allocation integrity, but CIDR overlap diagnosis still requires explicitly comparing the configured ranges.
