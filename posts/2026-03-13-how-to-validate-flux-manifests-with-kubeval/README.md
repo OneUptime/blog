@@ -10,7 +10,7 @@ Description: Learn how to use kubeval to validate Flux Kubernetes manifests agai
 
 ## Introduction
 
-kubeval is a tool for validating Kubernetes configuration files against the Kubernetes OpenAPI schemas. While it predates kubeconform, it remains widely used and is straightforward to integrate into existing workflows. This guide covers how to use kubeval to validate Flux manifests, handle CRDs, and integrate validation into your CI pipeline.
+kubeval is a tool for validating Kubernetes configuration files against the Kubernetes OpenAPI schemas. While it predates kubeconform, it remains widely used in existing workflows, but the upstream project is no longer maintained. This guide covers how to use kubeval with a maintained schema location to validate Flux manifests, handle CRDs, and integrate validation into your CI pipeline.
 
 ## Prerequisites
 
@@ -21,9 +21,12 @@ kubeval is a tool for validating Kubernetes configuration files against the Kube
 ## Step 1: Install kubeval
 
 ```bash
-# macOS (Homebrew)
+# macOS (Intel binary download)
 
-brew install kubeval
+curl -L -o kubeval.tar.gz \
+  https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-darwin-amd64.tar.gz
+tar xzf kubeval.tar.gz
+sudo mv kubeval /usr/local/bin/
 
 # Linux (binary download)
 curl -L -o kubeval.tar.gz \
@@ -41,16 +44,25 @@ Validate standard Kubernetes manifests.
 
 ```bash
 # Validate a single file
-kubeval deployment.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  deployment.yaml
 
 # Validate multiple files
-kubeval deployment.yaml service.yaml configmap.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  deployment.yaml service.yaml configmap.yaml
 
-# Validate a directory (using find)
-find manifests/ -name '*.yaml' -exec kubeval {} \;
+# Validate a directory
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --directories manifests/
 
 # Validate with a specific Kubernetes version
-kubeval --kubernetes-version 1.30.0 deployment.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --kubernetes-version 1.30.0 \
+  deployment.yaml
 ```
 
 ## Step 3: Validate Kustomize Build Output
@@ -59,13 +71,18 @@ Pipe kustomize build output through kubeval.
 
 ```bash
 # Validate kustomize output
-kustomize build overlays/production | kubeval
+kustomize build overlays/production | kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master
 
 # With specific Kubernetes version
-kustomize build overlays/production | kubeval --kubernetes-version 1.30.0
+kustomize build overlays/production | kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --kubernetes-version 1.30.0
 
 # With strict mode
-kustomize build overlays/production | kubeval --strict
+kustomize build overlays/production | kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --strict
 ```
 
 ## Step 4: Handle Flux CRDs
@@ -75,22 +92,31 @@ kubeval does not natively know about Flux CRDs. You need to skip them or provide
 ```bash
 # Skip Flux CRD validation (validate only standard resources)
 kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
   --skip-kinds Kustomization,GitRepository,HelmRepository,HelmRelease,OCIRepository,Bucket,HelmChart \
   manifests/*.yaml
 
 # Alternatively, ignore missing schemas
-kubeval --ignore-missing-schemas manifests/*.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --ignore-missing-schemas \
+  manifests/*.yaml
 ```
 
 ## Step 5: Use Custom Schema Locations
 
-Point kubeval to a schema repository that includes Flux CRDs.
+Point kubeval to a maintained Kubernetes schema repository. To validate Flux CRDs with kubeval, add a second schema location that uses kubeval's expected schema file layout.
 
 ```bash
-# Use an alternative schema location
+# Use a maintained standard Kubernetes schema location
 kubeval \
   --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
-  --additional-schema-locations https://raw.githubusercontent.com/datreeio/CRDs-catalog/main \
+  manifests/*.yaml
+
+# Add local Flux CRD schemas converted to kubeval's file layout
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --additional-schema-locations "file://$PWD/schemas" \
   manifests/*.yaml
 ```
 
@@ -105,6 +131,7 @@ set -euo pipefail
 
 FLUX_CRDS="Kustomization,GitRepository,HelmRepository,HelmRelease,HelmChart,OCIRepository,Bucket,ImageRepository,ImagePolicy,ImageUpdateAutomation,Receiver,Provider,Alert"
 K8S_VERSION="${K8S_VERSION:-1.30.0}"
+SCHEMA_LOCATION="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master"
 ERRORS=0
 
 validate_path() {
@@ -112,6 +139,7 @@ validate_path() {
   echo "Validating: $path"
 
   if kubeval \
+    --schema-location "$SCHEMA_LOCATION" \
     --kubernetes-version "$K8S_VERSION" \
     --skip-kinds "$FLUX_CRDS" \
     --strict \
@@ -124,9 +152,9 @@ validate_path() {
 }
 
 # Find and validate all YAML files
-for file in $(find . -name '*.yaml' -o -name '*.yml' | grep -v '.git/' | sort); do
+while IFS= read -r -d '' file; do
   validate_path "$file"
-done
+done < <(find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -print0 | sort -z)
 
 echo ""
 echo "=== Results ==="
@@ -146,6 +174,7 @@ set -euo pipefail
 
 FLUX_CRDS="Kustomization,GitRepository,HelmRepository,HelmRelease,HelmChart,OCIRepository"
 K8S_VERSION="1.30.0"
+SCHEMA_LOCATION="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master"
 
 for overlay in overlays/*/; do
   echo "=== Validating overlay: $overlay ==="
@@ -157,6 +186,7 @@ for overlay in overlays/*/; do
   }
 
   echo "$output" | kubeval \
+    --schema-location "$SCHEMA_LOCATION" \
     --kubernetes-version "$K8S_VERSION" \
     --skip-kinds "$FLUX_CRDS" \
     --strict
@@ -171,13 +201,21 @@ kubeval supports multiple output formats.
 
 ```bash
 # Default text output
-kubeval manifests/*.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  manifests/*.yaml
 
 # JSON output
-kubeval -o json manifests/*.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  -o json \
+  manifests/*.yaml
 
 # TAP output
-kubeval -o tap manifests/*.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  -o tap \
+  manifests/*.yaml
 ```
 
 ## Comparing kubeval and kubeconform
@@ -186,7 +224,10 @@ kubeval works well for standard Kubernetes resources but has limitations with CR
 
 ```bash
 # kubeval: must skip Flux CRDs
-kubeval --skip-kinds Kustomization,HelmRelease manifests/
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --skip-kinds Kustomization,HelmRelease \
+  --directories manifests/
 
 # kubeconform: can validate Flux CRDs with custom schemas
 kubeconform \
@@ -227,16 +268,17 @@ jobs:
       - name: Validate manifests
         run: |
           FLUX_CRDS="Kustomization,GitRepository,HelmRepository,HelmRelease,HelmChart,OCIRepository"
+          SCHEMA_LOCATION="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master"
 
           # Validate raw files
-          find . -name '*.yaml' -not -path './.git/*' | \
-            xargs kubeval --skip-kinds "$FLUX_CRDS" --strict
+          find . -name '*.yaml' -not -path './.git/*' -print0 | \
+            xargs -0 -r kubeval --schema-location "$SCHEMA_LOCATION" --skip-kinds "$FLUX_CRDS" --strict
 
           # Validate kustomize output
           for overlay in overlays/*/; do
             echo "Validating $overlay..."
             kustomize build "$overlay" | \
-              kubeval --skip-kinds "$FLUX_CRDS" --strict
+              kubeval --schema-location "$SCHEMA_LOCATION" --skip-kinds "$FLUX_CRDS" --strict
           done
 ```
 
@@ -246,7 +288,10 @@ Use strict mode to catch additional issues.
 
 ```bash
 # Strict mode rejects properties not in the schema
-kubeval --strict deployment.yaml
+kubeval \
+  --schema-location https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master \
+  --strict \
+  deployment.yaml
 
 # This catches common mistakes like:
 # - Typos in field names (e.g., "replcia" instead of "replica")
@@ -261,8 +306,8 @@ kubeval --strict deployment.yaml
 - Enable strict mode to catch field name typos
 - Validate both raw YAML files and kustomize build output
 - Consider migrating to kubeconform for better CRD validation support
-- Cache schema downloads in CI to speed up validation runs
+- Set `--schema-location` explicitly so CI does not depend on kubeval's unmaintained default schema host
 
 ## Conclusion
 
-kubeval is a straightforward tool for validating Kubernetes manifests against API schemas. While it requires skipping Flux CRDs due to limited custom schema support, it remains effective for catching errors in standard Kubernetes resources deployed through Flux. For teams already using kubeval, it provides solid validation coverage when combined with Flux CRD skipping and strict mode.
+kubeval is a straightforward tool for validating Kubernetes manifests against API schemas. While it requires skipping Flux CRDs or providing kubeval-formatted CRD schemas due to limited custom schema support, it remains effective for catching errors in standard Kubernetes resources deployed through Flux. For teams already using kubeval, it provides useful validation coverage when combined with an explicit schema location, Flux CRD skipping, and strict mode.
