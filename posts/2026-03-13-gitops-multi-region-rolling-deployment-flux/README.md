@@ -18,8 +18,8 @@ This guide walks through setting up a three-region rolling deployment with Flux 
 
 ## Prerequisites
 
-- Flux CD installed on Kubernetes clusters in multiple regions (or a single cluster with regional namespaces for demonstration)
-- A shared Git repository that all regional Flux instances watch
+- Flux CD installed in a control cluster that manages regional clusters with remote kubeconfigs (or a single cluster with regional namespaces for demonstration)
+- A shared Git repository that the control-plane Flux Kustomizations watch
 - `flux` CLI and `kubectl` with contexts for each region
 - Container images tagged with immutable version tags
 
@@ -58,7 +58,7 @@ images:
 
 ## Step 2: Configure Regional Flux Kustomizations with DependsOn
 
-Use `dependsOn` to enforce the rollout order. Each region will only reconcile after the previous region's Kustomization shows `Ready: True` with the new revision.
+Use `dependsOn` to enforce the rollout order. Add a version label and `readyExpr` so each region only reconciles after the previous region's Kustomization is `Ready: True` for the same version.
 
 ```yaml
 # clusters/production/apps/my-app-us-east-1.yaml
@@ -67,6 +67,8 @@ kind: Kustomization
 metadata:
   name: my-app-us-east-1
   namespace: flux-system
+  labels:
+    app/version: "2.5.0"
 spec:
   interval: 10m
   path: ./apps/my-app/us-east-1
@@ -90,6 +92,8 @@ kind: Kustomization
 metadata:
   name: my-app-eu-west-1
   namespace: flux-system
+  labels:
+    app/version: "2.5.0"
 spec:
   interval: 10m
   path: ./apps/my-app/eu-west-1
@@ -99,6 +103,10 @@ spec:
     name: flux-system
   dependsOn:
     - name: my-app-us-east-1  # Only proceed after US East is healthy
+      readyExpr: >
+        dep.metadata.labels['app/version'] == self.metadata.labels['app/version'] &&
+        dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True') &&
+        dep.metadata.generation == dep.status.observedGeneration
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -114,6 +122,8 @@ kind: Kustomization
 metadata:
   name: my-app-ap-southeast-1
   namespace: flux-system
+  labels:
+    app/version: "2.5.0"
 spec:
   interval: 10m
   path: ./apps/my-app/ap-southeast-1
@@ -123,6 +133,10 @@ spec:
     name: flux-system
   dependsOn:
     - name: my-app-eu-west-1  # Only proceed after EU West is healthy
+      readyExpr: >
+        dep.metadata.labels['app/version'] == self.metadata.labels['app/version'] &&
+        dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True') &&
+        dep.metadata.generation == dep.status.observedGeneration
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -133,14 +147,17 @@ spec:
 
 ## Step 3: Execute a Multi-Region Rollout
 
-To roll out a new version, update one regional overlay at a time through PRs or a CI automation:
+To roll out a new version, update one regional overlay and its matching Flux Kustomization version label at a time through PRs or a CI automation:
 
 ```bash
 # Step 1: Update US East to the new version
 sed -i 's/newTag: "2.4.0"/newTag: "2.5.0"/' \
   apps/my-app/us-east-1/kustomization.yaml
+sed -i 's/app\/version: "2.4.0"/app\/version: "2.5.0"/' \
+  clusters/production/apps/my-app-us-east-1.yaml
 
-git add apps/my-app/us-east-1/kustomization.yaml
+git add apps/my-app/us-east-1/kustomization.yaml \
+  clusters/production/apps/my-app-us-east-1.yaml
 git commit -m "deploy: my-app v2.5.0 to us-east-1"
 git push origin main
 
@@ -148,7 +165,7 @@ git push origin main
 # before eu-west-1 will reconcile (due to dependsOn)
 ```
 
-Alternatively, use a CI script that updates all three overlays simultaneously but relies on `dependsOn` for ordering:
+Alternatively, use a CI script that updates all three overlays and Flux Kustomization version labels simultaneously, then relies on `dependsOn` with `readyExpr` for ordering:
 
 ```bash
 #!/bin/bash
@@ -159,14 +176,16 @@ REGIONS=("us-east-1" "eu-west-1" "ap-southeast-1")
 for region in "${REGIONS[@]}"; do
   sed -i "s/newTag: \".*\"/newTag: \"$NEW_TAG\"/" \
     "apps/my-app/$region/kustomization.yaml"
+  sed -i "s/app\/version: \".*\"/app\/version: \"$NEW_TAG\"/" \
+    "clusters/production/apps/my-app-$region.yaml"
 done
 
-git add apps/my-app/
+git add apps/my-app/ clusters/production/apps/
 git commit -m "deploy: my-app $NEW_TAG to all regions (rolling via dependsOn)"
 git push origin main
 ```
 
-Even though all three regions have the new tag in Git simultaneously, Flux enforces the rollout order through `dependsOn` and health checks.
+Even though all three regions have the new tag in Git simultaneously, Flux enforces the rollout order through `dependsOn`, `readyExpr`, and health checks.
 
 ## Step 4: Monitor the Rolling Rollout
 
@@ -177,7 +196,7 @@ flux get kustomizations --watch | grep my-app
 # Check the rollout progress in sequence
 for region in us-east-1 eu-west-1 ap-southeast-1; do
   echo "=== $region ==="
-  flux get kustomization "my-app-$region"
+  flux get kustomizations | grep "my-app-$region"
   kubectl rollout status deployment/my-app -n "my-app-$region"
 done
 ```
@@ -210,17 +229,21 @@ If a region fails its health check, the `dependsOn` chain stops and subsequent r
 flux get kustomizations | grep my-app
 
 # Get detailed failure information
-flux describe kustomization my-app-eu-west-1
+kubectl describe kustomization my-app-eu-west-1 -n flux-system
 
 # Option 1: Roll back the failing region in Git
 sed -i 's/newTag: "2.5.0"/newTag: "2.4.0"/' \
   apps/my-app/eu-west-1/kustomization.yaml
-git add . && git commit -m "rollback: my-app eu-west-1 to v2.4.0 (health check failed)"
+sed -i 's/app\/version: "2.5.0"/app\/version: "2.4.0"/' \
+  clusters/production/apps/my-app-eu-west-1.yaml
+git add apps/my-app/eu-west-1/kustomization.yaml \
+  clusters/production/apps/my-app-eu-west-1.yaml
+git commit -m "rollback: my-app eu-west-1 to v2.4.0 (health check failed)"
 git push origin main
 
-# Option 2: Suspend the failing region and continue with healthy regions
+# Option 2: Suspend the failing region while you investigate
 flux suspend kustomization my-app-eu-west-1
-# Investigate the failure before resuming
+# Later regions that depend on it remain blocked until the failure is fixed or the dependency chain is changed
 ```
 
 ## Best Practices
