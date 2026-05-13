@@ -24,7 +24,7 @@ Key differences:
 
 ## Prerequisites
 
-- An EKS cluster running Kubernetes 1.24 or later
+- An EKS cluster version and platform version that supports EKS Pod Identity, with workloads running on Linux EC2 worker nodes
 - EKS Pod Identity Agent add-on installed
 - Flux installed on the EKS cluster
 - AWS CLI v2 with EKS Pod Identity support
@@ -36,8 +36,7 @@ Install the EKS Pod Identity Agent add-on:
 ```bash
 aws eks create-addon \
   --cluster-name my-cluster \
-  --addon-name eks-pod-identity-agent \
-  --addon-version v1.2.0-eksbuild.1
+  --addon-name eks-pod-identity-agent
 
 # Verify the agent is running
 
@@ -70,6 +69,10 @@ EOF
 aws iam create-role \
   --role-name flux-source-controller-role \
   --assume-role-policy-document file://pod-identity-trust-policy.json
+
+aws iam create-role \
+  --role-name flux-image-reflector-controller-role \
+  --assume-role-policy-document file://pod-identity-trust-policy.json
 ```
 
 Note that unlike IRSA, the trust policy uses the `pods.eks.amazonaws.com` service principal and does not need cluster-specific OIDC information.
@@ -83,7 +86,7 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # For ECR access
 aws iam attach-role-policy \
-  --role-name flux-source-controller-role \
+  --role-name flux-image-reflector-controller-role \
   --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/FluxECRReadOnly"
 
 # For S3 bucket source access
@@ -116,6 +119,13 @@ aws eks create-pod-identity-association \
   --service-account source-controller \
   --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/flux-source-controller-role"
 
+# Associate role with image-reflector-controller
+aws eks create-pod-identity-association \
+  --cluster-name my-cluster \
+  --namespace flux-system \
+  --service-account image-reflector-controller \
+  --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/flux-image-reflector-controller-role"
+
 # Associate role with kustomize-controller
 aws eks create-pod-identity-association \
   --cluster-name my-cluster \
@@ -130,16 +140,18 @@ Restart the Flux controllers to pick up the Pod Identity credentials:
 
 ```bash
 kubectl rollout restart deployment/source-controller -n flux-system
+kubectl rollout restart deployment/image-reflector-controller -n flux-system
 kubectl rollout restart deployment/kustomize-controller -n flux-system
 
 # Wait for rollout to complete
 kubectl rollout status deployment/source-controller -n flux-system
+kubectl rollout status deployment/image-reflector-controller -n flux-system
 kubectl rollout status deployment/kustomize-controller -n flux-system
 ```
 
 ## Step 6: Configure Flux Sources
 
-Configure Flux sources to use the AWS provider:
+Configure Flux resources to use the AWS provider:
 
 ```yaml
 # clusters/production/ecr-source.yaml
@@ -185,6 +197,13 @@ resource "aws_eks_pod_identity_association" "flux_source_controller" {
   role_arn        = aws_iam_role.flux_source_controller.arn
 }
 
+resource "aws_eks_pod_identity_association" "flux_image_reflector_controller" {
+  cluster_name    = aws_eks_cluster.main.name
+  namespace       = "flux-system"
+  service_account = "image-reflector-controller"
+  role_arn        = aws_iam_role.flux_image_reflector_controller.arn
+}
+
 resource "aws_eks_pod_identity_association" "flux_kustomize_controller" {
   cluster_name    = aws_eks_cluster.main.name
   namespace       = "flux-system"
@@ -198,6 +217,28 @@ resource "aws_eks_pod_identity_association" "flux_kustomize_controller" {
 Pod Identity supports role chaining for cross-account access:
 
 ```bash
+# In the source account, allow the Pod Identity role to assume the target role
+cat > source-assume-target-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
+      "Resource": "arn:aws:iam::TARGET_ACCOUNT:role/flux-cross-account-ecr"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name flux-image-reflector-controller-role \
+  --policy-name assume-cross-account-ecr \
+  --policy-document file://source-assume-target-policy.json
+
 # In the target account, create a role with trust to the source role
 cat > cross-account-trust.json << EOF
 {
@@ -206,9 +247,12 @@ cat > cross-account-trust.json << EOF
     {
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::SOURCE_ACCOUNT:role/flux-source-controller-role"
+        "AWS": "arn:aws:iam::SOURCE_ACCOUNT:role/flux-image-reflector-controller-role"
       },
-      "Action": "sts:AssumeRole"
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
     }
   ]
 }
@@ -217,6 +261,13 @@ EOF
 aws iam create-role \
   --role-name flux-cross-account-ecr \
   --assume-role-policy-document file://cross-account-trust.json
+
+aws eks create-pod-identity-association \
+  --cluster-name my-cluster \
+  --namespace flux-system \
+  --service-account image-reflector-controller \
+  --role-arn "arn:aws:iam::SOURCE_ACCOUNT:role/flux-image-reflector-controller-role" \
+  --target-role-arn "arn:aws:iam::TARGET_ACCOUNT:role/flux-cross-account-ecr"
 ```
 
 ## Listing and Managing Associations
@@ -246,13 +297,16 @@ kubectl get pods -n kube-system -l app.kubernetes.io/name=eks-pod-identity-agent
 # Verify credentials are injected into the pod
 kubectl exec -n flux-system deployment/source-controller -- \
   env | grep AWS
+kubectl exec -n flux-system deployment/image-reflector-controller -- \
+  env | grep AWS
 
-# Check that the source-controller can access AWS services
+# Check that Flux resources reconcile with AWS access
 flux get sources git
 flux get image repository my-app
 
 # View controller logs for authentication details
 kubectl logs -n flux-system deployment/source-controller | grep -i "aws\|credential"
+kubectl logs -n flux-system deployment/image-reflector-controller | grep -i "aws\|credential"
 ```
 
 ## Conclusion
