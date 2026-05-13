@@ -19,6 +19,7 @@ This guide covers auditing current IP reservations, creating new reservations fo
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.x
+- Calico IPAM enabled
 - `calicoctl` CLI configured
 - Documentation of which IPs are reserved and why
 - Cluster admin permissions
@@ -32,11 +33,12 @@ Review all existing IP reservations to understand what is being protected and fo
 
 calicoctl get ipreservation -o yaml
 
-# Check which IPs in the reservations are currently in use vs. truly reserved
-calicoctl ipam show --show-blocks
+# Check whether a specific reserved IP is already in use
+calicoctl ipam show --ip=10.244.0.1
 
 # Cross-reference reservations with running services
-kubectl get services --all-namespaces -o wide | grep -E "ExternalIP|ClusterIP"
+kubectl get services --all-namespaces \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP,EXTERNAL-IPS:.spec.externalIPs,LOADBALANCER-IP:.status.loadBalancer.ingress[*].ip
 ```
 
 ## Step 2: Plan the New Reservation Set
@@ -50,13 +52,13 @@ Map old reserved IPs to their equivalents in the new IP pool, documenting the pu
 #   10.244.0.1    - Gateway / router (DO NOT ALLOCATE)
 #   10.244.0.2    - DNS resolver
 #   10.244.0.10   - Monitoring agent (Prometheus node exporter)
-#   10.244.255.254 - Broadcast (DO NOT ALLOCATE)
+#   10.244.255.254 - Infrastructure endpoint (DO NOT ALLOCATE)
 #
 # NEW POOL: 172.16.0.0/16
 #   172.16.0.1    - Gateway / router (DO NOT ALLOCATE)
 #   172.16.0.2    - DNS resolver
 #   172.16.0.10   - Monitoring agent
-#   172.16.255.254 - Broadcast (DO NOT ALLOCATE)
+#   172.16.255.254 - Infrastructure endpoint (DO NOT ALLOCATE)
 ```
 
 ## Step 3: Create New IP Reservations for the New Pool
@@ -77,7 +79,7 @@ spec:
     - "172.16.0.2/32"
     # Reserve the monitoring agent IP
     - "172.16.0.10/32"
-    # Reserve the broadcast address
+    # Reserve the infrastructure endpoint address
     - "172.16.255.254/32"
     # Reserve the entire first /27 for infrastructure services
     - "172.16.0.0/27"
@@ -105,7 +107,12 @@ kubectl get pod ipam-test -o jsonpath='{.status.podIP}'
 # Verify the IP is not in the reserved ranges
 # It should NOT be 172.16.0.1, 172.16.0.2, 172.16.0.10, etc.
 
-# Attempt to manually allocate a reserved IP to confirm it is blocked
+# Confirm specific reserved IPs are not assigned
+calicoctl ipam show --ip=172.16.0.1
+calicoctl ipam show --ip=172.16.0.2
+calicoctl ipam show --ip=172.16.0.10
+
+# Check IPAM datastore consistency after migration
 calicoctl ipam check --show-all-ips
 
 # Clean up
@@ -132,8 +139,8 @@ calicoctl get ipreservation -o yaml
 - Document the purpose of every IP reservation so future engineers understand why certain IPs are protected
 - Create new reservations before disabling old pools to prevent race conditions during allocation
 - Use CIDR notation (e.g., `/27`) to reserve entire ranges rather than listing individual addresses when protecting infrastructure subnets
-- Reserve network and broadcast addresses in every IP pool to prevent Calico from allocating unusable addresses
-- Run `calicoctl ipam check` after migration to confirm no reserved IPs were accidentally allocated
+- Remember that `IPReservation` only affects automatic assignment by Calico IPAM; explicitly requested pod IP annotations can override reservations
+- Run `calicoctl ipam show --ip=<reserved-ip>` after migration to confirm reserved IPs were not accidentally allocated, and use `calicoctl ipam check` to check IPAM datastore consistency
 - Store IP reservation YAML in Git and manage it with Flux CD for version control and audit trails
 
 ## Conclusion
