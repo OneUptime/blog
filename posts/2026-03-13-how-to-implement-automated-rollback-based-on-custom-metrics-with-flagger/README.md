@@ -239,12 +239,16 @@ Reference it from a Canary in a different namespace.
 
 ## Testing the Rollback Behavior
 
-To verify that automated rollback works with your custom metrics, you can intentionally deploy a version that produces errors.
+To verify that automated rollback works with your custom metrics, trigger a canary deployment and generate errors while the analysis is running.
 
 ```bash
-# Deploy a version that generates errors
+# Trigger a canary deployment by updating the image
 kubectl set image deployment/podinfo \
-  podinfo=stefanprodan/podinfo:6.2.0 -n test
+  podinfod=ghcr.io/stefanprodan/podinfo:6.2.0 -n test
+
+# Generate HTTP 500 responses during the analysis
+kubectl exec -n test deploy/flagger-loadtester -- \
+  hey -z 1m -c 5 -q 5 http://podinfo-canary.test:9898/status/500
 
 # Watch the canary analysis
 kubectl get canary podinfo -n test -w
