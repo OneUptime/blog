@@ -10,9 +10,9 @@ Description: Enable and configure WireGuard transparent encryption in Cilium for
 
 ## Introduction
 
-WireGuard is Cilium's recommended transparent encryption mode for most environments. It provides excellent performance, automatic key management, and modern cryptography (ChaCha20-Poly1305). Cilium manages WireGuard configuration automatically, rotating keys and distributing peer configurations without operator intervention.
+WireGuard is a common transparent encryption mode for Cilium environments. It provides excellent performance, automatic peer configuration, and modern cryptography (ChaCha20-Poly1305). Cilium manages WireGuard configuration automatically by generating a key pair on each node and distributing public keys through the `CiliumNode` resource without operator intervention.
 
-When WireGuard is enabled, Cilium creates a `cilium_wg0` interface on each node and configures it with keys derived from Kubernetes node identity. All pod-to-pod traffic crossing node boundaries is automatically encrypted through this interface.
+When WireGuard is enabled, Cilium creates a `cilium_wg0` interface on each node and configures it with the node's WireGuard key pair. Pod-to-pod traffic between Cilium-managed endpoints on different nodes is automatically encrypted through this interface.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ helm upgrade cilium cilium/cilium \
   --set encryption.nodeEncryption=false
 ```
 
-Set `nodeEncryption=true` to also encrypt node-to-node (non-pod) traffic.
+Set `nodeEncryption=true` to also encrypt node-to-node, pod-to-node, and node-to-pod traffic. Current Cilium documentation marks WireGuard node-to-node encryption as beta and automatically opts Kubernetes control-plane nodes out by default.
 
 ## Architecture
 
@@ -63,7 +63,7 @@ ip link show cilium_wg0
 wg show cilium_wg0
 ```
 
-The `wg show` output lists peer public keys and allowed IPs (pod CIDRs per node).
+The `wg show` output lists peer public keys and allowed IPs for remote Cilium-managed endpoints.
 
 ## Confirm Encryption is Active
 
@@ -75,7 +75,7 @@ Expected output includes `WireGuard` as the encryption type and lists the number
 
 ## Enable Node-to-Node Encryption
 
-To also encrypt kubelet and system traffic between nodes:
+To also encrypt kubelet and system traffic between worker nodes:
 
 ```bash
 helm upgrade cilium cilium/cilium \
