@@ -89,16 +89,16 @@ spec:
       interval: 60s
       rules:
         - record: calico:ebpf_nodes_active
-          expr: count(felix_bpf_enabled == 1)
+          expr: count(felix_bpf_dataplane_endpoints)
 
-        - record: calico:ebpf_bpf_programs_total
-          expr: sum(felix_bpf_prog_total)
+        - record: calico:ebpf_dataplane_endpoints
+          expr: sum(felix_bpf_dataplane_endpoints)
 
         - record: calico:network_latency_baseline_p50
-          expr: histogram_quantile(0.50, rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))
+          expr: felix_int_dataplane_apply_time_seconds{quantile="0.5"}
 
         - record: calico:network_latency_baseline_p99
-          expr: histogram_quantile(0.99, rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))
+          expr: felix_int_dataplane_apply_time_seconds{quantile="0.99"}
 ```
 
 ## Grafana Installation Health Dashboard
@@ -116,13 +116,13 @@ flowchart LR
 
 ```promql
 # All nodes should have eBPF active
-count(felix_bpf_enabled == 1) == count(kube_node_info)
+count(felix_bpf_dataplane_endpoints) == count(kube_node_info)
 
-# BPF program count should be > 10 per node
-min(felix_bpf_prog_total) > 10
+# BPF endpoints should be successfully programmed
+sum(felix_bpf_dirty_dataplane_endpoints) == 0
 
 # No pod should be in error state in calico-system
-kube_pod_container_status_running{namespace="calico-system"} == 1
+sum(kube_pod_container_status_waiting_reason{namespace="calico-system",reason=~"CrashLoopBackOff|Error|ImagePullBackOff|ErrImagePull"}) == 0
 ```
 
 ## Conclusion
