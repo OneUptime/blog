@@ -12,6 +12,8 @@ The Kubernetes Gateway API is the successor to the Ingress resource, providing a
 
 This guide covers how to route external webhook traffic from providers like GitHub, GitLab, and Bitbucket to the Flux notification-controller using Gateway API resources.
 
+Flux exposes the notification-controller webhook endpoint through the `webhook-receiver` Service in the `flux-system` namespace. The Service listens on port `80` and forwards traffic to the controller's webhook server on port `9292`.
+
 ## Prerequisites
 
 Before you begin, confirm the following:
@@ -128,7 +130,7 @@ If you already have a shared Gateway in another namespace, you can skip this ste
 
 ## Step 4: Create an HTTPRoute
 
-Create an HTTPRoute that sends webhook traffic to the notification-controller:
+Create an HTTPRoute that sends webhook traffic to the webhook receiver Service:
 
 ```yaml
 # httproute.yaml
@@ -145,28 +147,14 @@ spec:
   hostnames:
     - flux-webhook.example.com
   rules:
-    # Route webhook requests to the notification-controller
+    # Route webhook requests to the webhook receiver Service
     - matches:
         - path:
             type: PathPrefix
             value: /hook/
           method: POST
       backendRefs:
-        - name: notification-controller
-          port: 80
-    # Return 404 for everything else on this host
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      filters:
-        - type: ResponseHeaderModifier
-          responseHeaderModifier:
-            set:
-              - name: Content-Type
-                value: text/plain
-      backendRefs:
-        - name: notification-controller
+        - name: webhook-receiver
           port: 80
 ```
 
@@ -176,33 +164,25 @@ Apply it:
 kubectl apply -f httproute.yaml
 ```
 
-The `method: POST` match ensures that only POST requests reach the notification-controller. GET and other methods will not match the first rule.
+The `method: POST` match ensures that only POST requests for the receiver path are routed to the webhook receiver Service. GET and other methods do not match this rule.
 
-## Step 5: Create a ReferenceGrant (Cross-Namespace Gateway)
+## Step 5: Allow Cross-Namespace Route Attachment
 
-If your Gateway lives in a different namespace (for example `gateway-system`), you need a ReferenceGrant to allow the HTTPRoute to attach to it:
-
-```yaml
-# referencegrant.yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-flux-httproute
-  namespace: gateway-system
-spec:
-  from:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: flux-system
-  to:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-```
-
-Apply it:
+If your Gateway lives in a different namespace (for example `gateway-system`), the Gateway listener must allow routes from the `flux-system` namespace. One common approach is to label the namespace:
 
 ```bash
-kubectl apply -f referencegrant.yaml
+kubectl label namespace flux-system shared-gateway-access=true
+```
+
+Then update the Gateway listener:
+
+```yaml
+  allowedRoutes:
+    namespaces:
+      from: Selector
+      selector:
+        matchLabels:
+          shared-gateway-access: "true"
 ```
 
 And update the HTTPRoute parentRef:
@@ -218,7 +198,7 @@ And update the HTTPRoute parentRef:
 
 On GitHub (or your chosen provider), add a webhook with:
 
-- **Payload URL**: `https://flux-webhook.example.com/<webhook-path>` using the path from Step 2.
+- **Payload URL**: `https://flux-webhook.example.com<webhook-path>` using the path from Step 2.
 - **Content type**: `application/json`
 - **Secret**: The token from Step 1.
 - **Events**: Push events (or whichever events your Receiver is configured for).
@@ -251,9 +231,10 @@ Test with curl:
 ```bash
 curl -s -o /dev/null -w "%{http_code}" -X POST \
   -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: ping" \
   -H "X-Hub-Signature-256: sha256=$(echo -n '{}' | openssl dgst -sha256 -hmac "$TOKEN" | awk '{print $2}')" \
   -d '{}' \
-  https://flux-webhook.example.com/$WEBHOOK_PATH
+  "https://flux-webhook.example.com${WEBHOOK_PATH}"
 ```
 
 You should receive a 200 status code.
@@ -284,9 +265,9 @@ kubectl -n flux-system get gateway external-gateway -o jsonpath='{.status.addres
 
 Ensure your DNS points to this address.
 
-### ReferenceGrant rejected
+### Cross-namespace HTTPRoute not accepted
 
-Make sure the ReferenceGrant is in the target namespace (where the Gateway lives), not in the source namespace. The `from` field should reference the namespace where the HTTPRoute is deployed.
+Make sure the Gateway listener's `allowedRoutes` setting permits routes from the `flux-system` namespace. Cross-namespace HTTPRoute attachment to a Gateway is controlled by the Gateway listener, not by a ReferenceGrant.
 
 ### Receiver shows Ready but webhook fails
 
@@ -300,4 +281,4 @@ Look for token validation errors or malformed payload messages.
 
 ## Summary
 
-Using the Gateway API to expose a Flux Receiver gives you fine-grained control over routing, including method-based matching, cross-namespace references with ReferenceGrants, and a clear separation between infrastructure (Gateway) and application (HTTPRoute) concerns. The approach is forward-looking as the community moves from Ingress to Gateway API as the standard for Kubernetes traffic management.
+Using the Gateway API to expose a Flux Receiver gives you fine-grained control over routing, including method-based matching, cross-namespace route attachment, and a clear separation between infrastructure (Gateway) and application (HTTPRoute) concerns. The approach is forward-looking as the community moves from Ingress to Gateway API as the standard for Kubernetes traffic management.
