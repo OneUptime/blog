@@ -91,7 +91,7 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 
 ## Step 3: Fix - Stabilize Pod IPs Using a Headless Service
 
-MySQL replication connections use IP addresses. When pods restart and get new IPs, replication breaks. Use a headless Service with stable DNS names instead.
+MySQL replication connections use the configured `SOURCE_HOST`, which may be a host name or an IP address. If replication is configured with pod IP addresses, pod restarts can break replication when new IPs are assigned. For StatefulSet-based MySQL pods, use the StatefulSet's headless Service for stable DNS names instead.
 
 ```yaml
 # mysql-headless-service.yaml
@@ -114,11 +114,12 @@ spec:
 # Apply the headless service
 kubectl apply -f mysql-headless-service.yaml
 
-# Reconfigure MySQL replication to use DNS names instead of IPs
+# Reconfigure MySQL replication to use DNS names instead of IPs.
+# The StatefulSet must use mysql-headless as its serviceName for these per-pod DNS names.
 # mysql-0.mysql-headless.database.svc.cluster.local
 # mysql-1.mysql-headless.database.svc.cluster.local
 kubectl exec -n database mysql-1 -- mysql -u root -p \
-  -e "STOP REPLICA; CHANGE REPLICATION SOURCE TO SOURCE_HOST='mysql-0.mysql-headless.database.svc.cluster.local'; START REPLICA;"
+  -e "STOP REPLICA; CHANGE REPLICATION SOURCE TO SOURCE_HOST='mysql-0.mysql-headless.database.svc.cluster.local', SOURCE_AUTO_POSITION=1; START REPLICA;"
 ```
 
 ## Step 4: Fix - Re-establish Replication After Network Disruption
@@ -132,7 +133,7 @@ kubectl exec -n database mysql-1 -- mysql -u root -p \
   grep -E "Replica_IO_Running|Replica_SQL_Running|Last_Error"
 
 # If replica is behind or has errors, reset and restart
-kubectl exec -n database mysql-1 -- mysql -u root -p <<'EOF'
+kubectl exec -i -n database mysql-1 -- mysql -u root -p <<'EOF'
 STOP REPLICA;
 RESET REPLICA;
 -- Reconfigure with current primary state
