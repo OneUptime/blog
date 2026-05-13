@@ -10,9 +10,9 @@ Description: Configure Grafana with OAuth 2.0 / OIDC authentication (GitHub, Goo
 
 ## Introduction
 
-Replacing Grafana's local user database with an OAuth 2.0 or OIDC provider gives your team single sign-on (SSO) and centralizes access control. Grafana supports GitHub, GitLab, Google, Azure AD, Okta, and any generic OIDC provider out of the box.
+Using an OAuth 2.0 or OIDC provider instead of local username/password login gives your team single sign-on (SSO) and centralizes access control. Grafana supports GitHub, GitLab, Google, Azure AD, Okta, and any generic OIDC provider out of the box.
 
-When deploying via Flux CD, client credentials are stored as encrypted Kubernetes Secrets and referenced in the HelmRelease using `valuesFrom`. This pattern keeps secrets out of your Helm values files while still allowing Flux to fully reconcile the deployment.
+When deploying via Flux CD, client credentials are stored as encrypted Kubernetes Secrets and referenced from the HelmRelease. This pattern keeps secrets out of your Helm values files while still allowing Flux to fully reconcile the deployment.
 
 This guide demonstrates GitHub OAuth as the provider, with notes for adapting to generic OIDC providers like Okta or Keycloak.
 
@@ -33,7 +33,7 @@ Note the `Client ID` and `Client Secret` values.
 
 ## Step 2: Create the OAuth Credentials Secret
 
-Store the OAuth client secret as a Kubernetes Secret encrypted with SOPS.
+Store the OAuth client credentials as a Kubernetes Secret encrypted with SOPS.
 
 ```yaml
 # clusters/my-cluster/grafana/oauth-secret.yaml
@@ -85,17 +85,17 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
-  # Inject OAuth credentials from the encrypted Secret
+  # Inject the non-sensitive OAuth client ID from the encrypted Secret
   valuesFrom:
     - kind: Secret
       name: grafana-oauth-secret
       valuesKey: GF_AUTH_GITHUB_CLIENT_ID
       targetPath: grafana.ini.auth\.github.client_id
-    - kind: Secret
-      name: grafana-oauth-secret
-      valuesKey: GF_AUTH_GITHUB_CLIENT_SECRET
-      targetPath: grafana.ini.auth\.github.client_secret
   values:
+    # Expose GF_AUTH_GITHUB_CLIENT_SECRET so Grafana can expand it without
+    # rendering the secret value into the grafana.ini ConfigMap.
+    envFromSecret: grafana-oauth-secret
+
     grafana.ini:
       server:
         root_url: "https://grafana.example.com"
@@ -104,6 +104,7 @@ spec:
         disable_login_form: false
       auth.github:
         enabled: true
+        client_secret: "$__env{GF_AUTH_GITHUB_CLIENT_SECRET}"
         # Allow only members of specific GitHub organizations
         allowed_organizations: "my-org"
         # Map GitHub team membership to Grafana roles
@@ -125,21 +126,27 @@ spec:
 
 ## Step 5: Generic OIDC Configuration (Okta / Keycloak)
 
-For generic OIDC providers, replace the GitHub section with the following.
+For generic OIDC providers, rename the Secret keys to `GF_AUTH_GENERIC_OAUTH_CLIENT_ID` and `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`, then replace the GitHub-specific values with the following.
 
 ```yaml
 # Excerpt for generic OIDC (e.g., Okta)
-grafana.ini:
-  auth.generic_oauth:
-    enabled: true
-    name: "Okta"
-    client_id: "${GF_AUTH_GITHUB_CLIENT_ID}"
-    client_secret: "${GF_AUTH_GITHUB_CLIENT_SECRET}"
-    scopes: "openid profile email groups"
-    auth_url: "https://your-okta-domain.okta.com/oauth2/default/v1/authorize"
-    token_url: "https://your-okta-domain.okta.com/oauth2/default/v1/token"
-    api_url: "https://your-okta-domain.okta.com/oauth2/default/v1/userinfo"
-    role_attribute_path: "contains(groups[*], 'grafana-admins') && 'Admin' || 'Viewer'"
+valuesFrom:
+  - kind: Secret
+    name: grafana-oauth-secret
+    valuesKey: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+    targetPath: grafana.ini.auth\.generic_oauth.client_id
+values:
+  envFromSecret: grafana-oauth-secret
+  grafana.ini:
+    auth.generic_oauth:
+      enabled: true
+      name: "Okta"
+      client_secret: "$__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}"
+      scopes: "openid profile email groups"
+      auth_url: "https://your-okta-domain.okta.com/oauth2/default/v1/authorize"
+      token_url: "https://your-okta-domain.okta.com/oauth2/default/v1/token"
+      api_url: "https://your-okta-domain.okta.com/oauth2/default/v1/userinfo"
+      role_attribute_path: "contains(groups[*], 'grafana-admins') && 'Admin' || 'Viewer'"
 ```
 
 ## Best Practices
