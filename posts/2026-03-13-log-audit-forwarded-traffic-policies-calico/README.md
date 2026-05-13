@@ -49,13 +49,22 @@ spec:
   applyOnForward: true
   preDNAT: false
   ingress:
+    - action: Log
+      protocol: TCP
+      source:
+        nets:
+          - 10.0.0.0/8
+      destination:
+        ports: [22, 443, 6443]
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
       destination:
         ports: [22, 443, 6443]
   egress:
+    - action: Log
     - action: Allow
   types:
     - Ingress
@@ -107,4 +116,3 @@ flowchart TD
 ## Conclusion
 
 Forwarded Traffic Policies on Hosts with Calico provides a comprehensive security layer that extends beyond pod-to-pod policies to protect the underlying node infrastructure. Configure host endpoints carefully to avoid locking yourself out of the node, always test SSH and management access after applying host policies, and use staged policies to preview impact before enforcement. Host-level policies are powerful but require careful planning and testing.
-
