@@ -37,6 +37,7 @@ clusters/
           flux-system/
           apps.yaml
         cluster-002/
+        cluster-003/
       tier-2/                  # Early majority (25% of fleet)
         cluster-010/
         cluster-011/
@@ -186,13 +187,14 @@ EOF
 
 # 3. Bootstrap Flux on the new cluster
 export KUBECONFIG="$KUBECONFIG_PATH"
+: "${GITHUB_TOKEN:?Set GITHUB_TOKEN before running flux bootstrap}"
 flux bootstrap github \
   --owner=my-org \
   --repository=my-fleet \
   --branch=main \
   --path="$CLUSTER_PATH" \
   --components=source-controller,kustomize-controller \
-  --token-env=GITHUB_TOKEN
+  --token-auth
 
 # 4. Commit the cluster definition
 git add "$CLUSTER_PATH/"
