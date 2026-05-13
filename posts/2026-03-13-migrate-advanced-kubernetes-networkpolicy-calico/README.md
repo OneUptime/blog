@@ -10,7 +10,7 @@ Description: Migrate advanced Kubernetes NetworkPolicy patterns using Calico for
 
 ## Introduction
 
-Migrate to Advanced Kubernetes NetworkPolicy with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle advanced k8s networkpolicy while maintaining strict access controls.
+Migrate to Advanced Kubernetes NetworkPolicy with Calico requires careful policy design in Calico to balance security with performance and availability. Calico enforces the standard Kubernetes `networking.k8s.io/v1` NetworkPolicy API, and the `projectcalico.org/v3` API provides additional flexibility when you need controls beyond standard k8s networkpolicy.
 
 This guide covers migrate Advanced K8s NetworkPolicy in Calico with production-ready configurations.
 
@@ -18,6 +18,7 @@ This guide covers migrate Advanced K8s NetworkPolicy in Calico with production-r
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
+- Namespaces labeled for the selectors used below, such as `frontend` with `environment=production`, `staging` with `environment=staging`, and the observability namespace with `team=observability`
 
 ## Core Configuration
 
@@ -75,9 +76,9 @@ spec:
 # Apply advanced policy
 kubectl apply -f advanced-cross-namespace-policy.yaml
 
-# Test cross-namespace access (production frontend -> production API)
-kubectl exec -n production frontend-pod -- curl -s http://api-server.production.svc.cluster.local:8080
-echo "Production frontend to API (should pass): $?"
+# Test cross-namespace access (frontend namespace -> production API)
+kubectl exec -n frontend frontend-pod -- curl -s http://api-server.production.svc.cluster.local:8080
+echo "Frontend namespace to production API (should pass): $?"
 
 # Test blocked cross-namespace access (staging frontend -> production API)
 kubectl exec -n staging frontend-pod -- curl -s --max-time 5 http://api-server.production.svc.cluster.local:8080
