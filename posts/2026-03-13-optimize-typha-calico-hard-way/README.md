@@ -54,10 +54,10 @@ Typha batches updates before sending them to Felix. The batch delay controls how
 
 ```bash
 kubectl set env deployment/calico-typha -n calico-system \
-  TYPHA_MINBATCHINGINTERVAL=100ms
+  TYPHA_SERVERMINBATCHINGAGETHRESHOLDSECS=0.1
 ```
 
-Shorter intervals mean faster propagation but more CPU usage. Longer intervals reduce CPU at the cost of slightly slower policy propagation. For most production clusters, 100ms is a good balance.
+The value is a float in seconds (default `0.01`, i.e. 10ms), so `0.1` corresponds to 100ms. Shorter intervals mean faster propagation but more CPU usage. Longer intervals reduce CPU at the cost of slightly slower policy propagation. For most production clusters, 100ms is a good balance.
 
 ## Step 3: Place Typha on Control Plane or Dedicated Nodes
 
@@ -115,10 +115,10 @@ Track the time from a policy change to Felix receiving it.
 
 ```bash
 kubectl port-forward -n calico-system deployment/calico-typha 9093:9093 &
-curl -s http://localhost:9093/metrics | grep typha_update_send_latency
+curl -s http://localhost:9093/metrics | grep typha_client_latency_secs
 ```
 
-Target: median send latency under 100ms for a cluster with <1000 nodes.
+`typha_client_latency_secs` reports how far behind each client is from the current datastore state. Target: median client latency under 100ms for a cluster with <1000 nodes.
 
 ## Step 7: Anti-Affinity for Typha Replicas
 
@@ -133,7 +133,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
           "podAntiAffinity": {
             "requiredDuringSchedulingIgnoredDuringExecution": [{
               "labelSelector": {
-                "matchLabels": {"app": "calico-typha"}
+                "matchLabels": {"k8s-app": "calico-typha"}
               },
               "topologyKey": "topology.kubernetes.io/zone"
             }]
