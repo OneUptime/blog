@@ -14,8 +14,8 @@ Cosign keyless verification eliminates the need to manage long-lived signing key
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.25 or later)
-- Flux CLI installed and bootstrapped (v2.1 or later)
+- A running Kubernetes cluster supported by your Flux release (current Flux releases require Kubernetes v1.33 or later)
+- Flux CLI installed and bootstrapped with `source.toolkit.fluxcd.io/v1` support
 - Cosign CLI (v2.0 or later)
 - kubectl configured to access your cluster
 - Container images signed with Cosign keyless signing
@@ -79,7 +79,7 @@ jobs:
 
 ## Step 3: Configure Flux OCIRepository with Keyless Verification
 
-Create an OCIRepository resource that uses keyless verification by specifying the OIDC identity:
+Create an OCIRepository resource that uses keyless verification by specifying regular expressions for the OIDC identity:
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-keyless.yaml
@@ -96,8 +96,8 @@ spec:
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/myorg/myapp/.github/workflows/build-and-sign.yaml@refs/heads/main"
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/myorg/myapp/.github/workflows/build-and-sign.yaml@refs/tags/v.*$"
 ```
 
 ## Step 4: Use Regular Expression Matching for OIDC Identity
@@ -119,8 +119,8 @@ spec:
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/myorg/myapp/.*"
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/myorg/myapp/.*$"
 ```
 
 ## Step 5: Configure Keyless Verification for Flux Controller Images
@@ -142,8 +142,8 @@ spec:
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/fluxcd/flux2/.github/workflows/.*"
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/fluxcd/flux2/.github/workflows/.*$"
 ```
 
 ## Step 6: Configure Multiple OIDC Identities
@@ -165,10 +165,10 @@ spec:
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/myorg/myapp/.*"
-      - issuer: "https://accounts.google.com"
-        subject: "build-service@myproject.iam.gserviceaccount.com"
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/myorg/myapp/.*$"
+      - issuer: "^https://accounts.google.com$"
+        subject: "^build-service@myproject.iam.gserviceaccount.com$"
 ```
 
 ## Step 7: Push and Sign OCI Artifacts for Flux
@@ -177,13 +177,14 @@ Push Kubernetes manifests as OCI artifacts and sign them keylessly:
 
 ```bash
 # Push manifests as an OCI artifact
-flux push artifact oci://ghcr.io/myorg/myapp-manifests:v1.0.0 \
+digest_url=$(flux push artifact oci://ghcr.io/myorg/myapp-manifests:v1.0.0 \
   --path=./manifests \
   --source="https://github.com/myorg/myapp" \
-  --revision="v1.0.0/$(git rev-parse HEAD)"
+  --revision="v1.0.0@sha1:$(git rev-parse HEAD)" \
+  --output json | jq -r '.repository + "@" + .digest')
 
 # Sign the artifact keylessly (requires OIDC authentication)
-cosign sign --yes ghcr.io/myorg/myapp-manifests:v1.0.0
+cosign sign --yes "$digest_url"
 ```
 
 ## Verification
@@ -202,17 +203,18 @@ flux get sources oci -A
 kubectl describe ocirepository my-app -n flux-system
 ```
 
-3. Check for verification events:
+3. Check the `SourceVerified` condition:
 
 ```bash
-kubectl get events -n flux-system --field-selector reason=VerificationSucceeded
+kubectl get ocirepository my-app -n flux-system \
+  -o jsonpath='{.status.conditions[?(@.type=="SourceVerified")]}'
 ```
 
 4. Manually verify the image signature to confirm keyless verification works:
 
 ```bash
 cosign verify ghcr.io/myorg/myapp-manifests:v1.0.0 \
-  --certificate-identity-regexp="https://github.com/myorg/myapp/.*" \
+  --certificate-identity-regexp="^https://github.com/myorg/myapp/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
@@ -233,7 +235,7 @@ Use the output to adjust the `matchOIDCIdentity` fields in your OCIRepository.
 
 ### Error: Connectivity issues with Sigstore services
 
-Keyless verification requires access to Fulcio and Rekor. Test connectivity:
+Keyless signing requires access to Fulcio, and Flux keyless verification uses the public Rekor instance. Test connectivity:
 
 ```bash
 curl -s https://fulcio.sigstore.dev/api/v2/configuration | jq .
