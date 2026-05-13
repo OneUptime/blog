@@ -42,14 +42,18 @@ timoni version
 Download the latest release binary:
 
 ```bash
-curl -sSL https://github.com/stefanprodan/timoni/releases/latest/download/timoni_linux_amd64.tar.gz | tar xz
+TIMONI_VERSION=$(curl -s https://api.github.com/repos/stefanprodan/timoni/releases/latest | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p')
+TIMONI_VERSION_NO_V=${TIMONI_VERSION#v}
+curl -sSL "https://github.com/stefanprodan/timoni/releases/download/${TIMONI_VERSION}/timoni_${TIMONI_VERSION_NO_V}_linux_amd64.tar.gz" | tar xz
 sudo mv timoni /usr/local/bin/timoni
 ```
 
 For ARM-based Linux:
 
 ```bash
-curl -sSL https://github.com/stefanprodan/timoni/releases/latest/download/timoni_linux_arm64.tar.gz | tar xz
+TIMONI_VERSION=$(curl -s https://api.github.com/repos/stefanprodan/timoni/releases/latest | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p')
+TIMONI_VERSION_NO_V=${TIMONI_VERSION#v}
+curl -sSL "https://github.com/stefanprodan/timoni/releases/download/${TIMONI_VERSION}/timoni_${TIMONI_VERSION_NO_V}_linux_arm64.tar.gz" | tar xz
 sudo mv timoni /usr/local/bin/timoni
 ```
 
@@ -58,7 +62,6 @@ sudo mv timoni /usr/local/bin/timoni
 Using Scoop:
 
 ```powershell
-scoop bucket add stefanprodan https://github.com/stefanprodan/scoop-bucket.git
 scoop install timoni
 ```
 
@@ -70,7 +73,7 @@ To install a specific version:
 
 ```bash
 TIMONI_VERSION=0.22.0
-curl -sSL "https://github.com/stefanprodan/timoni/releases/download/v${TIMONI_VERSION}/timoni_linux_amd64.tar.gz" | tar xz
+curl -sSL "https://github.com/stefanprodan/timoni/releases/download/v${TIMONI_VERSION}/timoni_${TIMONI_VERSION}_linux_amd64.tar.gz" | tar xz
 sudo mv timoni /usr/local/bin/timoni
 ```
 
@@ -119,18 +122,19 @@ Usage:
   timoni [command]
 
 Available Commands:
-  apply        Install or upgrade a module instance
-  build        Build a module and print the resulting Kubernetes resources
-  bundle       Commands for managing bundles
-  completion   Generate the autocompletion script
-  delete       Uninstall a module instance
-  inspect      Commands for inspecting instances
-  list         List all module instances in a namespace
-  mod          Commands for managing modules
-  pull         Pull a module from an OCI registry
-  push         Push a module to an OCI registry
-  status       Display the status of a module instance
-  version      Print the version
+  apply       Install or upgrade a module instance
+  artifact    Commands for managing Open Container Initiative (OCI) artifacts
+  build       Build an instance from a module and print the resulting Kubernetes resources
+  bundle      Commands for managing bundles
+  completion  Generates completion scripts for various shells
+  delete      Uninstall a module instance from the cluster
+  inspect     Commands for getting information about installed instances
+  list        Prints a table of instances and their module version
+  mod         Commands for managing modules
+  registry    Commands for managing the authentication to container registries
+  runtime     Commands for managing runtimes
+  status      Displays the current status of Kubernetes resources managed by an instance
+  version     Print the client and API version information
 ```
 
 ## Step 4: Pull Your First Flux Module
@@ -169,10 +173,10 @@ flux-git-sync/
 View the configurable values of a module:
 
 ```bash
-timoni mod values oci://ghcr.io/stefanprodan/modules/flux-git-sync
+sed -n '/## Configuration/,$p' ./flux-git-sync/README.md
 ```
 
-This shows the CUE schema for all configurable parameters, including defaults and constraints.
+This shows the configurable parameters, including defaults and descriptions.
 
 ## Step 6: Build and Preview
 
@@ -191,13 +195,13 @@ Create a values file for your deployment:
 values:
   git:
     url: "https://github.com/your-org/fleet-infra"
-    ref:
-      branch: "main"
+    ref: "refs/heads/main"
     path: "./clusters/production"
+    interval: 5
   sync:
-    interval: "5m"
     prune: true
     wait: true
+    targetNamespace: "default"
 ```
 
 Preview the resources that would be created:
@@ -257,11 +261,13 @@ timoni registry login ghcr.io \
   --password your-token
 ```
 
-Or use environment variables:
+Or pass credentials to an individual command:
 
 ```bash
-export TIMONI_REGISTRY_USERNAME=your-username
-export TIMONI_REGISTRY_PASSWORD=your-token
+export GITHUB_TOKEN=your-token
+timoni mod pull oci://ghcr.io/your-org/modules/your-module \
+  --creds your-username:${GITHUB_TOKEN} \
+  --output ./your-module
 ```
 
 ## Conclusion
