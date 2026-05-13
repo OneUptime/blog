@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Monitoring, API Access, Egress, Prometheus, Networking
 
-Description: Monitor external API access failures from Calico pods using egress policy metrics, synthetic API call probes, and DNS resolution monitoring.
+Description: Monitor external API access failures from Calico pods using Calico policy metrics, synthetic API call probes, and DNS resolution monitoring.
 
 ---
 
@@ -88,6 +88,7 @@ metadata:
   name: external-api-probe
   namespace: monitoring
 spec:
+  jobName: external-api-probe
   interval: 60s
   module: http_2xx
   prober:
@@ -141,16 +142,16 @@ kubectl apply -f api-access-alerts.yaml
 
 ## Step 4: Monitor Egress Policy Effectiveness
 
-Track Calico policy metrics to understand egress policy activity.
+Track Calico policy and dataplane metrics to understand policy activity.
 
 ```bash
 # Check Felix egress policy metrics
 kubectl exec -n calico-system \
   $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   wget -qO- http://localhost:9091/metrics 2>/dev/null | \
-  grep -E "felix_active_local_policies|felix_ipsets"
+  grep -E "felix_active_local_policies|felix_iptables_rules|felix_bpf_num_ip_sets"
 
-# Track denied egress connections via conntrack
+# Inspect one-way conntrack entries; these can indicate connectivity or NAT issues but are not policy-deny counters
 kubectl exec -n calico-system \
   $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   conntrack -L 2>/dev/null | grep UNREPLIED | wc -l
