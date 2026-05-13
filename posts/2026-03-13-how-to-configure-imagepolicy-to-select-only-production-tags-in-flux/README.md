@@ -168,8 +168,8 @@ kubectl -n flux-system get imagepolicy my-app-prod
 Expected output:
 
 ```text
-NAME           LATESTIMAGE
-my-app-prod    registry.example.com/my-app:prod-v1.5.0
+NAME          IMAGE                         TAG           READY   STATUS
+my-app-prod   registry.example.com/my-app   prod-v1.5.0   True    Latest image tag for 'registry.example.com/my-app' resolved to prod-v1.5.0
 ```
 
 Inspect details with describe:
