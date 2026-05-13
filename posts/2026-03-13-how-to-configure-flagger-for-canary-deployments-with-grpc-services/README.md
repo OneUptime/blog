@@ -16,7 +16,7 @@ This guide covers the complete setup for running canary deployments on gRPC serv
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster (v1.27 or later)
 - Flagger installed (v1.37 or later)
 - Istio service mesh installed
 - Prometheus installed and scraping Istio metrics
@@ -24,7 +24,7 @@ This guide covers the complete setup for running canary deployments on gRPC serv
 
 ## Step 1: Deploy a gRPC Service
 
-Create a Deployment for your gRPC service. The key detail is setting the port name with a `grpc-` prefix or using the `appProtocol` field so Istio recognizes it as gRPC traffic:
+Create a Deployment for your gRPC service. Istio determines the protocol from the Kubernetes Service port that Flagger generates, so the key detail is configuring the Canary service with a `grpc` port name or `appProtocol: grpc`:
 
 ```yaml
 apiVersion: apps/v1
@@ -80,6 +80,7 @@ spec:
   service:
     port: 9000
     targetPort: 9000
+    portName: grpc
     appProtocol: grpc
     portDiscovery: false
   analysis:
@@ -98,11 +99,11 @@ spec:
         interval: 1m
 ```
 
-Flagger's built-in `request-success-rate` and `request-duration` metrics work with gRPC because Istio reports gRPC request metrics using the same `istio_requests_total` and `istio_request_duration_milliseconds` telemetry as HTTP. gRPC status codes are mapped to HTTP status codes in Istio metrics.
+Flagger's built-in `request-success-rate` and `request-duration` metrics work with gRPC because Istio reports gRPC request metrics using the same `istio_requests_total` and `istio_request_duration_milliseconds` telemetry as HTTP and HTTP/2 traffic. Istio also exposes the gRPC status separately with the `grpc_response_status` label.
 
 ## Step 3: gRPC-Specific Metric Templates
 
-If you want to analyze gRPC-specific status codes rather than the HTTP-mapped ones, create custom MetricTemplates:
+If you want to analyze gRPC-specific status codes rather than relying on HTTP response-code labels, create custom MetricTemplates:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -144,7 +145,7 @@ gRPC status code `0` means `OK`. You can reference this metric in your Canary an
 
 ## Step 4: Configure gRPC Health Checking
 
-Kubernetes v1.24+ supports native gRPC health checks. Make sure your gRPC service implements the standard gRPC health checking protocol (`grpc.health.v1.Health`). The readiness probe in the Deployment spec should use the `grpc` probe type:
+Kubernetes v1.27+ supports native gRPC health checks as a stable feature. Make sure your gRPC service implements the standard gRPC health checking protocol (`grpc.health.v1.Health`). The readiness probe in the Deployment spec should use the `grpc` probe type:
 
 ```yaml
 readinessProbe:
@@ -239,10 +240,10 @@ graph TD
 
 If your gRPC service uses streaming RPCs (server-side, client-side, or bidirectional), be aware that:
 
-- Istio metrics are reported per-stream, not per-message within a stream.
+- Istio's `istio_requests_total` and `istio_request_duration_milliseconds` metrics are reported per RPC, while `istio_request_messages_total` and `istio_response_messages_total` count messages within gRPC streams.
 - Long-lived streams may not produce metrics frequently enough for short analysis intervals. Consider increasing `analysis.interval` to 1m or more.
-- Connection-level load balancing means that new streams from existing connections may not respect the weight changes. Istio handles this correctly for gRPC because each RPC is routed independently.
+- Connection-level load balancing means that existing long-lived streams will not be redistributed when weights change. New RPCs can be routed according to the current VirtualService weights.
 
 ## Conclusion
 
-Flagger works well with gRPC services because Istio treats gRPC as HTTP/2 traffic, enabling the same weighted routing and telemetry used for HTTP canaries. Set `appProtocol: grpc` in your Canary spec, and Flagger will handle the rest. For more granular analysis, create custom MetricTemplates that filter on gRPC-specific status codes. Make sure your gRPC service implements the standard health checking protocol for proper readiness probes during the canary rollout.
+Flagger works well with gRPC services because Istio treats gRPC as HTTP/2 traffic, enabling the same weighted routing and telemetry used for HTTP canaries. Set `portName: grpc` and `appProtocol: grpc` in your Canary spec, and Flagger will handle the rest. For more granular analysis, create custom MetricTemplates that filter on gRPC-specific status codes. Make sure your gRPC service implements the standard health checking protocol for proper readiness probes during the canary rollout.
