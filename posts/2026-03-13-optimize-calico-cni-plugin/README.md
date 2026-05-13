@@ -39,24 +39,42 @@ Larger IPAM blocks mean fewer allocation operations per node. When a block is ex
 # Check current block size
 
 calicoctl get ippool default-ipv4-ippool -o yaml | grep blockSize
+```
 
-# For high pod churn nodes, use /23 (512 IPs) to reduce block allocations
-calicoctl patch ippool default-ipv4-ippool \
-  --patch='{"spec":{"blockSize":23}}'
+The `blockSize` field on an IPPool is immutable after creation. To use a larger block size, create a new IPPool (and migrate workloads off the old one):
+
+```bash
+# For high pod churn, create a new pool with /23 (512 IPs) blocks
+cat <<EOF | calicoctl apply -f -
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: pool-larger-blocks
+spec:
+  cidr: 10.100.0.0/16
+  blockSize: 23
+  ipipMode: Always
+  natOutgoing: true
+EOF
 ```
 
 ## Optimization 3: Pre-Warm IPAM Blocks
 
-Ensure nodes always have pre-allocated IPAM blocks ready:
+Ensure nodes always have IPAM blocks affined to them. This is controlled by the `IPAMConfiguration` resource, not FelixConfiguration:
 
 ```bash
-# Felix pre-allocates IPAM blocks when nodes join
-# Configure warmup in Felix
-kubectl patch felixconfiguration default \
-  --type=merge \
-  --patch='{"spec":{"ipIpMtu":1440}}'
+# Cap blocks per host and prefer keeping allocations on the same node
+cat <<EOF | calicoctl apply -f -
+apiVersion: projectcalico.org/v3
+kind: IPAMConfiguration
+metadata:
+  name: default
+spec:
+  strictAffinity: false
+  maxBlocksPerHost: 4
+EOF
 
-# Pre-allocation happens automatically, but verify
+# Verify blocks are allocated per node
 calicoctl ipam show --show-blocks | grep <node-name>
 ```
 
@@ -64,17 +82,17 @@ calicoctl ipam show --show-blocks | grep <node-name>
 
 ```mermaid
 graph LR
-    A[debug log level] -->|More disk I/O| B[Slower CNI execution]
-    C[info log level] -->|Essential events only| D[Normal CNI speed]
-    E[warning log level] -->|Minimal I/O| F[Fastest CNI execution]
+    A[Debug log level] -->|More disk I/O| B[Slower CNI execution]
+    C[Info log level] -->|Essential events only| D[Normal CNI speed]
+    E[Warning log level] -->|Minimal I/O| F[Fastest CNI execution]
     D --> G[Recommended for production]
 ```
 
-Set appropriate log level:
+Set an appropriate log level (Calico CNI accepts `Debug`, `Info`, `Warning`, `Error`, `Fatal`):
 
 ```json
 {
-  "log_level": "warning",
+  "log_level": "Warning",
   "log_file_path": "/var/log/calico/cni/cni.log"
 }
 ```
@@ -93,14 +111,13 @@ Configure CNI to batch Kubernetes API calls where possible:
 }
 ```
 
-Use local node caching to reduce API server latency:
+Felix maintains its own watch-based cache of Kubernetes resources, so explicit CNI batching is not required. To reduce the frequency of local interface and route rescans (which compete with the CNI for resources), tune the refresh intervals on Felix:
 
 ```bash
-# Ensure calico-node's node cache is warm
-# This is automatic but can be tuned via Felix watch interval
+# Defaults are 90s for both; raise on stable nodes to reduce overhead
 kubectl patch felixconfiguration default \
   --type=merge \
-  --patch='{"spec":{"k8sNodeCacheTTL":"60s"}}'
+  --patch='{"spec":{"interfaceRefreshInterval":"180s","routeRefreshInterval":"180s"}}'
 ```
 
 ## Optimization 6: Profile CNI Execution Time
