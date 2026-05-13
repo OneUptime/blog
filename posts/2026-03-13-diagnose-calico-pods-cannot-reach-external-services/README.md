@@ -65,7 +65,8 @@ A default-deny GlobalNetworkPolicy that blocks all egress will prevent pods from
 calicoctl get globalnetworkpolicies -o yaml | \
   grep -A 10 "egress:"
 
-# Look for policies with egress action: Deny or no egress rules (implicit deny)
+# Look for policies with egress action: Deny, or policies that include Egress
+# in types without any egress Allow rules
 # Also check namespace-scoped NetworkPolicies
 kubectl get networkpolicies --all-namespaces
 
@@ -104,7 +105,7 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 # Verify traffic from pod IP would take the default route
 POD_IP=$(kubectl get pod connectivity-test -o jsonpath='{.status.podIP}')
 kubectl exec -n calico-system "${CALICO_POD}" -- \
-  ip route get 8.8.8.8
+  ip route get 8.8.8.8 from "${POD_IP}"
 ```
 
 ## Best Practices
@@ -116,4 +117,4 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 
 ## Conclusion
 
-Diagnosing external service connectivity failures from Calico pods requires checking IP pool NAT configuration, network policies for egress blocks, iptables masquerade rules programmed by Felix, and node routing tables. The most common causes are `natOutgoing: false` on the IP pool or a GlobalNetworkPolicy with no egress rules (causing implicit deny).
+Diagnosing external service connectivity failures from Calico pods requires checking IP pool NAT configuration, network policies for egress blocks, iptables masquerade rules programmed by Felix, and node routing tables. The most common causes are `natOutgoing: false` on the IP pool or a GlobalNetworkPolicy that includes Egress without any matching egress Allow rules.
