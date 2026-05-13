@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Receiver, GitHub, Release, Webhook
 
-Description: Learn how to configure a Flux Receiver that triggers reconciliation when new GitHub releases are published for release-driven deployment workflows.
+Description: Learn how to configure a Flux Receiver that triggers reconciliation when GitHub release events are sent for release-driven deployment workflows.
 
 ---
 
 ## Introduction
 
-Many teams use GitHub Releases as their deployment trigger. Rather than deploying on every push, they cut a release when code is ready for production. Flux can respond to these release events through a Receiver, triggering reconciliation only when a new release is published. This approach gives you explicit control over when deployments happen while still maintaining the speed benefits of event-driven reconciliation.
+Many teams use GitHub Releases as their deployment trigger. Rather than deploying on every push, they cut a release when code is ready for production. Flux can respond to these release events through a Receiver, triggering reconciliation when GitHub sends a release webhook event. This approach gives you explicit control over when deployments happen while still maintaining the speed benefits of event-driven reconciliation.
 
 This guide covers how to set up a Flux Receiver for GitHub release events, configure the GitHub webhook, and build a release-driven deployment pipeline.
 
@@ -18,7 +18,7 @@ This guide covers how to set up a Flux Receiver for GitHub release events, confi
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2 installed and bootstrapped
 - The notification controller accessible via ingress or LoadBalancer
 - A GitHub repository that uses releases for versioning
@@ -29,7 +29,7 @@ Before starting, ensure you have:
 
 Push events trigger reconciliation on every commit, which works well for development environments. However, production environments often need more controlled deployment triggers. Release events offer several advantages:
 
-- Deployments happen only when a release is explicitly created
+- Reconciliation happens on release activity instead of every commit
 - Release tags provide clear versioning for rollback purposes
 - Release notes serve as deployment documentation
 - The workflow supports approval processes before creating the release
@@ -75,13 +75,12 @@ spec:
   secretRef:
     name: github-release-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: app-repo
-    - kind: Kustomization
-      name: production-app
 ```
 
-The `events` field specifies `release` instead of `push`. GitHub sends a release event whenever a release is created, published, edited, or deleted. The notification controller processes the webhook and triggers reconciliation of the listed resources.
+The `events` field specifies `release` instead of `push`. GitHub sends a release event for release activity such as creating, publishing, editing, or deleting a release. The notification controller processes the webhook and triggers reconciliation of the listed source resources. Flux then notifies downstream Kustomizations or HelmReleases when the source artifact revision changes.
 
 ## Configuring the GitRepository for Tag-Based Tracking
 
@@ -102,9 +101,9 @@ spec:
     name: github-credentials
 ```
 
-Using `semver` in the ref field makes the GitRepository track the latest tag matching the semver range. When a new release creates a tag, the Receiver triggers reconciliation, and the GitRepository picks up the new tag.
+Using `semver` in the ref field makes the GitRepository track the latest tag matching the semver range. When a release points to a new matching tag, the Receiver triggers reconciliation, and the GitRepository picks up the new tag.
 
-Alternatively, track a specific tag pattern:
+Alternatively, track a specific tag:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -123,13 +122,13 @@ spec:
 
 In your GitHub repository, go to Settings, then Webhooks, and add a new webhook:
 
-- **Payload URL**: The webhook URL from the Receiver status
+- **Payload URL**: The public URL composed from your ingress or LoadBalancer hostname and the Receiver status path
 - **Content type**: application/json
 - **Secret**: The token from your Kubernetes secret
 - **Events**: Select "Let me select individual events", then check only "Releases"
 - **Active**: Checked
 
-Retrieve the webhook URL:
+Retrieve the webhook path:
 
 ```bash
 kubectl get receiver github-release-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
@@ -137,7 +136,7 @@ kubectl get receiver github-release-receiver -n flux-system -o jsonpath='{.statu
 
 ## Exposing the Webhook Endpoint
 
-Ensure the notification controller is reachable from GitHub:
+Ensure the webhook receiver endpoint is reachable from GitHub:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -161,7 +160,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -184,15 +183,12 @@ spec:
   secretRef:
     name: github-release-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: helm-charts-repo
-    - kind: HelmChart
-      name: flux-system-my-app
-    - kind: HelmRelease
-      name: my-app
 ```
 
-This triggers the full chain: the GitRepository fetches the new tag, the HelmChart detects the updated chart version, and the HelmRelease deploys it.
+This triggers the source update: the GitRepository fetches the new tag, and Flux notifies the downstream Helm resources when the source artifact revision changes.
 
 ## Multiple Repositories with Release Receivers
 
@@ -212,7 +208,8 @@ spec:
   secretRef:
     name: github-release-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: frontend-repo
 ---
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -228,7 +225,8 @@ spec:
   secretRef:
     name: github-release-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: backend-repo
 ```
 
@@ -267,8 +265,8 @@ Verify the Receiver status:
 kubectl describe receiver github-release-receiver -n flux-system
 ```
 
-Ensure the notification controller service is accessible from the internet and not blocked by network policies or firewalls.
+Ensure the webhook receiver endpoint is accessible from the internet and not blocked by network policies or firewalls.
 
 ## Conclusion
 
-Using Flux Receivers with GitHub release events creates a controlled, release-driven deployment pipeline. Instead of deploying on every push, your cluster updates only when an explicit release is published. This aligns your GitOps workflow with release management practices, provides clear versioning for deployments, and gives your team explicit control over when changes reach production. The setup is straightforward: create a Receiver, configure the GitHub webhook, and ensure your GitRepository tracks tags or semver ranges to pick up the latest release.
+Using Flux Receivers with GitHub release events creates a controlled, release-driven deployment pipeline. Instead of deploying on every push, your cluster updates when GitHub sends a release event and the tracked Git tag changes. This aligns your GitOps workflow with release management practices, provides clear versioning for deployments, and gives your team explicit control over when changes reach production. The setup is straightforward: create a Receiver, configure the GitHub webhook, and ensure your GitRepository tracks tags or semver ranges to pick up the latest release.
