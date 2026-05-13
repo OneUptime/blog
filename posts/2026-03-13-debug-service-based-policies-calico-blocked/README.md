@@ -48,10 +48,10 @@ spec:
 ## Core Technique
 
 ```bash
-# Verify service exists and has endpoints
+# Verify service exists and has EndpointSlices
 
 kubectl get service backend-api -n production
-kubectl get endpoints backend-api -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api
 
 # Test traffic through the service
 SVC_IP=$(kubectl get service backend-api -n production -o jsonpath='{.spec.clusterIP}')
@@ -63,7 +63,7 @@ echo "Result: $?"
 
 ```bash
 # Check if service has backing pods
-kubectl get endpoints backend-api -n production -o yaml | grep -A 10 subsets
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api -o yaml | grep -A 20 endpoints:
 
 # Verify policy is targeting the correct service
 calicoctl get networkpolicy allow-frontend-to-backend -n production -o yaml | grep -A 5 services
