@@ -25,7 +25,7 @@ This guide provides practical techniques for debug ICMP Rules in your Kubernetes
 ## Step 1: Identify the Blocked Traffic
 
 ```bash
-kubectl exec -n my-namespace my-pod -- curl -v --max-time 5 http://target-service:8080
+kubectl exec -n my-namespace my-pod -- ping -c 3 target-pod-ip
 ```
 
 ## Step 2: Check Applicable Policies
@@ -44,12 +44,21 @@ metadata:
   name: debug-log
   namespace: my-namespace
 spec:
-  order: 999
+  order: 1
   selector: all()
   ingress:
     - action: Log
+      protocol: ICMP
+    - action: Log
+      protocol: ICMPv6
+  egress:
+    - action: Log
+      protocol: ICMP
+    - action: Log
+      protocol: ICMPv6
   types:
     - Ingress
+    - Egress
 ```
 
 ## Step 4: Review Logs and Fix
