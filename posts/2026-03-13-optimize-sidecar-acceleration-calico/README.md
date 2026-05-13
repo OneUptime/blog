@@ -27,12 +27,12 @@ This is one of the most impactful performance optimizations available for micros
 
 calicoctl get felixconfiguration default -o yaml | grep bpfEnabled
 
-# Check sidecar proxy detection
-kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -show-bpf-map-sizes
+# Verify sidecar acceleration is enabled
+calicoctl get felixconfiguration default -o yaml | grep sidecarAccelerationEnabled
 
-# Verify acceleration is active for a pod
-kubectl exec test-pod -- cat /proc/net/if_inet6
+# Verify acceleration is active by checking for SOCKMAP sk_msg programs
+kubectl exec -n calico-system ds/calico-node -- \
+  bpftool prog show | grep sk_msg
 ```
 
 ## Benchmark Acceleration
