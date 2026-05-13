@@ -23,7 +23,7 @@ Debug Calico Policy Log Rules When Traffic Is Blocked in Calico provides fine-gr
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
-  name: debug-debug-calico-policy-log-rules-when-
+  name: debug-policy-log-rules
   namespace: production
 spec:
   order: 100
@@ -32,11 +32,15 @@ spec:
     - action: Allow
       source:
         selector: app == 'authorized'
+    - action: Log
+    - action: Deny
   egress:
     - action: Allow
       protocol: UDP
       destination:
         ports: [53]
+    - action: Log
+    - action: Deny
   types:
     - Ingress
     - Egress
@@ -46,7 +50,7 @@ spec:
 
 ```bash
 calicoctl apply -f debug-policy.yaml
-calicoctl get networkpolicies -n production -o wide
+calicoctl get networkpolicy -n production -o wide
 kubectl exec -n production test-pod -- curl -s --max-time 5 http://target:8080
 echo "Result: $?"
 ```
