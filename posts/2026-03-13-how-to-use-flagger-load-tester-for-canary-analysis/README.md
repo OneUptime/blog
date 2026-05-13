@@ -129,7 +129,7 @@ Key `hey` parameters:
 - `-c` concurrency: Number of concurrent workers
 - Total QPS = `-q` multiplied by `-c`
 
-If your analysis interval is 1 minute, set the load test duration to at least 1 minute. The load tester starts a new instance of the command on each webhook call, so overlapping runs may occur if the duration exceeds the interval.
+If your analysis interval is 1 minute, set the load test duration to at least 1 minute. The load tester runs `cmd` tasks in the background and skips a duplicate task if the same command is already running for the same canary.
 
 ## Using the Load Tester for Pre-rollout Checks
 
@@ -154,7 +154,9 @@ The load tester includes built-in gate endpoints for manual approval workflows:
 
 - `POST /gate/open` - Opens the gate (subsequent checks return 200)
 - `POST /gate/close` - Closes the gate (subsequent checks return non-200)
-- `GET /gate/approve` - Returns 200 if gate is open, non-200 if closed
+- `/gate/check` - Returns 200 if the gate is open, non-200 if closed
+- `/gate/approve` - Always returns 200
+- `/gate/halt` - Always returns non-200
 
 These work with `confirm-rollout`, `confirm-promotion`, and `confirm-traffic-increase` webhook types.
 
