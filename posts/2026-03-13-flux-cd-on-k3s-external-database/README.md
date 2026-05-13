@@ -18,7 +18,7 @@ This guide covers deploying k3s with an external PostgreSQL datastore, configuri
 
 ## Prerequisites
 
-- PostgreSQL 12+ or MySQL 8.0+ database accessible from your k3s nodes
+- A k3s-certified PostgreSQL version (15, 16, or 17) or MySQL 8.0/8.4 database accessible from your k3s nodes
 - Three or more Linux nodes for k3s servers
 - A load balancer or VIP for the k3s API server
 - `kubectl` and `flux` CLI on your workstation
@@ -55,11 +55,16 @@ curl -sfL https://get.k3s.io | sh -s - server \
 
 ```bash
 # On the second and third k3s server nodes (same datastore-endpoint)
+export K3S_TOKEN="my-cluster-secret"
+export DB_PASSWORD="strong-password-here"
+
 curl -sfL https://get.k3s.io | sh -s - server \
   --datastore-endpoint="postgres://k3s_user:${DB_PASSWORD}@postgres.internal:5432/k3s_datastore?sslmode=require" \
-  --server=https://192.168.1.101:6443 \
+  --token=${K3S_TOKEN} \
   --tls-san=192.168.1.100 \
-  --disable=traefik
+  --tls-san=k3s.example.com \
+  --disable=traefik \
+  --node-taint="node-role.kubernetes.io/master=true:NoSchedule"
 ```
 
 ## Step 3: Install k3s with External MySQL
@@ -172,10 +177,10 @@ psql -U k3s_user -d k3s_datastore -c \
 ## Best Practices
 
 - Use a managed database service (RDS, Cloud SQL) for the k3s datastore in production; it provides automated backups, failover, and patching without additional operational work.
-- Enable SSL/TLS on the datastore connection (`sslmode=require` for PostgreSQL, `tls=true` for MySQL) to encrypt state data in transit.
+- Enable SSL/TLS on the datastore connection (`sslmode=require` for PostgreSQL, or k3s datastore TLS certificate flags such as `--datastore-cafile` for MySQL) to encrypt state data in transit.
 - Place the database in the same availability zone as the k3s server nodes to minimize control plane API latency.
 - Set `max_connections` on the PostgreSQL server appropriately: each k3s server node maintains multiple connections to the datastore.
-- Do not use the external datastore path if you plan more than 100 nodes; at that scale, embedded etcd or a dedicated etcd cluster performs better.
+- Size the external datastore and k3s server nodes according to the official k3s large-cluster guidance; database CPU, memory, latency, and storage IOPS become increasingly important as the cluster grows.
 
 ## Conclusion
 
