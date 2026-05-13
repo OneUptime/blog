@@ -70,8 +70,8 @@ kubectl exec egress-test -- curl --max-time 5 -s https://ifconfig.me
 Add an allow rule for a specific IP range and confirm it works:
 
 ```bash
-# Get the IP of your external test endpoint
-EXTERNAL_IP=$(kubectl exec egress-test -- dig +short ifconfig.me 2>/dev/null || echo "93.184.216.34")
+# Get one IP of your external test endpoint from your workstation
+EXTERNAL_IP=$(dig +short ifconfig.me A | tail -n 1)
 
 kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
@@ -86,15 +86,15 @@ spec:
   policyTypes:
   - Egress
   egress:
-  - ports:
-    - port: 443
-      protocol: TCP
   - to:
     - ipBlock:
         cidr: ${EXTERNAL_IP}/32
+    ports:
+    - port: 443
+      protocol: TCP
 EOF
 
-kubectl exec egress-test -- curl --max-time 10 -s https://ifconfig.me
+kubectl exec egress-test -- curl --max-time 10 -s --resolve ifconfig.me:443:${EXTERNAL_IP} https://ifconfig.me
 # Expected: Returns the node IP (SNAT applied, connection allowed)
 ```
 
@@ -140,7 +140,15 @@ metadata:
   namespace: default
 spec:
   selector: run == 'egress-test'
+  types:
+  - Egress
   egress:
+  - action: Allow
+    protocol: UDP
+    destination:
+      ports:
+      - 53
+      - dns
   - action: Allow
     destination:
       domains:
