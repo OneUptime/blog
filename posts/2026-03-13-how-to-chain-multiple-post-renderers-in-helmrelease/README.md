@@ -16,7 +16,7 @@ This guide walks you through configuring multiple post-renderers in a Flux HelmR
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux installed (v2.x or later)
+- A Kubernetes cluster with Flux installed (v2.3 or later)
 - The Helm Controller component running in your cluster
 - Familiarity with HelmRelease custom resources
 - Basic understanding of Kustomize patches and strategic merge patches
@@ -51,9 +51,12 @@ spec:
               kind: Deployment
               name: my-app
             patch: |
-              - op: add
-                path: /metadata/labels/team
-                value: platform
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+                labels:
+                  team: platform
 ```
 
 This configuration adds a `team: platform` label to the Deployment named `my-app` after Helm renders the chart.
@@ -84,39 +87,50 @@ spec:
               kind: Deployment
               name: my-app
             patch: |
-              - op: add
-                path: /metadata/labels/team
-                value: platform
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+                labels:
+                  team: platform
     - kustomize:
         patches:
           - target:
               kind: Deployment
               name: my-app
             patch: |
-              - op: add
-                path: /spec/template/metadata/annotations/prometheus.io~1scrape
-                value: "true"
-              - op: add
-                path: /spec/template/metadata/annotations/prometheus.io~1port
-                value: "8080"
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+              spec:
+                template:
+                  metadata:
+                    annotations:
+                      prometheus.io/scrape: "true"
+                      prometheus.io/port: "8080"
     - kustomize:
-        patchesStrategicMerge:
-          - apiVersion: apps/v1
-            kind: Deployment
-            metadata:
+        patches:
+          - target:
+              kind: Deployment
               name: my-app
-            spec:
-              template:
-                spec:
-                  containers:
-                    - name: my-app
-                      resources:
-                        limits:
-                          memory: "512Mi"
-                          cpu: "500m"
-                        requests:
-                          memory: "256Mi"
-                          cpu: "250m"
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: my-app
+                        resources:
+                          limits:
+                            memory: "512Mi"
+                            cpu: "500m"
+                          requests:
+                            memory: "256Mi"
+                            cpu: "250m"
 ```
 
 In this example, three post-renderers run in sequence. The first adds a team label. The second adds Prometheus scraping annotations. The third sets resource limits and requests using a strategic merge patch.
@@ -151,21 +165,23 @@ spec:
           - target:
               kind: Deployment
             patch: |
-              - op: add
-                path: /metadata/labels/environment
-                value: production
-              - op: add
-                path: /metadata/labels/managed-by
-                value: flux
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: not-used
+                labels:
+                  environment: production
+                  managed-by: flux
           - target:
               kind: Service
             patch: |
-              - op: add
-                path: /metadata/labels/environment
-                value: production
-              - op: add
-                path: /metadata/labels/managed-by
-                value: flux
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: not-used
+                labels:
+                  environment: production
+                  managed-by: flux
 ```
 
 The first post-renderer overrides the container image to point at a private registry with a specific tag. The second post-renderer adds environment and management labels to all Deployments and Services.
@@ -191,32 +207,39 @@ spec:
         name: my-repo
   postRenderers:
     - kustomize:
-        patchesStrategicMerge:
-          - apiVersion: apps/v1
-            kind: Deployment
-            metadata:
+        patches:
+          - target:
+              kind: Deployment
               name: my-app
-            spec:
-              template:
-                spec:
-                  containers:
-                    - name: log-forwarder
-                      image: fluent/fluent-bit:latest
-                      volumeMounts:
-                        - name: shared-logs
-                          mountPath: /var/log/app
-                  volumes:
-                    - name: shared-logs
-                      emptyDir: {}
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: log-forwarder
+                        image: fluent/fluent-bit:latest
+                        volumeMounts:
+                          - name: shared-logs
+                            mountPath: /var/log/app
+                    volumes:
+                      - name: shared-logs
+                        emptyDir: {}
     - kustomize:
         patches:
           - target:
               kind: Deployment
               name: my-app
             patch: |
-              - op: add
-                path: /metadata/annotations/sidecar-injected
-                value: "true"
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+                annotations:
+                  sidecar-injected: "true"
 ```
 
 ## Troubleshooting
