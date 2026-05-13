@@ -10,7 +10,7 @@ Description: Learn how to configure Calico networking parameters on a new MicroK
 
 ## Introduction
 
-After enabling Calico on MicroK8s, the default configuration works out of the box but may need adjustments to align with your networking environment or production settings. MicroK8s provides a specific default CIDR for Calico (`10.1.0.0/16`), but you may need to change this or tune other settings such as IP-in-IP mode and Felix parameters.
+On MicroK8s 1.19 and newer, Calico is the default CNI and the default configuration works out of the box but may need adjustments to align with your networking environment or production settings. MicroK8s provides a specific default pod CIDR (`10.1.0.0/16`), but you may need to change this or tune other settings such as VXLAN mode and Felix parameters.
 
 MicroK8s stores its configuration in `/var/snap/microk8s/current/args/cni-network/` and Calico-specific settings can be managed through calicoctl and kubectl. Configuration changes in MicroK8s follow the same pattern as other Kubernetes distributions but with MicroK8s-specific paths and tools.
 
@@ -18,7 +18,7 @@ This guide covers essential Calico configuration steps for MicroK8s, including I
 
 ## Prerequisites
 
-- MicroK8s cluster with Calico enabled
+- MicroK8s 1.19 or newer cluster using the default Calico CNI
 - calicoctl installed and configured for MicroK8s
 - sudo access on the MicroK8s host
 
@@ -40,23 +40,20 @@ The default MicroK8s IP pool uses `10.1.0.0/16`.
 
 ## Step 3: Modify the IP Pool CIDR
 
-If you need a different CIDR:
+If you need a different CIDR on a new cluster, update the MicroK8s Calico manifest and kube-proxy cluster CIDR before running workloads:
 
 ```bash
-calicoctl delete ippool default-ipv4-ippool
+sudo sed -i 's#value: "10.1.0.0/16"#value: "172.16.0.0/16"#' \
+  /var/snap/microk8s/current/args/cni-network/cni.yaml
+sudo sed -i 's#--cluster-cidr=10.1.0.0/16#--cluster-cidr=172.16.0.0/16#' \
+  /var/snap/microk8s/current/args/kube-proxy
 
-calicoctl apply -f - <<EOF
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: default-ipv4-ippool
-spec:
-  cidr: 172.16.0.0/16
-  ipipMode: Always
-  natOutgoing: true
-  nodeSelector: all()
-EOF
+microk8s kubectl delete ippool default-ipv4-ippool --ignore-not-found
+microk8s kubectl apply -f /var/snap/microk8s/current/args/cni-network/cni.yaml
+sudo snap restart microk8s
 ```
+
+For multi-node MicroK8s clusters, make the same file changes on each node.
 
 ## Step 4: Adjust Encapsulation Mode
 
@@ -64,7 +61,7 @@ For single-node MicroK8s, disable encapsulation:
 
 ```bash
 calicoctl patch ippool default-ipv4-ippool \
-  -p '{"spec":{"ipipMode":"Never","vxlanMode":"Never"}}'
+  -p '{"spec":{"vxlanMode":"Never"}}'
 ```
 
 ## Step 5: Configure Felix Parameters
