@@ -54,7 +54,7 @@ metadata:
   name: infrastructure-reserved
 spec:
   reservedCIDRs:
-    - 10.244.0.0/28              # Reserve first 16 IPs in each /28 for gateways
+    - 10.244.0.0/28              # Reserve first 16 IPs of the pool for gateways
     - 10.244.255.240/28          # Reserve last 16 IPs for broadcast/infrastructure
     - 10.244.100.0/24            # Reserve entire /24 for monitoring agents
 ```
@@ -83,9 +83,10 @@ calicoctl get ipreservation
 # Describe a specific reservation
 calicoctl get ipreservation infrastructure-reserved -o yaml
 
-# Attempt to allocate a reserved IP (should fail)
-calicoctl ipam assign --ip=10.244.0.1 --node=test-node
-# Expected: error - IP is reserved
+# Inspect IPAM state for a reserved address to confirm it is not in use
+calicoctl ipam show --ip=10.244.0.1
+# Note: calicoctl ipam show reports allocation (in-use/handle), not reservation
+# membership directly. Cross-reference with the IPReservation manifests above.
 ```
 
 ## Step 4: Monitor Reserved IP Utilization
@@ -102,9 +103,9 @@ calicoctl ipam show --ip=10.244.100.5
 # Calculate effective pod IP capacity after reservations
 python3 -c "
 total = 65536        # /16 pool
-reserved = 512 + 256 # Infrastructure + monitoring reservations
+reserved = 288 + 256 # Infrastructure (16+16+256) + monitoring (128+128)
 print(f'Available for pods: {total - reserved} IPs')
-print(f'Reservation overhead: {(reserved/total)*100:.1f}%')
+print(f'Reservation overhead: {(reserved/total)*100:.2f}%')
 "
 ```
 
