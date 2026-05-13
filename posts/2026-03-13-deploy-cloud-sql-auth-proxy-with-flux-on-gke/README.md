@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, GKE, Google Cloud, Cloud SQL, Sidecar
 
-Description: Deploy the Cloud SQL Auth Proxy as a sidecar in GKE pods using Flux CD GitOps to securely connect applications to Cloud SQL without managing credentials.
+Description: Deploy the Cloud SQL Auth Proxy as a sidecar in GKE pods using Flux CD GitOps to securely connect applications to Cloud SQL without managing service account keys.
 
 ---
 
 ## Introduction
 
-Cloud SQL Auth Proxy is the recommended way to connect applications running on Google Kubernetes Engine to Cloud SQL instances. It handles authentication automatically using IAM, encrypts all traffic, and eliminates the need to manage database credentials in your application code. The proxy runs as a sidecar container alongside your application pod and forwards database connections securely.
+Cloud SQL Auth Proxy is the recommended way to connect applications running on Google Kubernetes Engine to Cloud SQL instances. It handles Cloud SQL instance authentication using IAM, encrypts traffic, and eliminates the need to manage service account key files in your application pods. The proxy runs as a sidecar container alongside your application pod and forwards database connections securely.
 
 Managing this sidecar pattern manually can become error-prone as your fleet of services grows. Flux CD provides a GitOps-driven approach where your desired state - including the proxy configuration - lives in Git and is continuously reconciled against your cluster. Any drift is automatically corrected, and every change is traceable through your commit history.
 
@@ -20,6 +20,7 @@ In this guide you will bootstrap Flux CD on a GKE cluster, configure Workload Id
 
 - A GKE cluster (Standard or Autopilot) with Workload Identity enabled
 - A Cloud SQL instance (PostgreSQL or MySQL) in your GCP project
+- The Cloud SQL Admin API enabled in the project that contains the instance
 - `flux` CLI installed (`brew install fluxcd/tap/flux` or the official install script)
 - `kubectl` configured to talk to your GKE cluster
 - `gh` CLI or a GitHub personal access token for Flux bootstrap
@@ -33,8 +34,14 @@ Workload Identity lets Kubernetes service accounts act as GCP service accounts. 
 # Enable Workload Identity on an existing cluster
 
 gcloud container clusters update my-cluster \
-  --region us-central1 \
+  --location us-central1 \
   --workload-pool=MY_PROJECT_ID.svc.id.goog
+
+# For existing Standard cluster node pools, enable the GKE metadata server
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --location us-central1 \
+  --workload-metadata=GKE_METADATA
 
 # Create a GCP service account for Cloud SQL access
 gcloud iam service-accounts create cloudsql-proxy-sa \
@@ -142,15 +149,15 @@ spec:
         - name: my-app
           image: gcr.io/my-project/my-app:latest
           env:
-            # Connect via the Unix socket exposed by the proxy sidecar
+            # Connect via the TCP listener exposed by the proxy sidecar
             - name: DATABASE_URL
-              value: "postgresql://myuser:mypassword@localhost/mydb?host=/cloudsql"
+              value: "postgresql://myuser:mypassword@127.0.0.1:5432/mydb"
           ports:
             - containerPort: 8080
 
         - name: cloud-sql-proxy
           # Always pin to a specific version in production
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.3
           args:
             # Replace with your actual instance connection name
             - "--structured-logs"
@@ -194,4 +201,4 @@ kubectl logs -n my-app deployment/my-app -c cloud-sql-proxy
 
 ## Conclusion
 
-By combining Cloud SQL Auth Proxy with Flux CD's GitOps model, you get a secure and auditable path for database connectivity on GKE. Every change to proxy configuration or application manifests goes through a Git pull request, Workload Identity eliminates static credentials, and Flux ensures your cluster always reflects the desired state stored in your repository.
+By combining Cloud SQL Auth Proxy with Flux CD's GitOps model, you get a secure and auditable path for database connectivity on GKE. Every change to proxy configuration or application manifests goes through a Git pull request, Workload Identity eliminates static Google service account keys, and Flux ensures your cluster always reflects the desired state stored in your repository.
