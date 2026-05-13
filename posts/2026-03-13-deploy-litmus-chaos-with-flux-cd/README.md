@@ -10,7 +10,7 @@ Description: Deploy the LitmusChaos chaos engineering platform to Kubernetes usi
 
 ## Introduction
 
-Chaos engineering is the practice of deliberately injecting failures into your systems to discover weaknesses before they cause real outages. LitmusChaos is a CNCF-graduated chaos engineering platform that provides a rich library of chaos experiments for Kubernetes workloads, from pod kills to network disruptions.
+Chaos engineering is the practice of deliberately injecting failures into your systems to discover weaknesses before they cause real outages. LitmusChaos is a CNCF-incubating chaos engineering platform that provides a rich library of chaos experiments for Kubernetes workloads, from pod kills to network disruptions.
 
 Managing LitmusChaos through Flux CD brings the discipline of GitOps to your chaos engineering practice. Every experiment definition, schedule, and configuration change is version-controlled, auditable, and automatically reconciled to your cluster. This eliminates the risk of configuration drift and ensures your chaos testing environment is reproducible across clusters.
 
@@ -18,7 +18,7 @@ In this guide, you will bootstrap LitmusChaos onto a Kubernetes cluster using Fl
 
 ## Prerequisites
 
-- A running Kubernetes cluster (1.24+)
+- A running Kubernetes cluster supported by your installed Flux version
 - Flux CD bootstrapped on the cluster (`flux bootstrap`)
 - `kubectl` and `flux` CLI installed locally
 - A Git repository connected to Flux CD
@@ -84,18 +84,28 @@ spec:
       server:
         service:
           type: ClusterIP
-    # Resource limits for production use
+    # Default initial admin credentials; use a Secret-backed values source in production
     adminConfig:
-      DBUSER: "admin"
-      DBPASSWORD: "1234"  # Use ExternalSecret in production
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "litmus"
 ```
 
 ## Step 3: Create a Kustomization for Litmus Resources
 
-Group the Litmus resources under a single Flux Kustomization for ordered reconciliation.
+Group the Litmus resources under a Kustomize configuration, then reference that directory from a Flux Kustomization.
 
 ```yaml
 # clusters/my-cluster/litmus/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+```
+
+```yaml
+# clusters/my-cluster/litmus-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -108,21 +118,19 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Wait for namespace to exist before deploying Helm chart
-  dependsOn:
-    - name: flux-system
+  timeout: 5m
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: litmus-frontend
-      namespace: litmus
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: litmus
+      namespace: flux-system
 ```
 
 ## Step 4: Commit and Push to Git
 
 ```bash
 # Stage all Litmus resources
-git add clusters/my-cluster/litmus/
+git add clusters/my-cluster/litmus/ clusters/my-cluster/litmus-kustomization.yaml
 git commit -m "feat: add LitmusChaos deployment via Flux HelmRelease"
 git push origin main
 
@@ -146,13 +154,29 @@ spec:
   definition:
     scope: Namespaced
     permissions:
-      - apiGroups: [""]
-        resources: ["pods"]
-        verbs: ["get", "list", "delete"]
+      - apiGroups: ["", "apps", "apps.openshift.io", "argoproj.io", "batch", "litmuschaos.io"]
+        resources:
+          - pods
+          - pods/log
+          - pods/exec
+          - events
+          - deployments
+          - statefulsets
+          - daemonsets
+          - replicasets
+          - replicationcontrollers
+          - deploymentconfigs
+          - rollouts
+          - jobs
+          - chaosengines
+          - chaosexperiments
+          - chaosresults
+        verbs: ["create", "get", "list", "patch", "update", "delete", "deletecollection"]
     image: "litmuschaos/go-runner:latest"
+    imagePullPolicy: Always
     args:
       - -c
-      - ./experiments/pod-delete
+      - ./experiments -name pod-delete
     command:
       - /bin/bash
     env:
@@ -162,6 +186,73 @@ spec:
         value: "10"
       - name: FORCE
         value: "false"
+      - name: LIB
+        value: "litmus"
+      - name: SEQUENCE
+        value: "parallel"
+```
+
+```yaml
+# clusters/my-cluster/litmus/experiments/pod-delete-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-delete-sa
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-delete-sa
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "deletecollection"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "get", "list", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["replicationcontrollers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps.openshift.io"]
+    resources: ["deploymentconfigs"]
+    verbs: ["get", "list"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "list", "get", "delete", "deletecollection"]
+  - apiGroups: ["litmuschaos.io"]
+    resources: ["chaosengines", "chaosexperiments", "chaosresults"]
+    verbs: ["create", "list", "get", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-delete-sa
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-delete-sa
+subjects:
+  - kind: ServiceAccount
+    name: pod-delete-sa
+    namespace: default
 ```
 
 ```yaml
@@ -176,8 +267,9 @@ spec:
     appns: default
     applabel: "app=nginx"
     appkind: deployment
-  engineState: active
-  chaosServiceAccount: litmus-admin
+  engineState: "active"
+  annotationCheck: "false"
+  chaosServiceAccount: pod-delete-sa
   experiments:
     - name: pod-delete
       spec:
@@ -185,6 +277,21 @@ spec:
           env:
             - name: TOTAL_CHAOS_DURATION
               value: "20"
+```
+
+Then add the experiment manifests to the Kustomize resource list.
+
+```yaml
+# clusters/my-cluster/litmus/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - experiments/pod-delete.yaml
+  - experiments/pod-delete-rbac.yaml
+  - experiments/chaosengine.yaml
 ```
 
 ## Step 6: Verify the Deployment
@@ -203,8 +310,8 @@ kubectl get chaosresult -n litmus
 ## Best Practices
 
 - Store `ChaosEngine` and `ChaosExperiment` manifests in Git alongside application manifests for traceability.
-- Use Flux `dependsOn` to ensure Litmus is fully healthy before applying experiment resources.
-- Never store database passwords in plain YAML; use External Secrets Operator or SOPS encryption.
+- If you split Litmus installation and experiment manifests into separate Flux Kustomizations, use Flux `dependsOn` so experiment resources wait for Litmus to become ready.
+- Never store passwords in plain YAML; use External Secrets Operator or SOPS encryption.
 - Set resource requests and limits on the Litmus server to prevent it from starving application pods.
 - Use Flux notifications to alert your team when a ChaosEngine transitions to a failed state.
 - Run chaos experiments only in non-production windows unless you have verified blast radius controls.
