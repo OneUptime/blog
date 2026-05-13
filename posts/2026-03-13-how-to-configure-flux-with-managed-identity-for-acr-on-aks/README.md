@@ -12,7 +12,7 @@ Description: Learn how to configure Flux CD to pull container images from Azure 
 
 When running workloads on Azure Kubernetes Service, pulling container images from Azure Container Registry is a core requirement. Traditionally, teams rely on image pull secrets or service principal credentials to authenticate with ACR. Managed Identity offers a cleaner, more secure alternative by letting your AKS nodes authenticate to ACR without storing any credentials.
 
-Flux CD, the GitOps toolkit for Kubernetes, can leverage this Managed Identity integration to reconcile deployments that reference images in ACR. This guide walks through the complete setup process, from enabling Managed Identity on your AKS cluster to configuring Flux source controllers to authenticate with ACR seamlessly.
+Flux CD, the GitOps toolkit for Kubernetes, can leverage this Managed Identity integration when its controllers need to read OCI artifacts or scan image tags in ACR. Kubernetes nodes still pull workload container images, while Flux applies the manifests that reference them. This guide walks through the complete setup process, from enabling Managed Identity on your AKS cluster to configuring Flux source controllers to authenticate with ACR seamlessly.
 
 ## Prerequisites
 
@@ -106,7 +106,7 @@ Flux will install its controllers and begin reconciling from the specified Git r
 
 ## Step 5: Configure an OCIRepository Source for ACR
 
-With the ACR attachment in place, the kubelet identity already has pull access. Create an OCIRepository source that points to your ACR:
+With the ACR attachment in place, the kubelet identity already has pull access. Create an OCIRepository source that points to an OCI artifact repository in your ACR:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -122,7 +122,7 @@ spec:
   provider: azure
 ```
 
-The `provider: azure` field tells the Flux source controller to use the Azure credential chain, which includes the managed identity assigned to the node. Save this file in your Git repository under the cluster path and push it. Flux will pick up the change and begin pulling artifacts from ACR.
+The `provider: azure` field tells the Flux source controller to use Azure authentication, which can use the kubelet managed identity when it has access to ACR. Save this file in your Git repository under the cluster path and push it. Flux will pick up the change and begin pulling artifacts from ACR.
 
 ## Step 6: Deploy a Kustomization Using the OCI Source
 
@@ -144,9 +144,9 @@ spec:
   targetNamespace: default
 ```
 
-## Step 7: Configure Image Automation with ACR
+## Step 7: Configure Image Scanning with ACR
 
-If you want Flux to automatically update image tags when new versions are pushed to ACR, set up an ImageRepository:
+If you want Flux to scan image tags in ACR for use with image automation, make sure Flux is installed with the image-reflector-controller and image-automation-controller components. Then set up an ImageRepository:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -160,7 +160,7 @@ spec:
   provider: azure
 ```
 
-Then define an ImagePolicy to select the latest semver tag:
+Then define an ImagePolicy to select the latest semver tag. To automatically write image updates back to Git, you also need image policy markers in your manifests and an ImageUpdateAutomation resource.
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
