@@ -27,7 +27,7 @@ This guide configures Fluent Bit's Loki output plugin as part of a Flux HelmRele
 
 Loki indexes logs by labels, not content. High-cardinality labels (like pod names) cause index explosion. Good labels are low-cardinality: `namespace`, `app`, `container`, `cluster`.
 
-The Fluent Bit Loki output plugin maps Kubernetes metadata fields to Loki labels using the `Labels` configuration key.
+The Fluent Bit Loki output plugin maps Kubernetes metadata fields to Loki labels using the `Labels` configuration key with record accessors.
 
 ## Step 2: Configure the Fluent Bit HelmRelease with Loki Output
 
@@ -69,11 +69,17 @@ spec:
             Name              tail
             Path              /var/log/containers/*.log
             Parser            cri
-            Tag               kube.<namespace_name>.<pod_name>.<container_name>
-            Tag_Regex         (?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[^_]+)_(?<container_name>.+)-
+            Tag               kube.<namespace_name>.<pod_name>.<container_name>.<container_id>
+            Tag_Regex         (?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<container_id>[a-z0-9]{64})\.log$
             Mem_Buf_Limit     32MB
             Skip_Long_Lines   On
             Refresh_Interval  10
+
+      customParsers: |
+        [PARSER]
+            Name    custom-tag
+            Format  regex
+            Regex   ^(?<namespace_name>[^_]+)\.(?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)\.(?<container_name>.+)\.(?<container_id>[a-z0-9]{64})
 
       filters: |
         [FILTER]
@@ -83,11 +89,12 @@ spec:
             Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
             Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
             Kube_Tag_Prefix     kube.
+            Regex_Parser        custom-tag
             Merge_Log           On
             Keep_Log            Off
             K8S-Logging.Parser  On
             K8S-Logging.Exclude On
-            # Annotate with app label from pod labels
+            # Include pod labels in Kubernetes metadata
             Labels              On
             Annotations         Off
 
@@ -105,13 +112,12 @@ spec:
             Host              loki-gateway.logging.svc.cluster.local
             Port              80
             # Low-cardinality labels only
-            Labels            job=fluent-bit,cluster=$cluster
-            Label_Keys        $kubernetes['namespace_name'],$kubernetes['labels']['app'],$kubernetes['container_name']
+            Labels            job=fluent-bit,cluster=$cluster,namespace=$kubernetes['namespace_name'],app=$kubernetes['labels']['app'],container=$kubernetes['container_name']
             # Remove duplicate keys to keep log lines clean
             Remove_Keys       kubernetes,stream
             # Line format: key=value pairs or json
             Line_Format       json
-            # Auto-detect log levels for label extraction
+            # Do not automatically add all pod labels as Loki labels
             Auto_Kubernetes_Labels Off
             # HTTP auth for multi-tenant Loki
             # tenant_id         my-team
@@ -137,8 +143,7 @@ If Loki auth is enabled, route logs from different namespaces to different tenan
             Match     kube.prod.*
             Host      loki-gateway.logging.svc.cluster.local
             Port      80
-            Labels    job=fluent-bit,cluster=production
-            Label_Keys $kubernetes['namespace_name'],$kubernetes['labels']['app']
+            Labels    job=fluent-bit,cluster=production,namespace=$kubernetes['namespace_name'],app=$kubernetes['labels']['app']
             tenant_id production
 
         [OUTPUT]
@@ -146,8 +151,7 @@ If Loki auth is enabled, route logs from different namespaces to different tenan
             Match     kube.staging.*
             Host      loki-gateway.logging.svc.cluster.local
             Port      80
-            Labels    job=fluent-bit,cluster=production
-            Label_Keys $kubernetes['namespace_name'],$kubernetes['labels']['app']
+            Labels    job=fluent-bit,cluster=production,namespace=$kubernetes['namespace_name'],app=$kubernetes['labels']['app']
             tenant_id staging
 ```
 
@@ -171,8 +175,7 @@ For Loki instances with TLS and HTTP basic auth:
             TLS.Verify On
             HTTP_User ${LOKI_USERNAME}
             HTTP_Passwd ${LOKI_PASSWORD}
-            Labels    job=fluent-bit
-            Label_Keys $kubernetes['namespace_name']
+            Labels    job=fluent-bit,namespace=$kubernetes['namespace_name']
 ```
 
 ## Step 5: Apply with Flux Kustomization
@@ -211,18 +214,18 @@ kubectl exec -n logging daemonset/fluent-bit -- \
 kubectl port-forward svc/loki-gateway 3100:80 -n logging
 curl -G "http://localhost:3100/loki/api/v1/query_range" \
   --data-urlencode 'query={job="fluent-bit"}' \
-  --data-urlencode 'start=1h' | jq .
+  --data-urlencode 'since=1h' | jq .
 ```
 
 Open Grafana Explore, select the Loki datasource, and run `{job="fluent-bit", namespace="default"}` to see your logs.
 
 ## Best Practices
 
-- Keep Loki labels low-cardinality (fewer than 20 unique values per label). Never use pod names or request IDs as labels.
+- Keep Loki labels low-cardinality (ideally limited to tens of values per label). Never use pod names or request IDs as labels.
 - Use `Line_Format json` so Loki stores structured log data that can be parsed with LogQL's `| json` operator.
 - Set `Remove_Keys kubernetes` to prevent duplicating metadata in both the label set and the log line body.
 - Use `Auto_Kubernetes_Labels Off` and manually specify only the labels you need to avoid accidental cardinality explosion.
-- Monitor Fluent Bit's `loki.output` metrics in Prometheus to detect delivery failures early.
+- Monitor Fluent Bit's `fluentbit_output_*` metrics in Prometheus to detect delivery failures early.
 
 ## Conclusion
 
