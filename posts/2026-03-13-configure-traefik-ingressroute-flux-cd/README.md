@@ -180,7 +180,7 @@ spec:
 
 ## Step 5: Deploy with Flux and Middleware
 
-Combine IngressRoute with Middleware for authentication and rate limiting.
+Combine IngressRoute with Middleware for header manipulation and path rewriting.
 
 ```yaml
 # apps/backend/middleware.yaml
@@ -250,7 +250,7 @@ for i in {1..10}; do
 done
 
 # Check Flux reconciliation
-flux get kustomization backend-routing
+flux get kustomizations --all-namespaces
 ```
 
 ## Best Practices
