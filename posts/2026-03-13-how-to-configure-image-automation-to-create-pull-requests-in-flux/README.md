@@ -48,8 +48,8 @@ spec:
       messageTemplate: |
         Automated image update
 
-        {{ range $image, $_ := .Changed.Objects -}}
-        - {{ $image.Resource.Kind }}/{{ $image.Resource.Name }}
+        {{ range $resource, $_ := .Changed.Objects -}}
+        - {{ $resource.Kind }}/{{ $resource.Name }}
         {{ end -}}
     push:
       branch: flux/image-updates
@@ -94,28 +94,48 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create or Update Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          branch: flux/image-updates
-          base: main
-          title: "chore: automated image updates"
-          body: |
-            ## Automated Image Updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > /tmp/pr-body.md <<'EOF'
+          ## Automated Image Updates
 
-            This PR was created by Flux image automation.
+          This PR was created by Flux image automation.
 
-            ### Changes
-            ```diff
-            ${{ steps.changes.outputs.diff }}
-            ```
+          ### Changes
+          ```diff
+          ${{ steps.changes.outputs.diff }}
+          ```
 
-            ### Review Checklist
-            - [ ] Verify image versions are expected
-            - [ ] Check deployment readiness
-          labels: |
-            automation
-            image-update
-          reviewers: platform-team
+          ### Review Checklist
+          - [ ] Verify image versions are expected
+          - [ ] Check deployment readiness
+          EOF
+
+          PR_NUMBER=$(gh pr list \
+            --head flux/image-updates \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --head flux/image-updates \
+              --base main \
+              --title "chore: automated image updates" \
+              --body-file /tmp/pr-body.md \
+              --label automation \
+              --label image-update \
+              --reviewer ${{ github.repository_owner }}/platform-team
+          else
+            gh pr edit "$PR_NUMBER" \
+              --title "chore: automated image updates" \
+              --body-file /tmp/pr-body.md \
+              --add-label automation \
+              --add-label image-update \
+              --add-reviewer ${{ github.repository_owner }}/platform-team
+          fi
 ````
 
 ## Step 3: Configure Branch Protection
@@ -158,17 +178,22 @@ create-mr:
 For environments where you want automatic merging after checks pass, enable auto-merge on the PR:
 
 ```yaml
-- name: Create or Update Pull Request
-  id: cpr
-  uses: peter-evans/create-pull-request@v5
-  with:
-    branch: flux/image-updates
-    base: main
-    title: "chore: automated image updates"
+- name: Find Pull Request
+  id: pr
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: |
+    PR_NUMBER=$(gh pr list \
+      --head flux/image-updates \
+      --base main \
+      --state open \
+      --json number \
+      --jq '.[0].number')
+    echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
 
 - name: Enable Auto-Merge
-  if: steps.cpr.outputs.pull-request-number
-  run: gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --auto --squash
+  if: steps.pr.outputs.number
+  run: gh pr merge ${{ steps.pr.outputs.number }} --auto --squash
   env:
     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
