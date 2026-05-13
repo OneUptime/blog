@@ -14,7 +14,7 @@ Google Config Connector is a Kubernetes add-on that lets you manage GCP resource
 
 Before you begin, ensure you have the following:
 
-- A GKE cluster with Workload Identity enabled
+- A GKE Standard cluster with Workload Identity enabled
 - Flux installed on the cluster (v2.0 or later)
 - Google Cloud CLI (`gcloud`) with project owner or editor permissions
 - `kubectl` configured to access your GKE cluster
@@ -30,7 +30,7 @@ gcloud container clusters update my-cluster \
   --update-addons=ConfigConnector=ENABLED
 ```
 
-For GKE Autopilot clusters, Config Connector is enabled differently. Check the GCP documentation for Autopilot-specific instructions.
+The Config Connector add-on is available only on GKE Standard clusters. For GKE Autopilot clusters, use the manual installation method or Config Controller instead.
 
 Verify the Config Connector operator is running:
 
@@ -63,12 +63,14 @@ Bind the Config Connector Kubernetes service account to the GCP service account:
 gcloud iam service-accounts add-iam-policy-binding \
   config-connector@my-project.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:my-project.svc.id.goog[cnrm-system/cnrm-controller-manager]"
+  --member="serviceAccount:my-project.svc.id.goog[cnrm-system/cnrm-controller-manager-default]"
 ```
+
+If you use a namespace other than `default`, replace the suffix in `cnrm-controller-manager-default` with your namespace name.
 
 ## Step 4: Configure Config Connector
 
-Create a `ConfigConnectorContext` resource that tells Config Connector which GCP project to manage and how to authenticate. This is the resource you will manage through Flux:
+Create a `ConfigConnectorContext` resource that tells Config Connector how to authenticate in the namespace. The GCP project is set on the managed resources below with the `cnrm.cloud.google.com/project-id` annotation.
 
 ```yaml
 apiVersion: core.cnrm.cloud.google.com/v1beta1
@@ -78,6 +80,7 @@ metadata:
   namespace: default
 spec:
   googleServiceAccount: config-connector@my-project.iam.gserviceaccount.com
+  stateIntoSpec: Absent
 ```
 
 Save this as `config-connector-context.yaml` in your Git repository.
@@ -147,6 +150,8 @@ kind: PubSubTopic
 metadata:
   name: my-events-topic
   namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: my-project
 spec:
   messageRetentionDuration: "86400s"
 ---
@@ -155,6 +160,8 @@ kind: PubSubSubscription
 metadata:
   name: my-events-subscription
   namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: my-project
 spec:
   topicRef:
     name: my-events-topic
@@ -170,14 +177,13 @@ kind: SQLInstance
 metadata:
   name: my-app-db
   namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: my-project
 spec:
   databaseVersion: POSTGRES_15
   region: us-central1
   settings:
     tier: db-f1-micro
-    ipConfiguration:
-      privateNetworkRef:
-        name: my-vpc
     backupConfiguration:
       enabled: true
       startTime: "03:00"
@@ -191,6 +197,8 @@ kind: IAMServiceAccount
 metadata:
   name: my-app-sa
   namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: my-project
 spec:
   displayName: My Application Service Account
 ```
@@ -270,6 +278,8 @@ kind: SQLDatabase
 metadata:
   name: my-database
   namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: my-project
 spec:
   instanceRef:
     name: my-app-db
