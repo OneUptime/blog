@@ -10,12 +10,12 @@ Description: Learn how to use CEL expressions in Flux to evaluate Prometheus Ope
 
 ## Introduction
 
-The Prometheus Operator manages Prometheus instances, Alertmanager clusters, and related monitoring resources through Kubernetes custom resources. Some of these resources, like the Prometheus and Alertmanager CRDs, have status conditions that Flux can check. Others, like ServiceMonitors and PrometheusRules, do not have status conditions at all. CEL expressions in Flux let you define precise health criteria for each Prometheus Operator resource type, ensuring your monitoring infrastructure is fully operational before applications that depend on it are deployed.
+The Prometheus Operator manages Prometheus instances, Alertmanager clusters, and related monitoring resources through Kubernetes custom resources. Some of these resources, like the Prometheus and Alertmanager CRDs, have status conditions that Flux can check. Others, like ServiceMonitors and PrometheusRules, are configuration resources whose status reporting is optional and feature-gated. CEL expressions in Flux let you define precise health criteria for Prometheus Operator workload resource types, ensuring your monitoring infrastructure is fully operational before applications that depend on it are deployed.
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
-- Flux v2.3 or later installed on the cluster
+- A Kubernetes cluster running a version supported by your Flux release
+- Flux v2.5 or later installed on the cluster
 - Prometheus Operator (kube-prometheus-stack or standalone) installed
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
@@ -27,10 +27,10 @@ The Prometheus Operator defines several custom resources with varying health che
 - **Prometheus**: Has status conditions including `Available` and `Reconciled`
 - **Alertmanager**: Has status conditions including `Available` and `Reconciled`
 - **ThanosRuler**: Has status conditions
-- **ServiceMonitor**: No status conditions (configuration only)
-- **PodMonitor**: No status conditions (configuration only)
-- **PrometheusRule**: No status conditions (configuration only)
-- **AlertmanagerConfig**: No status conditions (configuration only)
+- **ServiceMonitor**: Configuration resource; status is optional and feature-gated in Prometheus Operator
+- **PodMonitor**: Configuration resource; status is optional and feature-gated in Prometheus Operator
+- **PrometheusRule**: Configuration resource; status is optional and feature-gated in Prometheus Operator
+- **AlertmanagerConfig**: Configuration resource; status is optional and feature-gated in Prometheus Operator
 
 ## Health Checking Prometheus Instances
 
@@ -55,9 +55,13 @@ spec:
       kind: Prometheus
       name: main
       namespace: monitoring
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: Prometheus
+      current: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+      failed: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
 ```
 
 The corresponding Prometheus resource:
@@ -104,10 +108,15 @@ healthChecks:
     kind: Prometheus
     name: main
     namespace: monitoring
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
-        && status.conditions.exists(c, c.type == 'Reconciled' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: monitoring.coreos.com/v1
+    kind: Prometheus
+    current: >-
+      status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+      && status.conditions.exists(c, c.type == 'Reconciled' && c.status == 'True')
+    failed: >-
+      status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
+      || status.conditions.exists(c, c.type == 'Reconciled' && c.status == 'False')
 ```
 
 The `Reconciled` condition indicates that the operator has successfully processed the Prometheus spec and created or updated the underlying StatefulSet.
@@ -135,15 +144,20 @@ spec:
       kind: Alertmanager
       name: main
       namespace: monitoring
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Reconciled' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: Alertmanager
+      current: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+        && status.conditions.exists(c, c.type == 'Reconciled' && c.status == 'True')
+      failed: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
+        || status.conditions.exists(c, c.type == 'Reconciled' && c.status == 'False')
 ```
 
 ## Handling Resources Without Status Conditions
 
-ServiceMonitors, PodMonitors, and PrometheusRules do not have status conditions. For these resources, use `wait: true` on the Kustomization to verify they are successfully applied, or omit them from health checks entirely:
+ServiceMonitors, PodMonitors, and PrometheusRules are configuration resources. Unless you have enabled Prometheus Operator's status reporting for configuration resources and defined matching CEL expressions, omit them from health checks and rely on Flux's apply step to verify that the API server accepts them:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -158,11 +172,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
   timeout: 2m
 ```
 
-This Kustomization deploys ServiceMonitors and PrometheusRules and verifies they are accepted by the API server without checking for health conditions.
+This Kustomization deploys ServiceMonitors and PrometheusRules and verifies they are accepted by the API server without waiting for health conditions.
 
 ## Complete Monitoring Stack Health Checks
 
@@ -221,16 +234,23 @@ spec:
       kind: Prometheus
       name: main
       namespace: monitoring
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
     - apiVersion: monitoring.coreos.com/v1
       kind: Alertmanager
       name: main
       namespace: monitoring
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: monitoring.coreos.com/v1
+      kind: Prometheus
+      current: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+      failed: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
+    - apiVersion: monitoring.coreos.com/v1
+      kind: Alertmanager
+      current: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+      failed: >-
+        status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -246,7 +266,6 @@ spec:
     name: flux-system
   dependsOn:
     - name: prometheus-instance
-  wait: true
   timeout: 2m
 ```
 
@@ -262,10 +281,14 @@ healthChecks:
     kind: Prometheus
     name: main
     namespace: monitoring
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
-        && has(status.availableReplicas) && status.availableReplicas >= 2
+healthCheckExprs:
+  - apiVersion: monitoring.coreos.com/v1
+    kind: Prometheus
+    current: >-
+      status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+      && has(status.availableReplicas) && status.availableReplicas >= 2
+    failed: >-
+      status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
 ```
 
 This expression checks that at least 2 replicas are available, matching the desired replica count.
@@ -280,9 +303,13 @@ healthChecks:
     kind: ThanosRuler
     name: thanos-ruler
     namespace: monitoring
-    cel:
-      healthyWhen: >-
-        status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+healthCheckExprs:
+  - apiVersion: monitoring.coreos.com/v1
+    kind: ThanosRuler
+    current: >-
+      status.conditions.exists(c, c.type == 'Available' && c.status == 'True')
+    failed: >-
+      status.conditions.exists(c, c.type == 'Available' && c.status in ['False', 'Degraded'])
 ```
 
 ## Debugging Prometheus Operator Health Check Failures
@@ -292,7 +319,7 @@ When a Prometheus Operator health check fails:
 ```bash
 # Check Kustomization status
 
-flux get kustomization prometheus
+flux get kustomizations --namespace flux-system
 
 # Check Prometheus resource status
 kubectl get prometheus main -n monitoring -o yaml
@@ -320,4 +347,4 @@ Common Prometheus Operator health check failures:
 
 ## Conclusion
 
-CEL expressions for Prometheus Operator health in Flux let you verify that your monitoring infrastructure is fully operational at each stage of deployment. By checking `Available` and `Reconciled` conditions on Prometheus and Alertmanager instances, you ensure these critical services are running before deploying ServiceMonitors and alerting rules. For resources without status conditions, using `wait: true` provides basic deployment verification. This layered approach with Kustomization dependencies creates a robust monitoring pipeline where each component is verified before the next stage deploys.
+CEL expressions for Prometheus Operator health in Flux let you verify that your monitoring infrastructure is fully operational at each stage of deployment. By checking `Available` and `Reconciled` conditions on Prometheus and Alertmanager instances, you ensure these critical services are running before deploying ServiceMonitors and alerting rules. For configuration resources without status conditions, Flux's apply step provides basic API-server validation. This layered approach with Kustomization dependencies creates a robust monitoring pipeline where each component is verified before the next stage deploys.
