@@ -220,7 +220,7 @@ spec:
                               - ALL
 ```
 
-This configuration meets the Restricted Pod Security Standard by enforcing non-root execution, dropping all capabilities, preventing privilege escalation, and enabling read-only root filesystem.
+This configuration helps meet key Restricted Pod Security Standard controls by enforcing non-root execution, dropping all capabilities, preventing privilege escalation, and enabling a read-only root filesystem. To fully comply, make sure every regular, init, and ephemeral container in the rendered workload has the required security context, and that the rest of the pod specification also follows the Restricted profile.
 
 ## Adding Writable Temporary Directories
 
@@ -346,8 +346,8 @@ The nginx proxy container retains the `NET_BIND_SERVICE` capability to bind to p
 After deployment, verify the security context:
 
 ```bash
-kubectl get deployment my-app -n production -o jsonpath='{.spec.template.spec.securityContext}' | jq .
-kubectl get deployment my-app -n production -o jsonpath='{.spec.template.spec.containers[0].securityContext}' | jq .
+kubectl get deployment my-app -n production -o json | jq '.spec.template.spec.securityContext'
+kubectl get deployment my-app -n production -o json | jq '.spec.template.spec.containers[0].securityContext'
 ```
 
 Check running pods:
