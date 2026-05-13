@@ -67,9 +67,9 @@ Key built-in checks include:
 
 - `no-read-only-root-fs` - Containers should use read-only root filesystems
 - `run-as-non-root` - Containers should run as non-root
-- `no-privileged-containers` - No containers should run as privileged
-- `unset-cpu-requirements` - CPU requests and limits should be set
-- `unset-memory-requirements` - Memory requests and limits should be set
+- `privileged-container` - No containers should run as privileged
+- `unset-cpu-requirements` - CPU requests should be set
+- `unset-memory-requirements` - Memory limits should be set
 - `no-liveness-probe` - Containers should have liveness probes
 - `no-readiness-probe` - Containers should have readiness probes
 - `latest-tag` - Container images should not use the latest tag
@@ -82,7 +82,7 @@ kustomize build overlays/production | kube-linter lint -
 
 # Lint with specific checks only
 kustomize build overlays/production | kube-linter lint \
-  --include "no-privileged-containers" \
+  --include "privileged-container" \
   --include "run-as-non-root" \
   --include "unset-memory-requirements" \
   -
@@ -97,23 +97,21 @@ Create a configuration file to customize which checks run and add exceptions.
 checks:
   addAllBuiltIn: true
   exclude:
-    - "dangling-service"  # Flux manages services separately
-    - "default-service-account"  # Some Flux resources use default SA
+    - "dangling-service"  # Services may be linted separately from workloads
+    - "default-service-account"  # Some workloads use the default SA
 
   include: []
 
-ignorePaths:
-  - "test/**"
+  ignorePaths:
+    - "test/**"
 
 customChecks:
   - name: "flux-require-interval"
-    description: "Flux resources should have an interval set"
-    template: "required-annotation"
+    description: "Flux Kustomizations should have spec.interval set"
+    template: "cel-expression"
     params:
-      key: "reconcile.fluxcd.io/interval"
-    scope:
-      objectKinds:
-        - DeploymentLike
+      check: "object.kind == 'Kustomization' && object.apiVersion.startsWith('kustomize.toolkit.fluxcd.io/') && !has(object.spec.interval) ? 'Flux Kustomization is missing spec.interval' : ''"
+    remediation: "Set spec.interval on Flux Kustomization resources."
 ```
 
 Run with the configuration file.
@@ -131,7 +129,7 @@ kube-linter lint --config .kube-linter.yaml manifests/
 ```bash
 # Run only security-related checks
 kube-linter lint \
-  --include "no-privileged-containers" \
+  --include "privileged-container" \
   --include "run-as-non-root" \
   --include "no-read-only-root-fs" \
   --include "privilege-escalation-container" \
@@ -233,11 +231,16 @@ on:
       - '**.yaml'
       - '**.yml'
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install kube-linter
         run: |
@@ -254,7 +257,7 @@ jobs:
           kube-linter lint manifests/ --format sarif > results.sarif || true
 
       - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
 
