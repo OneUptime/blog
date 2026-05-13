@@ -12,7 +12,7 @@ Description: Generate comprehensive deployment reports by collecting, storing, a
 
 Deployment reports answer operational and compliance questions: How many deployments happened this month? What was the success rate? How long did each deployment take? Which services deployed most frequently? These questions come from engineering leadership, change advisory boards, and compliance auditors - and they expect accurate, consistent answers.
 
-Flux CD generates reconciliation events for every source fetch and every Kustomization or HelmRelease reconciliation. By collecting these events and combining them with Git history, you can produce deployment reports that accurately reflect what actually changed in your cluster and when.
+Flux CD generates reconciliation events when source, Kustomization, or HelmRelease status changes. By collecting these events and combining them with Git history, you can produce deployment reports that reflect what actually changed in your cluster and when.
 
 This guide shows how to collect Flux events, store them persistently, and generate reports suitable for engineering reviews and compliance audits.
 
@@ -49,30 +49,33 @@ Configure Flux alerting to forward events to a webhook that writes them to a dat
 
 ```yaml
 # clusters/production/reporting/report-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: deployment-reporter
   namespace: flux-system
 spec:
   type: generic
-  url: https://deployment-reporter.internal/api/events
+  address: https://deployment-reporter.internal/api/events
   secretRef:
     name: reporter-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-deployments
   namespace: flux-system
 spec:
-  summary: "Deployment event"
   providerRef:
     name: deployment-reporter
   eventSeverity: info
+  eventMetadata:
+    summary: "Deployment event"
   eventSources:
     - kind: Kustomization
+      name: '*'
     - kind: HelmRelease
+      name: '*'
 ```
 
 The webhook receiver stores events in PostgreSQL with this schema:
@@ -88,7 +91,7 @@ CREATE TABLE deployment_events (
   reason          TEXT NOT NULL,           -- ReconciliationSucceeded, etc.
   message         TEXT,
   revision        TEXT,                    -- Git SHA or Helm chart version
-  duration_ms     INTEGER,                 -- Reconciliation duration
+  duration_ms     INTEGER,                 -- Optional: set by receiver or metrics enrichment
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -122,7 +125,10 @@ SELECT
   COUNT(*) FILTER (WHERE reason = 'ReconciliationFailed') AS failed_deployments,
   ROUND(
     100.0 * COUNT(*) FILTER (WHERE reason = 'ReconciliationSucceeded')
-    / NULLIF(COUNT(*), 0), 2
+    / NULLIF(
+        COUNT(*) FILTER (WHERE reason IN ('ReconciliationSucceeded', 'ReconciliationFailed')),
+        0
+      ), 2
   ) AS success_rate_pct,
   ROUND(AVG(duration_ms) FILTER (WHERE reason = 'ReconciliationSucceeded') / 1000.0, 1) AS avg_duration_seconds
 FROM deployment_events
@@ -173,7 +179,7 @@ data:
           "type": "stat",
           "targets": [
             {
-              "expr": "rate(gotk_reconcile_condition_total{type=\"Ready\",status=\"True\"}[24h]) / rate(gotk_reconcile_condition_total{type=\"Ready\"}[24h]) * 100"
+              "expr": "sum(rate(controller_runtime_reconcile_total{result=\"success\"}[24h])) / sum(rate(controller_runtime_reconcile_total[24h])) * 100"
             }
           ]
         },
@@ -182,7 +188,7 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "histogram_quantile(0.99, rate(gotk_reconcile_duration_seconds_bucket[5m]))"
+              "expr": "histogram_quantile(0.99, sum(rate(gotk_reconcile_duration_seconds_bucket[5m])) by (le))"
             }
           ]
         },
@@ -191,7 +197,7 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "increase(gotk_reconcile_condition_total{type=\"Ready\",status=\"False\"}[1h])"
+              "expr": "sum(increase(controller_runtime_reconcile_total{result=\"error\"}[1h]))"
             }
           ]
         }
