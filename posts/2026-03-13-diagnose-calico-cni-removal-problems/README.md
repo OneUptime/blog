@@ -12,7 +12,7 @@ Description: Diagnose issues encountered during Calico CNI removal including sta
 
 Removing Calico from a Kubernetes cluster is more complex than deleting its DaemonSet. Calico manages iptables rules, CNI configuration files, IP allocations, and custom resource definitions (CRDs) that are not automatically cleaned up when Calico pods are deleted. Problems during removal typically manifest as stuck resources, leftover iptables rules affecting other CNI plugins, or nodes in a broken network state.
 
-The most common issue during removal is deleting Calico before properly draining pods, which leaves orphaned IP allocations and stale routing entries. Another frequent problem is incomplete CRD cleanup, where Calico CRDs with finalizers block deletion and prevent the cluster from moving to a new CNI plugin.
+The most common issue during removal is deleting Calico while workload pods still depend on it, which can leave orphaned IP allocations and stale routing entries. Another frequent problem is incomplete CRD cleanup, where Calico resources with finalizers remain in a terminating state after the controller that handles those finalizers is gone.
 
 This guide provides diagnostic steps for all common failure modes during Calico CNI removal.
 
@@ -27,8 +27,8 @@ This guide provides diagnostic steps for all common failure modes during Calico 
 ## Root Causes
 
 - Calico IPAMBlocks and IPAMHandles have finalizers preventing deletion
-- calico-node DaemonSet deleted without running the cleanup scripts
-- RBAC resources for Calico not fully removed, blocking new CNI's ClusterRole
+- calico-node DaemonSet terminated abruptly or without its preStop shutdown hook completing
+- Old Calico CNI configuration still selected by kubelet before the new CNI's config
 - iptables rules from Calico not flushed, conflicting with new CNI
 - CRD objects in Terminating state due to missing webhook or controller
 
@@ -45,10 +45,12 @@ kubectl api-resources --verbs=list | grep calico | awk '{print $1}' | \
 **Step 2: Check for resources with finalizers**
 
 ```bash
-# List IPAMBlocks with finalizers
+# List Calico IPAM resources with finalizers
 
-kubectl get ipamblocks.crd.projectcalico.org \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.finalizers}{"\n"}{end}'
+for RESOURCE in ipamblocks ipamhandles blockaffinities; do
+  kubectl get "${RESOURCE}.crd.projectcalico.org" --ignore-not-found \
+    -o jsonpath="{range .items[*]}${RESOURCE}{'\t'}{.metadata.name}{'\t'}{.metadata.finalizers}{'\n'}{end}"
+done
 ```
 
 **Step 3: Check CNI config directory**
@@ -71,7 +73,7 @@ sudo iptables -t nat -L | grep "cali-"
 
 ```bash
 kubectl get crd | grep calico
-kubectl get crd caliconcalicos.crd.projectcalico.org -o yaml \
+kubectl get crd ipamblocks.crd.projectcalico.org -o yaml \
   | grep -A5 "finalizers"
 ```
 
@@ -95,7 +97,7 @@ Apply the targeted fixes from the companion Fix post based on which problems wer
 ## Prevention
 
 - Follow the official Calico removal procedure rather than just deleting resources
-- Use `calicoctl` to properly clean up IPAM allocations before removing the DaemonSet
+- Use `calicoctl ipam check` and `calicoctl ipam release --from-report` for confirmed leaked allocations, and `calicoctl delete node <nodeName>` when manual Calico node decommissioning is required
 - Test the removal procedure in a non-production cluster first
 
 ## Conclusion
