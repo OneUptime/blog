@@ -10,23 +10,24 @@ Description: Use Cilium L7 network policies to control which producers and consu
 
 ## Introduction
 
-Running Kafka in Kubernetes without network-level access control means any pod in the cluster can produce or consume from any topic. Cilium solves this with L7 Kafka-aware network policies that understand the Kafka wire protocol and can enforce access rules at the topic and operation level.
+Running Kafka in Kubernetes without Kafka ACLs or network-level access control can allow pods in the cluster to produce or consume from topics they should not access. Cilium solves this with L7 Kafka-aware network policies that understand the Kafka wire protocol and can enforce access rules at the topic and operation level.
 
 This is significantly more powerful than IP-based firewall rules: a compromised client that obtains the broker's IP and port cannot produce to unauthorized topics if Cilium's Kafka policy is in place.
 
 ## Prerequisites
 
-- Cilium 1.6+ (Kafka L7 policy support)
+- Cilium with Kafka L7 policy support (Kafka L7 policy is deprecated in current Cilium releases and may be removed in a future release)
 - Kafka deployed in Kubernetes
 - `kubectl` CLI
+- Hubble enabled and the `hubble` CLI installed, if you want to observe flows
 
 ## Deploy Kafka
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes-kafka/kafka.yaml
+kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/1.19.4/examples/kubernetes-kafka/kafka-sw-app.yaml
 ```
 
-This deploys Zookeeper, Kafka broker, and test client pods.
+This deploys Zookeeper, a Kafka broker, Kafka service, and test client deployments.
 
 ## Architecture
 
@@ -35,23 +36,23 @@ flowchart TD
     A[Producer Pod] -->|topic: empire-announce| B{Cilium L7 Kafka Policy}
     B -->|Allowed| C[Kafka Broker]
     D[Compromised Client] -->|topic: deathstar-plans| B
-    B -->|DENIED| E[Policy Drop]
+    B -->|DENIED| E[Kafka authorization error]
     C --> F[Consumer Pod]
 ```
 
 ## Test Baseline Access (No Policy)
 
 ```bash
-# Produce to a topic
+HQ_POD=$(kubectl get pods -l app=empire-hq -o jsonpath='{.items[0].metadata.name}')
+OUTPOST_POD=$(kubectl get pods -l outpostid=9999 -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -it kafka-client -- \
-  kafka-console-producer.sh --topic empire-announce \
-  --broker-list kafka:9092
+# Produce to a topic
+echo "Operational update" | kubectl exec -i "$HQ_POD" -- \
+  ./kafka-produce.sh --topic empire-announce
 
 # Consume from a topic
-kubectl exec -it kafka-client -- \
-  kafka-console-consumer.sh --topic empire-announce \
-  --bootstrap-server kafka:9092 --from-beginning
+kubectl exec -it "$OUTPOST_POD" -- \
+  ./kafka-consume.sh --topic empire-announce
 ```
 
 ## Apply Kafka L7 Policy
@@ -79,9 +80,7 @@ spec:
           rules:
             kafka:
               - topic: "empire-announce"
-                apiKey: "produce"
-              - topic: "empire-announce"
-                apiKey: "fetch"
+                role: "produce"
     - fromEndpoints:
         - matchLabels:
             app: empire-outpost
@@ -92,7 +91,7 @@ spec:
           rules:
             kafka:
               - topic: "empire-announce"
-                apiKey: "fetch"
+                role: "consume"
 ```
 
 ```bash
@@ -104,19 +103,17 @@ kubectl apply -f kafka-policy.yaml
 Try to produce to an unauthorized topic:
 
 ```bash
-kubectl exec -it empire-outpost -- \
-  kafka-console-producer.sh --topic deathstar-plans \
-  --broker-list kafka:9092
+echo "stolen plans" | kubectl exec -i "$OUTPOST_POD" -- \
+  ./kafka-produce.sh --topic deathstar-plans
 ```
 
-Expected: Connection refused or error from Cilium policy enforcement.
+Expected: Kafka reports a topic authorization error because the Cilium policy does not allow this Kafka request.
 
 ## Monitor Kafka Traffic with Hubble
 
 ```bash
 hubble observe --namespace default \
-  --to-label app=kafka \
-  --verdict DROPPED
+  --to-label app=kafka
 ```
 
 ## Conclusion
