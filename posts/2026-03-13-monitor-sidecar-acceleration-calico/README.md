@@ -23,35 +23,35 @@ This is one of the most impactful performance optimizations available for micros
 ## Configure and Verify
 
 ```bash
-# Verify eBPF is enabled
+# Verify eBPF is enabled and sidecar acceleration is on
+calicoctl get felixconfiguration default -o yaml | grep -E 'bpfEnabled|sidecarAccelerationEnabled'
 
-calicoctl get felixconfiguration default -o yaml | grep bpfEnabled
-
-# Check sidecar proxy detection
+# Inspect eBPF counters maintained by Felix
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -show-bpf-map-sizes
+  calico-node -bpf counters dump
 
-# Verify acceleration is active for a pod
-kubectl exec test-pod -- cat /proc/net/if_inet6
+# List the BPF programs and attachments on the node
+kubectl exec -n calico-system ds/calico-node -- \
+  calico-node -bpf ifstate dump
 ```
 
 ## Benchmark Acceleration
 
 ```bash
-# Compare latency with and without acceleration
+# Compare latency with and without acceleration using ghz
 # Without acceleration:
-kubectl exec client-pod -- grpc_bench -n 10000 server:50051
+kubectl exec client-pod -- ghz --insecure -n 10000 --call helloworld.Greeter/SayHello server:50051
 
 # With acceleration enabled:
-kubectl exec client-pod -- grpc_bench -n 10000 server:50051
+kubectl exec client-pod -- ghz --insecure -n 10000 --call helloworld.Greeter/SayHello server:50051
 ```
 
 ## Monitoring
 
 ```bash
-# Check eBPF program hit counts
+# List Calico's loaded eBPF programs (Calico uses the `cali` prefix)
 kubectl exec -n calico-system ds/calico-node -- \
-  bpftool prog show | grep calico
+  bpftool prog show | grep -E 'cali'
 ```
 
 ## Acceleration Flow
