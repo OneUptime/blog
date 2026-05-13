@@ -10,9 +10,9 @@ Description: Monitor the effectiveness of External IP Policies in Calico using m
 
 ## Introduction
 
-External IP Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to monitor External IP effectively.
+Calico network policies for external IPs provide fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to monitor External IP rules effectively.
 
-Calico's extensible policy model supports External IP through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
+Calico's extensible policy model supports external IPs and networks through its `GlobalNetworkPolicy` and `NetworkPolicy` resources using CIDR `nets` rules or network sets, giving you cluster-wide and namespace-scoped control over traffic that matches your external IP criteria.
 
 This guide provides practical techniques for monitor External IP in your Kubernetes cluster, following security best practices and production-tested patterns.
 
@@ -31,15 +31,21 @@ kubectl patch felixconfiguration default --type=merge -p '{"spec":{"prometheusMe
 ## Step 2: Key Metrics
 
 ```promql
-# Denied packets rate
+# Active local policies
 
-rate(felix_denied_packets_total[5m])
+felix_active_local_policies
 
-# Active policies
-felix_active_network_policies
+# Cluster policy count
+felix_cluster_num_policies
 
-# Policy evaluation rate
-rate(felix_policy_evaluation_total[5m])
+# Selector evaluation rate
+rate(felix_label_index_selector_evals[5m])
+
+# Dataplane update failures
+rate(felix_int_dataplane_failures[5m])
+
+# iptables restore errors
+rate(felix_iptables_restore_errors[5m])
 ```
 
 ## Step 3: Set Up Alerts
@@ -53,25 +59,25 @@ spec:
   groups:
     - name: calico.policy
       rules:
-        - alert: HighDenialRate
-          expr: rate(felix_denied_packets_total[5m]) > 50
+        - alert: HighSelectorEvaluationRate
+          expr: sum(rate(felix_label_index_selector_evals[5m])) > 1000
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "High packet denial rate for External IP policies"
+            summary: "High selector evaluation rate for Calico external IP policies"
 ```
 
 ## Step 4: Grafana Dashboard
 
-Track denial rates, policy evaluation counts, and active policy counts on a single dashboard to quickly spot anomalies related to External IP policy changes.
+Track active local policies, cluster policy counts, selector evaluation rates, and dataplane update errors on a single dashboard to quickly spot anomalies related to External IP policy changes.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
     A[Source Pod] -->|Traffic| B{Calico Policy\nExternal IP}
-    B -->|Allow Rule Matches| C[Destination Pod]
+    B -->|Allow Rule Matches| C[Destination or External Endpoint]
     B -->|No Match / Deny| D[BLOCKED]
     E[Policy Controller] -->|Updates| B
 ```
