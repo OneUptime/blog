@@ -37,7 +37,7 @@ spec:
   chart:
     spec:
       chart: flagger
-      version: "1.37.x"
+      version: "1.43.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
@@ -100,6 +100,9 @@ metadata:
   namespace: myapp
 spec:
   replicas: 5
+  analysis:
+    successfulRunHistoryLimit: 3
+    unsuccessfulRunHistoryLimit: 3
   selector:
     matchLabels:
       app: myapp
@@ -115,8 +118,6 @@ spec:
             - containerPort: 8080
   strategy:
     canary:
-      canaryService: myapp-canary
-      stableService: myapp-stable
       trafficRouting:
         istio:
           virtualService:
@@ -134,13 +135,10 @@ spec:
               - templateName: success-rate
             args:
               - name: service-name
-                value: myapp-canary
+                value: myapp
         - setWeight: 50
         - pause: {duration: 10m}
         - setWeight: 100
-      analysis:
-        successfulRunHistoryLimit: 3
-        unsuccessfulRunHistoryLimit: 3
 ```
 
 ## Step 3: Comparison of Features
@@ -150,11 +148,11 @@ spec:
 | Canary analysis | Automatic, metric-driven | Manual steps or AnalysisTemplate |
 | Blue-green support | Yes | Yes |
 | A/B testing | Yes (via header routing) | Yes |
-| Service mesh support | Istio, Linkerd, App Mesh, Contour, Nginx | Istio, Linkerd, App Mesh, Nginx, Ambassador |
+| Service mesh support | Istio, Linkerd, App Mesh, Contour, Nginx, Gateway API | Istio, Linkerd/SMI, App Mesh, Nginx, Ambassador |
 | Automatic rollback | Yes, metric threshold-based | Yes, analysis-based |
 | UI for rollout status | No (Grafana dashboard) | Yes (Argo Rollouts UI plugin) |
 | GitOps integration | Flux updates trigger Canary | ArgoCD syncs trigger Rollout |
-| Metrics providers | Prometheus, Datadog, CloudWatch, Graphite | Prometheus, Datadog, CloudWatch, NewRelic |
+| Example metrics providers | Prometheus, Datadog, CloudWatch, New Relic, Graphite | Prometheus, Datadog, CloudWatch, New Relic, Graphite |
 
 ## Step 4: Progressive Delivery GitOps Integration
 
@@ -166,8 +164,8 @@ spec:
 # Promote a paused Argo Rollout manually
 kubectl argo rollouts promote myapp -n myapp
 
-# Or via ArgoCD UI plugin (if installed)
-argocd app actions run myapp resume --kind Rollout --resource-name myapp
+# Or via an ArgoCD resource action
+argocd app actions run myapp resume --kind Rollout --group argoproj.io --resource-name myapp
 ```
 
 ## Best Practices
