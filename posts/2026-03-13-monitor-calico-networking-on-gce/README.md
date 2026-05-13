@@ -10,7 +10,7 @@ Description: Set up comprehensive monitoring for Calico networking on GCE using 
 
 ## Introduction
 
-Monitoring Calico on GCE combines GCP's native network observability tools with Calico's own metrics. GCP VPC Flow Logs provide packet-level visibility into allowed and denied traffic at the VPC layer, while Cloud Monitoring can alert on network anomalies. Felix metrics, exposed via Prometheus, show the health of policy enforcement at the pod level.
+Monitoring Calico on GCE combines GCP's native network observability tools with Calico's own metrics. GCP VPC Flow Logs provide sampled, aggregated visibility into traffic flows at the VPC layer, while Firewall Rules Logging can record allowed and denied firewall connections. Cloud Monitoring can alert on network anomalies. Felix metrics, exposed via Prometheus, show the health of policy enforcement at the pod level.
 
 GCE-specific monitoring should also track VPC route table health - as the number of nodes grows, ensuring that all pod CIDR routes remain present is critical for cluster stability.
 
@@ -30,7 +30,7 @@ gcloud compute networks subnets update k8s-workers-subnet \
   --region us-central1 \
   --enable-flow-logs \
   --logging-flow-sampling 0.5 \
-  --logging-metadata INCLUDE_ALL_METADATA
+  --logging-metadata include-all
 ```
 
 ## Step 2: Enable Felix Prometheus Metrics
@@ -49,21 +49,19 @@ Create a Cloud Monitoring check that verifies VPC routes exist for all active no
 #!/bin/bash
 # check-vpc-routes.sh - Run as Cloud Functions scheduled job or CronJob
 
-EXPECTED_ROUTES=$(calicoctl ipam show --show-blocks --output=json | \
-  python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-blocks = [b['cidr'] for b in data.get('blocks', [])]
-print(len(blocks))
-")
+EXPECTED_ROUTES=$(kubectl get nodes \
+  -o jsonpath='{range .items[*]}{.spec.podCIDR}{"\n"}{end}' | \
+  sed '/^$/d' | sort -u)
 
 ACTUAL_ROUTES=$(gcloud compute routes list \
-  --filter="destRange~192.168" \
-  --format="value(name)" | wc -l)
+  --filter="nextHopInstance:*" \
+  --format="value(destRange)" | sort -u)
 
-echo "Expected routes: $EXPECTED_ROUTES, Actual: $ACTUAL_ROUTES"
-if [ "$EXPECTED_ROUTES" -ne "$ACTUAL_ROUTES" ]; then
-  echo "ALERT: VPC route count mismatch!"
+MISSING_ROUTES=$(comm -23 <(printf "%s\n" "$EXPECTED_ROUTES") <(printf "%s\n" "$ACTUAL_ROUTES"))
+
+if [ -n "$MISSING_ROUTES" ]; then
+  echo "ALERT: Missing VPC routes for pod CIDRs:"
+  echo "$MISSING_ROUTES"
   exit 1
 fi
 ```
@@ -76,19 +74,18 @@ graph TD
     B --> C[Log-based Metrics]
     C --> D[Cloud Monitoring]
     D --> E{Alert Conditions}
-    E --> F[High denied packets]
+    E --> F[High denied firewall connections]
     E --> G[Unusual cross-zone traffic]
     F --> H[PagerDuty / Email]
     G --> H
 ```
 
-Create a log-based metric for denied packets:
+Create a log-based metric for denied firewall connections. This requires logging to be enabled on the relevant VPC firewall rules:
 
 ```bash
-gcloud logging metrics create calico_vpc_denied_packets \
-  --description="Packets denied in Calico cluster VPC" \
-  --log-filter='resource.type="gce_instance" jsonPayload.connection.dest_port!="-"' \
-  --value-extractor="EXTRACT(jsonPayload.bytes_sent)"
+gcloud logging metrics create calico_vpc_denied_connections \
+  --description="Denied firewall connections in the Calico cluster VPC" \
+  --log-filter='jsonPayload.disposition="DENIED"'
 ```
 
 ## Step 5: Prometheus Alerts for GCE
@@ -99,7 +96,7 @@ groups:
     rules:
       - alert: CalicoGCEEndpointDrop
         expr: |
-          decrease(felix_active_local_endpoints[5m]) > 2
+          delta(felix_active_local_endpoints[5m]) < -2
         for: 3m
         labels:
           severity: warning
@@ -108,7 +105,7 @@ groups:
 
       - alert: CalicoGCEFelixRestarts
         expr: |
-          increase(felix_resyncs_total[15m]) > 5
+          increase(felix_resyncs_started[15m]) > 5
         for: 5m
         labels:
           severity: warning
@@ -123,10 +120,10 @@ Key metrics for a GCE Calico Grafana dashboard:
 | Panel | Metric | Visualization |
 |-------|--------|--------------|
 | Active Endpoints | `felix_active_local_endpoints` | Time series |
-| Policy Drops | `rate(felix_policy_dropped_packets_total[5m])` | Time series |
+| Dataplane Failures | `increase(felix_int_dataplane_failures[5m])` | Time series |
 | IPAM Usage | Custom from `calicoctl ipam show` | Gauge |
 | VPC Route Count | Custom script | Single stat |
 
 ## Conclusion
 
-Monitoring Calico on GCE combines VPC Flow Log analysis for network-layer visibility with Felix Prometheus metrics for policy enforcement health. GCE-specific monitoring must also track VPC static route count to detect drift when nodes are added or removed. By alerting on route count mismatches, Felix restarts, and high drop rates, you can catch GCE-specific Calico issues before they escalate to cluster-wide connectivity problems.
+Monitoring Calico on GCE combines VPC Flow Log analysis for network-layer visibility with Felix Prometheus metrics for policy enforcement health. GCE-specific monitoring must also track VPC static route count to detect drift when nodes are added or removed. By alerting on route mismatches, denied firewall connections, and frequent Felix resyncs, you can catch GCE-specific Calico issues before they escalate to cluster-wide connectivity problems.
