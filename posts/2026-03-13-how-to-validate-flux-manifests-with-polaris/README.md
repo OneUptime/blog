@@ -26,8 +26,9 @@ Polaris is an open-source tool from Fairwinds that validates Kubernetes resource
 brew install FairwindsOps/tap/polaris
 
 # Linux (binary download)
+POLARIS_VERSION=$(curl -fsSL https://api.github.com/repos/FairwindsOps/polaris/releases/latest | jq -r '.tag_name | ltrimstr("v")')
 curl -L -o polaris.tar.gz \
-  https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz
+  "https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_${POLARIS_VERSION}_linux_amd64.tar.gz"
 tar xzf polaris.tar.gz
 sudo mv polaris /usr/local/bin/
 
@@ -55,11 +56,11 @@ polaris audit --audit-path manifests/ --format score
 Polaris organizes checks into categories:
 
 - **Security**: Privileged containers, host namespaces, capabilities
-- **Reliability**: Resource requests/limits, health probes, replicas
-- **Efficiency**: CPU/memory request sizing
+- **Reliability**: Health probes, replicas, disruption budgets
+- **Efficiency**: CPU/memory requests and limits
 
 ```bash
-# Run with only security checks
+# Show only failed checks
 polaris audit \
   --audit-path manifests/ \
   --format pretty \
@@ -67,7 +68,7 @@ polaris audit \
 
 # View all available checks
 polaris audit --audit-path deployment.yaml --format json | \
-  jq '.Results[].PodResult.ContainerResults[].Results | keys[]' | sort -u
+  jq -r '.Results[] | (.Results | keys[]), (.PodResult.Results | keys[]?), (.PodResult.ContainerResults[]?.Results | keys[])' | sort -u
 ```
 
 ## Step 4: Validate Kustomize Build Output
@@ -79,10 +80,11 @@ Validate the rendered output of kustomize overlays.
 kustomize build overlays/production > /tmp/production-manifests.yaml
 polaris audit --audit-path /tmp/production-manifests.yaml --format pretty
 
-# Or use process substitution
-polaris audit \
-  --audit-path <(kustomize build overlays/production) \
-  --format pretty
+# Or use a temporary file
+output_file=$(mktemp)
+kustomize build overlays/production > "$output_file"
+polaris audit --audit-path "$output_file" --format pretty
+rm -f "$output_file"
 ```
 
 ## Step 5: Configure Custom Polaris Rules
@@ -104,18 +106,16 @@ checks:
   insecureCapabilities: warning
 
   # Reliability
-  cpuRequestsMissing: warning
-  cpuLimitsMissing: warning
-  memoryRequestsMissing: danger
-  memoryLimitsMissing: danger
   readinessProbeMissing: warning
   livenessProbeMissing: warning
   tagNotSpecified: danger
   pullPolicyNotAlways: warning
 
   # Efficiency
-  cpuRequestsOverset: warning
-  memoryRequestsOverset: warning
+  cpuRequestsMissing: warning
+  cpuLimitsMissing: warning
+  memoryRequestsMissing: danger
+  memoryLimitsMissing: danger
 
 exemptions:
   - namespace: flux-system
@@ -291,8 +291,9 @@ jobs:
 
       - name: Install Polaris
         run: |
+          POLARIS_VERSION=$(curl -fsSL https://api.github.com/repos/FairwindsOps/polaris/releases/latest | jq -r '.tag_name | ltrimstr("v")')
           curl -L -o polaris.tar.gz \
-            https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz
+            "https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_${POLARIS_VERSION}_linux_amd64.tar.gz"
           tar xzf polaris.tar.gz
           sudo mv polaris /usr/local/bin/
 
@@ -304,15 +305,17 @@ jobs:
           MINIMUM_SCORE=80
           for overlay in overlays/*/; do
             echo "Checking $overlay..."
-            score=$(kustomize build "$overlay" | \
-              polaris audit --audit-path /dev/stdin --format score)
+            output_file=$(mktemp)
+            kustomize build "$overlay" > "$output_file"
+            score=$(polaris audit --audit-path "$output_file" --format score)
             echo "Score: $score"
             if [ "$score" -lt "$MINIMUM_SCORE" ]; then
               echo "FAIL: Score below $MINIMUM_SCORE"
-              kustomize build "$overlay" | \
-                polaris audit --audit-path /dev/stdin --format pretty --only-show-failed-tests
+              polaris audit --audit-path "$output_file" --format pretty --only-show-failed-tests
+              rm -f "$output_file"
               exit 1
             fi
+            rm -f "$output_file"
           done
 ```
 
