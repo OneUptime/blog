@@ -25,12 +25,12 @@ This post provides a structured decision framework for the key networking choice
 
 | Mode | When to Use | Overhead |
 |---|---|---|
-| IP-in-IP | Cloud VPCs without BGP peering, heterogeneous node types | Low (20 bytes per packet) |
-| VXLAN | Cloud environments blocking non-TCP/UDP protocols | Medium (50 bytes per packet) |
+| IP-in-IP | Cloud VPCs without BGP peering where protocol 4 is supported | Low (20 bytes per packet) |
+| VXLAN | Cloud environments blocking IP-in-IP or other non-TCP/UDP protocols | Medium (50 bytes per packet) |
 | Native (BGP) | On-premises with BGP-capable ToR switches | None |
 | CrossSubnet | Multi-AZ deployments where same-subnet traffic is native and cross-subnet is encapsulated | Variable |
 
-For AWS, GCP, and Azure with VPC routing, VXLAN or IP-in-IP are standard. For bare-metal deployments with a BGP-capable fabric (Junos, EOS, Cumulus), native routing eliminates encapsulation overhead entirely.
+For cloud VPC networks that cannot route pod CIDRs directly, VXLAN or IP-in-IP are common overlay choices; in Azure, use VXLAN because the Azure network fabric blocks IP-in-IP packets. For bare-metal deployments with a BGP-capable fabric (Junos, EOS, Cumulus), native routing eliminates encapsulation overhead entirely.
 
 ```mermaid
 graph TD
@@ -47,13 +47,13 @@ graph TD
 
 The most common production mistake is an undersized IP pool. Calculate your pool size:
 
-- Calico allocates IPs in blocks (default /26 = 64 IPs per block per node)
-- Each node pre-allocates one block, preventing fragmentation
+- Calico allocates IPs in blocks (default /26 = 64 IPs per IPv4 block)
+- Blocks are allocated to hosts on demand, allowing Calico to aggregate routes
 - Add 30% headroom for burst scaling and rolling upgrades
 
 For a cluster with maximum 100 nodes at 50 pods per node:
-- Required: 100 × 64 = 6,400 IPs minimum
-- With headroom: ~10,000 IPs → use a /18 (16,382 IPs)
+- Required: 100 × 64 = 6,400 IPs minimum with default IPv4 blocks
+- With 30% headroom: 8,320 IPs → use a /18 (16,384 IPs)
 
 ```bash
 # Check current allocation
@@ -76,19 +76,29 @@ calicoctl patch bgpconfiguration default \
 
 ## Decision 4: IPv4 vs. Dual-Stack
 
-Calico supports IPv4-only, IPv6-only, and dual-stack configurations. For most production clusters, IPv4-only is the default. Enable dual-stack only if your workloads require IPv6 reachability:
+Calico supports IPv4-only, IPv6-only, and dual-stack configurations. For most production clusters, IPv4-only is the default. Enable dual-stack only if your workloads require IPv6 reachability. With the Tigera operator, configure both IPv4 and IPv6 pools at install time:
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
+apiVersion: operator.tigera.io/v1
+kind: Installation
 metadata:
-  name: default-ipv6-pool
+  name: default
 spec:
-  cidr: fd00::/96
-  nodeSelector: all()
+  calicoNetwork:
+    ipPools:
+      - blockSize: 26
+        cidr: 10.48.0.0/21
+        encapsulation: IPIP
+        natOutgoing: Enabled
+        nodeSelector: all()
+      - blockSize: 122
+        cidr: 2001::/64
+        encapsulation: None
+        natOutgoing: Enabled
+        nodeSelector: all()
 ```
 
-Dual-stack requires Kubernetes 1.20+ and must be enabled at cluster creation - it cannot be retrofitted to existing single-stack clusters without downtime.
+Dual-stack requires Calico IPAM and Kubernetes dual-stack support, and should be enabled at cluster creation - it cannot be retrofitted to existing single-stack clusters without downtime.
 
 ## Best Practices
 
