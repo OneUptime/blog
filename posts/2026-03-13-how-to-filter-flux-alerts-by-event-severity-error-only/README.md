@@ -16,7 +16,7 @@ This guide shows you how to configure error-only alerts, what types of errors tr
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD v2.0 or later
+- A Kubernetes cluster with Flux CD installed (examples use the current `notification.toolkit.fluxcd.io/v1beta3` Alert and Provider APIs)
 - The notification controller running
 - A configured Provider resource
 - `kubectl` and `flux` CLI access
@@ -30,7 +30,7 @@ The `eventSeverity` field on an Alert resource acts as a minimum threshold. When
 Here is a minimal configuration that only fires on errors:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: error-alert
@@ -53,8 +53,8 @@ This captures error events from all Kustomizations and HelmReleases while ignori
 With `eventSeverity: error`, you will receive notifications for:
 
 - **ReconciliationFailed**: The reconciliation loop encountered an error applying resources
-- **ValidationFailed**: Kustomize or Helm validation rejected the manifests
-- **ArtifactFailed**: The source controller could not fetch a Git repository, Helm chart, or OCI artifact
+- **ArtifactFailed**: A Kustomization or HelmRelease could not use the required source artifact
+- **Source fetch failures**: Source controller errors such as GitOperationFailed, AuthenticationFailed, IndexationFailed, or OCIArtifactPullFailed
 - **HealthCheckFailed**: Post-deployment health checks failed
 - **DependencyNotReady**: A required dependency is not in a ready state
 - **UpgradeFailed / InstallFailed**: Helm operations that failed
@@ -67,7 +67,7 @@ With `eventSeverity: error`, you will receive notifications for:
 For a comprehensive error monitoring setup that covers all Flux resource types:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: cluster-error-alerts
@@ -98,7 +98,7 @@ This catches errors at every stage of the GitOps pipeline, from source fetching 
 Route production errors to PagerDuty and staging errors to Slack:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-errors
@@ -115,7 +115,7 @@ spec:
       name: '*'
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-errors
@@ -138,7 +138,7 @@ spec:
 For specific high-priority resources that should trigger immediate response:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-errors
@@ -161,7 +161,7 @@ spec:
 Error alerts often warrant more urgent notification channels. Here is a PagerDuty provider example:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-provider
@@ -177,7 +177,7 @@ spec:
 A common setup pairs error-only alerts with info-level alerts on separate channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: errors-pagerduty
@@ -192,7 +192,7 @@ spec:
     - kind: HelmRelease
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-events-slack
