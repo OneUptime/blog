@@ -35,8 +35,10 @@ kind: ConfigMap
 metadata:
   name: common-helm-values
   namespace: flux-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
 data:
-  # These key names must match Helm value paths
+  # This key matches the valuesKey referenced by HelmRelease resources
   values.yaml: |
     # Common resource defaults for all microservices
     resources:
@@ -86,6 +88,8 @@ kind: Secret
 metadata:
   name: common-helm-secrets
   namespace: flux-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
 type: Opaque
 stringData:
   values.yaml: |
@@ -127,7 +131,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: backend-api
   targetNamespace: microservices
+  storageNamespace: microservices
   chart:
     spec:
       chart: microservice
@@ -171,7 +177,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: auth-service
   targetNamespace: microservices
+  storageNamespace: microservices
   chart:
     spec:
       chart: microservice
@@ -206,7 +214,7 @@ spec:
 
 ## Step 5: Update Shared Values and Verify Propagation
 
-When you update the shared ConfigMap, all HelmReleases pick up the change on their next reconciliation.
+When you update the shared ConfigMap, the `reconcile.fluxcd.io/watch: Enabled` label tells Flux to reconcile HelmReleases that reference it without waiting for the interval.
 
 ```bash
 # Update the shared ConfigMap (e.g., increase memory limits)
