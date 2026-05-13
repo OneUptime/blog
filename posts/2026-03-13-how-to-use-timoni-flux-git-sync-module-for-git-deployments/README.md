@@ -12,7 +12,7 @@ Description: Learn how to use the Timoni flux-git-sync module to configure Git-b
 
 Git repositories are the foundation of GitOps workflows with Flux. The Timoni flux-git-sync module provides a streamlined way to configure Flux for Git-based deployments, generating the required GitRepository and Kustomization resources from a simple values file. Instead of writing and maintaining raw Flux manifests, you define your Git sync configuration in a values file, and the module produces validated, type-checked Kubernetes resources.
 
-This guide demonstrates how to use the flux-git-sync module for deploying from Git repositories, covering HTTPS and SSH authentication, branch and tag tracking, and multi-path deployments.
+This guide demonstrates how to use the flux-git-sync module for deploying from Git repositories, covering public and private HTTPS repositories, branch and tag tracking, and multi-path deployments.
 
 ## Prerequisites
 
@@ -23,18 +23,14 @@ This guide demonstrates how to use the flux-git-sync module for deploying from G
 
 ## Step 1: Explore the Module
 
-Inspect the module's values schema:
-
-```bash
-timoni mod values oci://ghcr.io/stefanprodan/modules/flux-git-sync
-```
-
-Pull the module locally for deeper inspection:
+Pull the module locally and inspect its values schema:
 
 ```bash
 timoni mod pull oci://ghcr.io/stefanprodan/modules/flux-git-sync \
   --version latest \
   --output ./flux-git-sync-module
+
+sed -n '1,160p' ./flux-git-sync-module/templates/config.cue
 ```
 
 ## Step 2: Basic Git Sync with HTTPS
@@ -46,15 +42,13 @@ Create a values file for a public repository:
 
 values:
   git:
-    url: "https://github.com/your-org/fleet-infra"
-    ref:
-      branch: "main"
+    url: "https://github.com/your-org/fleet-infra.git"
+    ref: "refs/heads/main"
     path: "./clusters/production"
-    interval: "5m"
+    interval: 5
   sync:
     prune: true
     wait: true
-    interval: "5m"
     targetNamespace: ""
 ```
 
@@ -74,40 +68,35 @@ timoni apply fleet-sync oci://ghcr.io/stefanprodan/modules/flux-git-sync \
   --namespace flux-system
 ```
 
-## Step 3: Git Sync with SSH Authentication
+## Step 3: Git Sync with GitHub App Authentication
 
-For private repositories using SSH:
+For private GitHub repositories using GitHub App authentication:
 
 ```yaml
-# git-sync-ssh.yaml
+# git-sync-github-app.yaml
 values:
   git:
-    url: "ssh://git@github.com/your-org/fleet-infra.git"
-    ref:
-      branch: "main"
+    url: "https://github.com/your-org/fleet-infra.git"
+    ref: "refs/heads/main"
     path: "./clusters/production"
-    interval: "5m"
-    secretRef:
-      name: "flux-ssh-key"
+    interval: 5
+  github:
+    appID: "123456"
+    appInstallationID: "789012"
+    appPrivateKey: |
+      -----BEGIN RSA PRIVATE KEY-----
+      ...
+      -----END RSA PRIVATE KEY-----
   sync:
     prune: true
     wait: true
-    interval: "5m"
-```
-
-Create the SSH key secret before applying:
-
-```bash
-flux create secret git flux-ssh-key \
-  --url=ssh://git@github.com/your-org/fleet-infra.git \
-  --private-key-file=./deploy-key
 ```
 
 Then apply the module:
 
 ```bash
 timoni apply fleet-sync oci://ghcr.io/stefanprodan/modules/flux-git-sync \
-  --values git-sync-ssh.yaml \
+  --values git-sync-github-app.yaml \
   --namespace flux-system
 ```
 
@@ -120,58 +109,33 @@ For private repositories using HTTPS with a personal access token:
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    ref:
-      branch: "main"
+    ref: "refs/heads/main"
     path: "./clusters/production"
-    interval: "5m"
-    secretRef:
-      name: "git-credentials"
+    interval: 5
+    token: "ghp_your_token_here"
   sync:
     prune: true
     wait: true
 ```
 
-Create the credentials secret:
+The module creates the required Kubernetes Secret for Flux from the `git.token` value.
 
-```bash
-kubectl create secret generic git-credentials \
-  -n flux-system \
-  --from-literal=username=git \
-  --from-literal=password=ghp_your_token_here
-```
+## Step 5: Track Branches and Tags
 
-## Step 5: Track Tags and Semver Ranges
-
-Instead of tracking a branch, track a specific tag or semver range:
+Instead of tracking a branch, track a specific tag:
 
 ```yaml
 # git-sync-tag.yaml
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    ref:
-      tag: "v1.5.0"
+    ref: "refs/tags/v1.5.0"
     path: "./releases/v1"
-    interval: "30m"
+    interval: 30
   sync:
     prune: true
     wait: true
-    timeout: "10m"
-```
-
-For semver tracking:
-
-```yaml
-# git-sync-semver.yaml
-values:
-  git:
-    url: "https://github.com/your-org/fleet-infra.git"
-    ref:
-      semver: ">=1.0.0 <2.0.0"
-    path: "./releases"
-    interval: "10m"
-  sync:
-    prune: true
+    timeout: 10
 ```
 
 ## Step 6: Multi-Path Deployments
@@ -197,14 +161,13 @@ Infrastructure values:
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    ref:
-      branch: "main"
+    ref: "refs/heads/main"
     path: "./infrastructure"
-    interval: "15m"
+    interval: 15
   sync:
     prune: true
     wait: true
-    timeout: "10m"
+    timeout: 10
 ```
 
 Application values with dependency on infrastructure:
@@ -214,15 +177,14 @@ Application values with dependency on infrastructure:
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    ref:
-      branch: "main"
+    ref: "refs/heads/main"
     path: "./apps/production"
-    interval: "5m"
+    interval: 5
   sync:
     prune: true
     wait: true
-    dependsOn:
-      - name: "infra-sync"
+  dependsOn:
+    - name: "infra-sync"
 ```
 
 ## Step 7: Configure Post-Build Substitution
@@ -234,23 +196,21 @@ Add variable substitution to your Git sync:
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    ref:
-      branch: "main"
+    ref: "refs/heads/main"
     path: "./clusters/production"
-    interval: "5m"
+    interval: 5
   sync:
     prune: true
     wait: true
-    postBuild:
-      substitute:
-        CLUSTER_NAME: "prod-us-east-1"
-        ENVIRONMENT: "production"
-        REGION: "us-east-1"
-      substituteFrom:
-        - kind: ConfigMap
-          name: cluster-settings
-        - kind: Secret
-          name: cluster-secrets
+  substitute:
+    CLUSTER_NAME: "prod-us-east-1"
+    ENVIRONMENT: "production"
+    REGION: "us-east-1"
+  substituteFrom:
+    - kind: ConfigMap
+      name: cluster-settings
+    - kind: Secret
+      name: cluster-secrets
 ```
 
 ## Step 8: Manage Instances
