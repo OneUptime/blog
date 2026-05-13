@@ -32,20 +32,24 @@ for shard in shard-1 shard-2 shard-3; do
     -l "sharding.fluxcd.io/key=$shard" --no-headers 2>/dev/null | wc -l)
   hr_count=$(kubectl get helmreleases -A \
     -l "sharding.fluxcd.io/key=$shard" --no-headers 2>/dev/null | wc -l)
-  echo "$shard: $ks_count Kustomizations, $hr_count HelmReleases"
+  source_count=$(kubectl get gitrepositories,ocirepositories,buckets,helmrepositories,helmcharts -A \
+    -l "sharding.fluxcd.io/key=$shard" --no-headers 2>/dev/null | wc -l)
+  echo "$shard: $ks_count Kustomizations, $hr_count HelmReleases, $source_count Sources"
 done
 
 unsharded_ks=$(kubectl get kustomizations -A \
   -l '!sharding.fluxcd.io/key' --no-headers 2>/dev/null | wc -l)
 unsharded_hr=$(kubectl get helmreleases -A \
   -l '!sharding.fluxcd.io/key' --no-headers 2>/dev/null | wc -l)
-echo "main: $unsharded_ks Kustomizations, $unsharded_hr HelmReleases"
+unsharded_sources=$(kubectl get gitrepositories,ocirepositories,buckets,helmrepositories,helmcharts -A \
+  -l '!sharding.fluxcd.io/key' --no-headers 2>/dev/null | wc -l)
+echo "main: $unsharded_ks Kustomizations, $unsharded_hr HelmReleases, $unsharded_sources Sources"
 ```
 
-Check reconciliation duration per shard to find processing-heavy shards.
+Check recent reconciliation logs per shard to find processing-heavy shards.
 
 ```bash
-# Check average reconciliation time from metrics
+# Check recent reconciliation logs
 for shard in shard-1 shard-2 shard-3; do
   pod=$(kubectl get pods -n flux-system \
     -l "app=kustomize-controller-$shard" \
@@ -59,7 +63,7 @@ done
 
 ## Strategy 1: Round-Robin Distribution
 
-Distribute resources evenly across shards by count.
+Distribute Kustomizations evenly across shards by count. Make sure the referenced Flux source objects, such as GitRepository, OCIRepository, Bucket, HelmRepository, and generated HelmChart objects, carry the same shard label as the Kustomization or HelmRelease that uses them.
 
 ```bash
 #!/bin/bash
@@ -93,13 +97,26 @@ NAMESPACE="flux-system"
 get_weight() {
   local name=$1
   local ns=$2
-  # Use interval and path depth as proxy for weight
+  # Use interval as a proxy for weight
   interval=$(kubectl get kustomization "$name" -n "$ns" \
-    -o jsonpath='{.spec.interval}' | sed 's/[^0-9]//g')
+    -o jsonpath='{.spec.interval}')
+  seconds=$(echo "$interval" | awk '
+    {
+      total=0
+      while (match($0, /[0-9]+(h|m|s)/)) {
+        value=substr($0, RSTART, RLENGTH-1)
+        unit=substr($0, RSTART+RLENGTH-1, 1)
+        if (unit == "h") total += value * 3600
+        if (unit == "m") total += value * 60
+        if (unit == "s") total += value
+        $0=substr($0, RSTART+RLENGTH)
+      }
+      print total
+    }')
   # Shorter intervals mean more reconciliations, higher weight
-  if [ "$interval" -le 5 ]; then
+  if [ "$seconds" -le 300 ]; then
     echo 3
-  elif [ "$interval" -le 15 ]; then
+  elif [ "$seconds" -le 900 ]; then
     echo 2
   else
     echo 1
@@ -188,9 +205,9 @@ Use Prometheus metrics to detect and fix imbalances automatically.
 # Moves resources from overloaded shards to underloaded ones
 
 NAMESPACE="flux-system"
-THRESHOLD=2.0  # Rebalance if max/avg ratio exceeds this
+THRESHOLD=2.0  # Rebalance if max/(min+1) ratio exceeds this
 
-# Get queue depths from Prometheus
+# Get queue depths from the controller metrics endpoint
 get_queue_depth() {
   local shard=$1
   local pod=$(kubectl get pods -n flux-system \
@@ -198,7 +215,7 @@ get_queue_depth() {
     -o jsonpath='{.items[0].metadata.name}')
   kubectl exec "$pod" -n flux-system -- \
     wget -qO- http://localhost:8080/metrics 2>/dev/null | \
-    grep "workqueue_depth " | \
+    grep '^workqueue_depth' | \
     awk '{print $2}' | head -1
 }
 
@@ -261,15 +278,15 @@ Create a PromQL query to track shard balance.
 
 ```promql
 # Standard deviation of queue depth across shards (lower is better)
-stddev(workqueue_depth{namespace="flux-system", job=~".*shard.*"})
+stddev by (name) (workqueue_depth{namespace="flux-system", pod=~".*shard.*"})
 
 # Max-to-average ratio (should be close to 1.0)
-max(workqueue_depth{namespace="flux-system", job=~".*shard.*"})
+max(workqueue_depth{namespace="flux-system", pod=~".*shard.*"})
 /
-avg(workqueue_depth{namespace="flux-system", job=~".*shard.*"})
+avg(workqueue_depth{namespace="flux-system", pod=~".*shard.*"})
 
 # Per-shard reconciliation rate
-sum by (pod) (rate(controller_runtime_reconcile_total{namespace="flux-system"}[5m]))
+sum by (pod, controller) (rate(controller_runtime_reconcile_total{namespace="flux-system", pod=~".*shard.*"}[5m]))
 ```
 
 ## Best Practices
