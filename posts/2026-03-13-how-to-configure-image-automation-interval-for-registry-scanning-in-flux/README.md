@@ -41,7 +41,7 @@ spec:
   interval: 5m
 ```
 
-In this example, Flux queries the registry every 5 minutes to check for new tags matching the configured policies.
+In this example, Flux queries the registry every 5 minutes to check for new tags that configured policies can evaluate.
 
 ## Setting a Custom Scan Interval
 
@@ -105,7 +105,7 @@ For registries with rate limits like Docker Hub, use a longer interval to avoid 
 
 ## Limiting Tag Scanning with Exclusion List
 
-To reduce the amount of data fetched on each scan, you can exclude tags that are not relevant:
+To reduce the amount of tag data stored and processed after each scan, you can exclude tags that are not relevant:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -121,7 +121,7 @@ spec:
     - "^sha-"
 ```
 
-The `exclusionList` uses regular expressions to skip tags that match the patterns. This reduces processing time and memory usage during each scan cycle, which is especially important with shorter intervals.
+The `exclusionList` uses regular expressions to skip storing tags that match the patterns. This reduces processing time and memory usage during each scan cycle, which is especially important with shorter intervals.
 
 ## Multiple ImageRepositories with Different Intervals
 
@@ -192,15 +192,15 @@ This shows the last scan time, the number of tags discovered, and any errors. Fo
 kubectl describe imagerepository my-app -n flux-system
 ```
 
-Look at the `Status.LastScanResult` field to see the timestamp and tag count from the most recent scan.
+Look at the `.status.lastScanResult` field to see the timestamp and tag count from the most recent scan.
 
 ## Performance Considerations
 
 Each scan involves an API call to the container registry to list tags. Consider these factors when choosing your interval:
 
-Registry rate limits vary by provider. Docker Hub has pull rate limits, while cloud provider registries like ECR, GCR, and ACR typically have higher or no rate limits for authenticated requests. If you run many ImageRepositories, the combined scan frequency can add up.
+Registry rate limits vary by provider. Docker Hub has rate limits for pulls and Hub usage, while cloud provider registries like ECR, GCR, and ACR typically have higher or no rate limits for authenticated requests. If you run many ImageRepositories, the combined scan frequency can add up.
 
-The image-reflector-controller processes scans sequentially within each reconciliation loop. A very large number of ImageRepositories with short intervals can cause a backlog. Monitor the controller's CPU and memory usage and adjust intervals accordingly:
+The image-reflector-controller supports concurrent reconciliations, but a very large number of ImageRepositories with short intervals can still create sustained load. Monitor the controller's CPU and memory usage and adjust intervals accordingly:
 
 ```bash
 kubectl top pod -n flux-system -l app=image-reflector-controller
