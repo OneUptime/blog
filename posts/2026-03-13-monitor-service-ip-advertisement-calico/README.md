@@ -43,7 +43,7 @@ spec:
     - alert: ServiceRouteNotAdvertised
       expr: |
         absent(felix_bgp_num_established_v4{instance=~".*"}) or
-        felix_bgp_num_not_established > 0
+        felix_bgp_num_not_established_v4 > 0
       for: 3m
       labels:
         severity: critical
