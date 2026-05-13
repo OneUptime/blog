@@ -98,8 +98,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production-us-east \
-  --personal
+  --path=clusters/production-us-east
 ```
 
 ```bash
@@ -109,8 +108,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production-us-west \
-  --personal
+  --path=clusters/production-us-west
 ```
 
 Repeat for all production regions.
@@ -280,18 +278,19 @@ patches:
 Each standalone cluster should have its own notification pipeline:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: production-us-east-deploys
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-alerts
@@ -311,7 +310,7 @@ spec:
 
 ## Step 7: Implement Rollback Safety
 
-Use Flux's built-in rollback capabilities for production safety. Configure the GitRepository source with a specific commit or tag:
+Use Git-based rollback controls for production safety. To pin a cluster temporarily, configure the GitRepository source with a specific commit:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -321,9 +320,10 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: ssh://git@github.com/your-org/fleet-repo
+  url: ssh://git@github.com/your-org/fleet-repo.git
   ref:
     branch: main
+    commit: "<commit-sha-within-main>"
   secretRef:
     name: flux-system
 ```
@@ -385,8 +385,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production-us-east \
-  --personal
+  --path=clusters/production-us-east
 
 # Flux will reconcile all resources from Git automatically
 ```
