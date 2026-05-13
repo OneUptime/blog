@@ -14,7 +14,7 @@ Health check timeouts in Flux Kustomization determine how long Flux waits for re
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
+- A Kubernetes cluster running a version supported by your Flux release. For upstream Flux v2.3, this means Kubernetes 1.28, 1.29, or 1.30
 - Flux v2.3 or later installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
@@ -171,8 +171,8 @@ spec:
       kind: Deployment
       name: api
       namespace: production
-    - apiVersion: networking.k8s.io/v1
-      kind: Ingress
+    - apiVersion: v1
+      kind: Service
       name: api
       namespace: production
 ```
@@ -265,11 +265,11 @@ With `retryInterval: 2m`, after a timeout failure, Flux retries after 2 minutes 
 Track health check timing to calibrate your timeouts:
 
 ```bash
-# Check Kustomization reconciliation duration
-flux get kustomization my-app -o json | jq '.status.conditions[] | select(.type=="Ready")'
+# Check Kustomization Ready condition
+kubectl get kustomization my-app -n flux-system -o json | jq '.status.conditions[] | select(.type=="Ready")'
 
 # Watch reconciliation in real time
-flux get kustomization my-app --watch
+flux get kustomizations --watch
 
 # Check historical events
 kubectl get events -n flux-system --field-selector involvedObject.name=my-app --sort-by=.lastTimestamp
