@@ -12,7 +12,7 @@ Description: Configure Velero VolumeSnapshotLocation resources using Flux CD to 
 
 Velero's VolumeSnapshotLocation (VSL) resource defines where Persistent Volume snapshots are created and stored. Unlike Kubernetes resource backups (which go to object storage), volume snapshots are created as native cloud provider snapshots-EBS snapshots on AWS, Managed Disk snapshots on Azure, and Persistent Disk snapshots on GCP. Managing VSLs through Flux ensures snapshot configuration is version-controlled and consistently applied.
 
-A complete Velero backup strategy requires both a BackupStorageLocation (for Kubernetes resource data) and a VolumeSnapshotLocation (for PV data). When a backup runs, Velero quiesces the pods, triggers cloud provider snapshots for each PV, and records the snapshot IDs in the backup metadata stored in the BSL. On restore, the snapshots are used to recreate the volumes.
+For cloud-provider snapshot backups, a complete Velero backup strategy requires both a BackupStorageLocation (for Kubernetes resource data) and a VolumeSnapshotLocation (for PV data). When a backup runs, Velero triggers cloud provider snapshots for supported PVs and records the snapshot IDs in the backup metadata stored in the BSL. Use Velero backup hooks if your applications need to be quiesced before snapshots are taken. On restore, the snapshots are used to recreate the volumes.
 
 This guide covers configuring VSLs for AWS EBS, Azure Managed Disks, and GCP Persistent Disks.
 
@@ -35,16 +35,14 @@ metadata:
   namespace: velero
 spec:
   # AWS EBS provider
-  provider: aws
+  provider: velero.io/aws
   config:
     # Region where EBS snapshots will be created
     # Must match the region where your cluster runs
     region: us-east-1
-    # Optional: Tag all snapshots with these tags for cost tracking
-    additionalTags: "ManagedBy=velero,Environment=production"
 ```
 
-## Step 2: Create a Secondary VSL in Another Region
+## Step 2: Create a Secondary VSL for Another Region
 
 ```yaml
 # infrastructure/velero/snapshots/vsl-aws-dr.yaml
@@ -54,9 +52,9 @@ metadata:
   name: aws-disaster-recovery
   namespace: velero
 spec:
-  provider: aws
+  provider: velero.io/aws
   config:
-    # DR region for cross-region snapshot copies
+    # Use this only for PVs that exist in this region
     region: eu-west-1
 ```
 
@@ -70,7 +68,7 @@ metadata:
   name: azure-primary
   namespace: velero
 spec:
-  provider: azure
+  provider: velero.io/azure
   config:
     # Azure resource group for storing snapshots
     resourceGroup: velero-backups-rg
@@ -90,10 +88,10 @@ metadata:
   name: gcp-primary
   namespace: velero
 spec:
-  provider: gcp
+  provider: velero.io/gcp
   config:
-    # GCP project where snapshots will be created
-    project: my-gcp-project
+    # Optional: project to retrieve existing snapshots from during restores
+    project: my-alternate-project
     # Optional: snapshot storage location (regional or multi-regional)
     snapshotLocation: us-central1
 ```
@@ -104,7 +102,7 @@ Modern Velero supports CSI VolumeSnapshots, which work across providers through 
 
 ```yaml
 # infrastructure/velero/snapshots/vsl-csi.yaml
-# For CSI-based snapshots, enable the CSI plugin feature flag in Velero
+# For CSI-based snapshots, enable the EnableCSI feature flag in Velero
 # No VSL resource is needed - CSI uses VolumeSnapshotClass resources instead
 ---
 # Create a VolumeSnapshotClass for CSI snapshots
@@ -118,7 +116,7 @@ metadata:
 driver: ebs.csi.aws.com  # Replace with your CSI driver
 deletionPolicy: Retain
 parameters:
-  # EBS-specific: create fast snapshots
+  # EBS-specific: add a tag to snapshots created through the EBS CSI driver
   tagSpecification_1: "ManagedBy=velero"
 ```
 
@@ -137,7 +135,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "6.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -146,18 +144,18 @@ spec:
     configuration:
       backupStorageLocation:
         - name: default
-          provider: aws
+          provider: velero.io/aws
           bucket: my-cluster-velero-backups
           config:
             region: us-east-1
       # Configure multiple volume snapshot locations
       volumeSnapshotLocation:
         - name: aws-primary
-          provider: aws
+          provider: velero.io/aws
           config:
             region: us-east-1
         - name: aws-dr
-          provider: aws
+          provider: velero.io/aws
           config:
             region: eu-west-1
     credentials:
@@ -210,7 +208,7 @@ aws ec2 describe-snapshots \
 
 - Configure VSLs in the same region as your cluster nodes to minimize snapshot transfer costs and time.
 - Use `incremental: "true"` for Azure snapshots to significantly reduce storage costs and snapshot creation time after the first full snapshot.
-- Tag all snapshots with consistent metadata (`ManagedBy=velero`, cluster name, environment) to enable lifecycle policies and cost tracking.
+- Where your snapshot provider supports it, tag snapshots with consistent metadata (`ManagedBy=velero`, cluster name, environment) to enable lifecycle policies and cost tracking.
 - Consider using CSI VolumeSnapshots for provider-agnostic PV backup. CSI snapshots use the standard Kubernetes snapshot interface and work with any CSI-compliant storage driver.
 - Test volume restore procedures regularly. Snapshot creation succeeds does not guarantee snapshot restore will succeed. Run quarterly restore drills.
 
