@@ -18,7 +18,7 @@ This guide covers how to optimize Calico IPAM to work harmoniously with legacy f
 
 ## Prerequisites
 
-- Calico v3.20+ with Calico IPAM
+- Calico v3.21+ with Calico IPAM (IPReservation requires v3.21 or later)
 - Existing legacy firewalls with IP-based rules
 - `calicoctl` CLI installed
 - Network team coordination for firewall rule updates
