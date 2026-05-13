@@ -59,19 +59,19 @@ The latest secret will show the pending status. You can decode it to confirm:
 kubectl get secret sh.helm.release.v1.my-app.v5 -n production -o jsonpath='{.data.release}' | base64 -d | base64 -d | gzip -d | jq '.info.status'
 ```
 
-## Resolution Method 1: Force Upgrade with Flux Annotation
+## Resolution Method 1: Trigger Reconciliation with Flux Annotation
 
 The simplest approach is to force Flux to retry the operation. You can do this by annotating the HelmRelease:
 
 ```bash
-kubectl annotate helmrelease my-app -n production reconcile.fluxcd.io/requestAt="$(date +%s)" --overwrite
+kubectl annotate helmrelease my-app -n production reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
 ```
 
 However, this alone may not work if the release is stuck in a pending state. In that case, you need to clear the stuck release first.
 
-## Resolution Method 2: Manually Patch the Release Secret
+## Resolution Method 2: Manually Delete the Pending Release Secret
 
-You can fix the stuck release by patching the latest Helm secret to change its status from pending to failed, which allows Helm to proceed with a new operation:
+You can fix the stuck release by removing the latest Helm secret if it is the revision stuck in a pending state, which allows Helm to proceed with a new operation:
 
 ```bash
 # List all release secrets
@@ -85,7 +85,7 @@ kubectl delete secret sh.helm.release.v1.my-app.v5 -n production
 After removing the problematic secret, trigger a reconciliation:
 
 ```bash
-kubectl annotate helmrelease my-app -n production reconcile.fluxcd.io/requestAt="$(date +%s)" --overwrite
+kubectl annotate helmrelease my-app -n production reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
 ```
 
 ## Resolution Method 3: Suspend and Resume the HelmRelease
