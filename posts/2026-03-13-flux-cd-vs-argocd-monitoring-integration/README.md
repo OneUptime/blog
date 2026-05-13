@@ -18,17 +18,17 @@ This post compares the monitoring story for both tools to help platform teams un
 
 - Prometheus and Grafana deployed in your cluster
 - Either Flux CD or ArgoCD installed
-- ServiceMonitor CRDs available (via kube-prometheus-stack)
+- ServiceMonitor and PodMonitor CRDs available (via kube-prometheus-stack)
 
 ## Step 1: Flux CD Metrics
 
-Flux controllers expose Prometheus metrics on port 8080:
+Flux controllers expose Prometheus metrics on port 8080. The Flux monitoring example uses a PodMonitor to scrape the controller pods:
 
 ```yaml
-# ServiceMonitor for all Flux controllers
+# PodMonitor for all Flux controllers
 
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: flux-system
@@ -47,7 +47,9 @@ spec:
           - kustomize-controller
           - helm-controller
           - notification-controller
-  endpoints:
+          - image-automation-controller
+          - image-reflector-controller
+  podMetricsEndpoints:
     - port: http-prom
       interval: 30s
 ```
@@ -59,7 +61,7 @@ Key Flux metrics:
 gotk_reconcile_duration_seconds{kind="Kustomization", name="myapp", namespace="flux-system"}
 
 # Number of resources managed
-gotk_resource_info{kind="Kustomization", exported_namespace="myapp", ready="True"}
+gotk_resource_info{customresource_kind="Kustomization", exported_namespace="myapp", ready="True"}
 
 # Helm release reconciliation duration  
 gotk_reconcile_duration_seconds{kind="HelmRelease", name="nginx"}
@@ -70,7 +72,7 @@ gotk_reconcile_duration_seconds{kind="GitRepository", name="fleet-repo"}
 
 ## Step 2: ArgoCD Metrics
 
-ArgoCD exposes metrics from two endpoints: the application controller and the API server:
+ArgoCD exposes metrics from multiple endpoints, including the application controller, API server, and repo server:
 
 ```yaml
 # ServiceMonitor for ArgoCD
@@ -79,6 +81,8 @@ kind: ServiceMonitor
 metadata:
   name: argocd-metrics
   namespace: argocd
+  labels:
+    release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:
@@ -91,10 +95,26 @@ kind: ServiceMonitor
 metadata:
   name: argocd-server-metrics
   namespace: argocd
+  labels:
+    release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: argocd-server-metrics
+  endpoints:
+    - port: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-repo-server-metrics
+  namespace: argocd
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
   endpoints:
     - port: metrics
 ```
@@ -105,11 +125,14 @@ Key ArgoCD metrics:
 # Application sync status
 argocd_app_info{name="myapp", project="production", sync_status="Synced", health_status="Healthy"}
 
-# Sync operation duration
+# Sync operation count by phase
 argocd_app_sync_total{name="myapp", phase="Succeeded"}
 
-# Repo server request duration
-argocd_repo_pending_requests_total
+# Cumulative sync duration in seconds
+argocd_app_sync_duration_seconds_total{name="myapp", phase="Succeeded"}
+
+# Repo server pending requests
+argocd_repo_pending_request_total
 ```
 
 ## Step 3: Grafana Dashboards
@@ -120,16 +143,16 @@ argocd_repo_pending_requests_total
 
 Import from Grafana.com dashboard IDs: 16714 and 16715.
 
-**ArgoCD** provides official dashboards via the ArgoCD Helm chart or separate dashboard JSON. The ArgoCD dashboard includes application health overview, sync history, and cluster resource counts.
+**ArgoCD** provides an example Grafana dashboard JSON in the ArgoCD repository. The ArgoCD dashboard includes application health overview, sync history, and cluster resource counts.
 
 ## Comparison Table
 
 | Capability | Flux CD | ArgoCD |
 |---|---|---|
-| Prometheus metrics | Yes, all controllers | Yes, app controller + API server |
-| Official Grafana dashboards | Yes (Grafana.com) | Yes (bundled with Helm chart) |
+| Prometheus metrics | Yes, all controllers | Yes, app controller + API server + repo server |
+| Official Grafana dashboards | Yes (Grafana.com) | Yes (example dashboard JSON) |
 | Alert rules | Community-provided | Community-provided |
-| Event streaming | Kubernetes Events | Kubernetes Events + UI audit log |
+| Event streaming | Kubernetes Events | Kubernetes Events + API/audit logs |
 | Tracing | Limited | Limited |
 | UI-based health view | No (no UI) | Yes, built-in application health |
 
@@ -157,7 +180,12 @@ spec:
 
         - alert: FluxReconciliationSlow
           expr: |
-            gotk_reconcile_duration_seconds{quantile="0.99"} > 300
+            histogram_quantile(
+              0.99,
+              sum by (le, kind, name, namespace) (
+                rate(gotk_reconcile_duration_seconds_bucket[5m])
+              )
+            ) > 300
           for: 10m
           labels:
             severity: warning
@@ -175,4 +203,4 @@ spec:
 
 ## Conclusion
 
-Both Flux CD and ArgoCD have solid Prometheus and Grafana integration. ArgoCD's built-in UI provides an additional observability layer that Flux CD lacks, making it easier for non-SRE team members to understand deployment state at a glance. For teams investing in Prometheus-based monitoring, both tools provide equivalent metric depth; the choice comes down to whether you need the built-in UI health view.
+Both Flux CD and ArgoCD have solid Prometheus and Grafana integration. ArgoCD's built-in UI provides an additional observability layer that Flux CD lacks, making it easier for non-SRE team members to understand deployment state at a glance. For teams investing in Prometheus-based monitoring, both tools provide strong metric coverage; the choice comes down to whether you need the built-in UI health view.
