@@ -16,52 +16,49 @@ This pattern is particularly valuable for microservices where a buggy new versio
 
 ## Prerequisites
 
-- Calico with ingress controller support
+- Calico Ingress Gateway enabled with the Tigera Operator
 - Two versions of an application deployed
-- NGINX Ingress Controller or similar for canary annotations
+- Gateway API resources installed
 
 ## Configure Canary Ingress
 
 ```yaml
-# Stable version
-
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
 metadata:
-  name: app-stable
+  name: app-gateway
+  namespace: production
 spec:
-  rules:
-  - host: app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app-v1
-            port:
-              number: 80
+  gatewayClassName: tigera-gateway-class
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    hostname: app.example.com
 ---
 # Canary version - 10% of traffic
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: app-canary
-  annotations:
-    nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "10"
+  namespace: production
 spec:
+  parentRefs:
+  - name: app-gateway
+  hostnames:
+  - app.example.com
   rules:
-  - host: app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app-v2
-            port:
-              number: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: app-v1
+      port: 80
+      weight: 90
+    - name: app-v2
+      port: 80
+      weight: 10
 ```
 
 ## Apply Calico Policies for Both Versions
@@ -74,10 +71,12 @@ metadata:
   namespace: production
 spec:
   selector: app in {'app-v1', 'app-v2'}
+  types:
+  - Ingress
   ingress:
   - action: Allow
     source:
-      selector: app == 'ingress-nginx'
+      namespaceSelector: projectcalico.org/name == 'tigera-gateway'
 ```
 
 ## Monitor Canary Traffic
@@ -88,14 +87,15 @@ kubectl logs -l app=app-v1 --prefix=true | grep "500\|error" | wc -l
 kubectl logs -l app=app-v2 --prefix=true | grep "500\|error" | wc -l
 
 # Increase canary weight after validation
-kubectl annotate ingress app-canary   nginx.ingress.kubernetes.io/canary-weight=50 --overwrite
+kubectl patch httproute app-canary -n production --type='json' \
+  -p='[{"op":"replace","path":"/spec/rules/0/backendRefs/0/weight","value":50},{"op":"replace","path":"/spec/rules/0/backendRefs/1/weight","value":50}]'
 ```
 
 ## Canary Rollout Flow
 
 ```mermaid
 graph LR
-    CLIENT[Client] -->|100% traffic| INGRESS[Ingress Controller]
+    CLIENT[Client] -->|100% traffic| INGRESS[Calico Ingress Gateway]
     INGRESS -->|90%| V1[App v1\nStable]
     INGRESS -->|10%| V2[App v2\nCanary]
     subgraph Monitor
