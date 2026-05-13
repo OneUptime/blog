@@ -10,7 +10,7 @@ Description: Performance optimization techniques for Calico networking on AWS, i
 
 ## Introduction
 
-Calico networking on AWS has several performance optimization opportunities that are specific to the AWS environment. Cross-AZ encapsulation adds overhead and cost; IPAM block sizing affects how efficiently IP addresses are allocated; and the choice between iptables and eBPF dataplanes has significant throughput implications on modern EC2 instance types with Linux kernel 5.3+.
+Calico networking on AWS has several performance optimization opportunities that are specific to the AWS environment. Cross-AZ encapsulation adds overhead and cost; IPAM block sizing affects how efficiently IP addresses are allocated; and the choice between iptables and eBPF dataplanes has significant throughput implications on modern EC2 instance types with Linux kernel 5.10+.
 
 Optimization on AWS also has a cost dimension - cross-AZ data transfer is billed per GB, so reducing unnecessary cross-AZ pod traffic directly reduces infrastructure costs. This guide covers both performance and cost optimizations for Calico on AWS.
 
@@ -31,7 +31,7 @@ metadata:
   name: aws-pod-pool
 spec:
   cidr: 192.168.0.0/16
-  ipipMode: CrossSubnet
+  ipipMode: Never
   vxlanMode: CrossSubnet
   natOutgoing: true
 ```
@@ -59,11 +59,11 @@ spec:
   blockSize: 23   # /23 = 512 IPs per node
 ```
 
-Calculate: `blockSize` = log2(max_pods_per_node * 2) rounded up to nearest /N.
+Calculate: pick `blockSize` so the block holds at least `max_pods_per_node * 2` addresses, i.e. `blockSize` = 32 - ceil(log2(max_pods_per_node * 2)).
 
 ## Optimization 3: Enable eBPF Dataplane
 
-On EC2 instances running Amazon Linux 2023 or Ubuntu 22.04 (kernel 5.15+):
+On EC2 instances running Amazon Linux 2023 or Ubuntu 22.04 (kernel 5.10+, 6.6+ recommended):
 
 ```bash
 kubectl patch installation default \
