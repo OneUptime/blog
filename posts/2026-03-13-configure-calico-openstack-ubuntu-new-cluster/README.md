@@ -21,22 +21,16 @@ The configuration touchpoints are the Neutron plugin settings (for OpenStack int
 - Physical switches with BGP support (recommended)
 - Tenant IP ranges planned and allocated
 
-## Step 1: Configure Tenant IP Pool
+## Step 1: Configure Tenant Networks
 
-Define the IP range that OpenStack tenants will receive.
+Define the Neutron network and subnet ranges that OpenStack instances will receive.
 
 ```bash
-cat <<EOF | calicoctl apply -f -
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: openstack-tenant-pool
-spec:
-  cidr: 10.65.0.0/16
-  blockSize: 24
-  natOutgoing: true
-  disabled: false
-EOF
+openstack network create --share internal
+openstack subnet create --network internal \
+  --subnet-range 10.65.0.0/16 \
+  --gateway 10.65.0.1 \
+  --ip-version 4 internal-v4
 ```
 
 ## Step 2: Configure BGP for Tenant Networks
@@ -77,10 +71,11 @@ EOF
 
 [global]
 DatastoreType = etcdv3
-EtcdEndpoints = http://<controller-ip>:2379
+EtcdAddr = <controller-ip>:2379
 LogSeverityScreen = Warning
 PrometheusMetricsEnabled = true
-RoutingRulesSourceFT = kube
+EndpointStatusPathPrefix = none
+OpenStackRegion = regionone
 ```
 
 ```bash
@@ -90,11 +85,15 @@ sudo systemctl restart calico-felix
 ## Step 4: Configure Neutron for Calico Networks
 
 ```ini
-# /etc/neutron/plugins/ml2/ml2_conf.ini
+# /etc/neutron/neutron.conf
+[DEFAULT]
+core_plugin = calico
+service_plugins = qos
+
 [calico]
 etcd_host = <controller-ip>
 etcd_port = 2379
-openstack_region = RegionOne
+openstack_region = regionone
 ```
 
 ## Step 5: Verify BGP Peering
@@ -105,17 +104,13 @@ sudo calicoctl node status
 
 BGP sessions should show `Established` for all configured peers.
 
-## Step 6: Create a Test OpenStack Network
+## Step 6: Create a Test OpenStack VM
 
 ```bash
-openstack network create test-calico-net
-openstack subnet create --network test-calico-net \
-  --subnet-range 10.65.1.0/24 \
-  --ip-version 4 test-calico-subnet
-openstack server create --network test-calico-net \
+openstack server create --network internal \
   --image cirros --flavor m1.tiny test-vm
 ```
 
 ## Conclusion
 
-Configuring Calico for an Ubuntu OpenStack cluster involves defining tenant IP pools, enabling BGP peering with physical routers, tuning Felix for the OpenStack workload pattern, and verifying that OpenStack networks and VMs receive routable IPs. The BGP-based flat network model provides simpler operations and better performance than overlay-based approaches, at the cost of requiring IP address planning across the entire deployment.
+Configuring Calico for an Ubuntu OpenStack cluster involves defining Neutron networks and subnets, enabling BGP peering with physical routers, tuning Felix for the OpenStack workload pattern, and verifying that OpenStack networks and VMs receive routable IPs. The BGP-based flat network model provides simpler operations and better performance than overlay-based approaches, at the cost of requiring IP address planning across the entire deployment.
