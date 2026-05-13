@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitoring and alerting setup to detect calico-node CrashLoopBackOff events early using Prometheus metrics, Kubernetes events, and log-based detection.
+Description: Monitoring and alerting setup to detect calico-node CrashLoopBackOff events early using Prometheus metrics and Kubernetes BackOff events.
 
 ---
 
 ## Introduction
 
-Detecting calico-node CrashLoopBackOff quickly is critical because each crash cycle withdraws BGP routes and may cause new pod scheduling to fail on the affected node. Without monitoring, teams often learn about this condition from application-level alerts or user reports - by which time the cluster may have been degraded for many minutes.
+Detecting calico-node CrashLoopBackOff quickly is critical because each crash cycle can disrupt node networking and, in BGP-backed Calico deployments, route advertisement from the affected node. It may also cause new pods to fail during network setup on that node. Without monitoring, teams often learn about this condition from application-level alerts or user reports - by which time the cluster may have been degraded for many minutes.
 
-Effective monitoring for CrashLoopBackOff combines multiple signals: Kubernetes pod restart counters (via kube-state-metrics), calico-node readiness probe failures, and structured log patterns from the Felix process. Layering these signals provides redundancy so that no single monitoring gap leaves the cluster blind to calico-node crashes.
+Effective monitoring for CrashLoopBackOff combines multiple signals: Kubernetes pod restart counters (via kube-state-metrics), calico-node readiness probe failures, and Kubernetes BackOff events. Layering these signals provides redundancy so that no single monitoring gap leaves the cluster blind to calico-node crashes.
 
-This guide covers the setup of Prometheus-based alerting, Kubernetes event watchers, and log monitoring for calico-node CrashLoopBackOff.
+This guide covers the setup of Prometheus-based alerting and Kubernetes event watchers for calico-node CrashLoopBackOff.
 
 ## Symptoms
 
@@ -25,8 +25,8 @@ This guide covers the setup of Prometheus-based alerting, Kubernetes event watch
 ## Root Causes
 
 - No Prometheus rule monitoring kube_pod_container_status_restarts_total for calico-node
-- kube-state-metrics not deployed or not scraping kube-system namespace
-- Log aggregation not configured to alert on calico-node crash patterns
+- kube-state-metrics not deployed, Prometheus not scraping kube-state-metrics, or kube-state-metrics not allowed to watch pods in kube-system
+- Kubernetes event monitoring not configured to alert on calico-node BackOff events
 
 ## Diagnosis Steps
 
