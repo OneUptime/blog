@@ -47,7 +47,7 @@ config:
   # Use IRSA or IAM roles in production instead of access keys
   access_key: AKIAIOSFODNN7EXAMPLE
   secret_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-  # Enable compression for storage efficiency
+  # Enable S3-managed server-side encryption
   sse_config:
     type: SSE-S3
 ```
@@ -76,11 +76,11 @@ spec:
   values:
     prometheus:
       prometheusSpec:
-        # Minimum storage for recent data (Thanos uploads older blocks)
-        retention: 2h  # Short local retention - Thanos handles long-term
+        # Keep at least 3x the 2h block duration so failed uploads can catch up
+        retention: 6h
         retentionSize: "10GiB"
 
-        # Required for Thanos: enable block uploads
+        # Optional: enable exemplar storage if you collect exemplars
         enableFeatures:
           - exemplar-storage
 
@@ -90,8 +90,9 @@ spec:
           version: v0.35.0
           objectStorageConfig:
             # Reference the pre-created secret
-            key: objstore.yml
-            name: thanos-objstore-config
+            existingSecret:
+              key: objstore.yml
+              name: thanos-objstore-config
 
         # Storage for Prometheus's local WAL and recent blocks
         storageSpec:
@@ -145,7 +146,7 @@ spec:
   selector:
     # Target the Prometheus pod which includes the Thanos sidecar
     app.kubernetes.io/name: prometheus
-    prometheus: kube-prometheus-stack-prometheus
+    operator.prometheus.io/name: kube-prometheus-stack-prometheus
 ```
 
 ## Step 4: Deploy Thanos Query Component
@@ -171,6 +172,9 @@ spec:
         namespace: flux-system
       interval: 12h
   values:
+    # Reuse the same object storage secret for Store Gateway and Compactor
+    existingObjstoreSecret: thanos-objstore-config
+
     query:
       enabled: true
       replicaCount: 2
@@ -187,14 +191,19 @@ spec:
           cpu: 500m
           memory: 1Gi
 
-    # Disable components we are deploying separately
+    # Store Gateway serves historical blocks from object storage
+    storegateway:
+      enabled: true
+      replicaCount: 2
+
+    # Compactor handles object-storage compaction and downsampling
+    compactor:
+      enabled: true
+
+    # Disable components we are not deploying in this guide
     queryFrontend:
       enabled: false
     bucketweb:
-      enabled: false
-    compactor:
-      enabled: false
-    storegateway:
       enabled: false
     ruler:
       enabled: false
@@ -223,7 +232,7 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: thanos-query
+      name: thanos-query-query
       namespace: monitoring
   timeout: 10m
 ```
@@ -249,7 +258,7 @@ curl http://localhost:10902/api/v1/stores
 curl "http://localhost:10902/api/v1/query?query=up"
 
 # Verify blocks are appearing in S3
-aws s3 ls s3://my-thanos-metrics/production-us-east-1/ --recursive | head -20
+aws s3 ls s3://my-thanos-metrics/ --recursive | head -20
 
 # Check Flux reconciliation
 flux get helmrelease thanos-query -n monitoring
@@ -257,12 +266,12 @@ flux get helmrelease thanos-query -n monitoring
 
 ## Best Practices
 
-- Set a short local Prometheus retention (2-6 hours) when using Thanos Sidecar; longer retention wastes local disk on data that will be uploaded to object storage anyway.
+- Set local Prometheus retention to at least 6 hours when using Thanos Sidecar uploads; this keeps at least three 2-hour blocks locally so failed uploads can catch up.
 - Always set `externalLabels` on Prometheus with at minimum `cluster` and `env` labels; without these, Thanos cannot identify the source of metrics in multi-cluster queries.
 - Enable Thanos's block upload verification by checking the Thanos Sidecar logs regularly; failed uploads silently lose metric history.
 - Use IRSA (IAM Roles for Service Accounts) on EKS or Workload Identity on GKE instead of static credentials for S3 access; this eliminates the need to rotate access keys.
 - Deploy Thanos Query with at least 2 replicas for high availability; Thanos Query is stateless and horizontally scalable.
-- Monitor the age of the most recent block in object storage; if it is more than 2 hours old, the sidecar may be failing to upload.
+- Monitor the age of the most recent block in object storage; if it is more than 3 hours old, the sidecar may be failing to upload.
 
 ## Conclusion
 
