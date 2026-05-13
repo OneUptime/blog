@@ -10,7 +10,7 @@ Description: Learn how to configure Flux on AKS to use Azure Workload Identity f
 
 ## Introduction
 
-Azure Blob Storage can serve as a source for Kubernetes manifests, Helm charts, and OCI artifacts that Flux reconciles into your cluster. When your Blob Storage container is private, Flux needs credentials to access it. Workload Identity provides a secure way to authenticate Flux controllers to Azure Blob Storage without storing any connection strings or account keys in your cluster.
+Azure Blob Storage can serve as a source for Kubernetes manifests and Helm chart directories that Flux reconciles into your cluster. When your Blob Storage container is private, Flux needs credentials to access it. Workload Identity provides a secure way to authenticate Flux controllers to Azure Blob Storage without storing any connection strings or account keys in your cluster.
 
 This guide covers the end-to-end setup of Flux on AKS using Workload Identity to pull deployment artifacts from a private Azure Blob Storage container.
 
@@ -82,14 +82,17 @@ export IDENTITY_OBJECT_ID=$(az identity show \
 Assign the Storage Blob Data Reader role to the managed identity:
 
 ```bash
-STORAGE_ID=$(az storage account show \
-  --name myfluxstorage \
+STORAGE_CONTAINER_ID=$(az storage container-rm show \
+  --storage-account myfluxstorage \
+  --name flux-artifacts \
+  --resource-group my-resource-group \
   --query id -o tsv)
 
 az role assignment create \
   --assignee-object-id "$IDENTITY_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Reader" \
-  --scope "$STORAGE_ID"
+  --scope "$STORAGE_CONTAINER_ID"
 ```
 
 ## Step 5: Create a Federated Identity Credential
@@ -152,16 +155,13 @@ You can manage these patches through a Kustomization overlay in your Git reposit
 
 ## Step 7: Upload Artifacts to Blob Storage
 
-Package and upload your Kubernetes manifests to the blob container:
+Upload your Kubernetes manifests to the blob container:
 
 ```bash
-tar -czf artifacts.tar.gz -C ./deploy .
-
-az storage blob upload \
+az storage blob upload-batch \
   --account-name myfluxstorage \
-  --container-name flux-artifacts \
-  --name artifacts.tar.gz \
-  --file artifacts.tar.gz \
+  --destination flux-artifacts \
+  --source ./deploy \
   --auth-mode login
 ```
 
