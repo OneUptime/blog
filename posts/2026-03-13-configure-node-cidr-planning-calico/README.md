@@ -35,7 +35,7 @@ Determine the correct block size based on your node's expected pod density.
 # /24 = 256 addresses (suitable for up to ~230 pods/node)
 
 # Example: If your nodes run up to 100 pods, use /25
-# Formula: block_size >= max_pods_per_node + overhead (3-5 reserved addresses)
+# Formula: addresses_per_block >= max_pods_per_node + operational headroom
 
 # Check current max pods setting in kubelet
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.allocatable.pods}{"\n"}{end}'
@@ -43,7 +43,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.a
 
 ## Step 2: Configure IP Pool with Desired Block Size
 
-Set the block size on the Calico IP pool when creating or updating it.
+Set the block size on the Calico IP pool when creating it. Calico only allows `blockSize` to be set when the pool is created, so changing block size for an existing pool requires creating a replacement pool and migrating workloads.
 
 ```yaml
 # ippool-with-blocksize.yaml - IP pool with custom block size for node CIDR planning
@@ -64,7 +64,7 @@ spec:
 ```
 
 ```bash
-# Apply the IP pool configuration (must be done before pods are scheduled)
+# Apply the IP pool configuration before pods are scheduled from this pool
 calicoctl apply -f ippool-with-blocksize.yaml
 
 # Verify the pool is created with the correct block size
@@ -86,8 +86,10 @@ BLOCK_SIZE=25  # /25 = 128 addresses
 IPS_PER_BLOCK=$((2 ** (32 - BLOCK_SIZE)))
 TOTAL_IPS=$((NODES * IPS_PER_BLOCK))
 HEADROOM=$((TOTAL_IPS * 20 / 100))
-echo "Minimum pool size: $((TOTAL_IPS + HEADROOM)) addresses"
-echo "Recommended CIDR: Use a /${32 - $(python3 -c "import math; print(math.ceil(math.log2($((TOTAL_IPS + HEADROOM)))))")} or larger"
+REQUIRED_IPS=$((TOTAL_IPS + HEADROOM))
+PREFIX=$(python3 -c "import math; print(32 - math.ceil(math.log2($REQUIRED_IPS)))")
+echo "Minimum pool size: ${REQUIRED_IPS} addresses"
+echo "Recommended CIDR: Use a /${PREFIX} or larger address range"
 ```
 
 ## Step 4: Monitor IPAM Utilization
@@ -98,13 +100,10 @@ Regularly check IPAM utilization to detect exhaustion risk early.
 # Show overall IPAM utilization
 calicoctl ipam show
 
-# Show per-node block allocation details
+# Show allocation block details
 calicoctl ipam show --show-blocks
 
-# Check for nodes that have been allocated multiple blocks (indicates high pod density)
-calicoctl ipam show --show-blocks | grep -E "^Block" | awk '{print $2}' | sort | uniq -c | sort -rn | head -10
-
-# Show IP usage statistics
+# Show borrowed IP addresses, which indicate allocations from another node's block
 calicoctl ipam show --show-borrowed
 ```
 
