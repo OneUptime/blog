@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Fix Calico policies blocking kube-dns by adding ingress allow rules for UDP port 53 in kube-system namespace policies and GlobalNetworkPolicies.
+Description: Fix Calico policies blocking kube-dns by adding ingress allow rules for UDP/TCP port 53 in kube-system namespace policies and GlobalNetworkPolicies.
 
 ---
 
@@ -20,13 +20,13 @@ Fixing Calico blocking kube-dns requires allowing ingress traffic to CoreDNS pod
 ## Root Causes
 
 - kube-system NetworkPolicy ingress default-deny blocking DNS queries
-- GlobalNetworkPolicy blocking UDP 53 to CoreDNS pods
+- GlobalNetworkPolicy blocking UDP/TCP 53 to CoreDNS pods
 
 ## Diagnosis Steps
 
 ```bash
 kubectl get networkpolicy -n kube-system
-calicoctl get globalnetworkpolicy | grep -i "deny\|block"
+calicoctl get globalnetworkpolicy -o yaml | grep -i "deny\|block"
 ```
 
 ## Solution
@@ -63,7 +63,8 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-kube-dns-ingress
 spec:
-  order: 5  # Highest priority
+  order: 5  # Use an order lower than the deny policy
+  namespaceSelector: projectcalico.org/name == 'kube-system'
   selector: k8s-app == 'kube-dns'
   types:
   - Ingress
@@ -82,6 +83,7 @@ spec:
 
 ```bash
 kubectl apply -f allow-dns-ingress-to-coredns.yaml
+kubectl apply -f allow-kube-dns-ingress.yaml
 
 # Test from multiple namespaces
 
@@ -105,7 +107,7 @@ flowchart TD
 ## Prevention
 
 - Never apply default-deny ingress to kube-system without CoreDNS allow
-- Use GlobalNetworkPolicy DNS baseline with order 5
+- Use a GlobalNetworkPolicy DNS baseline with an order lower than any deny policy
 - Require DNS testing from all namespaces after any kube-system policy change
 
 ## Conclusion
