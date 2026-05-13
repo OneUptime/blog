@@ -160,12 +160,22 @@ spec:
 Instead of tracking a mutable tag like `latest`, you can use semver-based tags for more controlled updates:
 
 ```yaml
-sync:
-  kind: OCIRepository
-  url: oci://ghcr.io/org/fleet-manifests
-  ref: ">=1.0.0 <2.0.0"
-  path: .
-  interval: 10m
+spec:
+  sync:
+    kind: OCIRepository
+    url: oci://ghcr.io/org/fleet-manifests
+    ref: latest
+    path: .
+    interval: 10m
+  kustomize:
+    patches:
+      - patch: |
+          - op: replace
+            path: /spec/ref
+            value:
+              semver: ">=1.0.0 <2.0.0"
+        target:
+          kind: OCIRepository
 ```
 
 Push artifacts with semver tags in your CI pipeline:
@@ -211,8 +221,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: fluxcd/flux2/action@main
       - name: Login to GHCR
-        run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | flux oci login ghcr.io --username=flux --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push artifact
         run: |
           flux push artifact oci://ghcr.io/${{ github.repository }}/fleet-manifests:latest \
