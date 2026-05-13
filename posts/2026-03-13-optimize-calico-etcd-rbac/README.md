@@ -67,35 +67,35 @@ etcdctl role grant-permission calico-felix read /calico/v1/config/felix
 etcdctl role grant-permission calico-felix --prefix=true read /calico/v1/config/
 ```
 
-## Optimization 3: Reduce Calico Watch Operations
+## Optimization 3: Reduce Calico Watch Operations with Typha
 
-Excessive etcd watch operations add load to both etcd and the RBAC authorization layer. Tune Felix's watch behavior:
+Excessive etcd watch operations add load to both etcd and the RBAC authorization layer. Deploying Typha consolidates Felix watches into a single set of connections to the datastore, dramatically reducing the number of authorized watch operations against etcd:
 
 ```bash
-kubectl patch felixconfiguration default \
-  --type=merge \
-  --patch='{"spec":{"etcdDriverPollInterval":"10s"}}'
+# Confirm Typha is deployed and reachable by Felix
+kubectl get deployment calico-typha -n kube-system
+kubectl get service calico-typha -n kube-system
 ```
 
 ## Optimization 4: Monitor Authorization Latency
 
-etcd exposes metrics for authorization performance:
+etcd does not export auth-specific Prometheus metrics, but auth activity is observable via the generic gRPC metrics (filtered by the `etcdserverpb.Auth` service) and via slow-read indicators. On kubeadm clusters the metrics endpoint is exposed on port 2381 (set via `--listen-metrics-urls`); on default upstream etcd it is served on the client port 2379:
 
 ```bash
 curl http://etcd:2381/metrics | grep etcd_server_slow_read_indexes_total
-curl http://etcd:2381/metrics | grep etcd_auth_*
+curl http://etcd:2381/metrics | grep 'grpc_service="etcdserverpb.Auth"'
 ```
 
-Create a Prometheus alert for high authorization latency:
+Create a Prometheus alert for slow etcd Range requests, which can indicate authorization or read-index pressure:
 
 ```yaml
-- alert: EtcdAuthorizationSlow
-  expr: histogram_quantile(0.99, etcd_grpc_unary_requests_duration_seconds_bucket{grpc_method="Range"}) > 0.1
+- alert: EtcdRangeRequestsSlow
+  expr: histogram_quantile(0.99, sum by (le) (rate(grpc_server_handling_seconds_bucket{job="etcd",grpc_method="Range",grpc_type="unary"}[5m]))) > 0.1
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "etcd authorization latency is high"
+    summary: "etcd Range request latency is high"
 ```
 
 ## Optimization 5: Dedicated etcd for Calico
@@ -111,9 +111,11 @@ If sharing etcd, consider migrating Calico to Kubernetes API datastore mode to e
 
 ```bash
 # Migrate Calico from etcd to kdd (Kubernetes datastore)
+calicoctl datastore migrate lock
 calicoctl datastore migrate export > calico-state.yaml
-# Update CALICO_DATASTORE_TYPE=kubernetes in DaemonSet
+# Reconfigure calicoctl/calico-node for KDD (DATASTORE_TYPE=kubernetes in the DaemonSet)
 calicoctl datastore migrate import -f calico-state.yaml
+calicoctl datastore migrate unlock
 ```
 
 ## Conclusion
