@@ -41,7 +41,7 @@ REPORT_FILE="migration-assessment-${CLUSTER}-$(date +%Y%m%d).txt"
   echo ""
 
   echo "=== Kubernetes Version ==="
-  kubectl version --short
+  kubectl version
 
   echo ""
   echo "=== Current Calico Version ==="
