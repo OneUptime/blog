@@ -25,7 +25,7 @@ Before you begin, ensure you have:
 
 ## Understanding Flagger's Service Creation
 
-When Flagger initializes a Canary resource, it creates several services and deployments. For an application named `podinfo`, Flagger creates `podinfo-primary` and `podinfo-canary` services along with their corresponding Deployments. Your ServiceMonitor must match these services to ensure Prometheus scrapes metrics from both versions during canary analysis.
+When Flagger initializes a Canary resource, it creates several services and a primary deployment. For an application named `podinfo`, Flagger creates `podinfo`, `podinfo-primary`, and `podinfo-canary` services. Your ServiceMonitor must match these services to ensure Prometheus scrapes metrics from both versions during canary analysis.
 
 ## Creating a ServiceMonitor for the Application
 
@@ -44,8 +44,13 @@ metadata:
     release: prometheus
 spec:
   selector:
-    matchLabels:
-      app: podinfo
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - podinfo
+          - podinfo-primary
+          - podinfo-canary
   namespaceSelector:
     matchNames:
       - test
@@ -55,7 +60,7 @@ spec:
       interval: 15s
 ```
 
-This ServiceMonitor uses a label selector that matches all services with the `app: podinfo` label. Since Flagger copies labels from the original service to the primary and canary services, this selector will match all three.
+This ServiceMonitor uses a label selector that matches the `app` labels Flagger assigns to the generated apex, primary, and canary services. If you configure Flagger with a different selector label, update the `key` and values accordingly.
 
 Apply the ServiceMonitor.
 
@@ -69,7 +74,7 @@ Ensure that the ServiceMonitor selector labels match the services Flagger create
 
 ```bash
 # Check labels on all podinfo services
-kubectl get svc -n test -l app=podinfo --show-labels
+kubectl get svc -n test -l 'app in (podinfo,podinfo-primary,podinfo-canary)' --show-labels
 
 # Verify the ServiceMonitor is being picked up by Prometheus
 kubectl get servicemonitor -n test
@@ -199,7 +204,7 @@ This enables monitoring of Flagger's own health and provides the `flagger_canary
 
 ## Handling Dynamic Service Creation
 
-When Flagger creates canary and primary services during initialization, there can be a delay before Prometheus discovers and starts scraping the new targets. To minimize this delay, configure a shorter resync period on the Prometheus Operator.
+When Flagger creates canary and primary services during initialization, there can be a delay before Prometheus discovers and starts scraping the new targets. If you use kube-prometheus-stack and want Prometheus to select ServiceMonitor and PodMonitor resources that are not labeled with the Helm release label, adjust the selector settings.
 
 ```yaml
 # prometheus-values.yaml
@@ -210,7 +215,7 @@ prometheus:
     podMonitorSelectorNilUsesHelmValues: false
 ```
 
-Setting `serviceMonitorSelectorNilUsesHelmValues` to false allows Prometheus to discover all ServiceMonitors regardless of their labels, which simplifies setup.
+Setting `serviceMonitorSelectorNilUsesHelmValues` to false allows a nil or empty ServiceMonitor selector to match ServiceMonitors regardless of their labels in the namespaces selected by `serviceMonitorNamespaceSelector`, which simplifies setup.
 
 ## Verifying the Complete Setup
 
@@ -225,7 +230,7 @@ kubectl port-forward svc/prometheus-operated -n monitoring 9090:9090
 
 # Query for application metrics
 curl -s 'http://localhost:9090/api/v1/query' \
-  --data-urlencode 'query=up{job="podinfo"}'
+  --data-urlencode 'query=up{job=~"podinfo|podinfo-primary|podinfo-canary"}'
 
 # Check Flagger metrics
 curl -s 'http://localhost:9090/api/v1/query' \
