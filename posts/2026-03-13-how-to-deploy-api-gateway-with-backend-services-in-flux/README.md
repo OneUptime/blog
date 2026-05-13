@@ -141,6 +141,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: kong
   targetNamespace: gateway
   createNamespace: true
   chart:
@@ -160,17 +161,12 @@ spec:
     # Use DB-less mode for GitOps-friendly configuration
     env:
       database: "off"
-      declarative_config: /opt/kong/kong.yaml
 
-    # Mount the Kong declarative config from a ConfigMap
-    volumes:
-      - name: kong-config
-        configMap:
-          name: kong-declarative-config
-
-    volumeMounts:
-      - name: kong-config
-        mountPath: /opt/kong
+    # Use the chart's DB-less ConfigMap support
+    ingressController:
+      enabled: false
+    dblessConfig:
+      configMap: kong-declarative-config
 
     # Expose Kong via LoadBalancer
     proxy:
@@ -191,12 +187,17 @@ Store Kong routing rules as a ConfigMap in Git.
 ```yaml
 # clusters/production/apps/kong-config-configmap.yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kong-declarative-config
   namespace: gateway
 data:
-  kong.yaml: |
+  kong.yml: |
     _format_version: "3.0"
     _transform: true
 
@@ -247,13 +248,13 @@ flux get helmreleases --watch
 kubectl get pods -n backend
 kubectl get pods -n gateway
 
-# Check the gateway's external IP
+# Check the gateway's external address
 kubectl get svc -n gateway kong-proxy
 
 # Test routing through the gateway
-GATEWAY_IP=$(kubectl get svc kong-proxy -n gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl http://$GATEWAY_IP/api/users/health
-curl http://$GATEWAY_IP/api/orders/health
+GATEWAY_HOST=$(kubectl get svc kong-proxy -n gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl http://$GATEWAY_HOST/api/users/health
+curl http://$GATEWAY_HOST/api/orders/health
 ```
 
 ## Step 6: Update Gateway Configuration
@@ -268,7 +269,7 @@ flux reconcile kustomization all-apps --with-source
 kubectl rollout restart deployment/kong -n gateway
 
 # Verify new routes are active
-curl http://$GATEWAY_IP/api/new-route/health
+curl http://$GATEWAY_HOST/api/new-route/health
 ```
 
 ## Best Practices
