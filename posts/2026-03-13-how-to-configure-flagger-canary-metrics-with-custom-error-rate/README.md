@@ -21,7 +21,7 @@ This guide covers how to create custom error rate MetricTemplates and wire them 
 - A running Kubernetes cluster with Flagger installed
 - Prometheus deployed and scraping your application or mesh metrics
 - kubectl access to your cluster
-- A Deployment with a matching Service targeted by a Canary resource
+- A Deployment targeted by a Canary resource
 
 ## How Flagger Evaluates Error Rate Metrics
 
@@ -204,31 +204,44 @@ This configuration checks both mesh-level and application-level error rates alon
 
 ## Handling No-Traffic Scenarios
 
-A common pitfall with custom error rate queries is division by zero when there is no traffic. If the denominator in your rate query is zero, Prometheus returns `NaN`, and Flagger treats `NaN` as a failed check. To handle this, you can use the Prometheus `or` operator to return a default value:
+A common pitfall with custom error rate queries is division by zero when there is no traffic. If the denominator in your rate query is zero, Prometheus returns `NaN`, and Flagger treats `NaN` as a failed check. To handle this, filter out samples where the total request rate is zero, then use the Prometheus `or` operator to return a default value:
 
 ```yaml
   query: |
-    100 * (
-      sum(rate(
-        istio_requests_total{
-          reporter="destination",
-          destination_workload_namespace="{{ namespace }}",
-          destination_workload="{{ target }}",
-          response_code=~"5.*"
-        }[{{ interval }}]
-      ))
-      /
+    (
+      100 * (
+        sum(rate(
+          istio_requests_total{
+            reporter="destination",
+            destination_workload_namespace="{{ namespace }}",
+            destination_workload="{{ target }}",
+            response_code=~"5.*"
+          }[{{ interval }}]
+        ))
+        /
+        sum(rate(
+          istio_requests_total{
+            reporter="destination",
+            destination_workload_namespace="{{ namespace }}",
+            destination_workload="{{ target }}"
+          }[{{ interval }}]
+        ))
+      )
+    )
+    and on()
+    (
       sum(rate(
         istio_requests_total{
           reporter="destination",
           destination_workload_namespace="{{ namespace }}",
           destination_workload="{{ target }}"
         }[{{ interval }}]
-      ))
-    ) or vector(0)
+      )) > 0
+    )
+    or vector(0)
 ```
 
-The `or vector(0)` clause ensures that when there is no traffic, the query returns 0 instead of `NaN`, allowing the canary analysis to pass.
+The total-request-rate filter drops the `NaN` result when there is no traffic, and the `or vector(0)` clause returns 0 instead, allowing the canary analysis to pass.
 
 ## Conclusion
 
