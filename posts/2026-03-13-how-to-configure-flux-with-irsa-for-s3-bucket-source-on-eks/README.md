@@ -166,7 +166,7 @@ spec:
   prefix: production/
 ```
 
-The `provider: aws` field tells Flux to use IRSA for authentication. No static credentials are needed.
+The `provider: aws` field lets the source-controller use its AWS workload identity, including the IRSA role annotation configured above. No static credentials are needed.
 
 ## Step 6: Create a Kustomization from the Bucket
 
@@ -197,17 +197,16 @@ Upload your Kubernetes manifests to the S3 bucket from your CI pipeline:
 
 ```bash
 # Build manifests
-kustomize build apps/production > /tmp/manifests.tar.gz
+kustomize build apps/production > /tmp/output.yaml
 
 # Upload to S3
 aws s3 sync ./apps/production/ \
   s3://my-flux-artifacts/production/manifests/ \
   --delete
 
-# Or upload a tar archive
-tar czf /tmp/manifests.tar.gz -C apps/production .
-aws s3 cp /tmp/manifests.tar.gz \
-  s3://my-flux-artifacts/production/manifests.tar.gz
+# Or upload rendered manifests
+aws s3 cp /tmp/output.yaml \
+  s3://my-flux-artifacts/production/manifests/output.yaml
 ```
 
 ## CI Pipeline Integration
@@ -244,7 +243,7 @@ jobs:
 
 ## Using Bucket Source with Helm Charts
 
-You can also store Helm chart archives in S3:
+You can also store Helm chart directories in S3:
 
 ```yaml
 # clusters/production/helm-from-s3.yaml
