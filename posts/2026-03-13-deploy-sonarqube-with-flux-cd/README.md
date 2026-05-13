@@ -14,19 +14,19 @@ SonarQube is the leading open-source platform for continuous inspection of code 
 
 Flux CD brings GitOps principles to Kubernetes, meaning your entire SonarQube deployment-from Helm values to configuration-lives in Git. Every change is auditable, rollbacks are trivial, and drift between your declared state and the running cluster is automatically corrected.
 
-In this guide you will use Flux CD's `HelmRelease` and `HelmRepository` custom resources to deploy SonarQube Community Edition from the official Helm chart, wire it to a dedicated PostgreSQL instance, and configure a persistent volume for analysis data.
+In this guide you will use Flux CD's `HelmRelease` and `HelmRepository` custom resources to deploy SonarQube Community Build from the official Helm chart, wire it to a dedicated PostgreSQL instance, and configure a persistent volume for analysis data.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26+)
+- A running Kubernetes cluster (v1.32-v1.35 for the chart version used below)
 - Flux CD bootstrapped in the cluster (`flux bootstrap`)
 - `kubectl` configured to target the cluster
 - A Git repository Flux is watching (your "fleet" repo)
-- At least 4 GB of RAM available for SonarQube pods
+- At least 6 GB of RAM available for SonarQube pods
 
 ## Step 1: Create the Namespace and Secret
 
-SonarQube needs a dedicated namespace and a secret containing the PostgreSQL credentials.
+SonarQube needs a dedicated namespace and a secret containing the PostgreSQL credentials and monitoring passcode.
 
 ```yaml
 # clusters/my-cluster/sonarqube/namespace.yaml
@@ -38,11 +38,15 @@ metadata:
 ```
 
 ```bash
+# Apply the namespace before creating the secret
+kubectl apply -f clusters/my-cluster/sonarqube/namespace.yaml
+
 # Create the database credentials secret (keep this out of Git)
 kubectl create secret generic sonarqube-db-secret \
   --namespace sonarqube \
   --from-literal=postgres-password=supersecret \
-  --from-literal=sonarqube-password=sonarsecret
+  --from-literal=sonarqube-password=sonarsecret \
+  --from-literal=monitoring-passcode=monitoringsecret
 ```
 
 ## Step 2: Add the SonarQube Helm Repository
@@ -62,7 +66,19 @@ spec:
   interval: 12h
 ```
 
-Commit this file and push. Flux will reconcile and register the repository.
+```yaml
+# clusters/my-cluster/sonarqube/bitnami-helm-repository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  url: https://charts.bitnami.com/bitnami
+  interval: 12h
+```
+
+Commit these files and push. Flux will reconcile and register the repositories.
 
 ## Step 3: Deploy PostgreSQL via HelmRelease
 
@@ -115,17 +131,19 @@ spec:
   chart:
     spec:
       chart: sonarqube
-      version: ">=10.0.0 <11.0.0"
+      version: ">=2026.2.0 <2026.3.0"
       sourceRef:
         kind: HelmRepository
         name: sonarqube
         namespace: flux-system
   values:
-    # Use external PostgreSQL instead of bundled
-    postgresql:
-      enabled: false
+    # Deploy SonarQube Community Build
+    community:
+      enabled: true
+    monitoringPasscodeSecretName: sonarqube-db-secret
+    monitoringPasscodeSecretKey: monitoring-passcode
     jdbcOverwrite:
-      enable: true
+      enabled: true
       jdbcUrl: "jdbc:postgresql://sonarqube-postgresql:5432/sonarqube"
       jdbcUsername: sonarqube
       jdbcSecretName: sonarqube-db-secret
@@ -139,7 +157,7 @@ spec:
         memory: 2Gi
       limits:
         cpu: 800m
-        memory: 4Gi
+        memory: 6Gi
     ingress:
       enabled: true
       hosts:
@@ -152,7 +170,7 @@ spec:
 ## Step 5: Add a Kustomization to Wire Everything Together
 
 ```yaml
-# clusters/my-cluster/sonarqube/kustomization.yaml
+# clusters/my-cluster/flux-system/sonarqube-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
