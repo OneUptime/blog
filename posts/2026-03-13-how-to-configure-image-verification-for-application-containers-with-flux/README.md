@@ -1,14 +1,14 @@
-# How to Configure Image Verification for Application Containers with Flux
+# How to Configure OCI Artifact Verification for Application Deployments with Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Security, Supply Chain, Image Verification, Container Security, OCI
 
-Description: Learn how to configure Flux to verify container image signatures for your application workloads before they are deployed to your cluster.
+Description: Learn how to configure Flux to verify signed OCI artifacts for your application deployments before they are reconciled in your cluster.
 
 ---
 
-Flux supports native image verification through its Kustomization and HelmRelease resources, allowing you to enforce that only signed container images are deployed to your Kubernetes cluster. This guide demonstrates how to configure Flux to verify application container image signatures as part of your GitOps deployment pipeline.
+Flux supports native signature verification for OCI source artifacts and OCI Helm chart artifacts. This allows you to require signed deployment artifacts before Flux reconciles them into your Kubernetes cluster. This guide demonstrates how to configure Flux to verify signed OCI artifacts as part of your GitOps deployment pipeline.
 
 ## Prerequisites
 
@@ -17,23 +17,23 @@ Before you begin, ensure you have:
 - A running Kubernetes cluster (v1.25 or later)
 - Flux CLI installed and bootstrapped on the cluster (v2.1 or later)
 - kubectl configured to access your cluster
-- Application container images signed with Cosign
+- Application deployment artifacts packaged as OCI artifacts and signed with Cosign
 - A Git repository connected to Flux
 
-## Step 1: Sign Your Application Container Images
+## Step 1: Sign Your Application OCI Artifacts
 
-Before configuring verification, ensure your application images are signed. Here is an example of signing with Cosign:
+Before configuring verification, ensure your application OCI artifacts are signed. Here is an example of signing with Cosign:
 
 ```bash
 # Generate a Cosign key pair
 
 cosign generate-key-pair
 
-# Sign an image with your private key
-cosign sign --key cosign.key myregistry.example.com/myapp:v1.0.0
+# Sign an OCI artifact with your private key
+cosign sign --key cosign.key myregistry.example.com/myapp-manifests:v1.0.0
 
 # For keyless signing using OIDC identity
-cosign sign myregistry.example.com/myapp:v1.0.0
+cosign sign myregistry.example.com/myapp-manifests:v1.0.0
 ```
 
 ## Step 2: Store the Cosign Public Key as a Kubernetes Secret
@@ -61,9 +61,9 @@ data:
   cosign.pub: <base64-encoded-public-key>
 ```
 
-## Step 3: Configure Image Verification in a Kustomization
+## Step 3: Configure Artifact Verification for a Kustomization Source
 
-Add image verification to your Flux Kustomization resource using the `verify` field in the OCI source:
+Add signature verification to the Flux `OCIRepository` source that your Kustomization reconciles:
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository.yaml
@@ -103,7 +103,7 @@ spec:
 
 ## Step 4: Configure Keyless Verification with Cosign
 
-For images signed with keyless Cosign (using Sigstore), configure verification with the certificate identity:
+For OCI artifacts signed with keyless Cosign (using Sigstore), configure verification with the certificate identity:
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-keyless.yaml
@@ -120,13 +120,13 @@ spec:
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/myorg/myapp/.github/workflows/build.yml@refs/heads/main"
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/myorg/myapp/.github/workflows/build.yml@refs/heads/main$"
 ```
 
 ## Step 5: Configure Verification for Helm Charts from OCI Registries
 
-If you distribute Helm charts via OCI registries, configure verification on the HelmChart source:
+If you distribute Helm charts via OCI registries, configure verification on the HelmChart source. The `HelmRepository` `oci` type is supported, but Flux recommends the `OCIRepository` API for improved OCI support:
 
 ```yaml
 # clusters/my-cluster/apps/helmrepository-oci.yaml
@@ -163,9 +163,9 @@ spec:
   targetNamespace: production
 ```
 
-## Step 6: Set Up Verification for Multiple Image Registries
+## Step 6: Set Up Verification for Multiple OCI Registries
 
-When working with images from multiple registries, create separate verification configurations:
+When working with OCI artifacts from multiple registries, create separate verification configurations:
 
 ```yaml
 # clusters/my-cluster/apps/oci-internal.yaml
@@ -218,13 +218,14 @@ flux get sources oci -A
 flux get kustomizations -A
 ```
 
-3. Check for verification-related events:
+3. Check for the documented `SourceVerified` condition:
 
 ```bash
-kubectl get events -n flux-system --field-selector reason=VerificationSucceeded
+kubectl get ocirepository my-app -n flux-system \
+  -o jsonpath='{range .status.conditions[?(@.type=="SourceVerified")]}{.status}{" "}{.reason}{"\n"}{end}'
 ```
 
-4. Test with an unsigned image by temporarily changing the OCI repository URL to an unsigned artifact and confirming it is rejected.
+4. Test with an unsigned artifact by temporarily changing the OCI repository reference to an unsigned artifact and confirming it is rejected.
 
 ## Troubleshooting
 
@@ -260,12 +261,12 @@ Common causes include:
 
 ### Keyless verification failing
 
-For keyless verification, ensure the OIDC issuer and subject match exactly:
+For keyless verification, ensure the OIDC issuer and subject match your configured regular expressions:
 
 ```bash
-# Check the certificate identity of a signed image
-cosign verify myregistry.example.com/myapp:v1.0.0 \
-  --certificate-identity-regexp=".*" \
+# Check the certificate identity of a signed artifact
+cosign verify myregistry.example.com/myapp-manifests:v1.0.0 \
+  --certificate-identity-regexp="^https://github.com/myorg/myapp/.github/workflows/build.yml@refs/heads/main$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --output json | jq '.[0].optional'
 ```
@@ -292,4 +293,4 @@ spec:
 
 ## Summary
 
-Configuring image verification for application containers with Flux adds a critical layer of supply chain security to your GitOps workflow. By requiring signed images before deployment, you ensure that only authorized and verified artifacts reach your Kubernetes clusters. Whether you use key-based or keyless Cosign verification, Flux provides native support for integrating image verification directly into your deployment pipeline.
+Configuring OCI artifact verification with Flux adds a critical layer of supply chain security to your GitOps workflow. By requiring signed deployment artifacts before reconciliation, you ensure that only authorized and verified artifacts reach your Kubernetes clusters. Whether you use key-based or keyless Cosign verification, Flux provides native support for integrating artifact verification directly into your deployment pipeline. To enforce signatures on individual workload container images referenced inside manifests, use an admission policy engine alongside Flux.
