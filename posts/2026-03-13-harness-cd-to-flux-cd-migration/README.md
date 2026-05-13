@@ -76,6 +76,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: your-org-charts
+        namespace: flux-system
   values:
     # Values previously in Harness service override
     replicaCount: 3
@@ -164,6 +165,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: myapp
+  service:
+    port: 80
   analysis:
     interval: 1m
     threshold: 5
