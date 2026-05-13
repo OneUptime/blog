@@ -140,9 +140,10 @@ After pods are rescheduled, check their distribution:
 
 ```bash
 kubectl get pods -n flux-system -o wide
+kubectl get nodes -L topology.kubernetes.io/zone
 ```
 
-Compare the NODE column values to confirm pods are on different nodes or zones.
+Compare the pod NODE column values with the node zone labels to confirm pods are on different nodes or zones.
 
 ## Summary
 
