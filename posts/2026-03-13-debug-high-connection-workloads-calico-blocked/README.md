@@ -52,17 +52,16 @@ spec:
 ## Performance Tuning
 
 ```bash
-# Tune Felix for high-connection workloads
+# Tune Felix IP set capacity and enable metrics
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "ipSetSize": 1048576,
-    "maxIpsetSize": 1048576,
+    "maxIpsetSize": 2097152,
     "prometheusMetricsEnabled": true
   }
 }'
 
 # Monitor connection tracking table
-kubectl exec -n kube-system calico-node-xxx -- conntrack -S
+kubectl exec -n calico-system <calico-node-pod> -c calico-node -- conntrack -S
 ```
 
 ## Architecture
