@@ -207,7 +207,7 @@ stringData:
     -----END PRIVATE KEY-----
 ```
 
-Encrypt and deploy this in a shared namespace, then reference it from multiple Ingress resources.
+Encrypt and deploy this in each namespace where an Ingress references it, then reference it from multiple Ingress resources in that namespace. For cluster-wide fallback certificates, use the default certificate mechanism provided by your Ingress controller.
 
 ## Multi-Environment TLS Secrets
 
