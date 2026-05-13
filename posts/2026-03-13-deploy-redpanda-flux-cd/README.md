@@ -10,7 +10,7 @@ Description: Deploy Redpanda Kafka-compatible streaming platform on Kubernetes u
 
 ## Introduction
 
-Redpanda is a Kafka-compatible streaming data platform written in C++ using the Seastar framework. It delivers Kafka API compatibility without ZooKeeper, the JVM, or garbage collection pauses. A single Redpanda node handles the same throughput as a multi-node Kafka cluster, with end-to-end latencies in the single-digit milliseconds. Redpanda is API-compatible with Kafka producers and consumers, making migration straightforward.
+Redpanda is a Kafka-compatible streaming data platform written in C++ using the Seastar framework. It delivers Kafka API compatibility without ZooKeeper, the JVM, or garbage collection pauses. Redpanda can deliver high throughput with fewer nodes than comparable Kafka deployments, with end-to-end latencies in the single-digit milliseconds. Redpanda is API-compatible with Kafka producers and consumers, making migration straightforward.
 
 Deploying Redpanda through Flux CD gives you a GitOps-managed Kafka-compatible event streaming platform that is significantly simpler to operate than Kafka. No ZooKeeper to manage, no JVM tuning, and a smaller resource footprint. The official Helm chart handles cluster formation through Redpanda's Raft-based consensus.
 
@@ -23,7 +23,7 @@ Deploying Redpanda through Flux CD gives you a GitOps-managed Kafka-compatible e
 ## Step 1: Add the Redpanda HelmRepository
 
 ```yaml
-# infrastructure/sources/redpanda-helm.yaml
+# infrastructure/messaging/redpanda/redpanda-helm.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -59,7 +59,7 @@ spec:
   chart:
     spec:
       chart: redpanda
-      version: "5.9.4"
+      version: "25.2.1"
       sourceRef:
         kind: HelmRepository
         name: redpanda
@@ -71,18 +71,15 @@ spec:
     statefulset:
       replicas: 3
       priorityClassName: ""
-      podAffinity:
+      podAntiAffinity:
         type: soft    # prefer but don't require separate nodes
 
     resources:
       cpu:
         cores: 2
-        overprovisioned: false  # dedicate CPU cores, don't share
       memory:
         container:
           max: "4Gi"
-        redpanda:
-          reserveMemory: "1Gi"  # reserve memory for OS
 
     storage:
       hostPath: ""
@@ -134,9 +131,7 @@ spec:
       sasl:
         enabled: true
         secretRef: redpanda-superuser-credentials
-        users:
-          - name: admin
-            mechanism: SCRAM-SHA-512
+        users: []
 
     tls:
       enabled: false  # set to true in production
@@ -157,7 +152,7 @@ metadata:
   namespace: redpanda
 type: Opaque
 stringData:
-  users.txt: |
+  superusers.txt: |
     admin:AdminPassword123!:SCRAM-SHA-512
 ```
 
@@ -177,29 +172,29 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: rpk
-          image: redpandadata/redpanda:v24.2.1
+          image: docker.redpanda.com/redpandadata/redpanda:v25.2.11
           command:
             - /bin/sh
             - -c
             - |
-              RPK_OPTS="--brokers redpanda-0.redpanda.redpanda.svc.cluster.local:9092 \
-                --user admin \
-                --password AdminPassword123! \
-                --sasl-mechanism SCRAM-SHA-512"
+              export RPK_BROKERS=redpanda-0.redpanda.redpanda.svc.cluster.local:9092
+              export RPK_USER=admin
+              export RPK_PASS='AdminPassword123!'
+              export RPK_SASL_MECHANISM=SCRAM-SHA-512
 
-              until rpk $RPK_OPTS cluster info; do
+              until rpk cluster info; do
                 echo "Waiting for Redpanda..."; sleep 5
               done
 
               # Create orders topic with 12 partitions
-              rpk $RPK_OPTS topic create orders \
+              rpk topic create orders \
                 --partitions 12 \
                 --replicas 3 \
                 --topic-config retention.ms=604800000 \
                 --topic-config compression.type=snappy
 
               # Create user-events topic
-              rpk $RPK_OPTS topic create user-events \
+              rpk topic create user-events \
                 --partitions 6 \
                 --replicas 3 \
                 --topic-config retention.ms=2592000000
@@ -237,23 +232,28 @@ spec:
 kubectl get pods -n redpanda
 
 # Use rpk to check cluster health
-kubectl exec -n redpanda redpanda-0 -- rpk cluster info
+kubectl exec -n redpanda redpanda-0 -- \
+  rpk cluster info \
+  -X brokers=localhost:9092 \
+  -X user=admin \
+  -X pass='AdminPassword123!' \
+  -X sasl.mechanism=SCRAM-SHA-512
 
 # List topics
 kubectl exec -n redpanda redpanda-0 -- \
   rpk topic list \
-  --brokers localhost:9092 \
-  --user admin \
-  --password AdminPassword123! \
-  --sasl-mechanism SCRAM-SHA-512
+  -X brokers=localhost:9092 \
+  -X user=admin \
+  -X pass='AdminPassword123!' \
+  -X sasl.mechanism=SCRAM-SHA-512
 
 # Produce a test message
-kubectl exec -n redpanda redpanda-0 -- \
+kubectl exec -i -n redpanda redpanda-0 -- \
   rpk topic produce orders \
-  --brokers localhost:9092 \
-  --user admin \
-  --password AdminPassword123! \
-  --sasl-mechanism SCRAM-SHA-512 \
+  -X brokers=localhost:9092 \
+  -X user=admin \
+  -X pass='AdminPassword123!' \
+  -X sasl.mechanism=SCRAM-SHA-512 \
   <<< "test-key:test-value"
 
 # Use Kafka producer from external tool (Kafka-compatible API)
@@ -264,7 +264,7 @@ kubectl exec -n redpanda redpanda-0 -- \
 
 ## Best Practices
 
-- Set `resources.cpu.overprovisioned: false` to dedicate CPU cores to Redpanda - this is how it achieves consistent low latency.
+- Set whole CPU cores with `resources.cpu.cores` and use the Kubernetes static CPU manager policy for dedicated CPUs - this is how Redpanda achieves consistent low latency.
 - Use local NVMe storage (`hostPath` or local PVCs) for best write throughput - Redpanda's performance is I/O bound.
 - Enable TLS and SASL authentication for all production deployments.
 - Set `auto_create_topics_enabled: false` and create topics explicitly for production control.
@@ -272,4 +272,4 @@ kubectl exec -n redpanda redpanda-0 -- \
 
 ## Conclusion
 
-Redpanda deployed via Flux CD gives you a Kafka-compatible streaming platform that requires no ZooKeeper, no JVM, and delivers sub-millisecond latencies with a fraction of Kafka's operational complexity. Existing Kafka clients and tools connect without modification. With Flux managing the Redpanda cluster configuration, topic creation, and credentials, your event streaming infrastructure is fully described in Git and automatically reconciled. For teams tired of JVM tuning and ZooKeeper operations, Redpanda is a compelling modern alternative.
+Redpanda deployed via Flux CD gives you a Kafka-compatible streaming platform that requires no ZooKeeper, no JVM, and delivers low latencies with a fraction of Kafka's operational complexity. Existing Kafka clients and tools connect without modification. With Flux managing the Redpanda cluster configuration, topic creation, and credentials, your event streaming infrastructure is fully described in Git and automatically reconciled. For teams tired of JVM tuning and ZooKeeper operations, Redpanda is a compelling modern alternative.
