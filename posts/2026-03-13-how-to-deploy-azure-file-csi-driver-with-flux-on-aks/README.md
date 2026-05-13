@@ -19,11 +19,11 @@ Managing the Azure File CSI Driver and its associated StorageClasses through Flu
 - An Azure subscription
 - An AKS cluster running Kubernetes 1.24 or later
 - Flux CLI version 2.0 or later bootstrapped on the cluster
-- Azure CLI version 2.40 or later
+- Azure CLI version 2.42 or later
 
 ## Step 1: Verify the Built-in Driver
 
-AKS includes the Azure File CSI Driver by default. Check the current state:
+AKS clusters running Kubernetes 1.21 or later enable the Azure File CSI Driver by default. Check the current state:
 
 ```bash
 kubectl get csidrivers | grep file
@@ -34,7 +34,7 @@ You should see `file.csi.azure.com` and storage classes like `azurefile-csi` and
 
 ## Step 2: Add the Helm Repository
 
-For custom driver management, add the Helm repository to Flux:
+If you choose to run the open-source driver instead of the managed AKS add-on, add the Helm repository to Flux:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -60,7 +60,7 @@ spec:
   chart:
     spec:
       chart: azurefile-csi-driver
-      version: "1.30.*"
+      version: "1.35.*"
       sourceRef:
         kind: HelmRepository
         name: azurefile-csi
@@ -233,19 +233,19 @@ spec:
   path: ./infrastructure/azure-file-csi
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: azurefile-csi-driver-controller
-      namespace: kube-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: azurefile-csi-driver
+      namespace: flux-system
 ```
 
 ## NFS vs SMB Considerations
 
 When choosing between NFS and SMB protocols, consider the following:
 
-**NFS** is recommended for Linux workloads that need high performance and POSIX-compliant file access. NFS shares require Premium storage accounts and do not need storage account keys for authentication when using private endpoints.
+**NFS** is recommended for Linux workloads that need high performance and POSIX-compliant file access. NFS shares require SSD file shares and a virtual network-enabled storage account or private endpoint. They do not use storage account keys for mount authentication.
 
-**SMB** is the default protocol and works with both Linux and Windows nodes. SMB shares support all storage account tiers but require storage credentials mounted as Kubernetes secrets.
+**SMB** is the default protocol and works with both Linux and Windows nodes. SMB shares support Azure Files HDD and SSD SKUs, but the Azure File CSI Driver mounts SMB shares using key-based authentication. Dynamic provisioning stores storage account credentials in Kubernetes secrets by default.
 
 ## Verifying the Deployment
 
