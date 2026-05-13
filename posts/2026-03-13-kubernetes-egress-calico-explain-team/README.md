@@ -27,17 +27,17 @@ Start with a demonstration that makes the risk real:
 ```bash
 # Deploy a pod with no egress restrictions
 
-kubectl run test-pod --image=nicolaka/netshoot -- sleep 3600
+kubectl run test-pod --image=nicolaka/netshoot --command -- sleep 3600
 
 # Show it can reach arbitrary external services
 kubectl exec test-pod -- curl -s https://ifconfig.me
-# Returns the node's IP - proving the pod reached the internet
+# Returns the node or cluster NAT public IP - proving the pod reached the internet
 
-kubectl exec test-pod -- curl -s http://malware-domain.example.com
-# This would succeed - any external endpoint is reachable
+kubectl exec test-pod -- curl -s http://example.com
+# This succeeds unless egress is restricted - reachable external endpoints are allowed
 ```
 
-The message: by default, any pod in your cluster can reach any IP on the internet. If a pod is compromised, the attacker has outbound network access from inside your cluster.
+The message: by default, any pod in your cluster can reach any routable external IP on the internet. If a pod is compromised, the attacker has outbound network access from inside your cluster.
 
 ## Framing Egress for Security Teams
 
@@ -55,7 +55,14 @@ metadata:
   namespace: payments
 spec:
   selector: app == 'payment-processor'
+  types:
+  - Egress
   egress:
+  - action: Allow
+    destination:
+      services:
+        name: kube-dns
+        namespace: kube-system
   - action: Allow
     destination:
       domains:
@@ -63,7 +70,7 @@ spec:
   - action: Deny
 ```
 
-This is immediately understandable to security stakeholders - it reads like a firewall rule.
+This is immediately understandable to security stakeholders - it reads like a firewall rule. Domain-based policy requires Calico Enterprise or Calico Cloud; in Calico Open Source, use IP/CIDR-based rules or NetworkSets instead.
 
 ## Framing Egress for Developers
 
@@ -84,7 +91,7 @@ graph TD
     Apps[Application Pods]
 ```
 
-Calico's tiered policy (Enterprise) lets platform engineers set a baseline deny-all egress at a platform tier that developers cannot override. Developers then add explicit allow rules in the application tier. This separation of concerns prevents developers from accidentally creating overly permissive egress policies.
+Calico's tiered policy lets platform engineers set a baseline deny-all egress at a platform tier that developers cannot override when RBAC is configured appropriately. Developers then add explicit allow rules in the application tier. This separation of concerns prevents developers from accidentally creating overly permissive egress policies.
 
 ## Common Questions from Teams
 
@@ -92,13 +99,13 @@ Calico's tiered policy (Enterprise) lets platform engineers set a baseline deny-
 A: Only if you apply a deny-all egress policy without first adding allow rules for your legitimate external dependencies. The workflow is: audit current egress, build allow rules for legitimate traffic, then apply the deny-all default.
 
 **Q: What about DNS? Won't blocking egress break DNS resolution?**
-A: CoreDNS runs inside the cluster. Pod-to-DNS traffic is intra-cluster, not egress. Your egress policy only affects traffic leaving the cluster CIDR.
+A: Yes. Egress policy applies to outbound traffic from the selected pod, including traffic to CoreDNS inside the cluster. If you use default-deny egress or domain-based allow rules, add an explicit allow rule for your cluster DNS service.
 
 ## Best Practices
 
-- Start with observation (Calico flow logs) before enforcement - know what your pods are talking to before you start blocking it
+- Start with observation (Calico flow logs where available, or another flow logging source) before enforcement - know what your pods are talking to before you start blocking it
 - Implement egress policy namespace by namespace, starting with the most security-sensitive workloads
-- Use FQDN-based policies for external SaaS endpoints to avoid IP-based policy drift
+- Where supported, use FQDN-based policies for external SaaS endpoints to avoid IP-based policy drift
 
 ## Conclusion
 
