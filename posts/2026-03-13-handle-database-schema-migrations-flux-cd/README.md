@@ -81,10 +81,9 @@ metadata:
   annotations:
     # Append a version hash to job name via Kustomize nameSuffix or manually
 spec:
-  # Job runs to completion, not restarted
+  # Keep the completed Job so Flux can continue to health-check it
   completions: 1
   backoffLimit: 3
-  ttlSecondsAfterFinished: 3600  # clean up after 1 hour
   template:
     spec:
       restartPolicy: OnFailure
@@ -234,7 +233,6 @@ metadata:
   name: liquibase-update-v2
   namespace: myapp
 spec:
-  ttlSecondsAfterFinished: 3600
   template:
     spec:
       restartPolicy: OnFailure
@@ -243,7 +241,7 @@ spec:
           image: liquibase/liquibase:4.27
           args:
             - --url=jdbc:postgresql://app-postgres-rw.databases.svc.cluster.local:5432/app
-            - --changeLogFile=changelog.xml
+            - --changeLogFile=/liquibase/changelog/changelog.xml
             - --username=$(DB_USER)
             - --password=$(DB_PASSWORD)
             - update
@@ -299,12 +297,12 @@ spec:
 
 ## Best Practices
 
-- Use a dedicated migration tool (Flyway or Liquibase) rather than raw SQL scripts so migrations are checksummed and idempotent.
-- Never use `prune: true` on Kustomizations that contain migration Jobs - Flux will delete completed Jobs which makes the schema history untrackable.
+- Use a dedicated migration tool (Flyway or Liquibase) rather than ad hoc SQL execution so migrations are tracked and checksummed.
+- Keep `prune: false` on Kustomizations that retain versioned migration Jobs for auditability, and do not set `ttlSecondsAfterFinished` on Jobs that Flux still health-checks.
 - Version migration Job names (e.g., `flyway-migrate-v3`) so each new migration creates a new Job rather than re-running an old one.
 - Always write backward-compatible migrations: add columns as nullable, don't drop columns until the old app version is fully retired.
 - Set `backoffLimit: 3` on migration Jobs to retry on transient failures, and monitor Job status in your alerting system.
 
 ## Conclusion
 
-Handling database schema migrations in a Flux CD GitOps workflow requires explicit ordering using Kustomization `dependsOn` and Job `healthChecks`. By running migrations as Kubernetes Jobs with Flyway or Liquibase, you get idempotent, checksummed migration tracking with automatic retry. The application only starts after migrations succeed, ensuring your database schema is always compatible with the running application version - a critical property for zero-downtime deployments.
+Handling database schema migrations in a Flux CD GitOps workflow requires explicit ordering using Kustomization `dependsOn` and Job `healthChecks`. By running migrations as Kubernetes Jobs with Flyway or Liquibase, you get checksummed migration tracking that avoids reapplying completed migrations, plus automatic retry from Kubernetes Jobs. The application only starts after migrations succeed, ensuring your database schema is always compatible with the running application version - a critical property for zero-downtime deployments.
