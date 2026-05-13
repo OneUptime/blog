@@ -10,20 +10,21 @@ Description: Monitor for pods stuck in ContainerCreating during or after Calico 
 
 ## Introduction
 
-During Calico CNI removal, monitoring ContainerCreating pod counts provides real-time visibility into whether pod scheduling is functioning. A rising ContainerCreating count indicates that new pods are not able to get network configuration - a direct sign that the CNI layer is broken.
+During Calico CNI removal, monitoring ContainerCreating pod counts provides real-time visibility into whether pod sandbox and network setup is functioning. A rising ContainerCreating count can indicate that new pods are not able to get network configuration - a strong signal to investigate the CNI layer.
 
 Setting up monitoring before the migration begins ensures you have a dashboard and alerts ready when the removal happens. This is especially important for automated migrations where the removal is scripted and may proceed faster than manual oversight can track.
 
 ## Symptoms
 
 - ContainerCreating pod count rising during or after CNI removal
-- Alert fires on pod scheduling failures
-- Nodes report CNI not initialized in node conditions
+- Alert fires on pod startup or network setup failures
+- Nodes report NetworkUnavailable=true in node conditions
 
 ## Root Causes
 
-- CNI migration window without monitoring
-- No alert defined for ContainerCreating pods
+- Calico removed before a replacement CNI is ready
+- Missing or stale CNI configuration on nodes
+- Kubelet reports the runtime network as not ready
 
 ## Diagnosis Steps
 
@@ -49,13 +50,13 @@ spec:
     rules:
     - alert: PodsStuckContainerCreating
       expr: |
-        count(kube_pod_status_phase{phase="Pending"}) by (namespace) > 5
+        sum by (namespace) (kube_pod_container_status_waiting_reason{reason="ContainerCreating"} == 1) > 5
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Multiple pods stuck in Pending/ContainerCreating in {{ $labels.namespace }}"
-        description: "{{ $value }} pods pending - possible CNI failure"
+        summary: "Multiple pods stuck in ContainerCreating in {{ $labels.namespace }}"
+        description: "{{ $value }} containers waiting with reason ContainerCreating - possible CNI failure"
     - alert: NodeCNINotReady
       expr: |
         kube_node_status_condition{condition="NetworkUnavailable",status="true"} == 1
@@ -99,4 +100,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring ContainerCreating after Calico removal requires tracking pod phase metrics and node network condition status. Alerts on pending pod counts and NetworkUnavailable node conditions provide fast detection of CNI failures during migration.
+Monitoring ContainerCreating after Calico removal requires tracking container waiting reasons and node network condition status. Alerts on ContainerCreating counts and NetworkUnavailable node conditions provide fast detection of possible CNI failures during migration.
