@@ -10,57 +10,65 @@ Description: A guide to configuring Cilium GAMMA (Gateway API for Mesh Managemen
 
 ## Introduction
 
-GAMMA (Gateway API for Mesh Management and Administration) is a sub-project of the Kubernetes Gateway API that extends Gateway API semantics to east-west (service-to-service) traffic. Cilium supports GAMMA, enabling identity-aware and policy-driven mesh functionality using eBPF without requiring sidecar injection.
+GAMMA (Gateway API for Mesh Management and Administration) is a workstream within the Kubernetes Gateway API project that extends Gateway API semantics to east-west (service-to-service) traffic. Cilium supports GAMMA, enabling identity-aware and policy-driven mesh functionality without requiring sidecar injection.
 
-With Cilium GAMMA, you can configure HTTPRoutes that apply to traffic between services within the cluster. This provides advanced traffic management capabilities such as weighted routing, header manipulation, and retries-all handled at the kernel level via eBPF.
+With Cilium GAMMA, you can configure HTTPRoutes that apply to traffic between services within the cluster. This provides traffic management capabilities such as weighted routing and header manipulation through Cilium's Gateway API controller and per-node Envoy proxy.
 
 This guide walks through enabling and configuring Cilium's GAMMA support in an existing cluster.
 
 ## Prerequisites
 
-- Kubernetes 1.25+
-- Cilium 1.15+
-- Gateway API CRDs v1.1+
+- A Kubernetes version supported by your Cilium release
+- Cilium 1.19+
+- Gateway API CRDs v1.4+
 - `cilium` and `kubectl` CLIs
 
 ## Install Gateway API CRDs
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/experimental-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
 ```
 
 ## Enable GAMMA in Cilium
 
-Enable GAMMA and Gateway API in the Cilium Helm values:
+Enable GAMMA by enabling Gateway API support in the Cilium Helm values:
 
 ```bash
 helm upgrade cilium cilium/cilium --reuse-values \
-  --set gatewayAPI.enabled=true \
-  --set gatewayAPI.enableGamma=true
+  --namespace kube-system \
+  --set kubeProxyReplacement=true \
+  --set gatewayAPI.enabled=true
+```
+
+Then restart the Cilium operator and agent so the updated configuration is picked up:
+
+```bash
+kubectl -n kube-system rollout restart deployment/cilium-operator
+kubectl -n kube-system rollout restart ds/cilium
 ```
 
 Verify the feature flags:
 
 ```bash
-kubectl get cm -n kube-system cilium-config -o yaml | grep -i gamma
+kubectl get cm -n kube-system cilium-config -o yaml | grep -E 'enable-gateway-api|kube-proxy-replacement'
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A[Client Service] -->|HTTPRoute applied| B[Cilium eBPF DataPath]
-    B --> C{GAMMA Route Match}
-    C -->|Match| D[Target Service Backend]
-    C -->|No match| E[Default Forwarding]
-    D --> F[Endpoint]
-    B --> G[Policy Enforcement]
+    A[Client Service] -->|HTTPRoute applied| B[Cilium datapath]
+    B --> C[Per-node Envoy proxy]
+    C --> D{GAMMA Route Match}
+    D -->|Match| E[Target Service Backend]
+    D -->|No match| F[Default Forwarding]
+    E --> G[Endpoint]
+    B --> H[Policy Enforcement]
 ```
 
 ## Create a GAMMA HTTPRoute
 
-GAMMA HTTPRoutes target a Service (as parentRef) rather than a Gateway:
+GAMMA HTTPRoutes target a ClusterIP Service (as parentRef) rather than a Gateway. Cilium currently supports producer routes, so the HTTPRoute must be in the same namespace as the Service it binds to:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -107,4 +115,4 @@ kubectl run test-client --image=curlimages/curl --rm -it --restart=Never -- \
 
 ## Conclusion
 
-Cilium's GAMMA support provides sidecar-free service mesh capabilities using the Gateway API specification. By enabling GAMMA and defining HTTPRoutes that target Services directly, you gain fine-grained traffic control across your Kubernetes workloads without the overhead of proxy injection.
+Cilium's GAMMA support provides sidecar-free service mesh capabilities using the Gateway API specification. By enabling Gateway API support and defining HTTPRoutes that target Services directly, you gain fine-grained traffic control across your Kubernetes workloads without the overhead of proxy injection.
