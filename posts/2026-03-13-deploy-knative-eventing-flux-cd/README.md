@@ -41,7 +41,8 @@ spec:
     /*
     !/config/core/
     !/config/post-install/
-    !/config/channels/multitenant-channel-based-broker/
+    !/config/channels/in-memory-channel/
+    !/config/brokers/mt-channel-broker/
 ---
 # clusters/my-cluster/knative-eventing/kustomization-eventing.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -58,9 +59,25 @@ spec:
     name: knative-eventing
 ```
 
-## Step 2: Deploy the MT-Channel-Based Broker
+## Step 2: Deploy the In-Memory Channel and MT-Channel-Based Broker
 
 ```yaml
+# clusters/my-cluster/knative-eventing/kustomization-in-memory-channel.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: knative-eventing-in-memory-channel
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: knative-eventing
+  path: ./config/channels/in-memory-channel
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: knative-eventing
+---
 # clusters/my-cluster/knative-eventing/kustomization-broker.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -70,8 +87,8 @@ metadata:
 spec:
   interval: 10m
   dependsOn:
-    - name: knative-eventing
-  path: ./config/channels/multitenant-channel-based-broker
+    - name: knative-eventing-in-memory-channel
+  path: ./config/brokers/mt-channel-broker
   prune: true
   sourceRef:
     kind: GitRepository
@@ -181,7 +198,7 @@ spec:
 
 ```bash
 # Check eventing components
-flux get kustomizations knative-eventing knative-eventing-broker
+flux get kustomizations
 
 # Verify Broker is ready
 kubectl get broker default -n event-apps
