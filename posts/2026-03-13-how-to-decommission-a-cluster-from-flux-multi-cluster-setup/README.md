@@ -14,8 +14,8 @@ Decommissioning a cluster is as important as onboarding one. Doing it incorrectl
 
 ```mermaid
 graph TD
-    A[Decision to Decommission] --> B[Drain Workloads]
-    B --> C[Disable Flux Reconciliation]
+    A[Decision to Decommission] --> B[Disable Flux Reconciliation]
+    B --> C[Drain Workloads]
     C --> D[Remove Cluster from ArgoCD if applicable]
     D --> E[Uninstall Flux from Cluster]
     E --> F[Remove Cluster Directory from Git]
@@ -48,16 +48,33 @@ kubectl --context ${CLUSTER_CONTEXT} get pvc -A
 # (e.g., cross-cluster service mesh, shared databases)
 ```
 
-## Step 1: Drain Workloads
+## Step 1: Suspend Flux Reconciliation
+
+Prevent Flux from restarting workloads while you are draining them:
+
+```bash
+# Suspend all Kustomizations across all namespaces
+kubectl --context ${CLUSTER_CONTEXT} patch kustomizations.kustomize.toolkit.fluxcd.io \
+  --all -A --type=merge -p '{"spec":{"suspend":true}}'
+
+# Suspend all HelmReleases across all namespaces
+kubectl --context ${CLUSTER_CONTEXT} patch helmreleases.helm.toolkit.fluxcd.io \
+  --all -A --type=merge -p '{"spec":{"suspend":true}}'
+
+# Verify everything is suspended
+flux get kustomizations -A --context ${CLUSTER_CONTEXT}
+flux get helmreleases -A --context ${CLUSTER_CONTEXT}
+```
+
+## Step 2: Drain Workloads
 
 Move or shut down application workloads gracefully before removing infrastructure:
 
 ```bash
 # Scale down application deployments
 kubectl --context ${CLUSTER_CONTEXT} get deployments -A \
-  -l app.kubernetes.io/managed-by!=flux \
   -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' \
-  --no-headers | while read ns name; do
+  --no-headers | awk '$1 !~ /^(kube-|flux-system$)/ {print $1, $2}' | while read ns name; do
     echo "Scaling down ${ns}/${name}"
     kubectl --context ${CLUSTER_CONTEXT} scale deployment ${name} -n ${ns} --replicas=0
 done
@@ -68,22 +85,6 @@ done
 # Wait for pods to terminate
 kubectl --context ${CLUSTER_CONTEXT} get pods -A --field-selector=status.phase=Running \
   | grep -v kube-system | grep -v flux-system
-```
-
-## Step 2: Suspend Flux Reconciliation
-
-Prevent Flux from restarting workloads while you are draining them:
-
-```bash
-# Suspend all Kustomizations
-flux suspend kustomization --all --context ${CLUSTER_CONTEXT}
-
-# Suspend all HelmReleases
-flux suspend helmrelease --all -A --context ${CLUSTER_CONTEXT}
-
-# Verify everything is suspended
-flux get kustomizations --context ${CLUSTER_CONTEXT}
-flux get helmreleases -A --context ${CLUSTER_CONTEXT}
 ```
 
 ## Step 3: Back Up Critical Data
@@ -192,8 +193,7 @@ Check for and remove any references to the decommissioned cluster in other confi
 
 ```bash
 # Remove the cluster from ArgoCD if it was registered
-kubectl --context management delete secret -n argocd -l argocd.argoproj.io/secret-type=cluster \
-  --field-selector metadata.name=${CLUSTER_NAME}
+argocd cluster rm ${CLUSTER_NAME} -y
 ```
 
 ### DNS Records
@@ -258,8 +258,10 @@ fi
 echo ""
 echo "Step 1: Suspending Flux reconciliation..."
 if kubectl --context ${CLUSTER_CONTEXT} get ns flux-system > /dev/null 2>&1; then
-    flux suspend kustomization --all --context ${CLUSTER_CONTEXT} || true
-    flux suspend helmrelease --all -A --context ${CLUSTER_CONTEXT} || true
+    kubectl --context ${CLUSTER_CONTEXT} patch kustomizations.kustomize.toolkit.fluxcd.io \
+      --all -A --type=merge -p '{"spec":{"suspend":true}}' || true
+    kubectl --context ${CLUSTER_CONTEXT} patch helmreleases.helm.toolkit.fluxcd.io \
+      --all -A --type=merge -p '{"spec":{"suspend":true}}' || true
     echo "Flux reconciliation suspended."
 else
     echo "Flux namespace not found, skipping."
@@ -306,9 +308,8 @@ fi
 echo ""
 echo "Step 5: Cleaning up SOPS configuration..."
 if [ -f ".sops.yaml" ]; then
-    # Remove lines referencing the cluster
-    sed -i.bak "/${CLUSTER_NAME}/d" .sops.yaml
-    rm -f .sops.yaml.bak
+    echo "Edit .sops.yaml and remove the entire creation_rules entry for ${CLUSTER_NAME}."
+    read -p "Press Enter after updating .sops.yaml, or Ctrl-C to abort."
     git add .sops.yaml
 fi
 
