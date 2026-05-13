@@ -90,8 +90,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/cluster-1 \
-  --personal
+  --path=clusters/cluster-1
 ```
 
 Repeat for each additional cluster, changing the context and path:
@@ -103,8 +102,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/cluster-2 \
-  --personal
+  --path=clusters/cluster-2
 ```
 
 ```bash
@@ -114,8 +112,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/cluster-3 \
-  --personal
+  --path=clusters/cluster-3
 ```
 
 Each bootstrap command installs Flux components in the cluster and commits the Flux manifests to the corresponding path in the repository.
