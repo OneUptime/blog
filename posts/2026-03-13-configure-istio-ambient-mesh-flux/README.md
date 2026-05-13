@@ -18,9 +18,9 @@ This guide covers deploying Istio in Ambient mode and configuring namespaces and
 
 ## Prerequisites
 
-- Kubernetes cluster (1.26+) with Cilium or iptables CNI (Ambient requires compatible CNI)
+- Kubernetes cluster supported by your Istio release, with a compatible primary CNI
 - Flux CD v2 bootstrapped to your Git repository
-- Minimum 3 nodes for ztunnel DaemonSet scheduling
+- Network access from Flux to install the Kubernetes Gateway API CRDs and Istio Helm charts
 
 ## Step 1: Create Namespace and HelmRepository
 
@@ -45,7 +45,7 @@ spec:
   url: https://istio-release.storage.googleapis.com/charts
 ```
 
-## Step 2: Deploy Istio Base and Istiod with Ambient Profile
+## Step 2: Deploy Istio Base, Istiod, and CNI with Ambient Profile
 
 ```yaml
 # clusters/my-cluster/istio-ambient/helmrelease-base.yaml
@@ -59,7 +59,7 @@ spec:
   chart:
     spec:
       chart: base
-      version: "1.21.*"
+      version: "1.29.*"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -82,7 +82,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.21.*"
+      version: "1.29.*"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -94,9 +94,32 @@ spec:
     meshConfig:
       accessLogFile: /dev/stdout
       defaultConfig:
-        # Ambient mode - no sidecars
+        # Enables HBONE support for sidecar-to-ambient interoperability
         proxyMetadata:
-          ISTIO_META_AMBIENT_COMPATIBLE: "true"
+          ISTIO_META_ENABLE_HBONE: "true"
+---
+# clusters/my-cluster/istio-ambient/helmrelease-cni.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-cni
+  namespace: istio-system
+spec:
+  interval: 1h
+  dependsOn:
+    - name: istiod
+      namespace: istio-system
+  chart:
+    spec:
+      chart: cni
+      version: "1.29.*"
+      sourceRef:
+        kind: HelmRepository
+        name: istio
+        namespace: flux-system
+      interval: 12h
+  values:
+    profile: ambient
 ```
 
 ## Step 3: Deploy ztunnel (Per-Node Proxy)
@@ -116,7 +139,7 @@ spec:
   chart:
     spec:
       chart: ztunnel
-      version: "1.21.*"
+      version: "1.29.*"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -151,6 +174,8 @@ metadata:
   labels:
     # Opt into Ambient mesh (no sidecars needed)
     istio.io/dataplane-mode: ambient
+    # Route service traffic through the waypoint proxy created below
+    istio.io/use-waypoint: waypoint
 ---
 apiVersion: v1
 kind: Namespace
@@ -174,8 +199,6 @@ metadata:
   labels:
     # This label makes the Gateway a waypoint proxy
     istio.io/waypoint-for: service
-  annotations:
-    istio.io/service-account: default
 spec:
   gatewayClassName: istio-waypoint
   listeners:
@@ -191,10 +214,12 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - https://github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.4.0
   - namespace.yaml
   - helmrepository.yaml
   - helmrelease-base.yaml
   - helmrelease-istiod.yaml
+  - helmrelease-cni.yaml
   - helmrelease-ztunnel.yaml
 ---
 # clusters/my-cluster/flux-kustomization-istio-ambient.yaml
@@ -217,6 +242,10 @@ spec:
       namespace: istio-system
     - apiVersion: apps/v1
       kind: DaemonSet
+      name: istio-cni-node
+      namespace: istio-system
+    - apiVersion: apps/v1
+      kind: DaemonSet
       name: ztunnel
       namespace: istio-system
 ```
@@ -227,8 +256,8 @@ spec:
 # Verify ztunnel DaemonSet is running on all nodes
 kubectl get daemonset ztunnel -n istio-system
 
-# Check namespace is in ambient mode
-kubectl get namespace production --show-labels | grep ambient
+# Check namespace is in ambient mode and enrolled to use the waypoint
+kubectl get namespace production -L istio.io/dataplane-mode,istio.io/use-waypoint
 
 # Verify mTLS is active between pods (no sidecar injection needed)
 kubectl exec -n production deploy/my-app -- \
