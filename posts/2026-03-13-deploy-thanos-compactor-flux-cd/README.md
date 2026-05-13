@@ -72,12 +72,23 @@ spec:
   chart:
     spec:
       chart: thanos
-      version: ">=13.0.0 <14.0.0"
+      version: ">=17.0.0 <18.0.0"
       sourceRef:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
   values:
+    fullnameOverride: thanos
+    # Mount the object store configuration from the Secret
+    existingObjstoreSecret: thanos-objstore-config
+    existingObjstoreSecretItems:
+      - key: objstore.yaml
+        path: objstore.yml
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+
     # Deploy only the compactor component
     compactor:
       enabled: true
@@ -93,11 +104,6 @@ spec:
         - --wait-interval=2h
         - --compact.enable-vertical-compaction
         - --deduplication.replica-label=prometheus_replica
-      # Mount the object store configuration from the Secret
-      existingObjstoreSecret: thanos-objstore-config
-      existingObjstoreSecretItems:
-        - key: objstore.yaml
-          path: objstore.yaml
       persistence:
         # Local scratch space for the compactor working directory
         enabled: true
@@ -110,8 +116,6 @@ spec:
         limits:
           cpu: "2"
           memory: "8Gi"
-      serviceMonitor:
-        enabled: true
 
     # Disable all other Thanos components in this release
     query:
@@ -142,7 +146,7 @@ spec:
     name: flux-system
   healthChecks:
     - apiVersion: apps/v1
-      kind: StatefulSet
+      kind: Deployment
       name: thanos-compactor
       namespace: monitoring
 ```
