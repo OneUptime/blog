@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Calico, NetworkSet
 
-Description: Secure Flux controllers using Calico GlobalNetworkPolicy and NetworkSet resources for enterprise-grade network segmentation and DNS-based egress control.
+Description: Secure Flux controllers using Calico GlobalNetworkPolicy and NetworkSet resources for enterprise-grade network segmentation and optional DNS-based egress control.
 
 ---
 
-Calico is one of the most widely deployed CNI plugins and offers a powerful policy engine that goes beyond standard Kubernetes NetworkPolicies. Calico supports GlobalNetworkPolicy for cluster-wide rules, NetworkSet resources for managing groups of external IPs, and DNS-based policy for FQDN filtering. This guide walks through using Calico-specific resources to secure Flux controller traffic with fine-grained controls that are easier to manage at scale.
+Calico is one of the most widely deployed CNI plugins and offers a powerful policy engine that goes beyond standard Kubernetes NetworkPolicies. Calico supports GlobalNetworkPolicy for cluster-wide rules and NetworkSet resources for managing groups of external IPs. Calico Enterprise and Calico Cloud also support DNS-based policy for FQDN filtering. This guide walks through using Calico-specific resources to secure Flux controller traffic with fine-grained controls that are easier to manage at scale.
 
 ## Prerequisites
 
-- A Kubernetes cluster with Calico installed (open-source or Calico Enterprise)
+- A Kubernetes cluster with Calico installed (open-source, Calico Enterprise, or Calico Cloud)
 - Flux installed in the flux-system namespace
 - kubectl and calicoctl configured
-- Calico v3.20+ (for DNS-based policy support)
+- Calico Enterprise or Calico Cloud for the DNS-based policy example
 
 Verify Calico is running:
 
@@ -46,14 +46,14 @@ Calico policies offer several advantages:
 
 - GlobalNetworkPolicy applies cluster-wide without repeating rules per namespace
 - NetworkSet and GlobalNetworkSet group external CIDRs into reusable, named objects
-- DNS-based policy allows FQDN filtering without hardcoding IPs
+- DNS-based policy allows FQDN filtering without hardcoding IPs in Calico Enterprise and Calico Cloud
 - Policy ordering with explicit priority numbers
 - Deny rules (standard Kubernetes NetworkPolicies can only allow)
 - Logging for policy evaluation
 
 ## Step 1: Create NetworkSets for External Endpoints
 
-NetworkSets let you define groups of external IP ranges and reference them by name in policies. Create a GlobalNetworkSet for GitHub:
+NetworkSets let you define groups of external IP ranges and reference them by name in policies. Create a GlobalNetworkSet for GitHub using current CIDRs from the GitHub Meta API:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -64,32 +64,33 @@ metadata:
     destination: github
 spec:
   nets:
+    # Replace these examples with the current values from https://api.github.com/meta
     - 140.82.112.0/20
     - 143.55.64.0/20
     - 185.199.108.0/22
     - 192.30.252.0/22
 ```
 
-Create one for Docker Hub:
+Create one for a private registry or registry mirror:
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkSet
 metadata:
-  name: docker-hub
+  name: registry-mirror
   labels:
-    destination: docker-hub
+    destination: registry-mirror
 spec:
   nets:
-    - 44.205.64.0/20
-    - 104.16.0.0/12
+    # Replace this example with your registry or mirror CIDR.
+    - 198.51.100.0/24
 ```
 
 Apply them:
 
 ```bash
 calicoctl apply -f github-networkset.yaml
-calicoctl apply -f dockerhub-networkset.yaml
+calicoctl apply -f registry-mirror-networkset.yaml
 ```
 
 You can update these NetworkSets independently without modifying any policies. This separation of concerns makes IP range updates much cleaner.
@@ -223,11 +224,11 @@ spec:
         ports:
           - 443
           - 22
-    # Allow access to Docker Hub
+    # Allow access to a private registry or registry mirror
     - action: Allow
       protocol: TCP
       destination:
-        selector: destination == 'docker-hub'
+        selector: destination == 'registry-mirror'
         ports:
           - 443
 ```
@@ -236,7 +237,7 @@ spec:
 calicoctl apply -f flux-source-egress.yaml
 ```
 
-When GitHub updates their IP ranges, you only update the GlobalNetworkSet -- no policy changes needed.
+When GitHub updates their IP ranges, you only update the GlobalNetworkSet -- no policy changes needed. For public registries such as Docker Hub that rely on multiple hostnames and redirect domains, use provider-published CIDRs where available or Calico Enterprise/Cloud DNS-based policy.
 
 ## Step 6: Allow Inter-Controller Communication
 
@@ -278,6 +279,8 @@ calicoctl apply -f flux-inter-controller.yaml
 
 ## Step 7: Allow Notification Controller External Egress
 
+If you are using Calico Enterprise or Calico Cloud, allow notification-controller egress with DNS-based policy:
+
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -300,7 +303,7 @@ spec:
           - 443
 ```
 
-The `domains` field uses Calico DNS-based policy to resolve hostnames and allow traffic without hardcoding IPs.
+The `domains` field uses Calico Enterprise/Cloud DNS-based policy to resolve hostnames and allow traffic without hardcoding IPs.
 
 ```bash
 calicoctl apply -f flux-notification-egress.yaml
@@ -385,13 +388,13 @@ The selector in the policy must match the labels on the NetworkSet, not the meta
 
 **DNS-based policy not resolving**
 
-Calico DNS-based policy requires the DNS proxy to be enabled. Check:
+Calico DNS-based policy is available in Calico Enterprise and Calico Cloud. Check the DNS policy settings:
 
 ```bash
 calicoctl get felixconfiguration default -o yaml | grep -i dns
 ```
 
-If DNS policy is not enabled, set it:
+Calico Enterprise and Calico Cloud trust the Kubernetes DNS service by default. If you need to override the trusted DNS servers, set `dnsTrustedServers`:
 
 ```bash
 calicoctl patch felixconfiguration default --patch='{"spec":{"dnsTrustedServers":["k8s-service:kube-system/kube-dns"]}}'
