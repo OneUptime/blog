@@ -10,7 +10,7 @@ Description: A decision framework for choosing between Calico egress gateway, FQ
 
 ## Introduction
 
-Production egress control involves choosing between several Calico mechanisms: CIDR-based NetworkPolicy, FQDN-based policy (Cloud/Enterprise), and egress gateways (Enterprise). Each mechanism addresses a different use case, and most production environments need a combination of all three.
+Production egress control involves choosing between several Calico mechanisms: CIDR-based NetworkPolicy, FQDN-based policy (Cloud/Enterprise), and egress gateways (Cloud/Enterprise). Each mechanism addresses a different use case, and most production environments need a combination of all three.
 
 Making the wrong egress choice has concrete security and operational consequences. CIDR-based policies break when external APIs change their IP addresses. No egress gateways means external firewalls must allowlist entire node IP ranges instead of stable gateway IPs. This post provides a decision framework for assembling the right egress control stack for your production environment.
 
@@ -28,13 +28,13 @@ The first decision is whether any external service requires your pods to connect
 ```mermaid
 graph TD
     Q1{External services\nrequire stable source IP?}
-    Q1 -->|Yes| EGW[Deploy Egress Gateways\nCalico Enterprise required]
+    Q1 -->|Yes| EGW[Deploy Egress Gateways\nCalico Cloud/Enterprise required]
     Q1 -->|No| Q2{External APIs use\ndynamic IPs?}
     Q2 -->|Yes| FQDN[Use FQDN Policy\nCloud/Enterprise required]
     Q2 -->|No| CIDR[Use CIDR NetworkPolicy\nOpen Source sufficient]
 ```
 
-If your external payment processor, SaaS CRM, or data provider requires you to register source IPs for allowlisting, you need egress gateways. Without them, each node's IP is the source IP, requiring you to allowlist every node in your cluster (and update the allowlist every time you scale).
+If your external payment processor, SaaS CRM, or data provider requires you to register source IPs for allowlisting, you need egress gateways. Without them, outbound traffic typically uses the node IP as the source IP when pod egress is SNATed, requiring you to allowlist every node in your cluster (and update the allowlist every time you scale).
 
 ## Decision 2: How Dynamic Are Your External Endpoints?
 
@@ -64,18 +64,18 @@ For production, "allow by exception" is the recommended starting point. It requi
 
 ## Decision 4: Egress Gateway Sizing
 
-If deploying egress gateways (Enterprise), plan the gateway topology:
+If deploying egress gateways (Cloud/Enterprise), plan the gateway topology:
 
 - Dedicated egress gateway nodes (prevent interference with application workloads)
 - One egress gateway pool per security zone (e.g., one for PCI workloads, one for non-PCI)
 - High availability: at least two egress gateway pods per pool with anti-affinity
-- IP range: pre-allocate a stable IP range for gateway pods and register it with external services
+- IP range: pre-allocate stable egress source IPs for the gateway pods or gateway nodes, depending on your NAT configuration, and register those IPs with external services
 
 ## Best Practices
 
 - Never rely on node IP allowlisting for external services in clusters that autoscale - new nodes bring new IPs
 - Implement egress policy incrementally: start by observing traffic (flow logs), then build allow rules, then apply deny-all default
-- For egress gateways, use Calico's `EgressGatewayPolicy` resource to bind namespaces to specific gateway pools
+- For egress gateways, use Calico's `EgressGatewayPolicy` resource to select gateway pools, then apply it to pods or namespaces with the `egress.projectcalico.org/egressGatewayPolicy` annotation
 - Test egress policy enforcement after every node pool upgrade - new node images can sometimes reset iptables or eBPF state
 
 ## Conclusion
