@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, OCI, GCR, Google Cloud, Container Registry
 
-Description: A step-by-step guide to configuring Flux CD to authenticate with Google Container Registry using a GCP service account key for OCI artifact pulls.
+Description: A step-by-step guide to configuring Flux CD to authenticate with Google Artifact Registry-backed `gcr.io` repositories using a GCP service account key for OCI artifact pulls.
 
 ---
 
 ## Introduction
 
-Flux CD supports pulling Helm charts and other OCI artifacts directly from container registries. When working with Google Container Registry (GCR) or Google Artifact Registry, you need to provide Flux with valid credentials so the source controller can fetch your OCI artifacts. This guide walks through creating and configuring a Kubernetes secret that allows Flux to authenticate with GCR using a GCP service account key.
+Flux CD supports pulling Helm charts and other OCI artifacts directly from container registries. When working with `gcr.io` repositories backed by Google Artifact Registry or with Google Artifact Registry `pkg.dev` repositories, you need to provide Flux with valid credentials so the source controller can fetch your OCI artifacts. This guide walks through creating and configuring a Kubernetes secret that allows Flux to authenticate with `gcr.io` using a GCP service account key.
 
 ## Prerequisites
 
@@ -18,9 +18,10 @@ Before you begin, make sure you have:
 
 - A Kubernetes cluster with Flux CD installed
 - `kubectl` configured to access your cluster
-- A GCP service account with appropriate permissions (e.g., `roles/artifactregistry.reader` or `roles/storage.objectViewer` for legacy GCR)
+- A GCP service account with appropriate permissions (e.g., `roles/artifactregistry.reader` for Artifact Registry repositories)
 - A JSON key file for the service account
 - The `flux` CLI installed
+- `jq` installed for inspecting and generating JSON
 
 ## Step 1: Create the GCP Service Account
 
@@ -72,8 +73,20 @@ If you prefer a declarative approach, first encode the docker config JSON:
 
 ```bash
 # Build the dockerconfigjson payload
-SA_KEY=$(cat gcr-key.json | base64 -w 0)
-AUTH=$(echo -n "_json_key:$(cat gcr-key.json)" | base64 -w 0)
+KEY_JSON=$(jq -c . gcr-key.json)
+DOCKER_CONFIG_JSON=$(jq -n \
+  --arg username "_json_key" \
+  --arg password "${KEY_JSON}" \
+  --arg registry "gcr.io" \
+  '{
+    auths: {
+      ($registry): {
+        username: $username,
+        password: $password,
+        auth: ($username + ":" + $password | @base64)
+      }
+    }
+  }')
 
 cat <<EOF > flux-gcr-secret.yaml
 apiVersion: v1
@@ -83,7 +96,7 @@ metadata:
   namespace: flux-system
 type: kubernetes.io/dockerconfigjson
 data:
-  .dockerconfigjson: $(echo -n '{"auths":{"gcr.io":{"username":"_json_key","password":"'"$(cat gcr-key.json | tr -d '\n')"'","auth":"'"${AUTH}"'"}}}' | base64 -w 0)
+  .dockerconfigjson: $(echo -n "${DOCKER_CONFIG_JSON}" | base64 | tr -d '\n')
 EOF
 ```
 
@@ -174,8 +187,8 @@ Confirm the username is `_json_key` and the password is the full JSON key conten
 
 Make sure the server in the secret matches the registry URL:
 
-- Legacy GCR: `gcr.io`, `us.gcr.io`, `eu.gcr.io`, `asia.gcr.io`
-- Artifact Registry: `us-docker.pkg.dev`, `europe-docker.pkg.dev`, `asia-docker.pkg.dev`
+- Artifact Registry-backed `gcr.io` repositories: `gcr.io`, `us.gcr.io`, `eu.gcr.io`, `asia.gcr.io`
+- Artifact Registry `pkg.dev` repositories: use the exact regional or multi-regional hostname, such as `us-docker.pkg.dev`, `europe-docker.pkg.dev`, or `asia-docker.pkg.dev`
 
 ### Permission Issues
 
