@@ -18,12 +18,12 @@ This guide walks through deploying Triton Inference Server with GPU support usin
 
 ## Prerequisites
 
-- Kubernetes cluster with NVIDIA GPU nodes (Triton requires CUDA-capable GPUs)
+- Kubernetes cluster with NVIDIA GPU nodes for GPU-backed inference
 - NVIDIA GPU Operator or device plugin deployed
 - Flux CD v2 bootstrapped to your Git repository
-- Model repository in a GCS, S3, or PVC-backed volume
+- Model repository in a GCS, S3, or PVC-backed volume; the PVC example below expects a claim named `triton-model-pvc`
 
-## Step 1: Create Namespace and Model Repository ConfigMap
+## Step 1: Create Namespace
 
 ```yaml
 # clusters/my-cluster/triton/namespace.yaml
@@ -73,7 +73,6 @@ spec:
             - "--model-repository=/models"
             - "--strict-model-config=false"
             - "--log-verbose=1"
-            # Enable dynamic batching globally
             - "--grpc-port=8001"
             - "--http-port=8000"
             - "--metrics-port=8002"
@@ -178,28 +177,33 @@ spec:
 # Check Flux reconciliation
 flux get kustomizations triton
 
-# List loaded models
-curl http://<triton-svc-ip>:8000/v2/models
+TRITON_HTTP_URL=http://triton-inference-server.triton.svc.cluster.local:8000
 
-# Run inference (example with a classification model)
-curl -X POST http://<triton-svc-ip>:8000/v2/models/my_model/infer \
+# List models that are ready for inference
+curl -X POST "${TRITON_HTTP_URL}/v2/repository/index" \
+  -H "Content-Type: application/json" \
+  -d '{"ready": true}'
+
+# Run inference (replace the model name and tensor fields with values from your model config)
+curl -X POST "${TRITON_HTTP_URL}/v2/models/my_model/infer" \
   -H "Content-Type: application/json" \
   -d '{
     "inputs": [{
-      "name": "input__0",
-      "shape": [1, 3, 224, 224],
+      "name": "input0",
+      "shape": [1, 1],
       "datatype": "FP32",
-      "data": [...]
+      "data": [0.0]
     }]
   }'
 
 # Check Prometheus metrics
-curl http://<triton-svc-ip>:8002/metrics | grep nv_inference
+curl http://triton-inference-server.triton.svc.cluster.local:8002/metrics | grep nv_inference
 ```
 
 ## Best Practices
 
 - Use `--strict-model-config=false` in development to allow Triton to auto-generate model configs, then generate and commit explicit `config.pbtxt` files for production.
+- Configure dynamic batching in each model's `config.pbtxt`; Triton does not enable it with a global server flag.
 - Store model repository on a shared ReadWriteMany PVC or object storage (GCS/S3) so multiple Triton replicas can access models consistently.
 - Enable Prometheus scraping via pod annotations and create Grafana dashboards for `nv_inference_request_success`, `nv_inference_queue_duration_us`, and `nv_gpu_utilization`.
 - Use TensorRT-optimized model variants in the model repository for maximum GPU throughput.
