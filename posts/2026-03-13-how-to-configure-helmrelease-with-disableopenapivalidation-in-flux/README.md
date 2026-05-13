@@ -10,7 +10,7 @@ Description: Learn how to disable OpenAPI validation in Flux HelmRelease to hand
 
 ## Introduction
 
-When Flux installs or upgrades a Helm chart, Kubernetes validates the rendered manifests against the OpenAPI schema registered in the API server. This validation catches errors early, but it can also block legitimate deployments when charts include resources whose CRDs are not yet registered or when charts produce manifests that do not conform to the strict OpenAPI schema. Flux provides the `disableOpenAPIValidation` flag in the HelmRelease spec to bypass this validation when needed.
+When Flux installs or upgrades a Helm chart, Helm can validate the rendered manifests against the Kubernetes OpenAPI schema discovered from the API server. This validation catches errors early, but it can also block legitimate deployments when charts include resources whose CRDs are not yet registered or when charts produce manifests that do not conform to the strict OpenAPI schema. Flux provides the `disableOpenAPIValidation` flag in the HelmRelease spec to disable this Helm validation when needed.
 
 In this post, you will learn when and how to use `disableOpenAPIValidation`, the risks involved, and practical configurations for common scenarios.
 
@@ -24,9 +24,9 @@ In this post, you will learn when and how to use `disableOpenAPIValidation`, the
 
 ## Why Disable OpenAPI Validation
 
-Kubernetes uses OpenAPI schemas to validate resources before they are persisted to etcd. This validation ensures that resource manifests conform to the expected structure. However, there are scenarios where this validation causes problems:
+Kubernetes publishes OpenAPI schemas for the API resources available in the cluster, and Helm can use those schemas to validate rendered manifests before submitting them. This validation helps ensure that resource manifests conform to the expected structure. However, there are scenarios where this validation causes problems:
 
-1. **CRDs not yet installed**: If a Helm chart creates both CRDs and custom resources in the same release, the custom resources may fail validation because the CRDs are not yet registered when validation occurs.
+1. **CRDs not yet installed or discovered**: If a Helm chart creates both CRDs and custom resources in the same release, the custom resources may fail validation because the CRDs are not yet registered or discoverable when validation occurs.
 
 2. **Non-standard fields**: Some charts use fields that are valid but not captured in the OpenAPI schema, especially with older API versions or beta features.
 
@@ -69,16 +69,17 @@ This is equivalent to running `helm install --disable-openapi-validation` or `he
 
 ## A Practical Example: Deploying a Chart with Bundled CRDs and CRs
 
-Consider a chart that installs both CRDs and custom resources. Without disabling validation, the custom resources fail because the API server does not know about the CRD schemas yet:
+Consider a chart that installs both CRDs and custom resources. Without disabling validation, the custom resources may fail because Helm's validation client does not know about the CRD schemas yet:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-operator
-  namespace: istio-system
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: istio-system
   chart:
     spec:
       chart: istio-operator
@@ -104,7 +105,7 @@ spec:
     tag: 1.21.0
 ```
 
-In this case, `disableOpenAPIValidation` is combined with `crds: CreateReplace` to handle the full CRD lifecycle while avoiding validation errors for custom resources rendered alongside the CRDs.
+In this case, `disableOpenAPIValidation` is combined with `crds: CreateReplace` to install and replace CRDs while avoiding validation errors for custom resources rendered alongside the CRDs.
 
 ## When to Use disableOpenAPIValidation Selectively
 
@@ -162,16 +163,16 @@ You can also test validation manually:
 helm template my-app my-repo/my-app --version 2.0.0 | kubectl apply --dry-run=server -f -
 ```
 
-If the dry run fails with validation errors but the manifests are correct, disabling OpenAPI validation is appropriate.
+If Helm or Flux reports that rendered templates fail Kubernetes OpenAPI validation, but server-side dry run succeeds once the required CRDs and admission dependencies are present, disabling OpenAPI validation may be appropriate.
 
 ## Risks of Disabling Validation
 
-Disabling OpenAPI validation removes an important safety net. Without validation:
+Disabling Helm's OpenAPI validation removes an important client-side safety net. The Kubernetes API server still performs its own validation and admission checks, but without Helm's validation:
 
-- Typos in field names will not be caught and will be silently ignored.
+- Typos in field names may not be caught by Helm before the API request is sent.
 - Incorrect field types (string instead of integer) may cause unexpected behavior.
-- Deprecated or removed fields will not produce warnings.
-- Invalid resource structures may be accepted and cause controller errors at runtime.
+- Deprecated or removed fields may not be flagged by Helm.
+- Invalid resource structures may be rejected later by the API server or accepted and cause controller errors at runtime, depending on the resource schema.
 
 For these reasons, use `disableOpenAPIValidation` only when necessary and prefer to fix the underlying issue when possible.
 
@@ -181,7 +182,7 @@ Before disabling validation, consider these alternatives:
 
 1. **Install CRDs separately**: Use a Flux Kustomization to install CRDs before the HelmRelease runs, eliminating the validation race condition.
 
-2. **Use the Skip CRD policy with dependsOn**: Install CRDs through a separate resource and use `dependsOn` to order the operations.
+2. **Use the Skip CRD policy with Kustomization dependsOn**: Install CRDs through a separate Flux Kustomization, put the HelmRelease in another Kustomization, and use `dependsOn` to order the operations.
 
 3. **Update Kubernetes**: If the validation issue is due to an outdated OpenAPI schema, upgrading the cluster may resolve it.
 
@@ -200,6 +201,26 @@ spec:
   prune: false
   wait: true
 ---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-operator-release
+  namespace: flux-system
+spec:
+  interval: 1h
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./releases/my-operator
+  prune: true
+  wait: true
+  dependsOn:
+    - name: my-operator-crds
+```
+
+Then configure the HelmRelease in `./releases/my-operator` to skip CRD installation:
+
+```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -207,9 +228,6 @@ metadata:
   namespace: operators
 spec:
   interval: 30m
-  dependsOn:
-    - name: my-operator-crds
-      namespace: flux-system
   chart:
     spec:
       chart: my-operator
@@ -224,4 +242,4 @@ spec:
 
 ## Conclusion
 
-The `disableOpenAPIValidation` flag in Flux HelmRelease is a useful escape hatch for deploying charts that produce manifests incompatible with the Kubernetes OpenAPI schema. While it should be used judiciously, it is essential for charts that bundle CRDs alongside custom resources or that target multiple Kubernetes versions with differing schemas. Always prefer fixing the root cause of validation errors when possible, and use this flag as a targeted solution rather than a blanket default across all your HelmReleases.
+The `disableOpenAPIValidation` flag in Flux HelmRelease is a useful escape hatch for deploying charts that produce manifests incompatible with the Kubernetes OpenAPI schema used by Helm. While it should be used judiciously, it can be helpful for charts that bundle CRDs alongside custom resources or that target multiple Kubernetes versions with differing schemas. Always prefer fixing the root cause of validation errors when possible, and use this flag as a targeted solution rather than a blanket default across all your HelmReleases.
