@@ -16,7 +16,7 @@ In this post, you will learn how Flux's built-in Kustomize post-renderer works, 
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster supported by your Flux release
 - Flux CD installed and bootstrapped on the cluster
 - A Git repository connected to Flux
 - kubectl configured to access the cluster
@@ -35,7 +35,7 @@ Flux has built-in support for Kustomize as a post-renderer through the `spec.pos
 
 ## Basic Post-Renderer Configuration
 
-Here is a simple example that adds a label to all resources rendered by a Helm chart:
+Here is a simple example that adds a label to rendered Deployment resources:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -131,16 +131,15 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-  postRenderers:
-    - kustomize:
-        commonLabels:
-          team: platform
-          cost-center: engineering
-        commonAnnotations:
-          company.example.com/managed-by: flux
+  commonMetadata:
+    labels:
+      team: platform
+      cost-center: engineering
+    annotations:
+      company.example.com/managed-by: flux
 ```
 
-The `commonLabels` and `commonAnnotations` fields in the Kustomize post-renderer apply to every resource in the chart output, including Deployments, Services, ConfigMaps, and any other resources.
+The `commonMetadata.labels` and `commonMetadata.annotations` fields apply to every resource in the chart output, including Deployments, Services, ConfigMaps, and any other resources.
 
 ## Targeting Specific Resources
 
@@ -194,17 +193,18 @@ postRenderers:
 
 This is particularly useful when you need to pull images from a private registry instead of the public one specified in the chart.
 
-## Combining Multiple Patch Types
+## Combining Common Metadata, Patches, and Images
 
-You can combine different patch types in a single post-renderer:
+You can combine common metadata with patches and image overrides:
 
 ```yaml
+commonMetadata:
+  labels:
+    app.kubernetes.io/part-of: my-platform
+  annotations:
+    prometheus.io/scrape: "true"
 postRenderers:
   - kustomize:
-      commonLabels:
-        app.kubernetes.io/part-of: my-platform
-      commonAnnotations:
-        prometheus.io/scrape: "true"
       patches:
         - target:
             kind: Deployment
@@ -224,7 +224,7 @@ postRenderers:
 
 ## Debugging Post-Renderer Output
 
-To see what the post-renderer produces, you can use the Flux CLI:
+After changing the post-renderer configuration, you can trigger reconciliation with the Flux CLI:
 
 ```bash
 flux reconcile helmrelease my-app -n default
@@ -240,4 +240,4 @@ If the post-renderer produces invalid manifests, the HelmRelease will report the
 
 ## Conclusion
 
-Kustomize post-rendering in Flux HelmRelease is a powerful tool for customizing Helm chart output without modifying the chart itself. It supports common labels and annotations, strategic merge patches, JSON 6902 patches, and image overrides. By applying transformations after Helm renders the templates, you can adapt any chart to your organization's requirements while keeping the chart itself unmodified. This approach is especially valuable when using third-party charts where you cannot control the available values, or when you need to enforce organization-wide standards across all deployments.
+Kustomize post-rendering in Flux HelmRelease is a powerful tool for customizing Helm chart output without modifying the chart itself. It supports strategic merge patches, JSON 6902 patches, and image overrides, while `commonMetadata` can apply common labels and annotations to rendered resources. By applying transformations after Helm renders the templates, you can adapt any chart to your organization's requirements while keeping the chart itself unmodified. This approach is especially valuable when using third-party charts where you cannot control the available values, or when you need to enforce organization-wide standards across all deployments.
