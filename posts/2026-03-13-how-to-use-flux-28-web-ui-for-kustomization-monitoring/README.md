@@ -1,21 +1,21 @@
-# How to Use Flux 2.8 Web UI for Kustomization Monitoring
+# How to Use the Flux Operator Web UI with Flux 2.8 for Kustomization Monitoring
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Fluxcd, Kustomization, Web-Ui, Monitoring, GitOps, Kubernetes
 
-Description: Learn how to monitor Kustomization resources using the Flux 2.8 Web UI for real-time visibility into your GitOps reconciliation pipeline.
+Description: Learn how to monitor Kustomization resources using the Flux Operator Web UI with Flux 2.8 for real-time visibility into your GitOps reconciliation pipeline.
 
 ---
 
 ## Introduction
 
-Kustomization resources are the backbone of Flux GitOps workflows. They define what manifests to apply, from which source, and how to reconcile them. Flux 2.8 introduced a web UI that provides a visual dashboard for monitoring these Kustomization resources in real time. This guide explains how to use the Flux Web UI to track Kustomization status, identify reconciliation issues, and understand the dependency chain between your resources.
+Kustomization resources are the backbone of Flux GitOps workflows. They define what manifests to apply, from which source, and how to reconcile them. Alongside Flux 2.8, the Flux Operator added a web UI that provides a visual dashboard for monitoring these Kustomization resources in real time. This guide explains how to use the Flux Web UI to track Kustomization status, identify reconciliation issues, and understand the dependency chain between your resources.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later recommended)
-- Flux 2.8 installed with the web UI component enabled
+- A Kubernetes cluster supported by Flux 2.8 (Kubernetes 1.33 to 1.35)
+- Flux 2.8 installed and the Flux Operator web UI enabled
 - kubectl configured to access your cluster
 - One or more Kustomization resources deployed via Flux
 
@@ -29,7 +29,13 @@ helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-opera
   --create-namespace
 ```
 
-Once the Flux Operator is running, access the Web UI via port-forward:
+Once the Flux Operator is running, access the embedded Web UI via port-forward:
+
+```bash
+kubectl -n flux-system port-forward svc/flux-operator 9080:9080
+```
+
+If you installed the Web UI as a standalone deployment with the service name `flux-web`, port-forward that service instead:
 
 ```bash
 kubectl -n flux-system port-forward svc/flux-web 9080:9080
@@ -138,10 +144,6 @@ conditions:
     status: "True"
     reason: ReconciliationSucceeded
     message: "Applied revision: main@sha1:abc123def456"
-  - type: Healthy
-    status: "True"
-    reason: HealthCheckSucceeded
-    message: "Health check passed"
 ```
 
 ### Applied Resources Inventory
@@ -163,7 +165,7 @@ The web UI provides several indicators to assess Kustomization health:
 
 - **Reconciliation duration**: How long each reconciliation cycle takes. Increasing durations may indicate growing manifest complexity or API server load.
 - **Last applied revision**: Confirms which Git commit or OCI artifact is currently deployed.
-- **Prune count**: Shows how many resources were pruned in the last reconciliation, helping you track unintended deletions.
+- **Pruning events**: Shows when resources are removed during reconciliation, helping you track unintended deletions.
 
 ## Filtering Kustomizations
 
@@ -187,4 +189,4 @@ This information helps you quickly identify whether the issue is in your manifes
 
 ## Conclusion
 
-The Flux 2.8 Web UI transforms Kustomization monitoring from a CLI-driven workflow into a visual experience. The dependency graph, status indicators, and detailed event timelines make it significantly easier to understand the state of your GitOps pipeline. For teams managing multiple environments with complex dependency chains, the web UI reduces the time spent debugging reconciliation issues and provides a shared dashboard that everyone on the team can reference.
+The Flux Operator Web UI transforms Kustomization monitoring from a CLI-driven workflow into a visual experience. The dependency graph, status indicators, and detailed event timelines make it significantly easier to understand the state of your GitOps pipeline. For teams managing multiple environments with complex dependency chains, the web UI reduces the time spent debugging reconciliation issues and provides a shared dashboard that everyone on the team can reference.
