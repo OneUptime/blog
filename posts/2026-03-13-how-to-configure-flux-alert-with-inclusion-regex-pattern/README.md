@@ -36,7 +36,7 @@ This behavior is fundamentally different from the `exclusionList`, which drops m
 The simplest use case is matching a specific keyword in event messages:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: reconciliation-complete-alerts
@@ -46,7 +46,7 @@ spec:
     name: slack-provider
   eventSeverity: info
   inclusionList:
-    - ".*ReconciliationSucceeded.*"
+    - "(?i).*(succeeded|reconciliation finished).*"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -54,14 +54,14 @@ spec:
       name: "*"
 ```
 
-This alert only fires when a reconciliation succeeds. All other events, including progress updates, retries, and dependency checks, are excluded.
+This alert only fires when the event message contains success wording such as "succeeded" or "reconciliation finished". All other events, including progress updates, retries, and dependency checks, are excluded.
 
 ## Multiple Inclusion Patterns
 
 You can specify multiple patterns to capture several types of events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: success-and-failure-alerts
@@ -71,9 +71,9 @@ spec:
     name: slack-provider
   eventSeverity: info
   inclusionList:
-    - ".*ReconciliationSucceeded.*"
-    - ".*ReconciliationFailed.*"
-    - ".*ValidationFailed.*"
+    - "(?i).*(succeeded|reconciliation finished).*"
+    - "(?i).*failed.*"
+    - "(?i).*validation error.*"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -81,14 +81,14 @@ spec:
       name: "*"
 ```
 
-Each pattern is evaluated independently. An event that matches any one of the three patterns will be forwarded. This gives you end-state notifications without the intermediate noise.
+Each pattern is evaluated independently. An event message that matches any one of the three patterns will be forwarded. This gives you end-state notifications without the intermediate noise.
 
 ## Matching Specific Resource Names in Messages
 
-Event messages often include the name of the resource. You can use this to filter for specific resources within the message content:
+Event messages can include the name of the workload or Kubernetes object affected by the reconciliation. You can use this to filter for specific names within the message content:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-resource-alerts
@@ -107,14 +107,14 @@ spec:
       name: "*"
 ```
 
-This captures events where the message references any resource with a name starting with `production-` or `prod-`.
+This captures events where the message references any object with a name starting with `production-` or `prod-`. To filter by the involved Flux object name itself, use the `name` field under `eventSources`.
 
 ## Case-Insensitive Matching
 
 Go regex syntax supports inline flags. To perform case-insensitive matching:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: case-insensitive-alerts
@@ -140,7 +140,7 @@ The `(?i)` flag makes the pattern match regardless of letter casing, catching me
 When monitoring image or chart updates, you might want to alert only for specific version patterns:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: major-version-alerts
@@ -165,7 +165,7 @@ This pattern matches messages containing version strings like `v2.0.0` or `v10.0
 The inclusion list works alongside the `eventSeverity` field:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: info-reconciliation-alerts
@@ -175,20 +175,20 @@ spec:
     name: slack-provider
   eventSeverity: info
   inclusionList:
-    - ".*ReconciliationSucceeded.*"
+    - "(?i).*reconciliation finished.*"
   eventSources:
     - kind: Kustomization
       name: "*"
 ```
 
-Setting `eventSeverity: info` means both info and error events are candidates. The inclusion list then further filters to only reconciliation success messages. If you set `eventSeverity: error`, info-level events are pre-filtered before the inclusion list is evaluated.
+Setting `eventSeverity: info` means both info and error events are candidates. The inclusion list then further filters to only messages that say the reconciliation finished. If you set `eventSeverity: error`, info-level events are pre-filtered before the inclusion list is evaluated.
 
 ## Practical Pattern for Deployment Notifications
 
 A common production pattern is to alert only on meaningful state changes:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-state-alerts
@@ -198,11 +198,11 @@ spec:
     name: slack-provider
   eventSeverity: info
   inclusionList:
-    - ".*ReconciliationSucceeded.*"
-    - ".*ReconciliationFailed.*"
-    - ".*HealthCheckFailed.*"
-    - ".*PruneFailed.*"
-    - ".*ArtifactUpToDate.*"
+    - "(?i).*(succeeded|reconciliation finished).*"
+    - "(?i).*failed.*"
+    - "(?i).*health check.*failed.*"
+    - "(?i).*prune.*failed.*"
+    - "(?i).*artifact up-to-date.*"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -237,4 +237,4 @@ kubectl get events -n flux-system --sort-by='.lastTimestamp'
 
 ## Conclusion
 
-The `inclusionList` field in Flux Alert resources provides a powerful whitelist mechanism for event filtering. By crafting targeted regex patterns, you can ensure that only the events you care about reach your notification channels. Whether you are filtering by event reason, resource name, version string, or any other message content, inclusion patterns give you precise control. Start with broad patterns and refine them as you learn what events your cluster generates, building toward a notification setup that delivers signal without noise.
+The `inclusionList` field in Flux Alert resources provides a powerful whitelist mechanism for event filtering. By crafting targeted regex patterns, you can ensure that only the events you care about reach your notification channels. Whether you are filtering by message text, resource name references, version string, or any other message content, inclusion patterns give you precise control. Start with broad patterns and refine them as you learn what events your cluster generates, building toward a notification setup that delivers signal without noise.
