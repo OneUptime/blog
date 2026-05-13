@@ -12,7 +12,7 @@ Description: Set up Flux CD to reconcile from local sources at disconnected edge
 
 Some edge deployments operate in environments with no persistent internet connectivity - military installations, offshore platforms, underground mining operations, and classified government facilities all require air-gapped or occasionally-connected Kubernetes clusters. These sites cannot reach GitHub or cloud registries, but they still need the operational consistency and auditability that GitOps provides.
 
-Flux CD supports fully disconnected operation through two mechanisms: local source repositories and OCI artifact caching. By running a local Gitea instance or a local OCI registry inside the disconnected network, Flux can operate with the same GitOps workflow as connected clusters, just with a different source endpoint.
+Flux CD supports fully disconnected operation through local `GitRepository` and `OCIRepository` sources. By running a local Gitea instance or a local OCI registry inside the disconnected network, Flux can operate with the same GitOps workflow as connected clusters, just with a different source endpoint.
 
 This guide covers designing a fully disconnected Flux architecture and setting up the on-site infrastructure required to support it.
 
@@ -33,18 +33,14 @@ On a connected machine, download all Flux components:
 
 flux install --export > flux-install.yaml
 
-# Download all Flux controller images
-flux_images=(
-  "ghcr.io/fluxcd/source-controller:v1.3.0"
-  "ghcr.io/fluxcd/kustomize-controller:v1.3.0"
-  "ghcr.io/fluxcd/helm-controller:v1.0.0"
-  "ghcr.io/fluxcd/notification-controller:v1.3.0"
-)
+# Download all Flux controller images referenced by the manifest
+mapfile -t flux_images < <(grep -o 'ghcr.io/fluxcd/[^[:space:]]*' flux-install.yaml | sort -u)
 
 for image in "${flux_images[@]}"; do
   docker pull "$image"
-  docker save "$image" >> /tmp/flux-images.tar
 done
+
+docker save -o /tmp/flux-images.tar "${flux_images[@]}"
 
 # Transfer to disconnected site via approved mechanism
 # (USB drive, data diode, satellite transfer, etc.)
@@ -53,10 +49,12 @@ done
 On the air-gapped cluster:
 
 ```bash
-# Load images into the local registry
+# Load images into the local Docker daemon
 docker load < /tmp/flux-images.tar
 
 # Tag and push to local registry
+mapfile -t flux_images < <(grep -o 'ghcr.io/fluxcd/[^[:space:]]*' flux-install.yaml | sort -u)
+
 for image in "${flux_images[@]}"; do
   local_image="local-registry.internal:5000/${image#*/}"
   docker tag "$image" "$local_image"
@@ -74,6 +72,23 @@ kubectl apply -f flux-install.yaml
 
 ```yaml
 # infrastructure/local-git/gitea-deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitea-pvc
+  namespace: gitea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -91,7 +106,7 @@ spec:
     spec:
       containers:
         - name: gitea
-          image: local-registry.internal:5000/gitea/gitea:1.21
+          image: local-registry.internal:5000/gitea/gitea:1.24
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
@@ -104,7 +119,7 @@ spec:
             - name: GITEA__database__PATH
               value: /data/gitea.db
             - name: GITEA__server__ROOT_URL
-              value: http://gitea.internal:3000
+              value: http://gitea.gitea.svc.cluster.local:3000/
           volumeMounts:
             - name: gitea-data
               mountPath: /data
@@ -176,15 +191,18 @@ cd /path/to/fleet-repo
 git bundle create "${BUNDLE_DIR}/fleet-repo.bundle" --all
 
 # 2. Bundle new container images
-NEW_IMAGES=($(git diff HEAD~1..HEAD --name-only | \
-  xargs grep -h "image:" | \
-  grep -oP '[\w./-]+:[\w.-]+' | sort -u))
+mapfile -t NEW_IMAGES < <(git diff HEAD~1..HEAD --name-only | \
+  xargs -r grep -h "image:" | \
+  grep -oP '[\w./-]+:[\w.-]+' | sort -u)
 
 for image in "${NEW_IMAGES[@]}"; do
   echo "Bundling image: $image"
   docker pull "$image"
-  docker save "$image" >> "${BUNDLE_DIR}/new-images.tar"
 done
+
+if [ "${#NEW_IMAGES[@]}" -gt 0 ]; then
+  docker save -o "${BUNDLE_DIR}/new-images.tar" "${NEW_IMAGES[@]}"
+fi
 
 # 3. Create manifest
 cat > "${BUNDLE_DIR}/manifest.json" << EOF
@@ -219,14 +237,16 @@ BUNDLE_DATE=$(basename "${BUNDLE_PATH}" .tar.gz | sed 's/transfer-bundle-//')
 BUNDLE_DIR="/tmp/transfer-bundle-${BUNDLE_DATE}"
 
 # 3. Load new container images into local registry
-docker load < "${BUNDLE_DIR}/new-images.tar"
+if [ -f "${BUNDLE_DIR}/new-images.tar" ]; then
+  docker load < "${BUNDLE_DIR}/new-images.tar"
+fi
 # Retag and push to local registry
 # ... (same as Step 1)
 
 # 4. Push Git repository update to local Gitea
 cd /tmp/fleet-repo-clone
-git fetch "${BUNDLE_DIR}/fleet-repo.bundle"
-git push http://gitea.internal:3000/my-org/my-fleet main
+git fetch "${BUNDLE_DIR}/fleet-repo.bundle" refs/heads/main
+git push http://gitea.gitea.svc.cluster.local:3000/my-org/my-fleet FETCH_HEAD:main
 
 echo "Transfer bundle applied. Flux will reconcile within 5 minutes."
 ```
@@ -252,10 +272,10 @@ spec:
 
         - alert: FluxNotReconciling
           expr: |
-            (time() - gotk_reconcile_duration_seconds_sum{type="Ready",status="True"}) > 600
+            gotk_resource_info{customresource_kind=~"GitRepository|Kustomization",ready!="True",suspended!="True"} == 1
           for: 5m
           annotations:
-            summary: "Flux has not successfully reconciled in 10+ minutes"
+            summary: "A Flux source or reconciler is not ready"
 ```
 
 ## Best Practices
