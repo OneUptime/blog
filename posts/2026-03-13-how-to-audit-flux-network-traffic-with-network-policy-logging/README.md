@@ -8,7 +8,7 @@ Description: Enable network policy logging to audit and monitor all traffic flow
 
 ---
 
-Network policies are only useful if you can verify they are working correctly. Without visibility into which connections are being allowed and denied, you cannot audit your security posture or debug connectivity issues. Network policy logging gives you a record of every connection attempt, the policy verdict (allow or deny), and the source and destination details. This is essential for security audits, compliance reporting, and operational troubleshooting of Flux deployments.
+Network policies are only useful if you can verify they are working correctly. Without visibility into which connections are being allowed and denied, you cannot audit your security posture or debug connectivity issues. Network policy logging gives you records of matching connection attempts, and CNI observability tools can add policy verdicts and source and destination details. This is essential for security audits, compliance reporting, and operational troubleshooting of Flux deployments.
 
 This guide covers how to enable and use network policy logging with Calico, Cilium, and native Kubernetes tools to audit all Flux controller traffic.
 
@@ -59,13 +59,13 @@ Calico writes policy logs to the node's syslog or iptables log target. View them
 ```bash
 # On each node
 
-journalctl -u calico-node | grep "calico-packet"
+journalctl -k | grep "calico-packet"
 
-# Or check the calico-node pod logs
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep -i "log\|deny\|allow"
+# Common syslog locations
+grep "calico-packet" /var/log/syslog /var/log/kern.log 2>/dev/null
 ```
 
-For a more structured approach, configure Calico to write logs to a file:
+For a more structured approach, keep the Calico policy log prefix predictable and configure rate limits before forwarding the node syslog or kernel log to your logging system:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -73,9 +73,9 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  policySyncPathPrefix: /var/log/calico
-  logFilePath: /var/log/calico/felix.log
-  logSeverityScreen: Info
+  logPrefix: "calico-packet"
+  logActionRateLimit: "100/second"
+  logActionRateLimitBurst: 100
 ```
 
 ### Step 3: Parse Calico Log Entries
@@ -90,11 +90,12 @@ Create a script to extract and summarize Flux traffic:
 
 ```bash
 #!/bin/bash
-# Extract denied connections from Flux controllers
-kubectl logs -n calico-system -l k8s-app=calico-node --all-containers --tail=1000 | \
+# Extract logged connections for Flux controllers from node kernel logs
+flux_ips=$(kubectl get pods -n flux-system -o jsonpath='{range .items[*]}{.status.podIP}{"|"}{end}' | sed 's/|$//')
+
+journalctl -k --since "24 hours ago" | \
   grep "calico-packet" | \
-  grep -E "SRC=10\." | \
-  awk '{print $0}' | \
+  grep -E "SRC=(${flux_ips})|DST=(${flux_ips})" | \
   sort | uniq -c | sort -rn | head -20
 ```
 
@@ -146,34 +147,34 @@ Parse the JSON to build a traffic audit report:
 
 ```bash
 cat flux-traffic.json | jq -r '[
-  .time,
-  .source.namespace + "/" + .source.pod_name,
-  .destination.namespace + "/" + .destination.pod_name,
-  .destination.port // .l4.TCP.destination_port,
-  .verdict
+  .flow.time,
+  ((.flow.source.namespace // "-") + "/" + (.flow.source.pod_name // "-")),
+  ((.flow.destination.namespace // "-") + "/" + (.flow.destination.pod_name // "-")),
+  (.flow.l4.TCP.destination_port // .flow.l4.UDP.destination_port // "-"),
+  .flow.verdict
 ] | @tsv' | column -t
 ```
 
 ### Step 4: Enable Hubble Metrics for Prometheus
 
-Configure Hubble to export policy verdict metrics:
+Configure Hubble to export policy verdict metrics. Add namespace labels to the flow metric so you can query Flux traffic specifically:
 
 ```bash
-cilium hubble enable --ui \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
-  --set hubble.metrics.serviceMonitor.enabled=true
+cilium hubble enable \
+  --helm-set hubble.metrics.enabled="{dns,drop,tcp,flow:labelsContext=source_namespace\\,destination_namespace,icmp,httpV2}" \
+  --helm-set hubble.metrics.serviceMonitor.enabled=true
 ```
 
 Query policy verdicts in Prometheus:
 
 ```bash
-hubble_flows_processed_total{namespace="flux-system", verdict="DROPPED"}
+hubble_flows_processed_total{source_namespace="flux-system", verdict="DROPPED"}
 ```
 
 Create a Grafana dashboard to visualize Flux network activity:
 
 ```bash
-rate(hubble_flows_processed_total{namespace="flux-system"}[5m])
+rate(hubble_flows_processed_total{source_namespace="flux-system"}[5m])
 ```
 
 ### Step 5: Set Up Alerts on Denied Traffic
@@ -191,7 +192,7 @@ spec:
     - name: flux-network
       rules:
         - alert: FluxNetworkPolicyDrop
-          expr: rate(hubble_flows_processed_total{namespace="flux-system", verdict="DROPPED"}[5m]) > 0
+          expr: rate(hubble_flows_processed_total{source_namespace="flux-system", verdict="DROPPED"}[5m]) > 0
           for: 5m
           labels:
             severity: warning
@@ -223,9 +224,8 @@ rules:
       - system:serviceaccount:flux-system:helm-controller
       - system:serviceaccount:flux-system:notification-controller
     resources:
-      - group: ""
+      - group: "*"
         resources: ["*"]
-    namespaces: ["*"]
   - level: None
 ```
 
@@ -259,13 +259,13 @@ data:
   fluent-bit.conf: |
     [INPUT]
         Name              tail
-        Path              /var/log/calico/*.log
+        Path              /var/log/syslog,/var/log/kern.log
         Tag               calico.*
 
     [FILTER]
         Name              grep
         Match             calico.*
-        Regex             log flux-system
+        Regex             log calico-packet
 
     [OUTPUT]
         Name              es
@@ -282,7 +282,7 @@ Generate a periodic audit report of Flux network activity:
 ```bash
 #!/bin/bash
 # flux-network-audit.sh
-# Run this script daily via CronJob
+# Run this script daily from an admin host, or adapt it for a CronJob with access to your log backend
 
 echo "=== Flux Network Audit Report ==="
 echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -300,12 +300,12 @@ echo "--- Recent Denied Connections (last 24h) ---"
 if command -v hubble &> /dev/null; then
     hubble observe --namespace flux-system --verdict DROPPED --since 24h --output compact 2>/dev/null | tail -50
 else
-    kubectl logs -n calico-system -l k8s-app=calico-node --since=24h 2>/dev/null | grep -i "deny\|drop" | grep flux-system | tail -50
+    echo "Hubble CLI not found. Query your centralized Calico node logs for calico-packet entries."
 fi
 echo ""
 
-echo "--- Network Policy Changes (last 24h) ---"
-kubectl get events -n flux-system --field-selector reason=NetworkPolicyCreated --sort-by='.lastTimestamp' 2>/dev/null | tail -20
+echo "--- Recent Namespace Events (last 24h) ---"
+kubectl get events -n flux-system --sort-by='.lastTimestamp' 2>/dev/null | tail -20
 ```
 
 Make the script executable and schedule it:
@@ -326,7 +326,7 @@ flux reconcile source git flux-system
 hubble observe --namespace flux-system --last 10
 
 # Check for log entries (Calico)
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=20 | grep flux-system
+journalctl -k --since "10 minutes ago" | grep "calico-packet"
 ```
 
 Verify denied traffic is logged by attempting a blocked connection:
