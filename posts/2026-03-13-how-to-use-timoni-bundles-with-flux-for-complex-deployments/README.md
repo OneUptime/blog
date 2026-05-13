@@ -10,7 +10,7 @@ Description: Learn how to use Timoni bundles to orchestrate multiple Flux module
 
 ## Introduction
 
-Complex Kubernetes deployments often involve multiple interconnected components: databases, caches, message queues, application services, and monitoring stacks. While individual Timoni modules handle each component, Timoni bundles let you compose multiple modules into a single deployable unit with shared configuration and dependency ordering. When combined with Flux, bundles provide a powerful way to manage complete application stacks through GitOps.
+Complex Kubernetes deployments often involve multiple interconnected components: databases, caches, message queues, application services, and monitoring stacks. While individual Timoni modules handle each component, Timoni bundles let you compose multiple modules into a single deployable unit with shared configuration and ordered application. When combined with Flux, bundles provide a powerful way to manage complete application stacks through GitOps.
 
 This guide demonstrates how to create and use Timoni bundles for multi-component deployments with Flux, covering bundle structure, shared values, environment-specific overrides, and lifecycle management.
 
@@ -47,14 +47,14 @@ bundle: {
 					name:    "postgresql"
 					version: "15.x"
 				}
-				release: {
-					interval:        "10m"
+				sync: {
+					interval:        10
 					targetNamespace: "database"
 					createNamespace: true
-					values: {
-						auth: database: "myapp"
-						primary: persistence: size: "50Gi"
-					}
+				}
+				helmValues: {
+					auth: database: "myapp"
+					primary: persistence: size: "50Gi"
 				}
 			}
 		}
@@ -72,14 +72,14 @@ bundle: {
 					name:    "redis"
 					version: "18.x"
 				}
-				release: {
-					interval:        "10m"
+				sync: {
+					interval:        10
 					targetNamespace: "cache"
 					createNamespace: true
-					values: {
-						architecture: "replication"
-						replica: replicaCount: 3
-					}
+				}
+				helmValues: {
+					architecture: "replication"
+					replica: replicaCount: 3
 				}
 			}
 		}
@@ -98,10 +98,6 @@ bundle: {
 					prune:           true
 					wait:            true
 					targetNamespace: "production"
-					dependsOn: [
-						{name: "database"},
-						{name: "cache"},
-					]
 				}
 			}
 		}
@@ -127,12 +123,12 @@ Deploy all instances in the bundle:
 timoni bundle apply -f bundle.cue
 ```
 
-Timoni applies instances in dependency order, ensuring the database and cache are deployed before the application.
+Timoni applies instances in the order they are defined, ensuring the database and cache are deployed before the application.
 
 Check the status of all instances:
 
 ```bash
-timoni list -A
+timoni bundle status -f bundle.cue
 ```
 
 ## Step 4: Use Runtime Values
@@ -162,12 +158,12 @@ bundle: {
 					name:    "postgresql"
 					version: "15.x"
 				}
-				release: {
+				sync: {
 					targetNamespace: "database-\(_env)"
 					createNamespace: true
-					values: {
-						primary: persistence: size: _dbSize
-					}
+				}
+				helmValues: {
+					primary: persistence: size: _dbSize
 				}
 			}
 		}
@@ -184,10 +180,10 @@ bundle: {
 				}
 				sync: {
 					targetNamespace: _env
-					postBuild: substitute: {
-						ENVIRONMENT: _env
-						REGION:      _region
-					}
+				}
+				substitute: {
+					ENVIRONMENT: _env
+					REGION:      _region
 				}
 			}
 		}
@@ -199,7 +195,7 @@ Apply with runtime values:
 
 ```bash
 ENV=production REGION=us-east-1 DB_SIZE=100Gi \
-  timoni bundle apply -f bundle.cue
+  timoni bundle apply -f bundle.cue --runtime-from-env
 ```
 
 ## Step 5: Environment-Specific Bundles
@@ -236,9 +232,11 @@ bundle: #BaseBundle & {
 	name: "app-stack-production"
 	instances: "database": values: {
 		chart: version: "15.5.0"
-		release: {
+		sync: {
 			targetNamespace: "database"
-			values: primary: persistence: size: "100Gi"
+		}
+		helmValues: {
+			primary: persistence: size: "100Gi"
 		}
 	}
 }
@@ -263,7 +261,7 @@ timoni bundle delete -f bundle.cue
 List all bundle instances:
 
 ```bash
-timoni list -A
+timoni list --bundle my-app-stack -A
 ```
 
 ## Step 7: Bundle with Monitoring Stack
@@ -288,14 +286,14 @@ bundle: {
 					name:    "kube-prometheus-stack"
 					version: "60.x"
 				}
-				release: {
+				sync: {
 					targetNamespace: "monitoring"
 					createNamespace: true
-					values: {
-						grafana: enabled:        true
-						prometheus: enabled:      true
-						alertmanager: enabled:    true
-					}
+				}
+				helmValues: {
+					grafana: enabled:     true
+					prometheus: enabled:  true
+					alertmanager: enabled: true
 				}
 			}
 		}
@@ -306,4 +304,4 @@ bundle: {
 
 ## Conclusion
 
-Timoni bundles provide a composable way to manage multi-component deployments with Flux. By grouping related module instances into a single bundle with shared configuration and dependency ordering, you can deploy complete application stacks in a single operation. Runtime values and environment-specific overrides make bundles adaptable across environments, while the CUE type system catches configuration errors before deployment. This approach scales well for teams managing complex applications that span multiple Helm charts, Git repositories, and custom modules.
+Timoni bundles provide a composable way to manage multi-component deployments with Flux. By grouping related module instances into a single bundle with shared configuration and ordered application, you can deploy complete application stacks in a single operation. Runtime values and environment-specific overrides make bundles adaptable across environments, while the CUE type system catches configuration errors before deployment. This approach scales well for teams managing complex applications that span multiple Helm charts, Git repositories, and custom modules.
