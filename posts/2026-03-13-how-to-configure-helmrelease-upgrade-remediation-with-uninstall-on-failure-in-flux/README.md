@@ -10,9 +10,9 @@ Description: Learn how to configure HelmRelease upgrade remediation with the uni
 
 ## Introduction
 
-Flux CD provides two remediation strategies for handling failed HelmRelease upgrades: rollback and uninstall. While rollback reverts to the previous release, the uninstall strategy takes a more aggressive approach by completely removing the failed Helm release and allowing Flux to reinstall it from scratch on the next reconciliation cycle.
+Flux CD provides two remediation strategies for handling failed HelmRelease upgrades: rollback and uninstall. While rollback reverts to the previous release, the uninstall strategy takes a more aggressive approach by completely removing the failed Helm release and allowing Flux to reinstall it from scratch.
 
-The uninstall remediation strategy is particularly useful when a rollback would not resolve the issue, such as when persistent volume claims, custom resource definitions, or other stateful resources have been corrupted during the failed upgrade. A clean uninstall followed by a fresh install can resolve issues that a simple rollback cannot.
+The uninstall remediation strategy is particularly useful when a rollback would not resolve the issue, such as when Helm-managed resources or release state have been corrupted during the failed upgrade. A clean uninstall followed by a fresh install can resolve issues that a simple rollback cannot. Custom resource definitions installed from a chart's `crds/` directory are not deleted by Helm uninstall, so their lifecycle still needs to be handled separately.
 
 This guide walks you through configuring the uninstall remediation strategy, explains when to use it over rollback, and provides production-ready YAML examples.
 
@@ -28,9 +28,9 @@ Before you begin, ensure you have:
 
 ## How the Uninstall Strategy Works
 
-When you set the remediation strategy to `uninstall`, Flux will attempt the upgrade a specified number of times. If all retries are exhausted, Flux uninstalls the Helm release entirely. On the next reconciliation interval, Flux sees that no release exists and performs a fresh install using the chart and values defined in the HelmRelease manifest.
+When you set the remediation strategy to `uninstall`, Flux will attempt the upgrade and remediate failures by uninstalling between retry attempts. If retries are configured, Flux will retry the release action after remediation. When no retries remain, Flux will also remediate the last failure by default when `.spec.upgrade.remediation.retries` is greater than `0`, leaving the release uninstalled before the controller attempts to reinstall it.
 
-This creates a cycle of: upgrade attempt, failure, retry, uninstall, and then reinstall. The reinstall uses the current desired state from your Git repository, which means any fixes you push to Git will be picked up automatically.
+This creates a cycle of: upgrade attempt, failure, uninstall remediation, and then retry or reinstall. The reinstall uses the current desired state from your Git repository, which means any fixes you push to Git will be picked up automatically.
 
 ## Basic Uninstall on Failure Configuration
 
@@ -58,7 +58,7 @@ spec:
       strategy: uninstall
 ```
 
-After three failed upgrade attempts, Flux will uninstall the release. On the next reconciliation (within 10 minutes), it will attempt a fresh install.
+With `retries: 3`, Flux can make three retry attempts after failures, using uninstall remediation between attempts. Because upgrade remediation defaults `remediateLastFailure` to true when retries are greater than zero, the last failed attempt is also remediated with an uninstall.
 
 ## Advanced Configuration with Uninstall Options
 
@@ -103,7 +103,7 @@ Setting `disableHooks` to true in the uninstall section prevents pre-delete and 
 Choose the uninstall strategy when:
 
 - The release state is corrupted beyond what a rollback can fix
-- CRDs or cluster-scoped resources need a clean slate
+- Helm-managed cluster-scoped resources need a clean slate
 - Persistent state from previous releases is causing conflicts
 - You want to ensure the install path is exercised rather than the upgrade path
 
@@ -175,9 +175,9 @@ kubectl events --for helmrelease/my-app -n default --watch
 
 ## Important Considerations
 
-Be aware that the uninstall strategy causes downtime. Between the uninstall and the next reconciliation, your application will not be running. For applications that cannot tolerate any downtime, use the rollback strategy instead.
+Be aware that the uninstall strategy causes downtime. Between the uninstall and the next successful retry or install, your application will not be running. For applications that cannot tolerate any downtime, use the rollback strategy instead.
 
-Also note that any persistent volume claims created by the Helm chart may be deleted during uninstall, depending on the reclaim policy. If your application uses persistent storage, make sure your storage class has the appropriate reclaim policy or use the rollback strategy.
+Also note that any persistent volume claims created and managed by the Helm chart may be deleted during uninstall. If a PVC is deleted, the persistent volume reclaim policy determines whether the backing persistent volume and storage asset are retained or deleted. If your application uses persistent storage, make sure your storage class has the appropriate reclaim policy or use the rollback strategy.
 
 ## Conclusion
 
