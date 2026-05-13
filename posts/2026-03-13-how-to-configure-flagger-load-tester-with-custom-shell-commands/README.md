@@ -12,7 +12,7 @@ Description: Learn how to use the Flagger load tester to execute custom shell co
 
 The Flagger load tester is not limited to its built-in `hey` and `ghz` load generators. It can execute arbitrary shell commands, making it a versatile tool for running custom validations, integration tests, API calls, and any other task you need during canary analysis.
 
-By setting `type: bash` or `type: cmd` in the webhook metadata, you tell the load tester to execute the command string as a shell command rather than interpreting it as a load test tool invocation. The command's exit code determines the webhook response: exit code 0 produces an HTTP 200 response, and any non-zero exit code produces a non-200 response.
+By setting `type: bash` in the webhook metadata, you tell the load tester to execute the command string as a blocking shell command rather than queuing it as an asynchronous load test task. The command's exit code determines the webhook response: exit code 0 produces an HTTP 200 response, and any non-zero exit code produces a non-200 response.
 
 This guide covers how to configure custom shell commands in Flagger webhooks, common patterns, and best practices.
 
@@ -62,8 +62,8 @@ The `type: bash` tells the load tester to run `cmd` as a shell command. The load
 
 The load tester supports two metadata types for custom commands:
 
-- `type: bash` - Executes the command through a shell (`/bin/sh -c`). Supports pipes, redirects, and shell features.
-- `type: cmd` - Executes the command directly without a shell wrapper. Better for commands that do not need shell features.
+- `type: bash` - Executes the command immediately through Bash (`bash -c`) and returns HTTP 200 only if the command exits successfully. Supports pipes, redirects, and Bash features.
+- `type: cmd` - Queues the command as an asynchronous load tester task and runs it through `sh -c`. This is the default task type used for `hey` and `ghz` load generation.
 
 For most use cases, `type: bash` is more flexible:
 
@@ -95,7 +95,7 @@ A common use case is running health checks against the canary before or during t
           cmd: "curl -sf http://my-app-canary.default:80/healthz"
 ```
 
-The `-sf` flags on curl make it fail silently on HTTP errors (`-f`) and suppress progress output (`-s`). A non-200 HTTP response from the canary causes curl to exit with a non-zero code, which makes the webhook return a failure.
+The `-sf` flags on curl make it fail silently on HTTP errors (`-f`) and suppress progress output (`-s`). An HTTP response code of 400 or higher from the canary causes curl to exit with a non-zero code, which makes the webhook return a failure.
 
 ## API Validation
 
@@ -110,6 +110,7 @@ Validate specific API responses from the canary:
         metadata:
           type: bash
           cmd: |
+            set -e
             response=$(curl -sf http://my-app-canary.default:80/api/v1/config)
             echo "$response" | jq -e '.version != ""'
             echo "$response" | jq -e '.features | length > 0'
@@ -181,7 +182,7 @@ Chain commands with `&&` for sequential execution where all must succeed, or `;`
 
 ## Setting Timeouts
 
-The `timeout` field on the webhook controls how long Flagger waits for the webhook response. Set it long enough for your command to complete:
+The `timeout` field on the webhook controls how long Flagger waits for the webhook response. Set it long enough for your command to complete, and make sure the load tester's command timeout is also long enough for slow checks:
 
 ```yaml
     webhooks:
@@ -194,7 +195,7 @@ The `timeout` field on the webhook controls how long Flagger waits for the webho
           cmd: "my-long-running-test http://my-app-canary.default:80/"
 ```
 
-If the command takes longer than the timeout, Flagger treats the webhook as failed.
+If the command takes longer than the webhook timeout, Flagger treats the webhook as failed.
 
 ## Error Handling
 
