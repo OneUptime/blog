@@ -31,16 +31,18 @@ kubectl patch felixconfiguration default --type=merge -p '{"spec":{"prometheusMe
 ## Step 2: Key Metrics
 
 ```promql
-# Denied packets rate
+# Iptables save errors (a signal that policy programming is failing on a node)
 
-rate(felix_denied_packets_total[5m])
+rate(felix_iptables_save_errors[5m])
 
-# Active policies
-felix_active_network_policies
+# Active local policies per node
+felix_active_local_policies
 
-# Policy evaluation rate
-rate(felix_policy_evaluation_total[5m])
+# Cluster-wide policy count
+felix_cluster_num_policies
 ```
+
+Note: Open source Calico (Felix) does not expose a per-policy denied-packets counter. Metrics such as `calico_denied_packets` and `cnx_policy_rule_packets` are only available in Calico Cloud / Calico Enterprise.
 
 ## Step 3: Set Up Alerts
 
@@ -53,13 +55,13 @@ spec:
   groups:
     - name: calico.policy
       rules:
-        - alert: HighDenialRate
-          expr: rate(felix_denied_packets_total[5m]) > 50
+        - alert: FelixIptablesSaveErrors
+          expr: rate(felix_iptables_save_errors[5m]) > 0
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "High packet denial rate for Policy Logging policies"
+            summary: "Felix is failing to program iptables rules on this node — policy (including Log rules) may not be enforced as written"
 ```
 
 ## Step 4: Grafana Dashboard
