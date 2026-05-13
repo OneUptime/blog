@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Bandwidth Optimization, OCI Artifacts
 
-Description: Optimize Flux CD for low-bandwidth network environments using OCI artifacts, shallow clones, and manifest compression to minimize data transfer.
+Description: Optimize Flux CD for low-bandwidth network environments using OCI artifacts, sparse checkouts, and compressed artifacts to minimize data transfer.
 
 ---
 
 ## Introduction
 
-Edge sites often operate on constrained network links - 4G cellular with data caps, satellite connections with limited throughput, or private MPLS links shared with operational technology. Every megabyte transferred costs money or time, and Flux CD's default behavior of cloning a full Git repository on every reconciliation cycle can be surprisingly bandwidth-intensive at scale.
+Edge sites often operate on constrained network links - 4G cellular with data caps, satellite connections with limited throughput, or private MPLS links shared with operational technology. Every megabyte transferred costs money or time, and Git-based Flux sources can be surprisingly bandwidth-intensive at scale when repositories are large or change frequently.
 
-Optimizing Flux for low-bandwidth environments involves replacing Git operations with more efficient OCI artifact pulls, configuring shallow clones, increasing reconciliation intervals, and compressing transferred data. With the right configuration, Flux's bandwidth consumption can be reduced by 70-90% compared to defaults.
+Optimizing Flux for low-bandwidth environments involves replacing Git operations with more efficient OCI artifact pulls, using sparse checkouts when Git is still required, increasing reconciliation intervals, and relying on compressed artifacts. With the right configuration, Flux's bandwidth consumption can be reduced significantly compared to Git-based layouts that package large repositories.
 
-This guide covers every available bandwidth optimization, from OCI artifacts to blob storage caching, with specific measurements to help you understand the impact.
+This guide covers practical bandwidth optimizations, from OCI artifacts to registry caching, with measurement guidance to help you understand the impact.
 
 ## Prerequisites
 
@@ -84,9 +84,9 @@ spec:
     name: registry-credentials
 ```
 
-## Step 2: Configure Shallow Git Cloning (If Still Using Git)
+## Step 2: Configure Sparse Git Checkouts (If Still Using Git)
 
-If you must use a GitRepository source, enable shallow cloning to reduce transfer size.
+If you must use a GitRepository source, use `sparseCheckout` to keep the generated source artifact limited to the directories needed at the edge. Flux supports shallow cloning only when `.spec.ref.commit` is combined with `.spec.ref.branch`; for a moving branch, sparse checkout is the practical bandwidth control.
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -100,10 +100,9 @@ spec:
   ref:
     branch: main
   url: https://github.com/my-org/my-fleet
-  # Shallow clone - only fetch recent history
-  include:
-    - fromPath: apps/overlays/edge
-      toPath: overlays
+  # Only include the edge overlay in the produced source artifact
+  sparseCheckout:
+    - apps/overlays/edge
   secretRef:
     name: flux-system
 ```
@@ -138,7 +137,7 @@ spec:
 
 Instead of pushing all manifests as one artifact, split by update frequency to avoid re-downloading stable components.
 
-```yaml
+```bash
 # CI/CD: Push separate artifacts by component
 # Infrastructure (changes rarely)
 flux push artifact \
@@ -200,27 +199,25 @@ tcpdump -r /tmp/flux-traffic.pcap -q | wc -l
 
 Expected results after optimization:
 - Git clone (before): 15-50MB per reconciliation
-- OCI artifact pull (after): 0.5-2MB per reconciliation (delta only on subsequent pulls)
+- OCI artifact pull (after): 0.5-2MB when a new artifact digest is downloaded; unchanged intervals usually perform only remote metadata checks
 
 ## Step 6: Use a Local Edge Registry Cache
 
-Cache OCI artifacts locally so only the first pull requires bandwidth.
+Cache OCI artifacts locally with a registry mirror or proxy at the edge so only the first pull of a digest requires upstream bandwidth. Flux does not use containerd's image cache for `OCIRepository` sources; the source-controller pulls the artifact and stores a compressed `.tar.gz` in its own artifact storage.
 
 ```bash
-# Use containerd's built-in image caching
-# The OCI artifact is cached after first pull
-# Subsequent pulls only transfer if the digest has changed
+# Verify that Flux has stored the pulled artifact
+kubectl -n flux-system describe ocirepository fleet-edge-apps
 
-# Verify caching is working
-ctr images ls | grep fleet/edge-apps
-# If already present, Flux will not re-download until digest changes
+# Look for status.artifact.path and status.artifact.revision.
+# The revision includes the resolved tag and digest, for example latest@sha256:...
 ```
 
 ## Best Practices
 
 - Switch from GitRepository to OCIRepository as the primary bandwidth optimization.
 - Split manifests into stability tiers (infrastructure vs. apps) with different update frequencies.
-- Use image digest pinning in OCI artifact tags so Flux only downloads when there is an actual change.
+- Use immutable tags or `.spec.ref.digest` pinning for releases that should not move unexpectedly.
 - Monitor bandwidth per-site to identify outliers that may need additional optimization.
 - Consider local OCI registry caching for sites with extremely limited bandwidth.
 - Set `interval` based on your change frequency - if apps change once a day, a 4-hour interval is reasonable.
