@@ -13,10 +13,10 @@ AWS Graviton processors are ARM-based chips designed by AWS that offer up to 40%
 ## Prerequisites
 
 - AWS CLI configured with appropriate permissions
-- eksctl installed (version 0.170 or later)
+- eksctl installed (latest version recommended)
 - Flux CLI installed
 - kubectl installed
-- A GitHub personal access token with repo permissions
+- A GitHub personal access token with repo permissions and admin access to the target repository or organization
 
 ## Step 1: Create an EKS Cluster with Graviton Node Groups
 
@@ -31,7 +31,7 @@ kind: ClusterConfig
 metadata:
   name: my-graviton-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.34"
 
 managedNodeGroups:
   - name: graviton-system
@@ -99,12 +99,14 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/my-graviton-cluster \
+  --components-extra=image-reflector-controller,image-automation-controller \
+  --read-write-key \
   --personal
 ```
 
 ## Step 4: Verify Flux Runs on ARM Nodes
 
-Check that Flux controllers are scheduled on Graviton nodes:
+Check where Flux controllers are scheduled:
 
 ```bash
 flux check
@@ -112,7 +114,7 @@ flux check
 kubectl get pods -n flux-system -o wide
 ```
 
-Flux images are multi-arch, so they will run on ARM64 nodes without any extra configuration.
+Flux images are multi-arch, so they can run on ARM64 nodes without any extra configuration. In a mixed-architecture cluster, the scheduler may place them on either ARM64 or amd64 nodes unless you add scheduling constraints.
 
 ## Step 5: Configure Node Affinity for Workloads
 
@@ -183,9 +185,9 @@ spec:
               memory: 256Mi
 ```
 
-## Step 7: Build Multi-Architecture Images with Flux Image Automation
+## Step 7: Track Multi-Architecture Images with Flux Image Automation
 
-Set up Flux Image Automation to track and deploy multi-arch images. First, configure the image repository:
+Set up Flux Image Automation to track multi-arch image tags. First, configure the image repository:
 
 ```yaml
 # clusters/my-graviton-cluster/image-automation/image-repository.yaml
