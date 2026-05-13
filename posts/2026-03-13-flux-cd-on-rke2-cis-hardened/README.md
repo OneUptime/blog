@@ -43,32 +43,27 @@ useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U
 
 ```yaml
 # /etc/rancher/rke2/config.yaml (on all server nodes)
-# Enable CIS 1.23 hardening profile
-profile: cis-1.23
+# Enable the CIS hardening profile for the RKE2 version in use
+profile: cis
 
-# API server additional arguments for compliance
-kube-apiserver-arg:
-  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
-  - "audit-log-maxage=30"
-  - "audit-log-maxbackup=10"
-  - "audit-log-maxsize=100"
-  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
-  - "anonymous-auth=false"
+# Custom audit policy for compliance reporting
+audit-policy-file: /etc/rancher/rke2/audit-policy.yaml
 
 # Kubelet hardening
+protect-kernel-defaults: true
 kubelet-arg:
-  - "protect-kernel-defaults=true"
   - "make-iptables-util-chains=true"
   - "streaming-connection-idle-timeout=5m"
 
-# TLS cipher suite restrictions
+# API server hardening
 kube-apiserver-arg:
+  - "anonymous-auth=false"
   - "tls-min-version=VersionTLS12"
   - "tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 
 # Disable unused features
 disable:
-  - rke2-ingress-nginx  # Deploy via Flux instead
+  - rke2-ingress-nginx  # On RKE2 versions that install it; deploy ingress via Flux instead
 ```
 
 ```yaml
@@ -118,7 +113,7 @@ kubectl get nodes
 
 ## Step 5: Create Flux Namespace with Pod Security Standards
 
-RKE2's CIS profile enforces Pod Security Standards. The `flux-system` namespace needs the `privileged` label for Flux controllers:
+RKE2's CIS profile enforces Pod Security Standards. Flux controllers conform to the Restricted Pod Security Standard, so label the `flux-system` namespace accordingly:
 
 ```yaml
 # Apply before bootstrapping Flux
@@ -127,10 +122,10 @@ kind: Namespace
 metadata:
   name: flux-system
   labels:
-    # Flux controllers require privileged PSS due to volume mounting
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/audit: privileged
-    pod-security.kubernetes.io/warn: privileged
+    # Flux controllers are designed to run under restricted PSS
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 ```
 
 ```bash
@@ -147,8 +142,7 @@ flux bootstrap github \
   --repository=rke2-fleet \
   --branch=main \
   --path=clusters/rke2-cis \
-  --personal \
-  --network-policy=false  # RKE2 CIS profile manages network policies separately
+  --personal
 
 # Verify Flux is running
 kubectl get pods -n flux-system
@@ -158,13 +152,18 @@ kubectl get pods -n flux-system
 
 ```bash
 # Install kube-bench to validate CIS compliance
-kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
+kubectl create namespace kube-bench
+kubectl label namespace kube-bench \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
+kubectl apply -n kube-bench -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
 
 # Check kube-bench results
-kubectl logs job.batch/kube-bench
+kubectl logs -n kube-bench job.batch/kube-bench
 
 # Run the RKE2-specific benchmark
-kubectl apply -f - <<EOF
+kubectl apply -n kube-bench -f - <<EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -191,7 +190,7 @@ EOF
 
 ## Best Practices
 
-- Apply the `flux-system` namespace with PSS `privileged` enforcement before running `flux bootstrap` so Flux controllers are not blocked by the admission controller.
+- Apply the `flux-system` namespace with PSS `restricted` enforcement before running `flux bootstrap` so Flux controllers are validated by the admission controller.
 - Use the RKE2 CIS profile's audit log output to feed into a SIEM (Splunk, Elastic) for compliance reporting.
 - Manage ingress, CNI, and other cluster addons via Flux HelmRelease resources rather than RKE2's built-in addon mechanism to maintain GitOps discipline.
 - Run `kube-bench` as a scheduled Job (via Flux) on every cluster to continuously validate CIS compliance after upgrades.
