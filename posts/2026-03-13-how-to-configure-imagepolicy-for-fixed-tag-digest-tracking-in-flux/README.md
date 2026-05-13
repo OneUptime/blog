@@ -60,15 +60,16 @@ spec:
   filterTags:
     pattern: '^latest$'
   policy:
-    alphabetical:
-      order: asc
+    alphabetical: {}
+  digestReflectionPolicy: Always
+  interval: 10m
 ```
 
-This policy filters for the exact tag `latest`. Since there is only one matching tag, the policy always selects it. The key is that Flux tracks whether the digest behind this tag has changed.
+This policy filters for the exact tag `latest`. Since there is only one matching tag, the policy always selects it. The key is `digestReflectionPolicy: Always`, which tells Flux to refresh and reflect the digest behind this tag at the specified interval.
 
 ## Using Digest in Deployment Manifests
 
-To reference the image with its digest, use the `$imagepolicy` marker with the `:tag` or `:name` suffix to control what gets written:
+To reference the image with its digest in a Deployment, use a digest-pinned image reference and the basic `$imagepolicy` marker:
 
 ```yaml
 apiVersion: apps/v1
@@ -87,14 +88,14 @@ spec:
     spec:
       containers:
         - name: my-app
-          image: docker.io/myorg/my-app:latest # {"$imagepolicy": "flux-system:my-app-latest"}
+          image: docker.io/myorg/my-app:latest@sha256:ec0119616bb8be9199575c05bfc23a6bf0fbdb0690ee15834e7b43bc3f4f6017 # {"$imagepolicy": "flux-system:my-app-latest"}
 ```
 
-When Flux detects that the digest behind `latest` has changed, it can update the deployment. However, since the tag name does not change, Kubernetes may not trigger a rolling update unless you use additional mechanisms.
+When Flux detects that the digest behind `latest` has changed, it can update the deployment image reference to the new `tag@digest` value. Because the pod template changes, Kubernetes can roll out the updated pods.
 
 ## Forcing Rolling Updates on Digest Changes
 
-Since the image tag does not change, Kubernetes will not automatically trigger a new rollout. To force rolling updates when the digest changes, annotate the pod template with the digest:
+Since the image tag does not change, Kubernetes will not automatically trigger a new rollout if the manifest only contains `docker.io/myorg/my-app:latest`. To force rolling updates when the digest changes, pin the digest in the image reference so Flux can update the pod template:
 
 ```yaml
 apiVersion: apps/v1
@@ -110,12 +111,10 @@ spec:
     metadata:
       labels:
         app: my-app
-      annotations:
-        fluxcd.io/image-digest: "" # Updated by automation
     spec:
       containers:
         - name: my-app
-          image: docker.io/myorg/my-app:latest # {"$imagepolicy": "flux-system:my-app-latest"}
+          image: docker.io/myorg/my-app:latest@sha256:ec0119616bb8be9199575c05bfc23a6bf0fbdb0690ee15834e7b43bc3f4f6017 # {"$imagepolicy": "flux-system:my-app-latest"}
 ```
 
 Alternatively, consider switching to unique tags (like SemVer or timestamps) rather than relying on fixed tags, as this provides a more reliable update mechanism.
@@ -136,8 +135,9 @@ spec:
   filterTags:
     pattern: '^stable$'
   policy:
-    alphabetical:
-      order: asc
+    alphabetical: {}
+  digestReflectionPolicy: Always
+  interval: 10m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
@@ -150,8 +150,9 @@ spec:
   filterTags:
     pattern: '^edge$'
   policy:
-    alphabetical:
-      order: asc
+    alphabetical: {}
+  digestReflectionPolicy: Always
+  interval: 10m
 ```
 
 Use the stable policy for production and the edge policy for staging:
@@ -159,10 +160,10 @@ Use the stable policy for production and the edge policy for staging:
 ```yaml
 # Production
 
-image: docker.io/myorg/my-app:stable # {"$imagepolicy": "flux-system:my-app-stable"}
+image: docker.io/myorg/my-app:stable@sha256:ec0119616bb8be9199575c05bfc23a6bf0fbdb0690ee15834e7b43bc3f4f6017 # {"$imagepolicy": "flux-system:my-app-stable"}
 
 # Staging
-image: docker.io/myorg/my-app:edge # {"$imagepolicy": "flux-system:my-app-edge"}
+image: docker.io/myorg/my-app:edge@sha256:ec0119616bb8be9199575c05bfc23a6bf0fbdb0690ee15834e7b43bc3f4f6017 # {"$imagepolicy": "flux-system:my-app-edge"}
 ```
 
 ## Using Image Pull Policy
@@ -176,7 +177,7 @@ containers:
     imagePullPolicy: Always
 ```
 
-The `Always` pull policy ensures Kubernetes checks the registry for the latest digest every time a pod starts, rather than using a cached image.
+The `Always` pull policy ensures Kubernetes queries the registry for the image digest every time a pod starts, and then uses the cached image only when the resolved digest is already present on the node.
 
 ## Limitations and Recommendations
 
@@ -194,7 +195,7 @@ flux get image policy my-app-latest
 Check the current digest:
 
 ```bash
-kubectl -n flux-system get imagepolicy my-app-latest -o jsonpath='{.status.latestImage}'
+kubectl -n flux-system get imagepolicy my-app-latest -o jsonpath='{.status.latestRef.digest}'
 ```
 
 ## Conclusion
