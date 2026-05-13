@@ -14,7 +14,7 @@ The NVIDIA device plugin is a lightweight Kubernetes DaemonSet that advertises G
 
 Using Flux CD to deploy the device plugin ensures that every GPU node in your cluster is consistently configured through a GitOps workflow. Changes to the plugin version or configuration are reviewed as pull requests and applied automatically.
 
-This guide walks through deploying the NVIDIA device plugin via Flux CD using both a HelmRelease and a raw DaemonSet manifest approach, giving you flexibility based on your cluster setup.
+This guide walks through deploying the NVIDIA device plugin via Flux CD using a HelmRelease, giving you a declarative workflow that fits cleanly into a GitOps setup.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ spec:
   chart:
     spec:
       chart: nvidia-device-plugin
-      version: "0.14.*"
+      version: "0.19.*"
       sourceRef:
         kind: HelmRepository
         name: nvdp
@@ -71,10 +71,8 @@ spec:
     migStrategy: "mixed"
     # Fail on driver initialization errors for fast feedback
     failOnInitError: true
-    # Pass through device list via volume mounts (more secure than env vars)
+    # Pass through device list via volume mounts instead of the default envvar strategy
     deviceListStrategy: "volume-mounts"
-    # Resource name to advertise on nodes
-    resourceName: "nvidia.com/gpu"
     tolerations:
       - key: "nvidia.com/gpu"
         operator: "Exists"
@@ -119,7 +117,7 @@ kubectl get daemonset -n nvidia-device-plugin
 # Check GPU capacity reported by the kubelet
 kubectl get nodes -o custom-columns=\
   NAME:.metadata.name,\
-  GPU:.status.capacity."nvidia\.com/gpu"
+  GPU:.status.capacity.nvidia\.com/gpu
 ```
 
 ## Step 5: Confirm GPU Allocation Works
@@ -145,7 +143,7 @@ spec:
 
 ```bash
 kubectl apply -f test-device-plugin.yaml
-kubectl wait --for=condition=Completed pod/device-plugin-test --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/device-plugin-test --timeout=60s
 kubectl logs device-plugin-test
 # Output: GPU 0: NVIDIA Tesla T4 (UUID: GPU-...)
 ```
@@ -154,9 +152,9 @@ kubectl logs device-plugin-test
 
 - Use the `mixed` MIG strategy when your cluster has both MIG-enabled and standard GPU nodes to avoid resource advertisement conflicts.
 - Add a `nvidia.com/gpu: NoSchedule` taint to GPU nodes and include the matching toleration in the device plugin DaemonSet so non-GPU workloads do not land on expensive GPU nodes.
-- Pin the chart version with a patch wildcard (`0.14.*`) to automatically receive bug fixes while protecting against minor-version breaking changes.
-- Monitor DaemonSet rollout health with Flux's built-in health checks by adding `healthChecks` to the Flux Kustomization.
-- Use `deviceListStrategy: volume-mounts` over environment variable injection for better security isolation.
+- Pin the chart version with a patch wildcard (`0.19.*`) to automatically receive bug fixes while protecting against minor-version breaking changes.
+- Monitor HelmRelease rollout health with Flux's built-in health checks by adding `healthChecks` to the Flux Kustomization.
+- Use `deviceListStrategy: volume-mounts` when your NVIDIA container runtime integration expects devices to be passed through mounted files instead of environment variables.
 
 ## Conclusion
 
