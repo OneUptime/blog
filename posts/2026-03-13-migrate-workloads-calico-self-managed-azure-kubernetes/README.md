@@ -12,7 +12,7 @@ Description: Migrate existing workloads to Calico on self-managed Kubernetes clu
 
 Self-managed Kubernetes on Azure VMs gives operators the flexibility to choose their networking stack independent of AKS constraints. Teams running kubeadm-based clusters on Azure often begin with a simple CNI like Flannel and later need Calico's richer network policy model, BGP support, or multi-pool IPAM as their cluster grows.
 
-Azure's Virtual Network (VNet) provides the underlying L3 network, and Calico can operate in VXLAN or IP-in-IP encapsulation mode to overlay pod networking on top of the VNet fabric. Understanding how Azure VNet routes interact with Calico's data plane is essential for a smooth migration.
+Azure's Virtual Network (VNet) provides the underlying L3 network, and Calico should use VXLAN encapsulation to overlay pod networking on top of the VNet fabric because Azure blocks IP-in-IP packets. Understanding how Azure VNet routes interact with Calico's data plane is essential for a smooth migration.
 
 This guide covers the full migration path from an existing CNI to Calico on self-managed Azure Kubernetes, including VNet CIDR alignment, encapsulation selection, and post-migration validation using `calicoctl`.
 
@@ -20,7 +20,7 @@ This guide covers the full migration path from an existing CNI to Calico on self
 
 - Self-managed Kubernetes cluster on Azure VMs (kubeadm recommended)
 - `kubectl` with cluster-admin privileges
-- `calicoctl` v3.27+ installed locally
+- `calicoctl` installed locally, matching the Calico release you deploy
 - SSH access to Azure VM nodes or Azure Bastion configured
 - Existing pod CIDR documented (from `kubeadm init --pod-network-cidr`)
 - Azure VNet with non-overlapping address space for Calico IP pools
@@ -34,7 +34,7 @@ Capture current pod CIDRs and node assignments to reference during migration:
 ```bash
 # List all nodes with their internal IPs
 
-kubectl get nodes -o custom-columns=NAME:.metadata.name,IP:.status.addresses[0].address
+kubectl get nodes -o custom-columns=NAME:.metadata.name,INTERNAL-IP:.status.addresses[?(@.type=="InternalIP")].address
 
 # Check the current pod CIDR allocation
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
@@ -59,7 +59,10 @@ kubectl drain <node-name> \
   --delete-emptydir-data \
   --timeout=180s
 
-# Remove old CNI binaries and config on the node (via SSH)
+# Remove the old CNI DaemonSet after identifying its namespace and name
+kubectl delete daemonset <old-cni-daemonset> -n <old-cni-namespace>
+
+# Remove old CNI config on the node (via SSH)
 sudo rm -f /etc/cni/net.d/*
 sudo ip link delete cni0 2>/dev/null || true
 sudo ip link delete flannel.1 2>/dev/null || true
@@ -74,7 +77,7 @@ Install the Calico operator and its CRDs onto your cluster:
 
 ```bash
 # Apply the Tigera operator manifest
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Verify the operator pod is running
 kubectl get pods -n tigera-operator
@@ -84,7 +87,7 @@ kubectl get pods -n tigera-operator
 
 Create an Installation resource that aligns Calico's IP pools with your Azure VNet.
 
-Configure VXLAN encapsulation since Azure VNet does not support BGP route injection by default:
+Configure VXLAN encapsulation because Azure supports Calico VXLAN overlay networking and blocks IP-in-IP packets:
 
 ```yaml
 # calico-installation.yaml - Calico configuration for Azure self-managed Kubernetes
@@ -98,7 +101,7 @@ spec:
     - blockSize: 26
       # Must not overlap with Azure VNet address space
       cidr: 10.244.0.0/16
-      encapsulation: VXLAN   # Required for Azure VNet compatibility
+      encapsulation: VXLAN   # Required for Calico overlay networking on Azure
       natOutgoing: Enabled
       nodeSelector: all()
 ---
