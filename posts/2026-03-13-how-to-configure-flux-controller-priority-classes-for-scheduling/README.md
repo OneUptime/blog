@@ -10,11 +10,11 @@ Description: Assign Kubernetes priority classes to Flux controllers to ensure th
 
 ## Why Priority Classes Matter for Flux
 
-Flux controllers are infrastructure-critical components. If the kustomize-controller or source-controller gets evicted because the cluster is under memory pressure, your entire GitOps delivery pipeline stops. Kubernetes priority classes let you ensure that Flux controllers are scheduled with higher priority than regular application pods and are the last to be evicted when resources are scarce.
+Flux controllers are infrastructure-critical components. If the kustomize-controller or source-controller gets evicted because the cluster is under memory pressure, your entire GitOps delivery pipeline stops. Kubernetes priority classes let you ensure that Flux controllers are scheduled with higher priority than regular application pods and are less likely to be evicted before lower-priority workloads when resources are scarce.
 
 ## How Priority Classes Work
 
-A PriorityClass assigns a numeric priority value to pods. The Kubernetes scheduler uses this value to determine scheduling order, and the kubelet uses it for eviction ordering. Higher values mean higher priority. System-critical pods like kube-apiserver typically use values above 1,000,000,000.
+A PriorityClass assigns a numeric priority value to pods. The Kubernetes scheduler uses this value to determine scheduling order, and the kubelet uses it as one factor in node-pressure eviction ordering. Higher values mean higher priority. User-defined PriorityClass values can be up to 1,000,000,000; larger values are reserved for Kubernetes built-in system-critical PriorityClasses.
 
 ## Creating a Priority Class for Flux
 
@@ -89,7 +89,7 @@ git push
 
 ## Preemption Behavior
 
-With `preemptionPolicy: PreemptLowerPriority`, the scheduler can evict lower-priority pods to make room for Flux controllers. This means that if a node runs out of resources, application pods (priority 0) will be evicted before Flux controllers (priority 1,000,000).
+With `preemptionPolicy: PreemptLowerPriority`, the scheduler can preempt lower-priority pods to make room for pending Flux controller pods. This means that if a Flux controller cannot be scheduled because of resource requests, the scheduler may terminate application pods (priority 0) before scheduling the Flux controller (priority 1,000,000).
 
 If you do not want Flux controllers to preempt other workloads, set:
 
@@ -97,7 +97,7 @@ If you do not want Flux controllers to preempt other workloads, set:
 preemptionPolicy: Never
 ```
 
-With this setting, the controllers still benefit from eviction protection but will not cause other pods to be preempted during scheduling.
+With this setting, the controllers still keep their higher priority for scheduling order and node-pressure eviction decisions but will not cause other pods to be preempted during scheduling.
 
 ## Choosing a Priority Value
 
@@ -107,7 +107,7 @@ With this setting, the controllers still benefit from eviction protection but wi
 | 100,000 | Non-critical infrastructure |
 | 1,000,000 | Critical infrastructure (Flux, monitoring, ingress) |
 | 100,000,000 | Cluster-critical add-ons |
-| 2,000,000,000 | System-critical (kube-system) |
+| Above 1,000,000,000 | Reserved for built-in system-critical PriorityClasses |
 
 For Flux, a value between 100,000 and 1,000,000 is appropriate. Choose a value that fits your existing priority class hierarchy.
 
