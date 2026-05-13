@@ -44,17 +44,16 @@ metadata:
 spec:
   cidr: 10.48.0.0/16
   blockSize: 26
-  ipipMode: Never
-  vxlanMode: VXLAN
+  vxlanMode: Always
   natOutgoing: true
-  nodeSelector: all()
+  nodeSelector: topology.kubernetes.io/zone == "zone-a"
 ```
 
 ## Verification
 
 ```bash
 # Verify allocations
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u | head -20
+kubectl get pods -A -o wide | awk 'NR>1 {print $7}' | sort -u | head -20
 
 # Check pool utilization
 calicoctl ipam show --show-configuration
