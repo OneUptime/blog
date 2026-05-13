@@ -10,23 +10,23 @@ Description: Diagnose why a Kubernetes node shows NotReady status related to Cal
 
 ## Introduction
 
-A Kubernetes node showing NotReady status when Calico is involved usually has one of two root causes: the calico-node pod on that node is not functioning correctly, or the Felix process within calico-node is failing to apply network policy and routing, causing the kubelet to report the node as unfit for scheduling.
+A Kubernetes node showing NotReady status when Calico is involved usually has one of two common root causes: the calico-node pod on that node is not functioning correctly, or the Felix process within calico-node is failing to become ready and program the dataplane correctly.
 
-The kubelet's NetworkPlugin readiness check is directly tied to whether the CNI plugin (Calico) is reporting itself as ready. When calico-node is not ready, the kubelet marks the node as NetworkPluginNotReady, which rolls up to NotReady node status. Understanding this chain of dependencies is key to efficient diagnosis.
+On modern Kubernetes clusters, kubelet receives network readiness from the container runtime, which loads the node's CNI configuration and CNI plugin binaries. When Calico's CNI installation or required node components are broken, kubelet may report `NetworkPluginNotReady`, which rolls up to `NotReady` node status. Understanding this chain of dependencies is key to efficient diagnosis.
 
 This guide provides a structured approach to diagnosing node NotReady status specifically related to Calico.
 
 ## Symptoms
 
 - `kubectl get nodes` shows a node with `NotReady` status
-- `kubectl describe node <node>` shows `KubeletNotReady: NetworkPlugin calico not ready`
+- `kubectl describe node <node>` shows `KubeletNotReady` with `NetworkPluginNotReady` or CNI initialization errors
 - calico-node pod on the affected node shows 0/1 Ready
-- New pods cannot be scheduled on the affected node
+- New pods without a matching toleration cannot be scheduled on the affected node
 
 ## Root Causes
 
 - calico-node pod CrashLoopBackOff or Pending on the affected node
-- Felix failing to initialize due to kernel module missing
+- Felix failing to initialize because required kernel modules or dataplane prerequisites are missing
 - Calico datastore unreachable from the node
 - calico-node pod evicted due to node resource pressure
 - Node has no CNI binary in `/opt/cni/bin/calico`
@@ -60,8 +60,8 @@ kubectl logs $NODE_POD -n kube-system -c calico-node --previous --tail=50 2>/dev
 **Step 4: Check Felix status**
 
 ```bash
-kubectl exec $NODE_POD -n kube-system -- calico-node -felix-live 2>/dev/null || \
-  echo "Felix liveness check failed"
+kubectl exec $NODE_POD -n kube-system -- /bin/calico-node -felix-ready 2>/dev/null || \
+  echo "Felix readiness check failed"
 ```
 
 **Step 5: Check CNI binary on node**
