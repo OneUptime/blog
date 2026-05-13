@@ -12,7 +12,7 @@ Description: Deploy OpenTelemetry Collector as a central Deployment using Flux C
 
 While the DaemonSet deployment model runs a collector on every node, the Deployment model runs a configurable number of centralized collector replicas. This pattern is ideal for aggregating telemetry from across the cluster, performing tail-based trace sampling, or acting as a gateway that fans out to multiple backends.
 
-A Deployment-mode collector can be scaled horizontally with an HPA, and its configuration pipeline can be more resource-intensive (e.g., tail sampling processors) without impacting the node where applications run.
+A Deployment-mode collector can be scaled horizontally with an HPA for stateless pipelines. Stateful pipelines, such as tail sampling, require trace-ID-aware routing so all spans for a trace reach the same collector replica.
 
 This guide deploys the OpenTelemetry Collector as a Deployment using the OpenTelemetry Operator, with a multi-backend export pipeline including Prometheus remote_write, Loki, and Tempo.
 
@@ -20,6 +20,7 @@ This guide deploys the OpenTelemetry Collector as a Deployment using the OpenTel
 
 - Kubernetes cluster with Flux CD bootstrapped
 - OpenTelemetry Operator installed (see the DaemonSet guide for operator setup)
+- Upstream agent collectors configured with trace-ID-aware routing if you scale tail-sampling gateways beyond one replica
 - Observability backends running (Prometheus/Mimir, Loki, Tempo)
 - `flux` and `kubectl` CLIs installed
 
@@ -30,7 +31,41 @@ Define an `OpenTelemetryCollector` with `mode: deployment` for centralized aggre
 ```yaml
 # clusters/my-cluster/otel/otel-deployment-collector.yaml
 
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-gateway
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-gateway
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-gateway
+subjects:
+  - kind: ServiceAccount
+    name: otel-gateway
+    namespace: monitoring
+roleRef:
+  kind: ClusterRole
+  name: otel-gateway
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-gateway
@@ -39,6 +74,8 @@ spec:
   # Deployment mode: scalable central gateway
   mode: deployment
   replicas: 2
+  serviceAccount: otel-gateway
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.151.0
 
   resources:
     requests:
@@ -48,27 +85,17 @@ spec:
       cpu: "1"
       memory: "1Gi"
 
-  config: |
+  config:
     receivers:
-      # Accept OTLP from DaemonSet collectors or directly from apps
+      # Accept OTLP from DaemonSet collectors or directly from apps.
+      # When tail sampling with multiple replicas, upstream collectors
+      # must route spans by trace ID to the gateway replicas.
       otlp:
         protocols:
           grpc:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-
-      # Scrape Prometheus metrics endpoints cluster-wide
-      prometheus:
-        config:
-          scrape_configs:
-            - job_name: kubernetes-pods
-              kubernetes_sd_configs:
-                - role: pod
-              relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-                  action: keep
-                  regex: "true"
 
     processors:
       # Enrich with Kubernetes resource attributes
@@ -111,9 +138,9 @@ spec:
         tls:
           insecure: true
 
-      # Push logs to Grafana Loki
-      loki:
-        endpoint: http://loki-gateway.monitoring.svc/loki/api/v1/push
+      # Push logs to Grafana Loki's native OTLP endpoint
+      otlphttp/loki:
+        endpoint: http://loki-gateway.monitoring.svc/otlp
 
       # Push traces to Grafana Tempo
       otlp/tempo:
@@ -128,16 +155,16 @@ spec:
     service:
       pipelines:
         metrics:
-          receivers: [otlp, prometheus]
-          processors: [k8sattributes, memory_limiter, batch]
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
           exporters: [prometheusremotewrite]
         logs:
           receivers: [otlp]
-          processors: [k8sattributes, memory_limiter, batch]
-          exporters: [loki]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp/loki]
         traces:
           receivers: [otlp]
-          processors: [k8sattributes, tail_sampling, memory_limiter, batch]
+          processors: [memory_limiter, k8sattributes, tail_sampling, batch]
           exporters: [otlp/tempo]
 ```
 
@@ -172,7 +199,7 @@ spec:
 ## Step 3: Create the Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/otel/kustomization.yaml
+# clusters/my-cluster/flux-system/otel-gateway-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -192,8 +219,8 @@ spec:
 ## Best Practices
 
 - Always include the `memory_limiter` processor to prevent the collector from being OOM-killed under high load.
-- Place `memory_limiter` before `batch` in the processor chain to shed load before buffering.
-- Use tail-based sampling in the gateway (not the DaemonSet) since tail sampling requires seeing all spans for a trace.
+- Place `memory_limiter` first in the processor chain to shed load before other processors allocate more memory.
+- Use tail-based sampling in the gateway (not the DaemonSet) since tail sampling requires seeing all spans for a trace. If you run multiple gateway replicas, route spans by trace ID from the upstream collectors.
 - Set `decision_wait` in `tail_sampling` to at least the P99 trace duration to avoid premature sampling decisions.
 - Use `minReplicas: 2` in the HPA so the gateway survives a node failure without losing telemetry.
 
