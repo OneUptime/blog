@@ -47,6 +47,11 @@ Install the Contour Ingress Controller with Envoy as the data plane.
 
 ```yaml
 # infrastructure/contour/helmrelease.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: projectcontour
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -85,6 +90,7 @@ spec:
           memory: 2Gi
 
       # Replica count for high availability
+      kind: deployment
       replicaCount: 2
 
       # Anti-affinity for spreading across nodes
@@ -122,8 +128,8 @@ spec:
   virtualhost:
     fqdn: api.example.com
     tls:
-      secretName: api-example-tls
-      # Allow delegation to child HTTPProxy resources
+      secretName: cert-manager/wildcard-example-tls
+      # Keep fallback certificate routing disabled for this virtual host
       enableFallbackCertificate: false
   # Include application-team HTTPProxy resources
   includes:
@@ -159,13 +165,13 @@ spec:
       services:
         - name: api-server-v1
           port: 8080
-          # Health check configuration
-          healthCheckPolicy:
-            path: /health
-            intervalSeconds: 10
-            timeoutSeconds: 5
-            unhealthyThresholdCount: 3
-            healthyThresholdCount: 2
+      # Health check configuration
+      healthCheckPolicy:
+        path: /health
+        intervalSeconds: 10
+        timeoutSeconds: 5
+        unhealthyThresholdCount: 3
+        healthyThresholdCount: 2
       # Timeout and retry policy for this route
       timeoutPolicy:
         response: 30s
@@ -193,7 +199,7 @@ spec:
 
 ## Step 5: Configure TLS Certificate Delegation
 
-Allow application namespaces to use TLS certificates managed centrally by the platform team.
+Allow the root HTTPProxy namespace to reference TLS certificates managed centrally by the platform team.
 
 ```yaml
 # infrastructure/contour/tls-delegation.yaml
@@ -204,12 +210,10 @@ metadata:
   namespace: cert-manager
 spec:
   delegations:
-    # Allow backend namespace to use the wildcard certificate
+    # Allow the root HTTPProxy to use the wildcard certificate
     - secretName: wildcard-example-tls
       targetNamespaces:
-        - backend
-        - frontend
-        - auth
+        - projectcontour
 ```
 
 ## Step 6: Deploy with Flux and Verify
@@ -231,8 +235,8 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: contour
       namespace: projectcontour
   timeout: 10m
@@ -256,7 +260,7 @@ curl -I https://api.example.com/api/v1/health
 curl -I https://api.example.com/app/index.html
 
 # Check Contour's Envoy configuration
-kubectl exec -n projectcontour deployment/contour -- contour cli routes --port=8001
+kubectl exec -n projectcontour deployment/contour -- contour cli routes
 ```
 
 ## Best Practices
@@ -266,7 +270,7 @@ kubectl exec -n projectcontour deployment/contour -- contour cli routes --port=8
 - Use `TLSCertificateDelegation` to share certificates from a central namespace rather than duplicating certificates across namespaces.
 - Monitor HTTPProxy status fields - Contour reports detailed error messages when a proxy is misconfigured, making debugging straightforward.
 - Use the `WeightedLeastRequest` load balancing strategy for APIs with variable response times; it naturally routes to faster backends.
-- Configure health checks on all HTTPProxy backend services to prevent Envoy from routing to unhealthy pods before Kubernetes updates the Endpoints.
+- Configure health checks on HTTPProxy routes to prevent Envoy from routing to unhealthy pods before Kubernetes updates the Endpoints.
 
 ## Conclusion
 
