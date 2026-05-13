@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, API Server, CRD, API Discovery
 
-Description: Learn how to diagnose and fix the 'unable to retrieve the complete list of server APIs' error in Flux caused by broken API service registrations or missing CRDs.
+Description: Learn how to diagnose and fix the 'unable to retrieve the complete list of server APIs' error in Flux caused by broken APIService registrations or related API discovery issues.
 
 ---
 
@@ -28,24 +28,24 @@ This error occurs when the Kubernetes API server cannot complete API discovery b
 
 An APIService resource is registered in the cluster (such as `metrics.k8s.io/v1beta1` from metrics-server), but the backend service or pod is not running or not healthy.
 
-### 2. Deleted CRDs with Stale APIService Registrations
+### 2. Removed Components with Stale APIService Registrations
 
-A Custom Resource Definition or its associated API service was partially removed, leaving behind a broken registration.
+An aggregated API component was partially removed, leaving behind a broken APIService registration.
 
 ### 3. Failing Aggregated API Servers
 
 Aggregated API servers (like metrics-server, custom-metrics-adapter, or API extensions) that are unhealthy will cause API discovery to fail.
 
-### 4. Webhook Conversion Failures
+### 4. CRD Conversion Webhook Failures
 
-CRDs with conversion webhooks that are unavailable will cause API discovery for those groups to fail.
+CRDs with unavailable conversion webhooks can cause similar API-server errors when Flux reads or applies those custom resources, even though they are separate from APIService registrations.
 
 ## Diagnostic Steps
 
 ### Step 1: List All APIServices and Their Status
 
 ```bash
-kubectl get apiservices | grep -v Available
+kubectl get apiservices | grep -E 'False|Unknown'
 ```
 
 This shows only APIServices that are not in the `Available` state.
@@ -53,7 +53,7 @@ This shows only APIServices that are not in the `Available` state.
 ### Step 2: Describe Failing APIServices
 
 ```bash
-kubectl get apiservices | grep False
+kubectl get apiservices | grep -E 'False|Unknown'
 ```
 
 For each failing APIService:
@@ -65,7 +65,7 @@ kubectl describe apiservice v1beta1.metrics.k8s.io
 ### Step 3: Check the Backend Service
 
 ```bash
-kubectl get endpoints metrics-server -n kube-system
+kubectl get endpointslices -n kube-system -l kubernetes.io/service-name=metrics-server
 kubectl get pods -n kube-system -l k8s-app=metrics-server
 ```
 
@@ -93,7 +93,7 @@ kubectl describe deployment metrics-server -n kube-system
 kubectl logs -n kube-system deploy/metrics-server --tail=50
 ```
 
-Common fixes include ensuring the metrics-server has the correct TLS configuration:
+Common fixes include ensuring the metrics-server has the correct TLS configuration. Prefer kubelet serving certificates signed by the cluster CA; for test clusters, you can disable kubelet certificate validation:
 
 ```bash
 kubectl patch deployment metrics-server -n kube-system --type=json \
@@ -118,14 +118,14 @@ If metrics-server was partially uninstalled, reinstall it:
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
-### Fix 4: Set APIService Availability Condition
+### Fix 4: Verify Remaining APIService Failures
 
-For APIServices that are not critical, you can mark them as not available so they do not block discovery:
+Do not manually patch APIService status conditions. Instead, verify that no broken APIService registrations remain:
 
 ```bash
 kubectl get apiservices -o name | while read api; do
   available=$(kubectl get $api -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')
-  if [ "$available" = "False" ]; then
+  if [ "$available" = "False" ] || [ "$available" = "Unknown" ]; then
     echo "$api is not available"
   fi
 done
