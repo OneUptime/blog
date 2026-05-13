@@ -52,12 +52,10 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
-      - name: Validate Flux manifests
+      - name: Check Flux prerequisites
         run: |
-          find . -name "*.yaml" -path "*/clusters/*" | while read -r file; do
-            echo "Validating: $file"
-            flux check --pre 2>/dev/null || true
-          done
+          flux version --client
+          flux check --pre
 ```
 
 ## Step 2: Add Kubernetes Manifest Validation
@@ -74,12 +72,6 @@ Add manifest validation to catch syntax errors and schema violations:
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz -C /usr/local/bin
 
-      - name: Download Flux CRD schemas
-        run: |
-          mkdir -p /tmp/flux-schemas
-          curl -sSL https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/crds/kustomization.yaml | \
-            yq eval-all '. | select(.kind == "CustomResourceDefinition")' - > /tmp/flux-crds.yaml
-
       - name: Validate Kubernetes manifests
         run: |
           find clusters/ -name "*.yaml" -o -name "*.yml" | \
@@ -87,7 +79,7 @@ Add manifest validation to catch syntax errors and schema violations:
               -strict \
               -ignore-missing-schemas \
               -schema-location default \
-              -schema-location '/tmp/flux-schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
               -summary
 ```
 
@@ -98,6 +90,9 @@ Scan manifests for security misconfigurations:
 ```yaml
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -122,7 +117,7 @@ Scan manifests for security misconfigurations:
 
       - name: Upload SARIF results
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
 ```
@@ -156,16 +151,16 @@ Scan container images referenced in your Flux manifests:
       - name: Scan container images
         run: |
           FAILED=0
-          echo "${{ steps.images.outputs.images }}" | while read -r image; do
+          while read -r image; do
             if [ -n "$image" ]; then
               echo "Scanning image: $image"
               trivy image "$image" \
                 --severity HIGH,CRITICAL \
-                --exit-code 0 \
+                --exit-code 1 \
                 --format table || FAILED=1
               echo "---"
             fi
-          done
+          done <<< "${{ steps.images.outputs.images }}"
           exit $FAILED
 ```
 
@@ -179,7 +174,7 @@ Verify that container images have valid Cosign signatures:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@v4.1.0
 
       - name: Extract and verify image signatures
         run: |
@@ -190,7 +185,7 @@ Verify that container images have valid Cosign signatures:
             sort -u)
 
           FAILED=0
-          echo "$IMAGES" | while read -r image; do
+          while read -r image; do
             if [ -n "$image" ] && echo "$image" | grep -q "ghcr.io/fluxcd/"; then
               echo "Verifying signature: $image"
               cosign verify "$image" \
@@ -199,7 +194,7 @@ Verify that container images have valid Cosign signatures:
                 2>&1 || FAILED=1
               echo "---"
             fi
-          done
+          done <<< "$IMAGES"
           exit $FAILED
 ```
 
@@ -214,7 +209,12 @@ For Flux HelmReleases, scan the Helm charts:
       - uses: actions/checkout@v4
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Install Trivy
         run: |
@@ -223,20 +223,34 @@ For Flux HelmReleases, scan the Helm charts:
       - name: Extract and scan Helm charts
         run: |
           # Find HelmRelease resources and extract chart info
-          grep -rl "kind: HelmRelease" clusters/ | while read -r file; do
+          FAILED=0
+          while read -r file; do
             CHART=$(yq eval '.spec.chart.spec.chart' "$file")
             VERSION=$(yq eval '.spec.chart.spec.version' "$file")
+            REPO_KIND=$(yq eval '.spec.chart.spec.sourceRef.kind // "HelmRepository"' "$file")
             REPO_NAME=$(yq eval '.spec.chart.spec.sourceRef.name' "$file")
 
             if [ "$CHART" != "null" ] && [ "$CHART" != "" ]; then
               echo "Rendering Helm chart: $CHART ($VERSION)"
 
               # Render and scan the chart
-              helm template test "$CHART" --version "$VERSION" 2>/dev/null | \
-                trivy config - --severity HIGH,CRITICAL || true
+              HELM_ARGS=()
+              if [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
+                HELM_ARGS+=(--version "$VERSION")
+              fi
+              if [ "$REPO_KIND" = "HelmRepository" ] && [ "$REPO_NAME" != "null" ] && [ "$REPO_NAME" != "" ]; then
+                REPO_URL=$(find clusters/ -name "*.yaml" -o -name "*.yml" | xargs yq eval-all \
+                  "select(.kind == \"HelmRepository\" and .metadata.name == \"$REPO_NAME\") | .spec.url" | head -n 1)
+                if [ "$REPO_URL" != "null" ] && [ "$REPO_URL" != "" ]; then
+                  HELM_ARGS+=(--repo "$REPO_URL")
+                fi
+              fi
+              helm template test "$CHART" "${HELM_ARGS[@]}" 2>/dev/null | \
+                trivy config - --severity HIGH,CRITICAL --exit-code 1 || FAILED=1
               echo "---"
             fi
-          done
+          done < <(grep -rl "kind: HelmRelease" clusters/)
+          exit $FAILED
 ```
 
 ## Step 7: Add Policy Validation with OPA/Conftest
@@ -325,15 +339,21 @@ jobs:
     needs: manifest-validation
     steps:
       - uses: actions/checkout@v4
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@v4.1.0
       - name: Verify image signatures
+        env:
+          EXPECTED_CERT_IDENTITY_REGEXP: "https://github.com/YOUR_ORG/YOUR_REPO/.*"
         run: |
-          grep -rh "image:" clusters/ | awk '{print $2}' | tr -d '"' | sort -u | \
+          FAILED=0
+          IMAGES=$(grep -rh "image:" clusters/ | awk '{print $2}' | tr -d '"' | sort -u)
           while read -r img; do
-            [ -n "$img" ] && cosign verify "$img" \
-              --certificate-identity-regexp=".*" \
-              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" 2>/dev/null || true
-          done
+            if [ -n "$img" ]; then
+              cosign verify "$img" \
+                --certificate-identity-regexp="$EXPECTED_CERT_IDENTITY_REGEXP" \
+                --certificate-oidc-issuer="https://token.actions.githubusercontent.com" 2>/dev/null || FAILED=1
+            fi
+          done <<< "$IMAGES"
+          exit $FAILED
 
   gate:
     runs-on: ubuntu-latest
@@ -365,7 +385,7 @@ Parallelize independent scanning jobs and cache tool installations:
 
 ```yaml
 - name: Cache Trivy DB
-  uses: actions/cache@v3
+  uses: actions/cache@v5
   with:
     path: ~/.cache/trivy
     key: trivy-db-${{ github.run_id }}
