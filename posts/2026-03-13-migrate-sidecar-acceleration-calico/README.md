@@ -4,35 +4,36 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
 
-Description: Safely enable Calico sidecar acceleration in an existing service mesh deployment without disrupting live traffic.
+Description: Safely evaluate Calico sidecar acceleration in an existing Istio service mesh deployment without disrupting live traffic.
 
 ---
 
 ## Introduction
 
-Calico's sidecar acceleration feature uses eBPF to optimize traffic flows in service mesh environments. When pods use sidecar proxies like Envoy, network packets traverse multiple kernel networking layers. Calico eBPF can identify these patterns and apply fast-path processing that reduces the overhead introduced by sidecar interception.
+Calico's sidecar acceleration feature uses eBPF SOCKMAP to optimize traffic between an application container and its Istio Envoy sidecar in the same pod. When pods use sidecar proxies like Envoy, traffic between the application and sidecar normally traverses several kernel networking layers. Calico can optimize that socket path and reduce the overhead introduced by sidecar interception.
 
-This is one of the most impactful performance optimizations available for microservices architectures that have adopted service meshes - latency improvements of 30-50% are achievable for high-frequency inter-service calls.
+This can be an impactful performance optimization for microservices architectures that have adopted service meshes, but Calico documents it as experimental and recommends using it only in test environments until the technology is hardened for production security. Latency improvements depend on the workload, kernel, and service mesh configuration.
 
 ## Prerequisites
 
-- Calico eBPF dataplane enabled
-- Service mesh with sidecar injection (Istio, Linkerd, etc.)
+- Calico application layer policy enabled
+- Linux kernel 4.19 or later on Calico nodes
+- Istio with Envoy sidecar injection
 - kubectl and calicoctl access
 
 ## Configure and Verify
 
 ```bash
-# Verify eBPF is enabled
+# Verify sidecar acceleration is currently disabled
 
-calicoctl get felixconfiguration default -o yaml | grep bpfEnabled
+calicoctl get felixconfiguration default -o yaml | grep sidecarAccelerationEnabled
 
-# Check sidecar proxy detection
-kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -show-bpf-map-sizes
+# Enable sidecar acceleration
+kubectl patch felixconfiguration default --type merge --patch \
+  '{"spec":{"sidecarAccelerationEnabled": true}}'
 
-# Verify acceleration is active for a pod
-kubectl exec test-pod -- cat /proc/net/if_inet6
+# Verify the Felix configuration
+calicoctl get felixconfiguration default -o yaml | grep sidecarAccelerationEnabled
 ```
 
 ## Benchmark Acceleration
@@ -40,18 +41,24 @@ kubectl exec test-pod -- cat /proc/net/if_inet6
 ```bash
 # Compare latency with and without acceleration
 # Without acceleration:
+kubectl patch felixconfiguration default --type merge --patch \
+  '{"spec":{"sidecarAccelerationEnabled": false}}'
+kubectl rollout restart deployment/client deployment/server
 kubectl exec client-pod -- grpc_bench -n 10000 server:50051
 
 # With acceleration enabled:
+kubectl patch felixconfiguration default --type merge --patch \
+  '{"spec":{"sidecarAccelerationEnabled": true}}'
+kubectl rollout restart deployment/client deployment/server
 kubectl exec client-pod -- grpc_bench -n 10000 server:50051
 ```
 
 ## Monitoring
 
 ```bash
-# Check eBPF program hit counts
-kubectl exec -n calico-system ds/calico-node -- \
-  bpftool prog show | grep calico
+# Confirm Calico accepted the Felix configuration
+kubectl logs -n calico-system -l k8s-app=calico-node --tail=200 | \
+  grep -i sidecar
 ```
 
 ## Acceleration Flow
@@ -59,13 +66,13 @@ kubectl exec -n calico-system ds/calico-node -- \
 ```mermaid
 graph LR
     subgraph Without Acceleration
-        POD1[Pod] --> SIDECAR[Sidecar Proxy] --> KERN[Kernel Stack x2] --> POD2[Pod]
+        APP1[Application Container] --> KERN1[Kernel Networking Path] --> SIDECAR1[Envoy Sidecar]
     end
     subgraph With Acceleration
-        P1[Pod] --> EBPF[eBPF Fast Path] --> P2[Pod]
+        APP2[Application Container] --> SOCKMAP[eBPF SOCKMAP] --> SIDECAR2[Envoy Sidecar]
     end
 ```
 
 ## Conclusion
 
-How to Migrate to Sidecar Acceleration in Calico Safely requires enabling Calico eBPF mode and verifying that service mesh sidecar traffic is being processed through the optimized eBPF path. Monitor latency metrics before and after enabling acceleration to quantify the performance improvement in your specific workload profile.
+How to Migrate to Sidecar Acceleration in Calico Safely requires enabling Calico sidecar acceleration and verifying that new Istio sidecar connections are using the optimized socket path. Monitor latency metrics before and after enabling acceleration to quantify the performance improvement in your specific workload profile.
