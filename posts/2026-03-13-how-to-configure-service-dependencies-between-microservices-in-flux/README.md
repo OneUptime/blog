@@ -12,7 +12,7 @@ Description: Learn how to use the Kustomization dependsOn field in Flux CD to en
 
 Microservices rarely exist in isolation. A backend API depends on a database being ready; an authentication service must be available before any other service can handle requests; a message broker needs to be running before producers or consumers start. Without enforcing deployment order, Flux can attempt to start all services simultaneously, causing cascading failures during initial setup or after a cluster rebuild.
 
-Flux CD's Kustomization resource supports a `dependsOn` field that creates explicit ordering between resources. When Service A depends on Service B, Flux ensures Service B is fully reconciled and healthy before it begins reconciling Service A. This is a declarative, GitOps-native approach to managing startup dependencies without writing init scripts or external orchestration.
+Flux CD's Kustomization resource supports a `dependsOn` field that creates explicit ordering between resources. When Service A depends on Service B, Flux ensures Service B's Kustomization has a Ready condition before it applies Service A. If Service B defines `healthChecks` or uses `wait: true`, those health checks must pass before the dependency is considered ready. This is a declarative, GitOps-native approach to managing startup dependencies without writing init scripts or external orchestration.
 
 In this guide you will learn how to model service dependencies using `dependsOn`, configure health checks that must pass before dependents are unblocked, and structure your Flux repository to represent your service dependency graph clearly.
 
@@ -79,7 +79,6 @@ spec:
   path: ./apps/database
   prune: true
   # Wait for health before dependents can start
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
@@ -102,7 +101,6 @@ spec:
     name: app-repo
   path: ./apps/redis
   prune: true
-  wait: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -127,7 +125,6 @@ spec:
     name: app-repo
   path: ./apps/auth-service
   prune: true
-  wait: true
   timeout: 5m
   # Auth service only starts after database is healthy
   dependsOn:
@@ -155,7 +152,6 @@ spec:
     name: app-repo
   path: ./apps/backend-api
   prune: true
-  wait: true
   timeout: 5m
   # Backend API waits for all three dependencies
   dependsOn:
@@ -221,21 +217,20 @@ flux get kustomizations --watch
 kubectl get kustomization -n flux-system \
   -o custom-columns='NAME:.metadata.name,READY:.status.conditions[0].status,REASON:.status.conditions[0].reason'
 
-# Simulate a dependency failure by suspending the database
-flux suspend kustomization database
-# Backend-api will remain stalled until database is resumed
-flux resume kustomization database
+# After changing database manifests, force a reconciliation and watch dependents
+flux reconcile kustomization database --with-source
+flux get kustomizations --watch
 ```
 
 ## Best Practices
 
-- Always define `healthChecks` on Kustomizations that are listed as dependencies, otherwise `wait: true` does not validate actual readiness
+- Use `healthChecks` on dependency Kustomizations when only specific resources must be healthy, or use `wait: true` when all reconciled resources should be health checked. If `wait: true` is set, Flux ignores `healthChecks`.
 - Keep dependency chains as shallow as possible to minimize cascading delays
-- Avoid circular dependencies - Flux will detect and report them as an error
+- Avoid circular dependencies - interdependent Kustomizations will never be applied
 - Cross-namespace `dependsOn` works by specifying `namespace` alongside the `name` field
 - Test your dependency graph by rebuilding in a staging cluster from scratch
 - Document your dependency graph in a Mermaid diagram in your repository's README
 
 ## Conclusion
 
-Flux CD's `dependsOn` field provides a clean, GitOps-native way to enforce deployment ordering between microservices. By modeling your dependency graph declaratively in Kustomization resources, you ensure services always start in the correct order during initial deployments, cluster rebuilds, or after reconciliation failures. Combined with `healthChecks`, `dependsOn` guarantees that each layer of your microservice stack is truly ready before the next layer begins deploying.
+Flux CD's `dependsOn` field provides a clean, GitOps-native way to enforce deployment ordering between microservices. By modeling your dependency graph declaratively in Kustomization resources, you ensure services always start in the correct order during initial deployments, cluster rebuilds, or after reconciliation failures. Combined with `healthChecks` or `wait: true`, `dependsOn` ensures that each layer of your microservice stack is ready before the next layer begins deploying.
