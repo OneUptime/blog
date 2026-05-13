@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable Calico flow logs to capture per-connection metadata including source pod, destination, bytes transferred, and policy decision for network observability and security audit use cases.
+Description: Enable Calico Enterprise or Calico Cloud file flow logs to capture flow metadata including source pod, destination, bytes transferred, and policy decision for network observability and security audit use cases.
 
 ---
 
 ## Introduction
 
-Calico flow logs capture metadata for every network connection passing through the Calico data plane: source and destination pod, namespace, bytes and packets transferred, and whether the connection was allowed or denied by network policy. This data is essential for network security auditing, capacity planning, and troubleshooting connectivity issues. Flow logs are available in open-source Calico via file-based logging and in Calico Enterprise/Cloud with additional aggregation and query capabilities.
+Calico flow logs capture metadata for network flows passing through the Calico data plane: source and destination pod, namespace, bytes and packets transferred, and whether the flow was allowed or denied by network policy. This data is essential for network security auditing, capacity planning, and troubleshooting connectivity issues. The file-based FelixConfiguration settings shown below apply to Calico Enterprise and Calico Cloud; current open-source Calico uses the Goldmane flow logs API and Whisker web console instead.
 
 ## Prerequisites
 
-- Calico installed (open-source, Enterprise, or Cloud)
+- Calico Enterprise or Calico Cloud installed
 - kubectl with cluster-admin access
 - FelixConfiguration write access
 
@@ -30,10 +30,11 @@ metadata:
 spec:
   # Enable flow log collection
   flowLogsFlushInterval: 15s        # Flush interval
-  flowLogsFileEnabled: true         # Write to file (open-source)
+  flowLogsFileEnabled: true         # Write to file
   flowLogsFileMaxFiles: 5           # Number of rotated files to keep
   flowLogsFileMaxFileSizeMB: 100    # Max file size before rotation
-  # Aggregation level: 0=per-flow, 1=per-pod, 2=per-namespace
+  # Aggregation kind: 0=no aggregation, 1=source port based,
+  # 2=pod prefix name based. Denied flows also support 3=no destination ports.
   flowLogsFileAggregationKindForAllowed: 1
   flowLogsFileAggregationKindForDenied: 0  # Full detail for denies
 ```
@@ -58,7 +59,7 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
 
 # View recent flow log entries
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
-  tail -5 /var/log/calico/flowlogs/flows.log 2>/dev/null
+  sh -c 'tail -5 /var/log/calico/flowlogs/*.log' 2>/dev/null
 ```
 
 ## Flow Log Architecture
@@ -99,4 +100,4 @@ data:
 
 ## Conclusion
 
-Enabling Calico flow logs requires a single FelixConfiguration change to activate file-based flow capture. The most important configuration decision is the aggregation level: per-flow (0) for full audit detail, per-pod (1) for security monitoring, or per-namespace (2) for capacity planning. Use different aggregation levels for allowed vs. denied traffic - full detail for denies to enable forensic analysis, aggregated for allows to manage log volume.
+Enabling Calico Enterprise or Calico Cloud file flow logs requires a FelixConfiguration change to activate file-based flow capture. The most important configuration decision is the aggregation kind: no aggregation (0) for full detail, source port based aggregation (1), or pod prefix name based aggregation (2). Use different aggregation levels for allowed vs. denied traffic - full detail for denies to enable forensic analysis, aggregated for allows to manage log volume.
