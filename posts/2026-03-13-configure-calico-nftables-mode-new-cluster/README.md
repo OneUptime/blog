@@ -10,23 +10,23 @@ Description: A guide to configuring Calico's Felix, IP pools, and network settin
 
 ## Introduction
 
-Configuring Calico in nftables mode for a new cluster involves the same Calico CRD-based configuration as iptables mode, with the key addition of ensuring all Felix configuration is compatible with the nftables backend. Some Felix configuration parameters have nftables-specific equivalents or behaviors that differ from iptables. Understanding these differences ensures your configuration is correct from the start.
+Configuring Calico in nftables mode for a new cluster involves the same Calico CRD-based configuration as iptables mode, with the key addition of ensuring all Felix configuration is compatible with the nftables data plane. Some Felix configuration parameters have nftables-specific equivalents or behaviors that differ from iptables. Understanding these differences ensures your configuration is correct from the start.
 
-nftables mode also interacts differently with kube-proxy - if kube-proxy is still running in iptables mode, there can be conflicts. Many clusters running Calico in nftables mode also switch kube-proxy to nftables mode or disable it entirely when using Calico's eBPF dataplane.
+nftables mode also interacts differently with kube-proxy - kube-proxy must also run in nftables mode. Disabling kube-proxy applies when using Calico's eBPF dataplane, which is separate from Calico's nftables dataplane.
 
 ## Prerequisites
 
 - Calico installed in nftables mode on a Kubernetes cluster
 - `kubectl` and `calicoctl` installed
-- Nodes with Linux 5.2+
+- Nodes with Linux 5.13+ and `nft` 1.0.1+
 
 ## Step 1: Confirm Felix Is in nftables Mode
 
 ```bash
-calicoctl get felixconfiguration default -o yaml | grep -i iptablesBackend
+calicoctl get felixconfiguration default -o yaml | grep -i nftablesMode
 ```
 
-Should show `iptablesBackend: nft`.
+Should show `nftablesMode: Enabled`.
 
 ## Step 2: Configure kube-proxy for nftables Compatibility
 
@@ -42,7 +42,11 @@ Change:
 mode: "nftables"
 ```
 
-Or disable kube-proxy if using Calico's eBPF dataplane.
+Then restart kube-proxy so it reloads the updated configuration:
+
+```bash
+kubectl rollout restart daemonset/kube-proxy -n kube-system
+```
 
 ## Step 3: Configure IP Pool
 
@@ -55,7 +59,7 @@ metadata:
 spec:
   cidr: 192.168.0.0/16
   blockSize: 26
-  encapsulation: VXLAN
+  vxlanMode: Always
   natOutgoing: true
   nodeSelector: all()
 EOF
@@ -66,10 +70,10 @@ EOF
 ```bash
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{
-    "iptablesBackend": "nft",
+    "nftablesMode": "Enabled",
     "logSeverityScreen": "Warning",
     "prometheusMetricsEnabled": true,
-    "routeRefreshInterval": "30s"
+    "nftablesRefreshInterval": "30s"
   }}'
 ```
 
@@ -117,4 +121,4 @@ kubectl delete namespace nft-test
 
 ## Conclusion
 
-Configuring Calico in nftables mode requires ensuring Felix is set to the `nft` backend, aligning kube-proxy's mode, and verifying that nftables tables are created correctly by Felix. Network policy configuration is identical to iptables mode - the difference is purely in the underlying packet filtering framework, not in how policies are expressed or managed.
+Configuring Calico in nftables mode requires ensuring Felix has nftables mode enabled, aligning kube-proxy's mode, and verifying that nftables tables are created correctly by Felix. Network policy configuration is identical to iptables mode - the difference is purely in the underlying packet filtering framework, not in how policies are expressed or managed.
