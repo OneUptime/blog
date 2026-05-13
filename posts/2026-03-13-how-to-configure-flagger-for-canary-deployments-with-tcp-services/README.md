@@ -90,12 +90,12 @@ spec:
     maxWeight: 50
     stepWeight: 10
     metrics:
-      - name: tcp-connections-success
+      - name: tcp-connection-errors
         templateRef:
-          name: tcp-connections-success
+          name: tcp-connection-errors
           namespace: default
         thresholdRange:
-          min: 99
+          max: 0
         interval: 1m
 ```
 
@@ -103,35 +103,25 @@ Since TCP services do not have built-in request success rate or request duration
 
 ## Step 3: Define Custom TCP Metrics
 
-Flagger uses MetricTemplate resources to query Prometheus for TCP-specific metrics. Create a MetricTemplate that measures TCP connection success rate:
+Flagger uses MetricTemplate resources to query Prometheus for TCP-specific metrics. Create a MetricTemplate that checks for TCP connections closed with Envoy response flags:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
-  name: tcp-connections-success
+  name: tcp-connection-errors
   namespace: default
 spec:
   provider:
     type: prometheus
     address: http://prometheus.istio-system:9090
   query: |
-    sum(rate(istio_tcp_connections_opened_total{
-      reporter="destination",
-      destination_workload_namespace="{{ namespace }}",
-      destination_workload="{{ target }}"
-    }[{{ interval }}])) /
-    (sum(rate(istio_tcp_connections_opened_total{
-      reporter="destination",
-      destination_workload_namespace="{{ namespace }}",
-      destination_workload="{{ target }}"
-    }[{{ interval }}])) +
     sum(rate(istio_tcp_connections_closed_total{
       reporter="destination",
       destination_workload_namespace="{{ namespace }}",
       destination_workload="{{ target }}",
-      connection_security_policy!="mutual_tls"
-    }[{{ interval }}]))) * 100
+      response_flags!="-"
+    }[{{ interval }}])) or on() vector(0)
 ```
 
 You can also add a metric for TCP bytes received to monitor throughput:
@@ -168,9 +158,7 @@ spec:
   hosts:
     - tcp-echo
   tcp:
-    - match:
-        - port: 5000
-      route:
+    - route:
         - destination:
             host: tcp-echo-primary
             port:
