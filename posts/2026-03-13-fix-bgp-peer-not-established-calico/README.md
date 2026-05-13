@@ -26,6 +26,7 @@ Fixing BGP peer not established issues requires matching the fix to the specific
 ## Diagnosis Steps
 
 ```bash
+# Run on the affected node
 calicoctl node status
 calicoctl get bgppeer -o yaml
 ```
@@ -66,12 +67,10 @@ sudo ufw allow 179/tcp
 # Restart calico-node to restart BIRD daemon
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o name)
-kubectl delete pod $NODE_POD -n kube-system
+kubectl delete "$NODE_POD" -n kube-system
 
 # Wait for pod restart
-kubectl wait pods -n kube-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=<node-name> \
-  --for=condition=Ready --timeout=120s
+kubectl rollout status daemonset/calico-node -n kube-system --timeout=120s
 
 # Check peer state after restart
 calicoctl node status
