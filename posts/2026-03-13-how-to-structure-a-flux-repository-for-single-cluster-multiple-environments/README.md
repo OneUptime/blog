@@ -36,6 +36,9 @@ fleet-repo/
       kustomization.yaml
     controllers/
       kustomization.yaml
+    namespaces/
+      namespaces.yaml
+      kustomization.yaml
     kustomization.yaml
   apps/
     base/
@@ -134,6 +137,15 @@ spec:
 ```
 
 ```yaml
+# apps/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - app-one
+  - app-two
+```
+
+```yaml
 # apps/base/app-one/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -191,9 +203,14 @@ patches:
   - path: patches/replicas.yaml
     target:
       kind: Deployment
-  - path: patches/resources.yaml
+  - path: patches/app-one-resources.yaml
     target:
       kind: Deployment
+      name: app-one
+  - path: patches/app-two-resources.yaml
+    target:
+      kind: Deployment
+      name: app-two
 images:
   - name: app-one
     newTag: "1.2.3"
@@ -212,7 +229,7 @@ spec:
 ```
 
 ```yaml
-# apps/production/patches/resources.yaml
+# apps/production/patches/app-one-resources.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -221,7 +238,27 @@ spec:
   template:
     spec:
       containers:
-        - name: "*"
+        - name: app-one
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+```
+
+```yaml
+# apps/production/patches/app-two-resources.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: not-important
+spec:
+  template:
+    spec:
+      containers:
+        - name: app-two
           resources:
             requests:
               cpu: 500m
