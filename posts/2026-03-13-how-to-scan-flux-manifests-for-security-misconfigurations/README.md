@@ -20,7 +20,7 @@ Before you begin, ensure you have:
   - Kubesec
   - Checkov
 - Flux CLI (v2.0 or later)
-- kubectl for generating rendered manifests
+- kustomize and helm for generating rendered manifests
 
 Install the scanning tools:
 
@@ -82,7 +82,7 @@ Scan Flux Kustomization and HelmRelease resources for best practices:
 trivy config clusters/my-cluster/flux-system/
 
 # Scan with custom policies for Flux resources
-trivy config clusters/my-cluster/ --policy ./custom-policies/
+trivy config clusters/my-cluster/ --config-check ./custom-policies/ --check-namespaces flux
 ```
 
 Create a custom Rego policy for Flux resources:
@@ -176,7 +176,7 @@ checkov -d clusters/my-cluster/ --framework kubernetes
 
 # Scan with specific checks
 checkov -d clusters/my-cluster/ --framework kubernetes \
-  --check CKV_K8S_1,CKV_K8S_8,CKV_K8S_9,CKV_K8S_20
+  --check CKV_K8S_16,CKV_K8S_8,CKV_K8S_9,CKV_K8S_20
 
 # Output results in JSON
 checkov -d clusters/my-cluster/ --framework kubernetes \
@@ -187,10 +187,10 @@ Key Checkov checks for Flux-managed resources:
 
 ```bash
 # Check for privileged containers
-checkov -d clusters/my-cluster/ --check CKV_K8S_1
+checkov -d clusters/my-cluster/ --check CKV_K8S_16
 
 # Check for root user
-checkov -d clusters/my-cluster/ --check CKV_K8S_6
+checkov -d clusters/my-cluster/ --check CKV_K8S_23
 
 # Check for read-only filesystem
 checkov -d clusters/my-cluster/ --check CKV_K8S_22
@@ -206,11 +206,12 @@ Add manifest scanning to your Git pre-commit workflow:
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.83.0
+  - repo: https://github.com/bridgecrewio/checkov.git
+    rev: 3.2.526
     hooks:
       - id: checkov
         args: ['--framework', 'kubernetes']
+        files: '\.ya?ml$'
 
   - repo: local
     hooks:
