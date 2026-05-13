@@ -14,7 +14,7 @@ Security contexts in Kubernetes define privilege and access control settings for
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.25 or later)
+- A running Kubernetes cluster version supported by your Flux release
 - Flux CLI (v2.0 or later) installed and bootstrapped
 - kubectl configured to access your cluster
 - A Git repository connected to Flux
@@ -56,7 +56,7 @@ spec:
         runAsNonRoot: true
         runAsUser: 65534
         runAsGroup: 65534
-        fsGroup: 65534
+        fsGroup: 1337
         seccompProfile:
           type: RuntimeDefault
 ```
@@ -65,7 +65,7 @@ Key pod-level security context fields:
 
 - `runAsNonRoot`: Ensures the container does not run as the root user
 - `runAsUser`/`runAsGroup`: Specifies the numeric UID/GID for the process
-- `fsGroup`: Sets the group ownership of mounted volumes
+- `fsGroup`: Sets the supplemental group used for mounted volumes
 - `seccompProfile`: Restricts system calls the container can make
 
 ## Step 3: Define Container-Level Security Context
@@ -124,7 +124,8 @@ patches:
             securityContext:
               runAsNonRoot: true
               runAsUser: 65534
-              fsGroup: 65534
+              runAsGroup: 65534
+              fsGroup: 1337
               seccompProfile:
                 type: RuntimeDefault
             containers:
@@ -137,16 +138,6 @@ patches:
                     drop: ["ALL"]
                   seccompProfile:
                     type: RuntimeDefault
-                volumeMounts:
-                  - name: tmp
-                    mountPath: /tmp
-                  - name: data
-                    mountPath: /data
-            volumes:
-              - name: tmp
-                emptyDir: {}
-              - name: data
-                emptyDir: {}
   # Kustomize Controller
   - target:
       kind: Deployment
@@ -163,7 +154,8 @@ patches:
             securityContext:
               runAsNonRoot: true
               runAsUser: 65534
-              fsGroup: 65534
+              runAsGroup: 65534
+              fsGroup: 1337
               seccompProfile:
                 type: RuntimeDefault
             containers:
@@ -176,12 +168,6 @@ patches:
                     drop: ["ALL"]
                   seccompProfile:
                     type: RuntimeDefault
-                volumeMounts:
-                  - name: tmp
-                    mountPath: /tmp
-            volumes:
-              - name: tmp
-                emptyDir: {}
   # Helm Controller
   - target:
       kind: Deployment
@@ -198,7 +184,8 @@ patches:
             securityContext:
               runAsNonRoot: true
               runAsUser: 65534
-              fsGroup: 65534
+              runAsGroup: 65534
+              fsGroup: 1337
               seccompProfile:
                 type: RuntimeDefault
             containers:
@@ -211,20 +198,6 @@ patches:
                     drop: ["ALL"]
                   seccompProfile:
                     type: RuntimeDefault
-                volumeMounts:
-                  - name: tmp
-                    mountPath: /tmp
-                  - name: helm-cache
-                    mountPath: /home/nonroot/.cache
-                  - name: helm-config
-                    mountPath: /home/nonroot/.config
-            volumes:
-              - name: tmp
-                emptyDir: {}
-              - name: helm-cache
-                emptyDir: {}
-              - name: helm-config
-                emptyDir: {}
   # Notification Controller
   - target:
       kind: Deployment
@@ -241,7 +214,8 @@ patches:
             securityContext:
               runAsNonRoot: true
               runAsUser: 65534
-              fsGroup: 65534
+              runAsGroup: 65534
+              fsGroup: 1337
               seccompProfile:
                 type: RuntimeDefault
             containers:
@@ -254,12 +228,6 @@ patches:
                     drop: ["ALL"]
                   seccompProfile:
                     type: RuntimeDefault
-                volumeMounts:
-                  - name: tmp
-                    mountPath: /tmp
-            volumes:
-              - name: tmp
-                emptyDir: {}
 ```
 
 ## Step 5: Configure Resource Limits
@@ -402,7 +370,7 @@ flux reconcile kustomization flux-system --with-source
 flux get all -A
 ```
 
-4. No privilege escalation is possible:
+4. The source-controller service account cannot create pods:
 
 ```bash
 kubectl auth can-i --as=system:serviceaccount:flux-system:source-controller \
@@ -413,7 +381,7 @@ kubectl auth can-i --as=system:serviceaccount:flux-system:source-controller \
 
 ```bash
 kubectl exec -n flux-system deploy/source-controller -- id
-# Expected: uid=65534(nobody) gid=65534(nobody)
+# Expected: uid=65534(nobody) gid=65534(nobody) groups=65534(nobody),1337
 ```
 
 ## Troubleshooting
@@ -468,12 +436,13 @@ capabilities:
 
 ### Volume permission denied with fsGroup
 
-If mounted volumes have incorrect permissions, verify the fsGroup matches the runAsUser:
+If mounted volumes have incorrect permissions, verify the `fsGroup` grants the process group access to the volume:
 
 ```yaml
 securityContext:
   runAsUser: 65534
-  fsGroup: 65534  # Must match or volumes will be inaccessible
+  runAsGroup: 65534
+  fsGroup: 1337
 ```
 
 ## Summary
