@@ -12,12 +12,12 @@ Description: Understand CNI chaining with Cilium - what it is, when to use it, a
 
 CNI (Container Network Interface) chaining allows multiple CNI plugins to run in sequence when a pod is created. The primary CNI handles IP allocation and basic network connectivity; secondary plugins add capabilities on top of that foundation. Cilium's chaining mode makes it a secondary plugin, adding eBPF-based policy enforcement and observability without replacing the existing CNI.
 
-This pattern is particularly useful for teams that want to adopt Cilium's advanced features incrementally-without the risk and operational overhead of a full CNI migration during which all nodes must be restarted. It's also the recommended approach for managed Kubernetes services (EKS, AKS, GKE) where the primary CNI is managed by the cloud provider.
+This pattern is particularly useful for teams that want to adopt Cilium's advanced features incrementally-without the risk and operational overhead of a full CNI migration. It is also a common option for managed Kubernetes services where the primary CNI is managed by the cloud provider.
 
 ## Prerequisites
 
 - Kubernetes cluster with an existing CNI (AWS VPC CNI, Azure CNI, Calico, Flannel, etc.)
-- Linux kernel 5.4+ on all nodes (required for eBPF)
+- Linux kernel 5.10+ on all nodes, or an equivalent distribution kernel such as RHEL 8.10's 4.18 kernel
 - `kubectl`, `cilium`, and `helm` CLIs installed
 
 ## Understanding the CNI Chain Architecture
@@ -36,7 +36,7 @@ When a pod starts, the kubelet calls the CNI chain sequentially:
 ## Step 1: Check Kernel Version on Nodes
 
 ```bash
-# Verify all nodes have kernel 5.4+ for eBPF support
+# Verify all nodes meet Cilium's kernel requirements
 
 kubectl get nodes -o custom-columns='NAME:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion'
 ```
@@ -47,32 +47,56 @@ Identify the existing CNI conflist file to understand the chaining setup.
 
 ```bash
 # Check the CNI configuration directory on a node
-kubectl debug node/<node-name> -it --image=ubuntu -- ls /etc/cni/net.d/
+kubectl debug node/<node-name> -it --image=ubuntu -- ls /host/etc/cni/net.d/
 
 # Read the primary CNI configuration
-kubectl debug node/<node-name> -it --image=ubuntu -- cat /etc/cni/net.d/10-*.conf*
+kubectl debug node/<node-name> -it --image=ubuntu -- cat /host/etc/cni/net.d/10-*.conf*
 ```
 
 ## Step 3: Install Cilium in Generic Chaining Mode
 
-The generic chaining mode works with any primary CNI that creates a standard veth pair.
+The generic chaining mode works with any primary CNI that creates a standard veth pair. Create a CNI ConfigMap by copying your primary CNI plugin configuration into the first plugin entry and appending the Cilium plugin.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cni-configuration
+  namespace: kube-system
+data:
+  cni-config: |-
+    {
+      "name": "generic-veth",
+      "cniVersion": "0.3.1",
+      "plugins": [
+        {
+          "type": "<primary-cni-type>"
+        },
+        {
+          "type": "cilium-cni",
+          "chaining-mode": "generic-veth"
+        }
+      ]
+    }
+```
 
 ```bash
+# Apply the CNI chaining configuration
+kubectl apply -f chaining.yaml
+
 # Add the Cilium Helm repository
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium in generic-veth chaining mode
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.3 \
   --namespace kube-system \
   --set cni.chainingMode=generic-veth \
-  --set cni.exclusive=false \
-  --set kubeProxyReplacement=false \
-  --set hostServices.enabled=false \
-  --set externalIPs.enabled=false \
-  --set hostPort.enabled=false \
-  --set policyEnforcementMode=default
+  --set cni.customConf=true \
+  --set cni.configMap=cni-configuration \
+  --set routingMode=native \
+  --set enableIPv4Masquerade=false
 ```
 
 ## Step 4: Verify the Chain
@@ -87,7 +111,7 @@ cilium status --wait
 # Verify the CNI conflist shows both plugins
 # The primary CNI conflist should now include a Cilium entry
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conf
+  cat /host/etc/cni/net.d/05-cilium.conflist
 ```
 
 ## Step 5: Validate with a CiliumNetworkPolicy
@@ -95,7 +119,7 @@ kubectl debug node/<node-name> -it --image=ubuntu -- \
 Test that Cilium's policy enforcement works on top of the primary CNI.
 
 ```yaml
-# Test policy: only allow HTTP GET from labeled pods
+# Test policy: only allow TCP/80 from labeled pods
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -129,7 +153,8 @@ Different primary CNIs have dedicated Cilium chaining modes:
 | Primary CNI | Cilium chaining mode |
 |---|---|
 | AWS VPC CNI | `aws-cni` |
-| Azure CNI | `azure-cni` |
+| Azure CNI | `generic-veth` |
+| Calico | `generic-veth` |
 | Flannel | `flannel` |
 | Generic (veth-based) | `generic-veth` |
 | Portmap | `portmap` |
@@ -137,9 +162,9 @@ Different primary CNIs have dedicated Cilium chaining modes:
 ## Best Practices
 
 - Use CNI chaining as a transitional step, not a permanent state; a single CNI with full eBPF datapath performs better.
-- Always set `cni.exclusive=false` to prevent Cilium from overwriting the primary CNI configuration.
+- Set `cni.exclusive=false` when Cilium is modifying an existing primary CNI configuration, or use `cni.customConf=true` with a CNI ConfigMap when you provide the full chained configuration yourself.
 - Test with `cilium connectivity test` after installation before applying production network policies.
-- Use the CNI-specific chaining mode (`aws-cni`, `azure-cni`) when available; it is more efficient than `generic-veth`.
+- Use the CNI-specific chaining mode (`aws-cni`, `flannel`) when available; otherwise use the documented `generic-veth` setup for veth-based CNIs.
 - Monitor the `cilium_drop_count_total` metric to detect policy denials introduced by the new chain.
 
 ## Conclusion
