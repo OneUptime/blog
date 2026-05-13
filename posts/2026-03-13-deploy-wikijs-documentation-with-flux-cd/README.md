@@ -12,7 +12,7 @@ Description: Deploy WikiJS modern wiki platform to Kubernetes using Flux CD for 
 
 WikiJS is a modern, fast, and extensible wiki platform built on Node.js. It offers a rich editor experience, granular permission controls, full-text search, and dozens of storage backends-including Git synchronization, which means your wiki content can itself be stored in a Git repository. For engineering teams already invested in GitOps, WikiJS is a natural fit for internal documentation.
 
-Deploying WikiJS on Kubernetes with Flux CD means your wiki infrastructure is declared in Git alongside the applications it documents. The official WikiJS Helm chart supports PostgreSQL, MySQL, and SQLite backends, with Ingress and TLS configuration baked in. Flux watches for changes and reconciles the cluster automatically, so upgrading WikiJS or adjusting its resource limits is a single pull request.
+Deploying WikiJS on Kubernetes with Flux CD means your wiki infrastructure is declared in Git alongside the applications it documents. WikiJS supports PostgreSQL, MySQL, MariaDB, MS SQL Server, and SQLite backends, and the official Helm chart includes PostgreSQL and Ingress configuration. Flux watches for changes and reconciles the cluster automatically, so upgrading WikiJS or adjusting its resource limits is a single pull request.
 
 This guide deploys WikiJS with a PostgreSQL database and configures an Ingress endpoint.
 
@@ -37,7 +37,7 @@ kubectl create secret generic wikijs-db-secret \
   --from-literal=postgresql-database=wikijs
 ```
 
-## Step 2: Add the WikiJS Helm Repository
+## Step 2: Add the Helm Repositories
 
 ```yaml
 # clusters/my-cluster/wikijs/helm-repository.yaml
@@ -48,6 +48,15 @@ metadata:
   namespace: flux-system
 spec:
   url: https://charts.js.wiki
+  interval: 12h
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  url: https://charts.bitnami.com/bitnami
   interval: 12h
 ```
 
@@ -108,24 +117,20 @@ spec:
     # PostgreSQL connection settings
     postgresql:
       enabled: false   # Use the separately deployed PostgreSQL
-
-    db:
-      type: postgres
-      host: wikijs-postgresql
-      port: 5432
-      name: wikijs
-      user: wikijs
-      # Pull password from the existing secret
+      postgresqlHost: wikijs-postgresql
+      postgresqlPort: 5432
+      postgresqlDatabase: wikijs
+      postgresqlUser: wikijs
       existingSecret: wikijs-db-secret
       existingSecretKey: postgresql-password
 
-    # WikiJS listens on port 3000 by default
+    # Expose WikiJS through the Kubernetes Service
     service:
-      port: 3000
+      port: 80
 
     ingress:
       enabled: true
-      ingressClassName: nginx
+      className: nginx
       hosts:
         - host: wiki.example.com
           paths:
@@ -138,11 +143,6 @@ spec:
       annotations:
         nginx.ingress.kubernetes.io/proxy-body-size: "25m"
 
-    # Persistent storage for uploaded assets
-    persistence:
-      enabled: true
-      size: 20Gi
-
     resources:
       requests:
         cpu: 100m
@@ -150,17 +150,22 @@ spec:
       limits:
         cpu: "1"
         memory: 1Gi
-
-    # WikiJS configuration overrides
-    config:
-      logLevel: info
-      offline: false    # Set true for air-gapped clusters
 ```
 
 ## Step 5: Create the Kustomization
 
 ```yaml
 # clusters/my-cluster/wikijs/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helm-repository.yaml
+  - postgresql-release.yaml
+  - wikijs-release.yaml
+```
+
+```yaml
+# clusters/my-cluster/wikijs-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -204,7 +209,7 @@ This makes your wiki content itself a GitOps artifact.
 
 ## Best Practices
 
-- Enable the **Elasticsearch** or **MeiliSearch** module in WikiJS for fast full-text search across large wikis.
+- Enable a dedicated search module such as **Elasticsearch** in WikiJS for fast full-text search across large wikis.
 - Configure SMTP under **Administration > Mail** so users receive email notifications for page comments and assignments.
 - Use WikiJS's built-in **LDAP/SAML** authentication modules to integrate with your existing identity provider.
 - Back up the PostgreSQL database regularly-WikiJS stores all page content, revisions, and metadata there.
