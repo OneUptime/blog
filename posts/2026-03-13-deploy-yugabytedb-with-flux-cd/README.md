@@ -67,8 +67,8 @@ spec:
         namespace: flux-system
   values:
     # Image
-    image:
-      tag: 2.20.7.0-b156
+    Image:
+      tag: 2.20.7.2-b1
 
     # Replication factor (RF=3 requires min 3 nodes)
     replicas:
@@ -114,7 +114,7 @@ spec:
         yb_num_shards_per_tserver: "4"
         ysql_num_shards_per_tserver: "4"
         default_memory_limit_to_ram_ratio: "0.5"
-        # Enable connection pooling
+        # Enable packed rows
         ysql_enable_packed_row: "true"
         # YSQL settings
         ysql_max_connections: "300"
@@ -126,51 +126,38 @@ spec:
     tls:
       enabled: true
 
-    # Expose services
-    services:
-      # YSQL endpoint (PostgreSQL-compatible, port 5433)
-      master:
-        clusterIP: ""
+    # Configure endpoint services
+    serviceEndpoints:
+      - name: yb-master-ui
+        app: yb-master
         type: ClusterIP
-      tserver:
-        clusterIP: ""
+        ports:
+          http-ui: "7000"
+      - name: yb-tserver-service
+        app: yb-tserver
         type: ClusterIP
+        ports:
+          tcp-ysql-port: "5433"
+
+    # Enable YSQL authentication and create the application database/user
+    authCredentials:
+      ysql:
+        user: app_user
+        password: AppPassword123!
+        database: myapp
 ```
 
 ## Step 4: Enable Authentication
 
-Create the YSQL superuser password:
+The Helm chart enables YSQL authentication when `authCredentials.ysql.password` is set. It also runs a post-install hook that creates the configured database and user.
 
 ```yaml
-# infrastructure/databases/yugabytedb/auth-job.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: yb-configure-auth
-  namespace: yb-demo
-spec:
-  ttlSecondsAfterFinished: 600
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: configure
-          image: yugabytedb/yugabyte:2.20.7.0-b156
-          command:
-            - /bin/sh
-            - -c
-            - |
-              until ysqlsh -h yb-tservers.yb-demo.svc.cluster.local \
-                -p 5433 -U yugabyte -c "SELECT 1;" 2>/dev/null; do
-                echo "Waiting for YSQL..."; sleep 5
-              done
-              # Create application user
-              ysqlsh -h yb-tservers.yb-demo.svc.cluster.local -p 5433 \
-                -U yugabyte -c "
-                  CREATE DATABASE myapp;
-                  CREATE USER app_user WITH PASSWORD 'AppPassword123!';
-                  GRANT ALL PRIVILEGES ON DATABASE myapp TO app_user;
-                "
+# Add this under spec.values in the HelmRelease
+authCredentials:
+  ysql:
+    user: app_user
+    password: AppPassword123!
+    database: myapp
 ```
 
 ## Step 5: Flux Kustomization
@@ -212,7 +199,7 @@ kubectl port-forward svc/yb-master-ui 7000:7000 -n yb-demo
 
 # Connect via YSQL (PostgreSQL-compatible)
 kubectl port-forward svc/yb-tservers 5433:5433 -n yb-demo
-psql -h localhost -p 5433 -U yugabyte
+psql "host=localhost port=5433 user=app_user dbname=myapp sslmode=require"
 
 # Check cluster health via yb-admin
 kubectl exec -n yb-demo yb-master-0 -- \
@@ -224,9 +211,9 @@ kubectl exec -n yb-demo yb-master-0 -- \
 
 - Set `replication_factor: "3"` and run at least 3 tserver pods on separate nodes for fault tolerance.
 - Use SSD storage (`premium-ssd` StorageClass) - YugabyteDB uses RocksDB which benefits greatly from low-latency storage.
-- Tune `yb_num_shards_per_tserver` based on your CPU count - typically 4-8 shards per CPU.
+- Tune `yb_num_shards_per_tserver` and `ysql_num_shards_per_tserver` based on your CPU count and tablet-splitting settings.
 - Enable the Admin UI (`port 7000`) and monitor tablet distribution, leader placement, and compaction metrics.
-- Use read replicas (`tserver.readReplica`) for geo-distribution if you have users in multiple regions.
+- Use YugabyteDB read replica clusters for geo-distribution if you have users in multiple regions.
 
 ## Conclusion
 
