@@ -14,15 +14,16 @@ Custom Resource Definitions (CRDs) extend the Kubernetes API with new resource t
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
+- A Kubernetes cluster supported by your Flux version
 - Flux v2.3 or later installed on the cluster
 - kubectl configured to access the cluster
+- jq installed for the optional JSON formatting command
 - A Git repository connected to Flux via a GitRepository source
 - Custom resources deployed through operators (cert-manager, Prometheus, Crossplane, etc.)
 
 ## How Flux Evaluates Custom Resource Health
 
-Flux uses a standard approach to determine custom resource health. It looks for a `Ready` condition in the resource's `status.conditions` array. If the condition has `status: "True"`, the resource is healthy. If `status: "False"`, it is unhealthy. If the condition is not present, Flux continues waiting until the timeout.
+Flux uses the Kubernetes kstatus conventions to determine custom resource health. For generic custom resources, it can use a `Ready` condition in the resource's `status.conditions` array. If the condition has `status: "True"`, the resource is healthy. If `status: "False"`, the resource is still reconciling and Flux waits until it becomes ready or the health check times out. Resources that do not expose a kstatus-compatible status may need explicit CEL expressions.
 
 Many Kubernetes operators follow this convention, making their custom resources automatically compatible with Flux health checks.
 
@@ -165,7 +166,7 @@ This CEL expression requires both the `Ready` and `Synced` conditions to be `Tru
 
 ## Health Checking Prometheus Operator Resources
 
-Prometheus Operator resources like ServiceMonitors and PrometheusRules do not have status conditions by default. You can check them using `wait: true` which verifies they are successfully applied:
+Prometheus Operator resources like ServiceMonitors and PrometheusRules do not have status conditions by default. You can include them in a Kustomization with `wait: true`, but Flux can only perform readiness checks for resources with supported health semantics; for resources without status, a successful apply is the main signal:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -269,7 +270,7 @@ When a custom resource health check fails:
 ```bash
 # Check Kustomization status
 
-flux get kustomization certificates
+flux get kustomizations certificates
 
 # Check the custom resource status
 kubectl get certificate wildcard-tls -n production -o yaml
