@@ -10,7 +10,7 @@ Description: Understand and monitor Calico's BlockAffinity resources that contro
 
 ## Introduction
 
-Calico IPAM uses a concept called "block affinity" to manage how IP address blocks from IP pools are assigned to nodes. Each node is given affinity to one or more blocks (subnets of configurable size, default /26), and pods on that node receive IPs from its affiliated blocks. BlockAffinity resources in the Calico datastore track these assignments.
+Calico IPAM uses a concept called "block affinity" to manage how IP address blocks from IP pools are assigned to nodes. Each node is given affinity to one or more blocks (subnets of configurable size, default /26 for IPv4 and /122 for IPv6), and Calico tries to allocate pod IPs from blocks affiliated with that node. BlockAffinity resources in the Calico datastore track these assignments.
 
 Understanding block affinity behavior is critical for diagnosing IP allocation failures, understanding why certain nodes have high or low IP utilization, and planning IP pool capacity. Problems with block affinity - such as blocks not being released after node deletion or allocation failures due to fragmented pools - can lead to pod scheduling failures that are difficult to diagnose without understanding the underlying IPAM model.
 
@@ -31,14 +31,13 @@ List all BlockAffinity resources to understand how blocks are distributed:
 
 ```bash
 # List all block affinity resources (node-to-block assignments)
-
-calicoctl get blockaffinities -o wide
+calicoctl get blockaffinity -o wide
 
 # Show block affinity for a specific node
 calicoctl get blockaffinity -o yaml | grep -A5 "node: <node-name>"
 
 # Count blocks per node to identify uneven distribution
-calicoctl get blockaffinities -o yaml | \
+calicoctl get blockaffinity -o yaml | \
   grep "node:" | sort | uniq -c | sort -rn
 ```
 
@@ -56,7 +55,7 @@ calicoctl ipam show --show-blocks
 calicoctl ipam show
 
 # Identify blocks with very low utilization (potential fragmentation)
-calicoctl ipam show --show-blocks | grep -E "^Block|Allocations"
+calicoctl ipam show --show-blocks | grep -E '^\| (IP Pool|Block)'
 ```
 
 ## Step 3: Monitor for Orphaned Block Affinities
@@ -71,11 +70,11 @@ CLUSTER_NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
 echo "Cluster nodes: $CLUSTER_NODES"
 
 # List all block affinity node references
-calicoctl get blockaffinities -o yaml | grep "node:" | awk '{print $2}' | sort -u
+calicoctl get blockaffinity -o yaml | grep "node:" | awk '{print $2}' | sort -u
 
 # Compare to find orphaned affinities (nodes no longer in cluster)
 # Any node name in blockaffinities but NOT in kubectl get nodes is orphaned
-calicoctl get blockaffinities -o yaml | grep "node:" | awk '{print $2}' | \
+calicoctl get blockaffinity -o yaml | grep "node:" | awk '{print $2}' | \
   while read node; do
     if ! kubectl get node "$node" &>/dev/null; then
       echo "ORPHANED block affinity for node: $node"
@@ -83,24 +82,27 @@ calicoctl get blockaffinities -o yaml | grep "node:" | awk '{print $2}' | \
   done
 ```
 
-## Step 4: Release Orphaned Block Affinities
+## Step 4: Release Leaked IPAM Allocations
 
-Clean up block affinities for deleted nodes to reclaim IP addresses.
+Clean up leaked IPAM allocations for deleted nodes to reclaim IP addresses.
 
-Use `calicoctl ipam release` to clean up orphaned allocations:
+Use `calicoctl ipam check` to generate a leak report, then release only the leaked addresses from that report:
 
 ```bash
 # Check if there are any leaked IP allocations from deleted nodes
-calicoctl ipam check
+calicoctl ipam check --show-problem-ips
 
-# Release leaked IPs from a deleted node (use with caution)
+# Generate a report for release (use with caution)
 # First confirm the node is truly gone and not just temporarily unavailable
 kubectl get node <deleted-node-name>   # Should return "not found"
 
-# Release the orphaned IPAM data for the deleted node
-calicoctl ipam release --ip=<orphaned-block-start-ip>
+# Write a report of IPAM consistency problems
+calicoctl ipam check -o report.json
 
-# Alternatively, run a full IPAM garbage collection
+# Release leaked IPs listed in the report
+calicoctl ipam release --from-report=report.json
+
+# Alternatively, inspect all IPs checked by the consistency scan
 calicoctl ipam check --show-all-ips
 ```
 
@@ -121,15 +123,19 @@ spec:
   groups:
   - name: calico-ipam-blocks
     rules:
-    - alert: CalicoIPAMBlocksNearExhaustion
-      # Alert when less than 10% of blocks remain unallocated in an IP pool
+    - alert: CalicoIPAMPoolNearExhaustion
+      # Alert when more than 90% of IPs are allocated in an IP pool
       expr: |
-        (calico_ipam_blocks_used / calico_ipam_blocks_total) > 0.90
+        (
+          sum by (ippool) (ipam_allocations_in_use)
+          /
+          max by (ippool) (ipam_ippool_size)
+        ) > 0.90
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Calico IP pool blocks are 90%+ allocated"
+        summary: "Calico IP pool is 90%+ allocated"
         description: "IP pool may exhaust soon, consider adding more CIDR ranges"
 ```
 
@@ -141,10 +147,10 @@ kubectl apply -f ipam-metrics-alert.yaml
 
 ## Best Practices
 
-- Set Calico IP pool block size to `/26` (64 IPs) for most workloads to balance block count and utilization
+- Keep the default Calico IP pool block size (`/26` for IPv4, `/122` for IPv6) for most workloads to balance block count and utilization
 - Run `calicoctl ipam check` regularly in production to detect leaked allocations early
-- Add cluster autoscaler labels to nodes to help with block affinity cleanup when nodes scale down
-- Monitor the ratio of allocated blocks to total blocks per pool via Prometheus and alert at 80% utilization
+- Ensure the Calico node controller is enabled so Calico can clean up data for Kubernetes nodes that no longer exist
+- Monitor IP pool allocation with Calico kube-controllers Prometheus metrics and alert before exhaustion
 - Use OneUptime to monitor pod scheduling success rates as a proxy metric for IPAM health
 
 ## Conclusion
