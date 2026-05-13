@@ -1,10 +1,10 @@
-# How to Filter Flux Alerts by Event Reason ReconciliationFailed
+# How to Filter Flux Alerts for Reconciliation Failures
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Alert, Kubernetes, GitOps, Notification, Event, Reconciliation, Monitoring
 
-Description: Learn how to configure Flux alerts to filter by the ReconciliationFailed event reason for targeted failure notifications.
+Description: Learn how to configure Flux alerts for targeted reconciliation failure notifications.
 
 ---
 
@@ -12,15 +12,15 @@ Description: Learn how to configure Flux alerts to filter by the ReconciliationF
 
 Flux generates events throughout the reconciliation lifecycle of its resources. These events include successes, retries, dependency waits, and failures. In a busy cluster with many Flux-managed resources, the volume of events can be overwhelming. Sending all events as alerts to your notification channels creates noise that makes it difficult to identify actual problems.
 
-Filtering alerts by event reason allows you to target specific types of events. The `ReconciliationFailed` reason is one of the most important to monitor because it indicates that a Flux resource could not reach its desired state. By configuring alerts to only fire on this reason, you receive notifications exclusively when something has gone wrong and requires attention.
+Filtering alerts by severity and event source allows you to target specific types of Flux events. Flux events include a machine-readable reason, but the Flux `Alert` resource does not provide a dedicated selector for that reason. The `ReconciliationFailed` condition reason is still important to monitor because it indicates that a Flux resource could not reach its desired state.
 
-This guide shows how to set up Flux alerts filtered by the `ReconciliationFailed` event reason.
+This guide shows how to set up Flux alerts for reconciliation failures using `eventSeverity`, `eventSources`, and message-based inclusion or exclusion patterns where appropriate.
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed (v2.0 or later)
+- A Kubernetes cluster with Flux CD installed and the `notification.toolkit.fluxcd.io/v1beta3` APIs available
 - The Flux notification-controller installed
 - A notification provider configured (Slack, Teams, PagerDuty, or similar)
 - kubectl access to the cluster
@@ -31,14 +31,13 @@ Before you begin, ensure you have:
 First, configure a notification provider that will receive the filtered alerts. Here is an example using Slack:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-alerts
   namespace: flux-system
 spec:
   type: slack
-  channel: flux-alerts
   secretRef:
     name: slack-webhook-url
 ---
@@ -52,12 +51,12 @@ stringData:
   address: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
-## Filtering Alerts by ReconciliationFailed
+## Filtering Alerts for Reconciliation Failures
 
-The Alert resource in Flux supports filtering by event metadata including the event reason. To filter for only `ReconciliationFailed` events, use the `inclusionList` field with a regex pattern:
+The Alert resource in Flux supports filtering by event severity and event source. It also supports `inclusionList`, but that field matches event message content, not the event reason. To receive failure notifications for Flux resources, start with `eventSeverity: error` and the Flux resource kinds you want to monitor:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: reconciliation-failures
@@ -66,8 +65,6 @@ spec:
   providerRef:
     name: slack-alerts
   eventSeverity: error
-  inclusionList:
-    - ".*ReconciliationFailed.*"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -77,14 +74,14 @@ spec:
       name: "*"
 ```
 
-The `inclusionList` accepts regular expressions that are matched against the event message and reason. The `.*ReconciliationFailed.*` pattern matches any event where the reason contains "ReconciliationFailed".
+This configuration sends error-severity events from the selected Flux resources. If you need an exact reason-level filter, do that in the receiving system when it exposes Flux event fields or labels, such as the `reason` label on Prometheus Alertmanager notifications.
 
-## Filtering by Severity and Reason Together
+## Filtering by Severity and Source Together
 
-Combining severity filtering with reason filtering provides precise control. The `ReconciliationFailed` reason typically generates error-severity events:
+Combining severity filtering with source filtering provides precise control. Reconciliation failure events are emitted with error severity:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-failures
@@ -93,8 +90,6 @@ spec:
   providerRef:
     name: slack-alerts
   eventSeverity: error
-  inclusionList:
-    - ".*ReconciliationFailed.*"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -110,14 +105,14 @@ spec:
       namespace: flux-system
 ```
 
-This configuration only sends alerts when an error-severity event with the ReconciliationFailed reason occurs across all Flux resource types in the flux-system namespace.
+This configuration sends error-severity events across the listed Flux resource types in the `flux-system` namespace.
 
 ## Targeting Specific Resources
 
 You can narrow the alert scope to specific resources rather than using wildcards:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-failures
@@ -126,8 +121,6 @@ spec:
   providerRef:
     name: slack-alerts
   eventSeverity: error
-  inclusionList:
-    - ".*ReconciliationFailed.*"
   eventSources:
     - kind: Kustomization
       name: production-apps
@@ -139,14 +132,14 @@ spec:
       namespace: production
 ```
 
-This sends ReconciliationFailed alerts only for the specified production resources, ignoring failures in staging or development namespaces.
+This sends failure alerts only for the specified production resources, ignoring failures in staging or development namespaces.
 
 ## Cross-Namespace Event Sources
 
 To monitor resources across multiple namespaces, list specific namespace and name combinations:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-namespace-failures
@@ -155,8 +148,6 @@ spec:
   providerRef:
     name: slack-alerts
   eventSeverity: error
-  inclusionList:
-    - ".*ReconciliationFailed.*"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -171,10 +162,10 @@ spec:
 
 ## Combining Inclusion and Exclusion Patterns
 
-You can use both `inclusionList` and `exclusionList` to fine-tune which ReconciliationFailed events trigger alerts:
+You can use both `inclusionList` and `exclusionList` to fine-tune which message text triggers alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: filtered-failures
@@ -184,7 +175,7 @@ spec:
     name: slack-alerts
   eventSeverity: error
   inclusionList:
-    - ".*ReconciliationFailed.*"
+    - ".*(failed|error|not found|timeout).*"
   exclusionList:
     - ".*timeout.*waiting.*"
   eventSources:
@@ -194,14 +185,14 @@ spec:
       name: "*"
 ```
 
-This configuration sends alerts for all ReconciliationFailed events except those related to timeouts, which might be expected in certain situations.
+This configuration sends error-severity alerts whose messages match the inclusion pattern, except those that also match the exclusion pattern. The inclusion and exclusion regexes are matched against the event message.
 
 ## Sending to Multiple Providers
 
 For critical failure events, you may want to notify multiple channels. Create separate Alert resources pointing to different providers:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: failures-to-slack
@@ -210,15 +201,13 @@ spec:
   providerRef:
     name: slack-alerts
   eventSeverity: error
-  inclusionList:
-    - ".*ReconciliationFailed.*"
   eventSources:
     - kind: Kustomization
       name: "*"
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: failures-to-pagerduty
@@ -227,8 +216,6 @@ spec:
   providerRef:
     name: pagerduty-alerts
   eventSeverity: error
-  inclusionList:
-    - ".*ReconciliationFailed.*"
   eventSources:
     - kind: Kustomization
       name: production-apps
@@ -256,4 +243,4 @@ kubectl logs -n flux-system deployment/notification-controller
 
 ## Conclusion
 
-Filtering Flux alerts by the ReconciliationFailed event reason provides focused notifications for actual reconciliation failures. By using the `inclusionList` field with a pattern matching ReconciliationFailed, combined with severity filtering and targeted event sources, you can build an alerting setup that notifies your team only when Flux encounters problems that need attention. This reduces alert fatigue and ensures that critical failures are not lost in a stream of routine events.
+Filtering Flux alerts by error severity and targeted event sources provides focused notifications for reconciliation failures. By using `eventSeverity: error`, selecting the Flux resources you care about, and applying message-based inclusion or exclusion patterns only when needed, you can build an alerting setup that notifies your team when Flux encounters problems that need attention. This reduces alert fatigue and ensures that critical failures are not lost in a stream of routine events.
