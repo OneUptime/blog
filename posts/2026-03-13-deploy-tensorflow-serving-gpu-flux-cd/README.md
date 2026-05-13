@@ -14,13 +14,13 @@ TensorFlow Serving is a production-grade model server purpose-built for TensorFl
 
 Flux CD solves this by making TensorFlow Serving configuration declarative and version-controlled. Promoting a new model version becomes a pull request, and the cluster state is continuously reconciled against the Git source of truth.
 
-This guide covers deploying TensorFlow Serving with GPU resources on Kubernetes using Flux CD, including model storage configuration, resource requests, and a Horizontal Pod Autoscaler for dynamic scaling.
+This guide covers deploying TensorFlow Serving with GPU resources on Kubernetes using Flux CD, including model storage configuration, resource requests, and batching configuration.
 
 ## Prerequisites
 
 - Kubernetes cluster with GPU nodes and NVIDIA device plugin installed
 - Flux CD v2 bootstrapped to your Git repository
-- A trained TensorFlow SavedModel stored in a shared volume or object storage (GCS, S3)
+- A trained TensorFlow SavedModel stored in a shared volume exposed through a PersistentVolumeClaim named `model-store-pvc`
 - A container registry accessible from the cluster
 
 ## Step 1: Prepare the Namespace
@@ -58,6 +58,11 @@ data:
         }
       }
     }
+  batching.config: |
+    max_batch_size { value: 128 }
+    batch_timeout_micros { value: 0 }
+    max_enqueued_batches { value: 1000000 }
+    num_batch_threads { value: 8 }
 ```
 
 ## Step 3: Deploy TensorFlow Serving with GPU
@@ -86,7 +91,7 @@ spec:
       containers:
         - name: tf-serving
           # Use the GPU-enabled TensorFlow Serving image
-          image: tensorflow/serving:2.14.0-gpu
+          image: tensorflow/serving:2.19.1-gpu
           args:
             - "--model_config_file=/etc/tf-serving/models.config"
             - "--rest_api_port=8501"
@@ -186,8 +191,11 @@ spec:
 flux get kustomizations tf-serving
 kubectl rollout status deployment/tf-serving -n tf-serving
 
-# Test REST endpoint
-curl -X POST http://<service-ip>:8501/v1/models/my-model:predict \
+# Forward the REST endpoint locally
+kubectl port-forward service/tf-serving -n tf-serving 8501:8501
+
+# In another terminal, test the REST endpoint
+curl -X POST http://localhost:8501/v1/models/my-model:predict \
   -H "Content-Type: application/json" \
   -d '{"instances": [[1.0, 2.0, 3.0, 4.0]]}'
 ```
@@ -198,7 +206,7 @@ curl -X POST http://<service-ip>:8501/v1/models/my-model:predict \
 - Enable batching with a `batching_parameters_file` to maximize GPU utilization by grouping concurrent requests.
 - Version your model server image tags explicitly - avoid `latest` to ensure reproducible deployments.
 - Store model configs in ConfigMaps managed by Flux so model version updates are tracked in Git.
-- Use a PodDisruptionBudget alongside the Deployment to ensure rolling updates keep at least one replica serving.
+- Use a PodDisruptionBudget alongside the Deployment to limit voluntary disruptions such as node drains.
 
 ## Conclusion
 
