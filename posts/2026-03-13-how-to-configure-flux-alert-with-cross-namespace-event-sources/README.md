@@ -29,7 +29,7 @@ Before proceeding, ensure you have:
 
 By default, a Flux Alert resource can reference event sources within the same namespace. To reference sources in other namespaces, you include the `namespace` field in the event source specification. This is the key configuration that enables cross-namespace monitoring.
 
-The notification controller needs appropriate RBAC permissions to watch events in other namespaces. The default Flux installation grants these permissions cluster-wide, so in most setups this works without additional configuration.
+The notification controller needs appropriate RBAC permissions to watch events in other namespaces. The default Flux installation grants these permissions cluster-wide, so in most setups this works without additional configuration. On multi-tenant clusters, platform administrators can disable cross-namespace event source references by starting the notification controller with `--no-cross-namespace-refs=true`.
 
 ## Setting Up the Namespace Structure
 
@@ -87,7 +87,7 @@ spec:
 Set up a centralized provider in the flux-system namespace:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: central-slack
@@ -95,8 +95,9 @@ metadata:
 spec:
   type: slack
   channel: platform-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook-secret
+    name: slack-bot-token
 ```
 
 ## Creating a Cross-Namespace Alert
@@ -104,7 +105,7 @@ spec:
 Here is the core configuration. Note the `namespace` field on each event source entry:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: cross-namespace-alert
@@ -138,7 +139,7 @@ Each source entry specifies its `namespace` explicitly. You can mix specific res
 To watch everything in several namespaces without listing individual resources:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: multi-namespace-all-resources
@@ -175,7 +176,7 @@ Using `name: "*"` with explicit namespace references captures all resources of t
 Cross-namespace alerts work well with inclusion and exclusion filters:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: filtered-cross-namespace
@@ -209,7 +210,7 @@ This configuration monitors all Kustomizations and HelmReleases across both team
 You can create separate alerts for each team while keeping them all in the flux-system namespace:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: frontend-team-alert
@@ -218,7 +219,8 @@ spec:
   providerRef:
     name: frontend-slack
   eventSeverity: info
-  summary: "Frontend team resource event"
+  eventMetadata:
+    summary: "Frontend team resource event"
   eventSources:
     - kind: Kustomization
       name: "*"
@@ -230,7 +232,7 @@ spec:
       name: "*"
       namespace: team-frontend
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: backend-team-alert
@@ -239,7 +241,8 @@ spec:
   providerRef:
     name: backend-slack
   eventSeverity: info
-  summary: "Backend team resource event"
+  eventMetadata:
+    summary: "Backend team resource event"
   eventSources:
     - kind: Kustomization
       name: "*"
