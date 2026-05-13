@@ -31,7 +31,7 @@ kind: ClusterConfig
 metadata:
   name: my-spot-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.33"
 
 managedNodeGroups:
   - name: on-demand-system
@@ -131,6 +131,7 @@ patches:
         path: /spec/template/spec/nodeSelector
         value:
           role: system
+          eks.amazonaws.com/capacityType: ON_DEMAND
       - op: add
         path: /spec/template/spec/tolerations
         value:
@@ -148,11 +149,12 @@ The AWS Node Termination Handler ensures pods are gracefully drained from Spot n
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: eks-charts
+  name: aws-ec2
   namespace: flux-system
 spec:
+  type: oci
   interval: 24h
-  url: https://aws.github.io/eks-charts
+  url: oci://public.ecr.aws/aws-ec2/helm
 ```
 
 ```yaml
@@ -167,10 +169,10 @@ spec:
   chart:
     spec:
       chart: aws-node-termination-handler
-      version: "0.21.*"
+      version: "0.27.*"
       sourceRef:
         kind: HelmRepository
-        name: eks-charts
+        name: aws-ec2
         namespace: flux-system
       interval: 24h
   values:
@@ -178,12 +180,11 @@ spec:
     enableRebalanceMonitoring: true
     enableScheduledEventDraining: true
     enableRebalanceDraining: true
+    enablePrometheusServer: true
+    podMonitor:
+      create: true
     nodeSelector:
-      role: system
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: PreferNoSchedule
+      eks.amazonaws.com/capacityType: SPOT
     resources:
       requests:
         cpu: 50m
@@ -253,6 +254,10 @@ spec:
                     operator: In
                     values:
                       - spot
+                  - key: eks.amazonaws.com/capacityType
+                    operator: In
+                    values:
+                      - SPOT
       containers:
         - name: my-app
           image: my-registry/my-app:latest
@@ -279,6 +284,18 @@ Key patterns for Spot resilience:
 Set up the Cluster Autoscaler with Spot-aware settings:
 
 ```yaml
+# clusters/my-spot-cluster/autoscaler/helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: autoscaler
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://kubernetes.github.io/autoscaler
+```
+
+```yaml
 # clusters/my-spot-cluster/autoscaler/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -290,7 +307,7 @@ spec:
   chart:
     spec:
       chart: cluster-autoscaler
-      version: "9.37.*"
+      version: "9.48.*"
       sourceRef:
         kind: HelmRepository
         name: autoscaler
@@ -332,12 +349,12 @@ data:
       - name: spot-instances
         rules:
           - alert: SpotInterruptionNotice
-            expr: kube_node_labels{label_capacity_type="spot"} * on(node) kube_node_spec_unschedulable == 1
+            expr: actions_total{node_action=~"cordon-and-drain|pre-drain|post-drain",node_status="success"} > 0
             for: 0m
             labels:
               severity: warning
             annotations:
-              summary: "Spot instance {{ $labels.node }} is being interrupted"
+              summary: "Node termination handler processed a termination action"
 ```
 
 ## Step 9: Commit and Push
@@ -362,7 +379,7 @@ kubectl get pods -n flux-system -o wide
 kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-node-termination-handler
 
 # Check node capacity types
-kubectl get nodes -L capacity-type
+kubectl get nodes -L eks.amazonaws.com/capacityType,capacity-type
 
 # Verify workloads are spread across nodes
 kubectl get pods -o wide
@@ -390,7 +407,7 @@ kubectl get events --field-selector reason=EvictionByNodeTerminationHandler
 kubectl logs -n kube-system -l app.kubernetes.io/name=aws-node-termination-handler --tail=50
 
 # Check node conditions
-kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,CAPACITY:.metadata.labels.capacity-type
+kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,CAPACITY:.metadata.labels.eks\\.amazonaws\\.com/capacityType
 ```
 
 If interruptions are too frequent, add more instance type diversity to your node groups or increase the proportion of On-Demand capacity.
