@@ -12,13 +12,13 @@ Description: Deploy and configure the GKE Filestore CSI driver using Flux CD to 
 
 Many stateful applications - including shared content management systems, ML training jobs that read the same dataset from multiple workers, and legacy applications - require persistent volumes that can be mounted by more than one pod simultaneously. Kubernetes' ReadWriteOnce volumes, backed by standard block storage, cannot satisfy this requirement. Google Cloud Filestore provides a fully managed NFS file server, and the GKE Filestore CSI driver surfaces it as a native Kubernetes storage class.
 
-Managing the CSI driver installation and the associated StorageClass, PersistentVolumeClaim, and application manifests through a GitOps workflow gives you reproducibility and auditability. Flux CD continuously reconciles the cluster state against your Git repository, meaning the driver and all dependent resources are always installed at the revision you have approved.
+Managing the associated StorageClass, PersistentVolumeClaim, and application manifests through a GitOps workflow gives you reproducibility and auditability. Flux CD continuously reconciles the cluster state against your Git repository, meaning the dependent resources are always installed at the revision you have approved.
 
-This guide walks through enabling the GKE Filestore CSI driver on a Standard GKE cluster, installing it via Flux using a HelmRelease, and deploying a sample application that uses a ReadWriteMany PVC.
+This guide walks through enabling the GKE Filestore CSI driver on a Standard GKE cluster, managing its StorageClass and workload manifests with Flux, and deploying a sample application that uses a ReadWriteMany PVC.
 
 ## Prerequisites
 
-- A GKE Standard cluster (GKE 1.21+ for Filestore CSI driver support)
+- A GKE Standard cluster running a GKE version supported by the Filestore service tier you plan to use (for example, GKE 1.21+ for 1 TiB and larger Basic HDD or Basic SSD volumes with NFSv3)
 - `flux` CLI installed and bootstrapped against your cluster
 - The GKE Filestore CSI driver add-on enabled on the cluster (or enabled via Terraform/gcloud)
 - Sufficient IAM permissions to create Filestore instances (`roles/file.editor`)
@@ -33,9 +33,8 @@ gcloud container clusters update my-cluster \
   --region us-central1 \
   --update-addons GcpFilestoreCsiDriver=ENABLED
 
-# Verify the driver DaemonSet is running
-kubectl get daemonset -n kube-system \
-  -l app=filestore-node
+# Verify that the CSI driver is registered
+kubectl get csidriver filestore.csi.storage.gke.io
 ```
 
 ## Step 2: Create the Flux GitRepository Source
@@ -60,7 +59,7 @@ spec:
 
 ## Step 3: Define the StorageClass for Filestore
 
-The GKE Filestore CSI driver provides the `filestore.csi.storage.gke.io` provisioner. Create a StorageClass that provisions enterprise-tier Filestore instances.
+The GKE Filestore CSI driver provides the `filestore.csi.storage.gke.io` provisioner. Create a StorageClass that provisions Basic HDD Filestore instances.
 
 ```yaml
 # infrastructure/storage/filestore-storageclass.yaml
@@ -96,16 +95,18 @@ spec:
     name: infra-manifests
   path: ./infrastructure/storage
   prune: true
-  # Wait for the StorageClass to be ready before dependent apps
-  healthChecks:
-    - apiVersion: storage.k8s.io/v1
-      kind: StorageClass
-      name: filestore-rwx
+  # Once this Kustomization applies successfully, dependent apps can create PVCs.
 ```
 
 ## Step 5: Create a PersistentVolumeClaim and Application Deployment
 
 ```yaml
+# apps/shared-content/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared-content
+---
 # apps/shared-content/pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -193,7 +194,7 @@ kubectl describe pv $(kubectl get pvc shared-content-pvc -n shared-content -o js
 ## Best Practices
 
 - Always use `reclaimPolicy: Retain` for production Filestore PVCs to prevent accidental data loss when a PVC is deleted.
-- Set explicit `capacity` in StorageClass parameters when using enterprise tier, as Filestore instances have fixed capacity.
+- Set explicit PVC storage requests that match the Filestore tier capacity ranges you intend to provision.
 - Use Flux `dependsOn` to enforce ordering so applications never attempt to create PVCs before the StorageClass is available.
 - Tag Filestore instances with GCP labels by adding `labels` under StorageClass `parameters` for cost attribution.
 - Monitor Filestore utilization through Cloud Monitoring; NFS volumes do not automatically expand at capacity.
