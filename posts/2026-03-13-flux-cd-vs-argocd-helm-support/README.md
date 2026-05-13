@@ -124,8 +124,8 @@ spec:
 
 Both tools detect and correct drift, but differ in approach:
 
-- **Flux CD**: The Helm Controller reconciles on a configurable interval. Drift is corrected at the next interval unless `force: true` is set for immediate reconciliation.
-- **ArgoCD**: Detects drift near-real-time using a watch on deployed resources and can auto-sync immediately.
+- **Flux CD**: The Helm Controller reconciles on a configurable interval. Helm release drift correction requires `spec.driftDetection.mode: enabled`; otherwise Flux reconciles desired-state changes such as chart, spec, or values updates. You can also request reconciliation outside the interval with `flux reconcile helmrelease`.
+- **ArgoCD**: Detects drift quickly by refreshing Applications when managed resources change and can auto-sync after the configured self-heal timeout.
 
 **Edge**: ArgoCD's drift detection is more immediate. Flux CD's interval-based approach uses fewer API calls and is more predictable under load.
 
@@ -143,13 +143,13 @@ spec:
     enable: true # Run Helm tests after upgrade
 ```
 
-**ArgoCD** relies on Helm's native upgrade mechanics without explicit retry strategies at the operator level.
+**ArgoCD** renders Helm charts with `helm template` and applies the resulting manifests through ArgoCD sync. It supports Application sync retries, but not HelmRelease-style install/upgrade remediation strategies such as Helm rollback or uninstall remediation.
 
 **Edge**: Flux CD's built-in remediation and Helm test support provides more sophisticated lifecycle management.
 
 ## Comparison: OCI Chart Support
 
-Both tools support OCI charts, but Flux CD's OCIRepository is a first-class source type with full image policy and semver tracking:
+Both tools support OCI charts, but Flux CD's OCIRepository is a first-class source type with semver range selection, digest pinning, and artifact polling:
 
 ```yaml
 # Flux OCI source with semver tracking
@@ -165,9 +165,9 @@ spec:
     semver: ">=6.0.0"
 ```
 
-ArgoCD added OCI support later and does not yet have the same level of automated semver tracking.
+ArgoCD supports OCI Helm charts with explicit tags or digests, but it does not provide the same OCIRepository-style semver range selection for OCI artifacts.
 
-**Edge**: Flux CD's OCI support is more mature and feature-complete.
+**Edge**: Flux CD's OCI support is more feature-complete when you want source-controller polling and semver range selection for OCI artifacts.
 
 ## Comparison: Multi-Source Charts
 
@@ -179,9 +179,12 @@ spec:
     - repoURL: https://charts.example.com
       chart: myapp
       targetRevision: 1.0.0
+      helm:
+        valueFiles:
+          - $values/production/myapp/values.yaml
     - repoURL: https://github.com/your-org/values-repo
-      path: production/myapp
       targetRevision: HEAD
+      ref: values
 ```
 
 **Flux CD** achieves similar results through the `valuesFrom` field referencing ConfigMaps/Secrets, but not a second Git source natively.
