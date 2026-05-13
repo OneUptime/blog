@@ -85,21 +85,21 @@ spec:
 
 GitOps excels when:
 
-- **Auditability matters**: Every change to the cluster is a Git commit with author, timestamp, and diff
+- **Auditability matters**: Every desired-state change managed through GitOps is a Git commit with author, timestamp, and diff
 - **Self-healing is required**: Flux automatically corrects manual changes or drift
 - **Multiple environments**: The same Git-based workflow applies from staging to production
 - **Security is paramount**: CI systems need no cluster credentials; the cluster pulls from Git
-- **Disaster recovery**: Recreate the cluster by pointing Flux at the same Git repository
+- **Disaster recovery**: Recreate the Flux-managed cluster state by pointing Flux at the same Git repository
 
 ```bash
-# Disaster recovery: restore entire cluster from Git
+# Disaster recovery: restore Flux-managed cluster state from Git
 flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
   --path=clusters/production \
   --personal
-# Flux reconciles the entire cluster state from Git
+# Flux reconciles the declared cluster state from Git
 ```
 
 ## Step 4: When to Use Traditional Push-Based CD
@@ -141,7 +141,7 @@ jobs:
 | Drift self-healing | Yes, automatic | No |
 | Rollback mechanism | git revert | Re-run pipeline or manual kubectl |
 | Multi-cluster deployment | Via Git branches/paths | Requires N cluster credential sets |
-| Disaster recovery | Re-bootstrap from Git | Recreate CI pipeline config |
+| Disaster recovery | Re-bootstrap managed state from Git | Recreate CI pipeline config |
 | Complex deployment logic | Limited | Rich (if/else, parallel, etc.) |
 | Non-Kubernetes targets | No | Yes |
 
