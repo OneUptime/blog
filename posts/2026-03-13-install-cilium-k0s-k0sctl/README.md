@@ -16,7 +16,7 @@ This guide covers deploying a k0s cluster with Cilium CNI using k0sctl, includin
 
 ## Prerequisites
 
-- `k0sctl` installed: `curl -sSfL https://get.k0sproject.io | sh`
+- `k0sctl` installed on the management machine
 - SSH access to target machines (or local access for single-node)
 - Target machines with Linux and sufficient resources (2+ CPU, 4+ GB RAM)
 - `kubectl` and `cilium` CLI installed on the management machine
@@ -26,9 +26,9 @@ This guide covers deploying a k0s cluster with Cilium CNI using k0sctl, includin
 ```bash
 # Install k0sctl binary
 
-curl -sSfL https://github.com/k0sproject/k0sctl/releases/latest/download/k0sctl-linux-x64 \
-  -o /usr/local/bin/k0sctl
-chmod +x /usr/local/bin/k0sctl
+curl -sSfL https://github.com/k0sproject/k0sctl/releases/latest/download/k0sctl-linux-amd64 \
+  -o k0sctl
+sudo install -m 0755 k0sctl /usr/local/bin/k0sctl
 
 # Verify installation
 k0sctl version
@@ -62,7 +62,7 @@ spec:
         keyPath: ~/.ssh/id_rsa
       role: worker
   k0s:
-    version: "1.29.2+k0s.0"
+    version: "v1.34.5+k0s.0"
     dynamicConfig: false
     config:
       apiVersion: k0s.k0sproject.io/v1beta1
@@ -87,7 +87,7 @@ spec:
             charts:
               - name: cilium
                 chartname: cilium/cilium
-                version: "1.15.0"
+                version: "1.19.3"
                 namespace: kube-system
                 values: |
                   ipam:
@@ -108,13 +108,13 @@ spec:
 
 ```bash
 # Apply the k0sctl configuration to deploy the cluster
-k0sctl apply -c k0sctl-cilium-config.yaml
+k0sctl apply --config k0sctl-cilium-config.yaml
 
 # This command provisions all nodes and installs k0s + Cilium
 # Monitor the output for any errors
 
 # Generate kubeconfig for the new cluster
-k0sctl kubeconfig -c k0sctl-cilium-config.yaml > ~/.kube/k0s-cilium-config
+k0sctl kubeconfig --config k0sctl-cilium-config.yaml > ~/.kube/k0s-cilium-config
 export KUBECONFIG=~/.kube/k0s-cilium-config
 
 # Verify cluster and Cilium are ready
@@ -126,7 +126,7 @@ cilium status --wait
 
 ```bash
 # Check all Cilium pods are running
-kubectl get pods -n kube-system -l app.kubernetes.io/name=cilium
+kubectl get pods -n kube-system -l k8s-app=cilium
 
 # Run the connectivity test
 cilium connectivity test
@@ -166,6 +166,7 @@ spec:
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -185,7 +186,7 @@ spec:
 ```bash
 # Update the k0sctl config with a new k0s or Cilium version
 # Then apply the upgrade
-k0sctl apply -c k0sctl-cilium-config.yaml --no-drain
+k0sctl apply --config k0sctl-cilium-config.yaml --no-drain
 
 # Monitor Cilium upgrade
 kubectl rollout status daemonset/cilium -n kube-system
