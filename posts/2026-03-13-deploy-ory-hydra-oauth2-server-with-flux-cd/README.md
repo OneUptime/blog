@@ -37,17 +37,27 @@ kubectl create secret generic hydra-secrets \
   --from-literal=postgres-password=hydra_pg_pass
 ```
 
-## Step 2: Add the Ory Helm Repository
+## Step 2: Add the Helm Repositories
 
 ```yaml
-# clusters/my-cluster/hydra/helm-repository.yaml
+# clusters/my-cluster/hydra/ory-helm-repository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: ory
   namespace: flux-system
 spec:
-  url: https://k8s.ory.sh/helm/charts
+  url: https://k8s.ory.com/helm/charts
+  interval: 12h
+---
+# clusters/my-cluster/hydra/bitnami-helm-repository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  url: https://charts.bitnami.com/bitnami
   interval: 12h
 ```
 
@@ -62,10 +72,11 @@ metadata:
   namespace: hydra
 spec:
   interval: 10m
+  releaseName: hydra-postgresql
   chart:
     spec:
       chart: postgresql
-      version: ">=13.0.0 <14.0.0"
+      version: ">=18.0.0 <19.0.0"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -93,22 +104,24 @@ metadata:
   namespace: hydra
 spec:
   interval: 10m
+  releaseName: hydra
   dependsOn:
     - name: hydra-postgresql
   chart:
     spec:
       chart: hydra
-      version: ">=0.40.0 <0.41.0"
+      version: ">=0.61.0 <0.62.0"
       sourceRef:
         kind: HelmRepository
         name: ory
         namespace: flux-system
   values:
+    secret:
+      enabled: false
+      nameOverride: hydra-secrets
+
     hydra:
       config:
-        # Database connection (Hydra will auto-migrate on startup)
-        dsn: postgres://hydra:$(POSTGRES_PASSWORD)@hydra-postgresql:5432/hydra?sslmode=disable
-
         # URLs for the Login and Consent App
         urls:
           self:
@@ -122,13 +135,6 @@ spec:
           access_token: 1h
           id_token: 1h
           refresh_token: 720h   # 30 days
-
-        # Secrets - loaded from environment variables
-        secrets:
-          system:
-            - $(SECRETS_SYSTEM)
-          cookie:
-            - $(SECRETS_COOKIE)
 
         # OAuth2 settings
         oauth2:
@@ -145,35 +151,33 @@ spec:
             cors:
               enabled: false
 
-    # Load secrets from Kubernetes secret as env vars
+      # Run database migrations as a Job before deploying
+      automigration:
+        enabled: true
+
+    # Load the database password from Kubernetes Secret and construct the DSN at runtime
     deployment:
       extraEnv:
-        - name: SECRETS_SYSTEM
-          valueFrom:
-            secretKeyRef:
-              name: hydra-secrets
-              key: secretsSystem
-        - name: SECRETS_COOKIE
-          valueFrom:
-            secretKeyRef:
-              name: hydra-secrets
-              key: secretsCookie
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
               name: hydra-secrets
               key: postgres-password
-
-    # Run database migrations as a Job before deploying
-    hydra:
-      automigration:
-        enabled: true
+        - name: DSN
+          value: postgres://hydra:$(POSTGRES_PASSWORD)@hydra-postgresql:5432/hydra?sslmode=disable
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
 
     # Public endpoint ingress (token issuance, authorization)
     ingress:
       public:
         enabled: true
-        ingressClassName: nginx
+        className: nginx
         hosts:
           - host: hydra.example.com
             paths:
@@ -188,20 +192,12 @@ spec:
         enabled: false
 
     replicaCount: 2
-
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
 ```
 
 ## Step 5: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/hydra/kustomization.yaml
+# clusters/my-cluster/hydra-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
