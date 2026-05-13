@@ -15,7 +15,6 @@ Flux HelmRelease resources deploy Helm charts with specific values. Before these
 ## Prerequisites
 
 - Helm CLI installed (v3.12 or later)
-- kubectl installed
 - yq installed (for YAML processing)
 - A Flux GitOps repository with HelmRelease definitions
 
@@ -29,7 +28,7 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 # Install yq
 brew install yq  # macOS
 # or
-wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq
 
 # Verify installations
 helm version
@@ -194,36 +193,39 @@ for hr_file in "$HELMRELEASES_DIR"/*.yaml; do
 
   # Extract chart info
   chart_name=$(yq eval '.spec.chart.spec.chart' "$hr_file")
-  chart_version=$(yq eval '.spec.chart.spec.version' "$hr_file")
+  chart_version=$(yq eval '.spec.chart.spec.version // ""' "$hr_file")
   repo_name=$(yq eval '.spec.chart.spec.sourceRef.name' "$hr_file")
   release_name=$(yq eval '.metadata.name' "$hr_file")
-  namespace=$(yq eval '.metadata.namespace' "$hr_file")
+  namespace=$(yq eval '.metadata.namespace // "default"' "$hr_file")
 
   # Extract values
   values_file="$CHARTS_DIR/${release_name}-values.yaml"
   yq eval '.spec.values // {}' "$hr_file" > "$values_file"
 
   # Pull chart (skip if already downloaded)
-  chart_dir="$CHARTS_DIR/$chart_name-$chart_version"
+  chart_parent="$CHARTS_DIR/${chart_name}-${chart_version:-latest}"
+  chart_dir="$chart_parent/$chart_name"
   if [ ! -d "$chart_dir" ]; then
-    helm pull "$repo_name/$chart_name" \
-      --version "$chart_version" \
-      --untar \
-      --untardir "$CHARTS_DIR" 2>/dev/null || {
-      echo "  SKIP: Could not pull chart $chart_name:$chart_version"
+    mkdir -p "$chart_parent"
+    pull_args=(helm pull "$repo_name/$chart_name" --untar --untardir "$chart_parent")
+    if [ -n "$chart_version" ]; then
+      pull_args+=(--version "$chart_version")
+    fi
+    "${pull_args[@]}" 2>/dev/null || {
+      echo "  SKIP: Could not pull chart $chart_name:${chart_version:-latest}"
       continue
     }
   fi
 
   # Template and validate
-  if helm template "$release_name" "$CHARTS_DIR/$chart_name" \
+  if helm template "$release_name" "$chart_dir" \
     --namespace "$namespace" \
     --values "$values_file" > /dev/null 2>&1; then
     echo "  PASS: Template renders successfully"
     TOTAL_PASS=$((TOTAL_PASS + 1))
   else
     echo "  FAIL: Template rendering failed"
-    helm template "$release_name" "$CHARTS_DIR/$chart_name" \
+    helm template "$release_name" "$chart_dir" \
       --namespace "$namespace" \
       --values "$values_file" 2>&1 | head -10
     TOTAL_FAIL=$((TOTAL_FAIL + 1))
@@ -253,6 +255,7 @@ metadata:
   name: my-app
   namespace: default
 spec:
+  interval: 30m
   chart:
     spec:
       chart: my-app
@@ -268,6 +271,9 @@ spec:
 ```
 
 ```bash
+# Extract inline values from the HelmRelease
+yq eval '.spec.values // {}' helmreleases/my-app.yaml > /tmp/inline-values.yaml
+
 # Create a test values file simulating the ConfigMap
 cat > /tmp/configmap-values.yaml <<EOF
 image:
@@ -276,10 +282,11 @@ database:
   host: db.example.com
 EOF
 
-# Template with both inline and external values
+# Template with both external and inline values. Flux gives spec.values priority
+# over valuesFrom, so put the inline values file last.
 helm template my-app /tmp/charts/my-app \
-  --values /tmp/inline-values.yaml \
-  --values /tmp/configmap-values.yaml
+  --values /tmp/configmap-values.yaml \
+  --values /tmp/inline-values.yaml
 ```
 
 ## CI Integration
@@ -302,7 +309,9 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Install yq
-        uses: mikefarah/yq@master
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Add Helm repositories
         run: |
@@ -319,7 +328,7 @@ jobs:
 - Test HelmRelease templates on every PR that modifies values or chart versions
 - Extract and version the test scripts alongside your HelmRelease definitions
 - Test chart version upgrades by comparing output between old and new versions
-- Use `--dry-run` in addition to `helm template` for server-side validation
+- Use `helm template --validate` or `--dry-run=server` when you need cluster-backed validation
 - Pin chart versions in HelmReleases to ensure reproducible test results
 - Validate that rendered output passes your organization's security policies
 
