@@ -21,7 +21,7 @@ Istio provides the traffic management primitives needed for canary deployments v
 
 ## Step 1: Native Istio Canary (Manual Approach)
 
-With native Istio, you manage canary traffic manually by creating two Deployments and adjusting VirtualService weights:
+With native Istio, you manage canary traffic manually by creating two Deployments behind one Service and adjusting VirtualService weights:
 
 ```yaml
 # Primary (stable) Deployment
@@ -46,6 +46,8 @@ spec:
       containers:
         - name: myapp
           image: your-org/myapp:1.0.0
+          ports:
+            - containerPort: 8080
 ---
 # Canary Deployment
 apiVersion: apps/v1
@@ -68,9 +70,25 @@ spec:
       containers:
         - name: myapp
           image: your-org/myapp:1.1.0  # New version
+          ports:
+            - containerPort: 8080
+---
+# Service exposing both stable and canary pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+  namespace: production
+spec:
+  selector:
+    app: myapp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ---
 # DestinationRule defining subsets
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp
@@ -86,7 +104,7 @@ spec:
         version: canary
 ---
 # VirtualService with traffic split (update weights manually)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp
@@ -114,7 +132,7 @@ Manually promoting the canary:
 # Step through the canary promotion manually
 for weight in 10 25 50 75 100; do
   echo "Setting canary weight to $weight%"
-  kubectl patch virtualservice myapp -n production \
+  kubectl patch virtualservice.networking.istio.io myapp -n production \
     --type=json \
     -p="[{\"op\": \"replace\", \"path\": \"/spec/http/0/route/0/weight\", \"value\": $((100-weight))},
          {\"op\": \"replace\", \"path\": \"/spec/http/0/route/1/weight\", \"value\": $weight}]"
@@ -126,7 +144,7 @@ done
 
 ## Step 2: Flagger Automated Canary
 
-Flagger automates all of the above-creating Deployments, managing VirtualService weights, and analyzing metrics:
+Flagger automates the rollout workflow by creating the primary Deployment and service-mesh routing objects, managing VirtualService weights, and analyzing metrics:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -138,7 +156,7 @@ spec:
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: myapp  # Single Deployment; Flagger creates primary/canary variants
+    name: myapp  # Source Deployment; Flagger creates the primary variant and routing objects
   service:
     port: 8080
     gateways:
@@ -181,13 +199,13 @@ spec:
 | Traffic shifting | Manual | Automatic |
 | Metric analysis | Manual (human checks) | Automatic (threshold-based) |
 | Rollback | Manual | Automatic on threshold breach |
-| Manifest overhead | High (2 Deployments + DestRule + VS) | Low (1 Deployment + 1 Canary CR) |
+| Manifest overhead | High (2 Deployments + Service + DestRule + VS) | Low (source Deployment + Canary CR; Flagger generates services and routing) |
 | Flexibility | Maximum (full Istio control) | High (configurable analysis) |
 | Operational burden | High (requires human during rollout) | Low (runs unattended) |
 
 ## Step 4: Hybrid Approach
 
-For teams that want Flagger's automation but need custom Istio routing (header-based routing, fault injection):
+For teams that want Flagger's automation but need custom Istio routing options such as header operations or custom metric templates:
 
 ```yaml
 # Flagger Canary with custom Istio headers
@@ -209,7 +227,7 @@ spec:
 ## Best Practices
 
 - Use Flagger for any canary deployment that runs unattended overnight or on weekends; manual canary requires active monitoring.
-- Use native Istio canary only when you need routing logic that Flagger does not support (e.g., complex header matching, mirroring).
+- Use native Istio canary only when you need route behavior outside Flagger's Canary spec or explicit human sign-off on each traffic shift.
 - Always configure both a success rate metric and a latency metric in Flagger; error rate alone misses CPU exhaustion and memory pressure scenarios.
 - Test Flagger's automatic rollback behavior in staging by deliberately deploying a broken image.
 - Use Flagger's webhook mechanism to run synthetic load during canary analysis to accelerate metric collection.
