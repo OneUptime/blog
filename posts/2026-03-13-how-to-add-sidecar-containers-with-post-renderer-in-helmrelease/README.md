@@ -77,11 +77,11 @@ spec:
                         emptyDir: {}
 ```
 
-This patch adds a Fluent Bit log forwarder sidecar that shares a log volume with the main application container.
+This patch adds a Fluent Bit log forwarder sidecar and an `emptyDir` log volume. The main application container must already mount `app-logs`, or be patched separately to mount it, for both containers to share the same log files.
 
 ## Adding a Monitoring Sidecar
 
-A common pattern is adding a metrics exporter sidecar to applications that do not natively expose Prometheus metrics:
+A common pattern is adding a metrics exporter sidecar to applications that emit StatsD metrics but do not natively expose Prometheus metrics:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -132,7 +132,7 @@ spec:
                             memory: 64Mi
 ```
 
-This adds a StatsD exporter sidecar along with the Prometheus scrape annotations needed for automatic metrics discovery.
+This adds a StatsD exporter sidecar along with Prometheus scrape annotations used by annotation-based metrics discovery.
 
 ## Adding a Security Sidecar
 
@@ -173,6 +173,7 @@ spec:
                         image: quay.io/oauth2-proxy/oauth2-proxy:v7.5.1
                         args:
                           - --provider=oidc
+                          - --oidc-issuer-url=https://issuer.example.com
                           - --upstream=http://localhost:8080
                           - --http-address=0.0.0.0:4180
                           - --email-domain=*
@@ -204,7 +205,7 @@ spec:
                             memory: 128Mi
 ```
 
-This adds an OAuth2 proxy sidecar that handles authentication before traffic reaches the application.
+This adds an OAuth2 proxy sidecar that handles authentication before traffic reaches the application when your Service or Ingress sends traffic to the proxy port.
 
 ## Adding Sidecars to Multiple Deployments
 
