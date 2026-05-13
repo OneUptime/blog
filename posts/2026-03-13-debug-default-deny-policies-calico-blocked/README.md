@@ -12,7 +12,7 @@ Description: A practical guide to diagnosing and resolving unexpected traffic bl
 
 When Calico default deny policies are active, mysterious connectivity failures are inevitable. A pod that worked yesterday suddenly cannot reach its database, or health checks start failing across the cluster. The challenge is pinpointing which policy rule is responsible when dozens of policies might apply.
 
-Calico provides several debugging tools including `calicoctl`, policy hit counters, and flow logs. Unlike standard Kubernetes `NetworkPolicy` which offers limited visibility, Calico's `projectcalico.org/v3` policies can be configured to log every denied packet, giving you a detailed audit trail.
+Calico provides several debugging tools including `calicoctl`, log rules, and flow logs. Unlike standard Kubernetes `NetworkPolicy` which offers limited visibility, Calico's `projectcalico.org/v3` policies can use `Log` actions before allow or deny decisions, giving you a detailed audit trail for matching traffic.
 
 This guide walks through a systematic debugging methodology: starting from symptoms, examining policy evaluation order, using logs, and resolving blocked traffic without compromising your security posture.
 
@@ -20,7 +20,7 @@ This guide walks through a systematic debugging methodology: starting from sympt
 
 - Kubernetes cluster with Calico v3.26+
 - `kubectl` and `calicoctl` installed
-- Calico flow logging enabled (Felix configuration)
+- Access to Calico policy logs through `journalctl`, `/var/log/syslog`, `/var/log/kern.log`, or the eBPF trace pipe
 - Access to node-level tools for packet inspection
 
 ## Step 1: Identify the Symptom
@@ -58,6 +58,7 @@ metadata:
   name: log-before-deny
 spec:
   order: 999
+  tier: default
   selector: all()
   ingress:
     - action: Log
@@ -70,18 +71,20 @@ spec:
 
 ```bash
 calicoctl apply -f log-before-deny.yaml
-# Check syslog or Calico flow logs
-sudo journalctl -u kubelet | grep calico
+# Check kernel/syslog output for iptables dataplane policy logs
+sudo journalctl -k | grep calico-packet
+sudo grep calico-packet /var/log/syslog /var/log/kern.log
 ```
 
-## Step 4: Use Calico Policy Tracing
+## Step 4: Use Calico Policy Logs
 
-Calico Enterprise supports `calicoctl policy trace`, but in open source you can use Felix logs:
+For more Felix detail, temporarily raise Felix logging through the FelixConfiguration API:
 
 ```bash
-# Enable debug logging on Felix temporarily
-kubectl set env daemonset/calico-node -n kube-system FELIX_LOGSEVERITYSCREEN=debug
-kubectl logs -n kube-system -l k8s-app=calico-node -f | grep "Policy"
+kubectl get felixconfig default -o yaml > felixconfig.yaml
+# Edit spec.logSeverityScreen to Debug, then apply the change
+kubectl replace -f felixconfig.yaml
+kubectl logs -n calico-system -l k8s-app=calico-node -f | grep -i "policy"
 ```
 
 ## Step 5: Verify Selector Matches
@@ -108,7 +111,7 @@ flowchart TD
     F --> G{Allow rule before deny?}
     G -->|No| H[Add allow rule with lower order]
     G -->|Yes| I[Enable Felix debug logs]
-    I --> J[Trace packet path]
+    I --> J[Inspect policy logs]
 ```
 
 ## Conclusion
