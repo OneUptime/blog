@@ -10,7 +10,7 @@ Description: Step-by-step guide to installing Calico as the CNI on self-managed 
 
 ## Introduction
 
-When running Kubernetes on AWS EC2 without EKS - using kubeadm, kOps, or similar tools - you have full control over CNI selection. Calico is a popular choice for self-managed AWS Kubernetes clusters because it provides both pod networking (without requiring VPC CNI license limitations) and advanced network policy enforcement.
+When running Kubernetes on AWS EC2 without EKS - using kubeadm, kOps, or similar tools - you have full control over CNI selection. Calico is a popular choice for self-managed AWS Kubernetes clusters because it provides both pod networking (without relying on AWS VPC CNI pod-IP allocation constraints) and advanced network policy enforcement.
 
 This guide covers installing Calico on a kubeadm-provisioned Kubernetes cluster on AWS EC2, using Calico's VXLAN overlay for cross-node communication.
 
@@ -19,7 +19,7 @@ This guide covers installing Calico on a kubeadm-provisioned Kubernetes cluster 
 - AWS EC2 instances with Kubernetes installed via kubeadm (control plane + workers)
 - `kubectl` access with cluster-admin privileges
 - `calicoctl` installed on your management machine
-- Security groups allowing VXLAN (UDP 4789) and BGP (TCP 179) between nodes
+- Security groups allowing VXLAN (UDP 4789) between nodes; BGP (TCP 179) is only needed if you enable Calico BGP
 
 ## Step 1: Prepare AWS Security Groups
 
@@ -34,14 +34,14 @@ aws ec2 authorize-security-group-ingress \
   --port 4789 \
   --source-group sg-your-cluster-sg
 
-# Allow BGP if using Calico's BGP mode instead of VXLAN
+# Allow BGP only if using Calico's BGP mode instead of VXLAN-only routing
 aws ec2 authorize-security-group-ingress \
   --group-id sg-your-cluster-sg \
   --protocol tcp \
   --port 179 \
   --source-group sg-your-cluster-sg
 
-# Allow Calico Typha communications
+# Allow Calico Typha communications if Typha is enabled or deployed by the operator
 aws ec2 authorize-security-group-ingress \
   --group-id sg-your-cluster-sg \
   --protocol tcp \
@@ -70,8 +70,9 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ## Step 3: Install Calico
 
 ```bash
-# Install the Tigera Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Install the Tigera Operator and custom resource definitions
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Wait for the operator
 kubectl wait --for=condition=Available deployment/tigera-operator \
@@ -91,6 +92,8 @@ spec:
   cni:
     type: Calico
   calicoNetwork:
+    # BGP is not required for a VXLAN-only cluster
+    bgp: Disabled
     ipPools:
       - name: default-ipv4-ippool
         # Must match kubeadm --pod-network-cidr
@@ -109,7 +112,7 @@ Apply and wait:
 kubectl apply -f calico-installation-aws.yaml
 
 # Monitor the installation progress
-kubectl watch --for=condition=Ready tigerastatus/calico --timeout=300s
+watch kubectl get tigerastatus
 
 # Verify all nodes are now Ready (Calico provides the pod network)
 kubectl get nodes
@@ -120,8 +123,8 @@ kubectl get pods -n calico-system
 
 ```bash
 # Configure calicoctl for Kubernetes datastore
-export CALICO_DATASTORE_TYPE=kubernetes
-export CALICO_KUBECONFIG=~/.kube/config
+export DATASTORE_TYPE=kubernetes
+export KUBECONFIG=~/.kube/config
 
 # Verify connectivity
 calicoctl get nodes -o wide
@@ -175,7 +178,7 @@ spec:
 - Use VXLAN encapsulation on AWS to avoid needing VPC route table management for pod CIDRs
 - Disable AWS source/destination check on EC2 instances if using BGP mode instead of VXLAN
 - Size your pod CIDR generously (at least /16) to accommodate cluster growth
-- Enable Calico Typha for clusters with more than 50 nodes to reduce API server load
+- Use the operator-managed Typha deployment for clusters with more than 50 nodes to reduce API server load
 - Use AWS placement groups for control plane nodes to improve etcd and API server latency
 
 ## Conclusion
