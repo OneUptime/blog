@@ -70,7 +70,7 @@ Calculate required hugepages:
 # 1000 * 2,000,000 = 2GB minimum
 # Add 50% overhead: 3GB
 
-echo "nr_hugepages = 1536" > /etc/sysctl.d/vpp-hugepages.conf
+echo "vm.nr_hugepages = 1536" > /etc/sysctl.d/vpp-hugepages.conf
 # 1536 * 2MB = 3GB hugepages
 ```
 
@@ -92,9 +92,6 @@ data:
         num-tx-desc 4096
       }
       no-tx-checksum-offload
-    }
-    punt {
-      punt-pool-size 2097152
     }
 ```
 
@@ -128,14 +125,16 @@ VPP_STARTUP_CONF: |
 Receive Side Scaling (RSS) distributes packets across multiple NIC queues and VPP workers:
 
 ```bash
-# Verify RSS is configured
+# Verify RSS is configured and inspect RX queues
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk version
+  vppctl show hardware-interfaces
 # Should show multiple RX queues active
 
-# Check packets are distributed across workers
+# Check RX queue to worker placement and per-worker stats
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk statistics
+  vppctl show interface rx-placement
+kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
+  vppctl show runtime
 ```
 
 ## Benchmark Results Template
