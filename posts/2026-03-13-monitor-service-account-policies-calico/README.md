@@ -21,16 +21,20 @@ Kube-state-metrics provides service account assignment data, while Calico flow l
 
 ## Step 1: Track Service Account Coverage
 
+The pod-to-service-account mapping is exposed by kube-state-metrics as `kube_pod_service_account` (labels include `pod`, `namespace`, `uid`, and `service_account`). Note that this metric is marked EXPERIMENTAL in kube-state-metrics and its shape may change between releases.
+
 ```promql
 # Pods using default service account (security risk)
 
-count(kube_pod_spec_service_account_name{service_account="default"})
+count(kube_pod_service_account{service_account="default"})
 
 # Percentage of pods with dedicated service accounts
-100 * (1 - count(kube_pod_spec_service_account_name{service_account="default"}) / count(kube_pod_info))
+100 * (1 - count(kube_pod_service_account{service_account="default"}) / count(kube_pod_info))
 ```
 
 ## Step 2: Alert on Default SA Usage
+
+Open source Calico's Felix does not export a denied-packets counter, so we cannot alert directly on SA-related denials from Felix metrics alone. The alerts below focus on signals that *are* available: the count of pods bound to the `default` service account, and Felix dataplane health (a working proxy for "is policy enforcement actually being programmed?"). Readers on Calico Cloud / Enterprise can add an additional rule using `calico_denied_packets` (labeled by `policy` and `srcIP`).
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -43,32 +47,32 @@ spec:
     - name: calico.sa
       rules:
         - alert: PodsUsingDefaultServiceAccount
-          expr: count(kube_pod_spec_service_account_name{service_account="default"}) > 5
+          expr: count(kube_pod_service_account{service_account="default"}) > 5
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "More than 5 pods using default service account"
-        - alert: UnexpectedSADenials
-          expr: rate(felix_denied_packets_total[5m]) > 10
-          for: 2m
+        - alert: FelixIptablesSaveErrors
+          expr: rate(felix_iptables_save_errors[5m]) > 0
+          for: 5m
           labels:
-            severity: warning
+            severity: critical
           annotations:
-            summary: "Elevated denial rate - possible SA misconfiguration"
+            summary: "Felix is failing to program iptables — SA-based policy enforcement may be stale"
 ```
 
 ## Step 3: SA Coverage Dashboard
 
 ```promql
 # Panel 1: SA Coverage %
-100 * count(kube_pod_spec_service_account_name{service_account!="default"}) / count(kube_pod_info)
+100 * count(kube_pod_service_account{service_account!="default"}) / count(kube_pod_info)
 
 # Panel 2: Top 10 default SA pods
-topk(10, kube_pod_spec_service_account_name{service_account="default"})
+topk(10, kube_pod_service_account{service_account="default"})
 
-# Panel 3: SA policy evaluation rate
-rate(felix_policy_evaluation_total[5m])
+# Panel 3: Cluster-wide active Calico policies (proxy for enforcement scope)
+felix_cluster_num_policies
 ```
 
 ## Step 4: Weekly SA Audit
