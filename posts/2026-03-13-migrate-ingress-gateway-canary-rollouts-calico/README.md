@@ -16,52 +16,36 @@ This pattern is particularly valuable for microservices where a buggy new versio
 
 ## Prerequisites
 
-- Calico with ingress controller support
-- Two versions of an application deployed
-- NGINX Ingress Controller or similar for canary annotations
+- Calico installed with the Tigera Operator and Calico Ingress Gateway enabled
+- A `Gateway` resource that uses the `tigera-gateway-class` GatewayClass
+- A cluster that supports Services of type `LoadBalancer`
+- Two versions of an application deployed behind separate Services
 
-## Configure Canary Ingress
+## Configure Canary HTTPRoute
 
 ```yaml
-# Stable version
-
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: app-stable
-spec:
-  rules:
-  - host: app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app-v1
-            port:
-              number: 80
----
-# Canary version - 10% of traffic
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: app-canary
-  annotations:
-    nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "10"
+  namespace: production
 spec:
+  parentRefs:
+  - name: app-gateway
+  hostnames:
+  - app.example.com
   rules:
-  - host: app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app-v2
-            port:
-              number: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: app-v1
+      port: 80
+      weight: 90
+    - name: app-v2
+      port: 80
+      weight: 10
 ```
 
 ## Apply Calico Policies for Both Versions
@@ -77,7 +61,7 @@ spec:
   ingress:
   - action: Allow
     source:
-      selector: app == 'ingress-nginx'
+      namespaceSelector: projectcalico.org/name == 'tigera-gateway'
 ```
 
 ## Monitor Canary Traffic
@@ -88,16 +72,20 @@ kubectl logs -l app=app-v1 --prefix=true | grep "500\|error" | wc -l
 kubectl logs -l app=app-v2 --prefix=true | grep "500\|error" | wc -l
 
 # Increase canary weight after validation
-kubectl annotate ingress app-canary   nginx.ingress.kubernetes.io/canary-weight=50 --overwrite
+kubectl patch httproute app-canary -n production --type='json' \
+  -p='[
+    {"op":"replace","path":"/spec/rules/0/backendRefs/0/weight","value":50},
+    {"op":"replace","path":"/spec/rules/0/backendRefs/1/weight","value":50}
+  ]'
 ```
 
 ## Canary Rollout Flow
 
 ```mermaid
 graph LR
-    CLIENT[Client] -->|100% traffic| INGRESS[Ingress Controller]
-    INGRESS -->|90%| V1[App v1\nStable]
-    INGRESS -->|10%| V2[App v2\nCanary]
+    CLIENT[Client] -->|100% traffic| GATEWAY[Calico Ingress Gateway]
+    GATEWAY -->|90%| V1[App v1\nStable]
+    GATEWAY -->|10%| V2[App v2\nCanary]
     subgraph Monitor
         ERR[Error Rate\nComparison]
         V1 --> ERR
@@ -108,4 +96,4 @@ graph LR
 
 ## Conclusion
 
-Canary rollouts with Calico ingress gateway combine traffic splitting at the ingress layer with network policy enforcement for the canary pods. Start with a small percentage of traffic, monitor error rates for both versions, and gradually increase the canary weight as confidence grows. Use Calico policies to ensure the canary version adheres to security requirements before it receives significant traffic.
+Canary rollouts with Calico Ingress Gateway combine traffic splitting at the gateway layer with network policy enforcement for the canary pods. Start with a small percentage of traffic, monitor error rates for both versions, and gradually increase the canary weight as confidence grows. Use Calico policies to ensure the canary version adheres to security requirements before it receives significant traffic.
