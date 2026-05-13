@@ -10,14 +10,14 @@ Description: Debug Kubernetes NetworkPolicy basics using Calico as the network p
 
 ## Introduction
 
-Debug Kubernetes NetworkPolicy Basics When Traffic Is Blocked by Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle kubernetes networkpolicy basics while maintaining strict access controls.
+Debug Kubernetes NetworkPolicy Basics When Traffic Is Blocked by Calico requires careful policy design in Calico to balance security with performance and availability. The Kubernetes `networking.k8s.io/v1` NetworkPolicy API provides a portable baseline for kubernetes networkpolicy basics, while Calico enforces those policies and also provides `projectcalico.org/v3` policy APIs for advanced controls.
 
 This guide covers debug Kubernetes NetworkPolicy Basics in Calico with production-ready configurations.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
-- `calicoctl` and `kubectl` installed
+- `kubectl` installed
 
 ## Core Configuration
 
@@ -61,7 +61,7 @@ spec:
 # Apply Kubernetes NetworkPolicy
 kubectl apply -f basic-network-policy.yaml
 
-# Verify policy is enforced by Calico
+# Inspect how Kubernetes interpreted the policy
 kubectl describe networkpolicy allow-frontend-to-backend -n production
 
 # Test connectivity
