@@ -10,7 +10,7 @@ Description: Set up monitoring to detect when Calico iptables rules are not bein
 
 ## Introduction
 
-Calico iptables rule application failures are particularly dangerous because they are silent - traffic continues to flow but network policies stop being enforced, creating security gaps. Monitoring for this condition requires tracking Felix's iptables programming metrics and validating that Calico chains exist on nodes.
+Calico iptables rule application failures are particularly dangerous because they can be silent - traffic may continue to flow while network policies are not fully up to date, creating security gaps. Monitoring for this condition requires tracking Felix's iptables programming metrics and validating that Calico chains exist on nodes.
 
 The Felix Prometheus metrics endpoint exposes counters specifically for iptables failures, making it the primary monitoring target for this scenario.
 
@@ -58,7 +58,7 @@ spec:
         # Alert when iptables restore errors are increasing
         - alert: CalicoIptablesRestoreErrors
           expr: |
-            increase(felix_iptables_restore_errors_total[5m]) > 0
+            increase(felix_iptables_restore_errors[5m]) > 0
           for: 2m
           labels:
             severity: critical
@@ -69,12 +69,23 @@ spec:
         # Alert when iptables save errors occur
         - alert: CalicoIptablesSaveErrors
           expr: |
-            increase(felix_iptables_save_errors_total[5m]) > 0
+            increase(felix_iptables_save_errors[5m]) > 0
           for: 2m
           labels:
             severity: warning
           annotations:
             summary: "Calico iptables save errors on {{ $labels.instance }}"
+
+        # Alert when the active iptables chain count drops unexpectedly
+        - alert: CalicoIptablesChainsMissing
+          expr: |
+            felix_iptables_chains < 5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Calico iptables chain count is low on {{ $labels.instance }}"
+            description: "Felix reports fewer than 5 active iptables chains. Network policy enforcement may be incomplete on this node."
 ```
 
 ```bash
@@ -84,11 +95,11 @@ kubectl apply -f calico-iptables-alerts.yaml
 
 ## Step 3: Create a Periodic Validation CronJob
 
-Schedule a periodic check that verifies Calico iptables chains exist on all nodes.
+Schedule a periodic spot check that verifies Calico iptables chains exist on the node where the Job pod runs.
 
 ```yaml
 # calico-iptables-validation-cronjob.yaml
-# Periodically validates that Calico iptables chains exist on all nodes
+# Periodically validates that Calico iptables chains exist on the scheduled node
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -105,7 +116,7 @@ spec:
           serviceAccountName: calico-node
           containers:
             - name: validator
-              image: calico/node:v3.27.0
+              image: calico/node:v3.32.0  # Match your installed Calico version
               securityContext:
                 privileged: true
               command:
@@ -136,14 +147,14 @@ Track these specific Felix metrics in your Grafana dashboard.
 ```bash
 # Key metrics to include in Grafana dashboard
 
-# iptables restore error rate (should be 0)
-# rate(felix_iptables_restore_errors_total[5m])
+# iptables restore error rate (should normally be 0)
+# rate(felix_iptables_restore_errors[5m])
 
-# iptables programming latency
-# felix_iptables_restore_latency_seconds
+# dataplane apply latency
+# felix_int_dataplane_apply_time_seconds
 
 # Number of active Calico iptables chains (should be stable)
-# felix_ipsets_in_dataplane
+# felix_iptables_chains
 
 # Felix policy sync status
 # felix_active_local_policies
@@ -160,8 +171,8 @@ kubectl exec -n calico-system \
 ```mermaid
 graph TD
     A[Felix Metrics Port 9091] --> B[Prometheus Scrape]
-    B --> C[felix_iptables_restore_errors_total]
-    B --> D[felix_iptables_save_errors_total]
+    B --> C[felix_iptables_restore_errors]
+    B --> D[felix_iptables_save_errors]
     B --> E[felix_active_local_policies]
     C --> F[Alert: iptables errors increasing]
     D --> F
@@ -171,11 +182,11 @@ graph TD
 
 ## Best Practices
 
-- Alert on any increase in `felix_iptables_restore_errors_total` - zero errors is the only acceptable state
+- Alert on rapid increases in `felix_iptables_restore_errors`
 - Include iptables chain count validation in your periodic cluster health checks
 - Monitor Felix policy sync metrics (`felix_active_local_policies`) to detect stale policy programming
 - Use OneUptime to run synthetic network policy enforcement tests as an end-to-end check
 
 ## Conclusion
 
-Monitoring for Calico iptables rule application failures requires Felix Prometheus metrics (especially `felix_iptables_restore_errors_total`), periodic iptables chain count validation, and end-to-end network policy enforcement tests. Zero iptables errors is the target state - any increase in error counters should trigger immediate investigation.
+Monitoring for Calico iptables rule application failures requires Felix Prometheus metrics (especially `felix_iptables_restore_errors`), periodic iptables chain count validation, and end-to-end network policy enforcement tests. Zero iptables errors is the target state - rapid increases in error counters should trigger immediate investigation.
