@@ -36,8 +36,10 @@ metadata:
 spec:
   endpointSelector:
     matchLabels: {}   # Match all pods in namespace
-  ingress: []         # Empty = deny all ingress
-  egress: []          # Empty = deny all egress
+  ingress:
+    - {}              # Empty rule = deny all ingress
+  egress:
+    - {}              # Empty rule = deny all egress
 ```
 
 ## Step 2: Create Ingress Policies
@@ -237,11 +239,11 @@ kubectl exec -n production deploy/api-service -- \
   curl -sv http://frontend-service:3000
 
 # Use Hubble to observe policy decisions
-hubble observe --namespace production --verdict DROPPED --last 100
+hubble observe -P --namespace production --verdict DROPPED --last 100
 
 # Check policy enforcement for a pod
-kubectl exec -n cilium daemonset/cilium -- \
-  cilium endpoint list | grep production
+kubectl exec -n kube-system daemonset/cilium -- \
+  cilium-dbg endpoint list | grep production
 ```
 
 ## Best Practices
