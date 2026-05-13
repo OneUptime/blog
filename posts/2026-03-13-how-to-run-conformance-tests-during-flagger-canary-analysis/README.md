@@ -135,7 +135,7 @@ data:
     echo "All conformance tests passed"
 ```
 
-Reference the script in the webhook:
+After mounting the ConfigMap at `/scripts` in the load tester, reference the script in the webhook:
 
 ```yaml
     webhooks:
@@ -145,7 +145,7 @@ Reference the script in the webhook:
         timeout: 300s
         metadata:
           type: bash
-          cmd: "/scripts/run-tests.sh http://my-app-canary.default:80"
+          cmd: "bash /scripts/run-tests.sh http://my-app-canary.default:80"
 ```
 
 ## Running Tests During Each Analysis Step
@@ -218,7 +218,7 @@ The conformance tests validate functional correctness before traffic starts, whi
 
 ## Testing gRPC Conformance
 
-For gRPC services, use `ghz` or `grpcurl` for conformance testing:
+For gRPC services, use `ghz` for load testing, or use `grpcurl` for conformance testing with a custom load tester image that includes the `grpcurl` binary:
 
 ```yaml
     webhooks:
