@@ -12,7 +12,7 @@ Description: Implement blue-green environment switching using Flux CD Kustomizat
 
 Blue-green deployment maintains two identical production environments - "blue" (currently live) and "green" (the new version). Traffic is switched from blue to green atomically by updating a Kubernetes Service selector. If green has problems, you switch back to blue instantly with no need to redeploy the old version - it is still running.
 
-In a GitOps workflow with Flux CD, both the blue and green deployments are declared in Git. The "switch" is a change to the Service selector in Git, which Flux reconciles within seconds. Because the old version is still running when you switch, instant rollback is a git revert away.
+In a GitOps workflow with Flux CD, both the blue and green deployments are declared in Git. The "switch" is a change to the Service selector in Git, which Flux applies after reconciliation (or sooner if you trigger reconciliation manually or use a webhook). Because the old version is still running when you switch, instant rollback is a git revert plus reconciliation away.
 
 This guide shows how to structure blue-green deployments in Flux, execute a switch, and roll back when needed.
 
@@ -20,12 +20,13 @@ This guide shows how to structure blue-green deployments in Flux, execute a swit
 
 - Flux CD managing a production cluster
 - `flux` CLI and `kubectl` installed
+- A `production` namespace already created (or a Namespace manifest included in the Kustomization path)
 - A Kubernetes Service that routes traffic to your application
 - An ingress controller or load balancer
 
 ## Step 1: Define Blue and Green Deployments
 
-Both deployments exist simultaneously. They differ only in image tag and version labels.
+Both deployments exist simultaneously. They differ in name, slot label, image tag, and version label.
 
 ```yaml
 # apps/my-app/base/deployment-blue.yaml
@@ -134,6 +135,7 @@ metadata:
 spec:
   interval: 5m
   path: ./apps/my-app/base
+  targetNamespace: production
   prune: true
   sourceRef:
     kind: GitRepository
@@ -186,7 +188,7 @@ git commit -m "deploy: switch my-app traffic from blue to green (v2.5.0)"
 git push origin main
 ```
 
-Flux detects the commit and updates the Service selector within the interval. The switch is atomic from the Kubernetes perspective - the Service selector update causes all new connections to go to green while existing connections to blue complete normally.
+Flux detects the commit and updates the Service selector after the configured source and Kustomization reconciliation. The Service selector update is an atomic API change; once EndpointSlices and proxy rules update, new connections route to green. Long-lived existing connections may continue on blue or be affected by the network implementation, protocol, and load balancer, so connection draining still needs to be tested for your application.
 
 ```mermaid
 sequenceDiagram
@@ -220,7 +222,7 @@ git commit -m "rollback: switch my-app traffic back to blue (v2.4.0)"
 git push origin main
 ```
 
-Blue pods were never stopped, so rollback takes only as long as Flux reconciliation (typically under 30 seconds).
+Blue pods were never stopped, so rollback takes only as long as Flux source and Kustomization reconciliation. With a webhook or manual reconciliation this can be very fast; with polling only, it depends on the configured intervals.
 
 ## Step 7: Clean Up the Old Slot
 
@@ -229,6 +231,9 @@ After green has been running successfully for a defined stability period (e.g., 
 ```bash
 # Update blue to v2.5.0 so it is ready to be the stable slot for the next release
 sed -i 's/image: my-registry\/my-app:2.4.0/image: my-registry\/my-app:2.5.0/' \
+  apps/my-app/base/deployment-blue.yaml
+
+sed -i 's/version: "2.4.0"/version: "2.5.0"/' \
   apps/my-app/base/deployment-blue.yaml
 
 git add apps/my-app/base/deployment-blue.yaml
