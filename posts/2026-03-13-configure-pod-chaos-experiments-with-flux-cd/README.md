@@ -10,9 +10,9 @@ Description: Manage pod-level chaos experiments including pod kill and CPU stres
 
 ## Introduction
 
-Pod-level chaos experiments are the most fundamental form of chaos engineering in Kubernetes. They simulate real-world failure scenarios such as pods being killed by the scheduler, containers consuming excessive CPU, or processes crashing unexpectedly. Running these experiments regularly validates that your Deployment replicas, health checks, and horizontal scaling are configured correctly.
+Pod-level chaos experiments are the most fundamental form of chaos engineering in Kubernetes. They simulate real-world failure scenarios such as pods being terminated, containers consuming excessive CPU, or processes crashing unexpectedly. Running these experiments regularly validates that your Deployment replicas, health checks, and horizontal scaling are configured correctly.
 
-Flux CD elevates pod chaos experiments from one-off manual commands to tracked, reviewable, and reproducible GitOps resources. By storing `PodChaos` and `StressChaos` manifests in Git, every team member can see what experiments are scheduled, when they last ran, and what the results were. Changes to experiment parameters go through your standard pull request review process.
+Flux CD elevates pod chaos experiments from one-off manual commands to tracked, reviewable, and reproducible GitOps resources. By storing `PodChaos` and `StressChaos` manifests in Git, every team member can see what experiments are configured and scheduled, while runtime status and results remain available from Kubernetes and Chaos Mesh. Changes to experiment parameters go through your standard pull request review process.
 
 This guide covers configuring pod kill, container kill, and CPU stress chaos experiments using Chaos Mesh CRDs, all managed through Flux CD.
 
@@ -21,7 +21,7 @@ This guide covers configuring pod kill, container kill, and CPU stress chaos exp
 - Chaos Mesh deployed on your cluster (via Flux HelmRelease)
 - Flux CD bootstrapped on the cluster
 - `kubectl` and `flux` CLI tools
-- Target application running in a namespace annotated for chaos injection
+- Target application running in a namespace selected by the experiment, and annotated for chaos injection if Chaos Mesh `enableFilterNamespace` is enabled
 
 ## Step 1: Verify Chaos Mesh Is Ready
 
@@ -56,7 +56,9 @@ spec:
       - default
     labelSelectors:
       app: nginx
-  # Run for 60 seconds then auto-recover
+  # Delete the selected pod immediately
+  gracePeriod: 0
+  # Keep the experiment active for 60 seconds while Kubernetes recreates killed pods
   duration: "60s"
 ```
 
@@ -107,7 +109,7 @@ spec:
     cpu:
       # Spawn 2 CPU-stressing workers
       workers: 2
-      # Consume 80% of available CPU
+      # Consume 80% CPU per worker
       load: 80
   duration: "120s"
 ```
@@ -138,6 +140,7 @@ spec:
         - default
       labelSelectors:
         app: nginx
+    gracePeriod: 0
     duration: "30s"
 ```
 
@@ -157,7 +160,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Ensure Chaos Mesh itself is healthy before applying experiments
+  # Ensure the Chaos Mesh Kustomization is ready before applying experiments
   dependsOn:
     - name: chaos-mesh
 ```
@@ -181,7 +184,7 @@ kubectl get pods -n default -w
 - Always set a `duration` so experiments have a defined end time and do not run indefinitely.
 - Use the `Schedule` resource for recurring experiments rather than manually re-applying manifests.
 - Combine pod chaos with application-level metrics to validate SLOs hold during fault injection.
-- Use Flux `dependsOn` to prevent experiment resources from being applied before Chaos Mesh is ready.
+- Use Flux `dependsOn` to prevent experiment resources from being applied before the Chaos Mesh Kustomization is ready; add health checks or `wait: true` to that dependency if you need Flux to verify controller health.
 - Document each experiment's purpose in an annotation or Git commit message.
 
 ## Conclusion
