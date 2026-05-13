@@ -76,9 +76,7 @@ spec:
   values:
     authentik:
       # Load secret key from secret
-      secret_key: ""   # Overridden by existingSecret below
-      existingSecret: authentik-secrets
-      existingSecretKey: secret-key
+      secret_key: ""   # Set via valuesFrom below
 
       # Bootstrap admin account (only used on first run)
       bootstrap_password: ""
@@ -134,10 +132,10 @@ spec:
         enabled: true
         ingressClassName: nginx
         hosts:
-          - host: auth.example.com
-            paths:
-              - path: /
-                pathType: Prefix
+          - auth.example.com
+        paths:
+          - /
+        pathType: Prefix
         tls:
           - secretName: authentik-tls
             hosts:
@@ -168,6 +166,10 @@ To avoid putting secret references in the HelmRelease values directly, use Flux'
   valuesFrom:
     - kind: Secret
       name: authentik-secrets
+      valuesKey: secret-key
+      targetPath: authentik.secret_key
+    - kind: Secret
+      name: authentik-secrets
       valuesKey: bootstrap-password
       targetPath: authentik.bootstrap_password
     - kind: Secret
@@ -178,12 +180,20 @@ To avoid putting secret references in the HelmRelease values directly, use Flux'
       name: authentik-secrets
       valuesKey: bootstrap-email
       targetPath: authentik.bootstrap_email
+    - kind: Secret
+      name: authentik-secrets
+      valuesKey: postgresql-password
+      targetPath: authentik.postgresql.password
+    - kind: Secret
+      name: authentik-secrets
+      valuesKey: redis-password
+      targetPath: authentik.redis.password
 ```
 
 ## Step 5: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/authentik/kustomization.yaml
+# clusters/my-cluster/authentik-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -213,7 +223,7 @@ flux get helmreleases -n authentik --watch
 kubectl get pods -n authentik
 ```
 
-Navigate to `https://auth.example.com/if/flow/initial-setup/`. Authentik will prompt you to set the admin password on first run. After logging in, go to **Applications > Providers** to create your first OIDC provider.
+With the bootstrap values above, log in as `akadmin` using the bootstrap password. If you omit the bootstrap values, navigate to `https://auth.example.com/if/flow/initial-setup/` to set the default `akadmin` password on first run. After logging in, go to **Applications > Providers** to create your first OIDC provider.
 
 ## Step 7: Create an OIDC Provider for Grafana (Example)
 
@@ -222,7 +232,8 @@ In the Authentik UI:
 1. Go to **Applications > Providers > Create > OAuth2/OpenID Provider**
 2. Set **Name**: Grafana, **Client Type**: Confidential
 3. Copy the **Client ID** and **Client Secret**
-4. Create an **Application** linked to this provider
+4. Add `https://grafana.example.com/login/generic_oauth` as a strict redirect URI
+5. Create an **Application** linked to this provider
 
 In your Grafana HelmRelease values:
 
@@ -234,7 +245,7 @@ grafana.ini:
     client_id: <client-id-from-authentik>
     client_secret: <client-secret-from-authentik>
     scopes: openid email profile
-    auth_url: https://auth.example.com/application/o/grafana/authorize/
+    auth_url: https://auth.example.com/application/o/authorize/
     token_url: https://auth.example.com/application/o/token/
     api_url: https://auth.example.com/application/o/userinfo/
 ```
