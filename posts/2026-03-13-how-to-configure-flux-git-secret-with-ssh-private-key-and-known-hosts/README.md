@@ -16,7 +16,7 @@ By including a `known_hosts` entry in your authentication Secret, you enable str
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster supported by your Flux version
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - `ssh-keygen` and `ssh-keyscan` available on your local machine
