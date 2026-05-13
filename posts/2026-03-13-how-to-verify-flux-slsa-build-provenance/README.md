@@ -16,7 +16,7 @@ Before you begin, make sure you have:
 
 - The slsa-verifier CLI installed
 - Cosign CLI (v2.0 or later)
-- curl and jq utilities
+- curl, jq, and crane utilities
 - Flux CLI (v2.0 or later)
 - Access to a terminal with internet connectivity
 
@@ -37,7 +37,10 @@ slsa-verifier version
 Verify the build provenance of a Flux controller image using slsa-verifier:
 
 ```bash
-slsa-verifier verify-image ghcr.io/fluxcd/source-controller:v1.2.0 \
+IMAGE="ghcr.io/fluxcd/source-controller:v1.2.0"
+IMAGE="${IMAGE}@$(crane digest "${IMAGE}")"
+
+slsa-verifier verify-image "$IMAGE" \
   --source-uri github.com/fluxcd/source-controller \
   --source-tag v1.2.0
 ```
@@ -46,7 +49,7 @@ A successful verification output will look like:
 
 ```text
 Verified build using builder "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v1.9.0" at commit abc123...
-PASSED: Verified SLSA provenance
+PASSED: SLSA verification passed
 ```
 
 ## Step 2: Verify Provenance for All Flux Controllers
@@ -69,6 +72,7 @@ declare -A CONTROLLERS=(
 for controller in "${!CONTROLLERS[@]}"; do
   version="${CONTROLLERS[$controller]}"
   image="ghcr.io/fluxcd/${controller}:${version}"
+  image="${image}@$(crane digest "${image}")"
   repo="github.com/fluxcd/${controller}"
 
   echo "Verifying SLSA provenance for ${image}..."
@@ -94,7 +98,7 @@ curl -sSL -o flux.tar.gz \
 
 # Download the provenance attestation
 curl -sSL -o flux.intoto.jsonl \
-  "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/flux_${FLUX_VERSION}_linux_amd64.tar.gz.intoto.jsonl"
+  "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/provenance.intoto.jsonl"
 
 # Verify the binary provenance
 slsa-verifier verify-artifact flux.tar.gz \
@@ -134,10 +138,13 @@ cosign verify-attestation ghcr.io/fluxcd/source-controller:v1.2.0 \
 
 ## Step 5: Verify Provenance Against Specific Build Requirements
 
-For stricter verification, you can specify the expected builder and build type:
+For stricter verification, you can specify the expected builder:
 
 ```bash
-slsa-verifier verify-image ghcr.io/fluxcd/source-controller:v1.2.0 \
+IMAGE="ghcr.io/fluxcd/source-controller:v1.2.0"
+IMAGE="${IMAGE}@$(crane digest "${IMAGE}")"
+
+slsa-verifier verify-image "$IMAGE" \
   --source-uri github.com/fluxcd/source-controller \
   --source-tag v1.2.0 \
   --builder-id "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v1.9.0"
@@ -147,15 +154,15 @@ slsa-verifier verify-image ghcr.io/fluxcd/source-controller:v1.2.0 \
 
 Confirm the following after running the provenance verification:
 
-1. The slsa-verifier returns "PASSED: Verified SLSA provenance" for each artifact
+1. The slsa-verifier returns "PASSED: SLSA verification passed" for each artifact
 2. The source URI matches the expected Flux GitHub repository
 3. The builder ID references the SLSA GitHub generator
 4. The source tag matches the expected release version
 
-Check the SLSA level:
+Check the SLSA generator build type:
 
 ```bash
-# The provenance attestation should indicate SLSA Level 3
+# The provenance attestation should indicate the SLSA container generator
 cosign verify-attestation ghcr.io/fluxcd/source-controller:v1.2.0 \
   --type slsaprovenance \
   --certificate-identity-regexp="https://github.com/slsa-framework/slsa-github-generator/.*" \
@@ -167,7 +174,7 @@ cosign verify-attestation ghcr.io/fluxcd/source-controller:v1.2.0 \
 
 ### Error: No provenance attestation found
 
-Ensure the image version supports SLSA provenance. Provenance attestations are available for Flux v2.1.0 and later:
+Ensure the image version supports SLSA provenance. Flux provenance attestations are available starting with Flux v2.0.1 for the Flux CLI image and v1.0.0 or later for the main controllers shown above, with helm-controller starting at v0.35.0, image-reflector-controller at v0.29.0, and image-automation-controller at v0.35.0:
 
 ```bash
 # Check if the image has attestations
@@ -180,12 +187,20 @@ Verify you are using the correct source repository URI. Each controller has its 
 
 ```bash
 # Source controller
-slsa-verifier verify-image ghcr.io/fluxcd/source-controller:v1.2.0 \
-  --source-uri github.com/fluxcd/source-controller
+IMAGE="ghcr.io/fluxcd/source-controller:v1.2.0"
+IMAGE="${IMAGE}@$(crane digest "${IMAGE}")"
+
+slsa-verifier verify-image "$IMAGE" \
+  --source-uri github.com/fluxcd/source-controller \
+  --source-tag v1.2.0
 
 # Kustomize controller
-slsa-verifier verify-image ghcr.io/fluxcd/kustomize-controller:v1.2.0 \
-  --source-uri github.com/fluxcd/kustomize-controller
+IMAGE="ghcr.io/fluxcd/kustomize-controller:v1.2.0"
+IMAGE="${IMAGE}@$(crane digest "${IMAGE}")"
+
+slsa-verifier verify-image "$IMAGE" \
+  --source-uri github.com/fluxcd/kustomize-controller \
+  --source-tag v1.2.0
 ```
 
 ### Error: Builder ID verification failed
