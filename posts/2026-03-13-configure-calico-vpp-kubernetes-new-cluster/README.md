@@ -22,7 +22,7 @@ Getting VPP configuration right from the start is critical because many VPP para
 
 ## Step 1: Configure IP Pool for VPP
 
-Calico VPP supports VXLAN and IP-in-IP encapsulation. For best performance without a special hardware, use VXLAN.
+Calico VPP supports VXLAN and IP-in-IP encapsulation. For an overlay that works across Layer 3 networks without special hardware, use VXLAN.
 
 ```bash
 cat <<EOF | calicoctl apply -f -
@@ -33,7 +33,7 @@ metadata:
 spec:
   cidr: 192.168.0.0/16
   blockSize: 26
-  encapsulation: VXLAN
+  vxlanMode: Always
   natOutgoing: true
   nodeSelector: all()
 EOF
@@ -42,37 +42,39 @@ EOF
 ## Step 2: Configure VPP Startup via ConfigMap
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vpp-config
-  namespace: calico-vpp-dataplane
 data:
-  vpp.conf: |
+  CALICOVPP_CONFIG_TEMPLATE: |-
     unix {
       nodaemon
-      log /var/log/vpp/vpp.log
       full-coredump
-      cli-listen /run/vpp/cli.sock
+      cli-listen /var/run/vpp/cli.sock
+      pidfile /run/vpp/vpp.pid
+      exec /etc/vpp/startup.exec
     }
-    dpdk {
-      dev 0000:01:00.0
-      uio-driver vfio-pci
-    }
-    buffers {
-      buffers-per-numa 128000
-    }
+    api-trace { on }
     cpu {
       workers 2
       main-core 0
     }
-    api-segment {
-      gid vpp
+    socksvr {
+      socket-name /var/run/vpp/vpp-api.sock
+    }
+    plugins {
+      plugin default { enable }
+      plugin dpdk_plugin.so { disable }
+      plugin calico_plugin.so { enable }
+      plugin ping_plugin.so { disable }
+      plugin dispatch_trace_plugin.so { enable }
+    }
+    buffers {
+      buffers-per-numa 128000
     }
 ```
 
 ```bash
-kubectl apply -f vpp-config.yaml
+kubectl patch configmap calico-vpp-config -n calico-vpp-dataplane \
+  --type merge \
+  --patch-file calico-vpp-config-template.yaml
 ```
 
 ## Step 3: Configure the VPP Manager
@@ -81,7 +83,8 @@ Update the VPP Manager ConfigMap with your interface details.
 
 ```bash
 kubectl patch configmap calico-vpp-config -n calico-vpp-dataplane \
-  --patch '{"data":{"CALICOVPP_INTERFACE":"eth1","CALICOVPP_NATIVE_DRIVER":"af_packet"}}'
+  --type merge \
+  --patch '{"data":{"CALICOVPP_INTERFACES":"{\"uplinkInterfaces\":[{\"interfaceName\":\"eth1\",\"vppDriver\":\"af_packet\"}]}"}}'
 ```
 
 ## Step 4: Configure Felix
@@ -97,8 +100,8 @@ calicoctl patch felixconfiguration default \
 ## Step 5: Verify VPP Interface Configuration
 
 ```bash
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show ip table
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl show interface
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl show ip table
 ```
 
 ## Step 6: Tune VPP Buffer Sizes
@@ -110,7 +113,7 @@ For high-throughput workloads, increase VPP's buffer pool.
 
 buffers {
   buffers-per-numa 256000
-  page-size 2m
+  page-size 2M
 }
 ```
 
