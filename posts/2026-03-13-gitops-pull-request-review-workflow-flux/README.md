@@ -51,6 +51,7 @@ Apply any change to this source only through a merged PR - never by pushing dire
 In your GitHub repository go to **Settings → Branches → Add rule** and configure the following for the `main` branch:
 
 - **Require a pull request before merging** - enable this and set at least 1 required approving review.
+- **Require review from Code Owners** - enable this if you want CODEOWNERS approval to be mandatory for matching paths.
 - **Dismiss stale pull request approvals when new commits are pushed** - prevents re-using an approval after the diff changes.
 - **Require status checks to pass before merging** - add the CI job name from Step 3.
 - **Require branches to be up to date before merging** - ensures the PR is tested against the latest main.
@@ -77,16 +78,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Install the Flux CLI for manifest validation
-      - name: Install Flux CLI
-        run: |
-          curl -s https://fluxcd.io/install.sh | sudo bash
+      # Install the Flux CLI for any Flux commands you add to the workflow
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@main
+        with:
+          version: latest
 
-      # Validate all Flux custom resources in the repository
-      - name: Validate Flux resources
-        run: |
-          flux check --pre || true
-          find . -name "*.yaml" | xargs -I{} flux validate {} 2>/dev/null || true
+      - name: Check Flux CLI
+        run: flux version --client
 
       # Use kubeconform for broader Kubernetes schema validation
       - name: Install kubeconform
@@ -100,9 +99,9 @@ jobs:
             -strict \
             -ignore-missing-schemas \
             -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/fluxcd/flux2/main/schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             -summary \
-            $(find . -name "*.yaml" -not -path "./.git/*")
+            $(find . \( -name "*.yaml" -o -name "*.yml" \) -not -path "./.git/*")
 ```
 
 The `validate` job name is what you reference in the branch protection status check requirement.
@@ -122,7 +121,7 @@ A `CODEOWNERS` file automatically requests reviews from the right team when path
 /apps/production/    @your-org/platform-team @your-org/app-team
 ```
 
-GitHub automatically adds the listed teams or users as required reviewers when a PR touches those paths.
+GitHub automatically requests reviews from the listed teams or users when a PR touches those paths. If you enabled **Require review from Code Owners** in branch protection, a matching code owner approval is required before merge.
 
 ## Step 5: Submit and Merge a Change
 
