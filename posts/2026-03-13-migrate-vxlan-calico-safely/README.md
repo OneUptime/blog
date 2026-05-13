@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, VXLAN, Networking, Encapsulation
 
-Description: Safely migrate a Calico cluster from IP-in-IP or BGP to VXLAN encapsulation with zero-downtime for running workloads.
+Description: Safely migrate a Calico cluster from IP-in-IP or BGP to VXLAN encapsulation while minimizing disruption for running workloads.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Safely migrate a Calico cluster from IP-in-IP or BGP to VXLAN encap
 
 VXLAN (Virtual Extensible LAN) is an encapsulation protocol that wraps layer-2 Ethernet frames inside UDP packets, allowing pod networks to span across layer-3 boundaries without BGP routing support. Calico uses VXLAN to create an overlay network where pods on different subnets can communicate as if they were on the same flat network.
 
-VXLAN is the preferred encapsulation mode for cloud environments where BGP peering with the underlying network is not possible or practical. It uses UDP port 4789 for encapsulation and requires all cluster nodes to be able to reach each other on this port.
+VXLAN is useful for cloud environments where BGP peering with the underlying network is not possible or practical. It uses UDP port 4789 for encapsulation and requires all cluster nodes to be able to reach each other on this port.
 
 ## Prerequisites
 
@@ -49,11 +49,11 @@ ip addr show vxlan.calico
 # View VXLAN forwarding database (FDB)
 bridge fdb show dev vxlan.calico
 
-# View ARP table for VTEP neighbors
-arp -n | grep "vxlan"
+# View VTEP neighbor entries
+ip neigh show dev vxlan.calico
 
 # Check Calico VTEP information
-kubectl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
+calicoctl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
 ```
 
 ## Test Cross-Subnet Pod Connectivity
@@ -74,15 +74,15 @@ tcpdump -i eth0 -n 'udp port 4789' -c 10
 
 ```mermaid
 graph LR
-    subgraph Node A - Subnet 10.0.1.0/24
-        POD_A[Pod 10.244.1.5] --> VXLAN_A[vxlan.calico\nVTEP 10.0.1.10]
+    subgraph node_a["Node A - Subnet 10.0.1.0/24"]
+        POD_A["Pod 10.244.1.5"] --> VXLAN_A["vxlan.calico<br/>VTEP 10.0.1.10"]
     end
-    subgraph Node B - Subnet 10.0.2.0/24
-        VXLAN_B[vxlan.calico\nVTEP 10.0.2.10] --> POD_B[Pod 10.244.2.5]
+    subgraph node_b["Node B - Subnet 10.0.2.0/24"]
+        VXLAN_B["vxlan.calico<br/>VTEP 10.0.2.10"] --> POD_B["Pod 10.244.2.5"]
     end
     VXLAN_A -->|UDP 4789 Encapsulated| VXLAN_B
 ```
 
 ## Conclusion
 
-VXLAN in Calico provides robust overlay networking for clusters deployed across multiple subnets or in cloud environments without BGP support. Configure IP pools with `vxlanMode: Always`, verify VTEP configuration and FDB entries, and test cross-subnet connectivity. The main operational consideration with VXLAN is MTU sizing - subtract 50 bytes from the host MTU for the VXLAN overhead.
+VXLAN in Calico provides robust overlay networking for clusters deployed across multiple subnets or in cloud environments without BGP support. Configure IP pools with `vxlanMode: Always`, verify VTEP configuration and FDB entries, and test cross-subnet connectivity. Be aware that switching encapsulation modes can disrupt in-progress connections. The main operational consideration with VXLAN is MTU sizing - subtract 50 bytes from the host MTU for the VXLAN overhead.
