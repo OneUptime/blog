@@ -8,7 +8,7 @@ Description: Learn how to configure Flux controllers to comply with the Kubernet
 
 ---
 
-The Restricted Pod Security Standard is the most stringent security profile in Kubernetes, designed to enforce current best practices for pod hardening. Running Flux controllers under this standard ensures that your GitOps infrastructure operates with the minimum required privileges. This guide shows you how to configure Flux controllers to comply with the Restricted Pod Security Standard.
+The Restricted Pod Security Standard is the most stringent security profile in Kubernetes, designed to enforce current best practices for pod hardening. Running Flux controllers under this standard ensures that your GitOps infrastructure operates with the minimum required privileges. Current Flux controller manifests are already configured to conform to the Restricted Pod Security Standard; this guide shows you how to verify that configuration and how to patch older or customized manifests if needed.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Before you begin, ensure you have:
 
 ## Step 1: Review the Restricted Pod Security Standard Requirements
 
-The Restricted standard requires the following for all containers:
+The Restricted standard requires the following key settings for Linux containers and pod specs:
 
 - `allowPrivilegeEscalation: false`
 - `runAsNonRoot: true`
@@ -29,18 +29,19 @@ The Restricted standard requires the following for all containers:
 - `seccompProfile.type: RuntimeDefault` or `Localhost`
 - No `hostNetwork`, `hostPID`, `hostIPC`
 - No privileged containers
-- No `hostPath` volumes
+- Only restricted volume types such as `configMap`, `csi`, `downwardAPI`, `emptyDir`, `ephemeral`, `persistentVolumeClaim`, `projected`, and `secret`
 - Read-only root filesystem (recommended but not required)
 
-## Step 2: Install Flux with Restricted Security Context Patches
+## Step 2: Install Flux and Review Restricted Security Contexts
 
-Bootstrap Flux with custom patches to enforce the restricted profile:
+Generate the Flux manifests so you can review the default security contexts:
 
 ```bash
+mkdir -p flux-system
 flux install --export > flux-system/gotk-components.yaml
 ```
 
-Create a Kustomize patch file for the restricted security context:
+Flux v2.1 and later already renders restricted-compatible security contexts for the official controllers. If you are using older manifests or have customized the controller deployments, create a Kustomize patch file for any controller that is missing the restricted security context:
 
 ```yaml
 # clusters/my-cluster/flux-system/patches/restricted-security.yaml
@@ -48,11 +49,12 @@ Create a Kustomize patch file for the restricted security context:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: all-flux-controllers
+  name: source-controller
 spec:
   template:
     spec:
       securityContext:
+        fsGroup: 1337
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
@@ -62,6 +64,8 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
             capabilities:
               drop:
                 - ALL
@@ -69,7 +73,7 @@ spec:
               type: RuntimeDefault
 ```
 
-Apply this patch to each controller using a kustomization.yaml:
+Apply the patch to each customized controller that needs it using a kustomization.yaml:
 
 ```yaml
 # clusters/my-cluster/flux-system/kustomization.yaml
@@ -77,7 +81,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - gotk-components.yaml
-  - gotk-sync.yaml
 patches:
   - target:
       kind: Deployment
@@ -91,6 +94,7 @@ patches:
         template:
           spec:
             securityContext:
+              fsGroup: 1337
               runAsNonRoot: true
               seccompProfile:
                 type: RuntimeDefault
@@ -99,6 +103,9 @@ patches:
                 securityContext:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  runAsGroup: 65534
                   capabilities:
                     drop:
                       - ALL
@@ -116,6 +123,7 @@ patches:
         template:
           spec:
             securityContext:
+              fsGroup: 1337
               runAsNonRoot: true
               seccompProfile:
                 type: RuntimeDefault
@@ -124,6 +132,9 @@ patches:
                 securityContext:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  runAsGroup: 65534
                   capabilities:
                     drop:
                       - ALL
@@ -141,6 +152,7 @@ patches:
         template:
           spec:
             securityContext:
+              fsGroup: 1337
               runAsNonRoot: true
               seccompProfile:
                 type: RuntimeDefault
@@ -149,6 +161,9 @@ patches:
                 securityContext:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  runAsGroup: 65534
                   capabilities:
                     drop:
                       - ALL
@@ -166,6 +181,7 @@ patches:
         template:
           spec:
             securityContext:
+              fsGroup: 1337
               runAsNonRoot: true
               seccompProfile:
                 type: RuntimeDefault
@@ -174,6 +190,9 @@ patches:
                 securityContext:
                   allowPrivilegeEscalation: false
                   readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  runAsGroup: 65534
                   capabilities:
                     drop:
                       - ALL
@@ -208,7 +227,7 @@ kubectl apply -f clusters/my-cluster/flux-system/namespace.yaml
 
 ## Step 4: Configure Temporary Directories with emptyDir
 
-Since read-only root filesystems prevent writing to the container filesystem, mount writable volumes for temporary data:
+Since read-only root filesystems prevent writing to the container filesystem, mount writable volumes for temporary data. The official Flux manifests already include the required `emptyDir` mounts; use a patch like this only if your customized manifests removed them or need additional writable paths:
 
 ```yaml
 # Patch for source-controller with temp volumes
@@ -251,12 +270,12 @@ for deploy in source-controller kustomize-controller helm-controller notificatio
 done
 ```
 
-## Step 6: Use Flux Bootstrap with Restricted Patches
+## Step 6: Use Flux Bootstrap with Restricted Enforcement
 
-For new cluster bootstraps, include the restricted patches from the start:
+For new cluster bootstraps, Flux installs the controllers with restricted-compatible security contexts. Add the restricted namespace labels from the start so Pod Security Admission enforces that profile:
 
 ```bash
-# Bootstrap Flux with the restricted patches
+# Bootstrap Flux with the default restricted-compatible controller manifests
 flux bootstrap github \
   --owner=myorg \
   --repository=fleet-infra \
@@ -264,11 +283,10 @@ flux bootstrap github \
   --path=clusters/production \
   --personal
 
-# Then add the security patches and push
+# Then add the namespace labels from Step 3 and any required custom patches
 cd fleet-infra
-# Add the kustomization patches from Step 2
-git add clusters/production/flux-system/kustomization.yaml
-git commit -m "Apply restricted pod security patches to Flux controllers"
+git add clusters/production/flux-system
+git commit -m "Enforce restricted pod security for Flux controllers"
 git push
 ```
 
@@ -325,7 +343,7 @@ Add emptyDir volume mounts for required directories (see Step 4).
 
 ### seccomp profile not supported
 
-If your cluster or container runtime does not support seccomp profiles, remove the seccomp requirement:
+If your cluster or container runtime does not support seccomp profiles, use a runtime and Kubernetes version that support `RuntimeDefault` before enforcing the restricted profile. Removing the field is only a temporary workaround when the namespace is not enforcing the restricted standard:
 
 ```yaml
 # Remove this from the security context
@@ -367,9 +385,9 @@ volumes:
     emptyDir: {}
 ```
 
-### Image pull fails with non-root user
+### Controller fails to start with non-root user
 
-If images require root to run the entrypoint, check that the Flux controller images are built to run as non-root. All official Flux images support running as non-root.
+If images require root to run the entrypoint, the controller container can fail to start. Check that the Flux controller images are built to run as non-root. All official Flux images support running as non-root.
 
 ## Summary
 
