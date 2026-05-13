@@ -10,7 +10,7 @@ Description: Deploy Rook-Ceph CephFS for ReadWriteMany persistent volumes on Kub
 
 ## Introduction
 
-CephFS (Ceph Filesystem) provides a POSIX-compliant distributed filesystem backed by Ceph's object storage. It is the right storage solution when multiple pods need to simultaneously read and write to the same volume - a use case that RBD block storage cannot satisfy. CephFS supports `ReadWriteMany` (RWX) access mode, making it ideal for shared content, configuration stores, and workloads like JupyterHub that require shared home directories.
+CephFS (Ceph Filesystem) provides a POSIX-compliant distributed filesystem backed by Ceph's RADOS object store. It is the right storage solution when multiple pods need to simultaneously read and write to the same mounted filesystem - a use case that RBD block storage cannot satisfy. CephFS supports `ReadWriteMany` (RWX) access mode, making it ideal for shared content, configuration stores, and workloads like JupyterHub that require shared home directories.
 
 Rook manages CephFS through the `CephFilesystem` CRD, and the CSI driver exposes it as a Kubernetes StorageClass. Deploying through Flux CD gives you GitOps control over filesystem configuration, metadata pools, and data pools.
 
@@ -81,6 +81,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
@@ -159,9 +161,11 @@ spec:
     singleuser:
       storage:
         type: dynamic
+        capacity: 10Gi
         dynamic:
           storageClass: rook-cephfs    # RWX for user home directories
-          capacity: 10Gi
+          storageAccessModes:
+            - ReadWriteMany
         extraVolumes:
           - name: shared-datasets
             persistentVolumeClaim:
@@ -174,32 +178,19 @@ spec:
 
 ## Step 5: Configure CephFS Quotas
 
-Set per-PVC quotas using Ceph's native quota feature through a post-provisioning Job:
+For dynamically provisioned CephFS PVCs, the CephFS CSI driver uses CephFS quotas to enforce the PVC size requested. With `allowVolumeExpansion: true` in the StorageClass, increase an existing PVC by updating its storage request:
 
 ```yaml
-# infrastructure/storage/rook-ceph/quota-job.yaml
-apiVersion: batch/v1
-kind: CronJob
+# Increase the requested size for an existing CephFS PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: enforce-cephfs-quotas
-  namespace: rook-ceph
+  name: shared-data
+  namespace: default
 spec:
-  schedule: "0 * * * *"   # hourly
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          restartPolicy: OnFailure
-          containers:
-            - name: ceph-tools
-              image: quay.io/ceph/ceph:v18.2.4
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  # Set quota on specific CephFS directories
-                  ceph fs subvolume setattr myfs shared-datasets max_bytes 107374182400
-                  echo "Quotas applied"
+  resources:
+    requests:
+      storage: 100Gi
 ```
 
 ## Step 6: Flux Kustomization
