@@ -28,6 +28,7 @@ Create a new module using the Timoni scaffold command:
 ```bash
 timoni mod init my-flux-app
 cd my-flux-app
+timoni mod vendor crd -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
 ```
 
 This generates the module structure:
@@ -35,12 +36,15 @@ This generates the module structure:
 ```cue
 my-flux-app/
   cue.mod/
+    gen/
     module.cue
     pkg/
   templates/
     config.cue
   values.cue
   timoni.cue
+  timoni.ignore
+  LICENSE
   README.md
 ```
 
@@ -82,46 +86,31 @@ import "strings"
 		timeout:         string | *"5m"
 		targetNamespace: string | *""
 		serviceAccount:  string | *""
-		dependsOn: [...{
+		dependsOn: *[] | [...{
 			name:       string
 			namespace?: string
 		}]
 		postBuild?: {
-			substitute: [string]: string
-			substituteFrom: [...{
+			substitute?: [string]: string
+			substituteFrom?: [...{
 				kind: "ConfigMap" | "Secret"
-				name: string
+				name:      string
+				optional?: bool
 			}]
 		}
 	}
 
 	// Health check configuration
-	healthChecks: [...{
+	healthChecks: *[] | [...{
 		apiVersion: string
 		kind:       string
 		name:       string
-		namespace:  string
+		namespace?: string
 	}]
 
 	// Common labels applied to all resources
-	commonLabels: [string]: string
-}
-
-// Default values
-#Defaults: #Values & {
-	app: {
-		namespace: "default"
-		env:       "dev"
-	}
-	git: {
-		branch:   "main"
-		interval: "5m"
-	}
-	sync: {
-		interval: "5m"
-		prune:    true
-		wait:     true
-		timeout:  "5m"
+	commonLabels: *{} | {
+		[string]: string
 	}
 }
 ```
@@ -141,24 +130,27 @@ import (
 )
 
 #GitRepository: sourcev1.#GitRepository & {
-	_config: #Config
+	#config: #Config
+
+	apiVersion: "source.toolkit.fluxcd.io/v1"
+	kind:       "GitRepository"
 
 	metadata: {
-		name:      _config.app.name
-		namespace: _config.app.namespace
-		labels:    _config.commonLabels
+		name:      #config.app.name
+		namespace: #config.app.namespace
+		labels:    #config.commonLabels
 		labels: {
-			"app.kubernetes.io/name":    _config.app.name
+			"app.kubernetes.io/name":    #config.app.name
 			"app.kubernetes.io/part-of": "flux-sync"
-			"team":                      _config.app.team
+			"team":                      #config.app.team
 		}
 	}
 	spec: {
-		interval: _config.git.interval
-		url:      _config.git.url
-		ref: branch: _config.git.branch
-		if _config.git.secretRef != _|_ {
-			secretRef: name: _config.git.secretRef.name
+		interval: #config.git.interval
+		url:      #config.git.url
+		ref: branch: #config.git.branch
+		if #config.git.secretRef != _|_ {
+			secretRef: name: #config.git.secretRef.name
 		}
 	}
 }
@@ -175,45 +167,48 @@ import (
 )
 
 #Kustomization: kustomizev1.#Kustomization & {
-	_config: #Config
+	#config: #Config
+
+	apiVersion: "kustomize.toolkit.fluxcd.io/v1"
+	kind:       "Kustomization"
 
 	metadata: {
-		name:      _config.app.name
-		namespace: _config.app.namespace
-		labels:    _config.commonLabels
+		name:      #config.app.name
+		namespace: #config.app.namespace
+		labels:    #config.commonLabels
 		labels: {
-			"app.kubernetes.io/name":    _config.app.name
+			"app.kubernetes.io/name":    #config.app.name
 			"app.kubernetes.io/part-of": "flux-sync"
-			"team":                      _config.app.team
-			"environment":               _config.app.env
+			"team":                      #config.app.team
+			"environment":               #config.app.env
 		}
 	}
 	spec: {
-		interval: _config.sync.interval
+		interval: #config.sync.interval
 		sourceRef: {
 			kind: "GitRepository"
-			name: _config.app.name
+			name: #config.app.name
 		}
-		path:  _config.git.path
-		prune: _config.sync.prune
-		wait:  _config.sync.wait
-		if _config.sync.timeout != "" {
-			timeout: _config.sync.timeout
+		path:  #config.git.path
+		prune: #config.sync.prune
+		wait:  #config.sync.wait
+		if #config.sync.timeout != "" {
+			timeout: #config.sync.timeout
 		}
-		if _config.sync.targetNamespace != "" {
-			targetNamespace: _config.sync.targetNamespace
+		if #config.sync.targetNamespace != "" {
+			targetNamespace: #config.sync.targetNamespace
 		}
-		if _config.sync.serviceAccount != "" {
-			serviceAccountName: _config.sync.serviceAccount
+		if #config.sync.serviceAccount != "" {
+			serviceAccountName: #config.sync.serviceAccount
 		}
-		if len(_config.sync.dependsOn) > 0 {
-			dependsOn: _config.sync.dependsOn
+		if len(#config.sync.dependsOn) > 0 {
+			dependsOn: #config.sync.dependsOn
 		}
-		if _config.sync.postBuild != _|_ {
-			postBuild: _config.sync.postBuild
+		if #config.sync.postBuild != _|_ {
+			postBuild: #config.sync.postBuild
 		}
-		if len(_config.healthChecks) > 0 {
-			healthChecks: _config.healthChecks
+		if len(#config.healthChecks) > 0 {
+			healthChecks: #config.healthChecks
 		}
 	}
 }
@@ -239,6 +234,14 @@ package templates
 	healthChecks: _
 	commonLabels: _
 }
+
+#Instance: {
+	config: #Config
+	objects: {
+		gitRepository: #GitRepository & {#config: config}
+		kustomization: #Kustomization & {#config: config}
+	}
+}
 ```
 
 ## Step 5: Define the Module Entry Point
@@ -254,17 +257,13 @@ import (
 )
 
 values: #Values
-config: templates.#Config & {
-	app:          values.app
-	git:          values.git
-	sync:         values.sync
-	healthChecks: values.healthChecks
-	commonLabels: values.commonLabels
-}
 
-objects: {
-	gitRepository: templates.#GitRepository & {_config: config}
-	kustomization: templates.#Kustomization & {_config: config}
+timoni: {
+	instance: templates.#Instance & {
+		config: values
+	}
+
+	apply: app: [for obj in instance.objects {obj}]
 }
 ```
 
@@ -294,7 +293,7 @@ values:
 ```
 
 ```bash
-timoni build test ./my-flux-app \
+timoni build my-service ./my-flux-app \
   --values test-values.yaml \
   --namespace flux-system
 ```
@@ -303,37 +302,13 @@ Verify the output contains valid GitRepository and Kustomization resources with 
 
 ## Step 7: Add Validation Tests
 
-Create CUE tests to validate the module:
-
-```cue
-// tests/module_test.cue
-package tests
-
-import (
-	main "my-flux-app"
-)
-
-testBasic: {
-	values: main.#Values & {
-		app: {
-			name: "test-app"
-			team: "test-team"
-			env:  "dev"
-		}
-		git: {
-			url: "https://github.com/test/repo.git"
-		}
-	}
-	// Verify required fields
-	assert: values.app.name != ""
-	assert: values.git.url != ""
-}
-```
-
-Run the tests:
+Validate the module with the same test values:
 
 ```bash
-cue vet ./tests/...
+timoni mod vet ./my-flux-app \
+  --name my-service \
+  --namespace flux-system \
+  --values test-values.yaml
 ```
 
 ## Conclusion
