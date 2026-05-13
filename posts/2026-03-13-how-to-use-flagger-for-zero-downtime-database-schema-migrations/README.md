@@ -37,7 +37,7 @@ Flagger handles the traffic shifting in Phase 1, ensuring the new version works 
 
 ## Structuring Migrations for Canary Compatibility
 
-Each migration must be backward compatible so that both the primary (old) and canary (new) versions can run simultaneously against the same database.
+Each migration must be backward compatible so that both the primary (old) and canary (new) versions can run simultaneously against the same database. If you run migrations from an init container, make sure the migration command is idempotent and uses your migration tool's locking mechanism, because Kubernetes runs the init container for each Pod that starts.
 
 ```yaml
 # init-container-migration.yaml
@@ -128,7 +128,7 @@ spec:
         timeout: 120s
         metadata:
           app: myapp
-          version: "{{ .Version }}"
+          version: v2.0.0
       - name: db-health-check
         type: pre-rollout
         url: http://migration-runner.production/health
@@ -137,6 +137,7 @@ spec:
         type: rollout
         url: http://flagger-loadtester.production/
         metadata:
+          type: cmd
           cmd: "hey -z 1m -q 10 -c 2 http://myapp-canary.production/"
     metrics:
       - name: request-success-rate
