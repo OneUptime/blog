@@ -113,10 +113,10 @@ spec:
       name: sops-age
 ```
 
-When anyone edits a secret file, SOPS automatically encrypts it with the new key set from `.sops.yaml`. Over time, all files migrate to the new key. You can track progress:
+When anyone edits a secret file, SOPS updates the file metadata with the key set from `.sops.yaml`. Over time, all files gain the new key while still retaining the old key until the final removal phase. You can track progress:
 
 ```bash
-# Count files still using only the old key
+# Count files that still include the old key
 grep -rl "age1oldkey" --include="*.yaml" . | wc -l
 
 # Count files with the new key
@@ -175,9 +175,9 @@ cat old-key.agekey new-key.agekey | kubectl create secret generic sops-age \
 The `sops updatekeys` command is different from full re-encryption:
 
 - `updatekeys` re-wraps the data key for new recipients but does not change the encrypted values. The MAC and encrypted data remain the same. This produces minimal diffs.
-- Full re-encryption (`sops --rotate --in-place`) generates a new data key and re-encrypts all values. This changes every encrypted field in the file.
+- Full re-encryption (`sops rotate -i`) generates a new data key and re-encrypts all values. This changes every encrypted field in the file.
 
-For key rotation where the old key holder should no longer have access, `updatekeys` is sufficient because the data key is re-encrypted for only the new recipients.
+For planned key replacement where the old key has not been exposed, `updatekeys` is sufficient to remove the old recipient from the current file metadata. If the old private key may be compromised, or if an old key holder may have retained previous Git revisions containing the old encrypted data key, use `sops rotate -i` after removing the old recipient so the file gets a new data key.
 
 ## Scripting the Rotation
 
