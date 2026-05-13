@@ -66,10 +66,10 @@ kubectl run test-client --image=busybox -- wget -O- http://${SVC_IP}/
 
 ```mermaid
 graph LR
-    subgraph Data Plane
-        POD[Pod] -->|Service IP| IPVS[kube-proxy IPVS\nO1 lookup]
+    subgraph "Data Plane"
+        POD[Pod] -->|Service IP| IPVS["kube-proxy IPVS<br/>O(1) lookup"]
         IPVS -->|Backend selection| BACKEND[Backend Pod]
-        POD -->|Pod IP routing| CALICO[Calico eBPF/iptables]
+        POD -->|Pod IP routing| CALICO["Calico eBPF/iptables"]
         CALICO -->|Route| BACKEND
     end
 ```
