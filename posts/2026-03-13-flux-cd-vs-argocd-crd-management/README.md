@@ -22,7 +22,7 @@ Both Flux CD and ArgoCD handle CRDs differently, with different defaults, upgrad
 
 ## Step 1: Flux CD CRD Management
 
-Flux CD's Kustomize Controller applies CRDs before other resources by default, following the same ordering as `kubectl apply`. For Helm-based operators, the Helm Controller handles CRD installation based on the chart's `crds/` directory.
+Flux CD's Kustomize Controller stages CRDs before other resources during apply. For Helm-based operators, the Helm Controller can handle CRD installation based on the chart's `crds/` directory, but charts that template CRDs, such as cert-manager, must be handled with the chart's own CRD values.
 
 ```yaml
 # Install cert-manager CRDs before the operator
@@ -74,39 +74,38 @@ spec:
 
 ## Step 2: CRD Management with Helm Controller
 
-For Helm-based operators, configure CRD handling explicitly:
+For Helm charts that use the chart's `crds/` directory, configure CRD handling explicitly:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cert-manager
-  namespace: cert-manager
+  name: example-operator
+  namespace: operators
 spec:
   interval: 1h
   chart:
     spec:
-      chart: cert-manager
-      version: "v1.14.x"
+      chart: example-operator
+      version: "1.2.x"
       sourceRef:
         kind: HelmRepository
-        name: jetstack
+        name: example
+        namespace: flux-system
   install:
     crds: CreateReplace  # Install and upgrade CRDs
   upgrade:
     crds: CreateReplace
-  values:
-    installCRDs: true
 ```
 
 The `crds` field options:
 - `Skip`: Do not manage CRDs (manual CRD management)
 - `Create`: Only create CRDs on first install, never upgrade
-- `CreateReplace`: Create and replace CRDs on upgrades (safest for GitOps)
+- `CreateReplace`: Create and replace CRDs on upgrades, but do not delete CRDs removed from the chart
 
 ## Step 3: ArgoCD CRD Management
 
-ArgoCD has a special hook mechanism for CRD ordering using sync waves and resource hooks:
+ArgoCD can order CRD installation using sync waves. Avoid making CRDs temporary hooks with a hook delete policy, because deleting a CRD deletes the custom resources stored through it:
 
 ```yaml
 # cert-manager CRDs with ArgoCD sync wave
@@ -116,8 +115,7 @@ metadata:
   name: certificates.cert-manager.io
   annotations:
     argocd.argoproj.io/sync-wave: "-10"  # Apply before other resources
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-options: Prune=false
 ```
 
 ArgoCD Application with CRD management:
@@ -137,14 +135,15 @@ spec:
       parameters:
         - name: installCRDs
           value: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
   syncPolicy:
     automated:
       prune: true
     syncOptions:
       - CreateNamespace=true
       - RespectIgnoreDifferences=true
-      # Important: Replace CRDs during sync
-      - Replace=true
 ```
 
 ## Comparison Table
@@ -152,10 +151,10 @@ spec:
 | Capability | Flux CD | ArgoCD |
 |---|---|---|
 | CRD install ordering | Via dependsOn | Via sync waves |
-| CRD upgrade handling | Helm: CreateReplace option | syncOptions: Replace=true |
-| Prune protection for CRDs | prune: false per Kustomization | Resource exclusion lists |
+| CRD upgrade handling | Helm: CreateReplace option for charts with crds/ | Apply updated CRD manifests in an earlier sync wave |
+| Prune protection for CRDs | prune: false per Kustomization | Prune=false sync option |
 | CRD health checking | Via wait: true | Via resource health checks |
-| Orphan CRD protection | Set prune: false on CRD kustomization | Exclude from prune in settings |
+| Orphan CRD protection | Set prune: false on CRD kustomization | Annotate CRDs with Prune=false |
 
 ## Step 4: Protecting CRDs from Accidental Deletion
 
@@ -176,30 +175,25 @@ spec:
 ```
 
 ```yaml
-# ArgoCD: Exclude CRDs from pruning in ArgoCD settings
-apiVersion: v1
-kind: ConfigMap
+# ArgoCD: Disable pruning on the CRD resource
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  resource.exclusions: |
-    - apiGroups:
-      - "apiextensions.k8s.io"
-      kinds:
-      - CustomResourceDefinition
-      clusters:
-      - "*"
+  name: prometheuses.monitoring.coreos.com
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  # CRD spec omitted for brevity
 ```
 
 ## Best Practices
 
 - Never enable automatic pruning for CRDs; a deleted CRD deletes all instances of that resource type cluster-wide.
-- Always separate CRD installation into its own Kustomization or sync wave from the operator deployment to ensure ordering.
+- Always separate CRD installation into its own Kustomization or earlier sync wave from the operator deployment to ensure ordering.
 - Test CRD upgrades in a non-production cluster first; CRD schema changes can invalidate existing custom resources.
 - Use Flux's `wait: true` or ArgoCD's health check mechanisms to ensure CRDs are established before dependent resources are applied.
 - Pin CRD versions explicitly; automatic SemVer ranges for operator charts can introduce breaking CRD changes.
 
 ## Conclusion
 
-Both Flux CD and ArgoCD handle CRDs adequately, but with different mechanisms. Flux CD's explicit `dependsOn` ordering and Helm's `CreateReplace` option provide clean, declarative CRD lifecycle management. ArgoCD's sync waves and the `Replace=true` sync option achieve similar results. The critical operational principle for both is to always keep CRD pruning disabled to prevent catastrophic data loss from accidental deletion.
+Both Flux CD and ArgoCD handle CRDs adequately, but with different mechanisms. Flux CD's explicit `dependsOn` ordering and Helm's `CreateReplace` option for charts with a `crds/` directory provide clean, declarative CRD lifecycle management. ArgoCD's sync waves and per-resource `Prune=false` sync option achieve similar ordering and deletion protection. The critical operational principle for both is to always keep CRD pruning disabled to prevent catastrophic data loss from accidental deletion.
