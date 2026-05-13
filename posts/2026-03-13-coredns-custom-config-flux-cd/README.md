@@ -14,7 +14,7 @@ CoreDNS is the default DNS server for Kubernetes clusters. While the default con
 
 ## Prerequisites
 
-- A Kubernetes cluster with CoreDNS installed (default for kubeadm, EKS, GKE, AKS)
+- A Kubernetes cluster with CoreDNS installed and a provider that allows managing the `kube-system/coredns` ConfigMap directly (default for kubeadm and many self-managed clusters; AKS uses the provider-supported `coredns-custom` ConfigMap instead of editing the main Corefile)
 - Flux CD bootstrapped on the cluster
 - Understanding of CoreDNS Corefile syntax
 
@@ -97,21 +97,61 @@ data:
     # Custom: Serve a stub zone for internal.example.com
     internal.example.com:53 {
         errors
-        file /etc/coredns/internal.db
-        prometheus :9153
+        file /etc/coredns/internal.db {
+           reload 30s
+        }
     }
 ```
 
 ## Step 3: Add a Custom DNS Zone File
 
 ```yaml
-# infrastructure/coredns/configmap.yaml (with zone file)
+# infrastructure/coredns/configmap.yaml (add the zone file to the same ConfigMap)
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom-zones
+  name: coredns
   namespace: kube-system
 data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+
+        # Custom: Forward corporate domain to internal DNS
+        forward corporate.example.com 10.0.0.10 10.0.0.11 {
+          prefer_udp
+        }
+
+        # Custom: Forward to specific nameservers for on-premises domain
+        forward onprem.internal 192.168.1.1 192.168.1.2
+
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
+
+    # Custom: Serve a stub zone for internal.example.com
+    internal.example.com:53 {
+        errors
+        file /etc/coredns/internal.db {
+           reload 30s
+        }
+    }
+
   internal.db: |
     ; Zone file for internal.example.com
     $ORIGIN internal.example.com.
@@ -142,28 +182,11 @@ metadata:
 spec:
   interval: 10m
   path: ./infrastructure/coredns
-  prune: true
+  prune: false
   sourceRef:
     kind: GitRepository
     name: fleet-repo
   targetNamespace: kube-system
-  # Patch to force CoreDNS to reload after ConfigMap update
-  patches:
-    - patch: |
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: coredns
-          namespace: kube-system
-        spec:
-          template:
-            metadata:
-              annotations:
-                config-hash: "placeholder"
-      target:
-        kind: Deployment
-        name: coredns
-        namespace: kube-system
 ```
 
 ## Step 5: Add a CoreDNS Rewrite Rule
@@ -205,7 +228,8 @@ flux get kustomizations coredns-config -n flux-system
 # Verify the ConfigMap was updated
 kubectl get configmap coredns -n kube-system -o yaml
 
-# CoreDNS watches the Corefile and reloads automatically (reload plugin)
+# CoreDNS watches the Corefile with the reload plugin.
+# The file plugin reloads zone files when the SOA serial changes.
 # Verify CoreDNS is running correctly
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=20
 
@@ -220,11 +244,12 @@ kubectl run test-zone --image=busybox:1.36 --rm -it --restart=Never -- \
 
 ## Best Practices
 
-- Never set `prune: true` for the CoreDNS ConfigMap alone; if the path is removed from Git, CoreDNS would lose its configuration.
+- Use `prune: false` when managing the CoreDNS ConfigMap alone; if the path is removed from Git with pruning enabled, CoreDNS would lose its configuration.
 - Use the `reload` plugin in CoreDNS (it's in the default config) to allow hot-reload of the Corefile without pod restart.
+- Use the `file` plugin's `reload` option for custom zone files, and increment the zone SOA serial when the zone changes.
 - Test DNS configuration changes in a staging cluster before deploying to production.
 - Use the `health` and `ready` plugins to ensure CoreDNS readiness probes work correctly after configuration changes.
-- Add a `configmap` hash annotation to the CoreDNS Deployment to force pod restarts when the ConfigMap changes (for changes that require restart).
+- If you manage the CoreDNS Deployment in Git, roll the pods only for changes that the CoreDNS plugins cannot reload.
 - Keep a copy of the original CoreDNS ConfigMap in Git history before making any changes.
 
 ## Conclusion
