@@ -27,19 +27,20 @@ Flux uses two CRDs: Provider (destination) and Alert (filter + routing):
 ```yaml
 # Slack provider
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: '#deployments'
   secretRef:
-    name: slack-webhook-url
+    name: slack-token
 ---
 # Alert with filtering
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-deployments
@@ -56,7 +57,8 @@ spec:
       name: '*'
   inclusionList:
     - ".*succeeded.*"
-  summary: "Production deployment"
+  eventMetadata:
+    summary: "Production deployment"
 ```
 
 ## Step 2: ArgoCD Notifications
@@ -94,9 +96,13 @@ data:
           }]
         }]
 
+  template.app-health-degraded: |
+    message: |
+      Application {{.app.metadata.name}} health is {{.app.status.health.status}}.
+
   # Triggers define when to send
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
       send: [app-deployed]
 
   trigger.on-health-degraded: |
@@ -112,7 +118,7 @@ metadata:
   annotations:
     notifications.argoproj.io/subscribe.on-deployed.slack: '#deployments'
     notifications.argoproj.io/subscribe.on-health-degraded.slack: '#alerts'
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ''
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: '<pagerduty-service-id>'
 ```
 
 ## Step 3: Provider Support Comparison
@@ -124,17 +130,17 @@ metadata:
 | PagerDuty | Yes | Yes |
 | OpsGenie | Yes | Yes |
 | GitHub | Yes (commit status) | Yes |
-| GitLab | Yes | Yes |
-| DataDog | Yes | Yes |
+| GitLab | Yes (commit status) | Via webhook |
+| DataDog | Yes | Via webhook |
 | Telegram | Yes | Yes |
-| Discord | Yes | Yes |
+| Discord | Yes | Via webhook |
 | Generic Webhook | Yes | Yes |
-| Email | Limited | Yes |
-| Grafana Annotations | Yes | No |
+| Email | No | Yes |
+| Grafana Annotations | Yes | Yes |
 
 ## Step 4: Message Customization
 
-**Flux CD** supports a basic message template via the Alert `summary` field but has limited per-notification content customization.
+**Flux CD** supports a basic message summary via Alert `eventMetadata.summary` but has limited per-notification content customization.
 
 **ArgoCD Notifications** provides rich Go template-based message customization with access to the full Application spec and status:
 
@@ -157,8 +163,8 @@ template.app-deployed: |
 - Configure separate Providers for different alert severity levels; route error events to PagerDuty and info events to Slack.
 - Use Flux's `inclusionList` or ArgoCD's trigger conditions to avoid notification storms during mass reconciliation.
 - Test notification delivery using a test alert before deploying to production.
-- Use the GitHub/GitLab commit status provider in both tools to update PR commit statuses with deployment results.
-- Configure notification timeouts and retry behavior to handle transient webhook delivery failures.
+- Use the GitHub commit status provider in both tools to update PR commit statuses with deployment results; Flux also supports GitLab commit status updates.
+- Configure notification timeouts where supported to handle transient webhook delivery failures.
 
 ## Conclusion
 
