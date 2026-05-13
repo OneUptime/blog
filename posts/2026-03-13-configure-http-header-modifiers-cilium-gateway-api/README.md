@@ -86,7 +86,7 @@ rules:
 
 ```yaml
 requestHeaderModifier:
-  # add: adds header (fails if already exists)
+  # add: adds header, appending to any existing values
   add:
     - name: X-New-Header
       value: "new-value"
@@ -129,6 +129,9 @@ rules:
           add:
             - name: X-Route-Target
               value: "api"
+    backendRefs:
+      - name: api-service
+        port: 8080
   - matches:
       - path:
           type: PathPrefix
@@ -139,6 +142,9 @@ rules:
           add:
             - name: Cache-Control
               value: "public, max-age=3600"
+    backendRefs:
+      - name: web-service
+        port: 80
 ```
 
 ## Conclusion
