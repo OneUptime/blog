@@ -10,14 +10,14 @@ Description: Migrate Kubernetes NetworkPolicy basics using Calico as the network
 
 ## Introduction
 
-Migrate to Kubernetes NetworkPolicy Basics with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle kubernetes networkpolicy basics while maintaining strict access controls.
+Migrate to Kubernetes NetworkPolicy Basics with Calico requires careful policy design to balance security with performance and availability. The Kubernetes `networking.k8s.io/v1` NetworkPolicy API provides portable policy basics, while Calico enforces those policies and also supports `projectcalico.org/v3` policies when you need Calico-specific features.
 
 This guide covers migrate Kubernetes NetworkPolicy Basics in Calico with production-ready configurations.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
-- `calicoctl` and `kubectl` installed
+- `kubectl` installed
 
 ## Core Configuration
 
@@ -61,7 +61,7 @@ spec:
 # Apply Kubernetes NetworkPolicy
 kubectl apply -f basic-network-policy.yaml
 
-# Verify policy is enforced by Calico
+# Verify the NetworkPolicy was created
 kubectl describe networkpolicy allow-frontend-to-backend -n production
 
 # Test connectivity
