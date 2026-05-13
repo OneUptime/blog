@@ -10,7 +10,7 @@ Description: Learn how to structure your Flux repository to ensure cert-manager 
 
 ## Why Ordering Matters
 
-Cert-manager must be fully installed and operational before any Ingress resource with TLS annotations is created. If an Ingress resource references a cert-manager ClusterIssuer or Issuer that does not yet exist, the TLS certificate will not be provisioned, and the Ingress will serve traffic without encryption or fail entirely.
+Cert-manager should be fully installed and operational before any Ingress resource with TLS annotations is created. If an Ingress resource references a cert-manager ClusterIssuer or Issuer that does not yet exist, the TLS certificate will not be provisioned until the issuer becomes available, and the Ingress will not serve the expected certificate.
 
 ## Repository Structure
 
@@ -27,6 +27,7 @@ flux-repo/
 │   └── cert-manager/
 │       ├── kustomization.yaml
 │       ├── namespace.yaml
+│       ├── helmrepository.yaml
 │       └── helmrelease.yaml
 ├── issuers/
 │   └── production/
@@ -224,7 +225,7 @@ spec:
 
 ## Adding Health Checks
 
-Add health checks to the infrastructure Kustomization to verify cert-manager is fully operational:
+Use explicit health checks in the infrastructure Kustomization to verify cert-manager is fully operational:
 
 ```yaml
 # clusters/production/infrastructure.yaml
@@ -240,7 +241,6 @@ spec:
     name: flux-system
   path: ./infrastructure/cert-manager
   prune: true
-  wait: true
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -291,4 +291,4 @@ kubectl describe certificaterequest -n default
 
 ## Conclusion
 
-Structuring your Flux repository with cert-manager as an explicit dependency of ingress resources prevents TLS provisioning failures. The three-layer approach of infrastructure (cert-manager installation), issuers (ClusterIssuer/Issuer creation), and apps (Ingress with TLS) provides a reliable deployment pipeline. Using `dependsOn` and `wait: true` ensures each layer is fully operational before the next begins.
+Structuring your Flux repository with cert-manager as an explicit dependency of ingress resources prevents TLS provisioning failures. The three-layer approach of infrastructure (cert-manager installation), issuers (ClusterIssuer/Issuer creation), and apps (Ingress with TLS) provides a reliable deployment pipeline. Using `dependsOn` with `wait: true` or explicit `healthChecks` ensures each layer is fully operational before the next begins.
