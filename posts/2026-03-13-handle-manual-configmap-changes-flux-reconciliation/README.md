@@ -85,7 +85,7 @@ data:
 ```
 
 ```yaml
-# Dynamic config: managed by External Secrets Operator or another system
+# Dynamic config: managed by an external configuration controller
 # configmaps/dynamic-config.yaml - NOT in Flux-managed manifests
 # This ConfigMap is created and updated by an operator, not by Flux
 apiVersion: v1
@@ -155,12 +155,16 @@ spec:
         namespace: flux-system
 ```
 
-Configure the Deployment to use the feature flag sidecar instead of ConfigMap-based flags:
+Configure the Deployment so the OpenFeature Operator injects the flagd sidecar instead of using ConfigMap-based flags:
 
 ```yaml
 # deploy/deployment.yaml
 spec:
   template:
+    metadata:
+      annotations:
+        openfeature.dev/enabled: "true"
+        openfeature.dev/featureflagsource: "my-service-flags"
     spec:
       containers:
         - name: my-service
@@ -170,13 +174,6 @@ spec:
               value: "localhost"
             - name: FLAGD_PORT
               value: "8013"
-        # Feature flag sidecar
-        - name: flagd
-          image: ghcr.io/open-feature/flagd:latest
-          args:
-            - start
-            - --uri
-            - file:/etc/flagd/flags.json
 ```
 
 ## Step 6: Annotate ConfigMaps to Preserve Manual Changes
@@ -206,7 +203,7 @@ The `IfNotPresent` annotation tells Flux to create the ConfigMap if it doesn't e
 - For emergency changes: suspend, change, open PR immediately, merge, then resume Flux
 - Use Kustomize ConfigMap generators for configs that should trigger pod restarts when changed in Git
 - Move feature flags to a dedicated feature flag system (OpenFeature, LaunchDarkly) to keep them out of GitOps entirely
-- Use External Secrets Operator for sensitive configuration (passwords, API keys) that must change without Git commits
+- Use External Secrets Operator for sensitive configuration (passwords, API keys) that should be synced into Kubernetes Secrets without storing secret values in Git
 - Never leave Flux suspended after an emergency ConfigMap change - always follow up with a Git PR within the same working day
 
 ## Conclusion
