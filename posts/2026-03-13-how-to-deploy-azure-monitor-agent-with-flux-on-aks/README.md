@@ -20,6 +20,7 @@ Deploying and configuring the monitoring stack through Flux ensures that your ob
 - An AKS cluster running Kubernetes 1.24 or later
 - Flux CLI version 2.0 or later bootstrapped on the cluster
 - A Log Analytics workspace
+- An Azure Monitor workspace if you want to collect managed Prometheus metrics
 
 ## Step 1: Create a Log Analytics Workspace
 
@@ -35,6 +36,16 @@ export WORKSPACE_ID=$(az monitor log-analytics workspace show \
   --resource-group my-resource-group \
   --workspace-name my-flux-workspace \
   --query id -o tsv)
+
+az monitor account create \
+  --resource-group my-resource-group \
+  --name my-prometheus-workspace \
+  --location eastus
+
+export AZURE_MONITOR_WORKSPACE_ID=$(az monitor account show \
+  --resource-group my-resource-group \
+  --name my-prometheus-workspace \
+  --query id -o tsv)
 ```
 
 ## Step 2: Enable Container Insights via AKS Add-on
@@ -47,29 +58,83 @@ az aks enable-addons \
   --name my-flux-cluster \
   --addons monitoring \
   --workspace-resource-id "$WORKSPACE_ID"
+
+az aks update \
+  --resource-group my-resource-group \
+  --name my-flux-cluster \
+  --enable-azure-monitor-metrics \
+  --azure-monitor-workspace-resource-id "$AZURE_MONITOR_WORKSPACE_ID"
 ```
 
-This installs the Azure Monitor Agent and configures default data collection. For more granular control managed through Flux, continue with the steps below.
+This installs the Azure Monitor Agent for Container Insights, enables the managed Prometheus metrics add-on, and configures default data collection. For more granular control managed through Flux, continue with the steps below.
 
 ## Step 3: Configure Data Collection Rules
 
-Data Collection Rules (DCR) control what data the agent collects. Create a DCR through Azure CLI:
+Data Collection Rules (DCR) control what data the agent collects. For Container Insights, include the Container Insights extension data source and create the DCR from a JSON rule file:
 
 ```bash
+cat > my-aks-dcr.json <<EOF
+{
+  "dataSources": {
+    "extensions": [
+      {
+        "streams": [
+          "Microsoft-ContainerInsights-Group-Default"
+        ],
+        "name": "ContainerInsightsExtension",
+        "extensionName": "ContainerInsights",
+        "extensionSettings": {
+          "dataCollectionSettings": {
+            "interval": "1m",
+            "namespaceFilteringMode": "Off",
+            "namespaces": null,
+            "enableContainerLogV2": true
+          }
+        }
+      }
+    ]
+  },
+  "destinations": {
+    "logAnalytics": [
+      {
+        "workspaceResourceId": "$WORKSPACE_ID",
+        "name": "la-workspace"
+      }
+    ]
+  },
+  "dataFlows": [
+    {
+      "streams": [
+        "Microsoft-ContainerInsights-Group-Default"
+      ],
+      "destinations": [
+        "la-workspace"
+      ]
+    }
+  ]
+}
+EOF
+
 az monitor data-collection rule create \
   --resource-group my-resource-group \
   --name my-aks-dcr \
   --location eastus \
-  --data-flows '[{
-    "streams": ["Microsoft-ContainerInsights-Group-Default"],
-    "destinations": ["la-workspace"]
-  }]' \
-  --destinations '{
-    "logAnalytics": [{
-      "workspaceResourceId": "'"$WORKSPACE_ID"'",
-      "name": "la-workspace"
-    }]
-  }'
+  --rule-file my-aks-dcr.json
+
+export AKS_RESOURCE_ID=$(az aks show \
+  --resource-group my-resource-group \
+  --name my-flux-cluster \
+  --query id -o tsv)
+
+export DCR_ID=$(az monitor data-collection rule show \
+  --resource-group my-resource-group \
+  --name my-aks-dcr \
+  --query id -o tsv)
+
+az monitor data-collection rule association create \
+  --name my-aks-dcra \
+  --resource "$AKS_RESOURCE_ID" \
+  --rule-id "$DCR_ID"
 ```
 
 ## Step 4: Deploy Custom ConfigMap for Agent Configuration
@@ -87,14 +152,17 @@ data:
   config-version: ver1
   prometheus-collector-settings: |
     cluster_alias = "my-flux-cluster"
-  default-scrape-settings-enabled: |
-    kubelet = true
-    coredns = true
-    cadvisor = true
-    kubeproxy = true
-    apiserver = true
-    kubestate = true
-    nodeexporter = true
+  cluster-metrics: |
+    default-targets-scrape-enabled: |-
+      kubelet = true
+      coredns = true
+      cadvisor = true
+      kubeproxy = true
+      kubestate = true
+      nodeexporter = true
+  controlplane-metrics: |
+    default-targets-scrape-enabled: |-
+      apiserver = true
 ```
 
 ## Step 5: Configure Log Collection Settings
@@ -186,15 +254,15 @@ spec:
   prune: true
 ```
 
-## Step 8: Set Up Alerts Through Flux
+## Step 8: Set Up Alertable Metric Thresholds Through Flux
 
-Define alert rules as Kubernetes resources managed by Flux:
+Add alertable metric thresholds to the agent ConfigMap managed by Flux:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: container-azm-ms-alerts
+  name: container-azm-ms-agentconfig
   namespace: kube-system
 data:
   schema-version: v1
@@ -213,7 +281,7 @@ Check that the monitoring agent is running and collecting data:
 
 ```bash
 kubectl get pods -n kube-system -l component=ama-logs
-kubectl get pods -n kube-system -l rsName=ama-metrics
+kubectl get pods -n kube-system | grep ama-metrics
 kubectl logs -n kube-system -l component=ama-logs --tail=20
 ```
 
@@ -222,7 +290,7 @@ Verify data is flowing to the Log Analytics workspace:
 ```bash
 az monitor log-analytics query \
   --workspace "$WORKSPACE_ID" \
-  --analytics-query "ContainerLog | take 10" \
+  --analytics-query "ContainerLogV2 | take 10" \
   --output table
 ```
 
