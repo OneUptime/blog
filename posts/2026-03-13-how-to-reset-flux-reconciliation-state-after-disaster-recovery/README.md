@@ -98,8 +98,10 @@ flux version > flux-version-before-reset.txt
 Prevent Flux from making any changes while you reset:
 
 ```bash
-flux suspend kustomization --all -n flux-system 2>/dev/null || true
-flux suspend helmrelease --all -A 2>/dev/null || true
+kubectl patch kustomizations.kustomize.toolkit.fluxcd.io -A --all \
+  --type=merge -p='{"spec":{"suspend":true}}' 2>/dev/null || true
+kubectl patch helmreleases.helm.toolkit.fluxcd.io -A --all \
+  --type=merge -p='{"spec":{"suspend":true}}' 2>/dev/null || true
 ```
 
 ### Step 3: Option A - Soft reset (preserve cluster resources)
@@ -108,16 +110,18 @@ If your workloads are running fine and you only need to reset Flux state:
 
 ```bash
 # Remove all Kustomization status (including inventories)
-for ks in $(kubectl get kustomizations -n flux-system -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-  kubectl patch kustomization $ks -n flux-system --type=json \
+for ks in $(kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{end}' 2>/dev/null); do
+  ns=$(echo "$ks" | cut -d/ -f1)
+  name=$(echo "$ks" | cut -d/ -f2)
+  kubectl patch kustomization "$name" -n "$ns" --subresource=status --type=json \
     -p='[{"op":"remove","path":"/status"}]' 2>/dev/null || true
 done
 
 # Remove all HelmRelease status
 for hr in $(kubectl get helmreleases -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} {end}' 2>/dev/null); do
-  ns=$(echo $hr | cut -d/ -f1)
-  name=$(echo $hr | cut -d/ -f2)
-  kubectl patch helmrelease $name -n $ns --type=json \
+  ns=$(echo "$hr" | cut -d/ -f1)
+  name=$(echo "$hr" | cut -d/ -f2)
+  kubectl patch helmrelease "$name" -n "$ns" --subresource=status --type=json \
     -p='[{"op":"remove","path":"/status"}]' 2>/dev/null || true
 done
 
@@ -126,9 +130,17 @@ kubectl rollout restart -n flux-system deployment --all
 kubectl wait --for=condition=available -n flux-system deployment --all --timeout=300s
 
 # Force reconcile everything
-flux reconcile source git --all
+for gitrepo in $(kubectl get gitrepositories.source.toolkit.fluxcd.io -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{end}' 2>/dev/null); do
+  ns=$(echo "$gitrepo" | cut -d/ -f1)
+  name=$(echo "$gitrepo" | cut -d/ -f2)
+  flux reconcile source git "$name" -n "$ns" || true
+done
 sleep 10
-flux reconcile kustomization --all --with-source
+for ks in $(kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{end}' 2>/dev/null); do
+  ns=$(echo "$ks" | cut -d/ -f1)
+  name=$(echo "$ks" | cut -d/ -f2)
+  flux reconcile kustomization "$name" -n "$ns" --with-source || true
+done
 ```
 
 ### Step 3: Option B - Hard reset (full re-bootstrap)
@@ -137,7 +149,7 @@ If Flux itself is broken, do a complete re-bootstrap:
 
 ```bash
 # Uninstall Flux (this removes controllers and CRDs but NOT your workloads)
-flux uninstall --keep-namespace
+flux uninstall --namespace=flux-system --keep-namespace
 
 # Verify Flux components are removed
 kubectl get pods -n flux-system
@@ -147,8 +159,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=your-fleet-repo \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 ```
 
 Or if using GitLab:
@@ -170,10 +181,11 @@ flux get sources git -A
 flux get sources helm -A
 ```
 
-If sources are not ready, fix authentication:
+If sources are not ready, recreate the secret referenced by your GitRepository:
 
 ```bash
-flux create secret git my-repo-auth \
+SECRET_NAME=my-repo-auth
+flux create secret git "$SECRET_NAME" \
   --url=ssh://git@github.com/org/repo \
   --private-key-file=./deploy-key
 ```
@@ -184,7 +196,11 @@ Trigger reconciliation starting from the base layer:
 
 ```bash
 # Start with sources
-flux reconcile source git --all
+for gitrepo in $(kubectl get gitrepositories.source.toolkit.fluxcd.io -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{end}' 2>/dev/null); do
+  ns=$(echo "$gitrepo" | cut -d/ -f1)
+  name=$(echo "$gitrepo" | cut -d/ -f2)
+  flux reconcile source git "$name" -n "$ns" || true
+done
 
 # Then infrastructure
 flux reconcile kustomization infra-crds --with-source 2>/dev/null || true
@@ -225,7 +241,7 @@ To clean up orphans after the reset:
 
 ```bash
 # After Flux has reconciled and rebuilt inventories, check for resources
-# not in any Flux inventory
+# not labeled as managed by a Flux Kustomization
 kubectl get all --all-namespaces -l '!kustomize.toolkit.fluxcd.io/name'
 ```
 
@@ -240,8 +256,8 @@ If you provisioned a brand new cluster:
 flux install
 
 # Apply your Flux configuration from Git
-kubectl apply -f clusters/production/flux-system/gotk-sync.yaml
 kubectl apply -f clusters/production/flux-system/gotk-components.yaml
+kubectl apply -f clusters/production/flux-system/gotk-sync.yaml
 ```
 
 ### Partial controller failure
@@ -253,13 +269,15 @@ If only some controllers failed:
 flux install --components=source-controller,kustomize-controller
 ```
 
-### Corrupted PVC on source controller
+### Corrupted artifact cache on source controller
 
-If the source controller's storage is corrupted:
+By default, the source-controller cache uses `emptyDir` and a restart clears it. If you configured persistent storage for source-controller, delete the PVC and let it be recreated:
 
 ```bash
-# Delete the PVC and let it be recreated
-kubectl delete pvc -n flux-system -l app=source-controller
+# Find and delete the source-controller PVC
+kubectl get pvc -n flux-system
+PVC_NAME=source-controller
+kubectl delete pvc -n flux-system "$PVC_NAME"
 kubectl rollout restart -n flux-system deployment/source-controller
 ```
 
@@ -277,8 +295,7 @@ flux bootstrap github \
   --owner=$GITHUB_ORG \
   --repository=$FLEET_REPO \
   --branch=main \
-  --path=clusters/$CLUSTER_NAME \
-  --personal
+  --path=clusters/$CLUSTER_NAME
 
 echo "Waiting for reconciliation..."
 flux get kustomizations -A --watch
@@ -290,7 +307,7 @@ flux get kustomizations -A --watch
 5. **Monitor Flux health continuously** with automated checks and alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-system-alerts
