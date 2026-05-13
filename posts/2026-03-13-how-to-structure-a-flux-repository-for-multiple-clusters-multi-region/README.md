@@ -145,7 +145,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  iopsPerGB: "3000"
+  iops: "3000"
 allowedTopologies:
   - matchLabelExpressions:
       - key: topology.ebs.csi.aws.com/zone
@@ -163,7 +163,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  iopsPerGB: "3000"
+  iops: "3000"
 allowedTopologies:
   - matchLabelExpressions:
       - key: topology.ebs.csi.aws.com/zone
@@ -270,7 +270,18 @@ Configure health checks that account for regional services:
 
 ```yaml
 # clusters/us-east-1/production/apps.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
 spec:
+  interval: 10m
+  path: ./apps/overlays/us-east-1-production
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
