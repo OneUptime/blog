@@ -12,7 +12,7 @@ Description: Learn how to deploy Apache Spark on Kubernetes using the Spark Oper
 
 Apache Spark is the dominant framework for large-scale data processing, and running it on Kubernetes via the Spark Operator provides native cluster resource management, auto-scaling, and integration with Kubernetes RBAC and networking. Managing the Spark Operator and SparkApplication resources through Flux CD brings the same GitOps benefits to your data platform that you already enjoy with application services.
 
-The Kubernetes Operator for Apache Spark (kubeflow/spark-operator) manages the full lifecycle of SparkApplication resources: submitting jobs, monitoring their progress, handling restarts on failure, and cleaning up completed job pods. By deploying the operator via Flux CD HelmRelease and storing SparkApplication CRs in Git, every Spark job submission becomes a traceable Git commit.
+The Kubernetes Operator for Apache Spark (kubeflow/spark-operator) manages the full lifecycle of SparkApplication resources: submitting jobs, monitoring their progress, handling restarts on failure, and supporting cleanup policies for completed applications. By deploying the operator via Flux CD HelmRelease and storing SparkApplication CRs in Git, every Spark job submission becomes a traceable Git commit.
 
 In this guide you will deploy the Spark Operator using Flux CD, create a SparkApplication custom resource for a batch job, and configure Flux to reconcile both the operator and your Spark jobs from Git.
 
@@ -50,26 +50,30 @@ metadata:
 spec:
   interval: 1h
   targetNamespace: spark-operator
-  createNamespace: true
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: spark-operator
-      version: "1.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: spark-operator
   values:
-    # Enable webhook for SparkApplication validation
+    # Enable webhook for Spark pod customization
     webhook:
       enable: true
     # Enable Prometheus metrics
-    metrics:
-      enable: true
-      port: 10254
-      portName: metrics
-      endpoint: /metrics
+    prometheus:
+      metrics:
+        enable: true
+        port: 8080
+        portName: metrics
+        endpoint: /metrics
     # Spark job namespaces the operator will watch
-    sparkJobNamespace: spark-jobs
+    spark:
+      jobNamespaces:
+        - spark-jobs
     # Configure the operator's resource limits
     controller:
       resources:
@@ -79,9 +83,9 @@ spec:
         limits:
           cpu: 1000m
           memory: 512Mi
-    # Enable leader election for HA
-    leaderElection:
-      lockName: spark-operator-lock
+      # Enable leader election for HA
+      leaderElection:
+        enable: true
 ```
 
 ## Step 3: Create the Spark Jobs Namespace
@@ -152,7 +156,7 @@ spec:
   arguments:
     - "--input-path=s3a://my-bucket/raw-data/"
     - "--output-path=s3a://my-bucket/processed-data/"
-    - "--date=$(date +%Y-%m-%d)"
+    - "--date=2026-03-13"
 
   sparkVersion: "3.5.0"
 
@@ -196,6 +200,17 @@ spec:
     memory: 4g
     labels:
       version: "3.5.0"
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: secret-access-key
 
   # Restart policy for batch jobs
   restartPolicy:
@@ -222,7 +237,7 @@ spec:
     name: app-repo
   path: ./apps/spark-jobs
   prune: true
-  # Spark operator must be running before submitting jobs
+  # This must reference the Flux Kustomization that reconciles the Spark Operator HelmRelease
   dependsOn:
     - name: spark-operator
 ```
@@ -261,4 +276,4 @@ kubectl get sparkapplication -n spark-jobs \
 
 ## Conclusion
 
-Deploying Apache Spark on Kubernetes with Flux CD turns your data pipelines into GitOps-managed infrastructure. The Spark Operator handles job lifecycle management while Flux ensures the operator and SparkApplication resources are always synchronized with Git. New Spark jobs are submitted by merging a SparkApplication YAML to your repository, failed jobs are tracked in Git history, and operator upgrades follow the same Helm upgrade process as all other infrastructure components.
+Deploying Apache Spark on Kubernetes with Flux CD turns your data pipelines into GitOps-managed infrastructure. The Spark Operator handles job lifecycle management while Flux ensures the operator and SparkApplication resources are always synchronized with Git. New Spark jobs are submitted by merging a SparkApplication YAML to your repository, Spark job spec changes are tracked in Git history, and operator upgrades follow the same Helm upgrade process as all other infrastructure components.
