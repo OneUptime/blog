@@ -8,7 +8,7 @@ Description: A systematic troubleshooting guide for diagnosing and fixing issues
 
 ---
 
-You have configured a Flux Receiver, exposed it externally, and your webhook provider shows successful deliveries. Yet your GitRepository, HelmRepository, or Kustomization resources are not being reconciled. This is one of the most frustrating issues to debug because the webhook appears to work but nothing happens downstream.
+You have configured a Flux Receiver, exposed it externally, and your webhook provider shows successful deliveries. Yet your GitRepository, HelmRepository, OCIRepository, or downstream Kustomization resources are not being reconciled. This is one of the most frustrating issues to debug because the webhook appears to work but nothing happens downstream.
 
 This guide provides a systematic approach to diagnosing every link in the chain from webhook delivery to resource reconciliation.
 
@@ -26,7 +26,7 @@ When a webhook arrives at the Receiver, the following chain of events should occ
 1. The notification-controller receives the HTTP request.
 2. It validates the token or HMAC signature.
 3. It annotates the target resources with `reconcile.fluxcd.io/requestedAt` set to the current timestamp.
-4. The source-controller or kustomize-controller detects the annotation change.
+4. The source-controller detects the annotation change.
 5. The controller triggers an immediate reconciliation of that resource.
 
 A failure at any step breaks the chain. Let us diagnose each one.
@@ -86,10 +86,10 @@ WEBHOOK_PATH=$(kubectl -n flux-system get receiver github-receiver -o jsonpath='
 
 kubectl -n flux-system run curl-test --rm -it --image=curlimages/curl -- \
   curl -s -o /dev/null -w "%{http_code}" -X POST \
-  http://notification-controller.flux-system.svc.cluster.local$WEBHOOK_PATH
+  http://webhook-receiver.flux-system.svc.cluster.local$WEBHOOK_PATH
 ```
 
-If this returns 200 but external requests fail, the problem is with the Ingress or external routing.
+For a receiver that requires authentication, an unsigned test request may return a `4xx` response even when routing is correct. If the controller returns an HTTP response from inside the cluster but external requests fail, the problem is with the Ingress or external routing.
 
 ## Step 3: Check Token Validation
 
@@ -177,11 +177,12 @@ Compare the listed resources with what actually exists:
 
 kubectl -n flux-system get gitrepository flux-system
 
-# Check if a Kustomization exists (if referenced)
-kubectl -n flux-system get kustomization flux-system
+# Check if a HelmRepository or OCIRepository exists (if referenced)
+kubectl -n flux-system get helmrepository flux-system
+kubectl -n flux-system get ocirepository flux-system
 ```
 
-The `apiVersion` must match exactly. For example, `source.toolkit.fluxcd.io/v1` is different from `source.toolkit.fluxcd.io/v1`.
+The `apiVersion` must match exactly. For example, `source.toolkit.fluxcd.io/v1` is different from `source.toolkit.fluxcd.io/v1beta2`.
 
 ## Step 7: Check for Network Policies
 
