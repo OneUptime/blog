@@ -87,9 +87,9 @@ spec:
         consumerGroup: order-processor-group
         # Topic to monitor
         topic: orders
-        # Scale 1 replica per N messages of lag
+        # Target total lag (sum of partition lag) per replica
         lagThreshold: "100"
-        # Scale based on average lag per partition
+        # Offset reset policy used if the consumer group has no committed offset
         offsetResetPolicy: latest
         # Use SASL auth
         sasl: plaintext
@@ -206,7 +206,7 @@ kubectl get pods -n app -l app=order-consumer -w
 - Set `lagThreshold` based on your consumer throughput per pod - if each pod processes 100 messages/second and you want lag cleared within 10 seconds, set `lagThreshold: "1000"`.
 - Use `minReplicaCount: 1` rather than 0 for Kafka consumers to keep one replica subscribed to partitions, avoiding partition reassignment delays on scale-up.
 - Encrypt Kafka credentials at rest using Flux's SOPS integration - never commit plain-text passwords to your Git repository.
-- Configure `cooldownPeriod` to be longer than your maximum message processing time to prevent premature scale-down mid-batch.
+- If you scale to zero, configure `cooldownPeriod` to delay scale-down after the trigger becomes inactive. With `minReplicaCount: 1`, scale-down from multiple replicas is handled by the Kubernetes HPA behavior rather than KEDA's cooldown period.
 - Use KEDA's multi-trigger feature to combine Kafka lag with CPU metrics, scaling up on either condition for comprehensive autoscaling coverage.
 
 ## Conclusion
