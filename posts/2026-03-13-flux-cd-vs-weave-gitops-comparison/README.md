@@ -10,7 +10,7 @@ Description: Compare Flux CD and Weave GitOps, understanding how Weave GitOps ex
 
 ## Introduction
 
-Weave GitOps (now Flux Enterprise, offered by Weaveworks before its acquisition) was a commercial product built on top of open-source Flux CD. It provided a web UI, policy management, and multi-tenancy features that the open-source Flux CD project does not include. Understanding the relationship between upstream Flux CD and its enterprise distributions helps teams decide whether the open-source project alone meets their needs.
+Weave GitOps was a product offered by Weaveworks before the company wound down commercial operations. It was built on top of open-source Flux CD and provided a web UI, policy management, and multi-tenancy features that the open-source Flux CD project does not include. Understanding the relationship between upstream Flux CD and its enterprise distributions helps teams decide whether the open-source project alone meets their needs.
 
 This post clarifies what Weave GitOps added over upstream Flux CD and evaluates alternatives for teams that need those enterprise features today.
 
@@ -44,7 +44,7 @@ What upstream Flux CD does NOT include:
 
 ## Step 2: What Weave GitOps Added
 
-Weave GitOps Enterprise layered these features on top of Flux CD:
+Weave GitOps and Weave GitOps Enterprise layered these features on top of Flux CD:
 
 ```plaintext
 Enterprise Features:
@@ -96,20 +96,27 @@ spec:
         spec:
           path: "./apps/{{ .Element.service }}"
           interval: 5m
+          prune: true
           sourceRef:
             kind: GitRepository
             name: fleet-repo
 ```
 
-In upstream Flux CD, similar templating is achieved with variable substitution:
+In upstream Flux CD, per-resource customization can be achieved with variable substitution, but it does not replace GitOpsSet-style generation of multiple resources:
 
 ```yaml
-# Upstream Flux variable substitution (no GitOpsSet needed)
+# Upstream Flux variable substitution for an existing Kustomization
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: myapp
 spec:
+  interval: 5m
+  path: "./apps/myapp"
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: fleet-repo
   postBuild:
     substituteFrom:
       - kind: ConfigMap
