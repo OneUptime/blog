@@ -62,7 +62,7 @@ spec:
       strategy: rollback
 ```
 
-In this configuration, Flux will attempt the upgrade up to three times. If all three attempts fail, it will automatically roll back to the previously successful release.
+In this configuration, Flux will retry the failed upgrade up to three times. If the initial upgrade and all three retries fail, it will automatically roll back to the previously successful release.
 
 ## Advanced Configuration with Additional Options
 
@@ -94,10 +94,9 @@ spec:
   rollback:
     cleanupOnFail: true
     force: false
-    recreate: false
 ```
 
-The `cleanupOnFail` field under `upgrade` tells Helm to delete any new resources that were created during the failed upgrade. The `rollback` section configures behavior during the rollback itself, such as whether to force resource updates or recreate pods.
+The `cleanupOnFail` field under `upgrade` tells Helm to delete any new resources that were created during the failed upgrade. The `rollback` section configures behavior during the rollback itself, such as whether to delete newly created resources if the rollback fails or force resource updates.
 
 ## Combining with Install Remediation
 
@@ -129,7 +128,7 @@ spec:
       remediateLastFailure: true
 ```
 
-With this setup, if the initial install fails, Flux retries it up to three times. If a subsequent upgrade fails, Flux retries and then rolls back to the last known good state.
+With this setup, if the initial install fails, Flux retries it up to three times after the first failed install. If a subsequent upgrade fails, Flux retries and then rolls back to the last known good state.
 
 ## Monitoring Rollback Behavior
 
@@ -149,9 +148,9 @@ Flux will emit events for each upgrade attempt, each failure, and the final roll
 
 ## Common Pitfalls
 
-One common mistake is setting `retries` to zero while expecting remediation to kick in. If retries is zero, Flux will not attempt any remediation because the upgrade is considered failed immediately without retry attempts. Always set retries to at least one.
+One common mistake is setting `retries` to zero while expecting retry remediation to kick in. If retries is zero, Flux will not remediate and retry the failed upgrade; it will only remediate the final failure if `remediateLastFailure` is set to `true`. Set retries to at least one when you want Flux to remediate between retry attempts.
 
-Another pitfall is not setting `remediateLastFailure` to true. By default, this field is true for the rollback strategy, but being explicit in your manifests avoids confusion and makes your intent clear to other team members.
+Another pitfall is not understanding the default for `remediateLastFailure`. For upgrades, this field defaults to `false` unless `retries` is greater than zero. Being explicit in your manifests avoids confusion and makes your intent clear to other team members.
 
 Finally, be aware that rollback restores the Helm release state, but it does not revert changes to resources managed outside of Helm. If your upgrade included manual changes or external dependencies, those will not be affected by the rollback.
 
