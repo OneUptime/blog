@@ -15,7 +15,7 @@ Flux post-build substitution replaces all `${VAR_NAME}` patterns in your manifes
 ## Prerequisites
 
 - Flux CD v2.0 or later installed on your cluster
-- A Kustomization with post-build substitution enabled
+- A Kustomization with `.spec.postBuild.substitute` or `.spec.postBuild.substituteFrom` configured
 - kubectl access to your cluster
 
 ## The Problem
@@ -37,7 +37,7 @@ data:
     }
 ```
 
-When Flux processes this manifest with post-build substitution enabled, it will try to replace `${request_id}` with a variable value. If `request_id` is not defined, the placeholder remains as-is, which might work accidentally. But if you happen to have a variable named `request_id`, Flux will substitute it with an unintended value, breaking your Nginx configuration.
+When Flux processes this manifest with post-build substitution enabled, it will try to replace `${request_id}` with a variable value. If `request_id` is not defined, Flux substitutes it with an empty string unless a default value is provided or strict substitution is enabled. If you happen to have a variable named `request_id`, Flux will substitute it with an unintended value, breaking your Nginx configuration.
 
 ## The Solution: Double Dollar Signs
 
