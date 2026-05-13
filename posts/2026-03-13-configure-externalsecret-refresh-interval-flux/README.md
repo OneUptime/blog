@@ -24,14 +24,14 @@ This guide covers setting appropriate refresh intervals for different secret typ
 
 ## Step 1: Understand Refresh Interval Semantics
 
-The `refreshInterval` is a duration string. ESO computes the next sync time by adding the interval to the last successful sync timestamp. If a sync fails (e.g., network error), ESO retries with exponential backoff but does not reset the refresh interval clock.
+The `refreshInterval` is a duration string. With the default `Periodic` refresh policy, ESO updates the Kubernetes Secret at the configured interval, when the `ExternalSecret` specification changes, or when metadata changes trigger a manual refresh.
 
 ```plaintext
 Duration formats:
   1h         = 1 hour
   30m        = 30 minutes
   5m30s      = 5 minutes 30 seconds
-  0          = never refresh after initial sync (static secrets)
+  0s         = never refresh after initial sync (static secrets)
   1h30m      = 1 hour 30 minutes
 ```
 
@@ -41,7 +41,7 @@ Duration formats:
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-static.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-static-api-key
@@ -65,7 +65,7 @@ spec:
 **Auto-rotating secrets (frequent rotation):**
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-rotating.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-rotating-db
@@ -90,7 +90,7 @@ spec:
 **TLS certificates (time-sensitive expiry):**
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-tls-cert.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-tls
@@ -124,14 +124,14 @@ spec:
 **One-time bootstrap secrets (never refresh):**
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-onetime.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-bootstrap-token
   namespace: default
 spec:
-  # Set to "0" to only sync once at creation time
-  refreshInterval: "0"
+  # Set to "0s" to only sync once at creation time
+  refreshInterval: "0s"
   secretStoreRef:
     name: aws-secrets-manager
     kind: SecretStore
@@ -198,10 +198,10 @@ kubectl port-forward svc/external-secrets -n external-secrets 8080:8080
 ## Best Practices
 
 - Use the formula `refreshInterval < rotation_window / 4` for automatically-rotated secrets to ensure the new secret is fetched well before the old one expires.
-- Set `refreshInterval: "0"` only for secrets that are truly write-once and will never change (bootstrap tokens, immutable signing keys).
+- Set `refreshInterval: "0s"` only for secrets that are truly write-once and will never change (bootstrap tokens, immutable signing keys).
 - Avoid setting very short intervals (under 5 minutes) for non-critical secrets; they can exhaust API rate limits, especially with many `ExternalSecret` resources.
 - Use the `force-sync` annotation in runbooks for emergency secret rotation rather than modifying the `refreshInterval`.
-- Monitor the `externalsecret_sync_calls_error_total` metric to detect when refresh failures are accumulating.
+- Monitor the `externalsecret_sync_calls_error` metric to detect when refresh failures are accumulating.
 
 ## Conclusion
 
