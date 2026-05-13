@@ -12,14 +12,14 @@ Description: Guide to installing Calico on self-managed Kubernetes clusters runn
 
 While GKE is the recommended way to run Kubernetes on Google Cloud, some teams run self-managed Kubernetes on GCE instances for greater control or specific configurations. On GCE, Calico can use either VXLAN overlay or BGP routing - GCE's flat VPC allows BGP to work well, making it a viable option for high-performance networking.
 
-This guide covers installing Calico on a kubeadm Kubernetes cluster on GCE, using both VXLAN and BGP configuration options.
+This guide covers installing Calico on a kubeadm Kubernetes cluster on GCE, using VXLAN with notes for BGP and no-encapsulation configurations.
 
 ## Prerequisites
 
 - GCE VM instances with Kubernetes installed via kubeadm
 - `gcloud` CLI configured with appropriate permissions
 - `kubectl` cluster-admin access
-- `calicoctl` installed: `curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 -o /usr/local/bin/calicoctl && chmod +x /usr/local/bin/calicoctl`
+- `calicoctl` installed: `sudo curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 -o /usr/local/bin/calicoctl && sudo chmod +x /usr/local/bin/calicoctl`
 
 ## Step 1: Configure GCP Firewall Rules
 
@@ -58,20 +58,21 @@ gcloud compute firewall-rules create allow-bgp \
 
 ## Step 2: Configure GCE Instances for Calico
 
-On GCE, disable source/destination check if using BGP routing:
+On GCE, enable IP forwarding if using BGP or no-encapsulation routing:
 
 ```bash
-# Get all instance names in the cluster
-INSTANCES=$(gcloud compute instances list \
-  --filter="tags.items=$CLUSTER_TAG" \
-  --format="value(name)")
+# When creating nodes for BGP/no-encapsulation routing, include:
+gcloud compute instances create <INSTANCE_NAME> \
+  --project=$PROJECT_ID \
+  --zone=<ZONE> \
+  --network=$CLUSTER_NETWORK \
+  --tags=$CLUSTER_TAG \
+  --can-ip-forward
 
-# For BGP mode: disable can-ip-forward restriction
-# This is already enabled on GCE instances by default
-for INSTANCE in $INSTANCES; do
-  gcloud compute instances add-metadata $INSTANCE \
-    --metadata=can-ip-forward=true
-done
+# Verify existing cluster nodes have canIpForward enabled
+gcloud compute instances list \
+  --filter="tags.items=$CLUSTER_TAG" \
+  --format="table(name,zone.basename(),canIpForward)"
 ```
 
 ## Step 3: Install Kubernetes and Calico
@@ -119,13 +120,19 @@ spec:
         nodeSelector: all()
     # GCE has 1460 byte MTU on standard network
     mtu: 1410
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
 ```
 
 Apply and verify:
 
 ```bash
 kubectl apply -f calico-installation-gce.yaml
-kubectl wait --for=condition=Ready tigerastatus/calico --timeout=300s
+kubectl wait --for=condition=Available tigerastatus/calico --timeout=300s
 kubectl get nodes
 ```
 
@@ -167,6 +174,12 @@ spec:
     - Ingress
     - Egress
 ```
+Apply the policies:
+
+```bash
+kubectl apply -f gce-network-policies.yaml
+```
+
 
 ## Best Practices
 
