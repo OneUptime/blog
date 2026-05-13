@@ -10,9 +10,9 @@ Description: Define Crossplane CompositeResourceDefinitions (XRDs) using Flux CD
 
 ## Introduction
 
-CompositeResourceDefinitions (XRDs) are the schema layer of the Crossplane platform API. They define the structure and validation rules for the infrastructure resources your platform exposes. When a developer claims a `PostgreSQLInstance` or a `MessageQueue`, it is the XRD that describes what fields are allowed, which are required, and what defaults apply.
+CompositeResourceDefinitions (XRDs) are the schema layer of the Crossplane platform API. They define the structure and validation rules for the infrastructure resources your platform exposes. When a developer creates a `PostgreSQLInstance` or a `MessageQueue`, it is the XRD that describes what fields are allowed, which are required, and what defaults apply.
 
-XRDs are Kubernetes CustomResourceDefinitions under the hood, but authored through Crossplane's opinionated API. This means you get schema validation, versioning, and the ability to expose both cluster-scoped composite resources and namespace-scoped claims from a single definition.
+XRDs are Kubernetes CustomResourceDefinitions under the hood, but authored through Crossplane's opinionated API. This means you get schema validation, versioning, and the ability to expose namespaced or cluster-scoped composite resources from a single definition.
 
 Managing XRDs through Flux makes your platform API version-controlled. Adding a new field, deprecating a version, or updating validation rules becomes a reviewed pull request rather than a manual kubectl apply. This guide walks through designing and deploying a production-quality XRD with Flux CD.
 
@@ -30,8 +30,8 @@ Design the XRD as you would any Kubernetes API. Think about what platform users 
 ```mermaid
 graph LR
     A[XRD defines API] --> B[Composition implements API]
-    B --> C[Claim uses API]
-    C --> D[Composite Resource created]
+    B --> C[Developer creates XR]
+    C --> D[Composite Resource reconciled]
     D --> E[Cloud resources provisioned]
 ```
 
@@ -42,7 +42,7 @@ Start with a storage bucket abstraction that works across cloud providers.
 ```yaml
 # infrastructure/crossplane/xrds/xstoragebucket.yaml
 
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xstoragebuckets.platform.example.com
@@ -50,15 +50,12 @@ metadata:
     # Document the intended use for platform consumers
     platform.example.com/description: "A cloud storage bucket with versioning and lifecycle support"
 spec:
+  scope: Namespaced
   group: platform.example.com
   names:
     kind: XStorageBucket
     plural: xstoragebuckets
-  # Expose namespace-scoped claims so developers can use them per namespace
-  claimNames:
-    kind: StorageBucket
-    plural: storagebuckets
-  # Connection secret keys that will be propagated to the claim namespace
+  # Connection secret keys that Crossplane may include in the XR's connection details
   connectionSecretKeys:
     - bucket-name
     - bucket-region
@@ -119,18 +116,16 @@ As your platform matures, you may need to evolve the API while maintaining backw
 
 ```yaml
 # infrastructure/crossplane/xrds/xdatabase.yaml
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xdatabases.platform.example.com
 spec:
+  scope: Namespaced
   group: platform.example.com
   names:
     kind: XDatabase
     plural: xdatabases
-  claimNames:
-    kind: Database
-    plural: databases
   connectionSecretKeys:
     - username
     - password
@@ -166,15 +161,9 @@ spec:
           properties:
             spec:
               type: object
-              required:
-                - parameters
               properties:
                 parameters:
                   type: object
-                  required:
-                    - engine
-                    - storageGB
-                    - tier
                   properties:
                     engine:
                       type: string
@@ -232,8 +221,8 @@ kubectl get xrds
 # Check the XRD schema was accepted
 kubectl describe xrd xstoragebuckets.platform.example.com
 
-# Verify the claim CRD was created automatically
-kubectl get crd storagebuckets.platform.example.com
+# Verify the composite resource CRD was created automatically
+kubectl get crd xstoragebuckets.platform.example.com
 
 # Check available API versions
 kubectl api-resources | grep platform.example.com
@@ -242,7 +231,7 @@ kubectl api-resources | grep platform.example.com
 ## Best Practices
 
 - Design XRDs from the perspective of the platform consumer. Hide cloud-specific details behind opinionated defaults and enumerations.
-- Always specify `connectionSecretKeys` for resources that produce connection credentials. This ensures the keys are propagated to the namespace where the claim lives.
+- Specify `connectionSecretKeys` for resources that produce connection credentials when you need to limit which keys Crossplane includes in the composite resource's connection details.
 - Use `enum` constraints to limit valid values for fields like `region`, `tier`, and `engine`. This prevents misconfiguration and guides consumers toward valid inputs.
 - Maintain backward compatibility when adding new fields by making them optional with defaults. Use versioning for breaking changes.
 - Apply Flux `dependsOn` to ensure Compositions are applied after the XRDs they reference are established in the cluster.
