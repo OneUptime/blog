@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, AWS, EKS, CloudWatch, Monitoring, Observability, Helm
+Tags: Flux, Kubernetes, GitOps, AWS, EKS, CloudWatch, Monitoring, Observability
 
 Description: Learn how to deploy the AWS CloudWatch Agent and Fluent Bit on EKS using Flux for GitOps-managed cluster monitoring, container insights, and log collection.
 
@@ -10,7 +10,7 @@ Description: Learn how to deploy the AWS CloudWatch Agent and Fluent Bit on EKS 
 
 ## What is CloudWatch Container Insights
 
-CloudWatch Container Insights provides monitoring and observability for EKS clusters, collecting metrics, logs, and traces from containerized workloads. The CloudWatch Agent collects infrastructure metrics (CPU, memory, disk, network) while Fluent Bit forwards container logs to CloudWatch Logs.
+CloudWatch Container Insights provides monitoring and observability for EKS clusters, collecting metrics and logs from containerized workloads. The CloudWatch Agent collects infrastructure metrics (CPU, memory, disk, network) while Fluent Bit forwards container logs to CloudWatch Logs.
 
 ## Prerequisites
 
@@ -54,10 +54,6 @@ cat > cloudwatch-policy.json << 'EOF'
         "logs:CreateLogStream",
         "logs:CreateLogGroup",
         "logs:TagResource",
-        "xray:PutTraceSegments",
-        "xray:PutTelemetryRecords",
-        "xray:GetSamplingRules",
-        "xray:GetSamplingTargets",
         "ssm:GetParameter"
       ],
       "Resource": "*"
@@ -90,7 +86,10 @@ cat > trust-policy.json << EOF
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:amazon-cloudwatch:cloudwatch-agent",
+          "${OIDC_PROVIDER}:sub": [
+            "system:serviceaccount:amazon-cloudwatch:cloudwatch-agent",
+            "system:serviceaccount:amazon-cloudwatch:fluent-bit"
+          ],
           "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
         }
       }
@@ -131,6 +130,52 @@ metadata:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/EKSCloudWatchAgentRole
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloudwatch-agent-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "endpoints"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "daemonsets", "deployments", "statefulsets"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["nodes/stats", "configmaps", "events"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["cwagent-clusterleader"]
+    verbs: ["get", "update"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list", "watch", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloudwatch-agent-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: cloudwatch-agent
+    namespace: amazon-cloudwatch
+roleRef:
+  kind: ClusterRole
+  name: cloudwatch-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -138,6 +183,37 @@ metadata:
   namespace: amazon-cloudwatch
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/EKSCloudWatchAgentRole
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-role
+rules:
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - pods/log
+      - nodes
+      - nodes/proxy
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-role
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: amazon-cloudwatch
 ```
 
 ## Step 4: Deploy CloudWatch Agent
@@ -147,7 +223,7 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cloudwatch-agent-config
+  name: cwagentconfig
   namespace: amazon-cloudwatch
 data:
   cwagentconfig.json: |
@@ -156,19 +232,11 @@ data:
         "metrics_collected": {
           "kubernetes": {
             "cluster_name": "my-cluster",
-            "metrics_collection_interval": 60
+            "metrics_collection_interval": 60,
+            "enhanced_container_insights": true
           }
         },
         "force_flush_interval": 5
-      },
-      "metrics": {
-        "metrics_collected": {
-          "statsd": {},
-          "kubernetes": {
-            "cluster_name": "my-cluster",
-            "metrics_collection_interval": 60
-          }
-        }
       }
     }
 ---
@@ -190,7 +258,7 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: cloudwatch-agent
-          image: public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300037.1b602
+          image: public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300064.0b1337
           resources:
             requests:
               cpu: 200m
@@ -235,7 +303,7 @@ spec:
       volumes:
         - name: cwagentconfig
           configMap:
-            name: cloudwatch-agent-config
+            name: cwagentconfig
         - name: rootfs
           hostPath:
             path: /
@@ -254,6 +322,8 @@ spec:
         - name: devdisk
           hostPath:
             path: /dev/disk/
+      nodeSelector:
+        kubernetes.io/os: linux
 ```
 
 ## Step 5: Deploy Fluent Bit for Log Collection
@@ -383,7 +453,7 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
         - name: fluent-bit
-          image: public.ecr.aws/aws-observability/aws-for-fluent-bit:2.31.12
+          image: public.ecr.aws/aws-observability/aws-for-fluent-bit:3.0.1
           resources:
             requests:
               cpu: 50m
@@ -434,6 +504,8 @@ spec:
         - name: dmesg
           hostPath:
             path: /var/log/dmesg
+      nodeSelector:
+        kubernetes.io/os: linux
 ```
 
 ```yaml
