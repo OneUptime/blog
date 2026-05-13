@@ -19,7 +19,7 @@ Flux CD GitOps supports HIPAA compliance by ensuring all changes to PHI-adjacent
 - Flux CD managing a HIPAA-scoped Kubernetes cluster
 - Sealed Secrets or External Secrets Operator for secret management
 - Dedicated namespaces for PHI-adjacent workloads
-- Log aggregation with a minimum 6-year retention (HIPAA requirement)
+- Log aggregation with retention aligned to your HIPAA documentation policy (HIPAA requires retaining required documentation for at least 6 years)
 
 ## Step 1: Isolate PHI Workloads with Dedicated Namespaces
 
@@ -99,6 +99,15 @@ Install Sealed Secrets via Flux:
 
 ```yaml
 # infrastructure/controllers/sealed-secrets.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: sealed-secrets
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://bitnami-labs.github.io/sealed-secrets
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -116,6 +125,10 @@ spec:
         namespace: flux-system
   values:
     fullnameOverride: sealed-secrets-controller
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
 ```
 
 ## Step 3: Configure Strict RBAC for PHI Namespaces
@@ -125,6 +138,12 @@ HIPAA §164.312(a)(2)(i) - Unique User Identification requires that access to PH
 ```yaml
 # clusters/hipaa/rbac/phi-workloads-rbac.yaml
 # Only the phi-deployer service account can create/modify deployments in phi-workloads
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: phi-deployer
+  namespace: phi-workloads
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -139,7 +158,7 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
-  # Explicitly deny secret access from application service accounts
+  # Do not grant secret access here; Kubernetes RBAC is allow-only.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -148,8 +167,8 @@ metadata:
   namespace: phi-workloads
 subjects:
   - kind: ServiceAccount
-    name: flux-system       # Only Flux can deploy to this namespace
-    namespace: flux-system
+    name: phi-deployer      # Used by a Flux Kustomization's spec.serviceAccountName
+    namespace: phi-workloads
 roleRef:
   kind: Role
   name: phi-deployer
@@ -163,33 +182,36 @@ HIPAA §164.312(b) - Audit Controls requires recording and examining activity in
 ```yaml
 # clusters/hipaa/monitoring/flux-audit-alert.yaml
 # Send all Flux events to the audit log system
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: hipaa-audit-log
   namespace: flux-system
 spec:
-  summary: "HIPAA Audit: Flux reconciliation event"
+  eventMetadata:
+    summary: "HIPAA Audit: Flux reconciliation event"
   providerRef:
     name: audit-log-webhook   # Webhook to your SIEM
   eventSeverity: info         # Capture info-level events too, not just errors
   eventSources:
     - kind: Kustomization
+      name: '*'
       namespace: phi-workloads
     - kind: HelmRelease
+      name: '*'
       namespace: phi-workloads
 ```
 
 ```yaml
 # clusters/hipaa/monitoring/audit-webhook-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: audit-log-webhook
   namespace: flux-system
 spec:
   type: generic
-  url: https://siem.example.com/api/flux-events
+  address: https://siem.example.com/api/flux-events
   secretRef:
     name: audit-webhook-token
 ```
@@ -200,7 +222,8 @@ Document in your HIPAA Security Risk Analysis that all changes to PHI infrastruc
 
 ```yaml
 # .github/CODEOWNERS
-# PHI namespace changes require both platform team and privacy officer approval
+# PHI namespace changes request platform team and privacy officer review.
+# To require both approvals, enforce that with branch protection, rulesets, or a policy check.
 /clusters/hipaa/              @your-org/platform-team @your-org/privacy-officer
 /apps/phi-workloads/          @your-org/phi-app-team @your-org/privacy-officer
 ```
@@ -243,13 +266,14 @@ kubectl create job drift-check \
 
 ```yaml
 # Flux Alert for any reconciliation failure in PHI namespace
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: phi-drift-alert
   namespace: flux-system
 spec:
-  summary: "HIPAA ALERT: Configuration drift detected in PHI workloads"
+  eventMetadata:
+    summary: "HIPAA ALERT: Configuration drift or reconciliation failure in PHI workloads"
   providerRef:
     name: pagerduty-provider    # Page on-call for PHI drift
   eventSeverity: error
@@ -257,13 +281,12 @@ spec:
     - kind: Kustomization
       name: phi-workloads
   inclusionList:
-    - ".*ReconciliationFailed.*"
-    - ".*DriftDetected.*"
+    - ".*(ReconciliationFailed|DriftDetected|dry-run).*"
 ```
 
 ## Best Practices
 
-- Retain all Flux event logs and Git history for a minimum of 6 years to satisfy HIPAA retention requirements.
+- Retain Flux event logs and Git history according to your HIPAA documentation retention policy; HIPAA requires required documentation to be retained for at least 6 years.
 - Conduct quarterly access reviews of CODEOWNERS and RBAC bindings for PHI namespaces.
 - Run annual HIPAA Security Risk Assessments that include a review of Flux configuration for the PHI scope.
 - Never allow any application workload to directly access the Flux service account - only Flux reconcilers should have deployment permissions.
