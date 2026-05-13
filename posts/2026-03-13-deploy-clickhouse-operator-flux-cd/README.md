@@ -33,7 +33,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://docs.altinity.com/clickhouse-operator
+  url: https://helm.altinity.com
 ```
 
 ## Step 2: Deploy the ClickHouse Operator
@@ -58,7 +58,7 @@ spec:
   chart:
     spec:
       chart: altinity-clickhouse-operator
-      version: "0.23.5"
+      version: "0.27.0"
       sourceRef:
         kind: HelmRepository
         name: altinity
@@ -68,13 +68,14 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "256Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+    operator:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
     metrics:
       enabled: true
 ```
@@ -182,6 +183,27 @@ spec:
 ## Step 4: Deploy Zookeeper for Replication
 
 ```yaml
+# infrastructure/sources/bitnami-helm.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  type: oci
+  interval: 12h
+  url: oci://registry-1.docker.io/bitnamicharts
+```
+
+```yaml
+# infrastructure/databases/clickhouse/zookeeper-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zookeeper
+```
+
+```yaml
 # infrastructure/databases/clickhouse/zookeeper.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -193,7 +215,7 @@ spec:
   chart:
     spec:
       chart: zookeeper
-      version: "12.4.0"
+      version: "13.8.7"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -228,13 +250,15 @@ spec:
     name: flux-system
   path: ./infrastructure/databases/clickhouse
   prune: true
-  dependsOn:
-    - name: zookeeper
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: clickhouse-operator
       namespace: clickhouse
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: zookeeper
+      namespace: zookeeper
 ```
 
 ## Step 6: Verify and Query
@@ -247,20 +271,23 @@ kubectl get chi chi-demo -n clickhouse
 kubectl get pods -n clickhouse
 
 # Connect to ClickHouse
-kubectl exec -n clickhouse chi-demo-cluster1-0-0-0 -- \
+kubectl exec -n clickhouse chi-chi-demo-cluster1-0-0-0 -- \
   clickhouse-client --user app_user --password 'AppPassword123!'
 
 # Create a test table with sharding
-kubectl exec -n clickhouse chi-demo-cluster1-0-0-0 -- clickhouse-client \
+kubectl exec -n clickhouse chi-chi-demo-cluster1-0-0-0 -- clickhouse-client \
   --user app_user --password 'AppPassword123!' \
+  --multiquery \
   --query "
+    CREATE DATABASE IF NOT EXISTS myapp ON CLUSTER cluster1;
+
     CREATE TABLE myapp.events ON CLUSTER cluster1 (
       event_id UInt64,
       event_time DateTime,
       user_id UInt32,
       action String
     )
-    ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/events', '{replica}')
+    ENGINE = ReplicatedMergeTree('/clickhouse/{installation}/{cluster}/tables/{shard}/{database}/{table}', '{replica}')
     ORDER BY (event_time, user_id)
     PARTITION BY toYYYYMM(event_time);
 
