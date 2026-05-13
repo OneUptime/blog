@@ -192,7 +192,7 @@ spec:
         name: env-config
 ```
 
-When multiple sources define the same variable, the precedence order is: inline `substitute` values win over `substituteFrom` entries, and earlier entries in the `substituteFrom` list take precedence over later ones.
+When multiple sources define the same variable, the precedence order is: inline `substitute` values win over `substituteFrom` entries, and later entries in the `substituteFrom` list overwrite earlier ones.
 
 ## Repository Structure for Multi-Region Deployments
 
@@ -254,7 +254,7 @@ After reconciliation, verify the correct values were substituted:
 ```bash
 kubectl get deployment api-server -o jsonpath='{.spec.template.spec.containers[0].image}'
 kubectl get ingress api-server -o jsonpath='{.spec.rules[0].host}'
-flux get kustomization app-platform
+flux get kustomizations --namespace flux-system
 ```
 
 ## Conclusion
