@@ -31,7 +31,7 @@ Before starting, ensure you have:
 Azure Container Registry supports several webhook actions:
 
 - **push**: Triggered when an image is pushed to the registry
-- **delete**: Triggered when an image tag or manifest is deleted
+- **delete**: Triggered when an image repository or manifest is deleted
 - **quarantine**: Triggered when an image is quarantined
 - **chart_push**: Triggered when a Helm chart is pushed
 - **chart_delete**: Triggered when a Helm chart is deleted
@@ -82,7 +82,7 @@ spec:
       name: my-app
 ```
 
-The `acr` type tells the notification controller to expect ACR's webhook payload format. The controller parses the payload to extract the repository and tag information.
+The `acr` type tells the notification controller to expect ACR's webhook payload format. The controller validates that the request body is valid JSON and then requests reconciliation for all listed resources.
 
 ## Setting Up Image Automation for ACR
 
@@ -112,7 +112,7 @@ spec:
       range: ">=1.0.0"
 ```
 
-When running on AKS with managed identity, the `provider: azure` field enables workload identity authentication to ACR without explicit credentials. For non-AKS clusters, use a docker-registry secret:
+When running on AKS, the `provider: azure` field lets the image reflector controller authenticate to ACR with kubelet managed identity or Azure Workload Identity when those identities are configured with access to ACR. For non-AKS clusters, use a docker-registry secret:
 
 ```bash
 kubectl create secret docker-registry acr-credentials \
@@ -132,12 +132,14 @@ spec:
 
 ## Applying and Getting the Webhook URL
 
-Apply the Receiver and retrieve the webhook URL:
+Apply the Receiver and retrieve the generated webhook path:
 
 ```bash
 kubectl apply -f acr-receiver.yaml
 kubectl get receiver acr-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
 ```
+
+The full webhook URL is your public ingress or LoadBalancer hostname plus this path.
 
 ## Exposing the Notification Controller
 
@@ -165,7 +167,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -181,15 +183,14 @@ az acr webhook create \
   --resource-group my-rg \
   --uri "https://flux-webhook.yourdomain.com/hook/abc123..." \
   --actions push \
-  --scope "my-app:*" \
-  --custom-headers "Authorization=token your-secure-random-token-here"
+  --scope "my-app:*"
 ```
 
 Key parameters:
 
 - `--actions push` limits the webhook to push events
 - `--scope "my-app:*"` restricts the webhook to the `my-app` repository with any tag
-- `--custom-headers` sets the authorization header that Flux uses to validate the request
+- Flux uses the generated webhook path, salted with the Receiver secret token, as the shared secret for this receiver type
 
 ## Configuring via Azure Portal
 
@@ -201,7 +202,7 @@ Alternatively, configure the webhook through the Azure portal:
 4. Fill in the details:
    - **Webhook name**: flux-reconcile-trigger
    - **Service URI**: Your full webhook URL
-   - **Custom headers**: `Authorization: token your-secure-random-token-here`
+   - **Custom headers**: Leave empty unless another proxy in front of Flux requires a custom header
    - **Actions**: Select "push"
    - **Scope**: Enter the repository name pattern (e.g., `my-app:*`)
    - **Status**: On
@@ -339,7 +340,7 @@ Verify the webhook configuration:
 az acr webhook show --name fluxReconcileTrigger --registry myregistry
 ```
 
-Check that the custom header matches the Kubernetes secret token exactly. Review the notification controller logs:
+Check that the ACR service URI contains the exact `.status.webhookPath` reported by the Receiver. Review the notification controller logs:
 
 ```bash
 kubectl logs -n flux-system deployment/notification-controller | grep -i "error\|acr\|receiver"
