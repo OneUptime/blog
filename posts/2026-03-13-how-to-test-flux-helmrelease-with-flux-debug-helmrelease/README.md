@@ -47,7 +47,7 @@ Flux reconciles this by pulling the chart from the specified HelmRepository and 
 To inspect the current state of a HelmRelease, use:
 
 ```bash
-flux debug helmrelease podinfo -n default
+flux debug helmrelease podinfo -n default --show-status
 ```
 
 This command shows the status conditions, the last applied revision, and any error messages associated with the release.
@@ -63,10 +63,10 @@ flux get helmrelease podinfo -n default
 This shows the ready status, revision, and any status messages. For more detail:
 
 ```bash
-flux get helmrelease podinfo -n default -o yaml
+kubectl get helmrelease podinfo -n default -o yaml
 ```
 
-The YAML output includes the full status block with conditions, observed generation, and last attempted values.
+The YAML output includes the full status block with conditions, observed generation, and last attempted revision and config digest.
 
 ## Inspecting Rendered Values
 
@@ -76,7 +76,7 @@ One of the most common issues with HelmRelease resources is incorrect values mer
 flux debug helmrelease podinfo -n default --show-values
 ```
 
-This reveals the complete values after merging inline values, valuesFrom references, and any default values from the chart.
+This reveals the values after merging `valuesFrom` references and inline values. Helm still applies the chart defaults when it renders the chart.
 
 ## Testing Values from ConfigMaps and Secrets
 
@@ -124,7 +124,7 @@ flux debug helmrelease my-app -n default --show-values
 
 ## Dry Run Helm Template
 
-To see exactly what Kubernetes resources the HelmRelease would create, use Helm directly with the merged values:
+To inspect the Kubernetes manifests Helm would render, use Helm directly with the merged values and the same chart repository and version:
 
 ```bash
 flux debug helmrelease podinfo -n default --show-values > /tmp/values.yaml
@@ -135,7 +135,7 @@ helm template podinfo podinfo/podinfo \
   --namespace default
 ```
 
-This lets you inspect every resource that will be created or updated.
+This lets you inspect the resources that Helm would render before Flux applies them.
 
 ## Troubleshooting Common Issues
 
@@ -154,13 +154,13 @@ Verify the HelmRepository is reconciled and the chart name and version are corre
 When using semver constraints like `6.5.x`, verify available versions:
 
 ```bash
-flux debug helmrelease podinfo -n default
+flux debug helmrelease podinfo -n default --show-status
 ```
 
-Look for messages about version resolution failures. You can also check the HelmRepository index:
+Look for messages about version resolution failures. You can also check the HelmRepository status:
 
 ```bash
-flux get source helm podinfo -n flux-system -o yaml
+kubectl get helmrepository podinfo -n flux-system -o yaml
 ```
 
 ### Values Merge Conflicts
@@ -210,7 +210,7 @@ Combine with debug to see the result:
 
 ```bash
 flux reconcile helmrelease podinfo -n default && \
-  flux debug helmrelease podinfo -n default
+  flux debug helmrelease podinfo -n default --show-status
 ```
 
 ## Exporting HelmRelease for Local Testing
