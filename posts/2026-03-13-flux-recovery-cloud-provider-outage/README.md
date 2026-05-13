@@ -12,7 +12,7 @@ Description: Design Flux CD setups to withstand cloud provider outages using mul
 
 Cloud provider outages are rare but impactful. AWS us-east-1, GCP us-central1, and Azure East US have all experienced significant outages that took down thousands of applications. Teams that treated "in the cloud" as equivalent to "highly available" learned painful lessons. True resilience requires designing for cloud provider failure as a first-class scenario.
 
-Flux CD is uniquely well-positioned to help with cloud provider resilience because the desired state of your entire infrastructure lives in Git - outside any single cloud provider. When a region or provider fails, Flux can bootstrap a replacement cluster in a different region or provider and reconcile it to the same state within minutes.
+Flux CD is well-positioned to help with cloud provider resilience because the desired state of your Kubernetes workloads and platform components lives in Git - outside any single cloud provider. When a region or provider fails, you can provision a replacement cluster in a different region or provider, bootstrap Flux onto it, and reconcile it to the same state within minutes.
 
 This guide covers designing your Flux repository for multi-region resilience, implementing active-passive failover, and automating recovery when a cloud provider experiences an outage.
 
@@ -52,7 +52,7 @@ apps/
   base/                   # Shared app definitions
   overlays/
     production/           # Production-grade settings
-    dr/                   # DR-optimized settings (smaller, faster)
+    standby/              # DR-optimized settings (smaller, faster)
 ```
 
 ## Step 2: Deploy a Warm Standby Cluster
@@ -101,7 +101,7 @@ Use Route53 or Cloudflare health checks to automatically shift traffic when the 
 # Terraform for Route53 health check failover (stored in Git)
 # infrastructure/aws/dns/failover.tf
 resource "aws_route53_health_check" "primary" {
-  fqdn              = "primary.internal.example.com"
+  fqdn              = "primary.example.com"
   port              = 443
   type              = "HTTPS"
   resource_path     = "/healthz"
@@ -121,6 +121,21 @@ resource "aws_route53_record" "app_primary" {
   alias {
     name                   = var.primary_lb_dns
     zone_id                = var.primary_lb_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "app_secondary" {
+  zone_id        = var.zone_id
+  name           = "app.example.com"
+  type           = "A"
+  set_identifier = "secondary"
+  failover_routing_policy {
+    type = "SECONDARY"
+  }
+  alias {
+    name                   = var.secondary_lb_dns
+    zone_id                = var.secondary_lb_zone_id
     evaluate_target_health = true
   }
 }
@@ -147,7 +162,7 @@ git add apps/overlays/standby/replica-patch.yaml
 git commit -m "failover: promote $REGION to primary"
 git push origin main
 
-echo "==> Flux on $REGION will reconcile within $(flux get kustomizations -n flux-system | grep interval) minutes"
+echo "==> Flux on $REGION will reconcile on its configured interval"
 echo "==> Monitor: flux get all -A --context $REGION"
 ```
 
@@ -156,8 +171,8 @@ echo "==> Monitor: flux get all -A --context $REGION"
 Secrets must be available in the standby region before failover.
 
 ```yaml
-# Use External Secrets Operator with a multi-region secret store
-apiVersion: external-secrets.io/v1beta1
+# Use External Secrets Operator with a replicated regional secret
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -165,10 +180,8 @@ spec:
   provider:
     aws:
       service: SecretsManager
-      region: us-east-1  # Primary region
-      # ESO will fall back to us-west-2 if primary is unavailable
-      additionalRoles:
-        - roleArn: arn:aws:iam::123456789:role/eso-role
+      region: us-west-2  # Standby region replica
+      role: arn:aws:iam::123456789:role/eso-role
 ```
 
 ```bash
