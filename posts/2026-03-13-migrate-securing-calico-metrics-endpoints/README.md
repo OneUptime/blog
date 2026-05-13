@@ -18,6 +18,7 @@ This guide covers migrate Calico Metrics in Calico with practical configurations
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
+- HostEndpoints created for each Calico node and labeled `running-calico: "true"`
 - Understanding of Calico's monitoring and security architecture
 
 ## Core Configuration
@@ -30,24 +31,19 @@ kind: GlobalNetworkPolicy
 metadata:
   name: secure-calico-metrics
 spec:
+  # Select the HostEndpoints for nodes running Calico.
+  selector: running-calico == "true"
   order: 100
-  selector: k8s-app == 'calico-node'
-  ingress:
-    - action: Allow
-      source:
-        namespaceSelector: team == 'observability'
-      destination:
-        ports: [9091]
-    - action: Allow
-      source:
-        selector: app == 'prometheus'
-      destination:
-        ports: [9091]
-    - action: Deny
-      destination:
-        ports: [9091, 9092, 9093]
   types:
     - Ingress
+  ingress:
+    - action: Deny
+      protocol: TCP
+      source:
+        notSelector: calico-prometheus-access == "true"
+      destination:
+        ports:
+          - 9091
 ```
 
 ## Implementation Steps
@@ -55,6 +51,9 @@ spec:
 ```bash
 # Apply metrics security policy
 calicoctl apply -f secure-calico-metrics.yaml
+
+# Label the Prometheus pod that should be allowed to scrape Calico metrics
+kubectl label pod -n monitoring prometheus-pod calico-prometheus-access=true
 
 # Verify only authorized access works
 kubectl exec -n monitoring prometheus-pod -- curl -s http://calico-node-ip:9091/metrics | head -5
@@ -68,11 +67,11 @@ echo "Unauthorized access (should timeout): $?"
 ## Verify Metrics Security
 
 ```bash
-# List all IPs that have accessed the metrics endpoint recently
-grep "port=9091" /var/log/calico/flow-logs/*.log | tail -20
+# Check the policy that restricts access to the Felix metrics endpoint
+calicoctl get globalnetworkpolicy secure-calico-metrics -o yaml
 
-# Check active policy for calico-node pods
-calicoctl get networkpolicies -n kube-system | grep metrics
+# Check the Prometheus pod has the label required by the policy
+kubectl get pod -n monitoring prometheus-pod --show-labels
 ```
 
 ## Architecture
