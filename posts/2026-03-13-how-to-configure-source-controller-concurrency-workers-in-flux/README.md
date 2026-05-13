@@ -22,7 +22,7 @@ Out of the box, the source-controller starts with a default concurrency value of
 
 You configure concurrency by passing command-line flags to the source-controller deployment. The relevant flags are:
 
-- `--concurrent` sets the number of concurrent reconciliation workers across all source kinds.
+- `--concurrent` sets the number of concurrent reconciles per controller.
 
 ### Step 1 - Patch the Deployment
 
@@ -97,9 +97,11 @@ You should see `--concurrent=10` (or whatever value you chose) in the output.
 Use the built-in Prometheus metrics exposed by the source-controller to observe the effect:
 
 ```bash
-# Check how many reconciliations are in progress
-kubectl exec -n flux-system deploy/source-controller -- \
-  curl -s localhost:8080/metrics | grep controller_runtime_active_workers
+# In one terminal, forward the metrics port
+kubectl port-forward -n flux-system deploy/source-controller 8080:8080
+
+# In another terminal, check how many reconciliations are in progress
+curl -s localhost:8080/metrics | grep controller_runtime_active_workers
 ```
 
 If the active workers metric stays close to your concurrency limit, the controller is fully utilizing the additional capacity.
