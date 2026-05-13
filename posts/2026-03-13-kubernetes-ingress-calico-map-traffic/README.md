@@ -26,15 +26,16 @@ Before tracing scenarios, understand the evaluation order:
 
 ```mermaid
 graph TD
-    Packet[Incoming Packet] --> GNP[GlobalNetworkPolicy\nAll namespaces, evaluated by order]
-    GNP --> NP[Namespace NetworkPolicy\nor Calico NetworkPolicy]
-    NP --> ACCEPT{Accept/Deny?}
+    Packet[Incoming Packet] --> Tier[Matching Calico policy tiers\nLowest order first]
+    Tier --> Policy[Calico NetworkPolicy or GlobalNetworkPolicy\nWithin each tier by order]
+    Policy --> KNP[Kubernetes NetworkPolicy\nAdditive allow rules in default tier]
+    KNP --> ACCEPT{Action or no match?}
     ACCEPT -->|Accept| Pod[Delivered to Pod]
     ACCEPT -->|Deny| DROP[Packet dropped]
     ACCEPT -->|No match| DENY2[Implicit deny\nif any policy selects pod]
 ```
 
-GlobalNetworkPolicies are evaluated first (by `order` value), then namespace-scoped policies. The first matching rule in the first matching policy wins.
+Calico policies are evaluated by tier order, then by policy order within each tier. `Allow` and `Deny` actions are final; `Pass` continues to the next applicable tier. Kubernetes NetworkPolicies are additive allow policies in the default tier, so their relative order does not change the result.
 
 ## Scenario 1: Frontend Pod to Backend Pod (Same Namespace)
 
@@ -45,15 +46,15 @@ sequenceDiagram
     participant Backend as Backend Pod (app=backend)
 
     Frontend->>Felix: TCP SYN to backend:8080
-    Felix->>Felix: Check GlobalNetworkPolicy - Pass
-    Felix->>Felix: Check NetworkPolicy selects backend pod - Yes
+    Felix->>Felix: Check applicable tiers and policies
+    Felix->>Felix: Check NetworkPolicy selects backend pod
     Felix->>Felix: Evaluate ingress rules
     Felix->>Felix: Rule: from podSelector app=frontend → Allow
     Felix->>Backend: Deliver packet
     Backend->>Frontend: TCP SYN-ACK (conntrack allows return)
 ```
 
-The ingress enforcement happens at Felix on the receiving node, not the sending node. The return traffic is automatically allowed by connection tracking.
+Felix programs the ingress enforcement on the receiving node, not the sending node. The return traffic is automatically allowed by connection tracking.
 
 In iptables mode, inspect the enforcement chain:
 ```bash
@@ -105,7 +106,7 @@ graph LR
 
 With `externalTrafficPolicy: Cluster` (default), Calico sees the node IP as the ingress source, not the external client IP. This means client-IP-based ingress policies will not work.
 
-With `externalTrafficPolicy: Local` or Calico eBPF mode:
+With `externalTrafficPolicy: Local` in the standard Linux dataplane, or with Calico eBPF native service handling:
 ```mermaid
 graph LR
     EXT[External Client\n198.51.100.1] --> Felix[Felix: Source is\n198.51.100.1 - real client IP]
@@ -116,23 +117,38 @@ Now ingress policies can match on the actual client IP for IP-based access contr
 
 ## Observing Policy Enforcement in Real Time
 
-Use Felix's policy logging to observe ingress decisions:
+Use Calico `Log` policy actions to observe matching ingress traffic:
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: log-backend-ingress
+  namespace: app
+spec:
+  selector: app == "backend"
+  types:
+  - Ingress
+  ingress:
+  - action: Log
+    protocol: TCP
+    destination:
+      ports:
+      - 8080
+```
+
+After applying a temporary log rule, watch the node logs for matching policy log entries:
 
 ```bash
-# Enable policy logging (generates kernel log entries for policy decisions)
-kubectl patch felixconfiguration default \
-  --type merge -p '{"spec":{"policySyncPathPrefix":"/var/run/nodeagent"}}'
-
-# On a node, watch for deny events
-sudo journalctl -f | grep -i "calico.*deny"
+sudo journalctl -f | grep -i calico
 ```
 
 ## Best Practices
 
 - Remember that ingress policy is enforced at the receiving node, not the sending pod
 - For external traffic, check `externalTrafficPolicy` before writing client-IP-based ingress rules
-- Use `calicoctl get workloadendpoint` to see which policies are applied to a specific pod
+- Use `calicoctl get workloadendpoint -o yaml` to see the endpoint labels, profiles, and interface details that policy selectors use
 
 ## Conclusion
 
-Calico ingress enforcement happens at Felix on the node receiving the traffic. GlobalNetworkPolicies are evaluated first, then namespace-scoped policies. The evaluation is deterministic and inspectable via iptables chains or eBPF program hooks. Understanding the enforcement location and evaluation order is the foundation for debugging any ingress connectivity issue.
+Calico ingress enforcement happens on the node receiving the traffic, using rules programmed by Felix. Calico policies are evaluated by tier and policy order, while Kubernetes NetworkPolicies contribute additive allow rules. The evaluation is deterministic and inspectable via iptables chains or eBPF program hooks. Understanding the enforcement location and evaluation order is the foundation for debugging any ingress connectivity issue.
