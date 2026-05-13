@@ -10,22 +10,24 @@ Description: A guide to migrating virtual machine workloads from OVS-based OpenS
 
 ## Introduction
 
-Migrating an Ubuntu OpenStack deployment from OVS-based networking to Calico is a significant infrastructure change. All existing VMs will have their network backend changed from OVS tap interfaces to Calico-managed tap interfaces, and the Neutron plugin will switch from the ML2+OVS mechanism driver to the Calico mechanism driver. VMs must be shut down and restarted after the migration to use the new networking backend.
+Migrating an Ubuntu OpenStack deployment from OVS-based networking to Calico is a significant infrastructure change. Existing VM workloads should be captured as snapshots or other backups, the incompatible OVS-backed OpenStack networking state removed, and the workloads recreated after the Neutron plugin is switched from the ML2+OVS mechanism driver to the Calico core plugin.
 
-The migration is best done during a scheduled maintenance window when all VMs can be shut down, the networking backend replaced, and VMs restarted with new network assignments. Live migration (hot migration) without VM downtime is not supported for Calico-to-OVS migration.
+The migration is best done during a scheduled maintenance window when all VMs can be shut down, the networking backend replaced, and workloads recreated with new network assignments. Live migration is supported by Calico for VMs that are already running on Calico, but it is not a supported way to change an existing OVS-backed VM to Calico without downtime.
 
 ## Prerequisites
 
 - An Ubuntu OpenStack deployment with OVS networking
 - Root access to controller and compute nodes
 - All VM workloads backed up or snapshotted
+- An etcd v3 cluster reachable by all Neutron servers and compute nodes
+- BGP peering or route reflectors configured to accept routes from the compute nodes
 - A maintenance window
 
 ## Step 1: Snapshot All VMs
 
 ```bash
 for vm in $(openstack server list -f value -c ID); do
-  openstack server image create $vm --name "pre-migration-snapshot-$vm"
+  openstack server image create --wait --name "pre-migration-snapshot-$vm" "$vm"
 done
 ```
 
@@ -44,40 +46,70 @@ On the controller:
 
 ```bash
 sudo systemctl stop neutron-server
-sudo apt-get remove -y neutron-openvswitch-agent
+sudo apt-get remove -y neutron-openvswitch-agent || true
 ```
 
-Clean up OVS bridges:
+Before installing Calico, remove incompatible OpenStack state that was created for the OVS backend:
+
+```bash
+for vm in $(openstack server list -f value -c ID); do
+  openstack server delete "$vm"
+done
+
+# Delete routers, subnets, and networks that will be recreated for Calico.
+openstack router list
+openstack subnet list
+openstack network list
+```
+
+Clean up OVS bridges only after confirming they are no longer used for host connectivity:
 
 ```bash
 # On each compute node
 
-sudo systemctl stop neutron-openvswitch-agent
-sudo ovs-vsctl del-br br-int
-sudo ovs-vsctl del-br br-ex
+sudo systemctl stop neutron-openvswitch-agent || true
+sudo ovs-vsctl --if-exists del-br br-int
+# Delete br-ex only if it was created solely for Neutron OVS external networking.
+sudo ovs-vsctl --if-exists del-br br-ex
 ```
 
 ## Step 4: Install Calico Neutron Plugin
 
 ```bash
 # On the controller
-sudo apt-get install -y python3-networking-calico
+sudo add-apt-repository ppa:project-calico/calico-3.32
+sudo add-apt-repository ppa:cz.nic-labs/bird
+sudo apt-get update
+sudo apt-get install -y crudini python3-etcd3gw calico-control
 
 # Configure Neutron for Calico
-sudo sed -i 's/core_plugin = .*/core_plugin = calico/' /etc/neutron/neutron.conf
-sudo systemctl start neutron-server
+sudo crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin calico
+sudo crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins qos
+sudo crudini --set /etc/neutron/neutron.conf calico etcd_host <etcd-ip>
+sudo systemctl restart neutron-server
 ```
 
 On each compute node:
 
 ```bash
-sudo apt-get install -y calico-compute calico-felix
+sudo add-apt-repository ppa:project-calico/calico-3.32
+sudo add-apt-repository ppa:cz.nic-labs/bird
+sudo apt-get update
+sudo apt-get install -y crudini python3-etcd3gw neutron-common neutron-dhcp-agent nova-api-metadata
+sudo crudini --set /etc/neutron/neutron.conf calico etcd_host <etcd-ip>
+sudo systemctl restart nova-compute
+sudo systemctl stop neutron-dhcp-agent || true
+sudo apt-get install -y calico-dhcp-agent calico-compute
+
 cat <<EOF | sudo tee /etc/calico/felix.cfg
 [global]
 DatastoreType = etcdv3
-EtcdEndpoints = http://<controller-ip>:2379
+EtcdAddr = <etcd-ip>:2379
+EndpointStatusPathPrefix = none
 EOF
-sudo systemctl enable --now calico-felix
+
+calico-gen-bird-conf.sh <compute-node-ip> <route-reflector-ip> <bgp-as-number>
+sudo systemctl restart calico-felix
 ```
 
 ## Step 5: Recreate OpenStack Networks
@@ -93,13 +125,15 @@ openstack subnet create --network calico-tenant-net \
 ## Step 6: Restart VMs
 
 ```bash
-for vm in $(openstack server list -f value -c ID); do
-  openstack server start $vm
-done
+openstack server create \
+  --image pre-migration-snapshot-<old-vm-id> \
+  --flavor <flavor> \
+  --network calico-tenant-net \
+  <new-server-name>
 ```
 
-Verify VMs receive Calico-assigned IPs and are reachable.
+Repeat for each workload snapshot, then verify the rebuilt VMs receive Calico-assigned IPs and are reachable.
 
 ## Conclusion
 
-Migrating from OVS to Calico in Ubuntu OpenStack requires a full VM shutdown, OVS cleanup, Calico plugin installation, network recreation, and VM restart. The migration window must account for all these steps plus verification. While disruptive, the result - BGP-routed flat networking without overlay tunnels - provides better performance and simpler operation for large OpenStack deployments.
+Migrating from OVS to Calico in Ubuntu OpenStack requires a full VM shutdown, OVS cleanup, Calico plugin installation, network recreation, and workload rebuild from snapshots or backups. The migration window must account for all these steps plus verification. While disruptive, the result - BGP-routed flat networking without overlay tunnels - provides better performance and simpler operation for large OpenStack deployments.
