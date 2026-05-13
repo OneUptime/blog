@@ -18,7 +18,7 @@ This guide deploys Teleport Community Edition using the official Helm chart with
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.26+) with Flux CD bootstrapped
+- Kubernetes cluster with Flux CD bootstrapped
 - A DNS-resolvable domain with a wildcard or multi-SAN TLS certificate
 - A GitHub OAuth App for SSO authentication
 - Persistent storage available
@@ -59,41 +59,15 @@ spec:
   interval: 12h
 ```
 
-## Step 4: Create the Teleport Custom Values ConfigMap
+## Step 4: Create the TLS Secret
 
-Teleport's Helm chart accepts a `teleport.yaml` configuration that is too large for inline values. Store it in a ConfigMap.
+Create the TLS secret referenced by the Teleport Helm chart. The certificate must cover `teleport.example.com` and any wildcard or additional names you plan to expose through Teleport.
 
-```yaml
-# clusters/my-cluster/teleport/teleport-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: teleport-cluster-config
-  namespace: teleport
-data:
-  teleport.yaml: |
-    teleport:
-      log:
-        severity: INFO
-        format:
-          output: json
-
-    auth_service:
-      enabled: true
-      cluster_name: teleport.example.com
-      tokens:
-        # Join token for registering agents and nodes
-        - "node,kube,db,app:$(TELEPORT_JOIN_TOKEN)"
-
-    proxy_service:
-      enabled: true
-      public_addr: teleport.example.com:443
-      kube_public_addr: kube.teleport.example.com:443
-
-    kubernetes_service:
-      enabled: true
-      kube_cluster_name: production-cluster
-      listen_addr: 0.0.0.0:3027
+```bash
+kubectl create secret tls teleport-tls \
+  --namespace teleport \
+  --cert=/path/to/tls.crt \
+  --key=/path/to/tls.key
 ```
 
 ## Step 5: Deploy Teleport Cluster
@@ -110,7 +84,7 @@ spec:
   chart:
     spec:
       chart: teleport-cluster
-      version: ">=15.0.0 <16.0.0"
+      version: ">=18.0.0 <19.0.0"
       sourceRef:
         kind: HelmRepository
         name: teleport
@@ -118,11 +92,15 @@ spec:
   values:
     # Cluster domain (must match TLS certificate)
     clusterName: teleport.example.com
+    kubeClusterName: production-cluster
 
     # Authentication settings
     authentication:
       type: github   # Use GitHub as the SSO provider
       localAuth: false   # Disable local auth in production
+
+    # Required when exposing Teleport through an Ingress
+    proxyListenerMode: multiplex
 
     # TLS configuration (cert-manager recommended)
     tls:
@@ -136,42 +114,43 @@ spec:
     # Persistent storage for audit logs and session recordings
     persistence:
       enabled: true
-      size: 50Gi
+      volumeSize: 50Gi
 
-    # Use S3 for session recordings in production
-    # sessionRecording:
-    #   uploadTo: s3://my-teleport-sessions/
+    # Record sessions at the proxy and store them in the configured audit sessions backend
+    sessionRecording: proxy
 
-    # Auth replicas
+    # Auth and proxy replicas
+    highAvailability:
+      replicaCount: 1
+
     auth:
-      replicas: 1
       resources:
         requests:
           cpu: 200m
           memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
 
-    # Proxy replicas
     proxy:
-      replicas: 2
+      highAvailability:
+        replicaCount: 2
       resources:
         requests:
           cpu: 100m
           memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
+
+    # Use a ClusterIP service when exposing Teleport through an Ingress
+    service:
+      type: ClusterIP
+
+    annotations:
+      ingress:
+        nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+        nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 
     # Ingress for the web UI
     ingress:
       enabled: true
       spec:
         ingressClassName: nginx
-      annotations:
-        nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-        nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 ```
 
 ## Step 6: Create the Kustomization
@@ -202,19 +181,18 @@ spec:
 After Teleport starts, configure the GitHub SSO connector:
 
 ```bash
-# Port-forward to the auth service
-kubectl port-forward -n teleport svc/teleport-auth 3025:3025 &
+GH_CLIENT_ID=$(kubectl get secret teleport-github-secret -n teleport -o jsonpath='{.data.client-id}' | base64 -d)
+GH_CLIENT_SECRET=$(kubectl get secret teleport-github-secret -n teleport -o jsonpath='{.data.client-secret}' | base64 -d)
 
 # Create GitHub connector using tctl
-kubectl exec -n teleport $(kubectl get pod -n teleport -l app=teleport,component=auth -o name | head -1) -- \
-  tctl create -f << 'EOF'
+kubectl exec -i -n teleport deploy/teleport-cluster-auth -- tctl create -f - <<EOF
 kind: github
 version: v3
 metadata:
   name: github
 spec:
-  client_id: $(kubectl get secret teleport-github-secret -n teleport -o jsonpath='{.data.client-id}' | base64 -d)
-  client_secret: $(kubectl get secret teleport-github-secret -n teleport -o jsonpath='{.data.client-secret}' | base64 -d)
+  client_id: ${GH_CLIENT_ID}
+  client_secret: ${GH_CLIENT_SECRET}
   display: GitHub
   redirect_url: https://teleport.example.com/v1/webapi/github/callback
   teams_to_roles:
@@ -239,10 +217,8 @@ flux get helmreleases -n teleport --watch
 # Verify all Teleport components are running
 kubectl get pods -n teleport
 
-# List connected nodes and clusters
-kubectl exec -n teleport \
-  $(kubectl get pod -n teleport -l app=teleport,component=auth -o name | head -1) \
-  -- tctl nodes ls
+# List connected Kubernetes clusters
+kubectl exec -n teleport deploy/teleport-cluster-auth -- tctl kube ls
 ```
 
 Navigate to `https://teleport.example.com` and sign in with GitHub. You should see the Kubernetes cluster listed under the **Kubernetes** tab.
@@ -262,11 +238,11 @@ flowchart LR
 
 ## Best Practices
 
-- Store session recordings in S3-compatible object storage (`sessionRecording.uploadTo`) rather than on a PVC for durability and cost efficiency.
+- Store session recordings in object storage by using a supported cloud chart mode, such as `chartMode: aws` with `aws.sessionRecordingBucket`, rather than relying on standalone PVC storage for production.
 - Use Teleport's `access_request` workflow to implement just-in-time (JIT) privileged access with approval flows for sensitive environments.
 - Rotate join tokens regularly and use short-lived ephemeral tokens for registering new agents.
-- Enable `enhanced_recording: true` in node configuration to capture BPF-level syscall recordings for SOC compliance.
-- Use `tctl acl ls` and `tctl roles ls` regularly to audit access roles and ensure they follow least-privilege principles.
+- Enable `ssh_service.enhanced_recording.enabled: true` in node configuration to capture BPF-level SSH session events where supported.
+- Use `tctl acl ls` and `tctl get roles` regularly to audit access roles and ensure they follow least-privilege principles.
 
 ## Conclusion
 
