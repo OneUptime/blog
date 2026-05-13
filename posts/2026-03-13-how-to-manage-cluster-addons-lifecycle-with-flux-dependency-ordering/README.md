@@ -140,7 +140,6 @@ spec:
     name: flux-system
   dependsOn:
     - name: crds
-  wait: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -305,7 +304,7 @@ spec:
 
 ## Health Checks and Readiness
 
-The `wait: true` flag tells Flux to check that all resources in a Kustomization are ready before marking it as successful. You can also define custom health checks for more granular control:
+The `wait: true` flag tells Flux to check that all resources in a Kustomization are ready before marking it as successful. For more granular control over specific resources, omit `wait: true` and define custom health checks:
 
 ```yaml
 spec:
@@ -347,7 +346,7 @@ kubectl get kustomization -n flux-system -o jsonpath='{range .items[*]}{.metadat
 flux reconcile kustomization cert-manager -n flux-system --with-source
 
 # View dependency chain events
-kubectl events -n flux-system --for kustomization/ingress-nginx
+kubectl events -n flux-system --for Kustomization/ingress-nginx
 ```
 
 ## Handling CRD Updates
@@ -398,7 +397,7 @@ When addon deployments get stuck, use these commands to diagnose the problem:
 flux get kustomizations --status-selector ready=false
 
 # Get detailed status of a specific Kustomization
-flux get kustomization cert-manager -n flux-system -o yaml
+kubectl get kustomization cert-manager -n flux-system -o yaml
 
 # Check events for a stuck Kustomization
 kubectl describe kustomization cert-manager -n flux-system
