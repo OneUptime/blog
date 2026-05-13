@@ -43,7 +43,7 @@ flux-repo/
 
 ## Defining the Infrastructure Kustomization
 
-First, define the infrastructure layer that installs the secrets operator or configures SOPS decryption:
+First, define the infrastructure layer that installs the secrets operator or creates the SOPS decryption key Secret:
 
 ```yaml
 # clusters/production/infrastructure.yaml
@@ -60,7 +60,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/controllers
+  path: ./infrastructure
   prune: true
   wait: true
 ```
@@ -128,11 +128,12 @@ spec:
 The SOPS GPG key or age key must be available as a Kubernetes secret before any encrypted secret can be decrypted. Here is how to set up the SOPS secret:
 
 ```yaml
-# infrastructure/sops-gpg/kustomization.yaml
+# infrastructure/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - sops-gpg-secret.yaml
+  - controllers
+  - sops-gpg
 ```
 
 Create the SOPS key secret (this is typically bootstrapped manually or via a secure pipeline):
@@ -156,7 +157,7 @@ metadata:
   name: database-credentials
   namespace: default
 type: Opaque
-data:
+stringData:
   username: ENC[AES256_GCM,data:abc123...,type:str]
   password: ENC[AES256_GCM,data:def456...,type:str]
 sops:
@@ -220,7 +221,6 @@ spec:
     name: flux-system
   path: ./infrastructure/controllers
   prune: true
-  wait: true
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -230,4 +230,4 @@ spec:
 
 ## Conclusion
 
-Organizing secrets decryption as an explicit dependency in your Flux repository prevents race conditions where applications start before their secrets are available. The three-layer pattern of infrastructure, secrets, and apps provides a clear and reliable deployment order. Always use `dependsOn` and `wait: true` to enforce these relationships, and add health checks to verify that decryption controllers are fully operational before proceeding.
+Organizing secrets decryption as an explicit dependency in your Flux repository prevents race conditions where applications start before their secrets are available. The three-layer pattern of infrastructure, secrets, and apps provides a clear and reliable deployment order. Always use `dependsOn` and either `wait: true` or explicit health checks to enforce these relationships, and add health checks to verify that decryption controllers are fully operational before proceeding.
