@@ -75,15 +75,16 @@ spec:
         limits:
           cpu: 500m
           memory: 256Mi
-    # Enable Prometheus metrics
+      metrics:
+        enabled: true
+    # JetStream EventBus versions supported by the controller config
     configs:
       jetstream:
-        # JetStream for high-performance event bus
         versions:
-          - version: latest
-            natsImage: nats:2.10.4
+          - version: 2.10.10
+            natsImage: nats:2.10.10
             metricsExporterImage: natsio/prometheus-nats-exporter:0.14.0
-            configReloaderImage: natsio/nats-server-config-reloader:0.14.1
+            configReloaderImage: natsio/nats-server-config-reloader:0.14.0
             startCommand: /nats-server
 ```
 
@@ -112,9 +113,9 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: controller-manager
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: argo-events
       namespace: argo-events
 ```
 
@@ -131,7 +132,7 @@ metadata:
   namespace: argo-events
 spec:
   jetstream:
-    version: latest
+    version: 2.10.10
     replicas: 3
     persistence:
       storageClassName: fast-ssd
@@ -161,12 +162,44 @@ spec:
       method: POST
 ---
 # clusters/my-cluster/argo-events-pipelines/workflow-sensor.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-events-workflow-trigger
+  namespace: argo-events
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-events-workflow-trigger
+  namespace: argo-workflows
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-events-workflow-trigger
+  namespace: argo-workflows
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-events-workflow-trigger
+subjects:
+  - kind: ServiceAccount
+    name: argo-events-workflow-trigger
+    namespace: argo-events
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Sensor
 metadata:
   name: github-workflow-trigger
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: argo-events-workflow-trigger
   eventBusName: default
   dependencies:
     - name: github-push
@@ -198,11 +231,41 @@ spec:
                           memory: "2Gi"
 ```
 
+Add a Kustomization for the pipeline manifests and make it depend on the Argo Events installation:
+
+```yaml
+# clusters/my-cluster/argo-events-pipelines/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - eventbus.yaml
+  - webhook-eventsource.yaml
+  - workflow-sensor.yaml
+---
+# clusters/my-cluster/flux-kustomization-argo-events-pipelines.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: argo-events-pipelines
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: argo-events
+  interval: 10m
+  path: ./clusters/my-cluster/argo-events-pipelines
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  wait: true
+  timeout: 5m
+```
+
 ## Step 6: Verify the Event Pipeline
 
 ```bash
-# Check Argo Events is running
-flux get kustomizations argo-events
+# Check Argo Events and the pipeline Kustomization are running
+flux get kustomizations
 
 # Verify EventBus is healthy
 kubectl get eventbus -n argo-events
@@ -211,11 +274,13 @@ kubectl get eventbus -n argo-events
 kubectl get eventsource -n argo-events
 kubectl get pods -n argo-events
 
-# Send a test webhook
-EVENTSOURCE_IP=$(kubectl get svc webhook-eventsource-svc -n argo-events \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Send a test webhook through the generated ClusterIP service
+kubectl -n argo-events port-forward svc/webhook-eventsource-svc 12000:12000 &
+PF_PID=$!
+trap 'kill $PF_PID' EXIT
+sleep 2
 
-curl -X POST http://$EVENTSOURCE_IP:12000/github \
+curl -X POST http://127.0.0.1:12000/github \
   -H "Content-Type: application/json" \
   -d '{"ref": "refs/heads/main", "repository": {"name": "my-app"}}'
 
@@ -225,11 +290,11 @@ kubectl get workflows -n argo-workflows
 
 ## Best Practices
 
-- Use the JetStream EventBus for production (replicated, persistent) rather than the native NATS EventBus, which is ephemeral.
-- Store webhook secrets in Kubernetes Secrets and reference them in EventSource `spec.webhook.*.secret` for GitHub webhook signature verification.
-- Use `dependsOn` in Flux Kustomizations to ensure the EventBus is ready before creating EventSources and Sensors.
+- Use the JetStream EventBus for production (replicated, persistent) rather than the older native NATS Streaming EventBus. If you use native NATS, configure persistence explicitly.
+- Store webhook tokens in Kubernetes Secrets and reference them in EventSource `spec.webhook.*.authSecret` for webhook authentication.
+- Use `dependsOn` between Flux Kustomizations to ensure Argo Events is installed before creating EventBus, EventSources, and Sensors. Split the EventBus and EventSources/Sensors into separate Kustomizations if you need strict readiness ordering between them.
 - Define Sensors with specific `filters` on event data to ensure triggers fire only for the intended events - avoid overly broad dependency matching.
-- Monitor the event pipeline with the Argo Events UI or Prometheus metrics to detect stuck sensors or failed trigger operations.
+- Monitor the event pipeline with Kubernetes events, pod logs, and Prometheus metrics to detect stuck sensors or failed trigger operations.
 
 ## Conclusion
 
