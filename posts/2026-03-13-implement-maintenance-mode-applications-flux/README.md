@@ -19,13 +19,13 @@ In this guide you will build a maintenance mode implementation with a pre-deploy
 ## Prerequisites
 
 - Flux CD v2 managing Ingress resources in your cluster
-- An Ingress controller (nginx or Traefik) installed
+- An Ingress controller installed (the examples use ingress-nginx; adjust `ingressClassName` and annotations if you use Traefik)
 - kubectl and Flux CLI installed
 - A maintenance page (static HTML served by nginx)
 
 ## Step 1: Create the Maintenance Page Deployment
 
-The maintenance page should always be running, ready to accept traffic when activated.
+The maintenance page should always be running in the same namespace as the Ingress that will route to it, ready to accept traffic when activated.
 
 ```yaml
 # infrastructure/maintenance-mode/deployment.yaml
@@ -34,7 +34,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: maintenance-page
-  namespace: platform-system
+  namespace: team-alpha
   labels:
     app: maintenance-page
 spec:
@@ -49,7 +49,7 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: nginx:1.25-alpine
+          image: nginx:1.30-alpine
           ports:
             - containerPort: 80
           volumeMounts:
@@ -71,7 +71,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: maintenance-page
-  namespace: platform-system
+  namespace: team-alpha
 spec:
   selector:
     app: maintenance-page
@@ -86,7 +86,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: maintenance-page-content
-  namespace: platform-system
+  namespace: team-alpha
 data:
   index.html: |
     <!DOCTYPE html>
@@ -160,15 +160,8 @@ spec:
   value:
     service:
       name: maintenance-page
-      namespace: platform-system
       port:
         number: 80
-- op: add
-  path: /metadata/annotations/nginx.ingress.kubernetes.io~1custom-http-errors
-  value: "503"
-- op: add
-  path: /metadata/annotations/nginx.ingress.kubernetes.io~1default-backend
-  value: platform-system/maintenance-page
 ```
 
 ```yaml
@@ -275,4 +268,4 @@ esac
 
 ## Conclusion
 
-Flux CD's Kustomize overlay system makes maintenance mode a clean, auditable, and reversible operation. By maintaining a pre-deployed maintenance page and two Ingress overlays, switching between normal and maintenance states is a single commit or a single kubectl patch. The transition is fast (within Flux's reconciliation interval), the maintenance page is always ready, and the full history of when maintenance mode was activated and deactivated is preserved in Git.
+Flux CD's Kustomize overlay system makes maintenance mode a clean, auditable, and reversible operation. By maintaining a pre-deployed maintenance page and two Ingress overlays, switching between normal and maintenance states is a single commit or a single kubectl patch. The transition is fast (within Flux's reconciliation interval), the maintenance page is always ready, and when you use the GitOps-native commit workflow, the full history of when maintenance mode was activated and deactivated is preserved in Git.
