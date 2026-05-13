@@ -4,56 +4,64 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable Whisker, Calico's built-in network observability UI, to get a real-time visual view of pod connections, policy decisions, and denied traffic in your Kubernetes cluster.
+Description: Enable Whisker, Calico's built-in network observability UI, to get a real-time browser-based view of aggregated flow logs, policy decisions, and denied traffic in your Kubernetes cluster.
 
 ---
 
 ## Introduction
 
-Whisker is Calico's built-in network observability dashboard that provides real-time visualization of pod-to-pod connections, network policy allow and deny decisions, and traffic flow patterns. Unlike external observability tools, Whisker is built directly into Calico Enterprise and Calico Cloud, requiring no additional infrastructure. Enabling it gives operators immediate visual insight into what's actually happening on the network.
+Whisker is Calico's built-in network observability dashboard that provides a real-time browser-based view of aggregated flow logs, network policy allow and deny decisions, and traffic flow patterns. Unlike external observability tools, Whisker is built directly into Calico, and is powered by the Goldmane flow logs API. Enabling it gives operators immediate visual insight into what's actually happening on the network.
 
 ## Prerequisites
 
-- Calico Enterprise or Calico Cloud installed (Whisker is not available in open-source Calico)
-- Tigera Operator managing the Calico installation
+- Calico Open Source 3.30 or later installed with the Tigera Operator or Helm (Whisker and Goldmane are enabled by default for new installs, but not for clusters upgraded from 3.29 or earlier)
 - kubectl with cluster-admin access
 
-## Step 1: Enable Whisker via Installation CRD
+## Step 1: Enable Goldmane and Whisker
 
 ```yaml
-# Enable Whisker in the Installation resource
-
+# Enable the flow logs API
 apiVersion: operator.tigera.io/v1
-kind: Installation
+kind: Goldmane
 metadata:
   name: default
-spec:
-  # ... other settings ...
-  whisker:
-    enabled: true
+---
+# Enable the Whisker web console
+apiVersion: operator.tigera.io/v1
+kind: Whisker
+metadata:
+  name: default
 ```
 
 ```bash
 # Apply the configuration
-kubectl apply -f installation-with-whisker.yaml
+kubectl apply -f whisker.yaml
 
-# Or patch the existing Installation
-kubectl patch installation default \
-  --type=merge \
-  -p '{"spec":{"whisker":{"enabled":true}}}'
+# Or apply both resources inline
+kubectl apply -f - <<'EOF'
+apiVersion: operator.tigera.io/v1
+kind: Goldmane
+metadata:
+  name: default
+---
+apiVersion: operator.tigera.io/v1
+kind: Whisker
+metadata:
+  name: default
+EOF
 ```
 
 ## Step 2: Verify Whisker Deployment
 
 ```bash
 # Check Whisker pods are running
-kubectl get pods -n calico-system | grep whisker
+kubectl get pods -n calico-system | grep -E 'goldmane|whisker'
 
 # Check Whisker service
 kubectl get svc -n calico-system | grep whisker
 
-# View Whisker logs
-kubectl logs -n calico-system -l app=whisker | tail -20
+# Check operator status for the components
+kubectl get tigerastatus goldmane whisker
 ```
 
 ## Step 3: Access the Whisker Dashboard
@@ -69,19 +77,19 @@ kubectl port-forward -n calico-system svc/whisker 8081:8081
 
 ```mermaid
 flowchart LR
-    A[Felix on each node] -->|flow data| B[Whisker Backend]
-    C[calico-kube-controllers] -->|policy data| B
+    A[Felix on each node] -->|flow data| B[Goldmane flow logs API]
+    C[Policy resources] -->|policy metadata| B
     B --> D[Whisker UI]
-    E[Browser] -->|http://whisker| D
-    D --> F[Pod connection graph]
-    D --> G[Policy decision view]
+    E[Browser] -->|http://localhost:8081| D
+    D --> F[Flow log stream]
+    D --> G[Policy fields]
     D --> H[Denied traffic list]
 ```
 
 ## Step 4: Configure Flow Log Aggregation Level
 
 ```yaml
-# FelixConfiguration: control flow log detail
+# Calico Cloud / Calico Enterprise file-based flow logs: control aggregation detail
 apiVersion: projectcalico.org/v3
 kind: FelixConfiguration
 metadata:
@@ -94,4 +102,4 @@ spec:
 
 ## Conclusion
 
-Enabling Whisker provides immediate network observability without requiring Prometheus, Grafana, or external logging infrastructure. The most valuable feature is the denied traffic view - it shows exactly which network policies are blocking which connections, making policy debugging significantly faster. Enable Whisker in staging first to understand the UI before relying on it in production incidents.
+Enabling Whisker provides immediate network observability without requiring Prometheus, Grafana, or external logging infrastructure. The most valuable feature is the denied traffic view - it shows which network policies are blocking traffic flows, making policy debugging significantly faster. Enable Whisker in staging first to understand the UI before relying on it in production incidents.
