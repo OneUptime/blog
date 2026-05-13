@@ -53,6 +53,7 @@ Alternatively, generate the manifest from the key file:
 ```bash
 kubectl create secret generic ssh-credentials \
   --from-file=ssh-privatekey=deploy-key \
+  --type=kubernetes.io/ssh-auth \
   --namespace=default \
   --dry-run=client -o yaml > ssh-secret.yaml
 ```
@@ -67,7 +68,7 @@ kind: Secret
 metadata:
   name: ssh-credentials
   namespace: default
-type: Opaque
+type: kubernetes.io/ssh-auth
 stringData:
   ssh-privatekey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
@@ -148,8 +149,10 @@ spec:
           env:
             - name: GITSYNC_REPO
               value: "git@github.com:org/private-repo.git"
-            - name: GITSYNC_SSH
-              value: "true"
+            - name: GITSYNC_ROOT
+              value: "/tmp/git"
+            - name: GITSYNC_SSH_KEY_FILE
+              value: "/etc/git-secret/ssh-privatekey"
           volumeMounts:
             - name: ssh-key
               mountPath: /etc/git-secret
@@ -282,7 +285,7 @@ kubectl get secret ssh-credentials -n default
 kubectl exec deployment/git-sync -- ls -la /etc/git-secret/
 
 # Test SSH connectivity from the pod
-kubectl exec deployment/git-sync -- ssh -T git@github.com
+kubectl exec deployment/git-sync -- ssh -i /etc/git-secret/ssh-privatekey -o UserKnownHostsFile=/etc/git-secret/known_hosts -T git@github.com
 ```
 
 ## Conclusion
