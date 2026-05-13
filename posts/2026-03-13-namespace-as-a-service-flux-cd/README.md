@@ -39,9 +39,11 @@ platform-gitops/
     │   └── limit-range.yaml
     └── requests/
         ├── team-alpha-dev/
-        │   └── values.yaml     # Team-specific overrides
+        │   ├── kustomization.yaml   # Team-specific overlay
+        │   └── rbac.yaml            # Team-specific RBAC
         └── team-beta-staging/
-            └── values.yaml
+            ├── kustomization.yaml
+            └── rbac.yaml
 ```
 
 ## Step 2: Build the Base Namespace Template
@@ -157,6 +159,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - rbac.yaml
 patches:
   - patch: |-
       - op: replace
