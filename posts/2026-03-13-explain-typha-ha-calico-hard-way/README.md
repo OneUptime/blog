@@ -16,21 +16,21 @@ Explaining Typha HA to different audiences requires different levels of technica
 
 The key operational question is: "What happens to the cluster if Typha goes down?"
 
-The answer is: "Existing network policy continues to be enforced. New policy changes don't propagate until Typha recovers. Recovery is automatic and takes as long as the pod restart time - typically under 60 seconds."
+The answer is: "Existing network policy continues to be enforced. New policy changes don't propagate to the affected Felix clients until they can connect to Typha again. Recovery is automatic and depends on pod restart and reconnect time."
 
 ```plaintext
 Typha outage impact by replica count:
 
 1 replica → All 500 nodes disconnect simultaneously
-             Policy changes queue for up to 60 seconds
+             Policy changes wait in the datastore until Felix reconnects
              After restart, all 500 nodes reconnect (brief connection storm)
 
 3 replicas → 167 nodes disconnect per failed replica
-              ~2/3 of policy propagation continues uninterrupted
+              ~2/3 of Felix clients continue receiving updates uninterrupted
               No simultaneous mass reconnection storm
 ```
 
-For a single-replica setup, ask: "What is the impact of a 60-second policy propagation delay?" For most clusters, this is acceptable for short outages.
+For a single-replica setup, ask: "What is the impact of a brief policy propagation delay while Felix reconnects?" For most clusters, this is acceptable for short outages.
 
 ## For Development Teams: NetworkPolicy Impact
 
@@ -46,7 +46,11 @@ This can lead to a confusing situation where `kubectl get networkpolicy` shows t
 # Check if Typha is healthy before expecting policy to take effect
 
 kubectl get pods -n calico-system -l k8s-app=calico-typha
-kubectl get endpoints calico-typha -n calico-system
+kubectl get endpointslices -n calico-system -l kubernetes.io/service-name=calico-typha
+
+# In a Calico the hard way installation, use kube-system instead:
+kubectl get pods -n kube-system -l k8s-app=calico-typha
+kubectl get endpointslices -n kube-system -l kubernetes.io/service-name=calico-typha
 ```
 
 ## For Management: Risk Trade-off
@@ -55,8 +59,8 @@ The business case for multiple Typha replicas:
 
 | Configuration | Monthly cost (example) | Risk |
 |--------------|----------------------|------|
-| 1 Typha replica | Baseline | 60s policy propagation delay during pod restart |
-| 3 Typha replicas | 3x compute cost | No propagation delay during any single failure |
+| 1 Typha replica | Baseline | Policy propagation delay during pod restart or reconnect |
+| 3 Typha replicas | 3x compute cost | Most clients keep receiving updates during a single failure; affected clients reconnect to a healthy replica |
 
 The cost is proportional to the number of replicas. For most organizations, 2-3 replicas provides adequate HA at a modest cost increase.
 
@@ -70,8 +74,8 @@ With three replicas, when one replica restarts, only ~167 Felix agents reconnect
 
 ```bash
 # Observe reconnection behavior
-kubectl logs -n calico-system deployment/calico-typha | grep "New connection" | \
-  awk '{print $1, $2}' | uniq -c | head -20
+kubectl logs -n kube-system deployment/calico-typha --all-pods=true --since=10m | \
+  grep "connection" | awk '{print $1, $2}' | uniq -c | head -20
 ```
 
 High counts per second indicate a reconnection storm.
@@ -82,7 +86,7 @@ High counts per second indicate a reconnection storm.
 
 **For development:** "When Typha is down, your NetworkPolicy is like a law that's been passed but not yet enforced - the API accepts it, but the police (Felix) haven't received the update yet."
 
-**For management:** "Three Typha replicas means a single failure causes zero user impact. One replica means a 60-second delay in new security policy enforcement during restarts."
+**For management:** "Three Typha replicas means a single failure does not make Typha unavailable. One replica means new security policy enforcement can be delayed during restarts."
 
 ## Conclusion
 
