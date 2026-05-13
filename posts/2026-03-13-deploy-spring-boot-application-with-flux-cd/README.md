@@ -55,7 +55,8 @@ EXPOSE 8080
 ENTRYPOINT ["java", \
   "-XX:MaxRAMPercentage=75.0", \
   "-XX:+UseContainerSupport", \
-  "org.springframework.boot.loader.launch.JarLauncher"]
+  "-jar", \
+  "application.jar"]
 ```
 
 ```bash
@@ -101,8 +102,7 @@ metadata:
   namespace: my-spring-app
 data:
   SPRING_PROFILES_ACTIVE: "kubernetes"
-  LOG_LEVEL: "INFO"
-  JAVA_OPTS: "-XX:MaxRAMPercentage=75.0"
+  LOGGING_LEVEL_ROOT: "INFO"
 ---
 # deploy/deployment.yaml
 apiVersion: apps/v1
@@ -134,6 +134,16 @@ spec:
                 secretKeyRef:
                   name: spring-secrets
                   key: DATABASE_URL
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: spring-secrets
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: spring-secrets
+                  key: DB_PASSWORD
           resources:
             requests:
               cpu: "500m"
