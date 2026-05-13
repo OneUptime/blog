@@ -8,7 +8,7 @@ Description: Learn how to use Kubernetes cluster labels and Flux post-build vari
 
 ---
 
-Not every resource belongs on every cluster. GPU-specific workloads should only deploy to clusters with GPU nodes. Compliance tools may only be needed in regulated regions. Debug tooling belongs in dev but not production. Flux CD lets you use cluster labels and variable substitution to conditionally control what gets deployed where.
+Not every resource belongs on every cluster. GPU-specific workloads should only deploy to clusters with GPU nodes. Compliance tools may only be needed in regulated regions. Debug tooling belongs in dev but not production. Flux CD lets you use cluster metadata and variable substitution to control what gets deployed where.
 
 ## The Approach
 
@@ -71,7 +71,7 @@ kubectl apply -f cluster-labels-eu-west.yaml
 
 ## Step 2: Configure Flux Variable Substitution
 
-Reference the cluster labels ConfigMap in your Flux Kustomizations using `postBuild.substituteFrom`:
+Reference the cluster labels ConfigMap in your Flux Kustomizations using `postBuild.substituteFrom`. Post-build substitution is applied to the manifests after Kustomize builds the path configured in `spec.path`, so choose the path per cluster and use substitution inside the rendered manifests:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -84,7 +84,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/clusters/${CLUSTER_NAME}
+  path: ./infrastructure/profiles/production-gpu-hipaa
   prune: true
   wait: true
   postBuild:
@@ -297,7 +297,7 @@ data:
 
 ## Step 8: Dynamic Feature Flags
 
-You can use cluster labels as feature flags to enable or disable specific behaviors. Create conditional resources using variable substitution in annotations or labels:
+You can use cluster labels as feature flags to configure specific behaviors in rendered resources. Create separate Flux Kustomizations for feature-specific resources:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -350,10 +350,10 @@ kubectl --context=production-eu-west get pods -n gpu-operator 2>&1
 - Use a consistent naming convention for label keys (e.g., all uppercase with underscores for ConfigMap data)
 - Document which labels enable which features
 - Test label combinations in non-production environments first
-- Use Flux alerts to catch misconfigurations when a cluster is missing expected labels
+- Use Flux alerts together with `--feature-gates=StrictPostBuildSubstitutions=true` on the kustomize-controller to catch misconfigurations when a cluster is missing expected labels
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: substitution-errors
