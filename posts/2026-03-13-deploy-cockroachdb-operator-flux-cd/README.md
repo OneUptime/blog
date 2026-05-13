@@ -16,7 +16,7 @@ Deploying CockroachDB through Flux CD gives you GitOps control over cluster topo
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes v1.30+ with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs (SSDs strongly recommended)
 - `kubectl` and `flux` CLIs installed
 - cert-manager (recommended for TLS certificate management)
@@ -24,7 +24,7 @@ Deploying CockroachDB through Flux CD gives you GitOps control over cluster topo
 ## Step 1: Add the CockroachDB HelmRepository
 
 ```yaml
-# infrastructure/sources/cockroachdb-helm.yaml
+# infrastructure/databases/cockroachdb/cockroachdb-helm.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -33,7 +33,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 12h
-  url: https://charts.cockroachdb.com
+  url: https://charts.cockroachdb.com/v2
 ```
 
 ## Step 2: Deploy the CockroachDB Operator
@@ -51,93 +51,98 @@ metadata:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cockroach-operator
+  name: crdb-operator
   namespace: cockroachdb
 spec:
   interval: 30m
   chart:
     spec:
-      chart: cockroach-operator
-      version: "6.0.13"
+      chart: cockroachdb-operator-chart
+      version: "1.0.0-rc.1"
       sourceRef:
         kind: HelmRepository
         name: cockroachdb
         namespace: flux-system
   install:
-    crds: Create
+    crds: CreateReplace
   upgrade:
     crds: CreateReplace
   values:
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "500m"
-        memory: "256Mi"
+    cloudRegion: us-east-1
 ```
 
 ## Step 3: Create a CrdbCluster
 
 ```yaml
 # infrastructure/databases/cockroachdb/crdb-cluster.yaml
-apiVersion: crdb.cockroachlabs.com/v1alpha1
-kind: CrdbCluster
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
   name: crdb-production
   namespace: cockroachdb
 spec:
-  dataStore:
-    pvc:
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 50Gi
-        storageClassName: premium-ssd
-        volumeMode: Filesystem
-
-  # Number of CockroachDB nodes (minimum 3 for quorum)
-  nodes: 3
-
-  # CockroachDB version
-  cockroachDBVersion: v24.1.3
-
-  resources:
-    requests:
-      cpu: "500m"
-      memory: "2Gi"
-    limits:
-      cpu: "2"
-      memory: "4Gi"
-
-  # TLS: use certificates from cert-manager
-  tlsEnabled: true
-
-  # SQL configuration via startup flags
-  additionalArgs:
-    - "--cache=.25"          # 25% of RAM for cache
-    - "--max-sql-memory=.25" # 25% of RAM for SQL memory
-    - "--locality=region=us-east"
-    # Enable the vectorized SQL execution engine
-    - "--vectorize=on"
-
-  image:
-    name: cockroachdb/cockroach:v24.1.3
-
-  # Expose the cluster via a load balancer
-  ingress:
-    ui:
-      ingressClassName: nginx
-      host: cockroachdb.example.com
-      annotations:
-        nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+  interval: 30m
+  dependsOn:
+    - name: crdb-operator
+  chart:
+    spec:
+      chart: cockroachdb-chart
+      version: "26.1.4"
+      sourceRef:
+        kind: HelmRepository
+        name: cockroachdb
+        namespace: flux-system
+  values:
+    k8s:
+      fullnameOverride: crdb-production
+    cockroachdb:
+      tls:
+        enabled: true
+        selfSigner:
+          enabled: true
+      crdbCluster:
+        image:
+          name: cockroachdb/cockroach:v26.1.4
+        regions:
+          - code: us-east-1
+            nodes: 3
+            cloudProvider: aws
+            namespace: cockroachdb
+        dataStore:
+          volumeClaimTemplate:
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 50Gi
+              storageClassName: premium-ssd
+              volumeMode: Filesystem
+        podTemplate:
+          spec:
+            resources:
+              requests:
+                cpu: "2"
+                memory: "4Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+        startFlags:
+          cache: ".25"
+          max-sql-memory: ".25"
+        service:
+          ingress:
+            enabled: true
+            ui:
+              ingressClassName: nginx
+              host: cockroachdb.example.com
+              annotations:
+                nginx.ingress.kubernetes.io/backend-protocol: HTTPS
 ```
 
 ## Step 4: Initialize the Cluster
 
-After the operator creates the StatefulSet, initialize the cluster and create users:
+After the operator creates the cluster, create users:
 
 ```yaml
 # infrastructure/databases/cockroachdb/init-job.yaml
@@ -151,10 +156,10 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
-      serviceAccountName: cockroach-operator-sa
+      serviceAccountName: crdb-production
       containers:
         - name: init
-          image: cockroachdb/cockroach:v24.1.3
+          image: cockroachdb/cockroach:v26.1.4
           command:
             - /bin/sh
             - -c
@@ -182,8 +187,20 @@ spec:
               readOnly: true
       volumes:
         - name: client-certs
-          secret:
-            secretName: crdb-production-client-secret
+          projected:
+            sources:
+              - configMap:
+                  name: crdb-production-ca-secret-crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - secret:
+                  name: crdb-production-client-secret
+                  items:
+                    - key: tls.crt
+                      path: client.root.crt
+                    - key: tls.key
+                      path: client.root.key
 ```
 
 ## Step 5: Flux Kustomization
@@ -203,9 +220,13 @@ spec:
   path: ./infrastructure/databases/cockroachdb
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: cockroach-operator-manager
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: crdb-operator
+      namespace: cockroachdb
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: crdb-production
       namespace: cockroachdb
 ```
 
@@ -213,7 +234,7 @@ spec:
 
 ```bash
 # Check operator status
-kubectl get deployment cockroach-operator-manager -n cockroachdb
+kubectl get deployment cockroach-operator -n cockroachdb
 
 # Check cluster status
 kubectl get crdbcluster crdb-production -n cockroachdb
@@ -221,12 +242,16 @@ kubectl get crdbcluster crdb-production -n cockroachdb
 # Check all pods
 kubectl get pods -n cockroachdb
 
+POD=$(kubectl get pod -n cockroachdb \
+  -l app.kubernetes.io/instance=crdb-production \
+  -o jsonpath='{.items[0].metadata.name}')
+
 # Access CockroachDB SQL console
-kubectl exec -n cockroachdb crdb-production-0 -- \
-  cockroach sql --insecure --host=localhost:26257
+kubectl exec -n cockroachdb "$POD" -- \
+  cockroach sql --certs-dir=/cockroach/cockroach-certs --host=localhost:26257
 
 # Check cluster health
-kubectl exec -n cockroachdb crdb-production-0 -- \
+kubectl exec -n cockroachdb "$POD" -- \
   cockroach node status --certs-dir=/cockroach/cockroach-certs \
   --host=crdb-production-public.cockroachdb.svc.cluster.local
 
@@ -237,9 +262,9 @@ kubectl port-forward svc/crdb-production-public 8080:8080 -n cockroachdb
 ## Best Practices
 
 - Always run an odd number of CockroachDB nodes (3, 5, 7) to maintain Raft quorum during node failures.
-- Set `--cache=.25` and `--max-sql-memory=.25` to limit CockroachDB's memory usage to 25% of RAM each, leaving room for the OS and other processes.
+- Set `cache: ".25"` and `max-sql-memory: ".25"` in `startFlags` to limit CockroachDB's memory usage to 25% of RAM each, leaving room for the OS and other processes.
 - Use SSD-backed storage classes - CockroachDB's performance degrades significantly on spinning disks.
-- Enable `tlsEnabled: true` and use cert-manager for certificate rotation.
+- Enable `cockroachdb.tls.enabled: true` and use cert-manager or the chart's self-signer for certificate rotation.
 - Monitor the Admin UI dashboard for range lease rebalancing, slow queries, and node health before adding load.
 
 ## Conclusion
