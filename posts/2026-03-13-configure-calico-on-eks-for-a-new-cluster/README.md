@@ -50,8 +50,21 @@ kubectl get nodes -o wide
 Install Calico using the Tigera operator or via direct manifest.
 
 ```bash
-# Install the Tigera Calico operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Configure AWS VPC CNI to annotate pods with their IPs for Calico
+cat << EOF > append.yaml
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - patch
+EOF
+kubectl apply -f <(cat <(kubectl get clusterrole aws-node -o yaml) append.yaml)
+kubectl set env -n kube-system daemonset/aws-node ANNOTATE_POD_IP=true
+
+# Install the Tigera Calico operator and custom resource definitions
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Create the Calico installation resource
 # For EKS with VPC CNI (policy-only mode), configure accordingly
@@ -65,7 +78,8 @@ kind: Installation
 metadata:
   name: default
 spec:
-  # Use the Calico CNI provider in policy-only mode
+  kubernetesProvider: EKS
+  # Use the Amazon VPC CNI provider in policy-only mode
   # This keeps AWS VPC CNI for networking while Calico handles policy
   cni:
     type: AmazonVPC
@@ -92,7 +106,7 @@ Set up `calicoctl` with the correct datastore configuration.
 
 ```bash
 # Download calicoctl
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 \
   -o calicoctl && chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
 # Set the datastore to Kubernetes API
@@ -113,7 +127,7 @@ Deploy workloads and apply Calico network policies.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny-ingress
+  name: default-deny
   namespace: production
 spec:
   podSelector: {}
@@ -131,14 +145,31 @@ metadata:
   name: allow-frontend-backend
   namespace: production
 spec:
-  selector: app == "backend"
+  selector: app in {"frontend", "backend"}
+  types:
+  - Ingress
+  - Egress
   ingress:
   - action: Allow
+    protocol: TCP
     source:
       selector: app == "frontend"
     destination:
-      ports: [8080]
-  - action: Deny
+      ports: [80]
+  egress:
+  - action: Allow
+    protocol: TCP
+    destination:
+      selector: app == "backend"
+      ports: [80]
+  - action: Allow
+    protocol: UDP
+    destination:
+      ports: [53]
+  - action: Allow
+    protocol: TCP
+    destination:
+      ports: [53]
 ```
 
 ```bash
@@ -154,9 +185,10 @@ Test that network policies are being enforced correctly.
 
 ```bash
 # Deploy test pods
-kubectl run frontend --image=nginx -n production -l app=frontend
-kubectl run backend --image=nginx -n production -l app=backend
-kubectl run unrelated --image=nginx -n production -l app=unrelated
+kubectl run frontend --image=curlimages/curl -n production --labels app=frontend --command -- sleep 3600
+kubectl run backend --image=nginx -n production --labels app=backend --port=80
+kubectl run unrelated --image=curlimages/curl -n production --labels app=unrelated --command -- sleep 3600
+kubectl expose pod backend --port=80 --target-port=80 -n production
 
 # Test connectivity - frontend -> backend should work
 kubectl exec -n production frontend -- curl -s --max-time 5 http://backend
