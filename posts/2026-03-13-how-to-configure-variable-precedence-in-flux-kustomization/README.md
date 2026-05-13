@@ -14,7 +14,7 @@ When using post-build substitution in Flux Kustomization, you can define variabl
 
 ## Prerequisites
 
-- A Kubernetes cluster running version 1.25 or later
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux v2.3 or later installed on the cluster
 - kubectl configured to access the cluster
 - A Git repository connected to Flux via a GitRepository source
@@ -179,7 +179,7 @@ Verify the contents of your ConfigMaps and Secrets:
 
 ```bash
 kubectl get configmap base-config -n flux-system -o yaml
-kubectl get secret env-overrides -n flux-system -o jsonpath='{.data}' | jq 'to_entries[] | {key: .key, value: (.value | @base64d)}'
+kubectl get secret env-overrides -n flux-system -o json | jq '.data | to_entries[] | {key: .key, value: (.value | @base64d)}'
 ```
 
 Inspect the applied resource to see the resolved values:
