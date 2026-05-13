@@ -27,6 +27,7 @@ This guide provides practical techniques for migrate ICMP Rules in your Kubernet
 ```bash
 kubectl get networkpolicies --all-namespaces -o yaml > current-policies-backup.yaml
 calicoctl get networkpolicies --all-namespaces -o yaml >> current-policies-backup.yaml
+calicoctl get globalnetworkpolicies -o yaml >> current-policies-backup.yaml
 ```
 
 ## Step 2: Write Calico Replacement Policies
@@ -42,8 +43,11 @@ spec:
   selector: all()
   ingress:
     - action: Allow
+      protocol: ICMP
       source:
         selector: app == 'authorized'
+      icmp:
+        type: 8
   types:
     - Ingress
 ```
