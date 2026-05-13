@@ -14,12 +14,12 @@ Pomerium is an open-source, identity-aware access proxy that implements zero-tru
 
 Pomerium integrates natively with major identity providers-Google Workspace, Okta, Azure AD, GitHub, GitLab, Keycloak, Dex-and exposes a powerful policy language for fine-grained access control. Combined with Flux CD, your entire access proxy configuration-routes, policies, and identity provider settings-is version-controlled in Git, making access control as auditable as your application code.
 
-This guide deploys Pomerium using the official Helm chart with a GitHub identity provider and multiple protected routes.
+This guide deploys Pomerium using the official Helm chart with a GitHub identity provider and multiple protected routes. Pomerium no longer actively updates this Helm chart, so the guide pins the latest published chart version.
 
 ## Prerequisites
 
 - Kubernetes cluster (v1.26+) with Flux CD bootstrapped
-- An Ingress controller OR Pomerium as a standalone ingress (this guide uses standalone mode)
+- An Ingress controller to expose Pomerium (this guide uses NGINX Ingress)
 - A wildcard TLS certificate or cert-manager for `*.example.com`
 - A GitHub OAuth App for authentication
 - `flux` and `kubectl` CLIs configured
@@ -41,8 +41,7 @@ kubectl create namespace pomerium
 kubectl create secret generic pomerium-secrets \
   --namespace pomerium \
   --from-literal=cookie-secret=$(openssl rand -base64 32) \
-  --from-literal=shared-secret=$(openssl rand -hex 32) \
-  --from-literal=signing-key=$(openssl genrsa 2048 | base64 -w 0) \
+  --from-literal=shared-secret=$(openssl rand -base64 32) \
   --from-literal=idp-client-id=your_github_client_id \
   --from-literal=idp-client-secret=your_github_client_secret
 ```
@@ -76,33 +75,38 @@ spec:
   chart:
     spec:
       chart: pomerium
-      version: ">=45.0.0 <46.0.0"
+      version: "34.0.1"
       sourceRef:
         kind: HelmRepository
         name: pomerium
         namespace: flux-system
   values:
     config:
-      # All Pomerium routes are managed in this policy block
-      policy:
-        # Protect Grafana - only GitHub org members can access
+      rootDomain: example.com
+      cookieSecret: ""      # Loaded from pomerium-secrets
+      sharedSecret: ""      # Loaded from pomerium-secrets
+
+      # All Pomerium routes are managed in this routes block
+      routes:
+        # Protect Grafana - only company email domain users can access
         - from: https://grafana.example.com
           to: http://grafana.monitoring.svc.cluster.local:3000
           policy:
             - allow:
                 or:
-                  - github_teams:
-                      - my-org/platform-team
-                      - my-org/devops-team
+                  - domain:
+                      is: example.com
 
-        # Protect the Kubernetes Dashboard - require 2FA (if IdP supports it)
+        # Protect the Kubernetes Dashboard - only named administrators can access
         - from: https://dashboard.example.com
           to: https://kubernetes-dashboard.kube-system.svc.cluster.local
           policy:
             - allow:
                 and:
-                  - github_teams:
-                      - my-org/admins
+                  - email:
+                      in:
+                        - admin1@example.com
+                        - admin2@example.com
           allow_websockets: true
           tls_skip_verify: true   # Dashboard uses self-signed cert
 
@@ -118,21 +122,10 @@ spec:
         clientID: ""         # Loaded from secret via valuesFrom
         clientSecret: ""
         serviceAccount: ""
-
-    # Cookie and shared secret
-    existingCASecret: ""
-    existingSecret: pomerium-secrets
-    cookieSecret: ""         # Loaded from pomerium-secrets
-    sharedSecret: ""
-    signingKey: ""
+      proxied: true
 
     # Pomerium endpoints
-    proxy:
-      enabled: true
-    authorize:
-      enabled: true
     databroker:
-      enabled: true
       storage:
         type: redis
 
@@ -145,6 +138,7 @@ spec:
       secretName: pomerium-tls    # Wildcard cert for *.example.com
       annotations:
         kubernetes.io/ingress.class: nginx
+        nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 
     resources:
       requests:
@@ -159,11 +153,11 @@ spec:
     - kind: Secret
       name: pomerium-secrets
       valuesKey: cookie-secret
-      targetPath: cookieSecret
+      targetPath: config.cookieSecret
     - kind: Secret
       name: pomerium-secrets
       valuesKey: shared-secret
-      targetPath: sharedSecret
+      targetPath: config.sharedSecret
     - kind: Secret
       name: pomerium-secrets
       valuesKey: idp-client-id
@@ -207,7 +201,7 @@ flux get helmreleases -n pomerium --watch
 kubectl get pods -n pomerium
 ```
 
-Open `https://grafana.example.com` in your browser. Pomerium will redirect you to GitHub for authentication. After login, Pomerium verifies your team membership and forwards the request to Grafana if the policy allows it.
+Open `https://grafana.example.com` in your browser. Pomerium will redirect you to GitHub for authentication. After login, Pomerium evaluates the route policy and forwards the request to Grafana if the policy allows it.
 
 The access flow:
 
@@ -235,10 +229,10 @@ sequenceDiagram
 
 ## Best Practices
 
-- Store all policy in Git via the `config.policy` block in Helm values-never apply policy changes manually via the Pomerium console.
-- Use `allowed_domains` instead of `github_teams` when you want to restrict access to a company email domain rather than a specific team.
+- Store all route policy in Git via the `config.routes` block in Helm values-never apply policy changes manually via the Pomerium console.
+- Use the `domain` policy criterion when you want to restrict access to a company email domain. GitHub team membership requires directory data, which is an Enterprise directory sync feature.
 - Enable `pass_identity_headers: true` on routes to forward verified user identity headers (`X-Pomerium-Jwt-Assertion`) to upstream services.
-- Use Redis persistence (`databroker.storage.type: redis`) for high-availability session storage across Pomerium pod restarts.
+- Use Redis or another persistent databroker storage backend for session storage across Pomerium pod restarts.
 - Regularly audit the Pomerium access logs forwarded to your SIEM for unusual access patterns.
 
 ## Conclusion
