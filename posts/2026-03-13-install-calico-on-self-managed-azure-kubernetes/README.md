@@ -57,7 +57,7 @@ az network nsg rule create \
 ## Step 2: Initialize Kubernetes with a Non-Overlapping Pod CIDR
 
 ```bash
-# Initialize kubeadm with a pod CIDR that doesn't overlap with Azure's 10.x.x.x/16
+# Initialize kubeadm with a pod CIDR that doesn't overlap with your Azure VNet or service CIDR
 sudo kubeadm init \
   --pod-network-cidr=192.168.0.0/16 \
   --apiserver-advertise-address=<AZURE_VM_PRIVATE_IP>
@@ -65,13 +65,15 @@ sudo kubeadm init \
 # Configure kubectl
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 
 ## Step 3: Install Calico with VXLAN on Azure
 
 ```bash
-# Install the Tigera Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Install the Calico CRDs and Tigera Operator
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 kubectl wait --for=condition=Available deployment/tigera-operator \
   -n tigera-operator --timeout=120s
@@ -105,8 +107,8 @@ Apply the configuration:
 # Apply the installation
 kubectl apply -f calico-installation-azure.yaml
 
-# Wait for Calico to be ready
-kubectl wait --for=condition=Ready tigerastatus/calico --timeout=300s
+# Wait for Calico to be available
+kubectl wait --for=condition=Available tigerastatus/calico --timeout=300s
 
 # Verify nodes are ready
 kubectl get nodes
@@ -156,7 +158,7 @@ spec:
   egress:
     - action: Allow
       destination:
-        namespaceSelector: kubernetes.io/metadata.name == 'production'
+        namespaceSelector: projectcalico.org/name == 'production'
     - action: Allow
       protocol: UDP
       destination:
