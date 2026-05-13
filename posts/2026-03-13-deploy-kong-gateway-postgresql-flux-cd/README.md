@@ -10,7 +10,7 @@ Description: Deploy Kong API Gateway with a PostgreSQL database backend using Fl
 
 ## Introduction
 
-Kong Gateway is one of the most widely deployed API gateways in Kubernetes environments, offering a rich plugin ecosystem, high-performance proxying, and robust configuration management. When deployed with a PostgreSQL backend, Kong stores its configuration durably in a database, enabling features like the Admin API for dynamic configuration and the Kong Manager UI for visual administration.
+Kong Gateway is one of the most widely deployed API gateways in Kubernetes environments, offering a rich plugin ecosystem, high-performance proxying, and robust configuration management. When deployed with a PostgreSQL backend, Kong stores its configuration durably in a database, enabling features like the Admin API for dynamic configuration and, with the appropriate Kong Gateway setup, the Kong Manager UI for visual administration.
 
 Deploying Kong with PostgreSQL through Flux CD gives you the best of both worlds: Kong's powerful API management features combined with GitOps-driven infrastructure management. Your Kong deployment configuration, service routes, and plugin settings are all version controlled and automatically reconciled, while the database provides the runtime configuration flexibility that database-backed Kong offers.
 
@@ -24,9 +24,9 @@ This guide deploys Kong Gateway in database mode with a managed PostgreSQL insta
 - A storage class for PostgreSQL persistent volumes
 - TLS certificates or cert-manager for HTTPS termination
 
-## Step 1: Add the Kong HelmRepository
+## Step 1: Add the HelmRepositories
 
-Register the Kong Helm chart repository with Flux CD.
+Register the Kong and Bitnami Helm chart repositories with Flux CD.
 
 ```yaml
 # infrastructure/kong/helmrepository.yaml
@@ -39,6 +39,15 @@ metadata:
 spec:
   interval: 1h
   url: https://charts.konghq.com
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.bitnami.com/bitnami
 ```
 
 ## Step 2: Deploy PostgreSQL for Kong
@@ -163,7 +172,6 @@ spec:
     # Ingress controller for managing Kong via Kubernetes resources
     ingressController:
       enabled: true
-      installCRDs: false  # CRDs managed separately
 
     resources:
       requests:
@@ -213,8 +221,8 @@ Validate the Kong deployment and test a basic API route.
 kubectl get pods -n kong
 
 # Verify Kong HelmRelease status
-flux get helmrelease kong -n kong
-flux get helmrelease kong-postgresql -n kong
+flux get helmreleases kong -n kong
+flux get helmreleases kong-postgresql -n kong
 
 # Port-forward to the Admin API
 kubectl port-forward -n kong svc/kong-kong-admin 8001:8001 &
