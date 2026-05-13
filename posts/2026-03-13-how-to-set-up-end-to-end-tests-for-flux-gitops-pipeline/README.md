@@ -88,13 +88,14 @@ spec:
 
 ## Configuring the Test Repository
 
-Set up a test repository with a known structure:
+After creating a public `/test/flux-e2e` repository in Gitea and port-forwarding it with `kubectl port-forward svc/gitea 3000:3000`, set up a test repository with a known structure:
 
 ```bash
 # Initialize test repo
 mkdir -p /tmp/flux-e2e-repo
 cd /tmp/flux-e2e-repo
-git init
+git init --initial-branch=main
+git remote add origin http://localhost:3000/test/flux-e2e.git
 
 # Create base manifests
 mkdir -p apps/base
@@ -129,6 +130,7 @@ resources:
 EOF
 
 git add -A && git commit -m "Initial commit"
+git push -u origin main
 ```
 
 ## Connecting Flux to the Test Repository
@@ -157,13 +159,14 @@ wait_for_condition() {
   local resource=$1
   local condition=$2
   local timeout=$3
+  local namespace=$4
 
-  kubectl wait "$resource" --for="$condition" --timeout="$timeout"
+  kubectl wait "$resource" -n "$namespace" --for="$condition" --timeout="$timeout"
 }
 
 echo "Test 1: Initial deployment"
-wait_for_condition "kustomization/e2e-test -n flux-system" "condition=Ready" "120s"
-wait_for_condition "deployment/test-app -n default" "condition=Available" "120s"
+wait_for_condition "kustomization/e2e-test" "condition=Ready" "120s" "flux-system"
+wait_for_condition "deployment/test-app" "condition=Available" "120s" "default"
 
 REPLICAS=$(kubectl get deployment test-app -n default -o jsonpath='{.spec.replicas}')
 if [ "$REPLICAS" != "1" ]; then
@@ -207,11 +210,9 @@ git add -A && git commit -m "Scale to 3 replicas"
 git push origin main
 
 # Trigger reconciliation
-flux reconcile source git e2e-test -n flux-system
-flux reconcile kustomization e2e-test -n flux-system
+flux reconcile kustomization e2e-test -n flux-system --with-source
 
 # Wait and verify
-sleep 15
 REPLICAS=$(kubectl get deployment test-app -n default -o jsonpath='{.spec.replicas}')
 if [ "$REPLICAS" != "3" ]; then
   echo "FAIL: Expected 3 replicas, got $REPLICAS"
@@ -247,9 +248,7 @@ EOF
 
 git add -A && git commit -m "Add configmap"
 git push origin main
-flux reconcile source git e2e-test -n flux-system
-flux reconcile kustomization e2e-test -n flux-system
-sleep 15
+flux reconcile kustomization e2e-test -n flux-system --with-source
 
 # Verify configmap exists
 kubectl get configmap test-config -n default || { echo "FAIL: ConfigMap not created"; exit 1; }
@@ -265,9 +264,7 @@ EOF
 
 git add -A && git commit -m "Remove configmap"
 git push origin main
-flux reconcile source git e2e-test -n flux-system
-flux reconcile kustomization e2e-test -n flux-system
-sleep 15
+flux reconcile kustomization e2e-test -n flux-system --with-source
 
 # Verify configmap is pruned
 if kubectl get configmap test-config -n default 2>/dev/null; then
@@ -279,7 +276,7 @@ echo "PASS: Resource pruning works correctly"
 
 ## Complete E2E Test Script
 
-Combine all tests into a single runnable script:
+After wrapping the scenarios above in `test_initial_deployment`, `test_update_detection`, and `test_pruning` functions, combine them into a single runnable script:
 
 ```bash
 #!/bin/bash
