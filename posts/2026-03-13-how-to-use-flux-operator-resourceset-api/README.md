@@ -25,7 +25,7 @@ This guide covers the ResourceSet CRD, its input sources, templating syntax, and
 
 A ResourceSet consists of two main parts:
 
-1. **Inputs**: Data sources that provide values for template rendering. These can be inline values, ConfigMaps, or Secrets.
+1. **Inputs**: Data sources that provide values for template rendering. These can be inline values or values exported by ResourceSetInputProvider resources.
 2. **Resources**: Kubernetes resource templates that use `<< inputs.fieldname >>` syntax to reference input values.
 
 ```mermaid
@@ -92,24 +92,22 @@ Apply this ResourceSet:
 kubectl apply -f team-resources.yaml
 ```
 
-## Inputs from ConfigMaps
+## Inputs from ResourceSetInputProviders
 
-Instead of inline data, you can pull input values from ConfigMaps:
+Instead of defining all input data inline, you can reference ResourceSetInputProvider objects with `spec.inputsFrom`. For static values that you want to keep in a separate object, use a ResourceSetInputProvider with `spec.type: Static`:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
 metadata:
   name: tenant-config
   namespace: flux-system
-data:
-  tenants: |
-    - name: "acme"
-      environment: "production"
-      replicas: "3"
-    - name: "globex"
-      environment: "staging"
-      replicas: "1"
+spec:
+  type: Static
+  defaultValues:
+    name: "acme"
+    environment: "production"
+    replicas: "3"
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet
@@ -117,10 +115,9 @@ metadata:
   name: tenant-resources
   namespace: flux-system
 spec:
-  inputs:
-    - configMap:
-        name: tenant-config
-        key: tenants
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      name: tenant-config
   resources:
     - apiVersion: v1
       kind: Namespace
@@ -143,9 +140,9 @@ spec:
         prune: true
 ```
 
-## Inputs from Secrets
+## Copying Data from Secrets
 
-For sensitive configuration data, use Secrets as input sources:
+For sensitive configuration data, generate Secrets by copying data from an existing Secret with the `fluxcd.controlplane.io/copyFrom` annotation:
 
 ```yaml
 apiVersion: v1
@@ -155,13 +152,8 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  databases: |
-    - name: "app-db"
-      host: "db.internal"
-      password: "s3cret"
-    - name: "analytics-db"
-      host: "analytics-db.internal"
-      password: "an0ther"
+  DB_HOST: "db.internal"
+  DB_PASSWORD: "s3cret"
 ---
 apiVersion: fluxcd.controlplane.io/v1
 kind: ResourceSet
@@ -170,19 +162,17 @@ metadata:
   namespace: flux-system
 spec:
   inputs:
-    - secret:
-        name: db-credentials
-        key: databases
+    - name: "app-db"
+    - name: "analytics-db"
   resources:
     - apiVersion: v1
       kind: Secret
       metadata:
         name: "<< inputs.name >>-credentials"
         namespace: app
+        annotations:
+          fluxcd.controlplane.io/copyFrom: "flux-system/db-credentials"
       type: Opaque
-      stringData:
-        DB_HOST: "<< inputs.host >>"
-        DB_PASSWORD: "<< inputs.password >>"
 ```
 
 ## Template Functions
@@ -208,7 +198,7 @@ The ResourceSet controller manages the lifecycle of generated resources:
 - **Creation**: Resources are created when the ResourceSet is applied.
 - **Updates**: When inputs change, resources are updated accordingly.
 - **Deletion**: When an input entry is removed, the corresponding generated resources are deleted.
-- **Ownership**: Generated resources are owned by the ResourceSet. Deleting the ResourceSet deletes all generated resources.
+- **Inventory and garbage collection**: Generated resources are tracked in the ResourceSet inventory. Deleting the ResourceSet deletes the generated resources unless garbage collection is disabled with the supported prune annotation.
 
 ## Verifying ResourceSet Status
 
@@ -227,4 +217,4 @@ kubectl get resourceset team-resources -n flux-system -o jsonpath='{.status.cond
 
 ## Conclusion
 
-The Flux Operator ResourceSet API brings dynamic resource generation to your GitOps workflow. By separating data from templates, you can manage multiple teams, tenants, or environments without duplicating manifests. Use inline data for simple cases, ConfigMaps for structured configuration, and Secrets for sensitive values. The ResourceSet controller handles the full lifecycle of generated resources, ensuring they stay in sync with your input data.
+The Flux Operator ResourceSet API brings dynamic resource generation to your GitOps workflow. By separating data from templates, you can manage multiple teams, tenants, or environments without duplicating manifests. Use inline data for simple cases, ResourceSetInputProviders for decoupled or externally generated inputs, and Secret copy annotations for sensitive data that must be propagated into generated resources. The ResourceSet controller handles the full lifecycle of generated resources, ensuring they stay in sync with your input data.
