@@ -8,7 +8,7 @@ Description: Learn how to manage cluster-specific secrets in a multi-cluster Flu
 
 ---
 
-Storing secrets in Git is a fundamental requirement for GitOps, but doing so securely across multiple clusters requires careful key management. Mozilla SOPS integrated with Flux lets you encrypt secrets in your repository and decrypt them at reconciliation time using cluster-specific keys. This guide walks you through setting up SOPS with Flux for a multi-cluster environment where each cluster has its own encryption keys.
+Storing secrets in Git is a common requirement for GitOps, but doing so securely across multiple clusters requires careful key management. Mozilla SOPS integrated with Flux lets you encrypt secrets in your repository and decrypt them at reconciliation time using cluster-specific keys. This guide walks you through setting up SOPS with Flux for a multi-cluster environment where each cluster has its own encryption keys.
 
 ## How SOPS Works with Flux
 
@@ -27,9 +27,9 @@ graph LR
 
 ```text
 repo/
+├── .sops.yaml
 ├── infrastructure/
 │   └── secrets/
-│       ├── .sops.yaml
 │       ├── staging/
 │       │   ├── database-credentials.yaml
 │       │   ├── api-keys.yaml
@@ -63,8 +63,8 @@ age-keygen -o production.agekey
 # Output: public key: age1production...
 
 # Store the public keys for reference
-echo "Staging: $(grep 'public key' staging.agekey | cut -d: -f2 | tr -d ' ')"
-echo "Production: $(grep 'public key' production.agekey | cut -d: -f2 | tr -d ' ')"
+echo "Staging: $(age-keygen -y staging.agekey)"
+echo "Production: $(age-keygen -y production.agekey)"
 ```
 
 ## Configuring SOPS Rules Per Cluster
@@ -247,7 +247,7 @@ metadata:
 When you need to rotate secrets, edit the encrypted file and re-encrypt:
 
 ```bash
-# Decrypt in place for editing
+# Edit the file through SOPS, which decrypts it in your editor and re-encrypts on save
 sops infrastructure/secrets/production/database-credentials.yaml
 
 # This opens your editor with the decrypted content
@@ -267,9 +267,14 @@ When you need to rotate the age key for a cluster:
 age-keygen -o production-new.agekey
 
 # Update .sops.yaml with the new public key
-# Then re-encrypt all production secrets with the new key
+# Then update and rotate all production secrets with the new key
+export SOPS_AGE_KEY_FILE=production.agekey
 find infrastructure/secrets/production -name "*.yaml" -exec \
-  sops updatekeys {} \;
+  sops updatekeys -y {} \;
+
+export SOPS_AGE_KEY_FILE=production-new.agekey
+find infrastructure/secrets/production -name "*.yaml" -exec \
+  sops rotate -i {} \;
 
 # Install the new key in the cluster
 kubectl --context production delete secret sops-age -n flux-system
@@ -283,7 +288,7 @@ flux reconcile kustomization secrets -n flux-system --context production
 
 ## Combining SOPS Secrets with Variable Substitution
 
-You can use SOPS-encrypted Secrets as variable sources in Flux post-build substitution:
+You can use previously reconciled SOPS-encrypted Secrets as variable sources in Flux post-build substitution. The Secret referenced by `substituteFrom` must already exist in the same namespace as the Kustomization, so reconcile it with a separate Kustomization before using it as a variable source:
 
 ```yaml
 # Encrypted secret that provides variables
