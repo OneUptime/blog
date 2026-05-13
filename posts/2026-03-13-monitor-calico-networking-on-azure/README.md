@@ -4,24 +4,26 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Azure, Cloud, Monitoring, Observability
 
-Description: Set up monitoring for Calico networking on Azure using NSG flow logs, Felix metrics, and Azure Monitor to maintain visibility into pod network health and security policy enforcement.
+Description: Set up monitoring for Calico networking on Azure using virtual network flow logs, Felix metrics, and Azure Monitor to maintain visibility into pod network health and security policy enforcement.
 
 ---
 
 ## Introduction
 
-Monitoring Calico on Azure combines the platform-level visibility of Azure NSG Flow Logs and Azure Monitor with Calico's Felix metrics. NSG Flow Logs capture all traffic allowed or denied at the Azure network layer, providing an audit trail and anomaly detection source that is independent of Calico itself. Felix metrics provide deep insight into policy enforcement at the pod level.
+Monitoring Calico on Azure combines the platform-level visibility of Azure virtual network flow logs and Azure Monitor with Calico's Felix metrics. Virtual network flow logs capture allowed and denied IP traffic at the Azure network layer, providing an audit trail and anomaly detection source that is independent of Calico itself. Felix metrics provide deep insight into policy enforcement at the pod level.
 
 On Azure, it's particularly valuable to monitor for IP Forwarding configuration drift - if IP Forwarding gets disabled on a VM NIC (which can happen during certain Azure maintenance operations or VM recreations), pod networking silently breaks.
 
 ## Prerequisites
 
 - Calico on Azure with Felix metrics enabled
-- Azure Monitor and NSG Flow Logs configured
+- Azure Monitor and virtual network flow logs configured
 - Prometheus and Grafana deployed
 - Azure CLI access
 
-## Step 1: Enable NSG Flow Logs
+## Step 1: Enable Virtual Network Flow Logs
+
+Azure NSG flow logs are being retired and can no longer be created for new deployments. Use virtual network flow logs for new monitoring setups.
 
 ```bash
 # Create storage account for flow logs
@@ -32,15 +34,19 @@ az storage account create \
   --location eastus \
   --sku Standard_LRS
 
-# Enable NSG flow logs
+# Enable virtual network flow logs with Traffic Analytics
 az network watcher flow-log create \
   --resource-group k8s-rg \
-  --nsg k8s-workers-nsg \
+  --location eastus \
+  --name k8s-vnet-flowlog \
+  --vnet k8s-vnet \
   --storage-account k8sflowlogs \
   --enabled true \
   --retention 7 \
   --format JSON \
-  --log-version 2
+  --log-version 2 \
+  --traffic-analytics true \
+  --workspace k8s-law
 ```
 
 ## Step 2: Enable Felix Metrics
@@ -96,7 +102,7 @@ spec:
 ```mermaid
 graph LR
     A[Felix Metrics :9091] --> B[Prometheus]
-    C[NSG Flow Logs] --> D[Azure Monitor]
+    C[Virtual Network Flow Logs] --> D[Azure Monitor]
     B --> E[Grafana Dashboard]
     D --> E
     B --> F[AlertManager]
@@ -112,33 +118,33 @@ graph LR
   annotations:
     summary: "Felix reports 0 active endpoints on {{ $labels.node }} - possible IP forwarding issue"
 
-- alert: CalicoAzureHighDropRate
-  expr: rate(felix_policy_dropped_packets_total[5m]) > 100
+- alert: CalicoAzureDataplaneFailures
+  expr: increase(felix_int_dataplane_failures[5m]) > 0
   for: 2m
   labels:
     severity: warning
   annotations:
-    summary: "High Calico policy drop rate on Azure node {{ $labels.node }}"
+    summary: "Felix dataplane update failures on Azure node {{ $labels.node }}"
 ```
 
 ## Step 5: Azure Monitor Dashboard
 
-Use Azure Monitor workbooks to visualize NSG Flow Log data:
+Use Azure Monitor workbooks to visualize virtual network flow log data:
 
 ```bash
 # Query Flow Logs for denied traffic
 az monitor log-analytics query \
   --workspace $WORKSPACE_ID \
   --analytics-query "
-AzureNetworkAnalytics_CL
-| where SubType_s == 'FlowLog'
-| where FlowStatus_s == 'D'
-| where SrcIP_s startswith '192.168.'
-| summarize count() by SrcIP_s, DestIP_s
+NTANetAnalytics
+| where SubType == 'FlowLog'
+| where FlowStatus == 'D'
+| where SrcIp startswith '192.168.'
+| summarize count() by SrcIp, DestIp
 | top 10 by count_
 "
 ```
 
 ## Conclusion
 
-Monitoring Calico on Azure requires tracking both Azure platform settings (IP Forwarding per VM) and Calico runtime metrics (Felix endpoints, drop rates). NSG Flow Logs provide independent network-layer visibility that can detect issues even when Calico's own metrics look healthy. Automated IP Forwarding checks run as CronJobs provide proactive detection of platform-level configuration drift that would otherwise silently break pod networking.
+Monitoring Calico on Azure requires tracking both Azure platform settings (IP Forwarding per VM) and Calico runtime metrics (Felix endpoints, dataplane failures). Virtual network flow logs provide independent network-layer visibility that can detect issues even when Calico's own metrics look healthy. Automated IP Forwarding checks run as CronJobs provide proactive detection of platform-level configuration drift that would otherwise silently break pod networking.
