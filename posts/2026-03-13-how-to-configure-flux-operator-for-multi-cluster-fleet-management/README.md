@@ -138,8 +138,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - flux-instance-patch.yaml
+patches:
+  - path: flux-instance-patch.yaml
 ```
 
 Development cluster with lightweight configuration:
@@ -175,12 +175,9 @@ Each cluster needs an initial bootstrap that installs the Flux Operator and crea
 # Bootstrap a cluster with the Flux Operator and initial FluxInstance
 
 CLUSTER_NAME=$1
-GIT_REPO="https://github.com/myorg/fleet-infra.git"
 
 # Install the Flux Operator
-helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
-helm repo update
-helm install flux-operator fluxcd-community/flux-operator \
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
   --namespace flux-system \
   --create-namespace
 
@@ -272,14 +269,14 @@ spec:
     - name: flux-fleet
       rules:
         - alert: FluxInstanceNotReady
-          expr: flux_instance_ready == 0
+          expr: flux_instance_info{ready!="True"} == 1
           for: 5m
           labels:
             severity: critical
           annotations:
             summary: "FluxInstance not ready on cluster {{ $labels.cluster }}"
         - alert: FluxVersionDrift
-          expr: count(count by (version) (flux_instance_info)) > 1
+          expr: count(count by (revision) (flux_instance_info)) > 1
           for: 24h
           labels:
             severity: warning
