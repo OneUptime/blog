@@ -47,18 +47,24 @@ For each SOPS-encrypted secret, decrypt it locally and upload to AWS Secrets Man
 
 ```bash
 # Decrypt a SOPS file and upload to AWS Secrets Manager
-sops -d clusters/my-cluster/apps/myapp/db-secret.enc.yaml | \
-  kubectl get -f - -o json | \
-  jq '.data | map_values(@base64d)' | \
-  aws secretsmanager create-secret \
-    --name myapp/database \
-    --secret-string "$(cat -)"
+secret_json="$(sops -d clusters/my-cluster/apps/myapp/db-secret.enc.yaml | \
+  kubectl create --dry-run=client -f - -o json | \
+  jq -c '{password: (.data["db-password"] | @base64d)}')"
+
+aws secretsmanager create-secret \
+  --name myapp/database \
+  --secret-string "$secret_json"
+
+unset secret_json
 
 # For HashiCorp Vault
-sops -d clusters/my-cluster/apps/myapp/api-secret.enc.yaml | \
-  kubectl get -f - -o json | \
-  jq '.data | map_values(@base64d)' | \
-  vault kv put secret/myapp/api -
+api_key="$(sops -d clusters/my-cluster/apps/myapp/api-secret.enc.yaml | \
+  kubectl create --dry-run=client -f - -o json | \
+  jq -r '.data["api-key"] | @base64d')"
+
+vault kv put secret/myapp/api api-key="$api_key"
+
+unset api_key
 ```
 
 ## Step 3: Deploy ESO and Configure SecretStore (if not already done)
@@ -85,7 +91,7 @@ Run both systems in parallel during the migration. Create `ExternalSecret` resou
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-db-migration
@@ -98,7 +104,7 @@ spec:
   target:
     # Target the SAME secret name as the SOPS-managed Secret
     name: myapp-db-secret
-    # Use Merge to avoid conflicts with the existing SOPS-created Secret
+    # Use Merge because the SOPS-created Secret must already exist
     creationPolicy: Merge
   data:
     - secretKey: db-password
@@ -113,7 +119,12 @@ spec:
 # Check the ExternalSecret status
 kubectl get externalsecret myapp-db-migration -n default
 
-# Compare values: SOPS-managed vs ESO-managed
+# Confirm the synced Kubernetes Secret value matches AWS Secrets Manager
+aws secretsmanager get-secret-value \
+  --secret-id myapp/database \
+  --query SecretString \
+  --output text | jq -r '.password'
+
 kubectl get secret myapp-db-secret -n default \
   -o jsonpath='{.data.db-password}' | base64 -d
 ```
@@ -124,7 +135,7 @@ Once validated, switch the `creationPolicy` to `Owner` and remove the SOPS-encry
 
 ```yaml
 # clusters/my-cluster/apps/myapp/externalsecret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-db
@@ -158,21 +169,31 @@ git push
 
 Once all secrets are migrated, remove the SOPS decryption key reference from Flux:
 
-```bash
-# After all secrets are migrated and validated
-flux delete source git flux-system
-# Re-bootstrap without SOPS decryption configuration
-flux bootstrap github \
-  --owner=my-org \
-  --repository=my-fleet \
-  --branch=main \
-  --path=clusters/my-cluster
+```yaml
+# clusters/my-cluster/flux-system/gotk-sync.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./clusters/my-cluster
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # Remove this block after all SOPS-encrypted resources are gone:
+  # decryption:
+  #   provider: sops
+  #   secretRef:
+  #     name: sops-age
 ```
 
 ## Best Practices
 
 - Migrate one application at a time and validate before proceeding to the next, rather than migrating all secrets at once.
-- Use `creationPolicy: Merge` during the parallel run phase to avoid conflicts between SOPS and ESO managing the same Secret.
+- Use `creationPolicy: Merge` during the parallel run phase only when the SOPS-created Secret already exists, and keep the external value identical to the SOPS value before cutover.
 - Keep SOPS-encrypted files in Git until you have confirmed ESO is reliably syncing and the application is working correctly.
 - After the migration, revoke SOPS keys that are no longer needed to reduce your cryptographic attack surface.
 - Document the migration in your runbooks: record which secrets were migrated, their new paths in the external store, and the date of cutover.
