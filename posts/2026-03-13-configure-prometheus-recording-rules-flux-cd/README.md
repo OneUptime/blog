@@ -101,7 +101,12 @@ spec:
 
     # Pre-compute pod count per node (used in capacity planning dashboards)
     - record: node:kube_pod_info:count
-      expr: count by (node) (kube_pod_info{phase="Running"})
+      expr: |
+        sum by (node) (
+          kube_pod_info
+          * on (namespace, pod, uid)
+          (kube_pod_status_phase{phase="Running"} == 1)
+        )
 ```
 
 ## Step 3: Organize Recording Rules with Kustomize
