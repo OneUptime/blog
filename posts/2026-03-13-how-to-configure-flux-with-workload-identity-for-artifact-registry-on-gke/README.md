@@ -17,7 +17,7 @@ Before you begin, ensure you have the following:
 - A GKE cluster with Workload Identity enabled
 - Flux installed on the cluster (v2.0 or later)
 - Google Cloud CLI (`gcloud`) configured with appropriate permissions
-- An Artifact Registry repository (Docker or Helm format)
+- A Docker-format Artifact Registry repository for Helm charts or OCI artifacts
 - `kubectl` configured to access your GKE cluster
 
 ## Step 1: Enable Workload Identity on Your GKE Cluster
@@ -96,7 +96,7 @@ gcloud artifacts repositories create helm-charts \
 
 ## Step 6: Define a HelmRepository Using OCI
 
-Create a `HelmRepository` resource that points to your Artifact Registry. With Workload Identity configured, you set the provider to `gcp` so Flux authenticates automatically:
+Create a `HelmRepository` resource that points to your Artifact Registry. With Workload Identity configured, you set the provider to `gcp` so Flux authenticates automatically when a Helm chart is pulled:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -164,16 +164,18 @@ kubectl apply -f helmrepository.yaml
 kubectl apply -f helmrelease.yaml
 ```
 
-Check the status of the HelmRepository:
+For an OCI HelmRepository, Flux treats the object as repository configuration for Helm chart pulls and does not fetch an index or report a `Ready` status. Check that the HelmRelease becomes ready instead:
 
 ```bash
-kubectl get helmrepository my-charts -n flux-system
+kubectl get helmrelease my-app -n default
 ```
 
-You should see `READY: True` if authentication is working. If it shows `False`, inspect the events:
+You should see `READY: True` if authentication is working. If it shows `False`, inspect the HelmRelease and generated HelmChart resources:
 
 ```bash
-kubectl describe helmrepository my-charts -n flux-system
+kubectl describe helmrelease my-app -n default
+kubectl get helmchart -n flux-system
+kubectl describe helmchart -n flux-system
 ```
 
 Check the source-controller logs for any authentication errors:
