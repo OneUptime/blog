@@ -10,7 +10,7 @@ Description: Deploy the Crossplane AWS provider using Flux CD GitOps so that Kub
 
 ## Introduction
 
-The Crossplane AWS provider is the bridge between your Kubernetes cluster and your AWS account. Once installed, it registers custom resource definitions for hundreds of AWS services, from EC2 instances and VPCs to RDS databases and IAM roles. Managing this provider through Flux means its installation, configuration, and credentials are all version-controlled and continuously reconciled.
+The Crossplane AWS provider is the bridge between your Kubernetes cluster and your AWS account. Once installed, the service-specific providers register custom resource definitions for AWS services, from EC2 instances and VPCs to RDS databases and IAM roles. Managing these providers through Flux means their installation, configuration, and credentials are all version-controlled and continuously reconciled.
 
 Without GitOps, provider installation is a manual imperative step that is easy to forget during disaster recovery or cluster rebuilds. With Flux managing the provider as a declarative resource, any new cluster bootstrapped from the same Git repository automatically receives the correct provider version and configuration.
 
@@ -33,7 +33,7 @@ mkdir -p infrastructure/crossplane/providers/aws
 
 ## Step 2: Install the AWS Provider Family
 
-Use the `provider-family-aws` package, which installs the provider controller and registers all AWS sub-providers.
+Use the `provider-family-aws` package, which provides shared AWS configuration and authentication for the AWS provider family. Service-specific providers can also install it as a dependency, but declaring it explicitly keeps the dependency version visible in Git.
 
 ```yaml
 # infrastructure/crossplane/providers/aws/provider.yaml
@@ -43,8 +43,8 @@ kind: Provider
 metadata:
   name: provider-family-aws
 spec:
-  # Official Crossplane AWS provider package from Upbound
-  package: xpkg.upbound.io/upbound/provider-family-aws:v1.7.0
+  # Crossplane community AWS provider package
+  package: xpkg.crossplane.io/crossplane-contrib/provider-family-aws:v1.21.1
   # Install policy controls automatic upgrades
   packagePullPolicy: IfNotPresent
   # Revision activation policy: Automatic applies new versions immediately
@@ -64,7 +64,7 @@ kind: Provider
 metadata:
   name: provider-aws-ec2
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.7.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-ec2:v1.21.1
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
 
@@ -75,7 +75,7 @@ kind: Provider
 metadata:
   name: provider-aws-rds
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-rds:v1.7.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-rds:v1.21.1
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
 
@@ -86,7 +86,7 @@ kind: Provider
 metadata:
   name: provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.7.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-s3:v1.21.1
   packagePullPolicy: IfNotPresent
   revisionActivationPolicy: Automatic
 ```
@@ -129,9 +129,6 @@ spec:
       namespace: crossplane-system
       name: aws-provider-credentials
       key: credentials
-  # Default AWS region for all managed resources
-  assumeRoleChain:
-    - roleARN: ""
 ```
 
 ## Step 6: Create the Flux Kustomization for AWS Providers
@@ -157,6 +154,15 @@ spec:
     - apiVersion: pkg.crossplane.io/v1
       kind: Provider
       name: provider-family-aws
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      name: provider-aws-ec2
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      name: provider-aws-rds
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      name: provider-aws-s3
 ```
 
 ## Step 7: Verify Provider Health
