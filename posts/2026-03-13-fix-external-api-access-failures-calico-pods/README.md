@@ -10,7 +10,7 @@ Description: Fix external API access failures from Calico pods by adding targete
 
 ## Introduction
 
-External API access failures are fixed by addressing the specific blocking layer: missing egress network policy rules for HTTPS traffic, disabled NAT causing API servers to reject non-routable source IPs, or DNS failures preventing hostname resolution. Each fix is safe to apply independently without disrupting other traffic.
+External API access failures are fixed by addressing the specific blocking layer: missing egress network policy rules for HTTPS traffic, disabled NAT causing API servers to reject non-routable source IPs, or DNS failures preventing hostname resolution. Test each fix independently, and review the policy selector or IP pool scope before applying changes to production traffic.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ calicoctl apply -f fix-external-api-egress.yaml
 calicoctl get networkpolicy allow-external-api-egress -n production -o yaml
 
 # Test immediately
-kubectl run api-test --image=nicolaka/netshoot --rm -it --restart=Never -- \
+kubectl run api-test --image=nicolaka/netshoot -n production --rm -it --restart=Never -- \
   curl -s --connect-timeout 10 https://api.example.com
 ```
 
@@ -69,16 +69,17 @@ If the external API server rejects connections because it sees a non-routable po
 
 ```bash
 # Check current NAT state
-calicoctl get ippool default-ipv4-ippool -o jsonpath='{.spec.natOutgoing}'
+calicoctl get ippool default-ipv4-ippool -o yaml
+# Inspect spec.natOutgoing in the output
 
 # Enable NAT outgoing
 calicoctl patch ippool default-ipv4-ippool \
   --patch '{"spec": {"natOutgoing": true}}'
 
-# Verify pods now appear with node IP to external services
-kubectl run source-ip-test --image=nicolaka/netshoot --rm -it --restart=Never -- \
+# Verify pods no longer appear with their pod IP to external services
+kubectl run source-ip-test --image=nicolaka/netshoot -n production --rm -it --restart=Never -- \
   curl -s https://ifconfig.me
-# Should return the node IP, not a pod IP
+# Should return the node egress IP, or an upstream NAT IP, not a pod IP
 ```
 
 ## Step 3: Fix - Add Specific API Endpoint to Egress Policy
@@ -102,6 +103,10 @@ spec:
       protocol: UDP
       destination:
         ports: [53]
+    - action: Allow
+      protocol: TCP
+      destination:
+        ports: [53]
     # Allow only the specific API endpoint by IP range
     - action: Allow
       protocol: TCP
@@ -120,12 +125,8 @@ calicoctl apply -f fix-specific-api-egress.yaml
 If the cluster uses a corporate proxy that performs HTTPS inspection, configure pods to use the proxy.
 
 ```yaml
-# Patch the deployment to use the corporate proxy
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: backend
-  namespace: production
+# proxy-config.yaml
+# Strategic merge patch for the backend deployment
 spec:
   template:
     spec:
@@ -140,7 +141,8 @@ spec:
 
 ```bash
 # Apply the proxy configuration
-kubectl apply -f proxy-config.yaml
+kubectl patch deployment backend -n production \
+  --type='strategic' --patch-file proxy-config.yaml
 
 # Also add the proxy CA certificate to the pod's trust store
 # (depends on your application framework)
@@ -181,7 +183,7 @@ kubectl delete pod api-validate -n "${NAMESPACE}" --ignore-not-found
 
 ## Best Practices
 
-- Add DNS egress rules before HTTPS egress rules - HTTPS calls fail silently if DNS is blocked
+- Add DNS egress rules before HTTPS egress rules - HTTPS calls fail before connecting if DNS is blocked
 - Use namespace-scoped NetworkPolicies for per-team API access rather than global policies when teams have different external API requirements
 - Audit egress allow rules quarterly to remove rules for APIs that are no longer used
 - Monitor external API call success rates with OneUptime to catch policy-related regressions quickly
