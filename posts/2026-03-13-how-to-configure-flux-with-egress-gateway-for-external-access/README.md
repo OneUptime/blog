@@ -10,7 +10,7 @@ Description: Route all Flux external traffic through an egress gateway for centr
 
 In many enterprise environments, outbound traffic from Kubernetes clusters must pass through a controlled exit point for auditing, compliance, and security. An egress gateway provides this control by acting as a single point through which all external traffic flows. Instead of allowing each Flux controller to connect directly to external services like GitHub or Docker Hub, you route their traffic through an egress gateway where it can be logged, filtered, and monitored.
 
-This guide covers configuring Flux to use an Istio egress gateway for all external access, including Git repository cloning, container registry pulls, and notification webhook deliveries.
+This guide covers configuring Flux to use an Istio egress gateway for external access, including Git repository cloning, Flux OCI and image metadata registry access, and notification webhook deliveries.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ This guide covers configuring Flux to use an Istio egress gateway for all extern
 - Istio installed with the egress gateway component enabled
 - Flux installed in the flux-system namespace with Istio sidecars injected
 - kubectl and istioctl configured
-- Istio configured with `meshConfig.outboundTrafficPolicy.mode: REGISTRY_ONLY` to block direct external access
+- Istio configured with `meshConfig.outboundTrafficPolicy.mode: REGISTRY_ONLY` so undeclared external destinations fail unless they are registered with a `ServiceEntry`
 
 Verify the egress gateway is running:
 
@@ -26,7 +26,7 @@ Verify the egress gateway is running:
 kubectl get pods -n istio-system -l istio=egressgateway
 ```
 
-Verify Istio is configured to block unmeshed external traffic:
+Verify Istio is configured to fail traffic to unknown external destinations:
 
 ```bash
 kubectl get configmap istio -n istio-system -o yaml | grep outboundTrafficPolicy -A2
@@ -46,7 +46,7 @@ kubectl get pods -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{"
 
 ## Step 1: Create ServiceEntry Resources for External Endpoints
 
-Define the external services Flux needs to reach. Without these, the REGISTRY_ONLY policy blocks all external connections:
+Define the external services Flux needs to reach. Without these, the `REGISTRY_ONLY` mode drops unknown external destinations:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -166,12 +166,11 @@ Route traffic from Flux pods to the egress gateway, then from the egress gateway
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: github-via-egress
+  name: github-com-via-egress
   namespace: flux-system
 spec:
   hosts:
     - github.com
-    - api.github.com
   gateways:
     - flux-egress-gateway
     - mesh
@@ -182,7 +181,6 @@ spec:
           port: 443
           sniHosts:
             - github.com
-            - api.github.com
       route:
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
@@ -194,10 +192,44 @@ spec:
           port: 443
           sniHosts:
             - github.com
-            - api.github.com
       route:
         - destination:
             host: github.com
+            port:
+              number: 443
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: api-github-com-via-egress
+  namespace: flux-system
+spec:
+  hosts:
+    - api.github.com
+  gateways:
+    - flux-egress-gateway
+    - mesh
+  tls:
+    - match:
+        - gateways:
+            - mesh
+          port: 443
+          sniHosts:
+            - api.github.com
+      route:
+        - destination:
+            host: istio-egressgateway.istio-system.svc.cluster.local
+            port:
+              number: 443
+    - match:
+        - gateways:
+            - flux-egress-gateway
+          port: 443
+          sniHosts:
+            - api.github.com
+      route:
+        - destination:
+            host: api.github.com
             port:
               number: 443
 ---
@@ -239,13 +271,11 @@ spec:
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: dockerhub-via-egress
+  name: registry-1-docker-io-via-egress
   namespace: flux-system
 spec:
   hosts:
     - registry-1.docker.io
-    - auth.docker.io
-    - production.cloudflare.docker.com
   gateways:
     - flux-egress-gateway
     - mesh
@@ -256,8 +286,6 @@ spec:
           port: 443
           sniHosts:
             - registry-1.docker.io
-            - auth.docker.io
-            - production.cloudflare.docker.com
       route:
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
@@ -269,11 +297,79 @@ spec:
           port: 443
           sniHosts:
             - registry-1.docker.io
-            - auth.docker.io
-            - production.cloudflare.docker.com
       route:
         - destination:
             host: registry-1.docker.io
+            port:
+              number: 443
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: auth-docker-io-via-egress
+  namespace: flux-system
+spec:
+  hosts:
+    - auth.docker.io
+  gateways:
+    - flux-egress-gateway
+    - mesh
+  tls:
+    - match:
+        - gateways:
+            - mesh
+          port: 443
+          sniHosts:
+            - auth.docker.io
+      route:
+        - destination:
+            host: istio-egressgateway.istio-system.svc.cluster.local
+            port:
+              number: 443
+    - match:
+        - gateways:
+            - flux-egress-gateway
+          port: 443
+          sniHosts:
+            - auth.docker.io
+      route:
+        - destination:
+            host: auth.docker.io
+            port:
+              number: 443
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: production-cloudflare-docker-com-via-egress
+  namespace: flux-system
+spec:
+  hosts:
+    - production.cloudflare.docker.com
+  gateways:
+    - flux-egress-gateway
+    - mesh
+  tls:
+    - match:
+        - gateways:
+            - mesh
+          port: 443
+          sniHosts:
+            - production.cloudflare.docker.com
+      route:
+        - destination:
+            host: istio-egressgateway.istio-system.svc.cluster.local
+            port:
+              number: 443
+    - match:
+        - gateways:
+            - flux-egress-gateway
+          port: 443
+          sniHosts:
+            - production.cloudflare.docker.com
+      route:
+        - destination:
+            host: production.cloudflare.docker.com
             port:
               number: 443
 ---
@@ -311,6 +407,41 @@ spec:
             host: hooks.slack.com
             port:
               number: 443
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: pagerduty-via-egress
+  namespace: flux-system
+spec:
+  hosts:
+    - events.pagerduty.com
+  gateways:
+    - flux-egress-gateway
+    - mesh
+  tls:
+    - match:
+        - gateways:
+            - mesh
+          port: 443
+          sniHosts:
+            - events.pagerduty.com
+      route:
+        - destination:
+            host: istio-egressgateway.istio-system.svc.cluster.local
+            port:
+              number: 443
+    - match:
+        - gateways:
+            - flux-egress-gateway
+          port: 443
+          sniHosts:
+            - events.pagerduty.com
+      route:
+        - destination:
+            host: events.pagerduty.com
+            port:
+              number: 443
 ```
 
 ```bash
@@ -319,7 +450,7 @@ kubectl apply -f flux-virtual-services.yaml
 
 ## Step 4: Add Network Policies to Enforce Gateway Routing
 
-Use NetworkPolicies to ensure Flux pods can only reach the egress gateway, not external IPs directly:
+Use NetworkPolicies to ensure selected Flux pods can only reach the egress gateway, not external IPs directly. This example selects `source-controller`; repeat it for other Flux controllers or broaden the selector to match the controllers you run:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -410,7 +541,7 @@ View the access logs:
 kubectl logs -n istio-system -l istio=egressgateway --tail=30
 ```
 
-Each log entry shows the source pod, destination host, response code, and bytes transferred.
+Each default log entry shows the source address, destination host or upstream address, response code, and bytes transferred. You can correlate the source address to the Flux pod when needed.
 
 ## Verification
 
@@ -441,7 +572,7 @@ Check that direct external access is blocked:
 kubectl run test-direct -n flux-system --rm -it --image=busybox --annotations="sidecar.istio.io/inject=true" -- wget -qO- --timeout=5 https://example.com
 ```
 
-This should fail because example.com has no ServiceEntry.
+This should fail in sidecar mode because example.com has no ServiceEntry.
 
 ## Troubleshooting
 
