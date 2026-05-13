@@ -24,7 +24,7 @@ Post-build substitution in Flux is a powerful feature, but when it does not work
 The first thing to check is the status of the Kustomization resource:
 
 ```bash
-flux get kustomization my-app
+flux get kustomizations
 ```
 
 For more detail:
@@ -35,7 +35,7 @@ kubectl get kustomization my-app -n flux-system -o yaml
 
 Look at the `status.conditions` section. Common messages include:
 
-- `SubstitutionFailed`: A referenced ConfigMap or Secret does not exist
+- `ReconciliationFailed`: A referenced ConfigMap or Secret does not exist, or substitution failed
 - `BuildFailed`: The Kustomize build itself failed before substitution could occur
 - `HealthCheckFailed`: Substitution worked but the resulting resources are unhealthy
 
@@ -85,7 +85,7 @@ postBuild:   # WRONG - this is outside spec
 
 ## Step 3: Check Variable Syntax in Manifests
 
-Flux uses `${VAR_NAME}` syntax for substitution. Common syntax mistakes include:
+Flux uses `${VAR_NAME}` syntax for substitution. Variable names can contain letters, numbers, and underscores, and must start with a letter or underscore. Common syntax mistakes include:
 
 ```yaml
 # Correct
@@ -102,7 +102,7 @@ replicas: ${ REPLICAS }
 replicas: ${{REPLICAS}}
 ```
 
-Only `${VAR_NAME}` is recognized by the Flux substitution engine.
+Only `${VAR_NAME}`-style expressions are recognized by the Flux substitution engine. Flux also supports default values and a subset of bash-style string operations, such as `${VAR_NAME:=default}`.
 
 ## Step 4: Verify ConfigMap or Secret Exists
 
@@ -113,7 +113,7 @@ kubectl get configmap cluster-config -n flux-system
 kubectl get secret cluster-secrets -n flux-system
 ```
 
-The ConfigMap or Secret must be in the same namespace as the Kustomization resource (usually `flux-system`). If it is in a different namespace, the substitution will silently fail to find the variables.
+The ConfigMap or Secret must be in the same namespace as the Kustomization resource (usually `flux-system`). If it is in a different namespace, reconciliation fails by default. If the `substituteFrom` entry has `optional: true`, Flux treats the missing object as empty.
 
 Check the contents:
 
@@ -149,15 +149,15 @@ postBuild:
 
 ## Step 6: Confirm All Variables Are Defined
 
-If a variable is referenced in a manifest but not defined in any source, Flux leaves it as the literal string `${VAR_NAME}`. This can cause errors if the field expects a number or a specific format.
+If a variable is referenced in a manifest but not defined in any source, Flux substitutes it with an empty string unless a default value is provided, such as `${VAR_NAME:=default}`. This can cause errors if the field expects a number or a specific format. To make missing variables fail reconciliation, enable the `StrictPostBuildSubstitutions` feature gate on the kustomize-controller.
 
-To find undefined variables, check the applied resources:
+To find unresolved placeholders that were escaped, disabled, or otherwise not processed, check the applied resources:
 
 ```bash
-kubectl get deployment my-app -o yaml | grep '\\${'
+kubectl get deployment my-app -o yaml | grep '\${'
 ```
 
-If you see unreplaced `${...}` patterns, those variables are missing from your postBuild configuration.
+If you see empty values where `${...}` patterns should have been substituted, those variables are missing from your postBuild configuration. You can test locally with `flux envsubst --strict` to fail on missing variables before pushing changes.
 
 ## Step 7: Check for API Version Mismatch
 
@@ -168,7 +168,7 @@ Make sure you are using the correct API version for the Kustomization resource:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 
 # Older - v1beta2 (also supports postBuild)
-apiVersion: kustomize.toolkit.fluxcd.io/v1
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
 ```
 
 The `postBuild` field is available in both versions, but if you are using an older Flux installation, make sure the API version matches what your cluster supports.
@@ -191,7 +191,7 @@ Sometimes the issue is not with substitution but with the Kustomize build itself
 kustomize build ./apps/my-app
 ```
 
-If the build fails, substitution never runs. Fix the Kustomize build first.
+If the build fails, substitution never runs. Fix the Kustomize build first. If your Flux path contains plain YAML files without a `kustomization.yaml`, use `flux build kustomization my-app --path ./apps/my-app` instead, because Flux can generate a temporary kustomization file for plain YAML directories.
 
 ## Step 10: Examine Flux Controller Logs
 
@@ -213,31 +213,33 @@ Look for error messages related to substitution, ConfigMap lookups, or build fai
 
 **Issue: Variables not replaced in HelmRelease valuesFrom**
 
-Post-build substitution only works on the raw YAML text. It does not process Helm values that are resolved by the helm-controller. Use substitution in HelmRelease `spec.values` inline YAML instead.
+Post-build substitution only works on the YAML rendered by the Flux Kustomization before resources are applied. It can substitute placeholders in the HelmRelease object itself, including inline `spec.values`, but it does not process the contents of ConfigMaps or Secrets later loaded by the helm-controller through HelmRelease `spec.valuesFrom`. Put substitutions in the HelmRelease manifest or in the referenced ConfigMap/Secret manifest that Flux applies.
 
-**Issue: Numeric values treated as strings**
+**Issue: Numeric and boolean values in string fields**
 
-YAML can be tricky with types. Always quote numeric substitution variables in your manifests to avoid type parsing issues:
+YAML can be tricky with types. If a number or boolean is substituted into a field that Kubernetes expects to be a string, wrap the substituted value in quotes:
 
 ```yaml
-# Safe - quoted
+# Safe for numeric fields
 replicas: ${REPLICAS}
 
-# The ConfigMap value is always a string
-# Kubernetes will convert "3" to integer 3 for the replicas field
+# Safe for string fields
+metadata:
+  annotations:
+    example.com/id: "${ID}"
 ```
 
 **Issue: Multi-line values**
 
-Post-build substitution works on single-line values only. If you need multi-line content, consider using ConfigMaps mounted as files rather than variable substitution.
+Multi-line substitutions can break YAML if indentation and block scalar formatting are not handled carefully. For larger multi-line content, consider using ConfigMaps mounted as files rather than variable substitution.
 
-**Issue: Variables in comments are also replaced**
+**Issue: Literal shell variables are replaced**
 
-Flux substitution operates on the entire YAML text, including comments. If you have `# Deploy ${REPLICAS} replicas` in a comment, it will also be substituted.
+Flux substitution can also affect embedded scripts or container commands. Use `$VAR_NAME` when you do not need Flux substitution, or escape the expression as `$${VAR_NAME}` if you need the rendered manifest to contain the literal `${VAR_NAME}` string.
 
 ## Quick Diagnostic Checklist
 
-1. Is the Kustomization reconciling? (`flux get kustomization my-app`)
+1. Is the Kustomization reconciling? (`flux get kustomizations`)
 2. Is `postBuild` under `spec`?
 3. Is the variable syntax `${VAR_NAME}` correct?
 4. Does the ConfigMap/Secret exist in `flux-system` namespace?
