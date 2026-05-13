@@ -14,7 +14,7 @@ The EFK stack - Elasticsearch, Fluentd, and Kibana - is one of the most widely a
 
 Managing the EFK stack with Flux CD brings the same GitOps discipline you apply to your applications. All configuration lives in Git, changes are auditable, and the cluster converges automatically to the desired state. This eliminates configuration drift and makes onboarding new clusters straightforward.
 
-In this post you will use Flux CD HelmRelease resources to deploy each component of the EFK stack, wire them together, and expose Kibana through an Ingress. All manifests follow real-world production patterns including resource limits and persistent storage.
+In this post you will use Flux CD HelmRelease resources to deploy each component of the EFK stack, wire them together, and expose Kibana through an Ingress. The manifests include common operational settings such as resource limits and persistent storage.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ In this post you will use Flux CD HelmRelease resources to deploy each component
 
 ## Step 1: Create the Logging Namespace and HelmRepository Sources
 
-Create a dedicated namespace and add the Elastic Helm repository as a Flux `HelmRepository` source.
+Create a dedicated namespace and add the Elastic and Bitnami Helm repositories as Flux `HelmRepository` sources.
 
 ```yaml
 # clusters/my-cluster/logging/namespace.yaml
@@ -49,6 +49,15 @@ metadata:
 spec:
   interval: 12h
   url: https://helm.elastic.co
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://charts.bitnami.com/bitnami
 ```
 
 Commit and push these files. Flux will reconcile them within the next sync interval.
@@ -88,11 +97,11 @@ spec:
         memory: "2Gi"
     persistence:
       enabled: true
-      size: 30Gi
-    # Disable TLS for internal cluster communication in this example
-    esConfig:
-      elasticsearch.yml: |
-        xpack.security.enabled: false
+    volumeClaimTemplate:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 30Gi
 ```
 
 ## Step 3: Deploy Fluentd
@@ -111,23 +120,70 @@ spec:
   chart:
     spec:
       chart: fluentd
-      version: "0.5.2"
+      version: "7.2.5"
       sourceRef:
         kind: HelmRepository
-        name: bitnami  # add a bitnami HelmRepository source
+        name: bitnami
         namespace: flux-system
   values:
     aggregator:
       enabled: false
     forwarder:
       enabled: true
-      configMap: fluentd-forwarder-config
-    # Pass the Elasticsearch endpoint via environment variable
-    extraEnvVars:
-      - name: ELASTICSEARCH_HOST
-        value: "elasticsearch-master.logging.svc.cluster.local"
-      - name: ELASTICSEARCH_PORT
-        value: "9200"
+      extraGems:
+        - fluent-plugin-elasticsearch
+      extraEnvVars:
+        - name: ELASTICSEARCH_HOST
+          value: "elasticsearch-master.logging.svc.cluster.local"
+        - name: ELASTICSEARCH_PORT
+          value: "9200"
+        - name: ELASTICSEARCH_SCHEME
+          value: "https"
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-master-credentials
+              key: username
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-master-credentials
+              key: password
+      extraVolumes:
+        - name: elasticsearch-certs
+          secret:
+            secretName: elasticsearch-master-certs
+      extraVolumeMounts:
+        - name: elasticsearch-certs
+          mountPath: /opt/bitnami/fluentd/certs
+          readOnly: true
+      configMapFiles:
+        fluentd-output.conf: |
+          # Throw the healthcheck to the standard output instead of forwarding it
+          <match fluentd.healthcheck>
+            @type stdout
+          </match>
+
+          # Send Kubernetes logs to Elasticsearch
+          <match **>
+            @type elasticsearch
+            host "#{ENV['ELASTICSEARCH_HOST']}"
+            port "#{ENV['ELASTICSEARCH_PORT']}"
+            scheme "#{ENV['ELASTICSEARCH_SCHEME']}"
+            user "#{ENV['ELASTICSEARCH_USERNAME']}"
+            password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+            ssl_verify true
+            ca_file /opt/bitnami/fluentd/certs/ca.crt
+            logstash_format true
+            include_tag_key true
+            suppress_type_name true
+            <buffer>
+              @type file
+              path /opt/bitnami/fluentd/logs/buffers/logs.buffer
+              flush_thread_count 2
+              flush_interval 5s
+            </buffer>
+          </match>
 ```
 
 ## Step 4: Deploy Kibana
@@ -150,7 +206,10 @@ spec:
         name: elastic
         namespace: flux-system
   values:
-    elasticsearchHosts: "http://elasticsearch-master.logging.svc.cluster.local:9200"
+    elasticsearchHosts: "https://elasticsearch-master.logging.svc.cluster.local:9200"
+    elasticsearchCertificateSecret: elasticsearch-master-certs
+    elasticsearchCertificateAuthoritiesFile: ca.crt
+    elasticsearchCredentialSecret: elasticsearch-master-credentials
     resources:
       requests:
         cpu: "200m"
@@ -160,8 +219,7 @@ spec:
         memory: "1Gi"
     ingress:
       enabled: true
-      annotations:
-        kubernetes.io/ingress.class: nginx
+      className: nginx
       hosts:
         - host: kibana.example.com
           paths:
@@ -187,13 +245,17 @@ spec:
   path: ./clusters/my-cluster/logging
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: elasticsearch-master
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: elasticsearch
       namespace: logging
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: kibana-kibana
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kibana
+      namespace: logging
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: fluentd
       namespace: logging
 ```
 
@@ -216,9 +278,10 @@ Open `http://localhost:5601` and navigate to **Discover** to start querying your
 
 - Pin chart versions in every `HelmRelease` to prevent unexpected upgrades during reconciliation.
 - Enable Elasticsearch index lifecycle management (ILM) to automatically roll over and delete old indices.
-- Store Elasticsearch credentials in Kubernetes Secrets managed by Sealed Secrets or External Secrets Operator, never in plaintext in Git.
+- Store any user-managed Elasticsearch credentials in Kubernetes Secrets managed by Sealed Secrets or External Secrets Operator, never in plaintext in Git.
 - Set `prune: true` on the Flux `Kustomization` so deleted manifests are removed from the cluster.
-- Configure `healthChecks` so Flux waits for StatefulSets to become ready before marking the reconciliation successful.
+- Configure `healthChecks` so Flux waits for Helm releases to become ready before marking the reconciliation successful.
+- For new production Elastic Stack deployments, evaluate Elastic Cloud on Kubernetes (ECK); the standalone Elastic Stack Helm charts used here are archived.
 
 ## Conclusion
 
