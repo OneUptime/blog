@@ -71,8 +71,7 @@ echo "Blocked source should timeout"
 
 ```mermaid
 flowchart TD
-    A[External Traffic
-to NodeIP:30000] -->|Pre-DNAT Policy Evaluated| B{preDNAT Policy}
+    A[External Traffic<br>to NodeIP:30000] -->|Pre-DNAT Policy Evaluated| B{preDNAT Policy}
     B -->|Allowed Source CIDR| C[DNAT: Pod IP:8080]
     B -->|Blocked Source| D[DENY before DNAT]
     C --> E[Pod Receives Traffic]
