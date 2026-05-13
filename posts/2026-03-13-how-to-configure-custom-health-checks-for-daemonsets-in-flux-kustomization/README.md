@@ -22,7 +22,7 @@ DaemonSets ensure that a copy of a pod runs on every node (or a selected subset 
 
 ## How DaemonSet Health Checking Works
 
-Flux considers a DaemonSet healthy when the number of desired pods equals the number of ready pods and the update has been rolled out to all nodes. Unlike Deployments with a fixed replica count, DaemonSets automatically adjust their pod count based on the number of eligible nodes, so the health check must verify that the current state matches the desired state across all nodes.
+Flux considers a DaemonSet healthy when the controller has observed the latest generation, the desired number of scheduled pods matches the current, updated, available, and ready counts, and the update has been rolled out to all eligible nodes. Unlike Deployments with a fixed replica count, DaemonSets automatically adjust their pod count based on the number of eligible nodes, so the health check must verify that the current state matches the desired state across all nodes.
 
 ## Basic DaemonSet Health Check
 
@@ -49,7 +49,7 @@ spec:
       namespace: logging
 ```
 
-This tells Flux to wait until the `fluentbit` DaemonSet has all pods running and ready on every eligible node before marking the reconciliation as successful.
+This tells Flux to wait until the `fluentbit` DaemonSet has all pods scheduled, updated, available, and ready on every eligible node before marking the reconciliation as successful.
 
 ## Health Checking Infrastructure DaemonSets
 
@@ -86,9 +86,33 @@ spec:
 
 ## Example DaemonSet with Readiness Probe
 
-A well-configured DaemonSet includes a readiness probe that Flux relies on for health checking:
+A well-configured DaemonSet includes a readiness probe that Flux relies on for health checking. For Fluent Bit, the HTTP server and health check endpoint must also be enabled in its configuration:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentbit-config
+  namespace: logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port 2020
+        Health_Check On
+        HC_Errors_Count 5
+        HC_Retry_Failure_Count 5
+        HC_Period 5
+
+    [INPUT]
+        Name tail
+        Path /var/log/*.log
+
+    [OUTPUT]
+        Name stdout
+        Match *
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -117,10 +141,16 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
           volumeMounts:
+            - name: config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
             - name: varlog
               mountPath: /var/log
               readOnly: true
       volumes:
+        - name: config
+          configMap:
+            name: fluentbit-config
         - name: varlog
           hostPath:
             path: /var/log
@@ -226,7 +256,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
