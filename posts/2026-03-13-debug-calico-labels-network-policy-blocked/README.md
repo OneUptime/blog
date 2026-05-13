@@ -48,8 +48,9 @@ kubectl get pods -n my-namespace --show-labels | grep my-pod
 ## Step 3: Verify Endpoint Is Selected
 
 ```bash
-# Show which policies apply to a specific endpoint
-calicoctl get workloadendpoint my-pod -n my-namespace -o yaml | grep -A 20 "policies"
+# Find the Calico WorkloadEndpoint for the pod, then inspect its labels
+# WorkloadEndpoint names are generated and usually are not the same as pod names.
+calicoctl get workloadendpoint -n my-namespace -o yaml | grep -A 30 "pod: my-pod"
 ```
 
 ## Step 4: Check for Label Typos
@@ -66,7 +67,7 @@ kubectl get namespace my-namespace --show-labels
 ## Step 5: Test Selector Independently
 
 ```bash
-# Test if the selector would match any pods
+# For simple equality-based selectors, test if the labels match any pods
 kubectl get pods --all-namespaces -l "tier=web,environment=production"
 
 # If empty, no pods match - check label values
