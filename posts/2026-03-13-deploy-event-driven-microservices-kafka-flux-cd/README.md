@@ -23,11 +23,9 @@ This post demonstrates a practical event-driven microservices setup: an order se
 
 ## Step 1: Define the Event Schema
 
-Store event schemas in Git as documentation and for schema registry use:
+Store event schemas in Git as documentation and for schema registry use. For example, `events/schemas/order-created.json`:
 
-```yaml
-# events/schemas/order-created.json
-
+```json
 {
   "type": "record",
   "name": "OrderCreated",
@@ -44,7 +42,7 @@ Store event schemas in Git as documentation and for schema registry use:
         {"name": "price", "type": "double"}
       ]
     }}},
-    {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"},
+    {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}},
     {"name": "status", "type": {"type": "enum", "name": "OrderStatus",
       "symbols": ["CREATED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"]}}
   ]
@@ -55,7 +53,7 @@ Store event schemas in Git as documentation and for schema registry use:
 
 ```yaml
 # infrastructure/messaging/topics/order-events.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: order-events
@@ -73,7 +71,7 @@ spec:
     cleanup.policy: delete
     compression.type: snappy
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: inventory-events
@@ -89,7 +87,7 @@ spec:
     min.insync.replicas: "2"
     compression.type: snappy
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: order-events-dead-letter
@@ -109,7 +107,7 @@ spec:
 
 ```yaml
 # infrastructure/messaging/users/order-service-user.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: order-service
@@ -130,6 +128,10 @@ spec:
           - Write
           - Describe
       - resource:
+          type: cluster
+        operations:
+          - IdempotentWrite
+      - resource:
           type: transactionalId
           name: order-service
           patternType: literal
@@ -137,7 +139,7 @@ spec:
           - Write
           - Describe
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: inventory-service
@@ -197,10 +199,13 @@ spec:
       volumes:
         - name: kafka-certs
           secret:
-            secretName: order-service  # KafkaUser auto-created Secret
+            secretName: order-service  # KafkaUser Secret copied or synced into the orders namespace
+        - name: kafka-cluster-ca
+          secret:
+            secretName: production-cluster-ca-cert  # Cluster CA Secret copied or synced into the orders namespace
       containers:
         - name: order-service
-          image: myregistry.example.com/order-service:v1.2.3
+          image: myregistry.example.com/order-service:v1.2.3 # {"$imagepolicy": "flux-system:order-service"}
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "production-kafka-bootstrap.kafka.svc.cluster.local:9093"
@@ -208,13 +213,22 @@ spec:
               value: "SSL"
             - name: KAFKA_SSL_KEYSTORE_LOCATION
               value: "/kafka/certs/user.p12"
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: "PKCS12"
             - name: KAFKA_SSL_KEYSTORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: order-service
                   key: user.password
             - name: KAFKA_SSL_TRUSTSTORE_LOCATION
-              value: "/kafka/certs/ca.crt"
+              value: "/kafka/cluster-ca/ca.p12"
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: "PKCS12"
+            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-cluster-ca-cert
+                  key: ca.password
             - name: KAFKA_TOPIC_ORDERS
               value: "order-events"
             - name: KAFKA_TRANSACTIONAL_ID
@@ -222,6 +236,9 @@ spec:
           volumeMounts:
             - name: kafka-certs
               mountPath: /kafka/certs
+              readOnly: true
+            - name: kafka-cluster-ca
+              mountPath: /kafka/cluster-ca
               readOnly: true
           resources:
             requests:
@@ -268,6 +285,31 @@ spec:
   policy:
     semver:
       range: ">=1.0.0 <2.0.0"
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: order-service
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+      messageTemplate: "{{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}"
+    push:
+      branch: main
+  update:
+    path: ./apps/order-service
+    strategy: Setters
 ```
 
 ## Step 6: Set Up Flux Kustomizations
@@ -286,6 +328,8 @@ spec:
     name: flux-system
   path: ./infrastructure/messaging/topics
   prune: true
+  wait: true
+  timeout: 2m
   dependsOn:
     - name: strimzi-kafka
 ---
@@ -343,10 +387,10 @@ curl -XPOST http://localhost:8080/orders \
 
 - Use Kafka transactional producers (`enable.idempotence=true`, `transactional.id`) for exactly-once publish semantics.
 - Design events with additive schemas (new fields with defaults) to maintain backward compatibility.
-- Use a schema registry (Confluent or Apicurio) and enforce schema validation at the topic level.
+- Use a schema registry (Confluent or Apicurio) and enforce schema validation in producers and consumers, or with broker-side validation where your Kafka distribution supports it.
 - Monitor consumer group lag with Prometheus and alert when lag exceeds your acceptable processing delay.
 - Use Flux image automation to automatically update service images when new versions are pushed to the registry.
 
 ## Conclusion
 
-Event-driven microservices deployed with Kafka and managed by Flux CD give you a decoupled, scalable architecture where every component - topics, users, service deployments - is described in Git. The Kustomization `dependsOn` mechanism ensures services only start after the Kafka infrastructure is ready. Image automation keeps services up-to-date automatically. The result is a fully observable, reproducible event-driven platform where adding a new service or event type is a pull request that your team reviews and Flux applies automatically.
+Event-driven microservices deployed with Kafka and managed by Flux CD give you a decoupled, scalable architecture where every component - topics, users, service deployments - is described in Git. The Kustomization `dependsOn` mechanism, combined with health checks or `wait`, ensures services are applied only after the Kafka infrastructure is ready. Image automation keeps services up-to-date automatically. The result is a fully observable, reproducible event-driven platform where adding a new service or event type is a pull request that your team reviews and Flux applies automatically.
