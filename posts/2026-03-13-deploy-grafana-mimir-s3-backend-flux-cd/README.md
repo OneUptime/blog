@@ -14,7 +14,7 @@ Grafana Mimir is a highly scalable, multi-tenant time-series database that is fu
 
 Managing Mimir via Flux CD means your block storage configuration, compaction schedules, and query-sharding parameters are all tracked in Git. Upgrades, scaling events, and storage configuration changes become auditable pull requests.
 
-This guide deploys Mimir in monolithic mode with an S3 backend, which is ideal for teams moving from a single Prometheus instance and looking for longer retention without immediate operational complexity.
+This guide deploys Mimir with the `mimir-distributed` Helm chart and an S3 backend, which is ideal for teams moving from a single Prometheus instance and looking for longer retention without immediate operational complexity.
 
 ## Prerequisites
 
@@ -38,8 +38,8 @@ metadata:
 type: Opaque
 stringData:
   # S3 access key - must be SOPS-encrypted before committing
-  access_key_id: "AKIAIOSFODNN7EXAMPLE"
-  secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  AWS_ACCESS_KEY_ID: "AKIAIOSFODNN7EXAMPLE"
+  AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 ```
 
 ## Step 2: Add the Grafana HelmRepository
@@ -58,7 +58,7 @@ spec:
 
 ## Step 3: Deploy Mimir via HelmRelease
 
-Configure Mimir in monolithic mode with S3 blocks, ruler, and alertmanager storage.
+Configure Mimir with S3 blocks, ruler, and alertmanager storage.
 
 ```yaml
 # clusters/my-cluster/mimir/helmrelease.yaml
@@ -77,43 +77,54 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
-  valuesFrom:
-    # Pull S3 credentials from the encrypted Secret
-    - kind: Secret
-      name: mimir-s3-credentials
-      valuesKey: access_key_id
-      targetPath: mimir.structuredConfig.common.storage.s3.access_key_id
-    - kind: Secret
-      name: mimir-s3-credentials
-      valuesKey: secret_access_key
-      targetPath: mimir.structuredConfig.common.storage.s3.secret_access_key
   values:
-    # Use monolithic mode for simplicity; switch to microservices for large scale
+    # Inject S3 credentials into the Mimir pods as environment variables
+    global:
+      extraEnvFrom:
+        - secretRef:
+            name: mimir-s3-credentials
+      podAnnotations:
+        bucketSecretVersion: "0"
+
+    # Disable the built-in test MinIO deployment when using external S3
+    minio:
+      enabled: false
+
     mimir:
       structuredConfig:
         common:
           storage:
             backend: s3
             s3:
-              bucket_name: my-mimir-blocks
               endpoint: s3.us-east-1.amazonaws.com
               region: us-east-1
         blocks_storage:
+          backend: s3
           s3:
             bucket_name: my-mimir-blocks
+            endpoint: s3.us-east-1.amazonaws.com
+            region: us-east-1
+            access_key_id: ${AWS_ACCESS_KEY_ID}
+            secret_access_key: ${AWS_SECRET_ACCESS_KEY}
         ruler_storage:
+          backend: s3
           s3:
             bucket_name: my-mimir-ruler
+            endpoint: s3.us-east-1.amazonaws.com
+            region: us-east-1
+            access_key_id: ${AWS_ACCESS_KEY_ID}
+            secret_access_key: ${AWS_SECRET_ACCESS_KEY}
         alertmanager_storage:
+          backend: s3
           s3:
             bucket_name: my-mimir-alertmanager
+            endpoint: s3.us-east-1.amazonaws.com
+            region: us-east-1
+            access_key_id: ${AWS_ACCESS_KEY_ID}
+            secret_access_key: ${AWS_SECRET_ACCESS_KEY}
         # Retain metrics for 1 year
         limits:
           compactor_blocks_retention_period: 8760h
-
-    # Single-replica monolithic deployment
-    mimir-distributed:
-      enabled: false
 
     # Enable self-monitoring
     metaMonitoring:
@@ -151,15 +162,15 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: mimir-ingester
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: mimir
       namespace: monitoring
 ```
 
 ## Best Practices
 
-- Start with monolithic mode and migrate to distributed microservices only when query latency or ingestion rate demands it.
+- Start with the Helm chart defaults and scale individual Mimir components only when query latency or ingestion rate demands it.
 - Use separate S3 buckets for blocks, ruler, and alertmanager storage to simplify lifecycle policies.
 - Enable `metaMonitoring.serviceMonitor.enabled: true` to scrape Mimir's own metrics with kube-prometheus-stack.
 - Set `compactor_blocks_retention_period` to match your data retention SLO; the compactor enforces this automatically.
