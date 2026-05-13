@@ -111,7 +111,7 @@ spec:
 
         Updated resources:
         {{ range $resource, $changes := .Changed.Objects -}}
-        - {{ $resource.Resource.Kind }}/{{ $resource.Resource.Name }} ({{ $resource.Resource.Namespace }})
+        - {{ $resource.Kind }}/{{ $resource.Name }} ({{ $resource.Namespace }})
         {{ end -}}
 ```
 
@@ -171,7 +171,7 @@ spec:
         {{ end }}
         Affected resources:
         {{ range $resource, $_ := .Changed.Objects -}}
-        - {{ $resource.Resource.Kind }}/{{ $resource.Resource.Name }}
+        - {{ $resource.Kind }}/{{ $resource.Name }}
         {{ end -}}
 ```
 
