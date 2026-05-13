@@ -29,7 +29,8 @@ fleet-repo/
     production/
       flux-system/
       platform.yaml
-      tenants.yaml
+      tenant-alpha.yaml
+      tenant-beta.yaml
   platform/
     sources/
       kustomization.yaml
@@ -52,6 +53,8 @@ fleet-repo/
       rbac.yaml
       network-policy.yaml
       resource-quota.yaml
+      limit-range.yaml
+      flux-service-account.yaml
       kustomization.yaml
     team-alpha/
       kustomization.yaml
@@ -91,26 +94,30 @@ spec:
   timeout: 10m
 ```
 
-## Tenants Kustomization
+## Tenant Kustomization
 
-The tenants Kustomization depends on the platform being ready:
+Each tenant Kustomization depends on the platform being ready:
 
 ```yaml
-# clusters/production/tenants.yaml
+# clusters/production/tenant-alpha.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: tenants
+  name: tenant-alpha
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./tenants
+  path: ./tenants/team-alpha
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
   dependsOn:
     - name: platform
+  postBuild:
+    substitute:
+      TENANT_NAME: team-alpha
+      TENANT_GROUP: team-alpha-devs
 ```
 
 ## Tenant Base Template
@@ -150,7 +157,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-all-ingress
+  name: allow-same-tenant-ingress
   namespace: ${TENANT_NAME}
 spec:
   podSelector: {}
@@ -215,36 +222,38 @@ spec:
     substitute:
       TENANT_NAME: team-alpha
       TENANT_GROUP: team-alpha-devs
-  serviceAccountName: tenant-alpha
 ```
 
 ## Per-Tenant Service Accounts
 
 For security, each tenant can use a dedicated service account with limited permissions:
 
+The platform-controlled tenant baseline can create the service account and bind it in the tenant namespace:
+
 ```yaml
-# platform/rbac/tenant-alpha-sa.yaml
+# tenants/base/flux-service-account.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: tenant-alpha
+  name: ${TENANT_NAME}
   namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: tenant-alpha-flux
+  name: ${TENANT_NAME}-flux
+  namespace: ${TENANT_NAME}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: flux-tenant
 subjects:
   - kind: ServiceAccount
-    name: tenant-alpha
+    name: ${TENANT_NAME}
     namespace: flux-system
 ```
 
-The `flux-tenant` ClusterRole limits what resources the tenant Kustomization can create:
+The `flux-tenant` ClusterRole limits what resources the tenant application Kustomization can create:
 
 ```yaml
 # platform/rbac/flux-tenant-role.yaml
@@ -269,7 +278,7 @@ rules:
 For teams that manage their own Git repositories:
 
 ```yaml
-# clusters/production/tenant-alpha.yaml
+# clusters/production/tenant-alpha-apps.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -284,7 +293,7 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: tenant-alpha
+  name: tenant-alpha-apps
   namespace: flux-system
 spec:
   interval: 10m
@@ -296,21 +305,22 @@ spec:
   targetNamespace: team-alpha
   serviceAccountName: tenant-alpha
   dependsOn:
-    - name: platform
+    - name: tenant-alpha
 ```
 
-The `targetNamespace` ensures all resources from the tenant repository are created in the tenant namespace regardless of what the manifests specify.
+The `targetNamespace` ensures namespaced resources from the tenant repository are created in the tenant namespace regardless of what the manifests specify.
 
 ## Platform Policies
 
-The platform team can enforce policies across all tenants:
+The platform team can include policies in the tenant baseline so they are applied to each tenant namespace:
 
 ```yaml
-# platform/policies/limit-ranges/default.yaml
+# tenants/base/limit-range.yaml
 apiVersion: v1
 kind: LimitRange
 metadata:
   name: default-limits
+  namespace: ${TENANT_NAME}
 spec:
   limits:
     - default:
