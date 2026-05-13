@@ -38,14 +38,21 @@ spec:
   chart:
     spec:
       chart: memcached
-      version: ">=6.0.0 <7.0.0"
+      version: ">=8.0.0 <9.0.0"
       sourceRef:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
   values:
-    replicaCount: 2
-    # Allocate sufficient memory for caching query results
+    # Use one cache endpoint here so reads and writes go to the same Memcached backend.
+    replicaCount: 1
+    # Allocate sufficient Memcached memory and item size for query results
+    args:
+      - /run.sh
+      - -m
+      - "1024"
+      - -I
+      - 10m
     resources:
       requests:
         memory: "1Gi"
@@ -67,7 +74,7 @@ spec:
   chart:
     spec:
       chart: thanos
-      version: ">=13.0.0 <14.0.0"
+      version: ">=17.0.0 <18.0.0"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -76,30 +83,40 @@ spec:
     # Enable only the Query Frontend component
     queryFrontend:
       enabled: true
-      # Scale the frontend horizontally; Memcached ensures cache is shared
+      # Scale the frontend horizontally; Memcached keeps the cache shared across replicas
       replicaCount: 2
-      # Point the frontend at the Thanos Querier service
       config: |-
-        type: IN-MEMORY
+        type: MEMCACHED
         config:
-          max_size: 512MB
-          max_item_size: 10MB
-          validity: 6h
-      extraFlags:
+          addresses:
+            - thanos-memcached.monitoring.svc.cluster.local:11211
+          timeout: 500ms
+          max_idle_connections: 100
+          max_item_size: 10MiB
+          expiration: 6h
+      # Override the chart defaults so this release can point at an existing Querier.
+      args:
+        - query-frontend
+        - --log.level=info
+        - --log.format=logfmt
+        - --http-address=0.0.0.0:9090
         # Target: the Thanos Querier
         - --query-frontend.downstream-url=http://thanos-query.monitoring.svc:9090
+        - --query-range.response-cache-config-file=/conf/cache/config.yml
         # Split long queries into daily chunks for parallel execution
         - --query-range.split-interval=24h
         # Maximum number of retries on query failure
         - --query-range.max-retries-per-request=3
         # Align query time range to split intervals for better cache hit rates
         - --query-range.align-range-with-step
-      serviceMonitor:
-        enabled: true
       resources:
         requests:
           cpu: "200m"
           memory: "512Mi"
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
 
     # Disable all other components
     query:
@@ -161,8 +178,8 @@ spec:
 
 - Set `--query-range.split-interval=24h` for most workloads; this aligns with Thanos block boundaries and maximizes cache reuse.
 - Use `--query-range.align-range-with-step` so repeated dashboard queries produce identical time ranges that cache hits can serve.
-- Deploy at least 2 Query Frontend replicas with a shared Memcached backend for HA without duplicate cache misses.
-- Monitor cache hit rates via the Query Frontend metrics; low hit rates indicate too-short `validity` settings or highly dynamic queries.
+- Deploy at least 2 Query Frontend replicas with a shared Memcached backend so replicas can reuse the same cached results.
+- Monitor cache hit rates via the Query Frontend metrics; low hit rates indicate too-short `expiration` settings or highly dynamic queries.
 - Always have Grafana route through the Query Frontend; bypassing it loses all query splitting and caching benefits.
 
 ## Conclusion
