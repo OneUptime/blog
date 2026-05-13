@@ -68,11 +68,11 @@ The source controller caches artifacts locally. If the cache becomes corrupted o
 
 ### 3. Branch or tag reference not updating
 
-If the GitRepository points to a tag instead of a branch, it will not pick up new commits automatically.
+If the GitRepository points to a fixed tag or commit instead of a branch, it will not pick up new commits automatically.
 
 ### 4. Webhook delivery failures
 
-If you rely on receiver webhooks to trigger reconciliation instead of polling, missed webhooks mean Flux does not know about new commits.
+If you rely on receiver webhooks for near-instant reconciliation, missed webhooks mean Flux will not reconcile until the next polling interval.
 
 ### 5. Suspended source or kustomization
 
@@ -96,10 +96,10 @@ flux reconcile kustomization my-app --with-source
 
 ### Fix 2: Check and fix authentication
 
-Verify the Git credentials are still valid:
+Inspect the Git credentials and confirm the referenced secret still contains the expected keys:
 
 ```bash
-kubectl get secret my-repo-auth -n flux-system -o jsonpath='{.data}' | base64 -d
+kubectl get secret my-repo-auth -n flux-system -o yaml
 ```
 
 If credentials have expired, update them:
@@ -127,11 +127,11 @@ Verify the source controller has available storage:
 kubectl exec -n flux-system deployment/source-controller -- df -h /data
 ```
 
-If storage is full, increase the PVC or clean up old artifacts:
+If storage is full, increase the PVC or clean up unused source artifacts. If you delete the GitRepository, re-apply its manifest before reconciling it:
 
 ```bash
 kubectl delete gitrepository my-repo -n flux-system
-# Re-create it to force a fresh fetch
+kubectl apply -f gitrepository.yaml
 flux reconcile source git my-repo
 ```
 
