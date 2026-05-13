@@ -10,7 +10,7 @@ Description: Deploy the Zalando Postgres Operator for managed PostgreSQL cluster
 
 ## Introduction
 
-The Zalando Postgres Operator (also known as `postgres-operator` by Zalando) is one of the original Kubernetes PostgreSQL operators, built on top of Patroni for HA and supporting logical backups via WAL-G. It introduced the concept of defining databases and users directly in the PostgreSQL CRD, making database provisioning feel like a native Kubernetes operation. Zalando uses it to manage hundreds of PostgreSQL clusters in their production environment.
+The Zalando Postgres Operator (also known as `postgres-operator` by Zalando) is one of the original Kubernetes PostgreSQL operators, built on top of Patroni for HA and supporting WAL archiving via WAL-G as well as logical backups. It introduced the concept of defining databases and users directly in the PostgreSQL CRD, making database provisioning feel like a native Kubernetes operation. Zalando uses it to manage hundreds of PostgreSQL clusters in their production environment.
 
 Managing the Zalando Postgres Operator through Flux CD gives you GitOps control over both the operator configuration (team permissions, logical backup settings, pod templates) and over individual `postgresql` CRs that define cluster topology. This is especially useful for platform teams that provision database clusters for multiple application teams through a self-service GitOps workflow.
 
@@ -18,7 +18,7 @@ Managing the Zalando Postgres Operator through Flux CD gives you GitOps control 
 
 - Kubernetes v1.26+ with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs
-- AWS S3 or compatible storage for WAL backups (optional)
+- AWS S3 or compatible storage for logical backups and WAL archiving (optional)
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Add the Zalando HelmRepository
@@ -58,9 +58,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: postgres-operator
-  namespace: postgres-operator
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: postgres-operator
   chart:
     spec:
       chart: postgres-operator
@@ -70,28 +71,22 @@ spec:
         name: postgres-operator
         namespace: flux-system
   install:
+    createNamespace: true
     crds: Create
   upgrade:
     crds: CreateReplace
   values:
     configGeneral:
       # Docker image for Spilo (Patroni + PostgreSQL)
-      docker_image: "ghcr.io/zalando/spilo-16:3.2-p2"
-      # Enable WAL archiving
-      enable_master_load_balancer: false
-      enable_replica_load_balancer: false
-      # Team API for ownership-based access control
-      enable_teams_api: false
-
-    configPostgreSQL:
-      # Default PostgreSQL parameters applied to all clusters
-      parameters:
-        max_connections: "100"
-        shared_buffers: "256MB"
-        log_statement: "ddl"
+      docker_image: "ghcr.io/zalando/spilo-16:3.2-p3"
 
     configLoadBalancer:
-      enable_master_pool_size: false
+      enable_master_load_balancer: false
+      enable_replica_load_balancer: false
+
+    configTeamsApi:
+      # Team API for ownership-based access control
+      enable_teams_api: false
 
     # Pod resources for PostgreSQL instances
     configKubernetes:
@@ -124,6 +119,7 @@ spec:
     storageClass: fast-ssd
 
   numberOfInstances: 3
+  enableLogicalBackup: true
 
   # Define databases and users in the CRD
   users:
@@ -190,7 +186,7 @@ spec:
       logical_backup_s3_access_key_id: ""   # use IRSA instead
       logical_backup_s3_secret_access_key: ""
       # Retention: keep 7 days of backups
-      logical_backup_s3_retention_time: "7"
+      logical_backup_s3_retention_time: "7 days"
 ```
 
 ## Step 5: Create Flux Kustomizations
@@ -233,14 +229,17 @@ kubectl get secret app_user.acid-my-app-db.credentials.postgresql.acid.zalan.do 
   -n databases -o jsonpath='{.data.password}' | base64 -d
 
 # Connect to primary
-kubectl exec -it acid-my-app-db-0 -n databases -- su postgres -c "psql"
+PRIMARY_POD=$(kubectl get pod -n databases \
+  -l application=spilo,cluster-name=acid-my-app-db,spilo-role=master \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it "$PRIMARY_POD" -n databases -- su postgres -c "psql"
 ```
 
 ## Best Practices
 
 - Use the `teamId` field to enable ownership-based access control when managing clusters for multiple application teams.
 - Enable logical backups to S3 using IRSA credentials rather than static access keys.
-- Set `numberOfInstances: 3` (or higher with odd numbers) for quorum-based leader election in production.
+- Set `numberOfInstances: 3` for a highly available primary with two replicas in production.
 - Use `preparedDatabases` to have the operator automatically create schemas and roles - reduces manual post-provisioning steps.
 - Monitor Patroni's REST API on port 8008 with Prometheus to track cluster state, leader, and sync lag.
 
