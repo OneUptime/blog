@@ -32,13 +32,14 @@ az aks create \
   --location eastus \
   --network-plugin azure \
   --network-plugin-mode overlay \
+  --network-policy azure \
   --pod-cidr 192.168.0.0/16 \
   --node-count 3 \
   --enable-managed-identity \
   --generate-ssh-keys
 ```
 
-The `--pod-cidr` flag defines the address space for pods. This range does not need to come from your VNet and can overlap across clusters.
+The `--pod-cidr` flag defines the address space for pods. This range does not need to come from your VNet, but it must not overlap with any subnet IP ranges.
 
 Verify the network configuration:
 
@@ -75,8 +76,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/my-overlay-cluster \
-  --personal
+  --path=clusters/my-overlay-cluster
 ```
 
 Verify all Flux components are running:
@@ -180,6 +180,15 @@ spec:
 Set up a Flux webhook receiver that can be reached from outside the cluster. With CNI Overlay, the webhook needs a LoadBalancer or Ingress:
 
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webhook-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: <random-token>
+---
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
@@ -245,7 +254,7 @@ spec:
 
 **IP address space**: With CNI Overlay, pod IPs are from a private CIDR that does not consume VNet addresses. This means Flux deployments can scale without IP address planning concerns.
 
-**Service connectivity**: Internal LoadBalancer services still receive IPs from the VNet subnet. This is important for Flux webhook receivers that need to be reachable from Azure DevOps or GitHub.
+**Service connectivity**: Internal LoadBalancer services still receive IPs from the VNet subnet. Use a public LoadBalancer or Ingress for public GitHub webhooks, or an internal LoadBalancer when the webhook source can reach the VNet privately.
 
 **Network policies**: Network policies reference pod IPs from the overlay CIDR. Policies work the same way as with standard CNI, but the IP ranges differ.
 
@@ -262,7 +271,7 @@ kubectl get svc -A | grep LoadBalancer
 
 ## Troubleshooting
 
-**Pods cannot reach external services**: Ensure outbound rules allow traffic from the overlay CIDR. Check NAT gateway or load balancer outbound rules.
+**Pods cannot reach external services**: Overlay pod egress is SNATed to the node IP. Check the cluster's outbound type, NAT gateway, load balancer outbound rules, and any firewall rules that apply to the node subnet.
 
 **Network policies not enforcing**: Verify that Azure Network Policy Manager or Calico is enabled. CNI Overlay supports both policy engines.
 
