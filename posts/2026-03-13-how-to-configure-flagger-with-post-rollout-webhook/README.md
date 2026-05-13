@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Canary, Webhook, Post-Rollout, Kubernetes, Progressive Delivery, Notification
 
-Description: Learn how to configure post-rollout webhooks in Flagger to trigger notifications, cleanup tasks, or integration actions after a successful canary promotion.
+Description: Learn how to configure post-rollout webhooks in Flagger to trigger notifications, cleanup tasks, or integration actions after a canary rollout finishes.
 
 ---
 
 ## Introduction
 
-Flagger's `post-rollout` webhook fires after a canary has been successfully promoted to production. At this point, the canary analysis has passed, traffic has been fully shifted to the new version, and the primary workload has been updated. The post-rollout webhook is your hook for running post-deployment actions like sending notifications, triggering downstream pipelines, updating external registries, or running cleanup tasks.
+Flagger's `post-rollout` webhook fires after a canary has finished, either after a successful promotion or after a rollback. On a successful rollout, the canary analysis has passed, traffic has been shifted back to the primary service, and the primary workload has been updated. The post-rollout webhook is your hook for running post-deployment actions like sending notifications, triggering downstream pipelines, updating external registries, or running cleanup tasks.
 
-Unlike pre-rollout and rollout webhooks, a failed post-rollout webhook does not cause a rollback. The promotion has already happened, so Flagger logs the failure but does not take corrective action. This means post-rollout webhooks are best suited for non-critical actions where failure is acceptable.
+Unlike pre-rollout and rollout webhooks, a failed post-rollout webhook does not cause a rollback. The rollout has already finished, so Flagger logs the failure but does not take corrective action. This means post-rollout webhooks are best suited for non-critical actions where failure is acceptable.
 
 This guide explains how to configure post-rollout webhooks, common patterns, and how they fit into the broader Flagger webhook lifecycle.
 
@@ -31,9 +31,9 @@ Flagger processes webhooks in a specific order during a canary deployment:
 2. `pre-rollout` - Checks before traffic shifting
 3. `rollout` - Called during each analysis step
 4. `confirm-promotion` - Gate before promotion
-5. `post-rollout` - Called after successful promotion
+5. `post-rollout` - Called after promotion or rollback
 
-The post-rollout webhook is the final step. It fires once after promotion completes. If the canary is rolled back instead of promoted, the post-rollout webhook does not fire (use the `rollback` webhook type for rollback notifications).
+The post-rollout webhook is the final step. It fires once after the rollout completes, and the webhook payload's `phase` field tells your receiver whether the rollout finished with `Succeeded` or `Failed`.
 
 ## Configuring a post-rollout Webhook
 
@@ -74,6 +74,7 @@ After a successful promotion, Flagger sends an HTTP POST to the URL with the can
   "name": "my-app",
   "namespace": "default",
   "phase": "Succeeded",
+  "checksum": "string (canary checksum)",
   "metadata": {
     "message": "Canary promotion completed successfully"
   }
@@ -130,10 +131,8 @@ After a successful promotion, you might need to clean up temporary resources:
         url: http://flagger-loadtester.test/
         timeout: 60s
         metadata:
-          type: bash
-          cmd: |
-            kubectl delete configmap my-app-canary-config \
-              --namespace default --ignore-not-found
+          type: kubectl
+          cmd: "delete configmap my-app-canary-config --namespace default --ignore-not-found"
 ```
 
 ## Multiple post-rollout Webhooks
@@ -164,7 +163,7 @@ You can define multiple post-rollout webhooks. Flagger executes them in order:
           cmd: "curl -sf http://my-app.default:80/api/v1/self-test"
 ```
 
-If one webhook fails, Flagger still attempts the remaining webhooks. Failures are logged but do not affect the deployment outcome.
+Flagger executes post-rollout webhooks in order. If one webhook fails, Flagger logs the failure and stops running the remaining post-rollout hooks, but the failure does not affect the deployment outcome.
 
 ## Complete Canary with Post-rollout Example
 
@@ -218,4 +217,4 @@ spec:
 
 ## Conclusion
 
-The `post-rollout` webhook in Flagger runs after a successful canary promotion, making it the right place for notifications, downstream pipeline triggers, and cleanup tasks. Because failures do not cause rollbacks (the promotion has already happened), post-rollout webhooks should be used for non-critical post-deployment actions. For actions that must succeed, consider running them as part of a separate pipeline triggered by the post-rollout webhook rather than relying on the webhook itself.
+The `post-rollout` webhook in Flagger runs after a canary rollout finishes, making it the right place for notifications, downstream pipeline triggers, and cleanup tasks. Because failures do not cause rollbacks (the rollout has already finished), post-rollout webhooks should be used for non-critical post-deployment actions. For actions that must succeed, consider running them as part of a separate pipeline triggered by the post-rollout webhook rather than relying on the webhook itself.
