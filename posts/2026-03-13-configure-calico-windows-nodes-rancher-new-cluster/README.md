@@ -12,7 +12,7 @@ Description: A guide to configuring Calico networking for Windows nodes when cre
 
 Creating a new Rancher-managed cluster with Windows nodes and Calico as the CNI involves configuring the cluster at creation time rather than retrofitting an existing cluster. Rancher's cluster creation wizard handles many of the initial configuration steps, but Calico-specific settings - IP pools, encapsulation mode, MTU - require additional configuration through the standard Calico CRDs after the cluster is running.
 
-Rancher passes Calico configuration through Helm chart values during cluster creation, and then the Tigera Operator manages the ongoing configuration. Understanding which settings to configure at creation time (through Rancher) versus post-creation time (through `calicoctl`) is key to a well-configured mixed-OS cluster.
+Rancher passes Calico configuration through Helm chart values during cluster creation, and then the Tigera Operator manages the ongoing configuration. Understanding which settings to configure at creation time (through Rancher) versus post-creation time (through Calico CRDs) is key to a well-configured mixed-OS cluster.
 
 ## Prerequisites
 
@@ -45,29 +45,43 @@ spec:
 
 ## Step 2: Post-Creation: Configure IP Pool for Windows
 
-After the cluster is created and Windows nodes are joined:
+After the cluster is created and Windows nodes are joined, configure the operator-managed pool for VXLAN and enable Calico IPAM strict affinity:
 
 ```bash
-calicoctl get ippool default-ipv4-ippool -o yaml
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"encapsulation":"VXLAN","natOutgoing":true}}'
+kubectl get installation default -o yaml
+kubectl patch installation default --type=json \
+  -p='[{"op":"replace","path":"/spec/calicoNetwork/ipPools/0/encapsulation","value":"VXLAN"}]'
+kubectl patch ipamconfigurations default --type=merge \
+  --patch='{"spec":{"strictAffinity":true}}'
 ```
 
 ## Step 3: Create Windows-Specific IP Pool
 
 ```bash
-cat <<EOF | calicoctl apply -f -
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: windows-ippool
-spec:
-  cidr: 192.168.128.0/17
-  blockSize: 26
-  encapsulation: VXLAN
-  natOutgoing: true
-  nodeSelector: kubernetes.io/os == 'windows'
-EOF
+kubectl patch installation default --type=merge --patch='{
+  "spec": {
+    "calicoNetwork": {
+      "ipPools": [
+        {
+          "name": "linux-ippool",
+          "cidr": "192.168.0.0/17",
+          "blockSize": 26,
+          "encapsulation": "VXLAN",
+          "natOutgoing": "Enabled",
+          "nodeSelector": "kubernetes.io/os == '\''linux'\''"
+        },
+        {
+          "name": "windows-ippool",
+          "cidr": "192.168.128.0/17",
+          "blockSize": 26,
+          "encapsulation": "VXLAN",
+          "natOutgoing": "Enabled",
+          "nodeSelector": "kubernetes.io/os == '\''windows'\''"
+        }
+      ]
+    }
+  }
+}'
 ```
 
 ## Step 4: Configure Felix
@@ -98,7 +112,7 @@ kubectl get tigerastatus
 
 ```bash
 kubectl get nodes -l kubernetes.io/os=windows
-kubectl run win-test --image=mcr.microsoft.com/windows/nanoserver:1809 \
+kubectl run win-test --image=mcr.microsoft.com/windows/nanoserver:ltsc2022 \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/os":"windows"}}}' \
   -- cmd /c "ping -t 127.0.0.1"
 kubectl get pod win-test -o wide
@@ -106,4 +120,4 @@ kubectl get pod win-test -o wide
 
 ## Conclusion
 
-Configuring Calico for Windows nodes in a new Rancher cluster involves selecting Calico during cluster creation with the correct CIDRs, then post-creation configuring the IP pool for VXLAN encapsulation, creating Windows-specific IP pools, and tuning Felix. Rancher handles the initial operator deployment, while `calicoctl` manages the ongoing network configuration that the cluster creation wizard does not expose.
+Configuring Calico for Windows nodes in a new Rancher cluster involves selecting Calico during cluster creation with the correct CIDRs, then post-creation configuring the IP pool for VXLAN encapsulation, creating Windows-specific IP pools, and tuning Felix. Rancher handles the initial operator deployment, while the Calico CRDs manage the ongoing network configuration that the cluster creation wizard does not expose.
