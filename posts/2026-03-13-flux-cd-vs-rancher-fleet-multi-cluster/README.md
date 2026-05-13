@@ -18,7 +18,7 @@ This comparison helps platform teams understand when to choose Flux CD versus Ra
 
 - Multiple Kubernetes clusters
 - A Git repository for fleet configuration
-- Either Rancher Manager or standalone Flux CLI
+- Either Rancher Manager/Fleet or the Flux CLI
 
 ## Step 1: Rancher Fleet Architecture
 
@@ -61,20 +61,31 @@ spec:
     - content: |
         apiVersion: apps/v1
         kind: Deployment
-        ...
+        metadata:
+          name: myapp
+          labels:
+            app: myapp
+        spec:
+          replicas: 3
+          selector:
+            matchLabels:
+              app: myapp
+          template:
+            metadata:
+              labels:
+                app: myapp
+            spec:
+              containers:
+                - name: myapp
+                  image: nginx:1.27
+                  ports:
+                    - containerPort: 80
+      name: myapp.yaml
   targets:
-    - clusterSelector:
+    - name: production
+      clusterSelector:
         matchLabels:
           environment: production
-      options:
-        kustomize:
-          patches:
-            - patch: |-
-                - op: replace
-                  path: /spec/replicas
-                  value: 3
-              target:
-                kind: Deployment
 ```
 
 ## Step 2: Flux CD Multi-Cluster Architecture
@@ -113,14 +124,14 @@ spec:
 | Feature | Flux CD | Rancher Fleet |
 |---|---|---|
 | Centralized management | No (distributed) | Yes (hub cluster) |
-| Max clusters tested | Hundreds | 1,000,000 (stated goal) |
-| UI management | No | Yes (Rancher UI) |
-| Independent operation | Yes (per cluster) | Fleet agent required |
+| Scale model | Per-cluster controllers; no central fleet limit | Designed for large fleets of clusters, deployments, or teams |
+| UI management | No built-in UI | Yes (Rancher UI) |
+| Independent operation | Yes (per cluster) | Requires Fleet agent and upstream Fleet controller access |
 | Helm support | Yes, HelmRelease | Yes, native |
 | Kustomize support | Yes, native | Yes, native |
-| OCI artifacts | Yes | Partial |
+| OCI artifacts | Yes | Yes for Helm OCI charts and OCI storage |
 | SOPS secrets | Yes, native | No (external tools needed) |
-| Cluster registration | Manual/automated | Via Rancher or Fleet CLI |
+| Cluster registration | Bootstrap each cluster manually or with automation | Via Rancher or Fleet agent registration |
 
 ## Step 4: When to Choose Flux CD
 
@@ -147,4 +158,4 @@ Rancher Fleet excels when:
 
 ## Conclusion
 
-Rancher Fleet is designed specifically for massive multi-cluster scale and integrates tightly with the Rancher ecosystem. Flux CD's distributed model offers better blast radius isolation and richer Kubernetes-native features (SOPS, OCI artifacts). For teams already in the Rancher ecosystem managing many clusters, Fleet is the natural choice. For teams prioritizing GitOps purity and per-cluster independence, Flux CD is the better fit.
+Rancher Fleet is designed specifically for massive multi-cluster scale and integrates tightly with the Rancher ecosystem. Flux CD's distributed model offers better blast radius isolation and built-in SOPS decryption with per-cluster Flux APIs. For teams already in the Rancher ecosystem managing many clusters, Fleet is the natural choice. For teams prioritizing GitOps purity and per-cluster independence, Flux CD is the better fit.
