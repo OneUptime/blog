@@ -114,7 +114,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 24h
-  url: https://charts.jetstack.io
+  type: oci
+  url: oci://quay.io/jetstack/charts
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -132,19 +133,24 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: cert-manager
+  targetNamespace: cert-manager
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ```
 
 The infrastructure kustomization.yaml ties it together:
@@ -216,7 +222,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=./clusters/my-cluster \
+  --path=clusters/my-cluster \
   --personal
 ```
 
