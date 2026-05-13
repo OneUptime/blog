@@ -12,7 +12,7 @@ Description: Measure and minimize Recovery Point Objective (RPO) for Flux CD man
 
 Recovery Point Objective (RPO) defines the maximum amount of data or state change that can be lost during a disaster. For a GitOps-managed system like Flux CD, RPO has an interesting nuance: the Git repository itself has a near-zero RPO for configuration changes, because every committed change is immediately durable in Git. However, in-cluster state - running pod data, database writes, unsynced secrets - has a different RPO that depends on your backup strategy.
 
-Understanding where your RPO exposure lies in a Flux environment requires separating the different layers of state. Configuration state (in Git) is always recoverable to the last commit. Runtime state (in pods, databases, PVCs) depends on backup frequency. Flux-specific state (reconciliation history, image tags detected) is tracked in etcd and has the same RPO as your etcd backup.
+Understanding where your RPO exposure lies in a Flux environment requires separating the different layers of state. Configuration state (in Git) is recoverable to the last pushed commit. Runtime state (in pods, databases, PVCs) depends on backup frequency. Flux-specific status and automation state is stored in Kubernetes objects in etcd and has the same RPO as your etcd backup; image tag caches can be rebuilt by the image-reflector-controller on its next scan.
 
 This guide covers identifying your RPO exposure across all state layers, measuring the actual gap between your current state and last recoverable state, and implementing practices to minimize RPO.
 
@@ -31,7 +31,7 @@ graph TD
     A --> C[Kubernetes API State]
     A --> D[Application Data State]
     B --> E[RPO = 0 for committed changes]
-    B --> F[RPO = time since last commit for uncommitted changes]
+    B --> F[Unpushed or uncommitted changes are not recoverable from Git]
     C --> G[RPO = time since last etcd snapshot]
     D --> H[RPO = time since last backup]
 ```
@@ -49,7 +49,7 @@ state_layers:
     description: "Flux manifests, Kustomizations, HelmReleases, etc."
     backup_mechanism: "Distributed Git clones + cloud provider backup"
     rpo_seconds: 0  # Zero for committed changes
-    rpo_notes: "Any uncommitted work-in-progress has infinite RPO"
+    rpo_notes: "Any unpushed or uncommitted work-in-progress is not recoverable from Git"
 
   kubernetes_api_state:
     description: "All Kubernetes objects stored in etcd"
@@ -102,7 +102,7 @@ fi
 
 ## Step 3: Measure Flux-Specific RPO
 
-Flux tracks reconciliation state, image tags, and automation state in Kubernetes objects. These are stored in etcd and have the same RPO as your etcd backup - but you can also measure the Flux-specific gap.
+Flux tracks reconciliation status and automation state in Kubernetes objects. These are stored in etcd and have the same RPO as your etcd backup - but you can also measure the Flux-specific gap.
 
 ```bash
 #!/bin/bash
@@ -113,7 +113,10 @@ echo "=== Last Reconciliation Times ==="
 kubectl get kustomizations -A -o json | \
   jq -r '.items[] |
     [.metadata.namespace, .metadata.name,
-     .status.lastHandledReconcileAt // "never"] |
+     (.status.history[0].lastReconciled //
+      (.status.conditions[]? | select(.type == "Ready") | .lastTransitionTime) //
+      "never"),
+     .status.lastAttemptedRevision // "unknown"] |
     join(" | ")'
 
 # For image automation, check how far behind the last scan is
@@ -156,7 +159,9 @@ spec:
           hostNetwork: true
           containers:
             - name: etcd-backup
-              image: bitnami/etcd:latest
+              # Use an image that includes both etcdctl and the AWS CLI,
+              # and provide AWS credentials via IRSA, kube2iam, or a Secret.
+              image: your-registry/etcdctl-awscli:3.5
               env:
                 - name: S3_BUCKET
                   value: my-etcd-backups
@@ -172,12 +177,21 @@ spec:
                     --cacert=/etc/etcd/ca.crt \
                     --cert=/etc/etcd/healthcheck-client.crt \
                     --key=/etc/etcd/healthcheck-client.key
-                  aws s3 cp "$SNAPSHOT_FILE" "s3://${S3_BUCKET}/$(basename $SNAPSHOT_FILE)"
+                  aws s3 cp "$SNAPSHOT_FILE" "s3://${S3_BUCKET}/$(basename "$SNAPSHOT_FILE")"
                   # Keep only last 48 snapshots (24 hours worth)
                   aws s3 ls "s3://${S3_BUCKET}/" | sort | head -n -48 | \
                     awk '{print $4}' | \
-                    xargs -I{} aws s3 rm "s3://${S3_BUCKET}/{}"
+                    xargs -r -I{} aws s3 rm "s3://${S3_BUCKET}/{}"
+              volumeMounts:
+                - name: etcd-certs
+                  mountPath: /etc/etcd
+                  readOnly: true
           restartPolicy: OnFailure
+          volumes:
+            - name: etcd-certs
+              hostPath:
+                path: /etc/kubernetes/pki/etcd
+                type: Directory
           nodeSelector:
             node-role.kubernetes.io/control-plane: ""
           tolerations:
@@ -185,10 +199,10 @@ spec:
               effect: NoSchedule
 ```
 
-## Step 5: Track RPO as a Prometheus Metric
+## Step 5: Track Flux Health as a Prometheus Metric
 
 ```yaml
-# PrometheusRule for RPO alerts
+# PrometheusRule for Flux health alerts
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -199,29 +213,32 @@ spec:
     - name: flux-rpo
       interval: 5m
       rules:
-        # Alert if Flux Kustomization has not reconciled recently
-        - alert: FluxKustomizationNotReconciled
+        # Alert if Flux Kustomization is not ready.
+        # gotk_resource_info is exported by kube-state-metrics custom resource state metrics.
+        - alert: FluxKustomizationNotReady
           expr: |
-            (time() - gotk_reconcile_duration_seconds_sum{
-              kind="Kustomization", type="Ready", status="True"
-            }) > 1800
+            gotk_resource_info{
+              customresource_kind="Kustomization",
+              ready!="True"
+            } == 1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Kustomization {{ $labels.name }} has not reconciled in 30 minutes"
-            description: "RPO exposure: {{ $value | humanizeDuration }}"
+            summary: "Kustomization {{ $labels.name }} is not ready"
+            description: "Flux reports ready={{ $labels.ready }} for {{ $labels.exported_namespace }}/{{ $labels.name }}"
 
-        - alert: FluxImageScanStale
+        - alert: FluxImageRepositoryNotReady
           expr: |
-            (time() - gotk_source_duration_seconds_sum{
-              kind="ImageRepository"
-            }) > 3600
+            gotk_resource_info{
+              customresource_kind="ImageRepository",
+              ready!="True"
+            } == 1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "ImageRepository {{ $labels.name }} scan is stale"
+            summary: "ImageRepository {{ $labels.name }} is not ready"
 ```
 
 ## Step 6: Document RPO in Your SLA
