@@ -12,7 +12,7 @@ Karpenter is an open-source node provisioning project built for Kubernetes. Unli
 
 ## Prerequisites
 
-- An existing EKS cluster (version 1.25 or later)
+- An existing EKS cluster (version 1.29 or later)
 - Flux CLI installed and bootstrapped on your cluster
 - AWS CLI configured with appropriate permissions
 - kubectl and eksctl installed
@@ -27,7 +27,7 @@ export CLUSTER_NAME="my-cluster"
 export AWS_REGION="us-west-2"
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 export KARPENTER_NAMESPACE="kube-system"
-export KARPENTER_VERSION="0.37.0"
+export KARPENTER_VERSION="1.12.1"
 ```
 
 ## Step 2: Create the Karpenter IAM Resources
@@ -97,7 +97,7 @@ eksctl create iamserviceaccount \
   --approve
 ```
 
-Attach a custom policy for EC2, pricing, and SQS permissions:
+Attach a custom policy for EC2, pricing, SSM, IAM PassRole, and EKS discovery permissions:
 
 ```bash
 cat <<EOF > karpenter-controller-policy.json
@@ -113,19 +113,25 @@ cat <<EOF > karpenter-controller-policy.json
         "ec2:RunInstances",
         "ec2:CreateTags",
         "ec2:TerminateInstances",
+        "ec2:DeleteLaunchTemplate",
+        "ec2:DescribeCapacityReservations",
         "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
         "ec2:DescribeSecurityGroups",
         "ec2:DescribeSubnets",
         "ec2:DescribeInstanceTypes",
         "ec2:DescribeInstanceTypeOfferings",
         "ec2:DescribeAvailabilityZones",
         "ec2:DescribeLaunchTemplates",
+        "ec2:DescribePlacementGroups",
         "ec2:DescribeImages",
         "ec2:DescribeSpotPriceHistory",
         "pricing:GetProducts",
         "ssm:GetParameter",
         "iam:PassRole",
-        "sqs:*"
+        "iam:GetInstanceProfile",
+        "iam:ListInstanceProfiles",
+        "eks:DescribeCluster"
       ],
       "Resource": "*"
     }
@@ -137,6 +143,12 @@ aws iam put-role-policy \
   --role-name "KarpenterControllerRole-${CLUSTER_NAME}" \
   --policy-name "KarpenterControllerPolicy" \
   --policy-document file://karpenter-controller-policy.json
+```
+
+Create the EC2 Spot service-linked role if it does not already exist:
+
+```bash
+aws iam create-service-linked-role --aws-service-name spot.amazonaws.com || true
 ```
 
 ## Step 3: Tag Subnets and Security Groups
@@ -210,7 +222,7 @@ spec:
   chart:
     spec:
       chart: karpenter
-      version: "0.37.*"
+      version: "1.12.*"
       sourceRef:
         kind: HelmRepository
         name: karpenter
@@ -223,15 +235,14 @@ spec:
     settings:
       clusterName: my-cluster
       clusterEndpoint: https://ABCDEF1234567890.gr7.us-west-2.eks.amazonaws.com
-      interruptionQueue: my-cluster-karpenter
-    replicas: 2
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 1
-        memory: 1Gi
+    controller:
+      resources:
+        requests:
+          cpu: 1
+          memory: 1Gi
+        limits:
+          cpu: 1
+          memory: 1Gi
     topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
@@ -280,7 +291,7 @@ kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  role: "KarpenterNodeRole-my-cluster"
+  instanceProfile: "KarpenterNodeInstanceProfile-my-cluster"
   amiSelectorTerms:
     - alias: al2023@latest
   subnetSelectorTerms:
