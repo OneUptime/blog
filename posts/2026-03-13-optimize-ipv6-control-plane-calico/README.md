@@ -37,7 +37,7 @@ metadata:
   name: default-ipv6-ippool
 spec:
   cidr: fd00:10:244::/48          # ULA /48 provides ample space for large clusters
-  blockSize: 122                   # /122 = 4 IPv6 IPs per block
+  blockSize: 122                   # /122 = 64 IPv6 IPs per block (Calico's IPv6 default)
                                    # Use /120 (256 IPs) for high-density nodes
   ipipMode: Never                  # IPv6 does not use IP-in-IP
   vxlanMode: Never                 # Use native IPv6 routing with BGP
