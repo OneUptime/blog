@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable Calico kube-controllers Prometheus metrics on port 9094 to monitor distribution performance and health.
+Description: Collect Calico kube-controllers Prometheus metrics on port 9094 to monitor controller health and IPAM metrics.
 
 ---
 
 ## Introduction
 
-Calico kube-controllers exposes Prometheus metrics on port 9094 that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
+Calico kube-controllers exposes Prometheus metrics on port 9094 that provide visibility into controller health and IPAM state. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
 
 ## Enable Metrics Collection
 
@@ -35,7 +35,7 @@ spec:
     matchLabels:
       k8s-app: calico-kube-controllers
   endpoints:
-    - port: metrics
+    - port: metrics-port
       path: /metrics
       interval: 30s
 ```
@@ -70,4 +70,4 @@ flowchart LR
 
 ## Conclusion
 
-Calico kube-controllers metrics provide visibility into the kube-controllers distribution layer. Enable metrics via ServiceMonitor, build dashboards focused on key kube-controllers health indicators, and alert on metrics endpoint availability and key performance thresholds. These metrics complement Felix per-node metrics to provide complete Calico observability.
+Calico kube-controllers metrics provide visibility into controller health and IPAM state. Collect metrics via ServiceMonitor, build dashboards focused on key kube-controllers health indicators, and alert on metrics endpoint availability and key performance thresholds. These metrics complement Felix per-node metrics to provide complete Calico observability.
