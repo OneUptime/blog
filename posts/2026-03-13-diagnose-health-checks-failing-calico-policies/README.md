@@ -10,7 +10,7 @@ Description: Diagnose why liveness and readiness probes fail after enabling Cali
 
 ## Introduction
 
-Kubernetes health check probes (liveness, readiness, and startup probes) originate from the node's kubelet process, not from another pod. This distinction is critical when diagnosing health check failures after enabling Calico NetworkPolicies: ingress policies that restrict traffic by pod or namespace selector will not match kubelet probe traffic, which comes from the node's host IP.
+Kubernetes health check probes (liveness, readiness, and startup probes) originate from the node's kubelet process, not from another pod. This distinction is critical when diagnosing health check failures after enabling Kubernetes NetworkPolicies enforced by Calico: ingress policies that restrict traffic by pod or namespace selector will not match kubelet probe traffic, which comes from the node's host IP.
 
 When a default-deny ingress policy is applied without an explicit allow for node-sourced probe traffic, health checks begin failing immediately. Pods transition to NotReady status and may be killed and restarted in a loop, causing workload disruption even though the application itself is functioning normally.
 
@@ -20,7 +20,7 @@ This guide provides a structured approach to diagnosing health check failures sp
 
 - Pods transition to NotReady after a new NetworkPolicy is applied
 - Liveness probe failures causing pods to restart in a loop
-- `kubectl describe pod <pod>` shows `Liveness probe failed: dial tcp: connection refused`
+- `kubectl describe pod <pod>` shows probe failures such as `Liveness probe failed: Get ...: context deadline exceeded` or `dial tcp ... i/o timeout`
 - Services report no healthy endpoints despite pods running normally
 
 ## Root Causes
@@ -68,7 +68,7 @@ curl -v http://<pod-ip>:<probe-port><probe-path> 2>&1
 ```bash
 # Kubelet probes come from the node's primary IP, not from a pod
 # NetworkPolicy podSelector and namespaceSelector DO NOT match this traffic
-# Must use ipBlock with node CIDR
+# For Kubernetes NetworkPolicy, use ipBlock with the node CIDR
 
 kubectl get networkpolicy -n <namespace> -o yaml \
   | grep -A 5 "ipBlock:"
@@ -96,13 +96,13 @@ flowchart TD
 
 ## Solution
 
-After diagnosis, add an ipBlock ingress allow for the node subnet CIDR covering the probe port. See the companion Fix post for the exact NetworkPolicy YAML.
+After diagnosis, add an ipBlock ingress allow for the node subnet CIDR covering the probe port in the Kubernetes NetworkPolicy. See the companion Fix post for the exact NetworkPolicy YAML.
 
 ## Prevention
 
 - Always test health check probes after applying or modifying ingress NetworkPolicies
-- Include node CIDR allow in ingress policy templates for pods with probes
-- Use Calico's `!` notation to understand probe traffic origin before policy design
+- Include node CIDR allow in ingress policy templates for pods with network probes
+- Use IP-based source rules, not pod or namespace selectors, when allowing kubelet probe traffic
 
 ## Conclusion
 
