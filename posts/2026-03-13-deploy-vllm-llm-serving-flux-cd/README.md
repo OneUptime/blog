@@ -74,8 +74,8 @@ spec:
           image: vllm/vllm-openai:v0.4.2
           args:
             - "--model"
-            - "mistralai/Mistral-7B-Instruct-v0.2"
-            # Use 4-bit quantization to fit in smaller GPU memory
+            - "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
+            # Use an AWQ-quantized checkpoint to fit in smaller GPU memory
             - "--quantization"
             - "awq"
             # Tensor parallel degree (match number of GPUs)
@@ -104,7 +104,7 @@ spec:
               memory: "24Gi"
               cpu: "8"
           env:
-            - name: HUGGING_FACE_HUB_TOKEN
+            - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-token
@@ -117,6 +117,8 @@ spec:
           volumeMounts:
             - name: model-cache
               mountPath: /model-cache
+            - name: shm
+              mountPath: /dev/shm
           readinessProbe:
             httpGet:
               path: /health
@@ -134,6 +136,10 @@ spec:
         - name: model-cache
           persistentVolumeClaim:
             claimName: vllm-model-cache-pvc
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
 ```
 
 ## Step 3: Create the Service
@@ -219,7 +225,7 @@ curl http://<vllm-svc-ip>:8000/v1/chat/completions \
 
 - Use a PVC for the Hugging Face model cache (`HF_HOME`) so model weights are not re-downloaded on every pod restart.
 - For large models requiring multiple GPUs, set `--tensor-parallel-size` equal to the number of GPUs and request that many `nvidia.com/gpu` resources.
-- Use AWQ or GPTQ quantization (`--quantization awq`) to serve larger models on fewer GPUs without significant quality loss.
+- Use AWQ or GPTQ quantization with a checkpoint that was already quantized for that format (for example, `--quantization awq` with an AWQ model) to serve larger models on fewer GPUs without significant quality loss.
 - Set generous `initialDelaySeconds` on probes - model loading can take several minutes for large weights.
 - Use Flux image update automation to automatically roll out new vLLM container releases from your registry.
 
