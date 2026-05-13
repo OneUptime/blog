@@ -26,9 +26,9 @@ Policy not taking effect is particularly insidious because it can mean either: t
 - Pod label selector in policy does not match the target pods
 - Felix is not running or not healthy on the affected node
 - Policy is being applied to wrong namespace
-- Policy ordering issue: a higher-priority policy overrides the applied one
+- Calico policy ordering issue: an earlier ordered Calico policy allows, denies, or passes the traffic before the applied policy is reached
 - calico-node pod restarting and Felix in the process of re-syncing rules
-- `policyTypes` field missing from NetworkPolicy
+- `policyTypes` field omitted or not set for the intended traffic direction
 
 ## Diagnosis Steps
 
@@ -43,17 +43,17 @@ kubectl get pods -n <namespace> --show-labels | grep "<selector-label>"
 
 ```bash
 POD_NODE=$(kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.nodeName}')
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
+CALICO_NS=$(kubectl get pods -A -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.namespace}')
+NODE_POD=$(kubectl get pods -n "$CALICO_NS" -l k8s-app=calico-node \
   --field-selector spec.nodeName=$POD_NODE -o name)
-kubectl exec $NODE_POD -n kube-system -- wget -qO- http://localhost:9099/readiness 2>/dev/null
+kubectl exec "$NODE_POD" -n "$CALICO_NS" -- wget -qO- http://localhost:9099/readiness 2>/dev/null
 ```
 
-**Step 3: Check iptables rules for the policy on the node**
+**Step 3: Check iptables rules on the node**
 
 ```bash
-ssh $POD_NODE "sudo iptables -L | grep -A 5 cali-pi-"
-# Look for rules matching your policy name
-
+ssh "$POD_NODE" "sudo iptables-save | grep -E 'cali-pi-|cali-po-'"
+# On Linux iptables dataplane clusters, look for Calico policy chains being generated.
 ```
 
 **Step 4: Check policy labels and selectors**
@@ -70,8 +70,9 @@ kubectl get networkpolicy <policy-name> -n <namespace> \
 **Step 5: Check Calico policy with calicoctl**
 
 ```bash
-calicoctl get networkpolicy -n <namespace> <policy-name> -o yaml
-# Calico NetworkPolicy may have different ordering than Kubernetes NetworkPolicy
+calicoctl get networkpolicy -n <namespace> -o wide
+calicoctl get networkpolicy -n <namespace> <calico-policy-name> -o yaml
+# Kubernetes NetworkPolicies are additive, while Calico policies can use order and deny/pass actions.
 ```
 
 **Step 6: Check GlobalNetworkPolicies that might override**
@@ -102,7 +103,7 @@ After identifying the specific issue (selector mismatch, Felix health, or orderi
 
 - Test NetworkPolicy with a known allow/block scenario in staging before production
 - Use `kubectl describe networkpolicy` to verify selector matches before applying
-- Enable Calico policy audit logging to observe traffic decisions
+- Add temporary Calico `Log` rules or enable flow logs to observe traffic decisions
 
 ## Conclusion
 
