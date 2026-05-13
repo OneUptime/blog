@@ -4,58 +4,64 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Enable the Calico Flow Logs API endpoint to query historical network flow data programmatically for security auditing, compliance reporting, and custom observability integrations.
+Description: Enable the Calico Flow Logs API to query aggregated network flow data programmatically for security auditing, compliance reporting, and custom observability integrations.
 
 ---
 
 ## Introduction
 
-The Calico Flow Logs API provides programmatic access to historical flow data, enabling custom integrations with SIEM systems, compliance reporting tools, and network analytics pipelines. It is available in Calico Enterprise and Calico Cloud, exposing a REST API that can be queried for flows by time range, namespace, or policy decision.
+The Calico Flow Logs API, also known as Goldmane, provides programmatic access to aggregated network traffic data, enabling custom integrations with SIEM systems, compliance reporting tools, and network analytics pipelines. In current Calico Open Source releases this is a tech preview gRPC API that powers Calico Whisker and can be queried for flows by time range, namespace, protocol, policy, or policy decision.
 
 ## Key Commands
 
 ```bash
-# Enable Felix metrics (if not already enabled)
+# Enable the flow logs API
 
-kubectl patch felixconfiguration default   --type=merge   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
+kubectl apply -f - <<'EOF'
+apiVersion: operator.tigera.io/v1
+kind: Goldmane
+metadata:
+  name: default
+EOF
 
-# Test Felix metrics endpoint
-CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
+# Optional: enable the Calico Whisker web console
 
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | head -30
+kubectl apply -f - <<'EOF'
+apiVersion: operator.tigera.io/v1
+kind: Whisker
+metadata:
+  name: default
+EOF
 
-# Key Felix metrics to check:
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | grep -E   "^felix_int_dataplane_failures|^felix_calc_graph"
+# Check operator status
+
+kubectl get tigerastatus goldmane
 ```
 
-## ServiceMonitor for Felix
+## Goldmane and Whisker Resources
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+apiVersion: operator.tigera.io/v1
+kind: Goldmane
 metadata:
-  name: calico-felix-metrics
-  namespace: calico-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: calico-node
-  endpoints:
-    - port: http-metrics
-      path: /metrics
-      interval: 30s
+  name: default
+---
+apiVersion: operator.tigera.io/v1
+kind: Whisker
+metadata:
+  name: default
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Felix per node\nport 9091] --> B[Prometheus]
-    B --> C[Grafana dashboards]
-    B --> D[Alertmanager]
-    D --> E[PagerDuty / Slack]
+    A[Calico nodes\nflow data] --> B[Goldmane\nflow logs API]
+    B --> C[Whisker console]
+    B --> D[Custom gRPC clients]
+    D --> E[SIEM / analytics]
 ```
 
 ## Conclusion
 
-Felix metrics provide the deepest operational visibility into the Calico data plane. Enable the Prometheus endpoint via FelixConfiguration, configure a ServiceMonitor to scrape all calico-node pods, and build dashboards focused on dataplane failures and policy calculation latency. These two metric categories detect the most impactful Calico failure modes before they cause visible pod connectivity issues.
+Goldmane provides the Calico flow logs API for aggregated network traffic visibility. Enable the `Goldmane` resource to expose the gRPC API, enable `Whisker` when you also want the built-in web console, and build custom clients against the published protobuf definitions for programmatic reporting and analytics.
