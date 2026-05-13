@@ -10,7 +10,7 @@ Description: A guide to configuring Calico's networking settings for a new Kuber
 
 ## Introduction
 
-A fresh Calico installation on bare metal with containers uses sensible defaults, but configuring it to match your specific hardware, network topology, and workload requirements unlocks its full potential. Bare metal environments give you hardware-level control - you can configure Calico to route at line rate using BGP, match your NIC's maximum MTU, and tune the eBPF dataplane for maximum throughput.
+A fresh Calico installation on bare metal with containers uses sensible defaults, but configuring it to match your specific hardware, network topology, and workload requirements unlocks its full potential. Bare metal environments give you hardware-level control - you can configure Calico to route at line rate using BGP, match your NIC's maximum MTU, and tune the dataplane for maximum throughput.
 
 The configuration surface covers IP pools, BGP settings, FelixConfiguration, and the Installation CR. Each of these controls a distinct aspect of how Calico behaves in your environment. Getting these settings right from the start avoids costly reconfiguration later.
 
@@ -25,7 +25,7 @@ This guide covers the key configuration steps for a new Calico deployment on bar
 
 ## Step 1: Configure IP Pool Encapsulation
 
-For bare metal environments with BGP-capable switches, remove overlay encapsulation.
+For bare metal environments with BGP-capable switches, remove overlay encapsulation. Set the pool CIDR and block size when the pool is created; Calico does not let you edit `blockSize` directly after installation.
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -35,7 +35,7 @@ metadata:
 spec:
   cidr: 10.244.0.0/16
   blockSize: 26
-  encapsulation: None
+  ipipMode: Never
   natOutgoing: true
   nodeSelector: all()
 ```
@@ -90,7 +90,7 @@ kubectl patch installation default --type merge \
   --patch '{"spec":{"calicoNetwork":{"mtu":1500}}}'
 ```
 
-For jumbo frame environments (9000 MTU):
+For jumbo frame environments where the full pod network path supports 9000-byte frames:
 
 ```bash
 kubectl patch installation default --type merge \
