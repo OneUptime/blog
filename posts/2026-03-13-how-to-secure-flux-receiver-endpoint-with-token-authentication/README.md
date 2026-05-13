@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Security, Authentication, Token
 
-Description: A comprehensive guide to securing Flux Receiver webhook endpoints with HMAC token authentication for GitHub, GitLab, Bitbucket, and generic webhook providers.
+Description: A comprehensive guide to securing Flux Receiver webhook endpoints with token authentication for GitHub, GitLab, Bitbucket, and generic HMAC webhook providers.
 
 ---
 
-When you expose a Flux Receiver endpoint outside your cluster, anyone who discovers the URL can send requests to it. Without proper authentication an attacker could trigger unwanted reconciliations, flood your cluster with requests, or probe for vulnerabilities. Flux Receivers use HMAC-based token authentication to verify that incoming webhooks genuinely originate from your configured provider.
+When you expose a Flux Receiver endpoint outside your cluster, anyone who discovers the URL can send requests to it. Without proper authentication an attacker could trigger unwanted reconciliations, flood your cluster with requests, or probe for vulnerabilities. Flux Receivers use provider-specific token authentication to verify that incoming webhooks genuinely originate from your configured provider.
 
 This guide explains how token authentication works in Flux Receivers and how to configure it correctly for different webhook providers.
 
@@ -28,15 +28,15 @@ flux check
 
 ## How Token Authentication Works
 
-Flux Receivers do not use bearer tokens or API keys in the traditional sense. Instead, they rely on HMAC (Hash-based Message Authentication Code) signatures that the webhook provider computes over the request payload using a shared secret.
+Flux Receivers do not use bearer tokens or API keys in the traditional sense. Instead, they rely on provider-specific verification. GitHub, Bitbucket Server, and `generic-hmac` Receivers verify HMAC (Hash-based Message Authentication Code) signatures over the request payload using a shared secret. GitLab Receivers compare GitLab's `X-Gitlab-Token` header with the shared secret.
 
 The flow works like this:
 
 1. You create a Kubernetes secret containing a token string.
 2. You configure the same token string as the webhook secret on the provider side (GitHub, GitLab, and so on).
-3. When the provider sends a webhook, it computes an HMAC signature of the payload using the shared secret and includes it in a request header.
-4. The Flux notification-controller extracts the signature header, recomputes the HMAC over the received payload, and compares the two values.
-5. If they match, the request is authentic. If not, the request is rejected with a 403 status.
+3. When an HMAC-capable provider sends a webhook, it computes an HMAC signature of the payload using the shared secret and includes it in a request header.
+4. The Flux notification-controller extracts the signature header, recomputes the HMAC over the received payload, and compares the two values. For GitLab, it compares the `X-Gitlab-Token` header directly with the shared secret.
+5. If the validation succeeds, the request is authentic. If not, Flux rejects the request with HTTP 400 Bad Request.
 
 The exact header name and algorithm vary by provider type.
 
@@ -148,18 +148,18 @@ spec:
       name: flux-system
 ```
 
-### Generic Receiver
+### Generic HMAC Receiver
 
-For custom or unsupported providers, use the `generic` type. The token must be sent as a query parameter or in a header depending on your setup:
+For custom or unsupported providers that can generate HMAC signatures, use the `generic-hmac` type. The caller must send an `X-Signature` header in the format `<hash-function>=<hash>`, where the hash function is `sha1`, `sha256`, or `sha512`:
 
 ```yaml
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
-  name: generic-receiver
+  name: generic-hmac-receiver
   namespace: flux-system
 spec:
-  type: generic
+  type: generic-hmac
   secretRef:
     name: webhook-token
   resources:
@@ -168,7 +168,7 @@ spec:
       name: flux-system
 ```
 
-For the generic type, the caller must include the token as a query parameter: `https://flux-webhook.example.com/<webhook-path>?token=<your-token>`.
+For example, a `sha256` signature can be sent as `X-Signature: sha256=<generated-hash>`. The plain `generic` Receiver type does not validate incoming requests; it only uses the token to generate the webhook path.
 
 ## Step 4: Configure the Webhook Provider
 
@@ -207,11 +207,13 @@ kubectl -n flux-system create secret generic webhook-token \
   --from-literal=token=$NEW_TOKEN \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart the notification-controller to pick up the new secret
-kubectl -n flux-system rollout restart deploy/notification-controller
+# Reconcile the Receiver so Flux regenerates the webhook path from the new token
+kubectl -n flux-system annotate receiver github-receiver \
+  reconcile.fluxcd.io/requestedAt="$(date +%s)" \
+  --overwrite
 ```
 
-Then immediately update the webhook secret on the provider side. There will be a brief window where webhooks may fail during the transition.
+Then immediately update the webhook secret and payload URL on the provider side. The Receiver webhook path is generated from the token, Receiver name, and namespace, so rotating the token changes the path. There will be a brief window where webhooks may fail during the transition.
 
 ## Verification
 
@@ -247,11 +249,11 @@ curl -i -X POST \
   https://flux-webhook.example.com$WEBHOOK_PATH
 ```
 
-This should return HTTP 403.
+This should return HTTP 400.
 
 ## Troubleshooting
 
-### 403 Forbidden on every request
+### 400 Bad Request on every request
 
 The most common cause is a token mismatch. Verify the secret value:
 
@@ -279,10 +281,10 @@ The secret must contain a key named `token`. If you used a different key name, t
 kubectl -n flux-system get secret webhook-token -o jsonpath='{.data}' | python3 -m json.tool
 ```
 
-### Generic receiver returns 401
+### Generic HMAC receiver returns 400
 
-For generic receivers, make sure you are passing the token as a query parameter appended to the webhook URL, not as a header.
+For `generic-hmac` receivers, make sure you are passing the HMAC signature in the `X-Signature` header, not the raw token as a query parameter. The plain `generic` Receiver type does not validate incoming requests.
 
 ## Summary
 
-Token authentication is the primary security mechanism for Flux Receivers. Each provider type uses a slightly different approach to transmit and verify the token, but the core principle is the same: a shared secret that both sides use to prove authenticity. Use strong random tokens, store them securely with SOPS or Sealed Secrets, rotate them periodically, and always verify that rejected requests actually return 403 to confirm the mechanism is working correctly.
+Token authentication is the primary security mechanism for Flux Receivers. Each provider type uses a slightly different approach to transmit and verify the token, but the core principle is the same: a shared secret that both sides use to prove authenticity. Use strong random tokens, store them securely with SOPS or Sealed Secrets, rotate them periodically, and always verify that rejected requests actually return HTTP 400 to confirm the mechanism is working correctly.
