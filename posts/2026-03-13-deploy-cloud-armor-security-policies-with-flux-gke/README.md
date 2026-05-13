@@ -41,10 +41,10 @@ gcloud compute security-policies rules create 1000 \
   --src-ip-ranges "198.51.100.0/24" \
   --action "deny-403"
 
-# Add an OWASP ModSecurity Core Rule Set (CRS) preconfigured rule
+# Add an OWASP Core Rule Set (CRS) preconfigured WAF rule
 gcloud compute security-policies rules create 2000 \
   --security-policy my-waf-policy \
-  --expression "evaluatePreconfiguredExpr('xss-stable')" \
+  --expression "evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})" \
   --action "deny-403" \
   --description "Block XSS attacks"
 
@@ -172,10 +172,10 @@ kubectl get backendconfig -n production
 # Describe the Ingress to see backend annotations
 kubectl describe ingress my-api-ingress -n production
 
-# Test that blocked IPs receive 403 responses
-curl -I --interface 198.51.100.1 https://api.example.com/
+# From a client whose public IP is in a blocked range, test that requests receive 403 responses
+curl -I https://api.example.com/
 
-# View Cloud Armor logs in Cloud Logging
+# View Cloud Armor logs in Cloud Logging (requires load balancer request logging)
 gcloud logging read \
   'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="my-waf-policy"' \
   --limit 10
@@ -184,7 +184,7 @@ gcloud logging read \
 ## Best Practices
 
 - Manage Cloud Armor policies as Terraform alongside your Flux manifests so the policy resource and its Kubernetes reference are both version-controlled.
-- Use preview mode (`--action preview-deny-403`) when adding new rules to measure false-positive rates before enforcing.
+- Use preview mode (`--preview` with the intended `--action`, such as `--action deny-403`) when adding new rules to measure false-positive rates before enforcing.
 - Separate environment-specific BackendConfigs (staging vs. production) using Kustomize overlays so rules can be tested in staging first.
 - Set alert policies in Cloud Monitoring on the `blocked_request_count` metric to detect attack surges quickly.
 - Use Flux `postBuild` variable substitution to inject the Cloud Armor policy name from environment-specific ConfigMaps rather than hardcoding it.
