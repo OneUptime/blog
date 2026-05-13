@@ -26,7 +26,7 @@ This guide covers creating SOPS-encrypted secrets for Terraform variables, consu
 ```yaml
 # Create a plaintext secret file (DO NOT commit this)
 
-# infrastructure/terraform/secrets/production-sensitive-vars.yaml (UNENCRYPTED)
+# infrastructure/terraform/secrets/production-sensitive-vars-plain.yaml (UNENCRYPTED)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -52,6 +52,7 @@ stringData:
 # Encrypt the secret with SOPS before committing
 sops --encrypt \
   --age age1xxxxxxxxxx \
+  --encrypted-regex '^(data|stringData)$' \
   infrastructure/terraform/secrets/production-sensitive-vars-plain.yaml \
   > infrastructure/terraform/secrets/production-sensitive-vars.yaml
 
@@ -143,7 +144,8 @@ spec:
 # modules/rds/variables.tf
 
 # Sensitive variables marked as sensitive to prevent Terraform from
-# printing their values in plan output
+# printing their values in plan/apply output. Sensitive values are still
+# stored in Terraform state, so protect your backend as well.
 variable "db_master_password" {
   type        = string
   description = "Master password for the RDS instance"
@@ -212,6 +214,12 @@ spec:
             secretKeyRef:
               name: terraform-aws-credentials
               key: aws_secret_access_key
+        - name: AWS_SESSION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: terraform-aws-credentials
+              key: aws_session_token
+              optional: true
         - name: AWS_DEFAULT_REGION
           value: us-east-1
 
@@ -226,7 +234,7 @@ For production, sync secrets from AWS Secrets Manager automatically.
 
 ```yaml
 # infrastructure/terraform/secrets/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: terraform-production-sensitive-vars
@@ -253,7 +261,7 @@ spec:
 ## Best Practices
 
 - Never use `varsFrom` without `varsKeys` for Secrets. Always explicitly list which keys to inject to prevent accidentally exposing unintended secret values as Terraform variables.
-- Mark sensitive Terraform variables with `sensitive = true` in the module's `variables.tf`. This prevents their values from appearing in `terraform plan` output stored in the state or controller logs.
+- Mark sensitive Terraform variables with `sensitive = true` in the module's `variables.tf`. This prevents their values from appearing in Terraform plan/apply output and controller logs, but sensitive values can still be stored in Terraform state, so protect the state backend.
 - Prefer injecting cloud provider credentials as environment variables (via `runnerPodTemplate.spec.env`) rather than Terraform variables. The AWS provider, Azure provider, and GCP provider all honor standard environment variables.
 - Rotate credentials by updating the Kubernetes Secret. The Tofu Controller will detect the change on the next reconciliation and use the new values.
 - Use External Secrets Operator to sync secrets from a cloud secrets manager (AWS Secrets Manager, Azure Key Vault) for automatic rotation without manual kubectl commands.
