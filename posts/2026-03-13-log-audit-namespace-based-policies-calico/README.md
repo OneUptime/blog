@@ -12,7 +12,7 @@ Description: Configure comprehensive logging and auditing for Calico namespace-b
 
 Auditing namespace-based policies means tracking both cross-namespace traffic decisions and changes to namespace labels that affect policy scope. When a namespace label changes, it can silently change which policies apply - without proper logging, this is invisible.
 
-Calico provides the `Log` action in `projectcalico.org/v3` policies that captures traffic decisions, while Kubernetes API audit logs track namespace label modifications. Together, these give you a complete picture of what traffic is flowing between namespaces and why.
+Calico provides the `Log` action in `projectcalico.org/v3` policies that logs packets matching policy rules, while Kubernetes API audit logs track namespace label modifications. Together, these give you useful context about what traffic is flowing between namespaces and which control-plane changes may have affected policy scope.
 
 This guide shows you how to configure namespace-level logging in Calico, capture label change events from the Kubernetes API server, and correlate these two data sources for comprehensive namespace security auditing.
 
@@ -34,12 +34,12 @@ spec:
   order: 900
   selector: all()
   ingress:
-    - action: Log
-      source:
-        namespaceSelector: environment != 'production'
     - action: Allow
       source:
         namespaceSelector: kubernetes.io/metadata.name == 'monitoring'
+    - action: Log
+      source:
+        namespaceSelector: environment != 'production'
     - action: Deny
       source:
         namespaceSelector: environment != 'production'
@@ -75,9 +75,13 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /var/log/calico/flow-logs/*.log
+      path /var/log/syslog,/var/log/messages
+      pos_file /var/log/fluentd-calico-ns.pos
       tag calico.namespace
-      format json
+      <parse>
+        @type regexp
+        expression /^(?<message>.*calico-packet.*)$/
+      </parse>
     </source>
     <match calico.namespace>
       @type elasticsearch
@@ -90,19 +94,14 @@ data:
 ## Step 4: Query Cross-Namespace Denials
 
 ```bash
-# Query for cross-namespace denials in the last hour
+# Query for packets logged immediately before the deny rule in the last hour
 curl -X GET "http://elasticsearch:9200/calico-namespace-logs/_search" -H 'Content-Type: application/json' -d '{
   "query": {
     "bool": {
       "must": [
-        {"term": {"action": "deny"}},
+        {"match_phrase": {"message": "calico-packet"}},
         {"range": {"@timestamp": {"gte": "now-1h"}}}
       ]
-    }
-  },
-  "aggs": {
-    "by_source_namespace": {
-      "terms": {"field": "src_namespace"}
     }
   }
 }'
@@ -112,7 +111,7 @@ curl -X GET "http://elasticsearch:9200/calico-namespace-logs/_search" -H 'Conten
 
 ```mermaid
 flowchart TD
-    A[Cross-NS Traffic] -->|Log Action| B[Calico Flow Logs]
+    A[Cross-NS Traffic] -->|Log Action| B[Calico Packet Logs]
     C[Namespace Label Change] -->|API Audit Log| D[Kubernetes Audit Log]
     B --> E[Fluentd DaemonSet]
     D --> E
@@ -123,4 +122,4 @@ flowchart TD
 
 ## Conclusion
 
-Comprehensive logging for namespace-based policies requires tracking both the data plane (traffic decisions) and the control plane (namespace label changes). By shipping both Calico flow logs and Kubernetes audit logs to a centralized platform, you can correlate policy changes with traffic behavior changes and detect suspicious cross-namespace communication patterns in real time.
+Comprehensive logging for namespace-based policies requires tracking both the data plane (traffic decisions) and the control plane (namespace label changes). By shipping both Calico packet logs and Kubernetes audit logs to a centralized platform, you can correlate policy changes with traffic behavior changes and detect suspicious cross-namespace communication patterns in real time.
