@@ -12,19 +12,19 @@ Description: Diagnose why Calico is blocking kube-dns pods specifically by inspe
 
 Calico blocking kube-dns differs from Calico blocking DNS egress from pods. In this scenario, the kube-dns (CoreDNS) pods themselves cannot process queries because they have been blocked from receiving traffic. This can happen when a Calico NetworkPolicy or GlobalNetworkPolicy with ingress rules is applied to the kube-system namespace, inadvertently blocking incoming DNS query traffic to CoreDNS pods.
 
-This is a cluster-wide issue that affects all pods simultaneously, making it more severe than namespace-scoped DNS blocking. When CoreDNS cannot receive traffic, no pod in the cluster can resolve names.
+This is usually a cluster-wide issue that affects pods using the cluster DNS service, making it more severe than namespace-scoped DNS blocking. When CoreDNS cannot receive traffic, most pods in the cluster cannot resolve names unless they use a custom DNS configuration.
 
 ## Symptoms
 
-- DNS failures cluster-wide (all namespaces simultaneously)
-- `kubectl exec <pod> -- nslookup kubernetes.default` fails from every pod
-- CoreDNS pods are running but responding with errors
-- `kubectl logs -n kube-system <coredns-pod>` shows incoming connection errors
+- DNS failures cluster-wide (all namespaces using cluster DNS simultaneously)
+- `kubectl exec <pod> -- nslookup kubernetes.default` fails from pods in multiple namespaces
+- CoreDNS pods are running, but queries fail or time out
+- `kubectl logs -n kube-system <coredns-pod>` may show errors, or no matching queries if traffic is dropped before reaching CoreDNS
 
 ## Root Causes
 
 - NetworkPolicy in kube-system with ingress default-deny blocking DNS queries to CoreDNS pods
-- Calico GlobalNetworkPolicy with ingress restrictions not allowing UDP 53 to kube-dns pods
+- Calico GlobalNetworkPolicy with ingress restrictions not allowing UDP and TCP 53 to kube-dns pods
 - calico-node iptables rules inadvertently blocking CoreDNS pod traffic
 - Host-level firewall (UFW) blocking UDP 53 at the node level
 
@@ -37,7 +37,7 @@ This is a cluster-wide issue that affects all pods simultaneously, making it mor
 
 for NS in default production staging; do
   kubectl run test --image=busybox -n $NS --restart=Never --rm -i \
-    --timeout=10s -- nslookup kubernetes.default 2>&1 | head -3
+    -- nslookup kubernetes.default 2>&1 | head -3
 done
 ```
 
@@ -67,8 +67,8 @@ calicoctl get globalnetworkpolicy -o yaml | \
 COREDNS_POD_IP=$(kubectl get pods -n kube-system -l k8s-app=kube-dns \
   -o jsonpath='{.items[0].status.podIP}')
 # From another pod:
-kubectl run test --image=busybox --restart=Never -- \
-  nc -zuv $COREDNS_POD_IP 53
+kubectl run dns-direct --image=busybox --restart=Never --rm -i -- \
+  nslookup kubernetes.default.svc.cluster.local $COREDNS_POD_IP
 ```
 
 **Step 6: Check iptables on node running CoreDNS**
@@ -85,7 +85,7 @@ flowchart TD
     B -- Yes running --> C[Check kube-system NetworkPolicy]
     B -- CrashLoopBackOff --> D[Fix CoreDNS pods first]
     C --> E{kube-system has ingress policy?}
-    E -- Yes --> F[Check if ingress allows UDP 53 from all namespaces]
+    E -- Yes --> F[Check if ingress allows UDP and TCP 53 from all namespaces]
     E -- No --> G[Check GlobalNetworkPolicy]
     G --> H{GlobalNetworkPolicy blocking kube-dns?}
     H -- Yes --> I[Fix GlobalNetworkPolicy to allow DNS ingress]
@@ -97,10 +97,10 @@ Apply the targeted fix depending on whether the block is in a kube-system Networ
 
 ## Prevention
 
-- Never apply default-deny ingress policies to kube-system without DNS allow rules
+- Never apply default-deny ingress policies to kube-system without DNS allow rules for UDP and TCP 53
 - Test DNS from all namespaces after any kube-system policy change
 - Use the GlobalNetworkPolicy DNS baseline to protect DNS traffic
 
 ## Conclusion
 
-Calico blocking kube-dns specifically affects CoreDNS's ability to receive queries. Diagnose by checking kube-system NetworkPolicies and GlobalNetworkPolicies for ingress rules that might block UDP 53 to CoreDNS pods. Cluster-wide simultaneous DNS failure is the key differentiator from namespace-scoped DNS blocking.
+Calico blocking kube-dns specifically affects CoreDNS's ability to receive queries. Diagnose by checking kube-system NetworkPolicies and GlobalNetworkPolicies for ingress rules that might block UDP or TCP 53 to CoreDNS pods. Cluster-wide simultaneous DNS failure is the key differentiator from namespace-scoped DNS blocking.
