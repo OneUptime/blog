@@ -32,8 +32,14 @@ kubectl get networkpolicies --all-namespaces -o json | jq '.items[] | {
   name: .metadata.name,
   namespace: .metadata.namespace,
   uses_pod_selector: (.spec.podSelector != null),
-  uses_namespace_selector: (.spec.ingress[]?.from[]?.namespaceSelector != null),
-  uses_ip_block: (.spec.ingress[]?.from[]?.ipBlock != null)
+  uses_namespace_selector: (
+    [.spec.ingress[]?.from[]?.namespaceSelector, .spec.egress[]?.to[]?.namespaceSelector]
+    | any(. != null)
+  ),
+  uses_ip_block: (
+    [.spec.ingress[]?.from[]?.ipBlock, .spec.egress[]?.to[]?.ipBlock]
+    | any(. != null)
+  )
 }'
 ```
 
@@ -45,21 +51,30 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-monitoring-namespace
+  namespace: production
 spec:
+  podSelector: {}
   ingress:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: monitoring
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9091
+        - protocol: TCP
+          port: 8080
 
 # Target policy (label-based)
-# After labeling all monitoring pods with: team=monitoring, app=prometheus
+# After labeling all monitoring pods with: team=monitoring, tier=observability
 ```
 
 ## Step 3: Apply Labels to All Workloads
 
 ```bash
-# Script to label all pods in the monitoring namespace
+# Script to label deployment pod templates in the monitoring namespace
 kubectl get deployments -n monitoring -o name | while read deploy; do
   kubectl patch "$deploy" -n monitoring --type=merge -p '{
     "spec": {
@@ -89,7 +104,9 @@ spec:
   selector: all()
   ingress:
     - action: Allow
+      protocol: TCP
       source:
+        namespaceSelector: projectcalico.org/name == 'monitoring'
         selector: team == 'monitoring'
       destination:
         ports: [9090, 9091, 8080]
