@@ -74,7 +74,7 @@ spec:
   chart:
     spec:
       chart: oauth2-proxy
-      version: ">=7.0.0 <8.0.0"
+      version: ">=10.0.0 <11.0.0"
       sourceRef:
         kind: HelmRepository
         name: oauth2-proxy
@@ -90,6 +90,8 @@ spec:
       github-org: my-github-org      # Restrict to this GitHub org
       email-domain: "*"              # Allow any email domain
       upstream: "file:///dev/null"   # No upstream - used in auth-url mode
+      reverse-proxy: "true"          # Required when OAuth2 Proxy runs behind ingress-nginx auth_request
+      set-xauthrequest: "true"       # Return X-Auth-Request-* headers to ingress-nginx
 
       # Cookie settings
       cookie-secure: "true"
@@ -99,17 +101,17 @@ spec:
       # Redirect URL (must match the GitHub OAuth App callback)
       redirect-url: https://oauth2.example.com/oauth2/callback
 
-      # Skip authentication for health check endpoints
+      # Show the provider selection page instead of immediately redirecting to GitHub
       skip-provider-button: "false"
 
     # Expose the proxy's service
     service:
       type: ClusterIP
-      port: 4180
+      portNumber: 4180
 
     ingress:
       enabled: true
-      ingressClassName: nginx
+      className: nginx
       path: /oauth2
       hosts:
         - oauth2.example.com
@@ -132,7 +134,7 @@ spec:
 ## Step 5: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/oauth2-proxy/kustomization.yaml
+# clusters/my-cluster/oauth2-proxy-sync.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -183,7 +185,7 @@ With these annotations, any request to `app.example.com` that lacks a valid OAut
 
 - Use `--github-team` instead of `--github-org` to restrict access to a specific team within the organization for finer-grained control.
 - Set `--skip-auth-route` patterns for health check endpoints (`/healthz`, `/metrics`) to prevent authentication loops.
-- Run at least two replicas and use a Redis backend (`--session-store-type=redis`) so session cookies remain valid during rolling updates.
+- Run at least two replicas. Use a Redis backend (`--session-store-type=redis`) when you want server-side sessions or expect large OIDC tokens; with cookie-backed sessions, keep the same `cookie-secret` across replicas and rolling updates.
 - Rotate the `cookie-secret` periodically (it invalidates all existing sessions, so do it during a maintenance window).
 - Use separate OAuth2 Proxy deployments for different security zones rather than a single shared instance.
 
