@@ -18,7 +18,7 @@ Mixed OS networking requires careful attention to differences in how Windows han
 
 - Kubernetes cluster with Linux control plane nodes
 - Windows worker nodes (Windows Server 2019+)
-- Calico v3.12+ with Windows support
+- Calico v3.16+ with Windows support
 - VXLAN mode configured (required for Windows)
 
 ## Configure VXLAN for Windows Compatibility
