@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, GitOps, Kubernetes, HelmRelease, Remediation, Uninstall, Helm
 
-Description: Learn how to configure Flux HelmRelease to automatically uninstall failed Helm releases before retrying installation, ensuring clean recovery from failures.
+Description: Learn how to configure Flux HelmRelease to automatically uninstall failed Helm releases between retries and after the last failed attempt, ensuring clean recovery from failures.
 
 ---
 
 ## Introduction
 
-When a Helm chart installation fails, it can leave behind partial resources: some pods running, some ConfigMaps created, but the overall release in a broken state. Retrying the installation on top of these leftover resources often fails again because Kubernetes rejects duplicate resources or the Helm state is inconsistent. Flux HelmRelease supports automatically uninstalling a failed release before retrying, giving each attempt a clean slate. This guide covers how to configure this behavior effectively.
+When a Helm chart installation fails, it can leave behind partial resources: some pods running, some ConfigMaps created, but the overall release in a broken state. Retrying the installation on top of these leftover resources often fails again because Kubernetes rejects duplicate resources or the Helm state is inconsistent. Flux HelmRelease install remediation supports automatically uninstalling a failed release between retries, and `remediateLastFailure` can also clean up the final failed attempt when retries are exhausted. This guide covers how to configure this behavior effectively.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ Retrying the installation without cleanup can result in "already exists" errors 
 
 ## Configuring Uninstall on Failure
 
-Use `remediateLastFailure: true` in the install remediation to uninstall the failed release before the final retry:
+Use install remediation retries to uninstall failed releases between attempts, and set `remediateLastFailure: true` to also uninstall the failed release when no retries remain:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -38,6 +38,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  storageNamespace: default
   chart:
     spec:
       chart: my-app
@@ -52,31 +54,31 @@ spec:
       remediateLastFailure: true
 ```
 
-With this configuration, the initial installation attempt is made and if it fails, the first and second retries attempt installation again without cleanup. On the third and final retry, Flux uninstalls the failed release first, then installs fresh.
+With this configuration, Flux makes the initial installation attempt. If it fails, Flux uninstalls the failed release before each retry. If the third retry also fails, `remediateLastFailure: true` tells Flux to uninstall that final failed release instead of leaving it in place for debugging.
 
 ## Using remediateLastFailure with Different Retry Counts
 
 The behavior of `remediateLastFailure` depends on the retry count:
 
 ```yaml
-# With 1 retry: uninstall before the single retry
+# With 1 retry: uninstall before the single retry, and after it if it fails
 
 install:
   remediation:
     retries: 1
     remediateLastFailure: true
 
-# With 3 retries: uninstall only before the 3rd retry
+# With 3 retries: uninstall between attempts, and after the final failed retry
 install:
   remediation:
     retries: 3
     remediateLastFailure: true
 
-# With 0 retries: no retries, no uninstall
+# With 0 retries: no retry, but uninstall the failed release after the first failure
 install:
   remediation:
     retries: 0
-    remediateLastFailure: true  # Has no effect with 0 retries
+    remediateLastFailure: true
 ```
 
 For the cleanest recovery, combine `remediateLastFailure: true` with a low retry count:
@@ -88,7 +90,7 @@ install:
     remediateLastFailure: true
 ```
 
-This tries the installation once, and if it fails, uninstalls everything and tries one more time.
+This tries the installation once, and if it fails, uninstalls the failed release and tries one more time. If that retry also fails, Flux uninstalls the final failed release.
 
 ## Complete HelmRelease Configuration
 
@@ -102,6 +104,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: monitoring
+  storageNamespace: monitoring
   chart:
     spec:
       chart: kube-prometheus-stack
@@ -146,6 +150,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: monitoring
+  storageNamespace: monitoring
   chart:
     spec:
       chart: kube-prometheus-stack
@@ -171,6 +177,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: cert-manager
+  storageNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
@@ -180,6 +188,7 @@ spec:
         name: jetstack
         namespace: flux-system
   install:
+    createNamespace: true
     crds: CreateReplace
     timeout: 10m
     remediation:
@@ -189,7 +198,7 @@ spec:
     installCRDs: true
 ```
 
-Charts with persistent storage also benefit since failed installations that create PVCs can block retries if the PVCs are not cleaned up:
+Charts with persistent storage can also benefit in non-production or disposable-data environments, since failed installations that create PVCs can block retries if the PVCs are not cleaned up:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -199,6 +208,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  storageNamespace: default
   chart:
     spec:
       chart: elasticsearch
@@ -222,7 +233,7 @@ spec:
 
 ## When Not to Use Uninstall on Failure
 
-Avoid `remediateLastFailure: true` when the chart creates PersistentVolumeClaims with valuable data that you do not want to lose, when the chart manages resources that take a long time to provision, or when uninstalling would cause service disruption to other running applications.
+Avoid `remediateLastFailure: true` when the chart creates PersistentVolumeClaims with valuable data that you do not want to risk deleting, when the chart manages resources that take a long time to provision, or when uninstalling would cause service disruption to other running applications.
 
 In these cases, keep `remediateLastFailure: false` (the default) and investigate failures manually.
 
@@ -238,6 +249,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: default
+  storageNamespace: default
   chart:
     spec:
       chart: my-app
@@ -260,7 +273,7 @@ spec:
       strategy: rollback
 ```
 
-For installs, `remediateLastFailure` uninstalls before the final retry. For upgrades, `remediateLastFailure` with `strategy: rollback` rolls back to the previous version before the final retry.
+For installs, remediation uninstalls between retries, and `remediateLastFailure` uninstalls after the final failed attempt. For upgrades, remediation uses the configured strategy between retries, and `remediateLastFailure` with `strategy: rollback` rolls back after the final failed attempt.
 
 ## Monitoring Uninstall and Retry Behavior
 
@@ -318,4 +331,4 @@ Common reasons why uninstall-and-retry still fails include fundamentally incorre
 
 ## Conclusion
 
-Configuring HelmRelease install remediation with uninstall on failure in Flux gives you automatic recovery from the messiest type of Helm failure: partial installations. By setting `remediateLastFailure: true`, Flux cleans up all resources from a failed installation before making its final retry attempt, ensuring a fresh start. This is especially valuable for complex charts that create many interdependent resources. Combine this with appropriate retry counts and timeouts to build a resilient installation pipeline that handles transient failures without manual intervention.
+Configuring HelmRelease install remediation with uninstall on failure in Flux gives you automatic recovery from the messiest type of Helm failure: partial installations. By setting install remediation retries, Flux cleans up failed installations between retry attempts. By setting `remediateLastFailure: true`, Flux also cleans up resources from the final failed installation after retries are exhausted. This is especially valuable for complex charts that create many interdependent resources. Combine this with appropriate retry counts and timeouts to build a resilient installation pipeline that handles transient failures without manual intervention.
