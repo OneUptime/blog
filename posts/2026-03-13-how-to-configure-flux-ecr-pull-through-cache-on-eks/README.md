@@ -31,18 +31,21 @@ Pull-through cache provides several benefits:
 
 Set up cache rules for the registries your cluster uses.
 
+For upstream registries that require authentication, such as Docker Hub and GitHub Container Registry, create an AWS Secrets Manager secret in the same account and Region with a name that starts with `ecr-pullthroughcache/`, then pass its ARN when creating the rule.
+
 ```bash
 # Cache Docker Hub (docker.io)
-
 aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix docker-hub \
   --upstream-registry-url registry-1.docker.io \
+  --credential-arn arn:aws:secretsmanager:us-west-2:<account-id>:secret:ecr-pullthroughcache/docker-hub-<suffix> \
   --region us-west-2
 
 # Cache GitHub Container Registry (ghcr.io)
 aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix ghcr \
   --upstream-registry-url ghcr.io \
+  --credential-arn arn:aws:secretsmanager:us-west-2:<account-id>:secret:ecr-pullthroughcache/ghcr-<suffix> \
   --region us-west-2
 
 # Cache Kubernetes registry (registry.k8s.io)
@@ -115,61 +118,49 @@ metadata:
 spec:
   type: oci
   interval: 24h
-  url: oci://<account-id>.dkr.ecr.us-west-2.amazonaws.com/docker-hub/prometheuscommunity
+  url: oci://<account-id>.dkr.ecr.us-west-2.amazonaws.com/ghcr/prometheus-community/charts
   provider: aws
 ```
 
-The `provider: aws` field tells Flux to use the AWS ECR credential helper for authentication.
+The `provider: aws` field tells Flux to use AWS authentication from the source-controller pod, such as the EKS node IAM role or IAM Roles for Service Accounts (IRSA).
 
 ## Step 4: Configure ECR Authentication for Flux
 
-Flux needs ECR credentials to pull from the cache. Set up an ECR credential provider using the AWS provider.
+Flux needs ECR credentials to pull OCI sources and scan image repositories from the cache. Set up the Flux controllers to use the AWS provider.
 
-For OCI sources, Flux can use the built-in AWS provider. For standard container images, create a CronJob to refresh ECR credentials:
-
-```yaml
-# clusters/my-cluster/ecr-auth/serviceaccount.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: ecr-credentials-sync
-  namespace: flux-system
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/FluxECRAccess
-```
+For OCI sources, Flux can use the built-in AWS provider. If you use IRSA, patch the `source-controller` ServiceAccount. If you use Flux Image Automation with `provider: aws`, also patch the `image-reflector-controller` ServiceAccount:
 
 ```yaml
-# clusters/my-cluster/ecr-auth/cronjob.yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: ecr-credentials-sync
-  namespace: flux-system
-spec:
-  schedule: "0 */6 * * *"
-  successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 1
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: ecr-credentials-sync
-          restartPolicy: Never
-          containers:
-            - name: ecr-login
-              image: amazon/aws-cli:2.15.0
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  TOKEN=$(aws ecr get-login-password --region us-west-2)
-                  kubectl create secret docker-registry ecr-credentials \
-                    --docker-server=<account-id>.dkr.ecr.us-west-2.amazonaws.com \
-                    --docker-username=AWS \
-                    --docker-password="${TOKEN}" \
-                    --namespace=flux-system \
-                    --dry-run=client -o yaml | kubectl apply -f -
+# flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: source-controller
+        annotations:
+          eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/FluxECRAccess
+    target:
+      kind: ServiceAccount
+      name: source-controller
+  - patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: image-reflector-controller
+        annotations:
+          eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/FluxECRAccess
+    target:
+      kind: ServiceAccount
+      name: image-reflector-controller
 ```
+
+For standard Kubernetes workload image pulls on EKS nodes, use the EKS node role or Fargate pod execution role with ECR pull permissions rather than a Flux Secret.
 
 ## Step 5: Update Flux Image References
 
