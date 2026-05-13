@@ -25,7 +25,7 @@ This guide covers optimizing the Rust Docker build for layer caching, writing Ku
 
 ## Step 1: Optimize the Rust Dockerfile for Build Caching
 
-The most important optimization is to copy `Cargo.toml` and `Cargo.lock` and build a dummy binary before copying your source. This caches all dependency compilation in a Docker layer.
+The most important optimization is to separate dependency resolution from the application source build. `cargo-chef` does this by preparing a dependency recipe before copying source files into the final build layer, so dependency compilation can be cached in a Docker layer.
 
 ```dockerfile
 # Dockerfile - dependency caching pattern for fast rebuilds
@@ -69,7 +69,7 @@ docker push ghcr.io/your-org/my-rust-app:1.0.0
 use axum::{routing::get, Router, Json};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
-use tokio::signal;
+use tokio::signal::{self, unix::{signal, SignalKind}};
 
 #[tokio::main]
 async fn main() {
@@ -101,7 +101,23 @@ async fn greet() -> Json<Value> {
 }
 
 async fn shutdown_signal() {
-    signal::ctrl_c().await.expect("failed to install CTRL+C handler");
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install CTRL+C handler");
+    };
+
+    let terminate = async {
+        signal(SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 ```
 
@@ -156,7 +172,7 @@ spec:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 3    # Rust binaries start in milliseconds
+            initialDelaySeconds: 3    # Rust binaries typically start quickly
             periodSeconds: 15
           readinessProbe:
             httpGet:
@@ -287,7 +303,7 @@ spec:
       author:
         email: fluxbot@your-org.com
         name: Flux Bot
-      messageTemplate: "chore: update rust app to {{range .Updated.Images}}{{.}}{{end}}"
+      messageTemplate: "chore: update rust app images"
     push:
       branch: main
   update:
@@ -300,7 +316,7 @@ spec:
 ```bash
 flux get kustomizations my-rust-app
 
-# Rust pods start instantly
+# Rust application containers should become ready quickly after scheduling and image pull
 kubectl get pods -n my-rust-app
 
 kubectl port-forward -n my-rust-app svc/my-rust-app 8080:80
@@ -318,4 +334,4 @@ curl http://localhost:8080/api/v1/greet
 
 ## Conclusion
 
-Rust applications on Kubernetes achieve some of the best resource utilization of any web backend technology. Distroless images with Rust binaries are tiny, startup is near-instant, and memory usage is predictable without a garbage collector. Flux CD's GitOps model ensures these lean, high-performance services are deployed consistently and auditability across all your environments.
+Rust applications on Kubernetes achieve some of the best resource utilization of any web backend technology. Distroless images with Rust binaries are tiny, application process startup is typically fast, and memory usage is predictable without a garbage collector. Flux CD's GitOps model ensures these lean, high-performance services are deployed consistently and auditability across all your environments.
