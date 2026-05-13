@@ -83,19 +83,19 @@ spec:
 Apply this patch using kustomize or directly:
 
 ```bash
-kubectl patch deployment source-controller -n flux-system --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "1Gi"}]'
+kubectl patch deployment source-controller -n flux-system --type='strategic' -p='{"spec":{"template":{"spec":{"containers":[{"name":"manager","resources":{"limits":{"memory":"1Gi"},"requests":{"memory":"256Mi"}}}]}}}}'
 ```
 
 ### Storage Volume Issues
 
-The Source Controller stores fetched artifacts on a persistent volume. If the volume is full or cannot be mounted, the pod will crash:
+The Source Controller stores fetched artifacts under `/data`. By default, Flux uses an `emptyDir` volume for this cache; if you configured a persistent volume for `/data`, check that the claim is bound and can be mounted. Storage mount failures can prevent the pod from starting:
 
 ```bash
 kubectl get pvc -n flux-system
-kubectl describe pvc -n flux-system source-controller
+kubectl describe pod -n flux-system -l app=source-controller
 ```
 
-Check if the volume is bound and has available space. If the volume is full, you can either increase its size or clean up old artifacts.
+Check if the configured volume is mounted correctly. If a persistent volume is full, you can either increase its size or clean up old artifacts.
 
 ### Image Pull Failures
 
@@ -109,20 +109,20 @@ Verify that your cluster can access the container registry hosting the Flux imag
 
 ### TLS and Certificate Errors
 
-The Source Controller often connects to Git repositories and Helm registries over TLS. If custom CA certificates are not properly mounted, the pod may crash during startup:
+The Source Controller often connects to Git repositories and Helm registries over TLS. TLS problems usually appear as source reconciliation failures rather than controller pod crashes, but they can still be useful to check while troubleshooting:
 
 ```bash
 kubectl logs -n flux-system deploy/source-controller | grep -i "tls\|certificate\|x509"
 ```
 
-Ensure any custom CA bundles are properly configured in the controller deployment.
+Ensure any custom CA bundles are properly configured on the affected Flux source, such as the `GitRepository`, `HelmRepository`, `OCIRepository`, or `Bucket` resource.
 
 ## Step 4: Check Kubernetes Events
 
 Cluster-level events can reveal scheduling and resource issues:
 
 ```bash
-kubectl get events -n flux-system --sort-by=.metadata.creationTimestamp --field-selector involvedObject.name=source-controller
+kubectl get events -n flux-system --sort-by=.metadata.creationTimestamp | grep source-controller
 ```
 
 Look for events related to failed scheduling, node pressure, or resource quota violations.
@@ -157,4 +157,4 @@ kubectl rollout status deployment/source-controller -n flux-system
 
 ## Summary
 
-Source Controller pod crashes are typically caused by memory exhaustion, storage issues, image pull failures, or TLS misconfigurations. By systematically checking pod status, reviewing logs, and examining events, you can quickly identify and resolve the root cause. Proactive monitoring and proper resource allocation will help prevent future crashes.
+Source Controller pod crashes are typically caused by memory exhaustion, storage mount issues, image pull failures, or startup configuration problems. By systematically checking pod status, reviewing logs, and examining events, you can quickly identify and resolve the root cause. Proactive monitoring and proper resource allocation will help prevent future crashes.
