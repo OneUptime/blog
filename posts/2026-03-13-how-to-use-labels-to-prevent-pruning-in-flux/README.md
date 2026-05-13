@@ -10,9 +10,9 @@ Description: Learn how to use Kubernetes labels strategically to prevent Flux fr
 
 ## Introduction
 
-Flux CD uses garbage collection to keep your cluster in sync with your Git repository, automatically deleting resources that are no longer present in source control. While this is generally desirable, certain resources should persist regardless of their presence in Git. Labels provide a powerful organizational mechanism to categorize and protect resources from pruning at scale.
+Flux CD uses garbage collection to keep your cluster in sync with your Git repository, automatically deleting resources that are no longer present in source control. While this is generally desirable, certain resources should persist regardless of their presence in Git. Flux can use labels to protect resources from pruning, and labels also provide a powerful organizational mechanism to categorize resources at scale.
 
-By combining Kubernetes labels with Kustomize patches and Flux annotations, you can build a systematic approach to pruning prevention that scales across large clusters and multiple teams.
+By combining Kubernetes labels with Kustomize patches when needed, you can build a systematic approach to pruning prevention that scales across large clusters and multiple teams.
 
 ## Prerequisites
 
@@ -23,9 +23,9 @@ By combining Kubernetes labels with Kustomize patches and Flux annotations, you 
 
 ## How Labels Interact with Flux Pruning
 
-Flux tracks resources through its inventory system and manages pruning based on annotations. Labels themselves do not directly control Flux pruning behavior, but they serve as an organizational tool that you can use in combination with Kustomize patches to apply prune-disabling annotations to groups of resources.
+Flux tracks resources through its inventory system and manages pruning based on Flux-specific labels or annotations. Arbitrary labels do not control Flux pruning behavior, but the `kustomize.toolkit.fluxcd.io/prune: disabled` label does. You can also use your own organizational labels in combination with Kustomize patches to apply Flux prune-disabling labels to groups of resources.
 
-The key label-based strategy involves labeling resources you want to protect and then using Kustomize target selectors to automatically apply the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation to all resources matching those labels.
+The key label-based strategy involves labeling resources you want to protect with `kustomize.toolkit.fluxcd.io/prune: disabled`, or using Kustomize target selectors to automatically apply that label to all resources matching your own labels.
 
 ## Defining a Protection Label
 
@@ -38,7 +38,7 @@ metadata:
   name: app-data
   namespace: production
   labels:
-    flux.oneuptime.com/no-prune: "true"
+    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   accessModes:
     - ReadWriteOnce
@@ -54,16 +54,16 @@ metadata:
   name: database-credentials
   namespace: production
   labels:
-    flux.oneuptime.com/no-prune: "true"
+    kustomize.toolkit.fluxcd.io/prune: disabled
 type: Opaque
 data:
   username: YWRtaW4=
   password: cGFzc3dvcmQ=
 ```
 
-## Applying Prune Annotations via Label Selectors
+## Applying Prune Labels via Label Selectors
 
-Use a Kustomize overlay to match all labeled resources and apply the prune-disabled annotation:
+If you prefer to keep your own organizational label, use a Kustomize overlay to match all labeled resources and apply Flux's prune-disabled label:
 
 ```yaml
 # kustomization.yaml
@@ -78,16 +78,13 @@ resources:
 patches:
   - target:
       labelSelector: "flux.oneuptime.com/no-prune=true"
-    patch: |
-      apiVersion: v1
-      kind: __any__
-      metadata:
-        name: not-used
-        annotations:
-          kustomize.toolkit.fluxcd.io/prune: disabled
+    patch: |-
+      - op: add
+        path: /metadata/labels/kustomize.toolkit.fluxcd.io~1prune
+        value: disabled
 ```
 
-With this configuration, any resource carrying the `flux.oneuptime.com/no-prune: "true"` label will automatically receive the prune-disabled annotation during Kustomize rendering. This means Flux will skip these resources during garbage collection.
+With this configuration, any resource carrying the `flux.oneuptime.com/no-prune: "true"` label will automatically receive the Flux prune-disabled label during Kustomize rendering. This means Flux will skip these resources during garbage collection.
 
 ## Scaling Across Multiple Environments
 
@@ -106,7 +103,7 @@ For multi-environment setups, you can define base labels and apply patches in ea
 │       └── kustomization.yaml
 ```
 
-In the base kustomization, label resources that should always be protected:
+In the base kustomization, label the app resources:
 
 ```yaml
 # base/kustomization.yaml
@@ -116,8 +113,9 @@ resources:
   - deployment.yaml
   - service.yaml
   - pvc.yaml
-commonLabels:
-  app: my-app
+labels:
+  - pairs:
+      app: my-app
 ```
 
 In the production overlay, add the prune protection patch:
@@ -137,8 +135,6 @@ patches:
       metadata:
         name: not-used
         labels:
-          flux.oneuptime.com/no-prune: "true"
-        annotations:
           kustomize.toolkit.fluxcd.io/prune: disabled
 ```
 
@@ -156,7 +152,7 @@ metadata:
   namespace: payments
   labels:
     team: payments
-    flux.oneuptime.com/no-prune: "true"
+    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   replicas: 2
   selector:
@@ -174,30 +170,27 @@ spec:
             - containerPort: 8080
 ```
 
-Then scope the Kustomize patch to only that team's resources:
+If teams use their own protection label, scope the Kustomize patch to only that team's resources:
 
 ```yaml
 patches:
   - target:
       labelSelector: "team=payments,flux.oneuptime.com/no-prune=true"
-    patch: |
-      apiVersion: v1
-      kind: __any__
-      metadata:
-        name: not-used
-        annotations:
-          kustomize.toolkit.fluxcd.io/prune: disabled
+    patch: |-
+      - op: add
+        path: /metadata/labels/kustomize.toolkit.fluxcd.io~1prune
+        value: disabled
 ```
 
 ## Verifying Label-Based Protection
 
-After applying your configuration, verify that the prune-disabled annotation has been applied correctly by rendering the Kustomize output locally:
+After applying your configuration, verify that the prune-disabled label has been applied correctly by rendering the Kustomize output locally:
 
 ```bash
 kustomize build overlays/production
 ```
 
-Check that the protected resources include the expected annotation:
+Check that the protected resources include the expected label:
 
 ```bash
 kustomize build overlays/production | grep -A 2 "prune"
@@ -206,14 +199,14 @@ kustomize build overlays/production | grep -A 2 "prune"
 You can also verify in the cluster after Flux reconciles:
 
 ```bash
-kubectl get pvc app-data -n production -o jsonpath='{.metadata.annotations}'
+kubectl get pvc app-data -n production -o jsonpath='{.metadata.labels}'
 ```
 
 The output should include `kustomize.toolkit.fluxcd.io/prune: disabled`.
 
 ## Common Pitfalls
 
-One common mistake is relying on labels alone without the corresponding Kustomize patch. Labels by themselves do not prevent Flux from pruning a resource. The patch that applies the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation is what actually prevents pruning.
+One common mistake is relying on arbitrary labels alone without the corresponding Kustomize patch. A custom label such as `flux.oneuptime.com/no-prune: "true"` does not prevent Flux from pruning a resource. The Flux label `kustomize.toolkit.fluxcd.io/prune: disabled` is what actually prevents pruning.
 
 Another pitfall is applying the label after the resource has already been removed from Git. The label-based patch only works during the Kustomize rendering phase, so the resource must still be in Git for the patch to take effect. If you need to protect a resource that is already deployed but about to be removed from Git, manually annotate it in the cluster first:
 
