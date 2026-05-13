@@ -22,58 +22,87 @@ This guide covers log audit Advanced K8s NetworkPolicy in Calico with production
 ## Core Configuration
 
 ```yaml
-# Advanced Kubernetes NetworkPolicy combining namespace and pod selectors
+# Calico NetworkPolicy combining namespace and workload selectors with log rules
 
-apiVersion: networking.k8s.io/v1
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: advanced-cross-namespace-policy
   namespace: production
 spec:
-  podSelector:
-    matchLabels:
-      app: api-server
-      tier: backend
-  policyTypes:
+  selector: app == 'api-server' && tier == 'backend'
+  types:
     - Ingress
     - Egress
   ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              environment: production
-          podSelector:
-            matchLabels:
-              app: frontend
-        - namespaceSelector:
-            matchLabels:
-              team: observability
-      ports:
-        - port: 8080
-        - port: 9090
+    - action: Log
+      protocol: TCP
+      source:
+        namespaceSelector: environment == 'production'
+        selector: app == 'frontend'
+      destination:
+        ports:
+          - 8080
+          - 9090
+    - action: Allow
+      protocol: TCP
+      source:
+        namespaceSelector: environment == 'production'
+        selector: app == 'frontend'
+      destination:
+        ports:
+          - 8080
+          - 9090
+    - action: Log
+      protocol: TCP
+      source:
+        namespaceSelector: team == 'observability'
+      destination:
+        ports:
+          - 8080
+          - 9090
+    - action: Allow
+      protocol: TCP
+      source:
+        namespaceSelector: team == 'observability'
+      destination:
+        ports:
+          - 8080
+          - 9090
   egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              environment: production
-          podSelector:
-            matchLabels:
-              tier: data
-      ports:
-        - port: 5432
-        - port: 6379
-    - ports:
-        - port: 53
-          protocol: UDP
-        - port: 443
-          protocol: TCP
+    - action: Log
+      protocol: TCP
+      destination:
+        namespaceSelector: environment == 'production'
+        selector: tier == 'data'
+        ports:
+          - 5432
+          - 6379
+    - action: Allow
+      protocol: TCP
+      destination:
+        namespaceSelector: environment == 'production'
+        selector: tier == 'data'
+        ports:
+          - 5432
+          - 6379
+    - action: Allow
+      protocol: UDP
+      destination:
+        ports:
+          - 53
+    - action: Allow
+      protocol: TCP
+      destination:
+        ports:
+          - 443
 ```
 
 ## Advanced Patterns
 
 ```bash
-# Apply advanced policy
-kubectl apply -f advanced-cross-namespace-policy.yaml
+# Apply advanced Calico policy
+calicoctl apply -f advanced-cross-namespace-policy.yaml
 
 # Test cross-namespace access (production frontend -> production API)
 kubectl exec -n production frontend-pod -- curl -s http://api-server.production.svc.cluster.local:8080
@@ -83,8 +112,9 @@ echo "Production frontend to API (should pass): $?"
 kubectl exec -n staging frontend-pod -- curl -s --max-time 5 http://api-server.production.svc.cluster.local:8080
 echo "Staging frontend to prod API (should fail): $?"
 
-# Use Calico NetworkPolicy for additional control beyond standard K8s
-calicoctl apply -f calico-extension-policy.yaml
+# Validate and re-apply the Calico policy after changes
+calicoctl validate -f advanced-cross-namespace-policy.yaml
+calicoctl apply -f advanced-cross-namespace-policy.yaml
 ```
 
 ## Architecture
