@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Profiles, Configuration, Security
 
-Description: How to configure Calico Profile resources to define reusable policy rule sets and labels applied to workload endpoints, enabling policy inheritance patterns for consistent security postures across...
+Description: How to configure Calico Profile resources to define reusable labels and legacy policy rule sets applied to workload endpoints, enabling policy inheritance patterns for consistent security postures across...
 
 ---
 
 ## Introduction
 
-Calico Profile resources attach policy rules and labels directly to workload endpoints, providing a mechanism for inherited policy that applies regardless of NetworkPolicy selectors. Profiles are automatically created for Kubernetes namespaces and are used to propagate namespace-level labels to all endpoints within that namespace. Understanding Profile configuration is important when working with non-Kubernetes workloads, legacy deployments, or when troubleshooting how label inheritance affects policy evaluation.
+Calico Profile resources group workload endpoints so they can inherit shared labels and, for legacy configurations, profile policy rules. Profiles are automatically created for Kubernetes namespaces and are used to propagate namespace-level labels to all endpoints within that namespace. Understanding Profile configuration is important when working with non-Kubernetes workloads, legacy deployments, or when troubleshooting how label inheritance affects policy evaluation.
 
 In Kubernetes deployments, Profiles are primarily managed automatically - but understanding their structure helps with advanced troubleshooting and non-Kubernetes Calico deployments.
 
@@ -18,7 +18,7 @@ In Kubernetes deployments, Profiles are primarily managed automatically - but un
 
 - Calico installed
 - `calicoctl` with cluster admin access
-- Understanding of Calico policy evaluation order (profiles are evaluated after NetworkPolicies)
+- Understanding of Calico policy evaluation order (NetworkPolicies and GlobalNetworkPolicies take precedence over profiles; a `Pass` action can jump to profile processing)
 
 ## Step 1: View Existing Profiles
 
@@ -44,8 +44,7 @@ spec:
   # Labels applied to all endpoints in this profile
   labelsToApply:
     pcns.projectcalico.org/name: production
-    pcns.projectcalico.org/kubernetes-namespace: production
-  # Ingress/egress rules (evaluated after NetworkPolicies)
+  # Ingress/egress rules (deprecated; prefer NetworkPolicy or GlobalNetworkPolicy)
   ingress:
     - action: Allow
       source:
@@ -85,6 +84,10 @@ spec:
     - action: Deny
 ```
 
+```bash
+calicoctl apply -f database-servers-profile.yaml
+```
+
 ## Step 4: Apply Profile to a WorkloadEndpoint
 
 ```bash
@@ -92,7 +95,7 @@ spec:
 calicoctl get workloadendpoint --all-namespaces -o yaml | grep -A5 "db-server"
 
 # Patch the workload endpoint to use the profile
-calicoctl patch workloadendpoint db-server-eth0 \
+calicoctl patch workloadendpoint db-server-eth0 --namespace <namespace> \
   --patch='{"spec":{"profiles":["database-servers"]}}'
 ```
 
@@ -117,4 +120,4 @@ calicoctl get workloadendpoint -A -o yaml | grep -B5 "database-servers"
 
 ## Conclusion
 
-Calico Profile resources provide label inheritance and default policy rules for workload endpoints. In Kubernetes deployments, profiles are auto-managed for namespaces and rarely need manual configuration. For non-Kubernetes workloads or advanced policy designs, profiles enable reusable policy sets that can be assigned to multiple workload endpoints. The key operational detail is that Profile rules are evaluated after NetworkPolicies, making them suitable for default allow/deny fallbacks rather than primary security controls.
+Calico Profile resources provide label inheritance and legacy default policy rules for workload endpoints. In Kubernetes deployments, profiles are auto-managed for namespaces and rarely need manual configuration. For non-Kubernetes workloads or advanced policy designs, profiles enable reusable labels and legacy policy rules that can be assigned to multiple workload endpoints. The key operational detail is that NetworkPolicies and GlobalNetworkPolicies take precedence over Profile rules, making profile rules suitable for legacy default allow/deny fallbacks rather than primary security controls.
