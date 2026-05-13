@@ -12,21 +12,22 @@ Description: A step-by-step guide to configuring Calico network policies that ta
 
 Service-based network policies let you write rules that reference Kubernetes Services rather than individual pod selectors. This is powerful because services are the stable abstraction in Kubernetes - pods come and go, but services persist. Calico's `projectcalico.org/v3` supports targeting services in egress rules, enabling policies like "allow traffic to the payment-service Service only."
 
-Calico's service-aware policies work with the Kubernetes Service object to automatically track the pods behind the service. When pods are added or removed from a service's endpoint set, the network policy updates automatically without any policy changes.
+Calico's service-aware policies work with the Kubernetes Service object by automatically detecting the service's endpoint addresses and ports. When pods are added or removed from a service's endpoint set, the network policy updates automatically without any policy changes.
 
 This guide covers how to write Calico network policies that reference Kubernetes Services, both for ingress protection of service-backing pods and for egress control of which services pods are allowed to call.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.26+ using the Kubernetes datastore driver
 - `calicoctl` and `kubectl` installed
 - Understanding of Kubernetes Services and Endpoints
 
-## Step 1: Label Your Services
+## Step 1: Label Your Workloads
 
 ```bash
-kubectl label service backend-api -n production tier=api environment=production
-kubectl label service payment-db -n production tier=data environment=production
+kubectl label pod frontend-pod -n production tier=frontend --overwrite
+kubectl label pod backend-pod-1 -n production tier=backend --overwrite
+kubectl label pod payment-db-pod -n production app=payment-db --overwrite
 ```
 
 ## Step 2: Write Egress Policy Targeting a Service
