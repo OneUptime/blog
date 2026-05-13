@@ -16,23 +16,17 @@ Compliance frameworks like SOC 2, HIPAA, and PCI DSS require tracking access to 
 
 ## SOPS Built-In Audit Logging
 
-SOPS supports an audit logging feature that records decryption events. Configure it by creating a SOPS audit configuration file.
+SOPS supports an audit logging feature that records decryption events to PostgreSQL. Configure it by creating the SOPS audit configuration file and database schema.
 
-Create `/etc/sops/audit.yaml` (or a custom path):
+Create the database and credentials using the schema in the SOPS `audit/schema.sql` file, then create `/etc/sops/audit.yaml`:
 
 ```yaml
 backends:
-  file:
-    - path: /var/log/sops-audit.log
+  postgres:
+    - connection_string: "postgres://sops:sops@localhost/sops?sslmode=verify-full"
 ```
 
-Set the environment variable to enable it:
-
-```bash
-export SOPS_AUDIT_LOG=/etc/sops/audit.yaml
-```
-
-Each decryption event is logged with the file path, timestamp, and encryption keys used. However, this only works for local SOPS operations, not for Flux in-cluster decryption.
+SOPS looks for this file at `/etc/sops/audit.yaml`; the audit configuration path is not user-configurable. Each decryption event is logged with the file path, timestamp, and username running SOPS. However, this only applies to SOPS processes that have this local audit configuration available, not automatically to Flux in-cluster decryption.
 
 ## Kubernetes Audit Logging for Secrets
 
@@ -78,16 +72,16 @@ aws eks update-cluster-config \
 For GKE:
 
 ```bash
-gcloud container clusters update my-cluster \
-  --enable-master-global-access \
-  --region us-central1
+gcloud logging read 'resource.type="k8s_cluster" AND protoPayload.serviceName="k8s.io" AND protoPayload.resourceName:"secrets"' \
+  --project=my-project \
+  --limit=50
 ```
 
-GKE enables audit logging by default and sends logs to Cloud Logging.
+GKE sends Kubernetes API server audit logs to Cloud Logging. Admin Activity audit logs are always enabled, but Data Access audit logs, which are required for many read operations, must be explicitly enabled in IAM audit logging settings.
 
 ## Flux Event Monitoring
 
-Flux emits Kubernetes events during reconciliation, including when it decrypts SOPS secrets. Monitor these events:
+Flux emits Kubernetes events during reconciliation. These events can show reconciliation and apply activity for Kustomizations that contain SOPS-encrypted Secrets, but they are not per-secret decryption audit records. Monitor these events:
 
 ```bash
 # Watch Flux events in real time
@@ -193,7 +187,7 @@ aws cloudtrail lookup-events \
 
 ### GCP Cloud KMS Audit Logs
 
-GCP Cloud Audit Logs records KMS operations:
+GCP Cloud Audit Logs records Cloud KMS operations. Decrypt operations are Data Access audit logs, so make sure Data Access audit logging is enabled for Cloud KMS:
 
 ```bash
 gcloud logging read 'resource.type="cloudkms_cryptokey" AND protoPayload.methodName="Decrypt"' \
@@ -215,17 +209,54 @@ az monitor diagnostic-settings create \
 
 ## Custom Audit Sidecar
 
-Deploy a sidecar container alongside the Flux kustomize-controller to monitor secret operations:
+Deploy a small read-only collector to monitor Flux reconciliation events without modifying the Flux controller Deployment:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-audit-logger
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flux-audit-logger
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-audit-logger
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flux-audit-logger
+subjects:
+  - kind: ServiceAccount
+    name: flux-audit-logger
+    namespace: flux-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kustomize-controller
+  name: flux-audit-logger
   namespace: flux-system
 spec:
+  selector:
+    matchLabels:
+      app: flux-audit-logger
   template:
+    metadata:
+      labels:
+        app: flux-audit-logger
     spec:
+      serviceAccountName: flux-audit-logger
       containers:
         - name: audit-logger
           image: bitnami/kubectl:latest
@@ -262,7 +293,7 @@ data:
     [FILTER]
         Name    grep
         Match   audit.*
-        Regex   objectRef.resource secrets
+        Regex   $objectRef['resource'] secrets
 ```
 
 ## Building an Audit Dashboard
