@@ -12,7 +12,7 @@ Description: A practical guide to migrating from Jenkins X to Flux CD, covering 
 
 Jenkins X is an opinionated CI/CD platform for Kubernetes that automates GitOps with built-in preview environments, automated pull request promotion, and integrated CI pipelines. Migrating to Flux CD means separating CI (keeping Jenkins X's Tekton pipelines or moving to GitHub Actions) from CD (replacing Jenkins X's GitOps delivery with Flux).
 
-Jenkins X v3 already uses Flux CD under the hood for some operations, making migration paths more natural. This guide covers migrating the GitOps delivery aspects from Jenkins X to a standalone Flux CD setup.
+Jenkins X v3 is already GitOps-driven, using a cluster Git repository, Helmfile, and the Jenkins X git operator to apply changes. This guide covers migrating the GitOps delivery aspects from Jenkins X to a standalone Flux CD setup.
 
 ## Prerequisites
 
@@ -27,20 +27,20 @@ Jenkins X v3 already uses Flux CD under the hood for some operations, making mig
 ```bash
 # List all Jenkins X applications
 
-jx get apps
+jx application get
 
 # Export current pipeline and environment configurations
-jx get environments -o yaml > jx-environments.yaml
+kubectl get environments -A -o yaml > jx-environments.yaml
 
 # List all preview environments
-jx get previews
+jx preview get
 
-# Export all helm releases managed by Jenkins X
-jx get helmrelease -A -o yaml > jx-helmreleases.yaml
+# Locate Helmfile release definitions in the Jenkins X cluster Git repository
+find config-root -name 'helmfile*.yaml' -print
 
 # Check the GitOps repository structure used by Jenkins X
-ls -la ~/.jx/
-jx get activity
+ls -la config-root/
+jx pipeline get
 ```
 
 ## Step 2: Understand the Architecture Difference
@@ -73,24 +73,28 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 
 # Create the GitOps directory structure
 # (equivalent to Jenkins X's environment repositories)
-mkdir -p fleet-infra/apps/{staging,production}/{base,overlays}
+mkdir -p fleet-infra/clusters/production/apps/{staging,production}
 ```
 
 ## Step 4: Migrate Application Helm Releases
 
-Export Jenkins X Helm releases and convert to Flux HelmRelease resources:
+Translate Jenkins X Helmfile release entries into Flux HelmRelease resources:
 
 ```bash
-# Export a specific app's helm config from Jenkins X
-jx get helmrelease my-app -n jx-staging -o yaml
+# Review a specific app's Helmfile config from the Jenkins X cluster Git repository
+grep -R "name: my-app" config-root
 
 # Convert to Flux HelmRelease format
-cat > fleet-infra/apps/staging/my-app-helmrelease.yaml << 'EOF'
+cat > fleet-infra/clusters/production/apps/staging/my-app-helmrelease.yaml << 'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -120,6 +124,20 @@ spec:
       tag: "1.2.3"   # Replace with current version from Jenkins X
     replicaCount: 2
 EOF
+
+cat > fleet-infra/clusters/production/apps/staging/kustomization.yaml << 'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - my-app-helmrelease.yaml
+EOF
+
+flux create kustomization staging-apps \
+  --source=GitRepository/flux-system.flux-system \
+  --path=./clusters/production/apps/staging \
+  --prune=true \
+  --interval=10m \
+  --export > fleet-infra/clusters/production/staging-apps-kustomization.yaml
 ```
 
 ## Step 5: Replace Jenkins X CI with GitHub Actions + Flux
@@ -133,11 +151,22 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
         run: |
@@ -156,7 +185,7 @@ jobs:
           cd fleet-infra
           # Update the staging HelmRelease with the new image tag
           yq e ".spec.values.image.tag = \"${{ github.sha }}\"" \
-            -i apps/staging/my-app-helmrelease.yaml
+            -i clusters/production/apps/staging/my-app-helmrelease.yaml
           git config user.email "ci@my-org.com"
           git config user.name "CI Bot"
           git commit -am "feat: update my-app to ${{ github.sha }}"
@@ -173,12 +202,13 @@ flux get helmreleases -n staging
 # Phase 2: Move production to Flux
 # Update production Flux Kustomization to point to production path
 
-# Phase 3: Disable Jenkins X environments
-jx delete environment staging --confirm
-jx delete environment production --confirm
+# Phase 3: Disable Jenkins X promotion for migrated environments
+# Update jx-requirements.yml or .jx/settings.yaml to set promotionStrategy: Never
+# and merge the change through the Jenkins X cluster Git repository.
 
-# Phase 4: Uninstall Jenkins X
-jx uninstall --force
+# Phase 4: Uninstall Jenkins X components after all workloads are migrated
+kubectl delete -R -f config-root/namespaces
+kubectl delete -R -f config-root/cluster
 ```
 
 ## Best Practices
