@@ -29,7 +29,7 @@ This guide walks through forming a MicroK8s HA cluster, enabling necessary addon
 ```bash
 # Run on all three nodes
 
-sudo snap install microk8s --classic --channel=1.29/stable
+sudo snap install microk8s --classic --channel=1.34/stable
 
 # Add your user to the microk8s group to avoid sudo
 sudo usermod -a -G microk8s $USER
@@ -88,15 +88,19 @@ microk8s kubectl get nodes
 # node2   Ready    <none>   8m
 # node3   Ready    <none>   5m
 
-# Verify Dqlite (HA datastore) is healthy
-microk8s kubectl -n kube-system get pod \
-  -l k8s-app=calico-kube-controllers
+# Verify dqlite (HA datastore) status
+microk8s status
+# Expected output includes:
+# high-availability: yes
+#   datastore master nodes: ...
+#   datastore standby nodes: ...
 ```
 
 ## Step 5: Configure kubectl Access from Your Workstation
 
 ```bash
 # Export the kubeconfig
+mkdir -p ~/.kube
 microk8s config > ~/.kube/microk8s-config
 
 # Copy to your workstation and set the server address
@@ -118,8 +122,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=microk8s-fleet \
   --branch=main \
-  --path=clusters/microk8s-ha \
-  --personal
+  --path=clusters/microk8s-ha
 
 # Verify Flux pods are running
 kubectl get pods -n flux-system
@@ -151,6 +154,8 @@ metadata:
 spec:
   interval: 15m
   targetNamespace: ingress-nginx
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: ingress-nginx
@@ -201,11 +206,11 @@ kubectl get pods -n default
 
 ## Best Practices
 
-- Always join additional nodes as HA control plane members (not workers) to participate in Dqlite quorum; you need at least 3 for HA.
+- For a three-node HA cluster, join all three nodes as HA control plane members (not workers) so they can participate in dqlite quorum.
 - Use `microk8s enable` commands only for initial cluster setup; manage addon upgrades and configuration through Flux HelmRelease resources for auditability.
 - Enable the MicroK8s `observability` addon or deploy Prometheus via Flux for cluster monitoring; do not rely on shell commands for production monitoring.
-- Configure a load balancer (MetalLB addon or external) in front of all MicroK8s nodes for highly available API access from Flux's GitRepository source.
-- Use `microk8s refresh-certs` before certificates expire to avoid cluster failures; automate this with a CronJob managed by Flux.
+- Configure a load balancer (MetalLB addon or external) in front of all MicroK8s nodes for highly available API access from kubectl and automation clients.
+- Check certificate expiration with `sudo microk8s refresh-certs -c` and plan certificate refreshes during maintenance windows; do not rotate the cluster CA automatically on a live multi-node cluster.
 
 ## Conclusion
 
