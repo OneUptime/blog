@@ -16,10 +16,10 @@ This comparison examines the installation process for both tools across several 
 
 ## Prerequisites
 
-- A Kubernetes cluster (1.26+)
+- A Kubernetes cluster supported by the versions you install (current Flux releases require Kubernetes 1.33+; the current Argo CD Helm chart supports Kubernetes 1.25+)
 - kubectl configured with cluster admin access
 - Flux CD: GitHub/GitLab/Gitea account and repository, flux CLI
-- ArgoCD: No external dependencies required for basic installation
+- ArgoCD: No external dependencies required for basic installation; argocd CLI if using the CLI command below to retrieve the initial password
 
 ## Step 1: Installing Flux CD
 
@@ -56,7 +56,7 @@ ArgoCD can be installed with a single manifest apply:
 ```bash
 # Create namespace and install
 kubectl create namespace argocd
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for pods
@@ -83,9 +83,8 @@ helm install argocd argo/argo-cd \
 
 | Component | Flux CD | ArgoCD |
 |---|---|---|
-| Default pods | 6 controllers | 7 components |
-| Idle memory | ~150 MB | ~300 MB |
-| Idle CPU | ~100m | ~200m |
+| Default pods | 4 controllers | 7 components |
+| Idle resource usage | Typically lower | Typically higher |
 | External dependencies | Git repository | None required |
 
 Flux CD is modular; you can install only what you need:
@@ -113,12 +112,12 @@ git push
 
 ```bash
 # Via manifest
-kubectl apply -n argocd -f \
-  https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f \
+  https://raw.githubusercontent.com/argoproj/argo-cd/<version>/manifests/install.yaml
 
 # Via Helm
 helm upgrade argocd argo/argo-cd \
-  --namespace argocd --version 7.0.0
+  --namespace argocd --version <chart-version>
 ```
 
 ## Step 5: High Availability Setup
@@ -128,11 +127,11 @@ helm upgrade argocd argo/argo-cd \
 **ArgoCD HA** has a dedicated HA manifest:
 
 ```bash
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
-ArgoCD's HA setup requires Redis Sentinel and is more operationally complex, while Flux CD controllers are stateless and easier to scale.
+ArgoCD's HA setup runs Redis in HA mode and requires at least three nodes because of pod anti-affinity rules, making it more operationally complex, while Flux CD controllers are stateless and easier to scale.
 
 ## Best Practices
 
