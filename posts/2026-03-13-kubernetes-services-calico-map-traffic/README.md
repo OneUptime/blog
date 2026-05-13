@@ -25,7 +25,7 @@ This post traces the complete packet path for four service traffic scenarios: Cl
 ```mermaid
 sequenceDiagram
     participant ClientPod as Client Pod (10.0.1.5)
-    participant KubeProxy as kube-proxy (iptables)
+    participant KubeProxy as kube-proxy iptables rules
     participant Backend as Backend Pod (10.0.2.10)
 
     ClientPod->>KubeProxy: Packet: src=10.0.1.5 dst=10.96.1.100:80 (ClusterIP)
@@ -33,7 +33,7 @@ sequenceDiagram
     KubeProxy->>Backend: Packet: src=10.0.1.5 dst=10.0.2.10:8080
     Note over Backend: Calico ingress policy evaluates\nsrc=10.0.1.5 (client pod IP)
     Backend->>KubeProxy: Response: src=10.0.2.10 dst=10.0.1.5
-    KubeProxy->>KubeProxy: POSTROUTING: DNAT reverse (conntrack)
+    KubeProxy->>KubeProxy: conntrack reverses the NAT on the response path
     KubeProxy->>ClientPod: Response: src=10.96.1.100 dst=10.0.1.5
 ```
 
@@ -44,17 +44,17 @@ The client pod sees the ClusterIP as the source of the response - the DNAT is tr
 ```mermaid
 sequenceDiagram
     participant ClientPod as Client Pod (10.0.1.5)
-    participant TCEgress as TC Egress eBPF Hook
+    participant BPFService as eBPF Service Handling
     participant Backend as Backend Pod (10.0.2.10)
 
-    ClientPod->>TCEgress: Packet: src=10.0.1.5 dst=10.96.1.100:80
-    TCEgress->>TCEgress: eBPF Service Map lookup\n10.96.1.100 → 10.0.2.10
-    TCEgress->>Backend: Packet: src=10.0.1.5 dst=10.0.2.10:8080
-    Note over Backend: Calico eBPF TC Ingress hook\nenforces ingress policy
+    ClientPod->>BPFService: connect() or packet to 10.96.1.100:80
+    BPFService->>BPFService: eBPF service lookup\n10.96.1.100 → 10.0.2.10
+    BPFService->>Backend: Packet: src=10.0.1.5 dst=10.0.2.10:8080
+    Note over Backend: Calico eBPF policy program\nenforces ingress policy
     Backend->>ClientPod: Direct response (no kube-proxy involvement)
 ```
 
-In eBPF mode, the DNAT happens at the sending pod's TC egress hook - earlier in the path than kube-proxy. This eliminates the kube-proxy conntrack entry and reduces NAT overhead.
+In eBPF mode, Calico replaces kube-proxy service handling with eBPF programs and maps. For in-cluster TCP service connections, Calico can use connect-time load balancing by hooking socket operations so the socket connects directly to the selected backend pod IP, removing service NAT overhead for those connections.
 
 ## Scenario 3: NodePort External Traffic (with DSR)
 
@@ -81,7 +81,7 @@ graph LR
     Backend --> Calico[Calico policy on direct\npod-to-pod traffic]
 ```
 
-For headless services, the client performs the load balancing by choosing which pod IP to connect to (usually the first A record). Calico policy applies exactly as for direct pod-to-pod traffic.
+For headless services, the client performs the load balancing by choosing which pod IP to connect to according to its resolver and application behavior. Calico policy applies exactly as for direct pod-to-pod traffic.
 
 ## Observing Service Routing in Practice
 
@@ -93,19 +93,19 @@ sudo iptables -t nat -L KUBE-SVC-<hash> -n -v
 # Shows: probability-based selection of backend pod IPs
 ```
 
-Inspect Calico eBPF service map:
+Inspect Calico eBPF NAT table:
 ```bash
-# On a node (eBPF mode)
-sudo bpftool map dump name cali_v4_svc_ports | head -40
-# Shows: ClusterIP:port → backend pod IP mappings
+# From a calico-node pod (eBPF mode)
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf nat dump
+# Shows: ClusterIP:port -> backend pod IP mappings
 ```
 
 ## Best Practices
 
 - For debugging service connectivity, always check both the service endpoints and the Calico WorkloadEndpoint policies on the backend pod
-- Use `kubectl get endpoints` to verify that backend pods are in the endpoints list before investigating Calico policy
-- For eBPF mode, use `bpftool map dump` to verify service entries are in the eBPF service map after updating services
+- Use `kubectl get endpointslice -l kubernetes.io/service-name=<service-name>` to verify that backend pods are in the service endpoint slices before investigating Calico policy
+- For eBPF mode, use `calico-node -bpf nat dump` to verify service entries are in the eBPF NAT table after updating services
 
 ## Conclusion
 
-Service traffic flows through multiple transformation layers in Calico: kube-proxy (iptables) or eBPF programs perform DNAT from ClusterIP to pod IP, Calico policy is evaluated against pod IPs (not ClusterIPs), and return traffic is handled by conntrack (iptables) or eBPF maps. Understanding these transformations is essential for writing correct NetworkPolicy for service traffic and for tracing connectivity issues effectively.
+Service traffic flows through multiple transformation layers in Calico: kube-proxy (iptables) performs DNAT from ClusterIP to pod IP, while Calico eBPF service handling uses BPF programs and maps, including connect-time load balancing for in-cluster TCP service connections. Calico policy is evaluated against pod IPs (not ClusterIPs), and return traffic is handled by conntrack (iptables) or eBPF maps. Understanding these transformations is essential for writing correct NetworkPolicy for service traffic and for tracing connectivity issues effectively.
