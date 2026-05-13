@@ -22,14 +22,14 @@ External IP policy failures in Calico are often caused by CIDR range mismatches,
 ```bash
 # Check which external IP is failing
 
-kubectl exec -n production app-pod -- curl -v --max-time 10 http://external-ip:443
+kubectl exec -n production app-pod -- curl -v --max-time 10 https://external-ip
 ```
 
 ## Step 2: Check Applicable External IP Policies
 
 ```bash
 calicoctl get globalnetworkpolicies -o yaml | grep -A 10 nets
-calicoctl get networkpolicies --all-namespaces -o yaml | grep -A 5 ipBlock
+kubectl get networkpolicies --all-namespaces -o yaml | grep -A 5 ipBlock
 ```
 
 ## Step 3: Verify CIDR Range Includes the External IP
@@ -42,7 +42,7 @@ python3 -c "import ipaddress; print(ipaddress.ip_address('203.0.113.50') in ipad
 ## Step 4: Check Policy Order
 
 ```bash
-calicoctl get globalnetworkpolicies -o wide | sort -k4 -n
+calicoctl get globalnetworkpolicies -o wide | sort -k2 -n
 # Ensure allow rule has lower order than deny rule
 ```
 
@@ -54,10 +54,11 @@ kind: GlobalNetworkPolicy
 metadata:
   name: debug-external-ip
 spec:
-  order: 999
+  order: 999 # Set this before the deny policy you are debugging
   selector: all()
   egress:
     - action: Log
+    - action: Allow
   types:
     - Egress
 ```
