@@ -10,7 +10,7 @@ Description: Deploy Fluent Bit as a lightweight log forwarder DaemonSet on Kuber
 
 ## Introduction
 
-Fluent Bit is an ultra-lightweight log processor and forwarder written in C, consuming less than 1 MB of memory per node. Its low resource footprint makes it the preferred choice for running as a DaemonSet on every Kubernetes node where it tails container log files and forwards them to a centralized backend such as Elasticsearch, Loki, or an S3-compatible store.
+Fluent Bit is an ultra-lightweight log processor and forwarder written in C, designed for a low memory footprint. Its efficient resource usage makes it a common choice for running as a DaemonSet on every Kubernetes node where it tails container log files and forwards them to a centralized backend such as Elasticsearch, Loki, or an S3-compatible store.
 
 Deploying Fluent Bit through Flux CD means your DaemonSet configuration, filter pipelines, and output destinations are all version-controlled. When you need to add a new parser or adjust output buffering, you open a pull request - Flux detects the change and rolls it out across every node automatically.
 
@@ -66,7 +66,7 @@ spec:
   chart:
     spec:
       chart: fluent-bit
-      version: "0.46.7"
+      version: "0.57.5"
       sourceRef:
         kind: HelmRepository
         name: fluent
@@ -92,7 +92,7 @@ spec:
         [INPUT]
             Name              tail
             Path              /var/log/containers/*.log
-            Parser            cri
+            multiline.parser  docker, cri
             Tag               kube.*
             Mem_Buf_Limit     32MB
             Skip_Long_Lines   On
@@ -125,7 +125,6 @@ spec:
             Match           kube.*
             Host            elasticsearch-master.logging.svc.cluster.local
             Port            9200
-            Index           fluent-bit-logs
             Logstash_Format On
             Logstash_Prefix kube
             Time_Key        @timestamp
@@ -188,8 +187,9 @@ kubectl get daemonset fluent-bit -n logging
 kubectl logs -l app.kubernetes.io/name=fluent-bit -n logging --tail=50
 
 # Verify data reaches Elasticsearch
-kubectl exec -n logging deploy/some-pod -- \
-  curl -s "http://elasticsearch-master:9200/kube-*/_count" | jq .
+kubectl run es-check --rm -i --restart=Never \
+  --image=curlimages/curl:8.7.1 -n logging -- \
+  curl -s "http://elasticsearch-master:9200/kube-*/_count"
 ```
 
 ## Best Practices
@@ -202,4 +202,4 @@ kubectl exec -n logging deploy/some-pod -- \
 
 ## Conclusion
 
-Fluent Bit deployed as a Flux-managed DaemonSet gives you a production-grade log forwarder with minimal operational overhead. Its C-based engine ensures near-zero resource cost per node, and the Helm chart's rich values API means every configuration change - from adding a new output to adjusting buffer limits - is a Git commit. Flux reconciles the DaemonSet update across every node in a rolling fashion, keeping your log pipeline consistent at all times.
+Fluent Bit deployed as a Flux-managed DaemonSet gives you a production-grade log forwarder with minimal operational overhead. Its C-based engine keeps resource usage low per node, and the Helm chart's rich values API means every configuration change - from adding a new output to adjusting buffer limits - is a Git commit. Flux reconciles the DaemonSet update across every node in a rolling fashion, keeping your log pipeline consistent at all times.
