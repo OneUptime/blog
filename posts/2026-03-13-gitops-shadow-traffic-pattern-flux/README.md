@@ -10,7 +10,7 @@ Description: Mirror production traffic to a new service version using Flux CD an
 
 ## Introduction
 
-Shadow traffic (also called traffic mirroring or traffic shadowing) sends a copy of every production request to a new version of your service simultaneously. The new version receives identical requests, processes them, and produces responses - but those responses are discarded. Users see only the responses from the stable version. This lets you test the new version against the full breadth and volume of production traffic before routing any real users to it.
+Shadow traffic (also called traffic mirroring or traffic shadowing) sends a copy of production requests to a new version of your service simultaneously. The new version receives mirrored requests, processes them, and produces responses - but those responses are discarded. Users see only the responses from the stable version. This lets you test the new version against the full breadth and volume of production traffic before routing any real users to it.
 
 Unlike dark launch (where the application code decides whether to call a new path), shadow traffic is implemented at the infrastructure layer - the ingress controller or service mesh mirrors requests transparently. In a GitOps workflow with Flux CD, the mirroring configuration is declared in Git as Istio `VirtualService` resources and managed by Flux like any other manifest.
 
@@ -149,6 +149,8 @@ spec:
         value: 100.0
 ```
 
+Istio sends mirrored traffic on a best-effort, fire-and-forget basis. It does not wait for the mirrored service to respond, and the mirrored request's Host/Authority header is appended with `-shadow`.
+
 ## Step 4: Add an Istio DestinationRule
 
 ```yaml
@@ -236,7 +238,7 @@ graph TD
 After sufficient validation, promote shadow to stable via Git:
 
 ```bash
-# Promotion: update VirtualService to route to v2.5.0
+# Promotion: update the stable deployment image to v2.5.0
 # and remove the mirror configuration
 sed -i 's/my-app:2.4.0/my-app:2.5.0/' \
   apps/my-app/base/deployment-stable.yaml
