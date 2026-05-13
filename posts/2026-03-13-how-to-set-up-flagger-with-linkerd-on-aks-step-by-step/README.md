@@ -21,6 +21,7 @@ This guide walks through setting up a complete progressive delivery pipeline on 
 - kubectl installed
 - Helm installed
 - The Linkerd CLI (`linkerd`) installed
+- Kubernetes v1.21 or newer and Linkerd 2.14 or newer
 
 ## Step 1: Create an AKS Cluster
 
@@ -75,15 +76,25 @@ linkerd viz install | kubectl apply -f -
 linkerd viz check
 ```
 
+Install the Linkerd SMI extension, which provides the TrafficSplit CRDs that Flagger uses with Linkerd:
+
+```bash
+curl -sL https://linkerd.github.io/linkerd-smi/install | sh
+linkerd smi install | kubectl apply -f -
+linkerd smi check
+```
+
 ## Step 3: Install Flagger
 
 Install Flagger with Linkerd as the mesh provider:
 
 ```bash
 helm repo add flagger https://flagger.app
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
 
 helm upgrade -i flagger flagger/flagger \
   --namespace linkerd \
+  --set crd.create=false \
   --set meshProvider=linkerd \
   --set metricsServer=http://prometheus.linkerd-viz:9090
 ```
