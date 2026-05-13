@@ -46,7 +46,7 @@ metadata:
   namespace: default
 type: kubernetes.io/dockerconfigjson
 data:
-  .dockerconfigjson: eyJhdXRocyI6eyJyZWdpc3RyeS5leGFtcGxlLmNvbSI6eyJ1c2VybmFtZSI6Im15dXNlciIsInBhc3N3b3JkIjoibXlwYXNzd29yZCIsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSIsImF1dGgiOiIifX19
+  .dockerconfigjson: eyJhdXRocyI6eyJyZWdpc3RyeS5leGFtcGxlLmNvbSI6eyJ1c2VybmFtZSI6Im15dXNlciIsInBhc3N3b3JkIjoibXlwYXNzd29yZCIsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSIsImF1dGgiOiJiWGwxYzJWeU9tMTVjR0Z6YzNkdmNtUT0ifX19
 ```
 
 ## Configuring SOPS
@@ -102,7 +102,7 @@ stringData:
           "username": "myuser",
           "password": "mypassword",
           "email": "user@example.com",
-          "auth": ""
+          "auth": "bXl1c2VyOm15cGFzc3dvcmQ="
         }
       }
     }
@@ -132,17 +132,17 @@ stringData:
         "registry.example.com": {
           "username": "user1",
           "password": "password1",
-          "auth": ""
+          "auth": "dXNlcjE6cGFzc3dvcmQx"
         },
         "ghcr.io": {
           "username": "githubuser",
           "password": "ghp_tokenvalue",
-          "auth": ""
+          "auth": "Z2l0aHVidXNlcjpnaHBfdG9rZW52YWx1ZQ=="
         },
-        "123456789.dkr.ecr.us-east-1.amazonaws.com": {
-          "username": "AWS",
-          "password": "ecr-token-value",
-          "auth": ""
+        "quay.io": {
+          "username": "quayuser",
+          "password": "quay_tokenvalue",
+          "auth": "cXVheXVzZXI6cXVheV90b2tlbnZhbHVl"
         }
       }
     }
@@ -182,7 +182,13 @@ metadata:
   name: myapp
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       imagePullSecrets:
         - name: registry-creds
