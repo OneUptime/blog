@@ -56,10 +56,11 @@ spec:
       - default
     # Retain backups for 30 days
     ttl: 720h
-    # Labels for identifying this backup
-    labels:
-      schedule: full-cluster-daily
-      backup-type: full
+    # Labels for identifying backups created from this schedule
+    metadata:
+      labels:
+        schedule: full-cluster-daily
+        backup-type: full
 ```
 
 ## Step 2: Create Namespace-Specific Schedules
@@ -87,9 +88,10 @@ spec:
       - default
     # Keep hourly backups for 7 days
     ttl: 168h
-    labels:
-      schedule: production-apps-hourly
-      backup-type: namespace
+    metadata:
+      labels:
+        schedule: production-apps-hourly
+        backup-type: namespace
 
 ---
 # infrastructure/velero/schedules/staging-apps-backup.yaml
@@ -108,9 +110,10 @@ spec:
     storageLocation: default
     # Keep staging backups for 7 days only
     ttl: 168h
-    labels:
-      schedule: staging-apps-daily
-      backup-type: namespace
+    metadata:
+      labels:
+        schedule: staging-apps-daily
+        backup-type: namespace
 ```
 
 ## Step 3: Create Application-Aware Backups with Hooks
@@ -163,9 +166,10 @@ spec:
                   - "echo 'Backup complete'"
                 onError: Continue
                 timeout: 10s
-    labels:
-      schedule: database-namespace-backup
-      backup-type: database
+    metadata:
+      labels:
+        schedule: database-namespace-backup
+        backup-type: database
 ```
 
 ## Step 4: Create a Weekly Long-Term Retention Backup
@@ -194,10 +198,11 @@ spec:
       - default
     # Keep weekly backups for 90 days
     ttl: 2160h
-    labels:
-      schedule: weekly-long-term-archive
-      backup-type: archive
-      retention: long-term
+    metadata:
+      labels:
+        schedule: weekly-long-term-archive
+        backup-type: archive
+        retention: long-term
 ```
 
 ## Step 5: Create the Flux Kustomization for Schedules
