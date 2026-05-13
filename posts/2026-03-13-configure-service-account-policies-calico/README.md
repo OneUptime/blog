@@ -12,7 +12,7 @@ Description: A step-by-step guide to configuring Calico network policies based o
 
 Service account-based policies represent a stronger identity model than label-based policies because service accounts are more controlled - they are granted by the cluster operator rather than set freely in pod metadata. In a zero-trust cluster, using service accounts as the identity basis for network policy makes it harder for an attacker to escalate network access by simply adding labels to a pod.
 
-Calico's `projectcalico.org/v3` NetworkPolicy supports `serviceAccountSelector` in both the policy selector and the source/destination fields, enabling policies like "allow pods running as the `payment-processor` service account to reach the database." This ties network access to the Kubernetes RBAC identity of the workload.
+Calico's `projectcalico.org/v3` NetworkPolicy supports `serviceAccountSelector` for selecting the policy's target workloads and `serviceAccounts` matches in rule source/destination fields, enabling policies like "allow pods running as the `payment-processor` service account to reach the database." This ties network access to the Kubernetes RBAC identity of the workload.
 
 This guide shows how to configure service account-based network policies in Calico, covering the full workflow from service account creation to policy enforcement.
 
@@ -27,6 +27,7 @@ This guide shows how to configure service account-based network policies in Cali
 ```bash
 # Create service accounts for each workload
 
+kubectl create namespace production
 kubectl create serviceaccount frontend-sa -n production
 kubectl create serviceaccount backend-sa -n production
 kubectl create serviceaccount db-sa -n production
@@ -41,7 +42,13 @@ metadata:
   name: backend
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: backend
   template:
+    metadata:
+      labels:
+        app: backend
     spec:
       serviceAccountName: backend-sa
       containers:
@@ -59,11 +66,14 @@ metadata:
   namespace: production
 spec:
   order: 100
-  serviceAccountSelector: name == 'db-sa'
+  serviceAccountSelector: projectcalico.org/name == 'db-sa'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        serviceAccountSelector: name == 'backend-sa'
+        serviceAccounts:
+          names:
+            - backend-sa
       destination:
         ports: [5432]
   types:
