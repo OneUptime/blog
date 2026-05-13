@@ -14,14 +14,14 @@ This guide explains how to use it effectively for testing and troubleshooting.
 
 ## What flux debug kustomization Shows
 
-The `flux debug kustomization` command displays the current state of a Kustomization resource, including its status conditions, last applied revision, source information, and any error messages. This information helps you understand whether reconciliation is working correctly and, if not, what went wrong.
+The `flux debug kustomization` command displays selected debug information for a Kustomization resource. With `--show-status`, it prints the status block, including conditions, last applied and attempted revisions, inventory, reconciliation history, and any error messages. This information helps you understand whether reconciliation is working correctly and, if not, what went wrong.
 
 ## Basic Usage
 
 To debug a Kustomization named `apps` in the `flux-system` namespace:
 
 ```bash
-flux debug kustomization apps -n flux-system
+flux debug kustomization apps -n flux-system --show-status
 ```
 
 This outputs the resource status, including readiness, the last attempted revision, and any conditions that indicate problems.
@@ -37,7 +37,7 @@ flux get kustomization --all-namespaces
 For a specific Kustomization with full details:
 
 ```bash
-flux get kustomization apps -n flux-system -o yaml
+kubectl get kustomization apps -n flux-system -o yaml
 ```
 
 The YAML output shows the complete status block:
@@ -70,14 +70,14 @@ Common source issues include authentication failures, unreachable repositories, 
 Flux tracks all resources managed by a Kustomization in its inventory. To see what resources a Kustomization manages:
 
 ```bash
-flux debug kustomization apps -n flux-system
+flux debug kustomization apps -n flux-system --show-status
 ```
 
-The inventory section lists every resource with its namespace, name, group, version, and kind. This is useful for verifying that all expected resources are being tracked.
+The inventory section lists the applied resources as object references with an ID and API version. This is useful for verifying that all expected resources are being tracked.
 
 ## Testing Path Resolution
 
-A frequent cause of Kustomization failures is incorrect path configuration. The `path` field in the Kustomization spec must point to a directory containing a valid `kustomization.yaml` file:
+A frequent cause of Kustomization failures is incorrect path configuration. The `path` field in the Kustomization spec must point to a directory containing a valid `kustomization.yaml` file, or to a set of plain Kubernetes manifests for which Flux can generate one:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -92,7 +92,7 @@ spec:
     name: flux-system
 ```
 
-Verify locally that the path exists and builds correctly:
+For a Kustomize overlay, verify locally that the path exists and builds correctly:
 
 ```bash
 ls -la apps/production/kustomization.yaml
@@ -141,7 +141,7 @@ spec:
 Debug the health check status:
 
 ```bash
-flux debug kustomization apps -n flux-system
+flux debug kustomization apps -n flux-system --show-status
 ```
 
 Look for health check failure messages in the conditions. You can also check the deployment directly:
@@ -187,6 +187,7 @@ This gives you the exact resource definition that you can modify and test locall
 ```bash
 flux build kustomization apps \
   --path ./apps/production \
+  --kustomization-file ./kustomization-apps.yaml \
   --dry-run
 ```
 
