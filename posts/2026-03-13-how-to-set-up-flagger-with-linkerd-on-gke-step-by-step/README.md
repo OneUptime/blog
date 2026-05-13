@@ -60,6 +60,11 @@ linkerd check
 # Install Viz extension with Prometheus
 linkerd viz install | kubectl apply -f -
 linkerd viz check
+
+# Install Linkerd SMI extension for TrafficSplit support
+curl -sL https://linkerd.github.io/linkerd-smi/install | sh
+linkerd smi install | kubectl apply -f -
+linkerd smi check
 ```
 
 ## Step 3: Install Flagger
@@ -68,9 +73,13 @@ linkerd viz check
 helm repo add flagger https://flagger.app
 helm repo update
 
+# Install Flagger's Canary CRD
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger for Linkerd
 helm upgrade -i flagger flagger/flagger \
   --namespace linkerd-viz \
+  --set crd.create=false \
   --set meshProvider=linkerd \
   --set metricsServer=http://prometheus.linkerd-viz:9090
 
@@ -226,6 +235,7 @@ metadata:
   namespace: default
   annotations:
     kubernetes.io/ingress.class: "gce"
+    ingress.kubernetes.io/custom-request-headers: "l5d-dst-override: podinfo.default.svc.cluster.local:9898"
 spec:
   rules:
     - http:
