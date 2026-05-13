@@ -42,13 +42,17 @@ kubectl get configmap calico-config -n kube-system -o yaml
 
 # For Kubernetes datastore: verify API server is reachable
 kubectl exec $NODE_POD -n kube-system -- \
-  wget -qO- https://kubernetes.default.svc/api/v1 \
-  --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-  -o /dev/null -w "%{http_code}\n" 2>/dev/null
+  sh -c 'TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token);
+  CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt;
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --cacert "$CACERT" -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/version;
+  else
+    wget -qO- --ca-certificate="$CACERT" --header="Authorization: Bearer $TOKEN" https://kubernetes.default.svc/version;
+  fi'
 
-# Fix: Update datastore endpoint if wrong
+# For etcd datastore: update the etcd endpoint if wrong
 kubectl patch configmap calico-config -n kube-system --type=merge \
-  -p '{"data":{"cluster_type":"k8s,bgp"}}'
+  -p '{"data":{"etcd_endpoints":"https://etcd.example.com:2379"}}'
 ```
 
 **Fix 2: Install missing iptables tools**
@@ -58,7 +62,7 @@ kubectl patch configmap calico-config -n kube-system --type=merge \
 ssh <node-name> "apt-get install -y iptables" || \
   ssh <node-name> "yum install -y iptables"
 
-# Or install iptables-legacy (required for some kernel versions)
+# If your cluster is configured for legacy iptables, select iptables-legacy when available
 ssh <node-name> "apt-get install -y iptables-legacy && \
   update-alternatives --set iptables /usr/sbin/iptables-legacy"
 
@@ -93,14 +97,16 @@ kubectl rollout restart daemonset calico-node -n kube-system
 **Fix 4: Kernel module fix for Felix**
 
 ```bash
-# Felix requires specific kernel modules
+# Calico requires netfilter, conntrack, and IP sets support from the kernel.
+# Module names vary by distribution and kernel version; these are common examples.
 ssh <node-name> << 'EOF'
 modprobe nf_conntrack
 modprobe ip_tables
+modprobe ip_set
 modprobe xt_conntrack
 modprobe xt_set
 modprobe xt_mark
-echo -e "nf_conntrack\nip_tables\nxt_conntrack\nxt_set\nxt_mark" >> /etc/modules
+echo -e "nf_conntrack\nip_tables\nip_set\nxt_conntrack\nxt_set\nxt_mark" >> /etc/modules
 EOF
 
 kubectl delete pod $NODE_POD -n kube-system
