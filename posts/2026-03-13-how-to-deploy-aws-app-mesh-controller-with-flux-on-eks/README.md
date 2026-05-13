@@ -10,11 +10,13 @@ Description: Learn how to deploy and manage the AWS App Mesh Controller on Amazo
 
 AWS App Mesh is a fully managed service mesh that provides application-level networking so your services can communicate with each other across multiple types of compute infrastructure. By deploying the App Mesh Controller through Flux on EKS, you gain a declarative, Git-driven approach to managing your service mesh lifecycle. This guide walks through the entire setup process.
 
+Note: AWS has announced that support for AWS App Mesh ends on September 30, 2026, and new customers cannot onboard to App Mesh. Use this guide only for existing App Mesh environments, and plan migrations before that date.
+
 ## Prerequisites
 
 Before you begin, make sure you have the following tools installed and configured:
 
-- An existing EKS cluster (version 1.25 or later)
+- An existing EKS cluster running a Kubernetes version currently supported by Amazon EKS
 - Flux CLI installed and bootstrapped on your cluster
 - AWS CLI configured with appropriate permissions
 - kubectl configured to access your EKS cluster
@@ -24,17 +26,21 @@ Before you begin, make sure you have the following tools installed and configure
 The App Mesh Controller needs IAM permissions to manage App Mesh resources. Create an IAM policy and associate it with a Kubernetes service account using IRSA (IAM Roles for Service Accounts).
 
 ```bash
+eksctl utils associate-iam-oidc-provider \
+  --region=us-west-2 \
+  --cluster=my-cluster \
+  --approve
+
 eksctl create iamserviceaccount \
   --cluster=my-cluster \
   --namespace=appmesh-system \
   --name=appmesh-controller \
-  --attach-policy-arn=arn:aws:iam::aws:policy/AWSCloudMapFullAccess \
-  --attach-policy-arn=arn:aws:iam::aws:policy/AWSAppMeshFullAccess \
+  --attach-policy-arn=arn:aws:iam::aws:policy/AWSCloudMapFullAccess,arn:aws:iam::aws:policy/AWSAppMeshFullAccess \
   --override-existing-serviceaccounts \
   --approve
 ```
 
-## Step 2: Add the App Mesh Helm Repository as a Flux Source
+## Step 2: Add the App Mesh Helm Repository and CRDs as Flux Sources
 
 Create a `HelmRepository` resource that points to the EKS Helm chart repository where the App Mesh Controller chart is hosted.
 
@@ -51,11 +57,40 @@ spec:
   url: https://aws.github.io/eks-charts
 ```
 
+The App Mesh custom resource definitions are installed separately from the Helm chart, so reconcile the chart repository's CRD directory with Flux before creating App Mesh resources.
+
+```yaml
+# clusters/my-cluster/appmesh/crds.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: eks-charts
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://github.com/aws/eks-charts
+  ref:
+    branch: master
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: appmesh-crds
+  namespace: flux-system
+spec:
+  interval: 1h
+  path: ./stable/appmesh-controller/crds
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: eks-charts
+```
+
 Apply this to your Git repository so Flux picks it up automatically.
 
-## Step 3: Create the App Mesh Namespace
+## Step 3: Create the App Mesh and Application Namespaces
 
-Define the namespace where the App Mesh Controller will run.
+Define the namespace where the App Mesh Controller will run, and label the application namespace for mesh membership and sidecar injection.
 
 ```yaml
 # clusters/my-cluster/appmesh/namespace.yaml
@@ -63,7 +98,13 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: appmesh-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: my-app-ns
   labels:
+    mesh: my-application-mesh
     appmesh.k8s.aws/sidecarInjectorWebhook: enabled
 ```
 
@@ -83,7 +124,7 @@ spec:
   chart:
     spec:
       chart: appmesh-controller
-      version: "1.12.*"
+      version: "1.13.*"
       sourceRef:
         kind: HelmRepository
         name: eks-charts
@@ -119,7 +160,7 @@ metadata:
 spec:
   namespaceSelector:
     matchLabels:
-      appmesh.k8s.aws/sidecarInjectorWebhook: enabled
+      mesh: my-application-mesh
   egressFilter:
     type: ALLOW_ALL
 ```
@@ -189,7 +230,7 @@ You should see the App Mesh Controller pod running and the mesh resource in a he
 To enable automatic Envoy sidecar injection for a namespace, label it accordingly:
 
 ```bash
-kubectl label namespace my-app-ns appmesh.k8s.aws/sidecarInjectorWebhook=enabled
+kubectl label namespace my-app-ns mesh=my-application-mesh appmesh.k8s.aws/sidecarInjectorWebhook=enabled
 ```
 
 Any new pods created in that namespace will automatically get an Envoy sidecar proxy attached.
@@ -202,7 +243,7 @@ Since Flux manages the HelmRelease, upgrading is straightforward. Update the ver
 spec:
   chart:
     spec:
-      version: "1.13.*"
+      version: "1.13.3"
 ```
 
 Commit and push the change. Flux will perform the upgrade automatically during its next reconciliation cycle.
