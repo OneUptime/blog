@@ -10,36 +10,36 @@ Description: Manage Istio ServiceEntry resources for external services using Flu
 
 ## Introduction
 
-Istio's ServiceEntry extends the service mesh's service registry to include external services - APIs, databases, SaaS platforms, and other systems outside the Kubernetes cluster. Once registered, external services benefit from the same Istio features: mTLS, retries, circuit breaking, timeouts, and observability, along with controlled egress routing.
+Istio's ServiceEntry extends the service mesh's service registry to include external services - APIs, databases, SaaS platforms, and other systems outside the Kubernetes cluster. Once registered, external services can benefit from Istio features such as TLS origination, retries, circuit breaking, timeouts, and observability, along with controlled egress routing.
 
 Managing ServiceEntry resources through Flux CD means your external service registrations are version-controlled. Adding a new third-party API dependency or changing egress routing for an existing service goes through pull request review.
 
-This guide covers configuring Istio ServiceEntry resources for external HTTPS services, external databases, and internal external services using Flux CD.
+This guide covers configuring Istio ServiceEntry resources for external HTTPS services, external databases, and legacy services outside the mesh using Flux CD.
 
 ## Prerequisites
 
 - Kubernetes cluster with Istio installed
 - Flux CD v2 bootstrapped to your Git repository
-- Istio's egress traffic policy set (REGISTRY_ONLY blocks all unknown external traffic)
+- Istio's egress traffic policy can be set (REGISTRY_ONLY drops unknown external traffic)
 
 ## Step 1: Set Registry-Only Egress Policy
 
-First, configure Istio to block all unregistered external traffic:
+First, configure Istio to drop unknown external traffic:
 
 ```yaml
-# clusters/my-cluster/istio-egress/mesh-config-patch.yaml
+# clusters/my-cluster/istio/istio-operator.yaml
 
-# Patch istiod ConfigMap to enable REGISTRY_ONLY mode
-apiVersion: v1
-kind: ConfigMap
+# Set this in the Istio installation configuration you manage with Flux
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
-  name: istio
+  name: istio-control-plane
   namespace: istio-system
-data:
-  mesh: |
+spec:
+  meshConfig:
     accessLogFile: /dev/stdout
     outboundTrafficPolicy:
-      mode: REGISTRY_ONLY  # Block all external traffic not in ServiceEntry
+      mode: REGISTRY_ONLY  # Drop unknown external traffic not in ServiceEntry
 ```
 
 ## Step 2: Register an External HTTPS API
@@ -56,9 +56,10 @@ spec:
   hosts:
     - api.stripe.com
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   location: MESH_EXTERNAL
   resolution: DNS
 ---
@@ -86,7 +87,7 @@ metadata:
   namespace: production
 spec:
   hosts:
-    - "*.mongodb.net"
+    - cluster0-shard-00-00.abcde.mongodb.net
   ports:
     - number: 27017
       name: mongo
@@ -99,7 +100,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/istio-egress/destination-rules.yaml
-# Configure TLS origination for external HTTPS services
+# Configure TLS origination, connection pools, and circuit breaking
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -140,7 +141,7 @@ spec:
         - destination:
             host: api.stripe.com
             port:
-              number: 443
+              number: 80
       # Retry failed Stripe API calls
       retries:
         attempts: 3
@@ -150,7 +151,7 @@ spec:
       timeout: 30s
 ```
 
-## Step 5: Register an Internal Service in Another Namespace
+## Step 5: Register a Legacy Service Outside the Mesh
 
 ```yaml
 # clusters/my-cluster/istio-egress/internal-service-entry.yaml
@@ -215,9 +216,10 @@ flux reconcile kustomization istio-service-entries
 # List ServiceEntries
 kubectl get serviceentry -n production
 
-# Test access to registered external service
+# Test access to registered external service.
+# The sidecar originates TLS to api.stripe.com:443.
 kubectl exec -n production deploy/payment-service -- \
-  curl -sv https://api.stripe.com/v1/charges \
+  curl -sv http://api.stripe.com/v1/charges \
   -H "Authorization: Bearer sk_test_..."
 
 # Test that unregistered external access is blocked
@@ -232,7 +234,7 @@ kubectl logs -n production deploy/payment-service -c istio-proxy \
 
 ## Best Practices
 
-- Enable `REGISTRY_ONLY` outbound traffic policy as a security baseline - it forces teams to declare all external dependencies via ServiceEntry, creating an auditable egress registry.
+- Enable `REGISTRY_ONLY` outbound traffic policy as a governance baseline - it forces teams to declare external dependencies via ServiceEntry, creating an auditable egress registry, but it should not be treated as a full outbound firewall.
 - Apply DestinationRules with connection pool limits and circuit breaking for external APIs to prevent a slow or failing third-party from cascading into your services.
 - Use VirtualService retries with `retryOn: "5xx,connect-failure"` for idempotent external API calls to handle transient failures automatically.
 - Group ServiceEntries by domain ownership (e.g., `payment-service-entries.yaml`, `email-service-entries.yaml`) rather than in a single file to make ownership and review clear.
