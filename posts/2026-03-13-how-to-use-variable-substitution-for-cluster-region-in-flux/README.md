@@ -326,7 +326,7 @@ spec:
 
 ## Step 9: Region-Based Network Policies
 
-Apply region-aware network policies. For example, allow traffic only to regional service endpoints. In `apps/base/networkpolicy.yaml`:
+Apply region-aware network policies. For example, allow traffic to private regional service ranges and shared HTTPS/DNS endpoints. In `apps/base/networkpolicy.yaml`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -429,7 +429,7 @@ done
 Check for substitution errors:
 
 ```bash
-flux get kustomization apps
+flux get kustomizations
 flux events --for Kustomization/apps
 ```
 
