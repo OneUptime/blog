@@ -12,32 +12,36 @@ Description: A step-by-step guide to installing Calico with the VPP (Vector Pack
 
 Calico VPP is a high-performance data plane option that replaces Calico's default iptables or eBPF data plane with VPP - the Vector Packet Processor. VPP processes packets in user space using a vectorized approach that handles packets in batches, delivering multi-million packets-per-second throughput at low CPU cost. It is designed for workloads that push the limits of Linux kernel networking: telco NFV applications, high-frequency trading, and large-scale service meshes.
 
-Calico VPP runs as a separate process alongside calico-node. It intercepts pod traffic at the kernel-bypass level using DPDK or `af_packet`, process it through VPP's pipeline, and forwards it to the appropriate destination. The installation requires specific hardware support (SR-IOV or DPDK-compatible NICs for best performance) and a kernel configuration that allows VPP to bind to network interfaces.
+Calico VPP runs VPP and the Calico VPP agent in a `calico-vpp-node` pod on each VPP-enabled node. It drives the node uplink through VPP using drivers such as `af_packet`, `af_xdp`, native VPP drivers, or DPDK, processes traffic through VPP's pipeline, and forwards it to the appropriate destination. DPDK-compatible or native-driver-supported NICs are useful for best performance, but `af_packet` can be used on standard Linux interfaces.
 
 ## Prerequisites
 
-- A Kubernetes cluster with nodes running Linux (Ubuntu 20.04+ or similar)
-- Nodes with DPDK-compatible NICs (Intel X710, X722, or similar) for maximum performance
-- Hugepages configured on each node
-- Calico VPP container images accessible (from Calico VPP GitHub releases)
+- A blank Kubernetes cluster with no CNI previously installed, with nodes running Linux (Ubuntu 20.04+ or similar)
+- Nodes with a valid Linux uplink interface that is up, has the Kubernetes node address, and can be passed to VPP
+- Hugepages configured on each node if you want to use DPDK or native VPP interface drivers
+- Access to the Calico and Calico VPP manifests and container images
 - `kubectl` with cluster admin access
 
 ## Step 1: Configure Hugepages on Nodes
 
-VPP requires hugepages for its memory allocator.
+Hugepages are optional for the basic `af_packet` path, but they are required for DPDK and several native VPP interface drivers.
 
 ```bash
 # On each node
 
 echo 'vm.nr_hugepages = 512' >> /etc/sysctl.d/99-hugepages.conf
 sysctl -p /etc/sysctl.d/99-hugepages.conf
+modprobe vfio-pci
 
 # Mount hugetlbfs
 mkdir -p /dev/hugepages
 mount -t hugetlbfs none /dev/hugepages
 
+# Restart kubelet so it reports the hugepages resource
+systemctl restart kubelet
+
 # Verify
-cat /proc/meminfo | grep Huge
+grep HugePages_Free /proc/meminfo
 ```
 
 ## Step 2: Configure Interface for VPP
@@ -49,48 +53,56 @@ ip link show
 # Note the interface name, e.g., eth1 for the primary data interface
 ```
 
-## Step 3: Download the Calico VPP Installation Manifests
+## Step 3: Install Calico with the Tigera Operator
 
 ```bash
-# Clone the Calico VPP repository
-git clone https://github.com/projectcalico/vpp-dataplane.git
-cd vpp-dataplane
-git checkout <calico-vpp-version>
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/vpp-dataplane/v3.31.0/yaml/calico/installation-default.yaml
 ```
 
-## Step 4: Configure the VPP Installation
+## Step 4: Download and Configure the VPP Installation
 
-Edit the configuration to specify your interface and driver.
+Download the generated VPP data plane manifest. Use `calico-vpp.yaml` if you configured hugepages, or `calico-vpp-nohuge.yaml` if you did not.
 
 ```bash
-cp config/calicovpp_agent_config.yaml config/calicovpp_agent_config_local.yaml
+curl -o calico-vpp.yaml https://raw.githubusercontent.com/projectcalico/vpp-dataplane/v3.31.0/yaml/generated/calico-vpp.yaml
 ```
+
+Edit the `calico-vpp-config` ConfigMap in `calico-vpp.yaml` to specify your Kubernetes service CIDR and uplink interface. The interface must be a valid Linux interface, it must be up and configured with an address, and that address must match the Kubernetes node address shown by `kubectl get nodes -o wide`.
 
 ```yaml
-# config/calicovpp_agent_config_local.yaml
-vppIface: eth1
-dpdkDriver: "vfio-pci"
-hugepagesDirBase: "/dev/hugepages"
+data:
+  SERVICE_PREFIX: 10.96.0.0/12
+  CALICOVPP_INTERFACES: |-
+    {
+      "uplinkInterfaces": [
+        {
+          "interfaceName": "eth1",
+          "vppDriver": "af_packet"
+        }
+      ]
+    }
 ```
 
 ## Step 5: Deploy Calico with VPP Data Plane
 
 ```bash
-kubectl apply -f yaml/calico-vpp.yaml
+kubectl create -f calico-vpp.yaml
 ```
 
 Monitor the rollout:
 
 ```bash
 kubectl get pods -n calico-vpp-dataplane -w
-kubectl get pods -n kube-system -l k8s-app=calico-node -w
+kubectl get pods -n calico-system -w
 ```
 
 ## Step 6: Verify VPP Is Running
 
 ```bash
 kubectl get pods -n calico-vpp-dataplane
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl show interface
 ```
 
 ## Conclusion
