@@ -40,7 +40,7 @@ Pods without explicit resource requests may inherit default requests from a Limi
 
 ### 3. Stale Resources Consuming Quota
 
-Failed or completed pods, orphaned PVCs, or unused resources are consuming quota that should be available for new deployments.
+Pending pods, orphaned PVCs, or unused resources are consuming quota that should be available for new deployments. Failed and completed pods do not count against the standard `pods` quota because they are in a terminal state.
 
 ### 4. Scaling Beyond Quota
 
@@ -64,8 +64,8 @@ This shows the current usage versus the limits for each resource type.
 ### Step 2: Identify Resource Usage Breakdown
 
 ```bash
-kubectl get pods -n my-namespace -o json | \
-  jq '[.items[].spec.containers[].resources.requests] | map(to_entries) | flatten | group_by(.key) | map({resource: .[0].key, total: (map(.value | rtrimstr("m") | rtrimstr("Mi") | tonumber) | add)})'
+kubectl get pods -n my-namespace \
+  -o custom-columns='POD:.metadata.name,STATUS:.status.phase,CPU_REQUESTS:.spec.containers[*].resources.requests.cpu,MEMORY_REQUESTS:.spec.containers[*].resources.requests.memory'
 ```
 
 ### Step 3: Check for Stale Pods
@@ -126,8 +126,14 @@ metadata:
   name: my-app
   namespace: my-namespace
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   replicas: 2
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -143,19 +149,19 @@ spec:
 
 ### Fix 3: Clean Up Stale Resources
 
-Remove completed or failed pods:
+Remove stale pending pods after confirming they are safe to delete:
 
 ```bash
-kubectl delete pods -n my-namespace --field-selector=status.phase=Failed
-kubectl delete pods -n my-namespace --field-selector=status.phase=Succeeded
+kubectl delete pods -n my-namespace --field-selector=status.phase=Pending
 ```
 
-Remove orphaned PVCs:
+Identify orphaned PVCs before deletion:
 
 ```bash
 kubectl get pvc -n my-namespace --no-headers | while read name rest; do
   echo "Checking PVC $name"
 done
+kubectl delete pvc <pvc-name> -n my-namespace
 ```
 
 ### Fix 4: Adjust LimitRange Defaults
