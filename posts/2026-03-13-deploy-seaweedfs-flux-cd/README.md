@@ -12,7 +12,7 @@ Description: Deploy SeaweedFS distributed object and file storage on Kubernetes 
 
 SeaweedFS is a fast, simple, and scalable distributed storage system designed to store billions of files efficiently. Originally inspired by Facebook's Haystack paper, SeaweedFS has evolved into a full-featured system that supports S3-compatible object storage, POSIX filesystem (via FUSE), and Kafka-compatible message queues. Its architecture is simpler than Ceph, making it easier to operate while still delivering high throughput.
 
-SeaweedFS's Kubernetes operator (or Helm chart) deploys three components: Master (metadata coordination), Volume Server (data storage), and Filer (POSIX filesystem layer + S3 API). Deploying through Flux CD gives you GitOps-managed SeaweedFS infrastructure with version-controlled configuration.
+SeaweedFS's Helm chart deploys the core components: Master (metadata coordination), Volume Server (data storage), and Filer (filesystem namespace and optional S3 API). Deploying through Flux CD gives you GitOps-managed SeaweedFS infrastructure with version-controlled configuration.
 
 ## Prerequisites
 
@@ -49,6 +49,39 @@ metadata:
 
 ```yaml
 # infrastructure/storage/seaweedfs/seaweedfs.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: seaweedfs-s3-secret
+  namespace: seaweedfs
+type: Opaque
+stringData:
+  seaweedfs_s3_config: |-
+    {
+      "identities": [
+        {
+          "name": "admin",
+          "credentials": [
+            {
+              "accessKey": "AKIAIOSFODNN7EXAMPLE",
+              "secretKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            }
+          ],
+          "actions": ["Admin", "Read", "Write"]
+        },
+        {
+          "name": "readonly-user",
+          "credentials": [
+            {
+              "accessKey": "AKIAReadOnlyKey",
+              "secretKey": "ReadOnlySecretKey"
+            }
+          ],
+          "actions": ["Read"]
+        }
+      ]
+    }
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -74,7 +107,7 @@ spec:
     # Master server (metadata coordination)
     master:
       enabled: true
-      replicas: 1   # use 3 in production with raft enabled
+      replicas: 1   # use 3 in production
       resources:
         requests:
           cpu: "100m"
@@ -87,11 +120,8 @@ spec:
         size: 10Gi
         storageClass: ""   # use default StorageClass
 
-      config: |-
-        [master.maintenance]
-        # Clean up deleted files
-        sleep_minutes = 17
-        garbage_threshold = 0.3
+      # Vacuum volumes when deleted data reaches 30%
+      garbageThreshold: 0.3
 
     # Volume server (data storage)
     volume:
@@ -104,11 +134,14 @@ spec:
         limits:
           cpu: "2"
           memory: "4Gi"
-      data:
-        type: persistentVolumeClaim
-        size: 100Gi
-        storageClass: premium-ssd
+      dataDirs:
+        - name: data1
+          type: persistentVolumeClaim
+          size: 100Gi
+          storageClass: premium-ssd
+          maxVolumes: 0
       # Index type: leveldb is recommended for large datasets
+      index: leveldb
       idx:
         type: persistentVolumeClaim
         size: 20Gi
@@ -117,7 +150,7 @@ spec:
     # Filer (POSIX filesystem + S3 API)
     filer:
       enabled: true
-      replicas: 2
+      replicas: 1
       resources:
         requests:
           cpu: "200m"
@@ -133,58 +166,19 @@ spec:
       s3:
         enabled: true
         port: 8333
-        # Authentication
-        auditLogConfig: ""
+        enableAuth: true
+        existingConfigSecret: seaweedfs-s3-secret
+        auditLogConfig: {}
 
-      # Enable the POSIX FUSE interface
-      fuse:
-        enabled: false   # requires privileged pods; enable if needed
-
-      config: |-
-        [filer.options]
-        recursive_delete = false
-
-        [storage.backend]
-        enabled = false
-
-        [leveldb2]
-        enabled = true
-        dir = "/data/filerldb2"
-
-    # S3 credentials (use Sealed Secrets in production)
-    s3:
-      enabled: true
-      config:
-        content: |-
-          {
-            "identities": [
-              {
-                "name": "admin",
-                "credentials": [
-                  {
-                    "accessKey": "AKIAIOSFODNN7EXAMPLE",
-                    "secretKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                  }
-                ],
-                "actions": ["Admin", "Read", "Write"]
-              },
-              {
-                "name": "readonly-user",
-                "credentials": [
-                  {
-                    "accessKey": "AKIAReadOnlyKey",
-                    "secretKey": "ReadOnlySecretKey"
-                  }
-                ],
-                "actions": ["Read"]
-              }
-            ]
-          }
+      extraEnvironmentVars:
+        WEED_FILER_OPTIONS_RECURSIVE_DELETE: "false"
+        WEED_LEVELDB2_ENABLED: "true"
+        WEED_LEVELDB2_DIR: "/data/filerldb2"
 ```
 
 ## Step 4: Create a CSI Driver StorageClass (Optional)
 
-SeaweedFS provides a CSI driver for dynamic PV provisioning:
+If the SeaweedFS CSI driver is installed, you can create a StorageClass for dynamic PV provisioning:
 
 ```yaml
 # infrastructure/storage/seaweedfs/csi-driver.yaml
@@ -196,9 +190,9 @@ provisioner: seaweedfs-csi-driver
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 parameters:
-  replication: "001"    # 1 replica (use "002" for 2 replicas)
+  replication: "001"    # one extra replica (use "002" for two extra replicas)
   collection: ""         # default collection
-  ttl: ""               # no TTL (files live forever)
+  diskType: ""           # default disk type
 ```
 
 ## Step 5: Flux Kustomization
@@ -245,20 +239,20 @@ echo "Hello SeaweedFS" | aws s3 --endpoint-url http://localhost:8333 cp - s3://m
 aws s3 --endpoint-url http://localhost:8333 ls s3://my-bucket/
 
 # Check Master UI
-kubectl port-forward svc/seaweedfs-master-peer 9333:9333 -n seaweedfs
+kubectl port-forward svc/seaweedfs-master 9333:9333 -n seaweedfs
 # Navigate to http://localhost:9333
 
 # Check cluster topology
-kubectl exec -n seaweedfs seaweedfs-master-0 -- \
+kubectl exec -i -n seaweedfs seaweedfs-master-0 -- \
   weed shell -master localhost:9333 <<< "cluster.ps"
 ```
 
 ## Best Practices
 
-- Run 3 Master replicas with Raft consensus for production HA - single-master deployments lose metadata on crash.
-- Set `garbage_threshold: 0.3` to automatically reclaim disk space from deleted files when 30% of a volume is garbage.
-- Use `leveldb2` as the Filer metadata backend for large file counts - it outperforms the default backend at millions of files.
-- Configure replication (`replication: "001"` for 1 copy, `"010"` for 2 copies in different racks) based on your resilience requirements.
+- Run 3 Master replicas for production HA - single-master deployments are a control-plane availability risk.
+- Set `garbageThreshold: 0.3` to automatically reclaim disk space from deleted files when 30% of a volume is garbage.
+- Use `leveldb2` as the Filer metadata backend for large file counts, but keep only one Filer replica with this local backend.
+- Configure replication (`replication: "000"` for no extra copy, `"001"` for one extra copy on another server in the same rack, `"010"` for one extra copy in another rack) based on your resilience requirements.
 - Separate master, volume server, and filer on dedicated nodes for production to avoid resource contention.
 
 ## Conclusion
