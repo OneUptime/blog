@@ -19,7 +19,7 @@ This guide walks through migrating workloads from a Kind cluster using the defau
 ## Prerequisites
 
 - Existing Kind cluster with workloads running
-- Kind CLI, kubectl, and calicoctl installed
+- Kind CLI, kubectl, and Docker installed
 - Sufficient local resources to run two Kind clusters simultaneously (optional)
 
 ## Step 1: Export Existing Workload Definitions
@@ -27,8 +27,10 @@ This guide walks through migrating workloads from a Kind cluster using the defau
 Export all workloads from the current cluster:
 
 ```bash
-kubectl get deploy,svc,configmap,secret,ingress --all-namespaces -o yaml > workloads-backup.yaml
+kubectl get namespace,deploy,statefulset,daemonset,job,cronjob,svc,configmap,secret,ingress,pvc --all-namespaces -o yaml > workloads-backup.yaml
 ```
+
+Before applying this backup to the new cluster, remove cluster-generated fields such as `metadata.uid`, `metadata.resourceVersion`, `metadata.managedFields`, `metadata.creationTimestamp`, and `status`. For Services, also review generated fields such as `spec.clusterIP`, `spec.clusterIPs`, and `spec.ports[*].nodePort` unless you intentionally want to preserve them and they are valid in the new cluster.
 
 Export NetworkPolicy resources if any exist:
 
@@ -48,17 +50,18 @@ networking:
 EOF
 
 kind create cluster --config kind-calico.yaml --name calico-migration
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
 ```
 
 ## Step 3: Wait for Calico to Be Ready
 
 ```bash
-kubectl wait --namespace kube-system \
-  --for=condition=ready pod \
-  --selector=k8s-app=calico-node \
-  --timeout=120s
+watch kubectl get tigerastatus
 ```
+
+Continue when the Calico status resources report `AVAILABLE=True`.
 
 ## Step 4: Deploy Workloads to the New Cluster
 
