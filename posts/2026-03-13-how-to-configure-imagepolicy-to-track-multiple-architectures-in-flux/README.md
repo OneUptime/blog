@@ -157,9 +157,9 @@ spec:
           image: docker.io/myorg/my-app:1.2.3-arm64 # {"$imagepolicy": "flux-system:my-app-arm64"}
 ```
 
-## Filtering for Tags with Manifest Lists Only
+## Filtering for Tags That Should Be Manifest Lists
 
-If your registry contains a mix of single-arch and multi-arch tags, and you want to ensure you only select tags with manifest lists, you can use a naming convention. For example, tag multi-arch images without an architecture suffix and single-arch images with one:
+If your registry contains a mix of single-arch and multi-arch tags, Flux cannot inspect the manifest contents from `filterTags`, but you can use a naming convention. For example, tag multi-arch images without an architecture suffix and single-arch images with one:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -178,7 +178,7 @@ spec:
       range: ">=1.0.0"
 ```
 
-This pattern excludes tags with architecture suffixes, selecting only bare version tags that should be multi-arch manifest lists.
+This pattern excludes tags with architecture suffixes, selecting only bare version tags that your build process should publish as multi-arch manifest lists.
 
 ## Building Multi-Architecture Images in CI
 
@@ -186,10 +186,19 @@ Here is a GitHub Actions workflow that builds and pushes multi-arch images using
 
 ```yaml
 - name: Set up Docker Buildx
-  uses: docker/setup-buildx-action@v3
+  uses: docker/setup-buildx-action@v4
+
+- name: Set up QEMU
+  uses: docker/setup-qemu-action@v4
+
+- name: Login to Docker Hub
+  uses: docker/login-action@v4
+  with:
+    username: ${{ vars.DOCKERHUB_USERNAME }}
+    password: ${{ secrets.DOCKERHUB_TOKEN }}
 
 - name: Build and push multi-arch
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     platforms: linux/amd64,linux/arm64
     push: true
