@@ -49,11 +49,11 @@ ip addr show vxlan.calico
 # View VXLAN forwarding database (FDB)
 bridge fdb show dev vxlan.calico
 
-# View ARP table for VTEP neighbors
-arp -n | grep "vxlan"
+# View neighbor table for VTEP neighbors
+ip neigh show dev vxlan.calico
 
 # Check Calico VTEP information
-kubectl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
+calicoctl get node -o yaml | grep -A5 vxlanTunnelMACAddr
 ```
 
 ## Test Cross-Subnet Pod Connectivity
