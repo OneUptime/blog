@@ -67,11 +67,14 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
-    # Enable batch scheduling support
+    # Batch scheduling disabled by using the default scheduler
     batchScheduler:
-      enabled: false
+      name: ""
     # Prometheus metrics
-    metricsPort: 8080
+    metrics:
+      enabled: true
+    service:
+      port: 8080
 ```
 
 ## Step 3: Create a RayCluster for General Workloads
@@ -202,14 +205,14 @@ spec:
             - transformers==4.36.0
         deployments:
           - name: RecommenderModel
-            num_replicas: 2
+            num_replicas: auto
             ray_actor_options:
               num_cpus: 2
               num_gpus: 0
             autoscaling_config:
               min_replicas: 1
               max_replicas: 10
-              target_num_ongoing_requests_per_replica: 5
+              target_ongoing_requests: 5
   rayClusterConfig:
     rayVersion: "2.10.0"
     headGroupSpec:
@@ -262,7 +265,7 @@ spec:
   wait: true
   timeout: 15m
   dependsOn:
-    - name: kuberay-operator
+    - name: infrastructure  # Kustomization that reconciles the KubeRay HelmRelease
 ```
 
 ## Step 6: Monitor the Ray Cluster
@@ -274,14 +277,14 @@ kubectl describe raycluster general-cluster -n ray-workloads
 
 # Access Ray dashboard via port-forward
 kubectl port-forward -n ray-workloads \
-  svc/general-cluster-head-svc 8265:8265
+  svc/general-cluster-head-svc 8265:8265 10001:10001
 # Open http://localhost:8265
 
 # View worker pods
 kubectl get pods -n ray-workloads -l ray.io/node-type=worker
 
 # Connect to Ray cluster from local Python
-# export RAY_ADDRESS="http://localhost:8265"
+# export RAY_ADDRESS="ray://localhost:10001"
 # ray.init(address=os.environ["RAY_ADDRESS"])
 
 # Check RayService status
