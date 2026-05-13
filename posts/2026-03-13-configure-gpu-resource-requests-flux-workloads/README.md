@@ -10,11 +10,11 @@ Description: Configure GPU resource requests and limits in Flux CD managed workl
 
 ## Introduction
 
-Kubernetes treats GPU resources as extended resources - they are not automatically divisible like CPU and memory. Requesting GPUs incorrectly leads to workloads stuck in a Pending state, wasted capacity, or OOM-killed containers. Getting resource requests right is foundational to running AI/ML workloads reliably.
+Kubernetes treats GPU resources as extended resources - they are not automatically divisible like CPU and memory. Requesting GPUs incorrectly leads to workloads stuck in a Pending state, rejected pod specs, or wasted capacity. Getting resource requests right is foundational to running AI/ML workloads reliably.
 
 Flux CD lets you define and version-control these resource configurations declaratively. By managing GPU requests through GitOps, you can enforce standards across teams, track changes over time, and roll back misconfigured resource quotas instantly.
 
-This guide covers how to configure GPU resource requests and limits in Flux-managed Deployments and Jobs, set namespace-level ResourceQuotas, and use LimitRanges to enforce GPU usage policies.
+This guide covers how to configure GPU resource requests and limits in Flux-managed Deployments, set namespace-level ResourceQuotas, and use LimitRanges to enforce GPU usage policies.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ This guide covers how to configure GPU resource requests and limits in Flux-mana
 
 ## Step 1: Understand GPU Resource Model in Kubernetes
 
-GPUs use the `nvidia.com/gpu` extended resource. Unlike CPU, you must set `requests` equal to `limits` for GPU resources - Kubernetes does not support fractional GPU allocation natively.
+GPUs use the `nvidia.com/gpu` extended resource. Unlike CPU, GPUs are specified in the `limits` section; Kubernetes uses that limit as the request. If you set both `requests` and `limits` for GPU resources, they must be equal. Kubernetes does not support fractional GPU allocation natively.
 
 ```yaml
 resources:
@@ -97,7 +97,6 @@ spec:
   hard:
     # Maximum total GPUs this namespace may request
     requests.nvidia.com/gpu: "8"
-    limits.nvidia.com/gpu: "8"
     # Memory cap to protect node stability
     requests.memory: "128Gi"
     limits.memory: "128Gi"
@@ -171,11 +170,11 @@ kubectl describe node <gpu-node-name> | grep -A5 "Allocated resources"
 
 ## Best Practices
 
-- Always set GPU `requests` equal to `limits`; Kubernetes ignores GPU requests without matching limits.
+- Specify GPU resources in `limits`, or set GPU `requests` equal to `limits` when you include both.
 - Use ResourceQuota per namespace to prevent a single team from monopolizing all GPU capacity.
 - Add node taints (`nvidia.com/gpu=true:NoSchedule`) and workload tolerations to keep non-GPU pods off expensive GPU nodes.
 - Use Kustomize overlays to apply different GPU quotas for development and production namespaces from the same base.
-- Add `healthChecks` in Flux Kustomizations so deployments blocking on GPU scheduling surface as reconciliation failures immediately.
+- Add `healthChecks` in Flux Kustomizations so deployments blocking on GPU scheduling surface as reconciliation failures after the health-check timeout.
 
 ## Conclusion
 
