@@ -10,14 +10,14 @@ Description: Learn how to tune Flagger's canary analysis interval and failure th
 
 ## Introduction
 
-The analysis interval and threshold are two of the most important configuration parameters in a Flagger Canary resource. The interval controls how frequently Flagger evaluates the canary's health metrics, while the threshold defines how many consecutive failed checks are tolerated before triggering a rollback. Getting these values right is critical: too aggressive and you risk false rollbacks, too conservative and deployments take unnecessarily long.
+The analysis interval and threshold are two of the most important configuration parameters in a Flagger Canary resource. The interval controls how frequently Flagger evaluates the canary's health metrics, while the threshold defines how many failed checks are tolerated before triggering a rollback. Getting these values right is critical: too aggressive and you risk false rollbacks, too conservative and deployments take unnecessarily long.
 
 This guide explains how these parameters work together and provides practical guidance for tuning them for different types of workloads.
 
 ## Prerequisites
 
 - A running Kubernetes cluster with Flagger installed
-- A Canary resource targeting a Deployment, DaemonSet, or StatefulSet
+- A Canary resource targeting a Deployment or DaemonSet, or a Knative Service when using the Knative provider
 - A metrics provider (Prometheus, Datadog, etc.) configured
 - kubectl access to your cluster
 
@@ -38,16 +38,16 @@ Valid duration formats include seconds (`30s`), minutes (`1m`), and combinations
 
 ### The Threshold Parameter
 
-The `threshold` field defines the maximum number of failed metric checks before Flagger rolls back the canary:
+The `threshold` field defines the maximum number of failed checks before Flagger rolls back the canary:
 
 ```yaml
 spec:
   analysis:
-    # Rollback after 5 consecutive failures
+    # Rollback after 5 failed checks
     threshold: 5
 ```
 
-When a metric check fails, Flagger increments an internal failure counter. If any subsequent check passes, the counter resets to zero. Only consecutive failures count toward the threshold.
+When a metric check or webhook check fails, Flagger increments the failed checks counter for the current canary analysis. Successful checks allow the rollout to continue, but they do not reset the failed checks counter.
 
 ## How Interval and Threshold Work Together
 
@@ -237,7 +237,7 @@ analysis:
       interval: 1m  # Query range: success rate over the last 1 minute
 ```
 
-The metric interval should generally be equal to or longer than the analysis interval. Setting it shorter can lead to incomplete data in each query window.
+The metric interval should generally be lower than or equal to the analysis interval. Setting it longer than the analysis interval can cause overlapping query windows between checks.
 
 ## Verifying Your Configuration
 
