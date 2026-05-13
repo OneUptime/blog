@@ -55,7 +55,7 @@ spec:
 Commit and push this change. Wait for Flux to reconcile and apply the annotation:
 
 ```bash
-flux reconcile kustomization my-app
+flux reconcile kustomization my-app --with-source
 kubectl get deployment legacy-app -n production -o jsonpath='{.metadata.annotations}'
 ```
 
@@ -73,10 +73,12 @@ If you need to remove multiple resources from Git at once, you can suspend the K
 flux suspend kustomization my-app
 
 # Annotate resources in the cluster directly
-kubectl annotate deployment legacy-app -n production \
+kubectl annotate --field-manager=flux-client-side-apply --overwrite \
+  deployment legacy-app -n production \
   kustomize.toolkit.fluxcd.io/prune=disabled
 
-kubectl annotate service legacy-service -n production \
+kubectl annotate --field-manager=flux-client-side-apply --overwrite \
+  service legacy-service -n production \
   kustomize.toolkit.fluxcd.io/prune=disabled
 
 # Remove the manifests from Git, commit, and push
@@ -122,7 +124,24 @@ After this, the removed resources will no longer be in the Kustomization invento
 
 ## Strategy 4: Move Resources to a Non-Pruning Kustomization
 
-For a more permanent solution, create a separate Kustomization with `prune: false` for resources that should not be garbage collected:
+For a more permanent solution, create a separate Kustomization with `prune: false` for resources that should not be garbage collected. Before moving the manifests, disable pruning on the original Kustomization and wait for Flux to apply that change:
+
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./apps/production
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+```
+
+Then create the non-pruning Kustomization:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -146,12 +165,23 @@ Move the resource manifests from the pruning Kustomization path to the non-pruni
 mv apps/production/legacy-app.yaml infrastructure/persistent/legacy-app.yaml
 ```
 
-This transfers ownership of the resources to the non-pruning Kustomization. When the original Kustomization reconciles, it will see the resources are gone from its path and attempt to prune them. However, the new Kustomization will have already claimed them, and the resources will persist.
-
-To make this transition seamless, apply the new Kustomization before making the move:
+Reconcile the new Kustomization so it applies the moved resources from the new path:
 
 ```bash
-flux reconcile kustomization persistent-resources
+flux reconcile kustomization persistent-resources --with-source
+```
+
+Then reconcile the original Kustomization while pruning is still disabled:
+
+```bash
+flux reconcile kustomization my-app --with-source
+```
+
+This transfers ownership of the resources to the non-pruning Kustomization. After verifying the resources are managed from the new path, you can re-enable pruning on the original Kustomization:
+
+```yaml
+spec:
+  prune: true
 ```
 
 ## Strategy 5: Remove Flux Labels from Cluster Resources
