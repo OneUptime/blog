@@ -138,26 +138,32 @@ echo "==> Starting promotion of standby cluster to primary..."
 
 # 1. Verify standby is healthy
 echo "Verifying standby health..."
-kubectl get nodes --context "$STANDBY_CONTEXT" | grep -v NotReady
+kubectl wait --for=condition=Ready nodes --all \
+  --context "$STANDBY_CONTEXT" \
+  --timeout=2m
 
 # 2. Verify standby Flux is reconciled and healthy
-flux get all -A --context "$STANDBY_CONTEXT" | grep -v True && {
+UNHEALTHY_FLUX=$(flux get all -A --context "$STANDBY_CONTEXT" \
+  --status-selector ready=false \
+  --no-header)
+if [ -n "$UNHEALTHY_FLUX" ]; then
   echo "ERROR: Standby has unhealthy Flux resources"
-  kubectl --context "$STANDBY_CONTEXT" get pods -A | grep -v Running
+  echo "$UNHEALTHY_FLUX"
   exit 1
-}
+fi
 
 # 3. Scale up standby to production replica counts
 echo "Scaling up standby to production replicas..."
-git checkout -b "failover/$(date +%Y%m%d-%H%M%S)"
+git checkout main
+git pull --ff-only origin main
 cp apps/overlays/active/replica-patch.yaml \
    apps/overlays/standby/replica-patch.yaml
 git add apps/overlays/standby/replica-patch.yaml
 git commit -m "failover: promote standby to primary replica count"
-git push origin HEAD
+git push origin main
 
 echo "==> Flux will reconcile standby within its next sync interval"
-echo "==> DNS health check will route traffic once pods are Ready"
+echo "==> DNS failover will route traffic when Route53 considers the standby target healthy"
 echo "==> Monitor: flux get all -A --context $STANDBY_CONTEXT"
 ```
 
@@ -165,7 +171,7 @@ echo "==> Monitor: flux get all -A --context $STANDBY_CONTEXT"
 
 ```yaml
 # Flux alert for standby drift detection
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: standby-drift-alert
@@ -178,7 +184,8 @@ spec:
     - kind: Kustomization
       name: "*"
       namespace: flux-system
-  summary: "Standby cluster reconciliation failure"
+  eventMetadata:
+    summary: "Standby cluster reconciliation failure"
 ```
 
 ```bash
@@ -208,12 +215,26 @@ After the primary is restored, return traffic to it.
 set -euo pipefail
 
 echo "==> Verifying primary cluster is healthy..."
-flux get all -A --context primary | grep -c "True"
+UNHEALTHY_FLUX=$(flux get all -A --context primary \
+  --status-selector ready=false \
+  --no-header)
+if [ -n "$UNHEALTHY_FLUX" ]; then
+  echo "ERROR: Primary has unhealthy Flux resources"
+  echo "$UNHEALTHY_FLUX"
+  exit 1
+fi
 
 echo "==> Restoring standby to minimal replica counts..."
 git checkout main
-cp apps/overlays/standby/replica-patch.yaml.original \
-   apps/overlays/standby/replica-patch.yaml
+cat > apps/overlays/standby/replica-patch.yaml <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: production
+spec:
+  replicas: 1  # Minimal footprint on standby
+EOF
 git add apps/overlays/standby/replica-patch.yaml
 git commit -m "failback: restore standby to minimal replicas"
 git push origin main
