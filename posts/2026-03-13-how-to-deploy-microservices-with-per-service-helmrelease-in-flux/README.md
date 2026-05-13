@@ -12,7 +12,7 @@ Description: Learn how to create individual HelmRelease resources for each micro
 
 Deploying microservices with individual HelmRelease resources in Flux CD gives each service its own Helm release lifecycle. This means each microservice can use a different chart version, have its own upgrade strategy, roll back independently, and be managed with different sync intervals without affecting other services.
 
-This per-service HelmRelease pattern is the standard approach for teams running heterogeneous microservices where each service may use a different Helm chart, a different chart repository, or require unique upgrade strategies such as canary deployments or blue-green rollouts. It also aligns ownership clearly: the team responsible for a service owns the HelmRelease YAML for that service.
+This per-service HelmRelease pattern is a common approach for teams running heterogeneous microservices where each service may use a different Helm chart, a different chart repository, or require unique upgrade and progressive delivery settings implemented by the chart or companion controllers. It also aligns ownership clearly: the team responsible for a service owns the HelmRelease YAML for that service.
 
 In this guide you will learn how to create independent HelmRelease resources for each microservice, configure service-specific Helm values and chart versions, and manage the full lifecycle of each release independently through the `flux` CLI.
 
@@ -63,7 +63,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: frontend
   targetNamespace: frontend
+  storageNamespace: frontend
   createNamespace: true
   chart:
     spec:
@@ -125,7 +127,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: backend-api
   targetNamespace: backend
+  storageNamespace: backend
   createNamespace: true
   chart:
     spec:
@@ -178,7 +182,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 15m       # Auth service syncs less frequently
+  releaseName: auth-service
   targetNamespace: auth
+  storageNamespace: auth
   createNamespace: true
   chart:
     spec:
@@ -202,10 +208,10 @@ spec:
     config:
       tokenExpiry: "24h"
       algorithm: "RS256"
-    valuesFrom:
-      - kind: Secret
-        name: auth-jwt-keys
-        valuesKey: jwt-values.yaml
+  valuesFrom:
+    - kind: Secret
+      name: auth-jwt-keys
+      valuesKey: jwt-values.yaml
 ```
 
 ## Step 5: Manage Individual HelmRelease Lifecycles
@@ -228,8 +234,12 @@ flux resume helmrelease frontend
 # View Helm history for a specific release
 helm history frontend -n frontend
 
-# Roll back the backend-api to the previous revision
+# For an emergency rollback, suspend reconciliation first
+flux suspend helmrelease backend-api
 helm rollback backend-api -n backend
+
+# Then commit the desired rollback state in Git and resume Flux
+flux resume helmrelease backend-api
 ```
 
 ## Step 6: Update Chart Versions Per Service
