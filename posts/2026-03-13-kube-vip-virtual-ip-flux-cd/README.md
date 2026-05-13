@@ -21,9 +21,9 @@ kube-vip provides virtual IP addresses for both Kubernetes control plane high av
 
 ## Step 1: Understand kube-vip Components
 
-kube-vip has two components:
-1. **kube-vip DaemonSet** (control plane VIP): Usually deployed as a static pod during cluster initialization-NOT managed by Flux.
-2. **kube-vip Cloud Provider**: Manages LoadBalancer Service VIPs-CAN be managed by Flux.
+kube-vip has two components for this setup:
+1. **kube-vip manager** (control plane VIP and Service VIP advertisement): Usually deployed as a static pod for the control plane VIP during cluster initialization-NOT managed by Flux. For LoadBalancer Services, it can also run as a DaemonSet with service mode enabled.
+2. **kube-vip Cloud Provider**: Allocates LoadBalancer Service VIPs from a ConfigMap-CAN be managed by Flux.
 
 This guide focuses on the cloud provider component for LoadBalancer services.
 
@@ -57,9 +57,8 @@ spec:
         name: kube-vip
         namespace: flux-system
   values:
-    config:
-      # CIDR for LoadBalancer service IPs
-      cidr-global: "192.168.10.100/24"
+    # Use the ConfigMap created in Step 3 for LoadBalancer service IP pools
+    configMapName: kubevip
     resources:
       requests:
         cpu: 50m
@@ -85,9 +84,9 @@ data:
   # cidr-global: "192.168.10.0/24"
 ```
 
-## Step 4: Deploy kube-vip DaemonSet for LoadBalancer (Alternative to Cloud Provider)
+## Step 4: Deploy kube-vip DaemonSet for LoadBalancer Advertisement
 
-For environments without the cloud provider, use the kube-vip DaemonSet in service mode:
+The cloud provider allocates LoadBalancer IPs, and kube-vip advertises those IPs. Make sure the kube-vip RBAC resources are included, then use the kube-vip DaemonSet in service mode:
 
 ```yaml
 # infrastructure/kube-vip/daemonset.yaml
@@ -112,9 +111,12 @@ spec:
               - matchExpressions:
                   - key: node-role.kubernetes.io/master
                     operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       containers:
         - name: kube-vip
-          image: ghcr.io/kube-vip/kube-vip:v0.7.2
+          image: ghcr.io/kube-vip/kube-vip:v1.1.2
           imagePullPolicy: Always
           args:
             - manager
@@ -125,10 +127,12 @@ spec:
               value: "6443"
             - name: vip_interface
               value: "eth0"
-            - name: vip_cidr
+            - name: vip_subnet
               value: "32"
             - name: cp_enable
               value: "false"  # Disable control plane VIP (handled by static pod)
+            - name: cp_namespace
+              value: "kube-system"
             - name: svc_enable
               value: "true"   # Enable service LoadBalancer VIPs
             - name: vip_leaderelection
@@ -140,6 +144,7 @@ spec:
                 - NET_RAW
                 - SYS_TIME
       hostNetwork: true
+      serviceAccountName: kube-vip
       tolerations:
         - effect: NoSchedule
           operator: Exists
@@ -174,8 +179,29 @@ spec:
 ## Step 6: Test LoadBalancer Service
 
 ```bash
-# Deploy a test service
+# Deploy a test workload and service
 kubectl apply -f - << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-vip
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:stable-alpine
+          ports:
+            - containerPort: 80
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -193,15 +219,16 @@ EOF
 # Check IP assignment from kube-vip range
 kubectl get service test-vip
 # EXTERNAL-IP should show an IP from 192.168.10.100-200
+EXTERNAL_IP=$(kubectl get service test-vip -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Verify ARP is working (from a host on the same network)
-# ping 192.168.10.100
+# ping "$EXTERNAL_IP"
 
 # Check kube-vip logs
 kubectl logs -n kube-system -l name=kube-vip-ds --tail=30 | grep -i "service"
 
 # Verify the VIP is responding
-curl -sf http://192.168.10.100/
+curl -sf "http://$EXTERNAL_IP/"
 ```
 
 ## Best Practices
