@@ -10,7 +10,7 @@ Description: A guide to creating and configuring Calico NetworkPolicy resources,
 
 ## Introduction
 
-The Calico NetworkPolicy resource is a namespace-scoped policy that extends the standard Kubernetes NetworkPolicy with additional capabilities including egress policies, action logging, and named ports. Calico NetworkPolicy resources are applied to pods within a specific namespace based on selector expressions, making them the primary tool for implementing pod-level microsegmentation.
+The Calico NetworkPolicy resource is a namespace-scoped policy that extends the standard Kubernetes NetworkPolicy with additional capabilities including ordered policy evaluation, explicit rule actions, action logging, and tiers. Calico NetworkPolicy resources are applied to pods within a specific namespace based on selector expressions, making them the primary tool for implementing pod-level microsegmentation.
 
 Understanding the NetworkPolicy resource structure - tiers, order, selectors, and rule actions - is foundational to building effective security policies in Calico.
 
@@ -49,10 +49,9 @@ spec:
         selector: "app == 'database'"
         ports: [5432]
     - action: Allow
-      destination:
-        namespaceSelector: "kubernetes.io/metadata.name == 'kube-system'"
       protocol: UDP
       destination:
+        namespaceSelector: "kubernetes.io/metadata.name == 'kube-system'"
         ports: [53]         # Allow DNS
     - action: Deny
 ```
@@ -111,7 +110,7 @@ graph TD
     G --> H{Match policy?}
     H -->|Allow| D
     H -->|Deny| E
-    H -->|No match| I[Default: Allow]
+    H -->|No match| I[Tier default action]
 ```
 
 ## Step 3: Use Named Ports
