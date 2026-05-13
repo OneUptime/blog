@@ -26,12 +26,12 @@ my-app      main@sha1:abc123      False       True    Applied revision: main@sha
 But checking the events reveals each cycle takes 15 or more minutes:
 
 ```bash
-kubectl events --for kustomization/my-app -n flux-system --sort-by=.lastTimestamp
+kubectl events --for Kustomization/my-app -n flux-system
 ```
 
 ## Diagnostic Commands
 
-### Measure reconciliation duration
+### Check the last Ready transition time
 
 ```bash
 kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}'
@@ -82,7 +82,7 @@ The Flux controllers themselves may be CPU or memory starved, throttling their p
 
 ### Fix 1: Optimize Git repository size
 
-Use shallow clones by configuring the GitRepository ignore rules:
+Use a branch reference for shallow clones, and reduce the produced artifact with sparse checkout or GitRepository ignore rules:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -91,14 +91,18 @@ metadata:
   name: my-repo
   namespace: flux-system
 spec:
+  interval: 5m
   url: https://github.com/org/repo
   ref:
     branch: main
+  sparseCheckout:
+    - kubernetes
+    - base
   ignore: |
     # Exclude non-essential files
     /*
-    !/kubernetes/
-    !/base/
+    !/kubernetes
+    !/base
 ```
 
 ### Fix 2: Split large Kustomizations
@@ -114,6 +118,10 @@ metadata:
 spec:
   path: ./infrastructure/controllers
   interval: 10m
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -123,6 +131,10 @@ metadata:
 spec:
   path: ./infrastructure/configs
   interval: 10m
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
   dependsOn:
     - name: infra-controllers
 ---
@@ -134,6 +146,10 @@ metadata:
 spec:
   path: ./apps
   interval: 5m
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
   dependsOn:
     - name: infra-configs
 ```
@@ -164,10 +180,33 @@ spec:
 
 Or patch via Flux's own kustomization:
 
-```bash
-flux install --components-extra=image-reflector-controller,image-automation-controller \
-  --patch='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "2Gi"}]' \
-  --export > gotk-components.yaml
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                resources:
+                  requests:
+                    cpu: 500m
+                    memory: 512Mi
+                  limits:
+                    cpu: 2000m
+                    memory: 2Gi
+    target:
+      kind: Deployment
+      name: "(kustomize-controller|source-controller)"
 ```
 
 ### Fix 4: Tune reconciliation intervals
@@ -199,10 +238,20 @@ spec:
 
 Increase the number of concurrent reconciliations the controller can handle:
 
-```bash
-flux install --components-extra=image-reflector-controller,image-automation-controller \
-  --set="kustomize-controller.concurrent=10" \
-  --set="source-controller.concurrent=10"
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=10
+    target:
+      kind: Deployment
+      name: "(kustomize-controller|source-controller)"
 ```
 
 Or edit the controller deployment directly:
