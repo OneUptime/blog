@@ -1,14 +1,14 @@
-# How to Encrypt Kustomize Patches with SOPS for Flux
+# How to Use SOPS-Encrypted Secrets with Kustomize Patches for Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, SOPS, Secret, Encryption, Kustomize, Patches
 
-Description: Learn how to encrypt Kustomize patches containing sensitive data using SOPS for secure GitOps deployments with Flux.
+Description: Learn how to use SOPS-encrypted Kubernetes Secrets with Kustomize patches for secure GitOps deployments with Flux.
 
 ---
 
-Kustomize patches are a common way to customize Kubernetes resources across environments. When patches contain sensitive data like environment variables with credentials or secret references, they need to be encrypted before committing to Git. This guide shows how to encrypt Kustomize patches with SOPS and use them in Flux.
+Kustomize patches are a common way to customize Kubernetes resources across environments. When the values you want to configure are sensitive, store them in Kubernetes Secret manifests encrypted with SOPS, then use plain Kustomize patches to reference those Secrets. This guide shows how to use SOPS-encrypted Secrets with Kustomize patches in Flux.
 
 ## When Patches Need Encryption
 
@@ -19,33 +19,55 @@ Kustomize patches often inject environment-specific values into deployments. Som
 - Secret volume mount configurations
 - Init container credentials
 
+Do not encrypt arbitrary Deployment patch files and reference them directly from `kustomization.yaml`. Flux's SOPS support decrypts Kubernetes Secret data during reconciliation; Kustomize still needs readable patch files to build the manifests.
+
 ## Prerequisites
 
 You need:
 
 - A Kubernetes cluster with Flux installed
 - SOPS and age CLI tools
-- An age key pair with the private key stored in Flux
+- An age key pair with the private key stored in a Kubernetes Secret referenced by Flux
 - A working Kustomize overlay structure
 
 ## Setting Up SOPS for Kustomize Patches
 
-Configure `.sops.yaml` to handle patch files:
+Configure `.sops.yaml` to encrypt only Kubernetes Secret values while leaving `apiVersion`, `kind`, and `metadata` readable:
 
 ```yaml
 creation_rules:
-  - path_regex: .*secret.*patch.*\.yaml$
+  - path_regex: .*secret.*\.yaml$
     age: age1yourkey...
-    encrypted_regex: ^(data|stringData|value|env)$
+    encrypted_regex: ^(data|stringData)$
 
   - path_regex: .*\.enc\.yaml$
     age: age1yourkey...
-    encrypted_regex: ^(data|stringData|value)$
+    encrypted_regex: ^(data|stringData)$
 ```
 
-## Creating an Encrypted Strategic Merge Patch
+## Creating an Encrypted Secret and Strategic Merge Patch
 
-Suppose you have a deployment that needs database credentials injected via a patch. Create the patch:
+Suppose you have a deployment that needs database credentials injected. Create a Secret manifest for the sensitive values:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-secrets
+type: Opaque
+stringData:
+  DB_HOST: db.production.internal
+  DB_PASSWORD: production-db-password-here
+  API_SECRET: api-secret-key-value
+```
+
+Save this as `secret-values.yaml` and encrypt it:
+
+```bash
+sops --encrypt --in-place secret-values.yaml
+```
+
+Then create a plain patch that references the Secret:
 
 ```yaml
 apiVersion: apps/v1
@@ -59,22 +81,27 @@ spec:
         - name: myapp
           env:
             - name: DB_HOST
-              value: db.production.internal
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secrets
+                  key: DB_HOST
             - name: DB_PASSWORD
-              value: production-db-password-here
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secrets
+                  key: DB_PASSWORD
             - name: API_SECRET
-              value: api-secret-key-value
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secrets
+                  key: API_SECRET
 ```
 
-Save this as `secret-patch.yaml` and encrypt it:
+Save this as `secret-env-patch.yaml`. The patch itself does not contain secret values, so it does not need to be encrypted.
 
-```bash
-sops --encrypt --in-place secret-patch.yaml
-```
+## Using the Encrypted Secret in Kustomization
 
-## Using the Encrypted Patch in Kustomization
-
-In your Kustomize overlay, reference the encrypted patch. However, Kustomize itself cannot decrypt SOPS files. The decryption is handled by Flux at the Kustomization controller level.
+In your Kustomize overlay, reference the encrypted Secret as a resource and the plain patch as a patch. Kustomize itself cannot decrypt SOPS files. Flux decrypts SOPS-encrypted Secret data during reconciliation.
 
 Structure your overlay:
 
@@ -82,8 +109,9 @@ Structure your overlay:
 overlays/
   production/
     kustomization.yaml
-    secret-patch.yaml        # SOPS encrypted
-    deployment-patch.yaml    # Plain, non-sensitive
+    secret-values.yaml      # SOPS encrypted Secret
+    secret-env-patch.yaml   # Plain patch with Secret references
+    deployment-patch.yaml   # Plain, non-sensitive
 ```
 
 The `kustomization.yaml`:
@@ -93,14 +121,15 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - deployment-patch.yaml
-  - secret-patch.yaml
+  - secret-values.yaml
+patches:
+  - path: deployment-patch.yaml
+  - path: secret-env-patch.yaml
 ```
 
 ## Flux Kustomization with Decryption
 
-Configure the Flux Kustomization to decrypt SOPS files:
+Configure the Flux Kustomization to decrypt SOPS-encrypted Secret data:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -121,11 +150,11 @@ spec:
       name: sops-age
 ```
 
-Flux decrypts the SOPS-encrypted patch file before applying Kustomize, so the patch is applied with the decrypted values.
+Flux decrypts the SOPS-encrypted Secret before applying it, and the Deployment patch points the application at those decrypted Secret keys through `secretKeyRef`.
 
-## Encrypting JSON Patches
+## Encrypting JSON Secret Data
 
-JSON patches with sensitive data can also be encrypted. Create the patch:
+JSON configuration with sensitive data can also be stored in an encrypted Secret. Create the Secret:
 
 ```yaml
 apiVersion: v1
@@ -148,7 +177,7 @@ stringData:
 Encrypt it:
 
 ```bash
-sops --encrypt --in-place secret-json-patch.yaml
+sops --encrypt --in-place secret-json-config.yaml
 ```
 
 Reference it in your kustomization:
@@ -158,12 +187,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-  - secret-json-patch.yaml
+  - secret-json-config.yaml
 ```
 
 ## Separating Sensitive and Non-Sensitive Patches
 
-A best practice is to separate sensitive values into dedicated patch files:
+A best practice is to separate sensitive values into dedicated encrypted Secret files and keep patches non-sensitive:
 
 ```text
 overlays/
@@ -171,44 +200,46 @@ overlays/
     kustomization.yaml
     replicas-patch.yaml         # Plain: replica count
     resources-patch.yaml        # Plain: CPU/memory limits
-    secret-env-patch.yaml       # Encrypted: credentials
-    secret-config-patch.yaml    # Encrypted: secret configs
+    secret-env-patch.yaml       # Plain: Secret references
+    secret-values.yaml          # Encrypted: credentials
+    secret-config.yaml          # Encrypted: secret configs
 ```
 
 This makes it clear which files contain sensitive data and keeps non-sensitive patches easy to review.
 
-## Handling Multiple Secret Patches
+## Handling Multiple Secret Files and Patches
 
-When you have multiple encrypted patches, list them all in the Kustomize configuration:
+When you have multiple encrypted Secret files and plain patches, list the Secret files under `resources` and the patch files under `patches`:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - replicas-patch.yaml
-  - resources-patch.yaml
-  - secret-env-patch.yaml
-  - secret-config-patch.yaml
+  - secret-values.yaml
+  - secret-config.yaml
+patches:
+  - path: replicas-patch.yaml
+  - path: resources-patch.yaml
+  - path: secret-env-patch.yaml
 ```
 
-Flux decrypts all SOPS-encrypted files in the path before running Kustomize.
+Flux decrypts SOPS-encrypted Kubernetes Secret data during reconciliation.
 
-## Editing Encrypted Patches
+## Editing Encrypted Secret Files
 
-To modify an encrypted patch:
+To modify an encrypted Secret file:
 
 ```bash
 # Open in editor with automatic decrypt/re-encrypt
 
-sops secret-env-patch.yaml
+sops secret-values.yaml
 
 # Or decrypt, edit manually, and re-encrypt
-sops --decrypt secret-env-patch.yaml > /tmp/patch.yaml
-# Edit /tmp/patch.yaml
-sops --encrypt /tmp/patch.yaml > secret-env-patch.yaml
-rm /tmp/patch.yaml
+sops --decrypt secret-values.yaml > /tmp/secret-values.yaml
+# Edit /tmp/secret-values.yaml
+sops --encrypt /tmp/secret-values.yaml > secret-values.yaml
+rm /tmp/secret-values.yaml
 ```
 
 ## Verifying the Result
@@ -219,8 +250,11 @@ After pushing changes, verify that Flux applies the patches correctly:
 # Check Kustomization reconciliation
 flux get kustomizations myapp-production
 
-# Verify the deployment has the expected env vars
+# Verify the deployment has the expected Secret references
 kubectl get deployment myapp -n default -o jsonpath='{.spec.template.spec.containers[0].env}'
+
+# Verify the Secret exists
+kubectl get secret myapp-secrets -n default
 
 # Check for reconciliation errors
 flux logs --kind=Kustomization --name=myapp-production
@@ -228,8 +262,8 @@ flux logs --kind=Kustomization --name=myapp-production
 
 ## Common Issues
 
-If Flux reports decryption errors, ensure the `.sops.yaml` creation rules match your patch file paths. If Kustomize reports invalid patch formats, decrypt the file locally and verify the YAML structure is valid. Remember that SOPS adds a `sops` metadata block to the file, which Flux removes during decryption before passing to Kustomize.
+If Flux reports decryption errors, ensure the `.sops.yaml` creation rules match your Secret file paths and that the referenced Flux decryption Secret contains the private age key. If Kustomize reports invalid patch formats, verify that patch files are plain YAML and that only Kubernetes Secret `data` or `stringData` values are SOPS-encrypted. Remember that `apiVersion`, `kind`, and `metadata` must remain unencrypted.
 
 ## Conclusion
 
-Encrypting Kustomize patches with SOPS allows you to safely store environment-specific sensitive configuration in Git. Flux handles the decryption transparently, applying patches with the decrypted values during reconciliation. By separating sensitive patches from non-sensitive ones and using clear naming conventions, you maintain a secure and reviewable GitOps workflow.
+Using SOPS-encrypted Kubernetes Secrets with Kustomize patches allows you to safely store environment-specific sensitive configuration in Git. Flux handles Secret decryption during reconciliation, while Kustomize applies plain patches that reference the decrypted Secret keys. By separating sensitive Secret manifests from non-sensitive patches and using clear naming conventions, you maintain a secure and reviewable GitOps workflow.
