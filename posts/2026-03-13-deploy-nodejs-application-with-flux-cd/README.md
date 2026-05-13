@@ -19,7 +19,7 @@ This guide covers containerizing a Node.js Express application, setting up the F
 ## Prerequisites
 
 - A running Kubernetes cluster (GKE, EKS, AKS, or local kind/k3s)
-- Flux CD bootstrapped on the cluster (`flux bootstrap`)
+- Flux CD bootstrapped on the cluster with the image automation controllers enabled (`flux bootstrap --components-extra=image-reflector-controller,image-automation-controller`)
 - A container registry (Docker Hub, GCR, ECR, or GHCR)
 - `kubectl`, `flux`, and `docker` CLIs installed
 - A Node.js application with a Dockerfile
@@ -29,12 +29,12 @@ This guide covers containerizing a Node.js Express application, setting up the F
 ```dockerfile
 # Dockerfile - multi-stage build for minimal production image
 
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 # Run as non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
@@ -191,7 +191,7 @@ spec:
     name: my-node-app
   policy:
     semver:
-      range: ">=1.0.0"   # Track all 1.x semantic version releases
+      range: ">=1.0.0 <2.0.0"   # Track all 1.x semantic version releases
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
@@ -231,6 +231,7 @@ flux get kustomizations my-node-app
 # Check image automation
 flux get image repository my-node-app
 flux get image policy my-node-app
+flux get image update my-node-app
 
 # View pods
 kubectl get pods -n my-node-app
