@@ -12,15 +12,15 @@ Description: Automate developer environment provisioning using Flux CD so develo
 
 Every developer needs an environment that closely mirrors production to catch bugs early and test features in context. Traditionally, shared staging environments become bottlenecks: multiple teams clobber each other's changes, debugging is difficult, and environments drift from production configurations over time.
 
-Flux CD enables a different model: ephemeral per-developer environments provisioned automatically from Git. When a developer opens a feature branch or pull request, a dedicated environment spins up with the full application stack. When the PR closes, Flux prunes it. The environment is always fresh, always based on the same manifests as production, and isolated from other developers' work.
+Flux CD enables a different model: ephemeral per-developer environments provisioned automatically from Git. When a developer opens a feature branch or pull request, a dedicated environment spins up with the full application stack. When the PR closes and the Flux Kustomization is deleted, Flux prunes it. The environment is always fresh, always based on the same manifests as production, and isolated from other developers' work.
 
-This guide shows how to implement PR-based environment provisioning using Flux CD, a lightweight controller for branch detection, and Kustomize overlays for environment customization.
+This guide shows how to implement PR-based environment provisioning using Flux CD, a CI workflow for PR detection, and Kustomize overlays for environment customization.
 
 ## Prerequisites
 
 - Flux CD v2 bootstrapped in a developer cluster
 - A CI/CD system (GitHub Actions, GitLab CI) with access to the Kubernetes cluster
-- kubectl and Flux CLI installed in CI
+- kubectl installed and configured in CI
 - A platform repository with production manifests as the baseline
 
 ## Step 1: Design the Ephemeral Environment Architecture
@@ -50,6 +50,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - limit-range.yaml
 ```
 
 ```yaml
@@ -57,13 +58,13 @@ resources:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ENV_NAMESPACE
+  name: ${ENV_NAMESPACE}
   labels:
     platform.io/environment-type: ephemeral
-    platform.io/pr: PR_NUMBER
+    platform.io/pr: "${PR_NUMBER}"
   annotations:
     # TTL annotation consumed by a cleanup controller
-    platform.io/expires-at: EXPIRES_AT
+    platform.io/expires-at: "${EXPIRES_AT}"
 ```
 
 ```yaml
@@ -72,13 +73,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: app
-  namespace: ENV_NAMESPACE
+  namespace: ${ENV_NAMESPACE}
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
-    - host: ENV_NAMESPACE.preview.acme.example.com
+    - host: ${ENV_NAMESPACE}.preview.acme.example.com
       http:
         paths:
           - path: /
@@ -127,6 +128,11 @@ jobs:
           metadata:
             name: preview-pr-${{ github.event.number }}
             namespace: flux-system
+            labels:
+              platform.io/environment-type: ephemeral
+              platform.io/pr: "${{ github.event.number }}"
+            annotations:
+              platform.io/expires-at: "$EXPIRES"
           spec:
             interval: 2m
             path: ./environments/base
@@ -137,10 +143,10 @@ jobs:
             targetNamespace: $NS
             postBuild:
               substitute:
-                ENV_NAMESPACE: $NS
+                ENV_NAMESPACE: "$NS"
                 PR_NUMBER: "${{ github.event.number }}"
-                APP_IMAGE: ghcr.io/acme/my-app:pr-${{ github.event.number }}
-                EXPIRES_AT: $EXPIRES
+                APP_IMAGE: "ghcr.io/acme/my-app:pr-${{ github.event.number }}"
+                EXPIRES_AT: "$EXPIRES"
           EOF
 
       - name: Apply environment
@@ -164,7 +170,7 @@ jobs:
     steps:
       - name: Delete Flux Kustomization
         run: |
-          kubectl delete kustomization preview-pr-${{ github.event.number }} \
+          kubectl delete kustomization.kustomize.toolkit.fluxcd.io preview-pr-${{ github.event.number }} \
             -n flux-system --ignore-not-found
           # Flux prune will delete the namespace and all resources
 ```
@@ -179,7 +185,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
-  namespace: ENV_NAMESPACE   # Substituted by Flux postBuild
+  namespace: ${ENV_NAMESPACE}   # Substituted by Flux postBuild
 spec:
   replicas: 1                 # Single replica for preview environments
   selector:
@@ -235,11 +241,14 @@ spec:
                 - -c
                 - |
                   NOW=$(date --utc +%Y-%m-%dT%H:%M:%SZ)
-                  kubectl get kustomizations -n flux-system \
+                  kubectl get kustomizations.kustomize.toolkit.fluxcd.io -n flux-system \
                     -l platform.io/environment-type=ephemeral \
-                    -o json | jq -r --arg now "$NOW" \
-                    '.items[] | select(.metadata.annotations["platform.io/expires-at"] < $now) | .metadata.name' | \
-                  xargs -r kubectl delete kustomization -n flux-system
+                    -o go-template='{{range .items}}{{ $name := .metadata.name }}{{with index .metadata.annotations "platform.io/expires-at"}}{{$name}}{{"\t"}}{{.}}{{"\n"}}{{end}}{{end}}' | \
+                  while read -r name expires; do
+                    if [ "$expires" \< "$NOW" ]; then
+                      kubectl delete kustomization.kustomize.toolkit.fluxcd.io "$name" -n flux-system
+                    fi
+                  done
           restartPolicy: OnFailure
 ```
 
@@ -251,7 +260,7 @@ apiVersion: v1
 kind: LimitRange
 metadata:
   name: preview-defaults
-  namespace: ENV_NAMESPACE
+  namespace: ${ENV_NAMESPACE}
 spec:
   limits:
     - type: Container
