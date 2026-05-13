@@ -12,7 +12,7 @@ Description: Fix issues during Calico CNI removal by removing finalizers, cleani
 
 Fixing problems during Calico CNI removal requires addressing each stuck component individually. The recommended approach is to work through the layers in order: first resolve stuck finalizers on IPAM resources, then clean up CNI configuration files on each node, flush remaining iptables rules, and finally remove the CRDs.
 
-Manual finalizer removal should be done carefully - finalizers exist to prevent data loss during cleanup. In the case of Calico IPAM resources, removing the finalizer is safe once the calico-node DaemonSet is already deleted, as there is no controller left to honor the finalizer's intent.
+Manual finalizer removal should be done carefully - finalizers exist to prevent data loss during cleanup. In the case of Calico IPAM resources, remove finalizers only after confirming Calico will not be restored to complete cleanup and after accounting for any remaining IPAM state manually.
 
 ## Symptoms
 
@@ -65,8 +65,8 @@ done
 **Fix 2: Delete Calico CRDs**
 
 ```bash
-# Delete all Calico CRDs
-kubectl get crd | grep calico | awk '{print $1}' | xargs kubectl delete crd
+# Delete remaining Calico CRDs
+kubectl get crd | grep projectcalico.org | awk '{print $1}' | xargs -r kubectl delete crd
 ```
 
 **Fix 3: Clean up CNI config on each node**
@@ -87,15 +87,20 @@ done
 # On each node
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   ssh $NODE << 'EOF'
-# Flush all cali- chains
-iptables -L | grep "^Chain cali-" | awk '{print $2}' | while read CHAIN; do
-  iptables -F $CHAIN 2>/dev/null
-  iptables -X $CHAIN 2>/dev/null
-done
-# Flush nat table cali- chains
-iptables -t nat -L | grep "^Chain cali-" | awk '{print $2}' | while read CHAIN; do
-  iptables -t nat -F $CHAIN 2>/dev/null
-  iptables -t nat -X $CHAIN 2>/dev/null
+# Remove references to cali- chains, then delete the chains.
+for TABLE in filter nat mangle raw; do
+  iptables-save -t "$TABLE" 2>/dev/null | grep -E '^-A .* -j cali-' | \
+    sed 's/^-A /-D /' | while read -r RULE; do
+      iptables -t "$TABLE" $RULE 2>/dev/null || true
+    done
+
+  iptables -t "$TABLE" -S 2>/dev/null | awk '/^-N cali-/ {print $2}' | while read -r CHAIN; do
+    iptables -t "$TABLE" -F "$CHAIN" 2>/dev/null || true
+  done
+
+  iptables -t "$TABLE" -S 2>/dev/null | awk '/^-N cali-/ {print $2}' | while read -r CHAIN; do
+    iptables -t "$TABLE" -X "$CHAIN" 2>/dev/null || true
+  done
 done
 echo "iptables cleanup done"
 EOF
@@ -124,7 +129,7 @@ flowchart TD
 
 ## Prevention
 
-- Use the official Calico uninstall procedure: `calicoctl` cleanup before DaemonSet removal
+- Let `calico-node` terminate cleanly so its configured `/bin/calico-node -shutdown` preStop hook can run before removing host state
 - Test removal in a staging cluster before production
 - Keep the removal procedure documented in the cluster runbook
 
