@@ -12,7 +12,7 @@ Description: Diagnose and fix service account-based Calico network policy failur
 
 Service account policy failures are subtle because the service account identity is not visible in basic `kubectl get pod` output. A pod can look perfectly healthy with all the right labels and still be blocked because it's running with the default service account instead of the dedicated one specified in the policy.
 
-Calico's `serviceAccountSelector` in `projectcalico.org/v3` evaluates the service account name at connection time. If a pod was deployed without the correct service account, the policy will silently deny all its traffic to the protected service.
+Calico's `serviceAccountSelector` in `projectcalico.org/v3` matches service account labels, including the automatic `projectcalico.org/name` label for the service account name. If a pod was deployed without the correct service account, its traffic will not match the intended service account-based allow rule and may be denied by the protected service's network policy.
 
 ## Prerequisites
 
@@ -53,8 +53,8 @@ kubectl get deployment my-deployment -n production -o jsonpath='{.spec.template.
 calicoctl get networkpolicy allow-backend -n production -o yaml
 
 # Common issue: using labels as SA selectors
-# Wrong: serviceAccountSelector: app == 'backend'  (SA doesn't have app label)
-# Right: serviceAccountSelector: name == 'backend-sa'  (SA name)
+# Wrong: serviceAccountSelector: name == 'backend-sa'  (not a Calico automatic label)
+# Right: serviceAccountSelector: projectcalico.org/name == 'backend-sa'  (SA name)
 ```
 
 ## Step 5: Add a Log Rule to Trace Decisions
@@ -70,6 +70,7 @@ spec:
   selector: app == 'db'
   ingress:
     - action: Log
+    - action: Allow
   types:
     - Ingress
 ```
@@ -85,11 +86,11 @@ flowchart TD
     E --> F{SA exists?}
     F -->|No| G[Create service account]
     F -->|Yes| H[Check policy selector syntax]
-    H --> I{name == 'correct-sa'?}
+    H --> I{projectcalico.org/name == 'correct-sa'?}
     I -->|No| J[Fix selector]
     I -->|Yes| K[Enable debug logging]
 ```
 
 ## Conclusion
 
-Service account policy debugging starts with a simple check: `kubectl get pod -o jsonpath='{.spec.serviceAccountName}'`. Ninety percent of failures are due to pods running with the default service account instead of the intended one, usually because the Deployment template was not updated. Fix the Deployment spec, trigger a rolling restart, and the policy will start working immediately.
+Service account policy debugging starts with a simple check: `kubectl get pod -o jsonpath='{.spec.serviceAccountName}'`. Many failures are due to pods running with the default service account instead of the intended one, usually because the Deployment template was not updated. Fix the Deployment spec, trigger a rolling restart, and the new pods should match the intended policy.
