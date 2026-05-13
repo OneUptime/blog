@@ -42,7 +42,7 @@ kubectl create namespace external-dns
 
 # Create credentials secret (provider-specific)
 kubectl create secret generic cloudflare-api-token \
-  --from-literal=key=your-api-key-or-credentials \
+  --from-literal=apiToken=your-cloudflare-api-token \
   --namespace=external-dns
 ```
 
@@ -60,13 +60,14 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
         namespace: flux-system
   values:
-    provider: cloudflare
+    provider:
+      name: cloudflare
     # Domain filter: only manage records for these zones
     domainFilters:
       - your-domain.com
@@ -77,16 +78,16 @@ spec:
       - service
       - ingress
     # Annotation filter to only manage annotated resources
-    annotationFilter: "externaldns.alpha.kubernetes.io/external=true"
+    annotationFilter: "external-dns.alpha.kubernetes.io/external=true"
     # TXT record for ownership tracking
     txtOwnerId: "production-cluster"
     # Provider-specific configuration
     env:
-      - name: PROVIDER_KEY
+      - name: CF_API_TOKEN
         valueFrom:
           secretKeyRef:
             name: cloudflare-api-token
-            key: key
+            key: apiToken
     # RBAC
     serviceAccount:
       create: true
@@ -100,10 +101,8 @@ spec:
         cpu: 100m
         memory: 128Mi
     # Metrics
-    metrics:
+    serviceMonitor:
       enabled: true
-      serviceMonitor:
-        enabled: true
 ```
 
 ## Step 4: Create the Flux Kustomization
@@ -144,7 +143,7 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: "myapp.your-domain.com"
     external-dns.alpha.kubernetes.io/ttl: "300"
     # Match the annotation filter above
-    externaldns.alpha.kubernetes.io/external: "true"
+    external-dns.alpha.kubernetes.io/external: "true"
 spec:
   type: LoadBalancer
   selector:
@@ -163,7 +162,7 @@ metadata:
   name: myapp
   namespace: myapp
   annotations:
-    externaldns.alpha.kubernetes.io/external: "true"
+    external-dns.alpha.kubernetes.io/external: "true"
 spec:
   rules:
     - host: myapp.your-domain.com  # ExternalDNS creates A/CNAME for this
