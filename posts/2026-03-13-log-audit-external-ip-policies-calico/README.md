@@ -22,10 +22,10 @@ This guide provides practical techniques for log audit External IP in your Kuber
 - `calicoctl` and `kubectl` installed
 - Basic understanding of Calico network policy concepts
 
-## Step 1: Enable Flow Logging
+## Step 1: Configure Policy Log Output
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"flowLogsEnabled":true}}'
+kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logPrefix":"calico-packet"}}'
 ```
 
 ## Step 2: Add Log Actions to Policy
@@ -41,25 +41,29 @@ spec:
   selector: all()
   ingress:
     - action: Log
+      source:
+        nets:
+          - 203.0.113.0/24
     - action: Allow
       source:
-        selector: app == 'authorized'
+        nets:
+          - 203.0.113.0/24
     - action: Log
     - action: Deny
   types:
     - Ingress
 ```
 
-## Step 3: Ship Logs to Central Store
+## Step 3: Ensure Syslog Logging Is Enabled
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logSeveritySys":"info"}}'
+kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logSeveritySys":"Info"}}'
 ```
 
 ## Step 4: Query and Alert
 
 ```bash
-grep "CALICO.*DENY" /var/log/calico/flow-logs/*.log | tail -20
+journalctl -k | grep "calico-packet" | tail -20
 ```
 
 ## Architecture
