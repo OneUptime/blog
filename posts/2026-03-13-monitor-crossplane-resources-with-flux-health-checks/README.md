@@ -29,7 +29,8 @@ Crossplane resources expose health through standard Kubernetes conditions.
 ```bash
 # Check the conditions of a Crossplane managed resource
 
-kubectl get instance.rds.aws.upbound.io production-postgres \
+kubectl get instance.rds.aws.m.upbound.io production-postgres \
+  -n infrastructure \
   -o jsonpath='{.status.conditions}' | jq .
 
 # Expected output for a healthy resource:
@@ -70,20 +71,20 @@ spec:
   # Health checks for each Crossplane managed resource
   healthChecks:
     # Check the RDS subnet group
-    - apiVersion: rds.aws.upbound.io/v1beta1
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: SubnetGroup
       name: production-db-subnet-group
-      namespace: ""  # Cluster-scoped resources have no namespace
+      namespace: infrastructure
     # Check the RDS instance - this typically takes 5-15 minutes
-    - apiVersion: rds.aws.upbound.io/v1beta1
+    - apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: Instance
       name: production-postgres
-      namespace: ""
+      namespace: infrastructure
     # Check the S3 bucket
-    - apiVersion: s3.aws.upbound.io/v1beta1
+    - apiVersion: s3.aws.m.upbound.io/v1beta1
       kind: Bucket
       name: my-app-assets-prod
-      namespace: ""
+      namespace: infrastructure
   # Timeout accounts for slow cloud resource provisioning
   timeout: 30m
 ```
@@ -92,7 +93,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-infrastructure
@@ -120,7 +121,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/notifications/infrastructure-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: crossplane-health-alert
@@ -128,7 +129,7 @@ metadata:
 spec:
   providerRef:
     name: slack-infrastructure
-  # Alert on error and warning events
+  # Alert on error events
   eventSeverity: error
   # Watch these event sources
   eventSources:
@@ -150,7 +151,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications/provider-health-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: crossplane-provider-alert
@@ -158,7 +159,7 @@ metadata:
 spec:
   providerRef:
     name: slack-infrastructure
-  eventSeverity: warning
+  eventSeverity: error
   eventSources:
     # Watch all Kustomizations for provider-related failures
     - kind: Kustomization
@@ -166,7 +167,7 @@ spec:
       namespace: flux-system
 ```
 
-## Step 6: Add Custom Health Checks with Kustomize Post-Build
+## Step 6: Add Health Checks for Composite Resources and Claims
 
 For Crossplane Composite Resources (XRs), you can check readiness at the claim level.
 
@@ -201,28 +202,25 @@ spec:
 
 ```bash
 # Check the status of a Kustomization including health check results
-flux get kustomization databases --verbose
+flux get kustomizations databases --verbose
 
 # Get Flux events for a specific Kustomization
-kubectl get events \
-  -n flux-system \
-  --field-selector reason=ReconciliationFailed
+flux events --for Kustomization/databases
 
 # Check Alert provider connectivity
 flux get alert-providers
 
-# Test the alert manually by temporarily breaking a resource
-kubectl annotate instance.rds.aws.upbound.io production-postgres \
-  crossplane.io/paused=true
+# Force a reconciliation after intentionally introducing a test failure in Git
+flux reconcile kustomization databases --with-source
 ```
 
 ## Best Practices
 
 - Always add `healthChecks` for Crossplane managed resources to prevent dependent Kustomizations from deploying against unready infrastructure.
 - Set `timeout` based on the slowest resource in the path. RDS takes up to 15 minutes, GKE cluster creation can take 30+ minutes.
-- Alert on both `error` and `warning` severity events. Crossplane frequently emits warnings during transient API rate limiting that escalate to errors if not addressed.
+- Use `eventSeverity: error` for failure alerts. Use `eventSeverity: info` only when you intentionally want all Flux events, then filter with `inclusionList` or `exclusionList`.
 - Use the Flux notification controller to send alerts to your incident management tool (PagerDuty, Opsgenie) for production infrastructure failures.
-- Monitor the `Synced` condition in addition to `Ready`. A resource can be `Ready` but not `Synced` if Crossplane cannot reconcile it due to permission errors.
+- Inspect the `Synced` condition in addition to `Ready` when troubleshooting. Flux `healthChecks` use kstatus-style readiness, so add CEL `healthCheckExprs` if you need the Kustomization health gate to require `Synced=True` too.
 
 ## Conclusion
 
