@@ -132,7 +132,6 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/namespaces
   prune: false
-  force: true
 ```
 
 ## Step 5: Apply PSA Labels Across Multiple Clusters
@@ -268,7 +267,9 @@ kubectl run test-compliant --image=nginx \
 4. Check audit logs for PSA violations:
 
 ```bash
-kubectl logs -n kube-system -l component=kube-apiserver | grep "pod-security"
+# If Kubernetes audit logging is configured with a log backend,
+# check the configured audit log path on the control plane node.
+sudo grep "pod-security.kubernetes.io" /var/log/kubernetes/audit/audit.log
 ```
 
 ## Troubleshooting
@@ -289,7 +290,7 @@ Then update Flux controller security contexts to comply with restricted profile.
 
 ### Existing pods are not affected by PSA changes
 
-PSA only validates pods at creation time. Existing pods continue running even if they violate the new policy. To enforce compliance on existing pods, delete and recreate them:
+PSA enforcement does not evict existing pods when namespace labels change. Existing pods continue running even if they violate the new policy, though Kubernetes will return warnings when an `enforce` label is added or changed. To enforce compliance on existing pods, delete and recreate them:
 
 ```bash
 kubectl rollout restart deployment -n production
@@ -297,7 +298,7 @@ kubectl rollout restart deployment -n production
 
 ### Namespace labels are being overwritten
 
-Ensure your Flux Kustomization has `force: true` to overwrite labels, and check that no other controller is modifying namespace labels:
+Ensure the namespace manifest is included in the Flux Kustomization and that the PSA labels are declared in Git. Flux reconciles declared fields by default, so also check that no other controller is modifying the same namespace labels:
 
 ```bash
 kubectl get namespace production -o yaml | grep -A5 "labels:"
