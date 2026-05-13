@@ -35,7 +35,7 @@ metadata:
 spec:
   cidr: 192.168.0.0/16
   blockSize: 26
-  encapsulation: None
+  ipipMode: Never
   natOutgoing: true
   nodeSelector: all()
 EOF
@@ -70,8 +70,7 @@ Add or update:
 
 ```ini
 [Service]
-Environment=CALICO_IPV4POOL_CIDR=192.168.0.0/16
-Environment=CALICO_IPV4POOL_IPIP=Never
+Environment=IP=autodetect
 Environment=IP_AUTODETECTION_METHOD=interface=bond0
 Environment=AS=64512
 Environment=CALICO_STARTUP_LOGLEVEL=INFO
@@ -120,4 +119,4 @@ calicoctl get ippool -o wide
 
 ## Conclusion
 
-Configuring binary-installed Calico on bare metal requires managing startup configuration through systemd environment variables and runtime configuration through Calico CRDs. Setting the IP pool encapsulation to None, enabling BGP with the correct AS number, and patching Felix for your environment are the core configuration steps that align Calico's behavior with a bare metal deployment's performance and network integration requirements.
+Configuring binary-installed Calico on bare metal requires managing startup configuration through systemd environment variables and runtime configuration through Calico CRDs. Setting the IP pool IPIP mode to Never, enabling BGP with the correct AS number, and patching Felix for your environment are the core configuration steps that align Calico's behavior with a bare metal deployment's performance and network integration requirements.
