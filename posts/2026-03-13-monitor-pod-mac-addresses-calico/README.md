@@ -10,7 +10,7 @@ Description: Monitor pod MAC address allocation in Calico to detect conflicts, M
 
 ## Introduction
 
-Calico assigns MAC addresses to pod virtual ethernet (veth) interfaces using a configurable scheme. By default, Calico uses a fixed MAC address prefix (ee:ee:ee:ee:ee:ee modified with interface-specific bytes) for all pod interfaces. This design works well for most environments but requires attention in networks where MAC addresses have security implications or in environments with physical switches that track ARP/MAC bindings.
+Calico assigns MAC addresses to the virtual ethernet (veth) pair connecting each pod to its host. By default, the pod-side interface (eth0) receives a normal kernel-generated MAC, while the host-side interface (caliXXXX) is assigned the fixed MAC ee:ee:ee:ee:ee:ee. Because Calico operates at layer 3 and uses proxy ARP to answer the pod's ARP request for its 169.254.1.1 link-local gateway, every cali* veth on a node can safely share the same MAC. This design works well for most environments but requires attention in networks where MAC addresses have security implications or in environments with physical switches that track ARP/MAC bindings.
 
 Understanding Calico's MAC address assignment is important for debugging layer-2 networking issues, configuring certain network security controls, and ensuring compatibility with network monitoring tools that track device identity by MAC address.
 
@@ -37,14 +37,17 @@ kubectl get pods -A -o wide | while read ns pod rest; do
 done | sort -t: -k2
 ```
 
-## Configure MAC Prefix
+## Configure a Pod's MAC Address
 
-Calico allows configuring the MAC prefix used for pod interfaces:
+Calico does not expose a cluster-wide MAC prefix setting, but the pod-side MAC can be pinned per pod with the `cni.projectcalico.org/hwAddr` annotation at pod creation time:
 
-```bash
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"deviceRouteProtocol":80}}'
+```yaml
+metadata:
+  annotations:
+    cni.projectcalico.org/hwAddr: "ca:fe:1a:2b:3c:4d"
 ```
+
+The host-side veth MAC (ee:ee:ee:ee:ee:ee) is hardcoded by Calico and is not user-configurable.
 
 ## Check for MAC Conflicts
 
@@ -58,10 +61,10 @@ arp -n | awk '{print $3}' | sort | uniq -d
 ```mermaid
 graph LR
     subgraph Pod
-        ETH0[eth0\nee:ee:ee:xx:xx:xx]
+        ETH0[eth0\nkernel-generated MAC]
     end
     subgraph Node
-        VETH[caliXXXXXXXX\nhost side of veth pair]
+        VETH[caliXXXXXXXX\nee:ee:ee:ee:ee:ee\nhost side of veth pair]
         ARP[ARP Table\nPod IP -> MAC]
     end
     ETH0 <--> VETH
@@ -70,4 +73,4 @@ graph LR
 
 ## Conclusion
 
-Calico's MAC address management for pods uses deterministic assignment based on interface identifiers, ensuring unique MACs within a node. Monitoring for MAC conflicts and understanding the MAC assignment scheme helps diagnose layer-2 networking issues and configure security controls appropriately in your Kubernetes environment.
+Calico's MAC address management combines kernel-generated, per-pod MACs on the container side with a single shared MAC (ee:ee:ee:ee:ee:ee) on every host-side cali* veth, served via proxy ARP. Monitoring for MAC conflicts and understanding this assignment scheme helps diagnose layer-2 networking issues and configure security controls appropriately in your Kubernetes environment.
