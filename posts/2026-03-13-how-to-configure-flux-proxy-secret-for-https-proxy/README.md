@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secret, Proxy, HTTPS Proxy, TLS, Networking
 
-Description: A practical guide to routing Flux CD source controller traffic through an HTTPS proxy with TLS termination and certificate configuration.
+Description: A practical guide to routing Flux CD source controller traffic through an HTTPS proxy with authentication and certificate configuration.
 
 ---
 
 ## Introduction
 
-Some enterprise networks use HTTPS proxies (also known as TLS-terminating proxies or CONNECT proxies) for outbound traffic. These proxies accept encrypted connections and may perform TLS inspection. Configuring Flux CD to work with an HTTPS proxy requires creating a proxy secret with the correct address scheme and optionally including CA certificates for proxy TLS verification. This guide covers the full setup.
+Some enterprise networks use HTTPS proxies for outbound traffic. These proxies accept encrypted connections from clients and may also perform TLS inspection. Configuring Flux CD to work with an HTTPS proxy requires creating a proxy secret with the correct address scheme. This guide covers the full setup.
 
 ## Prerequisites
 
@@ -44,17 +44,14 @@ kubectl create secret generic flux-https-proxy \
   --from-literal=password=proxypassword
 ```
 
-## Step 2: Include the Proxy CA Certificate
+## Step 2: Add TLS Trust When Needed
 
-If the HTTPS proxy uses a certificate signed by an internal or self-signed CA, you must provide the CA certificate so the source controller can verify the proxy TLS connection.
+Flux proxy secrets support the `address`, `username`, and `password` keys. Do not put CA certificate data in the proxy secret. If your proxy performs TLS inspection or your Git server uses a certificate signed by an internal or self-signed CA, provide that CA certificate through the source's TLS or authentication secret.
 
 ```bash
-kubectl create secret generic flux-https-proxy \
+kubectl create secret generic tls-inspection-ca \
   --namespace=flux-system \
-  --from-literal=address=https://proxy.corp.example.com:3129 \
-  --from-literal=username=proxyuser \
-  --from-literal=password=proxypassword \
-  --from-file=caFile=./proxy-ca.crt
+  --from-file=ca.crt=./proxy-ca.crt
 ```
 
 ## Step 3: Declarative YAML Manifest
@@ -70,11 +67,6 @@ stringData:
   address: "https://proxy.corp.example.com:3129"
   username: "proxyuser"
   password: "proxypassword"
-  caFile: |
-    -----BEGIN CERTIFICATE-----
-    MIIDXTCCAkWgAwIBAgIJALa1b2c3d4e5MA0GCSqGSIb3DqEBCwUAMEUxCzAJBgNV
-    ... (your proxy CA certificate content) ...
-    -----END CERTIFICATE-----
 ```
 
 Apply it:
@@ -98,6 +90,8 @@ spec:
     branch: main
   proxySecretRef:
     name: flux-https-proxy
+  secretRef:
+    name: tls-inspection-ca
 ```
 
 ## Step 5: Reference the Proxy in OCIRepository
@@ -125,7 +119,7 @@ spec:
 # Apply your resources
 
 kubectl apply -f git-repository.yaml
-kubectl apply -f helm-repository.yaml
+kubectl apply -f oci-repository.yaml
 
 # Check status
 flux get sources git
@@ -173,11 +167,11 @@ Note: GitRepository does not have a `certSecretRef` field. TLS certificates (`ca
 
 ### TLS Handshake Errors
 
-If you see `x509: certificate signed by unknown authority`, the proxy CA is missing from the secret:
+If you see `x509: certificate signed by unknown authority`, the CA certificate is missing from the source TLS/authentication secret or from the source controller's trusted CA bundle:
 
 ```bash
-# Verify the CA file is in the secret
-kubectl get secret flux-https-proxy -n flux-system -o jsonpath='{.data.caFile}' | base64 -d
+# Verify the CA file is in the GitRepository secretRef secret
+kubectl get secret tls-inspection-ca -n flux-system -o jsonpath='{.data.ca\.crt}' | base64 -d
 ```
 
 ### Connection Refused
@@ -201,11 +195,11 @@ kubectl logs -n flux-system deploy/source-controller --tail=50 | grep -i "proxy\
 |---------|-----------|-------------|
 | Proxy connection | Unencrypted | TLS encrypted |
 | Address scheme | `http://` | `https://` |
-| CA certificate needed | No | Yes (if internal CA) |
-| Traffic visibility | Proxy sees plaintext requests | Proxy sees encrypted CONNECT tunnel |
+| CA certificate needed | No for the proxy connection | Yes for the proxy connection if the proxy uses an internal CA |
+| Traffic visibility for HTTPS targets | Proxy sees CONNECT metadata and an encrypted tunnel unless it performs TLS inspection | Proxy sees CONNECT metadata and an encrypted tunnel unless it performs TLS inspection |
 
 Choose HTTPS proxy when you need encrypted communication between the source controller pod and the proxy server.
 
 ## Conclusion
 
-Configuring Flux to use an HTTPS proxy involves creating a secret with the `https://` address scheme and optionally including the proxy CA certificate for TLS verification. This setup ensures secure communication between the Flux source controller and your proxy while maintaining access to external Git and Helm repositories.
+Configuring Flux to use an HTTPS proxy involves creating a proxy secret with the `https://` address scheme and adding CA trust through the relevant source TLS or authentication secret when TLS inspection or private CAs are involved. This setup ensures secure communication between the Flux source controller and your proxy while maintaining access to external Git and Helm repositories.
