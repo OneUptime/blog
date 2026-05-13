@@ -18,7 +18,7 @@ This guide covers deploying a Kubernetes-native CloudEvents router (using Knativ
 
 ## Prerequisites
 
-- Kubernetes cluster (1.24+)
+- Kubernetes cluster running a version supported by your Knative Eventing release
 - Knative Eventing installed (or a standalone CloudEvents router like Triggermesh)
 - Flux CD v2 bootstrapped to your Git repository
 - Consumer services deployed and ready to receive events
@@ -118,6 +118,36 @@ Configure services to publish to the router:
 
 ```yaml
 # clusters/my-cluster/cloudevents-router/api-source.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event-watcher-sa
+  namespace: event-routing
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: event-watcher
+  namespace: event-routing
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: event-watcher
+  namespace: event-routing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: event-watcher
+subjects:
+  - kind: ServiceAccount
+    name: event-watcher-sa
+    namespace: event-routing
+---
 # ApiServerSource captures Kubernetes API events
 apiVersion: sources.knative.dev/v1
 kind: ApiServerSource
@@ -130,7 +160,7 @@ spec:
   resources:
     - apiVersion: v1
       kind: Event
-  # Send all Kubernetes Warning events to the broker
+  # Send Kubernetes Event resources from this namespace to the broker
   sink:
     ref:
       apiVersion: eventing.knative.dev/v1
@@ -190,6 +220,7 @@ resources:
   - namespace.yaml
   - broker.yaml
   - triggers.yaml
+  - api-source.yaml
   - dead-letter.yaml
 ---
 # clusters/my-cluster/flux-kustomization-cloudevents-router.yaml
@@ -240,7 +271,7 @@ kubectl logs -n app deployment/analytics --tail=20
 
 - Use specific CloudEvents attribute filters in Triggers rather than wildcard matching to prevent unintended event fan-out.
 - Always configure a dead-letter sink on the Broker with retry and backoff policies to handle transient consumer failures without losing events.
-- Apply `dependsOn` in Flux Kustomizations to ensure the Broker is ready before Triggers and Sources reference it.
+- Apply `dependsOn` in Flux Kustomizations to ensure Knative Eventing is ready before router resources are applied. If you need Flux to wait for the Broker before applying Triggers and Sources, split them into separate Kustomizations and add health checks.
 - Use Knative's `EventType` CRD to document the CloudEvents schema for each event type - these become discoverable API contracts for event producers and consumers.
 - Monitor Broker and Trigger metrics with Prometheus to detect routing failures, dead-letter accumulation, and event latency issues.
 
