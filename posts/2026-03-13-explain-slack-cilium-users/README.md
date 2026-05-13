@@ -16,7 +16,7 @@ Explaining Cilium Slack usage to a new team member or documenting it for an onbo
 
 ## Prerequisites
 
-- Access to the Cilium Slack workspace (join at cilium.io/slack)
+- Access to the Cilium Slack workspace (join at https://slack.cilium.io)
 - Cilium installed on a cluster
 
 ## Searching Slack Before Posting
@@ -26,7 +26,7 @@ Slack's search syntax allows targeted queries:
 ```plaintext
 # Search in a specific channel
 
-in:#help cilium connectivity test failed
+in:#general cilium connectivity test failed
 
 # Search with keywords
 cilium endpoint list policy-enforcement always
@@ -44,7 +44,7 @@ Structure your message as follows:
 
 **1. Context block at the top:**
 ```plaintext
-Cilium version: 1.15.x
+Cilium version: 1.19.x
 K8s distribution: EKS 1.29
 CNI mode: direct routing
 ```
@@ -61,7 +61,8 @@ kubectl get pods -n kube-system -l k8s-app=cilium
 **3. Specific question:**
 ```plaintext
 After applying a CiliumNetworkPolicy, pods with matching labels
-cannot connect to the service. Policy trace shows ALLOW but
+cannot connect to the service. Endpoint policy details show the
+expected allow rule, but
 connections still fail. What should I check next?
 ```
 
@@ -69,19 +70,18 @@ connections still fail. What should I check next?
 
 ```bash
 # Version information
-cilium version
+kubectl exec -n kube-system ds/cilium -- cilium-dbg version
 
 # Status overview
 cilium status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
 
 # Endpoint state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 
-# Policy trace
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod default:my-pod \
-  --dst-k8s-pod default:target-pod \
-  --dport 80
+# Endpoint policy details
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg endpoint get pod-name:default:my-pod
 
 # Recent error logs
 kubectl logs -n kube-system ds/cilium --since=10m | grep -i error | tail -20
