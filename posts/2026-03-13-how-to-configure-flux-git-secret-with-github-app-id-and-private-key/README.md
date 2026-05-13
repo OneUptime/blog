@@ -16,7 +16,7 @@ This guide explains how to create a GitHub App, install it on your repositories,
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster running a version supported by your Flux release
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - GitHub organization or personal account with admin access
@@ -103,6 +103,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  provider: github
   url: https://github.com/your-org/your-repo.git
   ref:
     branch: main
@@ -116,7 +117,7 @@ Apply the resource:
 kubectl apply -f gitrepository.yaml
 ```
 
-When Flux detects the `githubAppID`, `githubAppInstallationID`, and `githubAppPrivateKey` fields, it automatically generates a short-lived installation access token and uses it for HTTPS authentication.
+When Flux is configured with `provider: github` and the Secret contains the `githubAppID`, `githubAppInstallationID`, and `githubAppPrivateKey` fields, it generates a short-lived installation access token and uses it for HTTPS authentication.
 
 ## Step 6: Multiple Repositories
 
@@ -130,6 +131,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  provider: github
   url: https://github.com/your-org/app-one.git
   ref:
     branch: main
@@ -143,6 +145,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  provider: github
   url: https://github.com/your-org/app-two.git
   ref:
     branch: main
