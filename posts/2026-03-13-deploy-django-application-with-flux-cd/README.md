@@ -12,7 +12,7 @@ Description: Deploy a Django application with PostgreSQL to Kubernetes using Flu
 
 Django is a batteries-included Python web framework that powers everything from content platforms to APIs. Deploying Django to Kubernetes involves a few more moving parts than a stateless Node.js service: you need a database, you need to run `manage.py migrate` before or during deployments, and you need to serve static files separately from the Django process. Getting these pieces right in a GitOps workflow requires some deliberate design.
 
-Flux CD handles the orchestration by letting you declare the entire deployment - Django web server, Celery workers, migration Jobs, and ConfigMaps - as manifests in Git. Flux's `dependsOn` feature ensures migration Jobs complete before traffic is shifted to new application pods, preventing requests from hitting an incompatible schema.
+Flux CD handles the orchestration by letting you declare the entire deployment - Django web server, Celery workers, migration Jobs, and ConfigMaps - as manifests in Git. Flux's `dependsOn` feature can ensure migration Jobs complete before new application pods are rolled out, helping prevent new pods from starting against an incompatible schema.
 
 This guide covers the Django Dockerfile, the migration Job pattern, PostgreSQL connection management via Secrets, and the full Flux pipeline.
 
@@ -66,14 +66,13 @@ kubectl create secret generic django-db-secret \
 ## Step 3: Write the Migration Job Manifest
 
 ```yaml
-# deploy/migration-job.yaml
+# deploy/migrate/migration-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: django-migrate-v1-0-0    # Version-stamp the Job name for each release
   namespace: my-django-app
 spec:
-  ttlSecondsAfterFinished: 300   # Clean up the Job pod 5 minutes after completion
   backoffLimit: 3                # Retry up to 3 times on failure
   template:
     spec:
@@ -95,7 +94,7 @@ spec:
 ## Step 4: Write the Deployment and Service Manifests
 
 ```yaml
-# deploy/deployment.yaml
+# deploy/app/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -151,7 +150,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
 ---
-# deploy/service.yaml
+# deploy/app/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -194,7 +193,7 @@ spec:
     kind: GitRepository
     name: my-django-app
   path: ./deploy/migrate
-  prune: false   # Never delete completed migration Jobs
+  prune: false   # Keep completed migration Jobs so Flux does not recreate them
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
@@ -243,8 +242,8 @@ kubectl logs -n my-django-app -l app=my-django-app
 - Use the External Secrets Operator to sync `DATABASE_URL` and `SECRET_KEY` from a secrets manager (GCP Secret Manager, AWS Secrets Manager) rather than creating Kubernetes secrets manually.
 - Serve static files (`STATIC_ROOT`) from a separate Nginx sidecar or a CDN - do not serve them through gunicorn.
 - Set `DEBUG=False` and `ALLOWED_HOSTS` explicitly in production settings and inject them via ConfigMap.
-- Use `WaitForJobCompletion` style health checks in Flux to block the application Kustomization until migrations finish.
+- Use Flux `healthChecks` or `wait` to block the application Kustomization until migrations finish.
 
 ## Conclusion
 
-Deploying Django with Flux CD provides a robust, ordered deployment pipeline where database migrations always run before the new application code is served. The GitOps model gives you full auditability over both schema changes and application changes, and Flux's dependency management ensures correctness across the entire rollout.
+Deploying Django with Flux CD provides a robust, ordered deployment pipeline where database migrations run before new application pods are rolled out. The GitOps model gives you full auditability over both schema changes and application changes, and Flux's dependency management helps coordinate the rollout.
