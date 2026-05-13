@@ -16,7 +16,7 @@ This guide shows you how to configure a Kubernetes Secret with basic auth creden
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster supported by your Flux release (current Flux documentation lists Kubernetes v1.33 or later)
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - A private Helm chart repository with basic auth enabled
@@ -121,7 +121,7 @@ kubectl apply -f helmrelease.yaml
 
 ## Step 5: Self-Signed Certificates (Optional)
 
-If your Helm repository uses a self-signed TLS certificate, add the CA certificate to the Secret:
+If your Helm repository uses a self-signed TLS certificate, add the CA certificate to the Secret and reference it with `certSecretRef`:
 
 ```yaml
 apiVersion: v1
@@ -137,6 +137,19 @@ stringData:
     -----BEGIN CERTIFICATE-----
     <your-ca-certificate-content>
     -----END CERTIFICATE-----
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: my-private-charts
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: https://charts.example.com
+  secretRef:
+    name: helm-repo-credentials
+  certSecretRef:
+    name: helm-repo-credentials
 ```
 
 ## Verification
