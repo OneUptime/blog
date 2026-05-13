@@ -10,7 +10,7 @@ Description: Deploy TorchServe model serving with GPU resources using Flux CD to
 
 ## Introduction
 
-TorchServe is the official PyTorch model serving framework, providing a REST and gRPC API for deploying PyTorch models at scale. GPU acceleration dramatically reduces inference latency for deep learning models, and Kubernetes ensures high availability and horizontal scalability.
+TorchServe is PyTorch's model serving framework, providing a REST and gRPC API for deploying PyTorch models at scale. GPU acceleration dramatically reduces inference latency for deep learning models, and Kubernetes ensures high availability and horizontal scalability. Note that the upstream TorchServe project is no longer actively maintained, so evaluate the lack of planned bug fixes and security patches before adopting it for new production workloads.
 
 Managing TorchServe deployments through Flux CD brings GitOps discipline to your ML serving infrastructure. Model archive updates, resource configuration changes, and scaling policies all flow through pull requests, giving your team full visibility and control.
 
@@ -49,14 +49,25 @@ data:
     metrics_address=http://0.0.0.0:8082
     # Number of workers per model (match GPU count)
     default_workers_per_model=1
-    # Max batch delay in ms for dynamic batching
-    batch_size=8
-    max_batch_delay=100
     # Model store path
     model_store=/home/model-server/model-store
     # Load models at startup
-    load_models=my_model.mar
-    # GPU number to use (0-indexed)
+    load_models=my_model=my_model.mar
+    # Per-model dynamic batching configuration
+    models={\
+      "my_model": {\
+        "1.0": {\
+          "defaultVersion": true,\
+          "marName": "my_model.mar",\
+          "minWorkers": 1,\
+          "maxWorkers": 1,\
+          "batchSize": 8,\
+          "maxBatchDelay": 100,\
+          "responseTimeout": 120\
+        }\
+      }\
+    }
+    # Maximum number of GPUs TorchServe can use
     number_of_gpu=1
 ```
 
@@ -95,11 +106,12 @@ spec:
               mountPath: /model-store
       containers:
         - name: torchserve
-          image: pytorch/torchserve:0.9.0-gpu
+          image: pytorch/torchserve:0.12.0-gpu
           args:
             - "torchserve"
             - "--start"
             - "--ncs"
+            - "--disable-token-auth"
             - "--ts-config=/config/config.properties"
           ports:
             - containerPort: 8080
@@ -233,11 +245,11 @@ curl -X POST http://<inference-svc-ip>:8080/predictions/my_model \
 ## Best Practices
 
 - Use an init container to copy model archives from a shared PVC to an `emptyDir` volume at startup, avoiding filesystem locking issues with multiple replicas.
-- Enable dynamic batching (`batch_size` and `max_batch_delay`) to maximize GPU throughput under variable request rates.
+- Enable dynamic batching (`batchSize` and `maxBatchDelay` in the per-model configuration) to maximize GPU throughput under variable request rates.
 - Expose the metrics port (8082) and scrape with Prometheus to monitor GPU utilization, request latency, and queue depth.
 - Use `readinessProbe` on `/ping` to prevent traffic from reaching a pod before models finish loading.
 - Tag model archive files with semantic versions and track the version in your Git configuration to enable traceability from Git commit to served model.
 
 ## Conclusion
 
-Deploying TorchServe with GPU resources through Flux CD gives ML engineering teams a production-ready serving infrastructure managed entirely through GitOps. Model updates, scaling policies, and configuration changes all flow through version control, making your ML serving platform as reliable and auditable as your application code.
+Deploying TorchServe with GPU resources through Flux CD gives ML engineering teams a repeatable serving infrastructure managed entirely through GitOps. Model updates, scaling policies, and configuration changes all flow through version control, making your ML serving platform as auditable as your application code.
