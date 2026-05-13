@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Diagnose Kubernetes API server access failures caused by Calico egress policies by tracing the traffic path, inspecting NetworkPolicy egress rules, and using Felix logs.
+Description: Diagnose Kubernetes API server access failures caused by Calico egress policies by tracing the traffic path, inspecting NetworkPolicy egress rules, and using Calico policy logs.
 
 ---
 
@@ -14,14 +14,14 @@ Calico egress policies blocking access to the Kubernetes API server are a partic
 
 The Kubernetes API server is typically accessible at the `kubernetes` Service IP in the `default` namespace (port 443) or directly on the control plane node IPs (port 6443). When a Calico egress policy blocks outbound traffic from pods to these destinations, API calls return connection refused or timeout errors.
 
-Diagnosing this class of problem requires tracing the egress traffic path from the affected pod, inspecting Calico NetworkPolicy and GlobalNetworkPolicy egress rules, and examining Felix logs for policy drop events.
+Diagnosing this class of problem requires tracing the egress traffic path from the affected pod, inspecting Calico NetworkPolicy and GlobalNetworkPolicy egress rules, and examining Calico policy logs for drop events.
 
 ## Symptoms
 
 - Pods return `connection refused` or timeout when calling `kubernetes.default.svc.cluster.local`
 - Operators fail with `failed to watch` or `context deadline exceeded` errors
 - Service accounts cannot list or watch resources
-- `kubectl exec <pod> -- curl -k https://kubernetes.default.svc/api/v1` returns connection error
+- `kubectl exec <pod> -- curl https://kubernetes.default.svc/api/v1` returns connection error
 
 ## Root Causes
 
@@ -36,8 +36,12 @@ Diagnosing this class of problem requires tracing the egress traffic path from t
 
 ```bash
 kubectl exec <pod-name> -- \
-  curl -sk https://kubernetes.default.svc.cluster.local/api/v1 \
-  --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+  sh -c 'SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+  TOKEN=$(cat ${SERVICEACCOUNT}/token)
+  CACERT=${SERVICEACCOUNT}/ca.crt
+  curl -sS --cacert ${CACERT} \
+    --header "Authorization: Bearer ${TOKEN}" \
+    https://kubernetes.default.svc/api/v1' \
   | head -5
 ```
 
@@ -57,28 +61,49 @@ calicoctl get globalnetworkpolicy -o yaml | grep -B5 -A 20 "egress"
 **Step 4: Resolve the kubernetes Service IP**
 
 ```bash
-KUBE_SVC_IP=$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')
+KUBE_SVC_IP=$(kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}')
 echo "Kubernetes Service IP: $KUBE_SVC_IP"
 # Test direct access
 
 kubectl exec <pod-name> -- nc -zv $KUBE_SVC_IP 443
 ```
 
-**Step 5: Check Felix logs for drops to API server**
+**Step 5: Check Calico policy logs for drops to API server**
+
+If log rules are already enabled, check the node's kernel logs for Calico packet log entries:
 
 ```bash
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=<pod-node> -o name)
-kubectl logs $NODE_POD -n kube-system -c calico-node \
-  | grep -i "drop\|deny" | grep "$KUBE_SVC_IP" | tail -20
+kubectl debug node/<pod-node> -it --image=busybox -- \
+  chroot /host sh -c "journalctl -k | grep calico-packet | grep '$KUBE_SVC_IP' | tail -20"
 ```
 
-**Step 6: Enable policy log to trace the drop**
+**Step 6: Enable a temporary policy log to trace the drop**
 
 ```bash
-calicoctl patch globalnetworkpolicy <policy-name> \
-  --patch='{"spec":{"ingress":[{"action":"Log"},{"action":"Pass"}],"egress":[{"action":"Log"},{"action":"Pass"}]}}'
+calicoctl apply -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: log-api-egress
+  namespace: <namespace>
+spec:
+  order: 100001
+  tier: default
+  selector: all()
+  types:
+  - Egress
+  egress:
+  - action: Log
+    protocol: TCP
+    destination:
+      nets:
+      - ${KUBE_SVC_IP}/32
+      ports:
+      - 443
+EOF
 ```
+
+After applying the temporary log policy, repeat Step 5 and remove the policy when the test is complete.
 
 ```mermaid
 flowchart TD
@@ -101,8 +126,8 @@ After diagnosis, apply the appropriate fix (see companion Fix post). The most co
 
 - Always include an egress rule for the Kubernetes API when applying default-deny
 - Test operator and service account functionality after any NetworkPolicy change
-- Use Calico policy audit mode before enabling default-deny egress policies
+- Use Calico log rules or staged policy before enabling default-deny egress policies
 
 ## Conclusion
 
-Diagnosing Kubernetes API access failures caused by Calico egress policies requires testing the specific API connection path from the affected pod, inspecting egress NetworkPolicy and GlobalNetworkPolicy rules, and using Felix logs to identify the drop point. The Kubernetes Service IP and port 443 are the key values to verify in egress rules.
+Diagnosing Kubernetes API access failures caused by Calico egress policies requires testing the specific API connection path from the affected pod, inspecting egress NetworkPolicy and GlobalNetworkPolicy rules, and using Calico policy logs to identify the drop point. The Kubernetes Service IP and port 443 are the key values to verify in egress rules.
