@@ -16,14 +16,14 @@ This guide demonstrates how to use Kustomize patches in your FluxInstance to tai
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
+- A supported Kubernetes cluster
 - kubectl configured to access your cluster
 - The Flux Operator installed in your cluster
 - Basic understanding of Kustomize patch syntax
 
 ## Understanding the Kustomize Field
 
-The `kustomize` field in the FluxInstance spec accepts a `patches` array. Each patch entry consists of a `target` selector and either an inline `patch` string or a strategic merge patch. The operator applies these patches to the generated Flux manifests before deploying them.
+The `kustomize` field in the FluxInstance spec accepts a `patches` array. Each patch entry consists of a `target` selector and an inline `patch` string containing either a strategic merge patch or a JSON patch. The operator applies these patches to the generated Flux manifests before deploying them.
 
 ```mermaid
 graph LR
