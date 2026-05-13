@@ -39,19 +39,20 @@ When network connectivity is restored and Flux successfully fetches the Git repo
 watch -n5 "flux get sources git -A && echo '---' && flux get kustomizations -A"
 
 # The source will show a new revision when connectivity is restored
-# STATUS column will transition from "artifact up-to-date" (stale) to a new SHA
+# STATUS column will report the latest stored artifact revision
 
 # Check how many commits accumulated during the offline period
+git fetch origin main
 git log --oneline HEAD..origin/main | wc -l
 ```
 
 ## Step 2: Handle Accumulated Image Updates
 
-If image automation was running during the offline period and new images were pushed, Flux may try to update image tags after reconnection.
+If image automation is enabled and new images were pushed during the offline period, Flux may detect the new tags and update Git after reconnection.
 
 ```bash
 # Check if image automation has pending updates
-flux get imageupdateautomations -A
+flux get images update -A
 
 # Review what image tag changes accumulated
 kubectl get imagepolicy -A -o json | \
@@ -59,10 +60,10 @@ kubectl get imagepolicy -A -o json | \
 
 # If many image updates accumulated, suspend automation briefly
 # to review before applying
-flux suspend imageupdateautomation flux-system -n flux-system
+flux suspend image update flux-system -n flux-system
 
 # Review pending changes, then resume
-flux resume imageupdateautomation flux-system -n flux-system
+flux resume image update flux-system -n flux-system
 ```
 
 ## Step 3: Stagger Reconnection for Large Fleets
@@ -89,7 +90,7 @@ flux reconcile kustomization flux-system --with-source
 echo "[$CLUSTER_ID] Reconnection complete"
 ```
 
-Configure this as a systemd service that triggers on network-up:
+Configure this as a systemd service that runs after `network-online.target` during boot. For every post-boot reconnection, invoke the same script from your network manager's dispatcher or equivalent connectivity hook.
 
 ```ini
 # /etc/systemd/system/flux-reconnect.service
@@ -97,7 +98,7 @@ Configure this as a systemd service that triggers on network-up:
 Description=Staggered Flux reconnection on network restore
 After=network-online.target
 Wants=network-online.target
-# Only run once per network-up event
+# Avoid rapid restart loops if the service is restarted manually or by another hook
 StartLimitIntervalSec=60
 
 [Service]
@@ -106,7 +107,7 @@ ExecStart=/usr/local/bin/stagger-reconnection.sh
 RemainAfterExit=no
 
 [Install]
-WantedBy=network-online.target
+WantedBy=multi-user.target
 ```
 
 ## Step 4: Validate State After Reconnection
@@ -140,7 +141,7 @@ if [ "$FAILED_PODS" -gt 0 ]; then
 fi
 
 # 3. Check expected image versions
-EXPECTED_VERSION=$(flux get kustomization apps -n flux-system \
+EXPECTED_VERSION=$(kubectl get kustomization apps -n flux-system \
   -o jsonpath='{.status.lastAppliedRevision}')
 echo "Applied revision: $EXPECTED_VERSION"
 
@@ -160,8 +161,8 @@ If the edge cluster's local state has diverged from Git (due to manual changes m
 
 ```bash
 # Preview what Flux will change during reconciliation
-# Use server-side diff to see what would change
-flux diff kustomization apps -n flux-system
+# Use server-side diff from a local checkout of the desired manifests
+flux diff kustomization apps -n flux-system --path ./apps
 
 # If you need to preserve local changes made during offline period,
 # create a hotfix commit to Git before reconciliation:
@@ -173,8 +174,8 @@ kubectl get deployment my-app -n production -o yaml > /tmp/emergency-patch.yaml
 ## Step 6: Monitor Reconnection Events Centrally
 
 ```yaml
-# Flux alert when a site reconnects (source becomes ready after being unhealthy)
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Flux alert for GitRepository info events after a site reconnects
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: site-reconnection
@@ -186,8 +187,8 @@ spec:
   eventSources:
     - kind: GitRepository
       name: flux-system
-  # Filter for Ready->True transitions
-  summary: "Edge site {{ .InvolvedObject.Namespace }}/{{ .InvolvedObject.Name }} reconnected and reconciled"
+  eventMetadata:
+    summary: "Edge site GitRepository emitted a post-reconnection event"
 ```
 
 Track reconnection metrics:
@@ -212,7 +213,7 @@ curl -X POST https://monitoring.example.com/api/events \
 - Monitor the age of the last successful Flux reconciliation as the primary connectivity health metric.
 - Document what happens to manually-made emergency changes during a network outage - Flux will overwrite them.
 - Test reconnection behavior quarterly by simulating an offline period in a test environment.
-- Use `flux reconcile --with-source` after manual network restoration to speed up reconnection.
+- Use `flux reconcile kustomization <name> --with-source` after manual network restoration to speed up reconnection.
 
 ## Conclusion
 
