@@ -55,7 +55,10 @@ spec:
       size: 10Gi
     ingress:
       enabled: true
-      hostname: gitea.internal.example.com
+      hosts:
+        - host: gitea.internal.example.com
+          paths:
+            - path: /
 ```
 
 ```yaml
@@ -82,30 +85,30 @@ on:
   push:
     branches: ["**"]
   delete:
-    branches: ["**"]
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout full history
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Mirror to Gitea
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ secrets.GITEA_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git remote add gitea \
+          git clone --mirror \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            my-fleet.git
+          cd my-fleet.git
+          git push --mirror \
             "https://gitea-admin:${GITEA_TOKEN}@${GITEA_URL}/my-org/my-fleet.git"
-          git push gitea --mirror
 ```
 
 ## Step 3: Configure a Second GitRepository in Flux
 
-Add a secondary GitRepository pointing at the mirror, ready to be activated if the primary fails.
+Add a secondary GitRepository pointing at the mirror so Flux can continuously check mirror availability. The failover script below patches the primary GitRepository to use the mirror.
 
 ```yaml
 # clusters/production/flux-system/gitrepository-mirror.yaml
@@ -134,6 +137,8 @@ kubectl create secret generic gitea-credentials \
 ## Step 4: Create a Failover Script
 
 When the primary repository is unreachable, run this script to switch Flux to the mirror.
+
+If your Flux GitRepository manifest is managed from the same repo, commit the URL and credential change to the mirror before resuming normal reconciliation, or exclude that object from self-reconciliation. Otherwise the next Kustomization reconciliation can restore the primary URL from Git.
 
 ```bash
 #!/bin/bash
@@ -203,7 +208,7 @@ Run this as a Kubernetes CronJob every 15 minutes to get early warning of mirror
 ### Failback to Primary
 1. Confirm primary is restored: `git ls-remote https://github.com/my-org/my-fleet`
 2. Sync any commits made to mirror during outage:
-   `git push origin --mirror` (from mirror)
+   `git clone --mirror https://gitea.internal.example.com/my-org/my-fleet my-fleet.git && cd my-fleet.git && git push --mirror https://github.com/my-org/my-fleet`
 3. Restore primary URL:
    `kubectl patch gitrepository flux-system -n flux-system --type=merge -p '{"spec":{"url":"https://github.com/my-org/my-fleet"}}'`
 ```
