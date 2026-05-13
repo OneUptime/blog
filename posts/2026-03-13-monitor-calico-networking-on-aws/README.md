@@ -10,7 +10,7 @@ Description: Set up comprehensive monitoring for Calico networking on AWS, inclu
 
 ## Introduction
 
-Monitoring Calico networking on AWS benefits from combining Calico's own telemetry with AWS-native monitoring capabilities. AWS VPC Flow Logs capture traffic at the VPC level - including dropped packets that never reach the destination node - while Calico's Felix metrics show policy enforcement decisions. Together, these sources give you full visibility from the VPC network layer through to the pod-level policy layer.
+Monitoring Calico networking on AWS benefits from combining Calico's own telemetry with AWS-native monitoring capabilities. AWS VPC Flow Logs capture metadata for IP traffic at the VPC level - including ACCEPT and REJECT actions for traffic evaluated by VPC controls - while Calico's Felix metrics show endpoint, policy, and data plane health. Together, these sources give you visibility from the VPC network layer through to the pod-level policy layer.
 
 On AWS, cross-AZ traffic patterns are particularly important to monitor because they directly affect cost (cross-AZ data transfer is billed) and latency. Tracking the ratio of same-AZ vs cross-AZ pod communication helps identify opportunities to improve pod placement.
 
@@ -54,11 +54,11 @@ graph TD
     F --> G[Pod placement optimization]
 ```
 
-Use CloudWatch Logs Insights to query cross-AZ traffic:
+Use CloudWatch Logs Insights to find high-volume pod or node traffic, then enrich the source and destination IPs with your node or pod IP-to-AZ inventory to classify same-AZ and cross-AZ flows:
 
 ```sql
 fields @timestamp, srcAddr, dstAddr, bytes, action
-| filter srcAddr like /192\.168\./
+| filter action = "ACCEPT"
 | stats sum(bytes) as totalBytes by srcAddr, dstAddr
 | sort totalBytes desc
 | limit 20
@@ -66,12 +66,12 @@ fields @timestamp, srcAddr, dstAddr, bytes, action
 
 ## Step 4: Key Metrics Dashboard
 
-Configure Grafana with AWS CloudWatch data source:
+Configure Grafana with Prometheus and AWS CloudWatch data sources:
 
 ```yaml
 # Grafana panel queries
-# Cross-AZ vs same-AZ packet ratio
-felix_policy_passed_packets_total{node_az="us-east-1a"}
+# Active Calico endpoints per node
+felix_active_local_endpoints
 ```
 
 Key metrics to track:
@@ -79,23 +79,28 @@ Key metrics to track:
 | Metric | Source | Alert Threshold |
 |--------|--------|----------------|
 | `felix_active_local_endpoints` | Prometheus | Sudden drop |
-| `felix_policy_dropped_packets_total` | Prometheus | > 100/s |
-| VPC flow log drop events | CloudWatch | > 50/min |
+| `felix_int_dataplane_failures` | Prometheus | Any sustained increase |
+| VPC flow log REJECT events | CloudWatch | > 50/min |
 | Cross-AZ bytes | CloudWatch | Budget threshold |
 
 ## Step 5: CloudWatch Alarm for VPC Drops
 
 ```bash
+aws logs put-metric-filter \
+  --log-group-name /aws/vpc/flow-logs/k8s-cluster \
+  --filter-name VPCRejectedFlowLogRecords \
+  --filter-pattern '[version, account_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start, end, action=REJECT, log_status]' \
+  --metric-transformations metricName=RejectedFlowLogRecords,metricNamespace=Calico/VPCFlowLogs,metricValue=1
+
 aws cloudwatch put-metric-alarm \
-  --alarm-name "CalicoVPCDroppedPackets" \
-  --alarm-description "High packet drops in Calico cluster VPC" \
-  --metric-name PacketsDropped \
-  --namespace AWS/VPC \
+  --alarm-name "CalicoVPCRejectedFlowLogRecords" \
+  --alarm-description "High number of rejected VPC flow log records in Calico cluster VPC" \
+  --metric-name RejectedFlowLogRecords \
+  --namespace Calico/VPCFlowLogs \
   --statistic Sum \
   --period 300 \
   --threshold 1000 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=VPC,Value=vpc-0123456789 \
   --evaluation-periods 2 \
   --alarm-actions arn:aws:sns:us-east-1:123456789:calico-alerts
 ```
@@ -117,4 +122,4 @@ Monitor network throughput and error rates on nodes using the node exporter:
 
 ## Conclusion
 
-Monitoring Calico on AWS combines Felix Prometheus metrics for policy enforcement visibility with AWS VPC Flow Logs for network-level traffic analysis. By tracking cross-AZ traffic volume, packet drops, and Felix endpoint health, you can maintain visibility into both the security posture and cost implications of your cluster's networking behavior. CloudWatch alarms for VPC-level drops provide an early warning system independent of Calico's own monitoring.
+Monitoring Calico on AWS combines Felix Prometheus metrics for endpoint, policy, and data plane health with AWS VPC Flow Logs for network-level traffic analysis. By tracking cross-AZ traffic volume, rejected VPC flows, and Felix endpoint health, you can maintain visibility into both the security posture and cost implications of your cluster's networking behavior. CloudWatch alarms for VPC-level rejects provide an early warning system independent of Calico's own monitoring.
