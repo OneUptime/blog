@@ -12,29 +12,32 @@ Description: Monitor Cilium GAMMA service mesh routing using Prometheus metrics 
 
 Monitoring Cilium GAMMA support ensures that service-to-service routing rules remain active and effective over time. Unlike ingress monitoring which focuses on north-south traffic, GAMMA monitoring tracks east-west flows between workloads inside the cluster.
 
-Cilium provides two primary monitoring surfaces for GAMMA: Prometheus metrics from the operator and agent, and Hubble flow data that shows per-connection routing decisions. Together they give operators both aggregate visibility and per-request traceability.
+Cilium provides two primary monitoring surfaces for GAMMA: Prometheus metrics from the agent and Hubble, and Hubble flow data that shows per-connection verdicts and L7 request details. Together they give operators both aggregate visibility and per-request traceability.
 
 This guide covers the metrics and Hubble queries most relevant to GAMMA health monitoring.
 
 ## Prerequisites
 
 - Cilium with Prometheus metrics enabled
-- Hubble relay and UI enabled
+- Hubble relay, UI, and Hubble metrics enabled
 - Grafana connected to Prometheus
-- GAMMA and Gateway API enabled in Cilium
+- Gateway API enabled in Cilium, with kube-proxy replacement and the L7 proxy enabled for GAMMA
 
 ## Key Prometheus Metrics for GAMMA
 
 | Metric | Description |
 |--------|-------------|
-| `cilium_policy_l7_total` | L7 policy decisions (relevant when GAMMA routes enforce L7 rules) |
-| `cilium_forward_count_total` | Total forwarded packets per endpoint |
+| `cilium_policy_l7_total` | Total L7 requests and responses processed by the Cilium proxy |
+| `cilium_forward_count_total` | Total forwarded packets by direction |
 | `cilium_drop_count_total` | Dropped packets-check for unexpected drops on mesh services |
+| `hubble_http_requests_total` | HTTP requests observed by Hubble, useful for backend distribution when `httpV2` metrics and destination labels are enabled |
 
-Query for HTTP-level policy decisions:
+Query for HTTP-level proxy activity:
 
-```bash
-rate(cilium_policy_l7_total{direction="ingress"}[5m])
+```promql
+sum by (proxy_type) (
+  rate(cilium_policy_l7_total[5m])
+)
 ```
 
 ## Architecture
@@ -42,8 +45,10 @@ rate(cilium_policy_l7_total{direction="ingress"}[5m])
 ```mermaid
 flowchart LR
     A[Service A] -->|HTTPRoute rule| B[Cilium eBPF]
-    B --> C[Service B]
+    B --> H[Cilium L7 proxy / Envoy]
+    H --> C[Service B]
     B -->|metrics| D[Prometheus]
+    H -->|metrics| D
     B -->|flows| E[Hubble Relay]
     D --> F[Grafana]
     E --> G[Hubble UI]
@@ -71,7 +76,7 @@ Traffic distribution across GAMMA backends (when weights are configured):
 
 ```promql
 sum by (destination_workload) (
-  rate(cilium_forward_count_total{destination_namespace="<ns>"}[1m])
+  rate(hubble_http_requests_total{destination_namespace="<ns>"}[1m])
 )
 ```
 
@@ -83,7 +88,7 @@ groups:
     rules:
       - alert: GammaHighDropRate
         expr: |
-          rate(cilium_drop_count_total{reason="POLICY_DENIED"}[5m]) > 10
+          rate(cilium_drop_count_total{reason=~"Policy denied.*"}[5m]) > 10
         for: 2m
         labels:
           severity: warning
