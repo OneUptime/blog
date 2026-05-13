@@ -30,10 +30,10 @@ This explanation is targeted at engineers who need to understand Cilium deeply e
 kubectl logs -n kube-system ds/cilium | grep -i "policy"
 
 # List endpoints and their policy state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
-# Show which endpoints are affected by rule1
-kubectl exec -n kube-system ds/cilium -- cilium policy get | grep deathstar
+# Show the selector and ingress constraints for rule1
+kubectl describe cnp rule1
 ```
 
 ## Step 2: Identity Resolution
@@ -42,10 +42,10 @@ Each label set maps to a security identity (a 32-bit integer). The `fromEndpoint
 
 ```bash
 # View all security identities
-kubectl exec -n kube-system ds/cilium -- cilium identity list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list
 
 # Find the identity for Empire pods
-kubectl exec -n kube-system ds/cilium -- cilium identity list | grep "org=empire"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list | grep "org=empire"
 ```
 
 ## Step 3: eBPF Map Population
@@ -65,9 +65,8 @@ sequenceDiagram
 ```
 
 ```bash
-# Inspect the policy map for the deathstar endpoint
-DS_EP_ID=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep deathstar | awk '{print $1}' | head -1)
-kubectl exec -n kube-system ds/cilium -- cilium bpf policy get $DS_EP_ID
+# Inspect the local BPF policy maps
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy list
 ```
 
 ## Step 4: L7 Proxy Redirection
@@ -75,25 +74,23 @@ kubectl exec -n kube-system ds/cilium -- cilium bpf policy get $DS_EP_ID
 For HTTP rules, Cilium inserts a redirect rule that routes matching TCP traffic to a local Envoy proxy instance. The proxy parses the HTTP headers, evaluates method and path, and either forwards or drops the request.
 
 ```bash
-# View proxy redirect rules
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+# View Envoy listeners created for proxied L7 traffic
+kubectl exec -n kube-system ds/cilium -- cilium-dbg envoy admin listeners
 
 # Monitor L7 proxy decisions
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type l7
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type l7
 ```
 
 ## Step 5: Runtime Policy Enforcement
 
 ```bash
-# Trace the policy decision for a specific source->dest pair
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod default:tiefighter \
-  --dst-k8s-pod default:deathstar-xxxxxx \
-  --dport 80 \
-  --protocol TCP
+# Inspect the realized policy for a deathstar endpoint
+DS_EP_ID=$(kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep deathstar | awk '{print $1}' | head -1)
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint get $DS_EP_ID \
+  -o jsonpath='{.status.policy.realized}'
 
 # Monitor policy verdicts in real time
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 ```
 
 ## Conclusion
