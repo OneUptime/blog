@@ -10,17 +10,17 @@ Description: Control how long Helm repository index entries remain valid in the 
 
 ## What Helm Cache TTL Does
 
-The `--helm-cache-ttl` flag on the Flux source-controller sets the time-to-live for entries in the Helm repository index cache. After a cached entry exceeds this duration, it is considered stale and will be re-downloaded on the next reconciliation. This balances freshness of the index data against the performance benefit of avoiding network requests.
+The `--helm-cache-ttl` flag on the Flux source-controller sets the time-to-live for entries in the in-memory Helm repository index cache. After a cached entry exceeds this duration, it is considered stale and will be loaded again from the HelmRepository artifact when needed. This balances memory usage against the performance benefit of avoiding repeated index loading and parsing.
 
 ## Default Value
 
-The default TTL is 15 minutes. This means that once a Helm repository index is cached, it will be served from cache for the next 15 minutes regardless of how many HelmChart reconciliations request it.
+The default TTL is 15 minutes. This means that once a Helm repository index is cached, it can be served from cache for HelmChart reconciliations, and Flux refreshes the entry TTL when the cached index is used.
 
 ## When to Adjust the TTL
 
 ### Increase the TTL for Stable Repositories
 
-If you use Helm repositories that publish new chart versions infrequently (once a day or less), you can safely increase the TTL to reduce network traffic:
+If you use Helm repositories that publish new chart versions infrequently (once a day or less), you can increase the TTL to keep parsed indexes in memory longer and reduce repeated index loading:
 
 ```yaml
 --helm-cache-ttl=1h
@@ -30,13 +30,13 @@ This is suitable for internal chart repositories or third-party repositories tha
 
 ### Decrease the TTL for Frequently Updated Repositories
 
-If your chart repository receives multiple updates per hour and you need Flux to pick up new versions quickly, reduce the TTL:
+If you want source-controller to release cached indexes sooner after they stop being used, reduce the TTL:
 
 ```yaml
 --helm-cache-ttl=5m
 ```
 
-Keep in mind that a shorter TTL means more frequent index downloads.
+Keep in mind that a shorter TTL means more frequent index loading and parsing. To make Flux check a Helm repository for new versions more often, adjust the HelmRepository and HelmChart reconciliation intervals rather than the cache TTL.
 
 ## Configuring the TTL
 
@@ -92,11 +92,11 @@ git push
 
 ## Relationship Between TTL and Reconciliation Interval
 
-The TTL should generally be shorter than or equal to the HelmRepository reconciliation interval. If the interval is 10 minutes and the TTL is 30 minutes, the controller will serve cached data for three consecutive reconciliation cycles before refreshing.
+The HelmRepository reconciliation interval controls how often source-controller checks the remote repository index. The cache TTL controls how long a parsed index remains in memory after it is cached or used. If the interval is 10 minutes and the TTL is 30 minutes, the controller can reuse the same parsed index across several HelmChart reconciliation cycles as long as the HelmRepository artifact has not changed.
 
 Consider this when setting values:
 
-| Reconciliation Interval | Recommended TTL |
+| Reconciliation Interval | Example TTL |
 |------------------------|----------------|
 | 1 minute | 5 minutes |
 | 5 minutes | 15 minutes |
@@ -112,8 +112,8 @@ kubectl annotate helmrepository my-repo -n flux-system \
   reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
 ```
 
-This triggers an immediate reconciliation that bypasses the normal interval, though the cache TTL still applies. To fully bypass the cache, you would need to restart the source-controller pod.
+This triggers an immediate HelmRepository reconciliation that bypasses the normal interval. If the remote index has changed, source-controller stores a new artifact and subsequent HelmChart reconciliations use that updated artifact.
 
 ## Summary
 
-The `--helm-cache-ttl` flag lets you control the trade-off between index freshness and network efficiency. Increase it for stable repositories to reduce bandwidth usage, or decrease it when you need faster detection of new chart versions. Always set it in combination with `--helm-cache-max-size` to enable caching.
+The `--helm-cache-ttl` flag lets you control the trade-off between memory usage and index loading efficiency. Increase it for stable repositories to reduce repeated index parsing, or decrease it when you want cached indexes to expire sooner. Always set it in combination with `--helm-cache-max-size` to enable caching.
