@@ -12,7 +12,7 @@ Description: Learn how to integrate Calico IPAM with legacy enterprise firewalls
 
 Many enterprise Kubernetes deployments operate alongside legacy firewalls that enforce strict IP-based access control policies. These firewalls often have pre-defined allowlists for specific IP ranges, creating a challenge when Kubernetes dynamically assigns pod IPs from broad CIDR blocks that the firewall may not recognize or permit.
 
-Calico's IPAM system provides the flexibility needed to solve this problem. By configuring specific IP pools and using node selectors or namespace annotations, you can ensure that pods running in particular environments or namespaces receive IP addresses from ranges that your legacy firewalls already permit.
+Calico's IPAM system provides the flexibility needed to solve this problem. By configuring specific IP pools and using node selectors with namespace annotations, you can ensure that pods running in particular environments or namespaces receive IP addresses from ranges that your legacy firewalls already permit.
 
 This guide demonstrates how to configure Calico IPAM pools that align with legacy firewall policies, use annotations to steer IP allocation, and validate that pod IPs land in the correct ranges for firewall traversal.
 
@@ -66,7 +66,7 @@ calicoctl get ippools -o wide
 
 ## Step 2: Label Nodes with Firewall Zones
 
-Apply labels to nodes so that Calico's node selector in each IP pool routes allocations correctly.
+Apply labels to nodes so that Calico's node selector in each IP pool limits allocations to the correct zone. Make sure workloads that request a zone-specific pool are scheduled onto nodes that match that pool's selector.
 
 ```bash
 # Label nodes that sit in the DMZ firewall zone
@@ -99,7 +99,7 @@ metadata:
 kubectl apply -f namespace-dmz.yaml
 
 # Deploy a test pod to verify it receives a DMZ IP
-kubectl run test-dmz --image=nginx --namespace=dmz-workloads
+kubectl run test-dmz --image=nginx --namespace=dmz-workloads --overrides='{"apiVersion":"v1","spec":{"nodeSelector":{"zone":"dmz"}}}'
 kubectl get pod test-dmz -n dmz-workloads -o wide
 # The pod IP should be in the 10.50.0.0/24 range
 ```
@@ -113,7 +113,7 @@ If your legacy firewall does not permit the default Calico IP pool range, disabl
 calicoctl get ippools
 
 # Disable the default pool so no new IPs are allocated from it
-calicoctl patch ippool default-ipv4-ippool --patch '{"spec": {"disabled": true}}'
+calicoctl patch ippool default-ipv4-ippool -p '{"spec":{"disabled":true}}'
 
 # Verify the pool is disabled
 calicoctl get ippool default-ipv4-ippool -o yaml | grep disabled
@@ -129,4 +129,4 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep disabled
 
 ## Conclusion
 
-Integrating Calico IPAM with legacy firewalls requires careful planning of IP pool CIDRs to match firewall allowlists. By creating zone-specific IP pools, labeling nodes appropriately, and annotating namespaces, you can guarantee that pods receive firewall-approved IP addresses. This approach bridges modern Kubernetes networking with legacy enterprise firewall infrastructure without requiring costly firewall policy overhauls.
+Integrating Calico IPAM with legacy firewalls requires careful planning of IP pool CIDRs to match firewall allowlists. By creating zone-specific IP pools, labeling nodes appropriately, and annotating namespaces, you can ensure that new pods receive firewall-approved IP addresses when they are scheduled onto matching nodes. This approach bridges modern Kubernetes networking with legacy enterprise firewall infrastructure without requiring costly firewall policy overhauls.
