@@ -16,7 +16,7 @@ This guide walks you through configuring a Flux `GitRepository` resource to auth
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20 or later)
+- A supported Kubernetes cluster version for your Flux release
 - Flux CD installed on your cluster (v2.x)
 - `kubectl` configured to communicate with your cluster
 - A personal access token (PAT) or password for your Git provider
@@ -41,9 +41,9 @@ Most Git providers no longer accept plain passwords for HTTPS Git operations. Yo
 
 ### Bitbucket
 
-1. Go to Personal settings > App passwords.
-2. Create a new app password with repository read permissions.
-3. Copy the password.
+1. Go to your Atlassian account settings and create a Bitbucket API token with scopes.
+2. Select repository read permissions (and write permissions if needed).
+3. Copy the token.
 
 ## Step 2: Create the Kubernetes Secret
 
@@ -107,7 +107,7 @@ Make sure the `url` field uses the HTTPS protocol format (`https://...`).
 
 ## Step 4: Handle Self-Signed Certificates (Optional)
 
-If your Git server uses a self-signed TLS certificate, you can add the CA certificate to the Secret:
+If your Git server uses a self-signed TLS certificate, you can add the CA certificate to the Secret. Flux supports either `ca.crt` or `caFile` for this value:
 
 ```yaml
 apiVersion: v1
@@ -119,13 +119,13 @@ type: Opaque
 stringData:
   username: your-username
   password: your-personal-access-token
-  caFile: |
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     <your-ca-certificate-content>
     -----END CERTIFICATE-----
 ```
 
-Then reference the CA file in your `GitRepository`:
+Then keep referencing the same Secret in your `GitRepository`:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -142,7 +142,7 @@ spec:
     name: git-https-credentials
 ```
 
-The Source Controller will automatically use the `caFile` from the Secret when verifying the server certificate.
+The Source Controller will automatically use the CA certificate from the Secret when verifying the server certificate.
 
 ## Verification
 
