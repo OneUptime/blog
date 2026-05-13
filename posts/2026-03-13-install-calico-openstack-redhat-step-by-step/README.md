@@ -10,80 +10,80 @@ Description: A step-by-step guide to installing Calico as the networking backend
 
 ## Introduction
 
-Installing Calico on Red Hat Enterprise Linux (RHEL) based OpenStack deployments follows a similar architecture to Ubuntu - the Calico Neutron plugin on the controller and Felix on compute nodes - but uses RPM packages instead of Debian packages, and integrates with RHEL's systemd and SELinux differently. SELinux in particular requires specific policy configuration to allow Calico's Felix daemon to manage iptables and create network interfaces.
+Installing Calico on Red Hat Enterprise Linux (RHEL) based OpenStack deployments follows a similar architecture to Ubuntu - the Calico Neutron driver and DHCP agent integrate with Neutron, while Felix and BIRD run on compute nodes - but uses RPM packages instead of Debian packages. The current Calico documentation notes that the OpenStack RHEL installation path is no longer actively tested, so validate these steps in a staging environment before using them for production.
 
 Red Hat OpenStack Platform (RHOSP) has its own packaging and deployment mechanisms through Director (TripleO). This guide covers community OpenStack on RHEL rather than RHOSP, since RHOSP has vendor-specific deployment tools.
 
 ## Prerequisites
 
-- RHEL 8 or 9 servers for OpenStack
+- RHEL servers for OpenStack
 - Community OpenStack deployed or being deployed
-- etcd cluster for Calico's datastore
+- etcd cluster for Calico's datastore, reachable from all control and compute nodes
+- Working DNS between the RHEL hosts, or equivalent `/etc/hosts` entries
 - Root access to all nodes
 
-## Step 1: Configure SELinux for Calico
+## Step 1: Configure RHEL Package Prerequisites
 
-Calico's Felix requires specific SELinux permissions.
-
-```bash
-# Allow Felix to manage iptables and network interfaces
-
-sudo setsebool -P nis_enabled 1
-sudo setsebool -P httpd_can_network_connect 1
-
-# Install SELinux policy tools
-sudo dnf install -y policycoreutils setools-console
-
-# Check for denials during installation
-sudo ausearch -m AVC -ts recent | grep calico
-```
-
-## Step 2: Install etcd on the Controller
+Add the EPEL repository if it is not already enabled, then configure the Calico RPM repository and install the Python etcd client used by the OpenStack driver and DHCP agent.
 
 ```bash
-sudo dnf install -y etcd
+sudo dnf install -y epel-release
 
-cat <<EOF | sudo tee /etc/etcd/etcd.conf
-ETCD_NAME=controller
-ETCD_DATA_DIR=/var/lib/etcd
-ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
-ETCD_ADVERTISE_CLIENT_URLS=http://<controller-ip>:2379
+cat <<EOF | sudo tee /etc/yum.repos.d/calico.repo
+[calico]
+name=Calico Repository
+baseurl=https://binaries.projectcalico.org/rpm/calico-3.32/
+enabled=1
+skip_if_unavailable=0
+gpgcheck=1
+gpgkey=https://binaries.projectcalico.org/rpm/calico-3.32/key
+priority=97
 EOF
 
-sudo systemctl enable --now etcd
+sudo dnf install -y python3-pip crudini
+sudo pip3 install etcd3gw==2.4.0
+```
+
+## Step 2: Configure Calico's etcd Connection
+
+```bash
+sudo crudini --set /etc/neutron/neutron.conf calico etcd_host <etcd-ip>
 ```
 
 ## Step 3: Install Calico Neutron Plugin on Controller
 
 ```bash
-sudo dnf install -y python3-networking-calico
+sudo dnf install -y calico-control
 
 # Configure Neutron
 sudo crudini --set /etc/neutron/neutron.conf DEFAULT core_plugin calico
+sudo crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins qos
 ```
 
 Restart Neutron:
 
 ```bash
-sudo systemctl restart openstack-neutron
+sudo systemctl restart neutron-server
 ```
 
 ## Step 4: Install Felix on Compute Nodes
 
 ```bash
 # On each compute node
-sudo dnf install -y calico-felix
+sudo dnf install -y openstack-neutron calico-dhcp-agent bird bird6 calico-compute
+
+sudo systemctl stop neutron-dhcp-agent neutron-l3-agent neutron-openvswitch-agent openvswitch || true
+sudo systemctl disable neutron-dhcp-agent neutron-l3-agent neutron-openvswitch-agent openvswitch || true
 
 cat <<EOF | sudo tee /etc/calico/felix.cfg
 [global]
 DatastoreType = etcdv3
-EtcdEndpoints = http://<controller-ip>:2379
+EtcdAddr = <etcd-ip>:2379
+EndpointStatusPathPrefix = none
 EOF
 
-# Configure SELinux for Felix
-sudo semanage port -a -t http_port_t -p tcp 9091  # Prometheus metrics
-
-sudo systemctl enable --now calico-felix
+sudo systemctl restart calico-felix
+sudo systemctl enable --now bird bird6
 ```
 
 ## Step 5: Configure Firewall for BGP
@@ -98,10 +98,11 @@ sudo firewall-cmd --reload
 
 ```bash
 sudo systemctl status calico-felix
-sudo calicoctl node status
+sudo systemctl status bird
+ip route
 calicoctl get workloadendpoints -A
 ```
 
 ## Conclusion
 
-Installing Calico on RHEL-based OpenStack requires the additional step of configuring SELinux to allow Felix's privileged network management operations and opening BGP port 179 in firewalld. Beyond these RHEL-specific steps, the installation mirrors the Ubuntu workflow - etcd on the controller, the Calico Neutron plugin, and Felix on compute nodes.
+Installing Calico on RHEL-based OpenStack requires the Calico RPM repository, Calico's Neutron driver and DHCP agent, Felix, BIRD, and firewall access for BGP port 179. Beyond these RHEL-specific packaging and service differences, the installation mirrors the Ubuntu workflow - OpenStack components write endpoint data to etcd, Felix programs dataplane state on compute nodes, and BIRD advertises workload routes.
