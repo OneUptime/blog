@@ -20,22 +20,25 @@ The most dangerous category is allowing too much - teams sometimes write policie
 - `kubectl` and `calicoctl` access for diagnostics
 - Understanding of Kubernetes label selectors
 
-## Mistake 1: Forgetting to Allow Kubelet Health Checks
+## Mistake 1: Assuming Deny-All Ingress Blocks Kubelet Health Checks
 
-When a deny-all ingress policy is applied, it blocks not only pod-to-pod traffic but also the kubelet's health check probes. Pods then fail their liveness and readiness checks and are marked as not ready.
+When a Kubernetes deny-all ingress NetworkPolicy is applied, it blocks pod-to-pod traffic that is not explicitly allowed. It does not block traffic from the pod's resident node, so kubelet liveness and readiness probes from that node are not denied by Kubernetes NetworkPolicy.
 
-**Symptom**: Pods go into a restart loop after applying deny-all ingress. `kubectl describe pod` shows `Liveness probe failed` or `Readiness probe failed`.
+**Symptom**: Pods go into a restart loop after applying deny-all ingress. `kubectl describe pod` shows `Liveness probe failed` or `Readiness probe failed`, but the failure is usually caused by the application losing access to a dependency, by an incorrect probe configuration, or by separate host/firewall policy rather than by Kubernetes NetworkPolicy blocking the kubelet probe itself.
 
-**Fix**: Add an explicit ingress allow for the health check port from the node's subnet:
+**Fix**: Do not add broad node-subnet allows solely for kubelet probes in a Kubernetes NetworkPolicy. Instead, diagnose the probe failure directly and add only the pod-to-pod or egress allows the application needs. If you also use Calico host endpoint policy or other host-level firewall rules, make sure those rules allow the required node-to-pod health check traffic.
 
 ```yaml
-ingress:
-- ports:
-  - port: 8080  # Your health check port
-    protocol: TCP
-  from:
-  - ipBlock:
-      cidr: 10.0.0.0/8  # Node subnet CIDR
+# Deny-all ingress isolates selected pods from pod/network sources.
+# It does not block traffic from the pod's resident node.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
 ```
 
 ## Mistake 2: Empty `podSelector` in `from` Allows All Pods
@@ -70,12 +73,13 @@ If two NetworkPolicies both select the same pod, their ingress rules are merged 
 
 **Diagnosis**:
 ```bash
-# Check all NetworkPolicies that select the target pod
-kubectl get networkpolicy -o json | \
-  jq '.items[] | select(.spec.podSelector.matchLabels.app == "target")'
+# List policies in the target namespace, then inspect selectors.
+# Remember that podSelector: {} also selects the target pod.
+kubectl get networkpolicy -n <namespace> -o wide
+kubectl describe networkpolicy -n <namespace>
 ```
 
-**Fix**: Use Calico Enterprise's tiered policy model to prevent unexpected policy interactions between teams.
+**Fix**: Use Calico's tiered policy model to prevent unexpected policy interactions between teams.
 
 ## Mistake 4: Cross-Namespace Selector Requires Both `namespaceSelector` AND `podSelector`
 
@@ -112,11 +116,11 @@ Teams often only test that their allow rules work (the positive case) without te
 
 ## Best Practices
 
-- Include health check port allows in your namespace creation NetworkPolicy template
+- Do not add broad node-subnet allows for kubelet probes in Kubernetes NetworkPolicy; only add host-level health check allows when you use host endpoint or firewall policy that can block them
 - Audit all NetworkPolicies in a namespace before adding a new one to understand existing access grants
 - Use `kubectl get networkpolicy -o wide` regularly to review what policies are active
 - Test both allow and deny cases for every policy change
 
 ## Conclusion
 
-The most impactful Calico ingress mistakes are broken health checks (forgot to allow kubelet probes), empty podSelector misunderstanding (allows all pods unexpectedly), policy union semantics surprises, cross-namespace selector syntax errors, and incomplete testing. Building a policy template that includes health check allows and mandatory deny-case testing in your validation suite prevents most of these incidents.
+The most impactful Calico ingress mistakes are misdiagnosed health check failures, empty podSelector misunderstanding (allows all pods unexpectedly), policy union semantics surprises, cross-namespace selector syntax errors, and incomplete testing. Building a policy template with the right application allows and mandatory deny-case testing in your validation suite prevents most of these incidents.
