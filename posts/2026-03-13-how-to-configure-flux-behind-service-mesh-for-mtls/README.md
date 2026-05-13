@@ -170,9 +170,9 @@ spec:
 kubectl apply -f flux-authz-policies.yaml
 ```
 
-### Step 5: Handle External Egress Through Istio
+### Step 5: Handle Restricted External Egress Through Istio
 
-Configure a ServiceEntry for external Git and registry endpoints so Istio allows outbound connections:
+If your Istio mesh uses `REGISTRY_ONLY` outbound traffic policy, configure a ServiceEntry for external Git and registry endpoints so Istio allows outbound connections:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -259,7 +259,7 @@ spec:
     matchLabels:
       app: source-controller
   port: 9090
-  proxyProtocol: HTTP/2
+  proxyProtocol: HTTP/1
 ```
 
 ### Step 3: Create ServerAuthorization Policies
@@ -296,7 +296,7 @@ spec:
     matchLabels:
       app: notification-controller
   port: 9292
-  proxyProtocol: HTTP/2
+  proxyProtocol: HTTP/1
 ---
 apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
@@ -380,7 +380,8 @@ Verify mTLS is active:
 ```bash
 # Istio
 istioctl proxy-status -n flux-system
-istioctl authn tls-check source-controller.flux-system.svc.cluster.local
+istioctl proxy-config secret deployment/source-controller -n flux-system
+istioctl proxy-config clusters deployment/kustomize-controller -n flux-system --fqdn source-controller.flux-system.svc.cluster.local --port 9090
 
 # Linkerd
 linkerd viz stat deployment -n flux-system
@@ -402,7 +403,7 @@ The controller may be starting before the proxy is ready. Apply the startup dela
 
 **Source controller cannot reach external Git repositories**
 
-With Istio in STRICT mTLS mode, outbound connections to external services require ServiceEntry resources. Make sure you have ServiceEntry resources for all external endpoints.
+If Istio is configured with `REGISTRY_ONLY` outbound traffic policy, outbound connections to external services require ServiceEntry resources. Make sure you have ServiceEntry resources for all external endpoints.
 
 With Linkerd, external traffic is not affected by default, but if you have a restrictive NetworkPolicy, ensure egress is allowed.
 
