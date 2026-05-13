@@ -23,29 +23,32 @@ This guide covers the mechanics of Timoni module values for Flux sync configurat
 
 ## Step 1: Understand the Values Schema
 
-Every Timoni module defines a values schema in CUE. View a module's schema:
+Every Timoni module defines a configuration schema in CUE. After pulling a module locally, view its schema:
 
 ```bash
-timoni mod values oci://ghcr.io/stefanprodan/modules/flux-git-sync
+timoni mod pull oci://ghcr.io/stefanprodan/modules/flux-git-sync \
+  --output ./flux-git-sync
+timoni mod show config ./flux-git-sync
 ```
 
 The schema shows types, constraints, and defaults for each parameter. For example:
 
 ```cue
-#Values: {
+#Config: {
 	git: {
-		url:      string & =~"^(https|ssh)://"
-		branch:   string | *"main"
-		interval: string | *"5m"
+		url!:     string & =~"^https.*$"
+		ref:      *"refs/heads/main" | string
+		interval: *1 | int
 	}
 	sync: {
-		prune: bool | *true
-		wait:  bool | *true
+		prune:   *true | bool
+		wait:    *true | bool
+		timeout: *3 | int
 	}
 }
 ```
 
-The `| *"main"` syntax means `"main"` is the default value, and `string & =~"^(https|ssh)://"` means the value must be a string matching the regex pattern.
+The `*"refs/heads/main"` syntax means `"refs/heads/main"` is the default value, `url!` marks the field as required, and `string & =~"^https.*$"` means the value must be a string matching the regex pattern.
 
 ## Step 2: Create YAML Values Files
 
@@ -57,17 +60,15 @@ Timoni accepts values in YAML format. Create a values file:
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    branch: "main"
+    ref: "refs/heads/main"
     path: "./clusters/production"
-    interval: "5m"
-    secretRef:
-      name: "git-credentials"
+    interval: 5
+    token: "github-token-value"
   sync:
     prune: true
     wait: true
-    interval: "5m"
     targetNamespace: "production"
-    timeout: "10m"
+    timeout: 10
 ```
 
 Apply the values:
@@ -87,11 +88,11 @@ Layer values files for environment-specific configurations. Later files override
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    branch: "main"
+    ref: "refs/heads/main"
   sync:
     prune: true
     wait: true
-    timeout: "5m"
+    timeout: 5
 ```
 
 ```yaml
@@ -99,11 +100,10 @@ values:
 values:
   git:
     path: "./clusters/production"
-    interval: "10m"
+    interval: 10
   sync:
-    interval: "10m"
     targetNamespace: "production"
-    timeout: "15m"
+    timeout: 15
 ```
 
 ```yaml
@@ -111,11 +111,10 @@ values:
 values:
   git:
     path: "./clusters/staging"
-    interval: "2m"
+    interval: 2
   sync:
-    interval: "2m"
     targetNamespace: "staging"
-    timeout: "5m"
+    timeout: 5
 ```
 
 Apply with layered values:
@@ -141,23 +140,22 @@ For more powerful configuration, use CUE values files with computed values:
 ```cue
 // values.cue
 values: {
-	_env: "production"
+	let env = "production"
 
 	git: {
 		url:    "https://github.com/your-org/fleet-infra.git"
-		branch: "main"
-		path:   "./clusters/\(_env)"
-		interval: "10m"
+		ref:    "refs/heads/main"
+		path:   "./clusters/\(env)"
+		interval: 10
 	}
 	sync: {
 		prune: true
 		wait:  true
-		interval: "10m"
-		targetNamespace: _env
-		postBuild: substitute: {
-			ENVIRONMENT: _env
-			CLUSTER:     "prod-us-east-1"
-		}
+		targetNamespace: env
+	}
+	substitute: {
+		ENVIRONMENT: env
+		CLUSTER:     "prod-us-east-1"
 	}
 }
 ```
@@ -177,26 +175,25 @@ values:
   sync:
     prune: true
     wait: true
-    postBuild:
-      substitute:
-        CLUSTER_NAME: "prod-us-east-1"
-        ENVIRONMENT: "production"
-        DOMAIN: "prod.example.com"
-        REPLICAS: "3"
-      substituteFrom:
-        - kind: ConfigMap
-          name: cluster-vars
-        - kind: Secret
-          name: cluster-secrets
-          optional: true
+  substitute:
+    CLUSTER_NAME: "prod-us-east-1"
+    ENVIRONMENT: "production"
+    DOMAIN: "prod.example.com"
+    REPLICAS: "3"
+  substituteFrom:
+    - kind: ConfigMap
+      name: cluster-vars
+    - kind: Secret
+      name: cluster-secrets
+      optional: true
 ```
 
-## Step 6: Configure Health Check Values
+## Step 6: Configure Health Check Behavior
 
-Add health checks to your sync configuration:
+The `flux-git-sync` module does not expose Flux `healthChecks` directly. Configure readiness behavior with `wait`, `timeout`, and `retryInterval`:
 
 ```yaml
-# values-with-health.yaml
+# values-with-health-behavior.yaml
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
@@ -204,21 +201,9 @@ values:
   sync:
     prune: true
     wait: true
-    timeout: "10m"
+    timeout: 10
+    retryInterval: 2
     targetNamespace: "production"
-    healthChecks:
-      - apiVersion: apps/v1
-        kind: Deployment
-        name: frontend
-        namespace: production
-      - apiVersion: apps/v1
-        kind: Deployment
-        name: backend
-        namespace: production
-      - apiVersion: apps/v1
-        kind: StatefulSet
-        name: database
-        namespace: production
 ```
 
 ## Step 7: Configure Dependency Values
@@ -235,10 +220,10 @@ values:
     prune: true
     wait: true
     targetNamespace: "production"
-    dependsOn:
-      - name: infra-controllers
-      - name: database-sync
-      - name: cache-sync
+  dependsOn:
+    - name: infra-controllers
+    - name: database-sync
+    - name: cache-sync
 ```
 
 ## Step 8: Validate Values Before Applying
@@ -256,7 +241,7 @@ If values violate the schema, Timoni reports specific errors:
 
 ```text
 Error: values.git.url: invalid value "not-a-url"
-  (does not match =~"^(https|ssh)://")
+  (does not match =~"^https.*$")
 ```
 
 ## Step 9: Document Your Values
@@ -267,23 +252,23 @@ Maintain a values reference for your team:
 # values-reference.yaml
 # Flux Git Sync Module Values Reference
 #
-# git.url (required): Git repository URL (https:// or ssh://)
-# git.branch (default: "main"): Branch to track
+# git.url (required): Git repository HTTPS URL
+# git.ref (default: "refs/heads/main"): Git reference to track
 # git.path (default: "./"): Path within the repository
-# git.interval (default: "5m"): Source polling interval
-# git.secretRef.name: Name of the authentication secret
+# git.interval (default: 1): Source polling interval in minutes
+# git.token: Git token for a private HTTPS repository
 #
 # sync.prune (default: true): Enable garbage collection
 # sync.wait (default: true): Wait for resources to be ready
-# sync.interval (default: "5m"): Sync reconciliation interval
 # sync.targetNamespace: Override namespace for deployed resources
-# sync.timeout (default: "5m"): Timeout for health checks
-# sync.dependsOn: List of dependency Kustomizations
+# sync.timeout (default: 3): Timeout for readiness checks in minutes
+# sync.retryInterval (default: 5): Retry failed reconciliation interval in minutes
+# dependsOn: List of dependency Kustomizations
 
 values:
   git:
     url: "https://github.com/your-org/fleet-infra.git"
-    branch: "main"
+    ref: "refs/heads/main"
     path: "./clusters/production"
   sync:
     prune: true
@@ -292,4 +277,4 @@ values:
 
 ## Conclusion
 
-Properly configuring Timoni module values is the key to effective Flux deployments. The CUE-based values schema provides type safety, defaults, and constraints that prevent misconfiguration. By using layered values files, you can maintain a clean separation between base configurations and environment-specific overrides. Whether you are configuring simple Git syncs or complex multi-dependency deployments with health checks and post-build substitution, the values system gives you a consistent, validated interface to Flux resource generation.
+Properly configuring Timoni module values is the key to effective Flux deployments. The CUE-based values schema provides type safety, defaults, and constraints that prevent misconfiguration. By using layered values files, you can maintain a clean separation between base configurations and environment-specific overrides. Whether you are configuring simple Git syncs or complex multi-dependency deployments with readiness behavior and post-build substitution, the values system gives you a consistent, validated interface to Flux resource generation.
