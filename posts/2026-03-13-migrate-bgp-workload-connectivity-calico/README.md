@@ -22,13 +22,14 @@ The safe migration approach involves running both connectivity methods in parall
 
 ## Phase 1: Enable BGP Pod Advertisement Without Removing Services
 
-First, verify that pod IPs are being advertised via BGP and reachable externally without changing any application configuration:
+First, verify that BGP peering is established and that pod routes are visible to your upstream routers without changing any application configuration:
 
 ```bash
-# Check BGP is advertising pod routes
-
+# Check BGP peering state on the node where calicoctl is running
 calicoctl node status
-kubectl exec -n calico-system ${NODE_POD} -- birdcl show route
+
+# Check that an external Linux host has a route to the pod IP
+ip route get 10.48.1.5
 ```
 
 From an external host, test direct pod IP connectivity alongside existing service access:
@@ -43,15 +44,25 @@ curl http://10.48.1.5:80/
 
 ## Phase 2: Update DNS for Gradual Traffic Shift
 
-Update DNS to include pod IPs alongside service IPs, with initial weight on service path:
+Update DNS to include pod IPs alongside service IPs, with initial weight on the service path. In Route 53, all records with the same name and type in a weighted set need unique `SetIdentifier` values and weights:
 
 ```bash
-# In your DNS system, add pod IP as secondary record with lower weight
-# Example with Route53 weighted routing policy
+# In your DNS system, convert both paths into weighted records
+# Example with Route 53 weighted routing policy
 aws route53 change-resource-record-sets --hosted-zone-id Z123 \
   --change-batch '{
     "Changes": [{
-      "Action": "CREATE",
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "api.example.com",
+        "Type": "A",
+        "SetIdentifier": "service-path",
+        "Weight": 90,
+        "TTL": 30,
+        "ResourceRecords": [{"Value": "198.51.100.10"}]
+      }
+    }, {
+      "Action": "UPSERT",
       "ResourceRecordSet": {
         "Name": "api.example.com",
         "Type": "A",
@@ -96,8 +107,8 @@ After validating direct connectivity with a small traffic percentage, shift rema
 
 ```bash
 # Update IP pool to disable NAT
-calicoctl patch ippool default-ipv4-ippool --type merge \
-  --patch '{"spec":{"natOutgoing":false}}'
+calicoctl patch ippool default-ipv4-ippool \
+  --patch '{"spec":{"natOutgoing": false}}'
 
 # Update DNS to point fully to pod IPs or a new BGP-aware load balancer
 ```
@@ -117,4 +128,4 @@ flowchart LR
 
 ## Conclusion
 
-Migrating to BGP-to-workload connectivity requires a phased approach: validate connectivity in parallel before making any changes, gradually shift traffic using DNS or load balancer weights, and have a clear rollback path at each stage. The key risk to manage is the change in NAT behavior when `natOutgoing` is disabled, which affects applications that log or rate-limit based on client IP.
+Migrating to BGP-to-workload connectivity requires a phased approach: validate connectivity in parallel before making any changes, gradually shift traffic using DNS or load balancer weights, and have a clear rollback path at each stage. The key risk to manage is the change in NAT behavior: if `natOutgoing` remains enabled for direct pod access, return traffic from pods to external clients can be masqueraded behind node IPs instead of preserving pod IPs.
