@@ -10,7 +10,7 @@ Description: Understand and configure Calico's BlockAffinity resource, which con
 
 ## Introduction
 
-Calico's IPAM system assigns IP addresses to pods by dividing the IP pool into fixed-size blocks and assigning those blocks to nodes. The `BlockAffinity` resource represents the relationship between a node and a specific IP block - it tracks which blocks a node "owns" and which are borrowed or borrowed from it.
+Calico's IPAM system assigns IP addresses to pods by dividing the IP pool into fixed-size blocks and assigning those blocks to nodes. The `BlockAffinity` resource represents the relationship between a node and a specific IP block - it tracks which blocks have affinity to a node. Borrowed IP addresses are reported by Calico IPAM, not stored as separate borrowed state on the BlockAffinity resource.
 
 Understanding BlockAffinity is essential for diagnosing IPAM issues, optimizing IP utilization, and understanding why certain routes are advertised via BGP. Misconfigured or stale BlockAffinity entries can cause IP address exhaustion, routing issues, and pod scheduling failures.
 
@@ -47,15 +47,15 @@ Configure the block size that determines how many IPs are in each block assigned
 
 ```yaml
 # ippool-block-size.yaml
-# IPPool with a /26 block size - each node gets 62 usable IPs per block
+# IPPool with a /26 block size - each block contains 64 addresses
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: default-ipv4-ippool
+  name: custom-ipv4-ippool
 spec:
   cidr: 10.244.0.0/16
   # Block size determines the number of IPs allocated per node
-  # /26 = 64 addresses per block (62 usable after network/broadcast)
+  # /26 = 64 addresses per block
   blockSize: 26
   ipipMode: Never
   natOutgoing: true
@@ -63,11 +63,12 @@ spec:
 ```
 
 ```bash
-# Apply the updated IPPool configuration
-calicoctl apply -f ippool-block-size.yaml
+# Create the IPPool with the required block size
+# The blockSize field can only be set when the pool is created
+calicoctl create -f ippool-block-size.yaml
 
 # Verify the block size is set correctly
-calicoctl get ippool default-ipv4-ippool -o yaml | grep blockSize
+calicoctl get ippool custom-ipv4-ippool -o yaml | grep blockSize
 ```
 
 ## Step 3: Diagnose Stale BlockAffinity Entries
@@ -84,28 +85,29 @@ calicoctl get blockaffinities -o json | \
   python3 -c "
 import sys, json
 data = json.load(sys.stdin)
+current_nodes = set(sys.argv[1].split())
 nodes_with_blocks = set(b['spec']['node'] for b in data['items'])
-print('Nodes with blocks:', nodes_with_blocks)
-"
+print('Nodes with blocks:', sorted(nodes_with_blocks))
+print('Stale nodes:', sorted(nodes_with_blocks - current_nodes))
+" "$CURRENT_NODES"
 
-# Delete stale BlockAffinity entries (only for confirmed-deleted nodes)
-calicoctl delete blockaffinity <block-affinity-name>
+# Remove the stale Calico node resource after confirming the host is gone
+calicoctl delete node <stale-node-name>
 ```
 
 ## Step 4: Observe BGP Route Advertisement from Block Affinity
 
-Each BlockAffinity entry results in a BGP route being advertised from that node.
+In BGP mode, with BGP export enabled for the IP pool, affine IPAM blocks are advertised as aggregated routes from the owning node. Borrowed addresses are advertised as more specific routes.
 
 ```bash
-# Check which routes are being advertised via BGP
+# Check BGP peering status
 calicoctl node status
 
-# Confirm that block CIDRs appear as BGP routes
+# Confirm that block CIDRs appear in the local routing table
 # On a node with BGP, list the routes in the routing table
 ip route show | grep "10.244"
 
-# Verify that route counts match expected BlockAffinity count
-# (one /blockSize route per BlockAffinity entry per node)
+# Verify that route counts match expected BlockAffinity and borrowed-address behavior
 ```
 
 ## Step 5: Configure Node-Specific IP Pool Assignment
@@ -146,14 +148,15 @@ spec:
 calicoctl apply -f ippool-zone-a.yaml
 calicoctl apply -f ippool-zone-b.yaml
 
-# Verify node-to-pool assignment
-calicoctl get blockaffinities -o wide | grep "zone"
+# Verify the pools and node labels used for assignment
+calicoctl get ippool -o wide
+kubectl get nodes --show-labels | grep "topology.kubernetes.io/zone"
 ```
 
 ## Best Practices
 
 - Choose block size based on your average pod density - too large wastes IPs, too small causes frequent borrowing
-- Monitor `calico_ipam_blocks_per_node` Prometheus metric to detect imbalanced allocations
+- Monitor the `ipam_blocks` Prometheus metric, or `ipam_blocks_per_node` for legacy integrations, to detect imbalanced allocations
 - Clean up stale BlockAffinity entries from deleted nodes to reclaim IP space
 - Use node selectors on IP pools to align addressing with your network topology
 - Avoid changing block size on live pools - migrate to a new pool instead
