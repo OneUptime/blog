@@ -89,6 +89,17 @@ spec:
 
 ```yaml
 # clusters/production/apps.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m
+  ref:
+    branch: main
+  url: ssh://git@github.com/myorg/flux-repo.git
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -221,6 +232,7 @@ gh pr merge --squash
 git checkout main
 git pull
 # Update apps/production/web-app/kustomization.yaml with new tag
+git add apps/production/web-app/kustomization.yaml
 git commit -m "promote: web-app v1.6.0 to production"
 git push
 ```
@@ -245,6 +257,7 @@ jobs:
       - name: Build and push image
         run: |
           TAG="main-${GITHUB_SHA::8}-$(date +%s)"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
           docker build -t myregistry/web-app:$TAG .
           docker push myregistry/web-app:$TAG
 
@@ -267,7 +280,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web-app
