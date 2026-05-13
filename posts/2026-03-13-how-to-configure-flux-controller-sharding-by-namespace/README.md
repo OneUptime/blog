@@ -16,14 +16,14 @@ As your Kubernetes fleet grows, a single Flux controller instance can become a b
 
 Before configuring namespace-based sharding, ensure you have the following in place:
 
-- A running Kubernetes cluster (v1.25 or later)
-- Flux CLI installed (v2.0 or later)
+- A running Kubernetes cluster supported by your Flux release
+- Flux CLI installed and compatible with the controllers running in the cluster
 - kubectl configured with cluster access
 - Flux bootstrapped on the cluster
 
 ## Understanding Namespace-Based Sharding
 
-In namespace-based sharding, each controller instance reconciles only resources in the namespaces assigned to it. This is achieved by labeling Flux resources in each namespace with a shard key and configuring each shard controller with the `--watch-label-selector` flag to match that key. Flux controllers do not have a `--watch-namespace` flag; instead, namespace-based sharding is implemented through label selectors.
+In namespace-oriented sharding, each controller instance reconciles only Flux resources that carry the shard label for that namespace. This is achieved by labeling Flux resources in each namespace with a shard key and configuring each shard controller with the `--watch-label-selector` flag to match that key. Flux controllers do not have a flag for watching one arbitrary namespace; instead, this sharding pattern is implemented through label selectors.
 
 The main controller continues to handle resources that do not have a shard label assigned, while dedicated shard instances handle their labeled resources.
 
@@ -49,16 +49,36 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-alpha
             - --log-level=info
             - --log-encoding=json
             - --enable-leader-election=false
+          env:
+            - name: RUNTIME_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  containerName: manager
+                  resource: limits.memory
           ports:
             - containerPort: 8080
               name: http-prom
+            - containerPort: 9440
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
           resources:
             limits:
               cpu: 500m
@@ -91,7 +111,7 @@ subjects:
 
 ## Step 3: Configure the Main Controller
 
-Update the main kustomize-controller to exclude the sharded namespace so that reconciliation is not duplicated.
+Update the main kustomize-controller to exclude sharded resources so that reconciliation is not duplicated.
 
 ```yaml
 apiVersion: apps/v1
@@ -148,7 +168,7 @@ kubectl logs deployment/kustomize-controller -n flux-system | grep team-alpha
 
 ## Multiple Namespace Shards
 
-You can create multiple shards, each watching different namespaces. Here is an example with two shards.
+You can create multiple shards, each watching a different shard label. Here is an example with a second namespace-oriented shard.
 
 ```yaml
 # Shard for team-beta namespace
@@ -169,13 +189,36 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
           args:
             - --watch-all-namespaces=true
             - --watch-label-selector=sharding.fluxcd.io/key=shard-beta
             - --log-level=info
             - --log-encoding=json
             - --enable-leader-election=false
+          env:
+            - name: RUNTIME_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  containerName: manager
+                  resource: limits.memory
+          ports:
+            - containerPort: 8080
+              name: http-prom
+            - containerPort: 9440
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
           resources:
             limits:
               cpu: 500m
