@@ -67,11 +67,12 @@ metadata:
 spec:
   interval: 30m
   targetNamespace: prefect
-  createNamespace: true
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: prefect-worker
-      version: "2024.x"
+      version: "2026.x"
       sourceRef:
         kind: HelmRepository
         name: prefect
@@ -89,12 +90,12 @@ spec:
       # Work pool name (must match what's created in Prefect Cloud)
       config:
         workPool: "production-k8s-pool"
+        jobNamespace: "prefect-flows"
 
       # Worker image - use the same Python version as your flows
       image:
         repository: prefecthq/prefect
-        tag: "2-python3.11-kubernetes"
-        prefectTag: "2-python3.11"
+        prefectTag: "3-python3.11-kubernetes"
         pullPolicy: IfNotPresent
 
       # Number of worker replicas (multiple workers poll the same work pool)
@@ -109,16 +110,13 @@ spec:
           cpu: 1000m
           memory: 1Gi
 
-      # RBAC for the worker to create Kubernetes Jobs
-      rbac:
-        create: true
+      # Use a fixed cluster UID instead of requiring permission to read kube-system
+      clusterUid: "production"
 
       # Extra environment variables for the worker
       extraEnvVars:
         - name: PREFECT_LOGGING_LEVEL
           value: "INFO"
-        - name: PREFECT_KUBERNETES_CLUSTER_UID
-          value: "production"
 
     # Service account for workers
     serviceAccount:
@@ -136,25 +134,39 @@ Define the base job template for flows executed in this work pool.
 # prefect_config/work_pool_setup.py
 # Run this once to configure the work pool in Prefect Cloud
 from prefect.client.orchestration import get_client
+from prefect.client.schemas.actions import WorkPoolCreate
 import asyncio
 
 async def setup_work_pool():
     async with get_client() as client:
         await client.create_work_pool(
-            work_pool={
-                "name": "production-k8s-pool",
-                "type": "kubernetes",
-                "base_job_template": {
+            work_pool=WorkPoolCreate(
+                name="production-k8s-pool",
+                type="kubernetes",
+                base_job_template={
                     "job_configuration": {
                         "image": "{{ image }}",
                         "namespace": "prefect-flows",
-                        "job": {
+                        "job_manifest": {
+                            "apiVersion": "batch/v1",
+                            "kind": "Job",
+                            "metadata": {
+                                "labels": "{{ labels }}",
+                                "namespace": "{{ namespace }}",
+                                "generateName": "{{ name }}-"
+                            },
                             "spec": {
+                                "ttlSecondsAfterFinished": "{{ finished_job_ttl }}",
                                 "template": {
                                     "spec": {
                                         "serviceAccountName": "prefect-flow-runner",
+                                        "restartPolicy": "Never",
                                         "containers": [{
                                             "name": "prefect-job",
+                                            "image": "{{ image }}",
+                                            "imagePullPolicy": "{{ image_pull_policy }}",
+                                            "env": "{{ env }}",
+                                            "args": "{{ command }}",
                                             "resources": {
                                                 "requests": {
                                                     "cpu": "500m",
@@ -165,21 +177,34 @@ async def setup_work_pool():
                                                     "memory": "4Gi"
                                                 }
                                             }
-                                        }],
-                                        "ttlSecondsAfterFinished": 3600
+                                        }]
                                     }
                                 }
                             }
                         }
                     },
                     "variables": {
-                        "image": {
-                            "default": "myregistry/prefect-flows:latest"
+                        "type": "object",
+                        "properties": {
+                            "image": {
+                                "type": "string",
+                                "default": "myregistry/prefect-flows:latest"
+                            },
+                            "image_pull_policy": {
+                                "type": "string",
+                                "default": "IfNotPresent"
+                            },
+                            "finished_job_ttl": {
+                                "type": "integer",
+                                "default": 3600
+                            }
                         }
                     }
                 }
-            }
+            )
         )
+
+asyncio.run(setup_work_pool())
 ```
 
 ## Step 5: Create RBAC for Flow Execution Jobs
@@ -200,31 +225,32 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: prefect-flow-role
+  name: prefect-worker
   namespace: prefect-flows
 rules:
   - apiGroups: [""]
-    resources: [pods, pods/log, pods/status]
-    verbs: [get, list, watch]
-  - apiGroups: ["batch"]
-    resources: [jobs]
-    verbs: [create, get, list, watch, delete, patch]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: [secrets]
-    verbs: [get]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: prefect-worker-cluster-binding
+  name: prefect-worker
+  namespace: prefect-flows
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prefect-worker
 subjects:
   - kind: ServiceAccount
     name: prefect-worker
     namespace: prefect
-roleRef:
-  kind: ClusterRole
-  name: prefect-worker
-  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Step 6: Create Flux Kustomization
@@ -274,18 +300,19 @@ flux reconcile helmrelease prefect-worker --with-source -n flux-system
 flux get helmrelease prefect-worker -n flux-system
 ```
 
-## Step 8: Update Worker Image
+## Step 8: Update Flow Image
 
-When your flow dependencies change, update the worker image in Git.
+When your flow dependencies change, update the flow image used by the work pool or your deployment `job_variables` in Git.
 
 ```yaml
-# Update this in the HelmRelease:
-worker:
-  image:
-    tag: "2-python3.11-kubernetes-2024.03"
+# Update the default image in the base job template:
+variables:
+  properties:
+    image:
+      default: "myregistry/prefect-flows:2026.03"
 ```
 
-Flux detects the change and rolling-updates the worker deployment.
+Flux detects the change and reconciles the worker deployment if you manage the base job template through the HelmRelease.
 
 ## Best Practices
 
