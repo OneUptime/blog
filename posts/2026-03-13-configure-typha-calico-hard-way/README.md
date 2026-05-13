@@ -18,43 +18,60 @@ Typha is configured via environment variables in its Deployment spec. Key parame
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TYPHA_MAXCONNECTIONSLOWERLIMIT` | Minimum connections before Typha stops accepting | 1 |
-| `TYPHA_MAXCONNECTIONSUPPERLIMIT` | Maximum concurrent Felix connections | 0 (unlimited) |
+| `TYPHA_MAXCONNECTIONSLOWERLIMIT` | Lower connection threshold used by Kubernetes connection rebalancing | 400 |
+| `TYPHA_MAXCONNECTIONSUPPERLIMIT` | Maximum concurrent Felix connections | 10000 |
 | `TYPHA_PROMETHEUSMETRICSENABLED` | Enable Prometheus metrics | false |
 | `TYPHA_PROMETHEUSMETRICSPORT` | Prometheus metrics port | 9093 |
 | `TYPHA_LOGSEVERITYSCREEN` | Log level | Info |
-| `TYPHA_CONNECTIONREBALANCINGMODE` | How to rebalance Felix connections | "auto" |
+| `TYPHA_CONNECTIONREBALANCINGMODE` | How to rebalance Felix connections | "none" |
 
 ## Step 1: Set Connection Limits
 
 For a 500-node cluster with 2 Typha replicas, each replica should handle ~250 Felix connections.
 
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
+kubectl set env deployment/calico-typha -n kube-system \
+  TYPHA_MAXCONNECTIONSLOWERLIMIT=250 \
   TYPHA_MAXCONNECTIONSUPPERLIMIT=300
 ```
 
 ## Step 2: Configure Prometheus Metrics
 
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
+kubectl set env deployment/calico-typha -n kube-system \
   TYPHA_PROMETHEUSMETRICSENABLED=true \
   TYPHA_PROMETHEUSMETRICSPORT=9093
 ```
 
-Expose the metrics via a ServiceMonitor if using Prometheus Operator.
+Expose the metrics via a Service and ServiceMonitor if using Prometheus Operator.
 
 ```bash
 kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: calico-typha-metrics
+  namespace: kube-system
+  labels:
+    k8s-app: calico-typha-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-typha
+  ports:
+  - name: metrics
+    port: 9093
+    targetPort: 9093
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: calico-typha
-  namespace: calico-system
+  namespace: kube-system
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-typha
+      k8s-app: calico-typha-metrics
   endpoints:
   - port: metrics
     interval: 30s
@@ -66,27 +83,25 @@ EOF
 For production, set Typha to Warning or Error level to reduce log volume.
 
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
+kubectl set env deployment/calico-typha -n kube-system \
   TYPHA_LOGSEVERITYSCREEN=Warning
 ```
 
 For debugging connectivity issues, temporarily set to Debug.
 
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
+kubectl set env deployment/calico-typha -n kube-system \
   TYPHA_LOGSEVERITYSCREEN=Debug
 ```
 
 ## Step 4: Configure Felix-Side Typha Connection
 
-Felix discovers Typha through the Kubernetes service. Configure the service name and namespace.
+Felix discovers Typha through the Kubernetes service. Configure the service name and namespace on the `calico-node` DaemonSet.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{
-    "typhak8sServiceName": "calico-typha",
-    "typhak8sNamespace": "calico-system"
-  }}'
+kubectl set env daemonset/calico-node -n kube-system \
+  FELIX_TYPHAK8SSERVICENAME=calico-typha \
+  FELIX_TYPHAK8SNAMESPACE=kube-system
 ```
 
 Felix also supports a static Typha address for non-Kubernetes environments.
@@ -99,21 +114,21 @@ TyphaAddr = <typha-node-ip>:5473
 
 ## Step 5: Configure Felix Reconnect Behavior
 
-Felix will reconnect to Typha if the connection drops. Tune the reconnect interval.
+Felix will reconnect to Typha if the connection drops. Tune the read timeout that controls how long Felix waits for Typha traffic before it exits and restarts.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"typhaReadTimeout": "30s"}}'
+kubectl set env daemonset/calico-node -n kube-system \
+  FELIX_TYPHAREADTIMEOUT=30
 ```
 
 ## Step 6: Verify Configuration Is Applied
 
 ```bash
 # Check Typha env vars
-kubectl get deployment calico-typha -n calico-system -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
+kubectl get deployment calico-typha -n kube-system -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
 
-# Check Felix configuration
-calicoctl get felixconfiguration default -o yaml | grep -i typha
+# Check Felix Typha environment variables
+kubectl set env daemonset/calico-node -n kube-system --list | grep -i typha
 ```
 
 ## Step 7: Test Configuration with a Policy Update
@@ -132,7 +147,7 @@ spec:
   policyTypes: [Ingress]
 EOF
 
-kubectl logs -n calico-system deployment/calico-typha | grep "Sent update" | tail -5
+kubectl logs -n kube-system deployment/calico-typha --tail=100 | grep -Ei "connection|sync|update" | tail -5
 kubectl delete networkpolicy typha-config-test
 ```
 
