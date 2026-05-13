@@ -33,7 +33,7 @@ age --version
 
 ## Setting Up Age Keys Locally
 
-Obtain the private age key from your team's secure key distribution system (such as a password manager or vault). Place it in the default SOPS location:
+Obtain the private age key from your team's secure key distribution system (such as a password manager or vault). Place it in SOPS's XDG config location:
 
 ```bash
 mkdir -p ~/.config/sops/age
@@ -46,7 +46,7 @@ EOF
 chmod 600 ~/.config/sops/age/keys.txt
 ```
 
-SOPS automatically looks for keys in `~/.config/sops/age/keys.txt`.
+SOPS looks for keys in `$XDG_CONFIG_HOME/sops/age/keys.txt`, falling back to `~/.config/sops/age/keys.txt` on Linux and `~/Library/Application Support/sops/age/keys.txt` on macOS when `XDG_CONFIG_HOME` is not set.
 
 Alternatively, use an environment variable:
 
@@ -89,14 +89,14 @@ export EDITOR=vim
 export EDITOR="code --wait"  # VS Code
 ```
 
-When you save and close the editor, SOPS re-encrypts the file with the same keys defined in `.sops.yaml`.
+When you save and close the editor, SOPS re-encrypts the file using the file's existing SOPS metadata. For new files, SOPS uses the matching creation rule in `.sops.yaml`.
 
 ## Creating New Encrypted Files
 
 Create a new secret and encrypt it:
 
 ```bash
-# Method 1: Create plaintext, then encrypt in place
+# Method 1: Create plaintext, then encrypt in place using a matching .sops.yaml rule
 cat <<EOF > secrets/new-secret.yaml
 apiVersion: v1
 kind: Secret
@@ -127,8 +127,7 @@ Sometimes you just want to see the structure without full decryption:
 cat secrets/app-secret.yaml
 
 # Show file metadata (which keys are used)
-sops --decrypt --extract '["sops"]' secrets/app-secret.yaml 2>/dev/null || \
-  grep -A 20 "^sops:" secrets/app-secret.yaml
+grep -A 20 "^sops:" secrets/app-secret.yaml
 ```
 
 ## Using a Development-Specific Key
@@ -215,7 +214,7 @@ Configure Git to show decrypted diffs:
 
 ```bash
 # .gitattributes
-*.enc.yaml diff=sops
+secrets/*.yaml diff=sops
 
 # .gitconfig or .git/config
 [diff "sops"]
