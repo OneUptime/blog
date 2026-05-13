@@ -21,7 +21,7 @@ Label-based sharding gives you flexible control over how Flux distributes reconc
 
 ## How Label-Based Sharding Works
 
-Flux controllers support the `--watch-label-selector` flag, which restricts a controller instance to only reconcile resources matching the given label selector. By running multiple controller instances with different label selectors, you distribute the work across shards.
+Flux source, kustomize, and helm controllers support the `--watch-label-selector` flag, which restricts a controller instance to only reconcile resources matching the given label selector. By running multiple controller instances with different label selectors, you distribute the work across shards.
 
 ## Step 1: Define Your Sharding Labels
 
@@ -41,7 +41,7 @@ kubectl label kustomization app-backend \
 
 ## Step 2: Deploy Shard Controller Instances
 
-Create a controller instance for each shard, configured with the appropriate label selector.
+Create a kustomize-controller instance for each shard, configured with the appropriate label selector.
 
 ```yaml
 apiVersion: apps/v1
@@ -144,7 +144,7 @@ The `!sharding.fluxcd.io/key` selector tells the main controller to only reconci
 
 ## Step 4: Label Your Flux Resources
 
-Apply shard labels to your Kustomization or HelmRelease resources.
+Apply shard labels to your Kustomization resources. If you shard source-controller or helm-controller as well, label the related Source resources, HelmRelease resources, and generated HelmChart metadata with the same shard key so each controller can reconcile its part of the dependency chain.
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -200,7 +200,7 @@ You can use more complex label selectors for flexible sharding strategies.
 
 ```bash
 # Match multiple values using set-based selectors
---watch-label-selector=sharding.fluxcd.io/key in (shard-1,shard-2)
+--watch-label-selector='sharding.fluxcd.io/key in (shard-1,shard-2)'
 
 # Match by environment tier
 --watch-label-selector=tier=production
