@@ -40,10 +40,10 @@ curl -s http://localhost:9093/metrics | grep "^typha_" | head -40
 
 Key metric families to verify are present:
 
-- `typha_connections_accepted_total` - cumulative connections ever accepted
+- `typha_connections_accepted` - cumulative connections ever accepted
 - `typha_connections_active` - current connected Felix clients
-- `typha_snapshots_generated_total` - how often Typha sends a full state snapshot
-- `typha_updates_sent_total` - incremental updates dispatched to Felix clients
+- `typha_snapshots_generated` - how often Typha generates a full state snapshot
+- `typha_updates_total` - incremental updates received from the Syncer and fanned out to Felix clients
 
 ---
 
@@ -156,7 +156,7 @@ spec:
         # Alert when Typha stops sending updates to Felix clients
         - alert: TyphaSyncStalled
           expr: |
-            rate(typha_updates_sent_total[5m]) == 0
+            rate(typha_updates_total[5m]) == 0
           for: 5m
           labels:
             severity: warning
@@ -167,13 +167,13 @@ spec:
         # Alert when Typha is dropping clients due to slowness
         - alert: TyphaSendTimeout
           expr: |
-            increase(typha_connections_dropped_total[5m]) > 0
+            increase(typha_connections_dropped[5m]) > 0
           for: 1m
           labels:
             severity: warning
           annotations:
-            summary: "Typha is dropping slow Felix clients"
-            description: "{{ $value }} client(s) dropped in the last 5 minutes due to slow reads. Consider increasing TYPHA_CLIENTTIMEOUT."
+            summary: "Typha is dropping Felix clients"
+            description: "{{ $value }} client(s) dropped in the last 5 minutes. If clients are falling behind, consider increasing TYPHA_SERVERMAXFALLBEHINDSECS."
 ```
 
 ```bash
@@ -203,7 +203,7 @@ done
 - Alert on `typha_connections_active` dropping to zero for any pod - it means Felix agents connected to that pod have lost their sync path.
 - Create a dashboard panel showing `typha_connections_active` per pod instance to visualize balance at a glance.
 - Include Typha metrics in the same dashboard as Felix `route_table_list_seconds` to correlate Typha sync delays with Felix programming latency.
-- Export `typha_snapshots_generated_total` rate to detect unusually frequent full re-syncs, which can indicate API server connectivity problems.
+- Export `typha_snapshots_generated` rate to detect unusually frequent full re-syncs, which can indicate API server connectivity problems.
 
 ---
 
