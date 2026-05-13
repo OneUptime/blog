@@ -51,8 +51,10 @@ If you use conventional commits and semantic PR titles, identifying the right co
 
 ```bash
 # Revert a single commit
-# -m 1 is needed if the commit was a merge commit (PR merge)
 git revert --no-edit a3f9c12
+
+# -m 1 is needed if the commit was a merge commit (PR merge)
+git revert --no-edit -m 1 a3f9c12
 
 # If the bad change spanned multiple commits, revert a range
 # This reverts commits from (exclusive) 8b4d721 to (inclusive) a3f9c12
@@ -103,7 +105,7 @@ gh pr merge --squash
 
 ## Step 4: Watch Flux Reconcile the Rollback
 
-After the revert commit lands on `main`, Flux detects it within its configured interval (typically 1 minute) and begins reconciling:
+After the revert commit lands on `main`, Flux detects it on its configured source interval and begins reconciling. When the Git revision changes, Flux Kustomizations that watch that source reconcile automatically:
 
 ```bash
 # Watch all Kustomizations for changes
@@ -126,8 +128,8 @@ kubectl get deployment my-app -n production \
 After reconciliation, verify that the cluster state matches the reverted Git state:
 
 ```bash
-# Use flux diff to confirm there are no remaining differences
-flux diff kustomization apps-production
+# Use flux diff from your local checkout to confirm there are no remaining differences
+flux diff kustomization apps-production --path ./apps/production
 
 # Check the revision that Flux applied
 flux get kustomization apps-production
