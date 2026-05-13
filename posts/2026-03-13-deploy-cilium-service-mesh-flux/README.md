@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Cilium, Service Mesh, eBPF, Sidecarless, CNI
 
-Description: Deploy Cilium as a service mesh with Flux CD using eBPF-based networking for high-performance, sidecarless mutual TLS and observability.
+Description: Deploy Cilium as a service mesh with Flux CD using eBPF-based networking for high-performance, sidecarless mutual authentication and observability.
 
 ---
 
@@ -18,9 +18,9 @@ This guide covers deploying Cilium with service mesh features enabled using Flux
 
 ## Prerequisites
 
-- Kubernetes cluster where you can install a CNI (bare metal, EKS with custom CNI, or GKE Dataplane V2)
+- Kubernetes cluster where you can install a CNI (bare metal, EKS with custom CNI, or GKE Standard with Cilium as a custom CNI)
 - Flux CD v2 bootstrapped to your Git repository
-- Nodes running Linux kernel 5.4+ (5.10+ recommended for full eBPF feature support)
+- Nodes running Linux kernel 5.10+ or an equivalent distribution kernel, with WireGuard kernel support available
 
 ## Step 1: Create Namespace and HelmRepository
 
@@ -77,10 +77,12 @@ spec:
 
     # Enable mutual authentication (no sidecars needed)
     authentication:
+      enabled: true
       mutual:
         spire:
-          enabled: false
-      mode: required
+          enabled: true
+          install:
+            enabled: true
 
     # WireGuard transparent encryption for pod-to-pod traffic
     encryption:
@@ -180,6 +182,8 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app: frontend-service
+      authentication:
+        mode: required
       toPorts:
         - ports:
             - port: "8080"
@@ -200,7 +204,7 @@ spec:
 kubectl get daemonset cilium -n cilium
 
 # Verify encryption is enabled
-cilium status | grep "Encryption"
+cilium status --namespace cilium | grep "Encryption"
 
 # View Hubble flows
 kubectl port-forward svc/hubble-relay 4245:80 -n cilium
@@ -211,11 +215,11 @@ kubectl port-forward svc/hubble-ui 12000:80 -n cilium
 # Open http://localhost:12000
 
 # Check Cilium connectivity
-cilium connectivity test
+cilium connectivity test --namespace cilium
 
 # Verify WireGuard peers
 kubectl exec -n cilium daemonset/cilium -- \
-  cilium debuginfo | grep wireguard
+  cilium-dbg debuginfo --output json | grep wireguard
 ```
 
 ## Best Practices
