@@ -10,9 +10,9 @@ Description: Learn how to diagnose and fix a HelmRelease resource that is stuck 
 
 ## Introduction
 
-When managing Helm releases with Flux CD, you may encounter a situation where a HelmRelease shows a Ready condition with status Unknown. This state indicates that Flux has not been able to determine whether the release is healthy or not. Unlike a clear True or False status, the Unknown state means the controller has lost track of the release's status or has not yet completed its evaluation.
+When managing Helm releases with Flux CD, you may encounter a situation where a HelmRelease shows a Ready condition with status Unknown. This state indicates that Flux is reconciling the release, for example while the Helm Controller is working on an install or upgrade. Unlike a clear True or False status, the Unknown state means the controller has not yet completed its evaluation.
 
-A HelmRelease stuck in Ready Unknown can block your entire deployment pipeline. New changes pushed to Git will not be applied, and the release sits in limbo without moving forward or rolling back. Understanding why this happens and how to resolve it is critical for maintaining a healthy GitOps workflow.
+A HelmRelease stuck in Ready Unknown can block that release, and any workloads that depend on it, from moving forward or rolling back. Understanding why this happens and how to resolve it is critical for maintaining a healthy GitOps workflow.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ To follow along with this guide, you need:
 
 The Ready Unknown state can be triggered by several scenarios:
 
-The Helm Controller was restarted or crashed during a reconciliation. When the controller comes back up, it may not have the latest status cached and sets the condition to Unknown until it can re-evaluate.
+The Helm Controller was restarted or crashed during a reconciliation. When the controller comes back up, the release may remain in a reconciling state until it can re-evaluate the Helm release and Kubernetes resources.
 
 The HelmRelease was modified while a reconciliation was in progress. Concurrent changes can cause the controller to lose track of the current operation.
 
@@ -53,6 +53,11 @@ status:
       reason: Progressing
       status: Unknown
       type: Ready
+    - lastTransitionTime: "2026-03-13T10:30:00Z"
+      message: "reconciliation in progress"
+      reason: Progressing
+      status: "True"
+      type: Reconciling
 ```
 
 Check the Helm Controller logs for more details:
@@ -79,7 +84,7 @@ Or using kubectl:
 
 ```bash
 kubectl annotate helmrelease my-app -n production \
-  reconcile.fluxcd.io/requestAt="$(date +%s)" --overwrite
+  reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
 ```
 
 This tells the Helm Controller to immediately start a new reconciliation cycle, which will re-evaluate the release status and move it out of the Unknown state.
@@ -93,17 +98,18 @@ flux suspend helmrelease my-app -n production
 flux resume helmrelease my-app -n production
 ```
 
-This resets the controller's internal state for this release and forces a complete re-evaluation from scratch.
+This disables reconciliation for the release and then marks it for reconciliation again when it is resumed.
 
 ## Resolution Method 3: Check and Fix Helm Secrets
 
 If the Helm release secrets are corrupted or missing, the controller cannot determine the release state. List and inspect the secrets:
 
 ```bash
-kubectl get secrets -n production -l owner=helm,name=my-app --sort-by=.metadata.creationTimestamp
+kubectl get secrets -n production -l owner=helm,name=my-app \
+  --sort-by=.metadata.creationTimestamp -L status
 ```
 
-If the latest secret has a pending status, remove it to unblock the controller:
+If the latest secret has a Helm pending status such as `pending-install`, `pending-upgrade`, or `pending-rollback`, and you have confirmed that no Helm or Flux operation is still running, back it up and remove that specific pending revision to unblock the controller:
 
 ```bash
 kubectl delete secret sh.helm.release.v1.my-app.v3 -n production
@@ -131,7 +137,7 @@ kubectl rollout status deployment/helm-controller -n flux-system
 
 ## Preventing Future Occurrences
 
-Configure your HelmReleases with proper timeouts and health checks to reduce the chance of getting stuck:
+Configure your HelmReleases with proper timeouts and remediation settings to reduce the chance of getting stuck:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -160,7 +166,7 @@ spec:
       remediateLastFailure: true
 ```
 
-Setting a reasonable `timeout` ensures that operations do not hang indefinitely, which is one of the primary causes of the Unknown state. The remediation settings ensure that failed operations are handled automatically rather than leaving the release in an indeterminate state.
+Setting a reasonable `timeout` limits how long the Helm Controller waits for individual Kubernetes operations during Helm actions. The remediation settings ensure that failed operations are handled automatically rather than leaving the release in an indeterminate state.
 
 Additionally, make sure your Helm Controller has adequate resource limits:
 
