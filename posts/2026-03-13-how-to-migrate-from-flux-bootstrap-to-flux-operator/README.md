@@ -44,39 +44,18 @@ kubectl get -n flux-system secret -o yaml > flux-secrets-backup.yaml
 
 ## Step 2: Install the Flux Operator
 
-Add the Flux Operator Helm repository and install it alongside your existing Flux installation:
+Install the Flux Operator alongside your existing Flux installation in the same namespace:
 
 ```bash
-helm repo add controlplaneio-fluxcd https://controlplaneio-fluxcd.github.io/charts
-helm repo update
-```
-
-Install the Flux Operator in its own namespace:
-
-```yaml
-# flux-operator-values.yaml
-
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: flux-operator-system
----
-# Install via Helm
-# helm install flux-operator controlplaneio-fluxcd/flux-operator \
-#   -n flux-operator-system \
-#   -f flux-operator-values.yaml
-```
-
-```bash
-helm install flux-operator controlplaneio-fluxcd/flux-operator \
-  -n flux-operator-system \
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
+  -n flux-system \
   --create-namespace
 ```
 
 Verify the operator is running:
 
 ```bash
-kubectl get pods -n flux-operator-system
+kubectl get pods -n flux-system
 ```
 
 ## Step 3: Create the FluxInstance Resource
@@ -92,7 +71,7 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.x"
+    version: "2.8.x"
     registry: "ghcr.io/fluxcd"
   components:
     - source-controller
@@ -120,17 +99,7 @@ spec:
             value: --concurrent=10
 ```
 
-## Step 4: Pause Bootstrap Reconciliation
-
-Before applying the FluxInstance, pause the bootstrap Kustomization to prevent conflicts:
-
-```bash
-flux suspend kustomization flux-system
-```
-
-This ensures the bootstrap Kustomization does not fight with the Flux Operator over the Flux component manifests.
-
-## Step 5: Apply the FluxInstance
+## Step 4: Apply the FluxInstance
 
 Apply the FluxInstance resource:
 
@@ -144,17 +113,17 @@ Monitor the Flux Operator as it reconciles the FluxInstance:
 kubectl get fluxinstance -n flux-system -w
 ```
 
-The operator will take ownership of the Flux components and manage them going forward.
-
-## Step 6: Remove Bootstrap Artifacts
-
-Once the FluxInstance is successfully reconciled and all Flux components are healthy, remove the bootstrap-specific resources:
+Or wait for the FluxInstance to become ready:
 
 ```bash
-kubectl delete kustomization flux-system -n flux-system
+kubectl -n flux-system wait fluxinstance/flux --for=condition=Ready
 ```
 
-Remove the bootstrap manifests from your Git repository. Delete the `flux-system/` directory that was created by `flux bootstrap`:
+Once the resource is reconciled, the operator will take ownership of the Flux components, GitRepository, and Kustomization, and manage them going forward.
+
+## Step 5: Remove Bootstrap Artifacts
+
+Once the FluxInstance is successfully reconciled and all Flux components are healthy, remove the bootstrap component and sync manifests from your Git repository:
 
 ```bash
 # In your fleet-infra repository
@@ -170,7 +139,7 @@ git add -A && git commit -m "Migrate from Flux Bootstrap to Flux Operator"
 git push
 ```
 
-## Step 7: Verify the Migration
+## Step 6: Verify the Migration
 
 Confirm all Flux components are running and managed by the operator:
 
@@ -203,6 +172,7 @@ If your cluster uses private registries, configure the distribution registry and
 spec:
   distribution:
     registry: "my-registry.example.com/fluxcd"
+    variant: "upstream-alpine"
     imagePullSecret: "registry-credentials"
 ```
 
