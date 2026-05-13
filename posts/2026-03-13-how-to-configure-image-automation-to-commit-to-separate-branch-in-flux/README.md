@@ -64,7 +64,7 @@ The workflow operates as follows:
 3. It commits the changes and pushes to `flux-image-updates`
 4. On subsequent runs, Flux checks out `main` again (not the push branch)
 5. It re-applies any updates that are still pending (not yet merged to main)
-6. If the push branch already has the same changes, no new commit is made
+6. By default, Flux updates the push branch from the checkout branch plus the latest changes, force-pushing the branch if it already exists
 
 This means the push branch always contains the latest image updates relative to the current state of the main branch. When you merge the push branch into main, the next automation run will find no pending changes and will not create a new commit.
 
@@ -120,20 +120,26 @@ on:
     branches:
       - flux-image-updates
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   create-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: flux-image-updates
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          branch: flux-image-updates
-          base: main
-          title: "Automated image updates"
-          body: "This PR contains automated image tag updates from Flux."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head flux-image-updates --json number --jq length)" = "0" ]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head flux-image-updates \
+              --title "Automated image updates" \
+              --body "This PR contains automated image tag updates from Flux."
+          fi
 ```
 
 ## Handling Multiple Environments
