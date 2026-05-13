@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, CNI, Configuration, AKS, Azure
 
-Description: A step-by-step guide to deploying Calico as the network policy engine on a new Azure Kubernetes Service cluster, enabling advanced network policies beyond what Azure CNI provides natively.
+Description: A step-by-step guide to deploying Calico as the network policy engine on a new Azure Kubernetes Service cluster, enabling Kubernetes NetworkPolicy enforcement with Azure CNI.
 
 ---
 
 ## Introduction
 
-Azure Kubernetes Service supports Calico as a network policy provider alongside Azure CNI. While Azure CNI handles pod networking and IP address assignment using Azure VNet IPs, Calico enforces network policies using its powerful policy engine - giving you access to GlobalNetworkPolicies, host endpoint policies, and other Calico features not available with Azure's native policy implementation.
+Azure Kubernetes Service supports Calico as a network policy provider alongside Azure CNI. While Azure CNI handles pod networking and IP address assignment using Azure VNet IPs, Azure-managed Calico enforces standard Kubernetes NetworkPolicy resources.
 
-This combination is popular for teams that need the VNet integration of Azure CNI with the policy richness of Calico. AKS can provision Calico automatically during cluster creation, making it straightforward to deploy.
+This combination is popular for teams that need the VNet integration of Azure CNI with Kubernetes network policy enforcement. AKS can provision Calico automatically during cluster creation, making it straightforward to deploy.
 
 This guide covers creating a new AKS cluster with Calico as the network policy provider and verifying the installation is healthy.
 
@@ -21,7 +21,6 @@ This guide covers creating a new AKS cluster with Calico as the network policy p
 - Azure CLI installed and authenticated (`az login`)
 - An Azure subscription with sufficient quota
 - `kubectl` installed
-- `calicoctl` CLI installed
 
 ## Step 1: Create an AKS Cluster with Calico Network Policy
 
@@ -65,26 +64,20 @@ az aks get-credentials \
 kubectl get nodes -o wide
 
 # Check that Calico system pods are running
-kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l k8s-app=calico-typha
+kubectl get pods -n kube-system | grep calico
 ```
 
-## Step 3: Install calicoctl for Policy Management
+## Step 3: Confirm the Network Policy Configuration
 
-Configure `calicoctl` to manage Calico resources on the AKS cluster.
+Confirm that AKS reports Calico as the configured network policy engine.
 
 ```bash
-# Download calicoctl
-curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 \
-  -o calicoctl && chmod +x calicoctl
-
-# Configure calicoctl to use the Kubernetes API datastore (default for AKS)
-export CALICO_DATASTORE_TYPE=kubernetes
-export KUBECONFIG=~/.kube/config
-
-# Verify calicoctl can connect to the cluster
-calicoctl node status
-calicoctl get nodes
+# Confirm the AKS network profile
+az aks show \
+  --resource-group $RESOURCE_GROUP \
+  --name $CLUSTER_NAME \
+  --query "networkProfile.{networkPlugin:networkPlugin,networkPolicy:networkPolicy}" \
+  --output table
 ```
 
 ## Step 4: Apply Your First Network Policy
@@ -132,6 +125,7 @@ spec:
 ```bash
 # Apply the namespace and policies
 kubectl create namespace production
+kubectl create namespace frontend
 kubectl apply -f default-deny.yaml
 kubectl apply -f allow-web-policy.yaml
 
@@ -139,50 +133,41 @@ kubectl apply -f allow-web-policy.yaml
 kubectl get networkpolicy -n production
 ```
 
-## Step 5: Use Calico-Specific GlobalNetworkPolicy
+## Step 5: Understand Calico-Specific Policy APIs
 
-Leverage Calico's extended policy capabilities beyond standard Kubernetes NetworkPolicy.
+AKS-managed Calico supports standard Kubernetes NetworkPolicy resources. Calico-specific APIs such as GlobalNetworkPolicy require a self-managed Calico installation and are not part of the AKS-managed Calico feature set.
 
 ```yaml
-# global-deny-all.yaml
-# Calico GlobalNetworkPolicy as a cluster-wide default deny
-apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+# namespace-default-deny.yaml
+# Standard Kubernetes NetworkPolicy as a namespace-wide default deny
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
   name: default-deny-all
+  namespace: production
 spec:
-  order: 1000
-  selector: all()
-  types:
+  podSelector: {}
+  policyTypes:
   - Ingress
   - Egress
-  ingress:
-  - action: Deny
-  egress:
-  # Allow DNS to function
-  - action: Allow
-    protocol: UDP
-    destination:
-      ports: [53]
-  - action: Deny
 ```
 
 ```bash
-# Apply the global policy
-calicoctl apply -f global-deny-all.yaml
+# Apply the namespace-wide policy
+kubectl apply -f namespace-default-deny.yaml
 
-# Verify the global policy
-calicoctl get globalnetworkpolicies
+# Verify the policy
+kubectl get networkpolicy -n production
 ```
 
 ## Best Practices
 
-- Use Azure CNI with Calico for full VNet integration and advanced policy features
+- Use Azure CNI with Calico for full VNet integration and standard Kubernetes NetworkPolicy enforcement
 - Apply default-deny policies per namespace as soon as you create them
-- Use GlobalNetworkPolicy for cluster-wide baseline security rules
-- Monitor Calico pod health regularly: `kubectl get pods -n kube-system -l k8s-app=calico-node`
-- Enable Calico's flow logging for audit and troubleshooting purposes
+- Use namespace-scoped Kubernetes NetworkPolicy resources for AKS-managed Calico
+- Monitor Calico pod health regularly: `kubectl get pods -n kube-system | grep calico`
+- Use self-managed Calico if you need Calico-specific APIs such as GlobalNetworkPolicy or Calico flow logs
 
 ## Conclusion
 
-Deploying Calico on AKS provides a powerful combination of Azure's native networking with Calico's advanced policy engine. With GlobalNetworkPolicy support and the full Calico feature set available alongside Azure VNet integration, you can enforce sophisticated security postures on AKS without sacrificing the cloud-native networking benefits of Azure CNI.
+Deploying Calico on AKS provides a useful combination of Azure's native networking with Kubernetes NetworkPolicy enforcement. For teams that need Azure VNet integration and standard Kubernetes policy controls, AKS-managed Calico can enforce namespace and workload isolation without sacrificing the cloud-native networking benefits of Azure CNI.
