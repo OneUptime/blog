@@ -12,7 +12,7 @@ Description: Learn how to coordinate frontend and backend deployment as a unit u
 
 Full-stack applications require both frontend and backend services to work in concert. When you deploy a new API version that introduces breaking changes, the frontend must be updated simultaneously - or the frontend must gracefully handle version mismatches. Coordinating these deployments manually is error-prone; Flux CD provides a GitOps-native way to deploy both together while ensuring the backend is healthy before the frontend is exposed to users.
 
-The key challenge in full-stack deployment is timing: the backend API must be ready to serve requests before the frontend starts directing user traffic to it. A new frontend that hits an old or unavailable backend creates a broken user experience. Flux's `dependsOn` field solves this by making the frontend Kustomization dependent on the backend, so Flux waits for backend readiness before deploying the frontend.
+The key challenge in full-stack deployment is timing: the backend API must be ready to serve requests before the frontend starts directing user traffic to it. A new frontend that hits an old or unavailable backend creates a broken user experience. Flux's `dependsOn` field solves this by making the frontend Kustomization dependent on the backend, and `readyExpr` can verify that both Kustomizations carry the same release label before Flux deploys the frontend.
 
 In this guide you will structure a Git repository with frontend and backend directories, create Flux Kustomizations with proper dependency ordering, and configure shared environment variables that both services read from a common ConfigMap.
 
@@ -197,6 +197,8 @@ kind: Kustomization
 metadata:
   name: backend
   namespace: flux-system
+  labels:
+    app/version: v2.5.0-v3.1.0
 spec:
   interval: 10m
   sourceRef:
@@ -204,7 +206,6 @@ spec:
     name: app-repo
   path: ./apps/backend
   prune: true
-  wait: true
   # Backend depends on shared config being applied first
   dependsOn:
     - name: app-shared
@@ -220,6 +221,8 @@ kind: Kustomization
 metadata:
   name: frontend
   namespace: flux-system
+  labels:
+    app/version: v2.5.0-v3.1.0
 spec:
   interval: 10m
   sourceRef:
@@ -227,10 +230,13 @@ spec:
     name: app-repo
   path: ./apps/frontend
   prune: true
-  wait: true
-  # Frontend only deploys after backend is healthy
+  # Frontend only deploys after the matching backend release is healthy
   dependsOn:
     - name: backend
+      readyExpr: >
+        dep.metadata.labels['app/version'] == self.metadata.labels['app/version'] &&
+        dep.status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True') &&
+        dep.metadata.generation == dep.status.observedGeneration
     - name: app-shared
   healthChecks:
     - apiVersion: apps/v1
@@ -244,15 +250,15 @@ spec:
 When you need to release both frontend and backend changes together, commit both in one Git push.
 
 ```bash
-# Push both frontend and backend changes in one commit
-git add apps/backend/deployment.yaml apps/frontend/deployment.yaml
+# Push both frontend and backend changes in one commit, including the matching release label
+git add apps/backend/deployment.yaml apps/frontend/deployment.yaml clusters/production/apps/backend-kustomization.yaml clusters/production/apps/frontend-kustomization.yaml
 git commit -m "release: v2.5.0 backend + v3.1.0 frontend"
 git push
 
 # Flux detects the change and reconciles in order:
 # 1. app-shared (no deps)
 # 2. backend (depends on app-shared)
-# 3. frontend (depends on backend)
+# 3. frontend (depends on the matching backend release)
 
 # Monitor the full-stack reconciliation
 flux get kustomizations --watch
@@ -273,11 +279,12 @@ git push
 # The frontend rolls back only after the backend rolls back
 flux get kustomizations --watch
 
-# Or suspend and manually rollback
+# Or suspend while you prepare the Git revert and perform an emergency manual rollback
 flux suspend kustomization frontend
 flux suspend kustomization backend
 kubectl rollout undo deployment/frontend -n app
 kubectl rollout undo deployment/backend -n app
+# Resume only after Git contains the rollback state
 flux resume kustomization backend
 flux resume kustomization frontend
 ```
@@ -285,12 +292,12 @@ flux resume kustomization frontend
 ## Best Practices
 
 - Use a shared ConfigMap for settings that must be consistent between frontend and backend
-- Always deploy the frontend with `dependsOn` pointing to the backend
+- Always deploy the frontend with `dependsOn` pointing to the backend, and use `readyExpr` for lockstep releases
 - Build frontend Docker images with runtime environment variable support (not compile-time) so the same image works across environments
-- Use the same Git tag in both the frontend and backend Docker image references for versioned releases
+- Use the same release label on both Flux Kustomizations for versioned releases
 - Consider using Flux image automation to keep image tags in sync across both services
 - Run integration tests in a staging environment after both services deploy before promoting to production
 
 ## Conclusion
 
-Deploying frontend and backend services together with Flux CD combines the simplicity of a single Git push with the safety of ordered, health-checked reconciliation. By declaring the frontend's dependency on the backend in Flux Kustomization resources and sharing configuration through a common ConfigMap, you ensure your full-stack application deploys correctly every time. When either layer needs a rollback, Flux handles the ordering in reverse, keeping your deployment always in a consistent state.
+Deploying frontend and backend services together with Flux CD combines the simplicity of a single Git push with the safety of ordered, health-checked reconciliation. By declaring the frontend's dependency on the backend in Flux Kustomization resources and sharing configuration through a common ConfigMap, you ensure your full-stack application deploys correctly every time. When either layer needs a rollback, Flux applies the reverted Git state through the same dependency ordering, keeping your deployment consistent.
