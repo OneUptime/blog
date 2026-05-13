@@ -20,8 +20,8 @@ This guide provides a systematic approach to diagnosing kube-system access failu
 
 - Pods in application namespaces cannot resolve DNS names
 - `kubectl exec <pod> -- nslookup kubernetes.default` fails or times out
-- Metrics collection from kube-system components fails
-- `kubectl exec <pod> -- curl http://metrics-server.kube-system.svc/apis/metrics.k8s.io/v1beta1/pods` fails
+- Metrics API checks fail when policy blocks traffic to metrics-server
+- `kubectl get --raw "/apis/metrics.k8s.io/v1beta1/pods"` fails
 
 ## Root Causes
 
@@ -74,7 +74,7 @@ kubectl exec <pod-name> -n <namespace> -- \
 
 ```bash
 # Common label names used in NetworkPolicy namespaceSelectors
-kubectl get namespace kube-system -o jsonpath='{.metadata.labels}' | python3 -m json.tool
+kubectl get namespace kube-system -o jsonpath-as-json='{.metadata.labels}' | python3 -m json.tool
 ```
 
 ```mermaid
