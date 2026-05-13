@@ -161,7 +161,7 @@ metrics:
 
 ### CPU Usage
 
-Ensure the canary does not use excessive CPU:
+Ensure the canary does not use excessive CPU, measured as a percentage of one CPU core:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -184,7 +184,7 @@ spec:
     ) * 100
 ```
 
-Use in Canary:
+Use in Canary (max 80 means 80% of one CPU core on average):
 
 ```yaml
 metrics:
