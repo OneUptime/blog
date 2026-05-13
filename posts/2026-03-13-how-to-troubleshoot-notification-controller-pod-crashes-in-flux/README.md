@@ -50,7 +50,7 @@ kubectl logs -n flux-system deploy/notification-controller --tail=200
 
 ### Event Flooding
 
-When many Flux resources are reconciling simultaneously, the Notification Controller can be overwhelmed by the volume of events it needs to process and dispatch:
+When many Flux resources are reconciling simultaneously, the Notification Controller can spend more time processing and dispatching events:
 
 ```bash
 kubectl logs -n flux-system deploy/notification-controller | grep -c "Dispatching"
@@ -59,7 +59,7 @@ kubectl logs -n flux-system deploy/notification-controller | grep -c "Dispatchin
 If the event volume is very high, consider reducing the number of Alert resources or making their event selectors more specific:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-alerts
@@ -68,14 +68,16 @@ spec:
   eventSeverity: error
   eventSources:
     - kind: Kustomization
-      name: production-*
+      name: '*'
+      matchLabels:
+        environment: production
   providerRef:
     name: slack-provider
 ```
 
 ### Unreachable Webhook Endpoints
 
-If the configured Provider endpoints are unreachable and the controller does not handle timeouts gracefully, it can crash or become unresponsive:
+If the configured Provider endpoints are unreachable, the controller will log delivery errors and can spend time waiting for outbound HTTP requests to fail:
 
 ```bash
 kubectl logs -n flux-system deploy/notification-controller | grep -i "timeout\|connection refused\|unreachable"
@@ -94,9 +96,9 @@ Ensure the webhook URLs in your Provider secrets are correct and reachable from 
 kubectl get secret <provider-secret> -n flux-system -o jsonpath='{.data.address}' | base64 -d
 ```
 
-### OOMKilled from Large Event Payloads
+### OOMKilled from High Event Volume
 
-If events contain large payloads such as full resource manifests, the controller may run out of memory:
+If the controller is processing a high volume of events or is running with very low memory limits, it may run out of memory:
 
 ```bash
 kubectl get pod -n flux-system -l app=notification-controller -o jsonpath='{.items[0].status.containerStatuses[0].lastState.terminated.reason}'
@@ -110,7 +112,7 @@ kubectl patch deployment notification-controller -n flux-system --type='json' -p
 
 ### Invalid Provider or Alert Configuration
 
-Misconfigured Provider or Alert resources can cause the controller to panic during reconciliation:
+Misconfigured Provider or Alert resources can prevent those resources from becoming ready and may produce validation or reconciliation errors:
 
 ```bash
 kubectl logs -n flux-system deploy/notification-controller | grep -i "panic\|nil pointer\|invalid"
@@ -125,7 +127,7 @@ flux get alert-providers --all-namespaces
 
 ### Webhook Receiver TLS Issues
 
-If you are using the Notification Controller as a webhook receiver with TLS, certificate issues can cause crashes:
+If you expose the webhook receiver through an Ingress, Gateway, or load balancer with TLS, certificate issues can prevent webhook delivery:
 
 ```bash
 kubectl logs -n flux-system deploy/notification-controller | grep -i "tls\|certificate\|x509"
@@ -139,7 +141,7 @@ kubectl get receiver -n flux-system
 
 ## Step 4: Check Service and Ingress Configuration
 
-The Notification Controller exposes a webhook receiver endpoint. Verify the service is properly configured:
+The Notification Controller exposes services for the event API and webhook receiver endpoint. Verify the services are properly configured:
 
 ```bash
 kubectl get svc -n flux-system notification-controller
@@ -166,7 +168,7 @@ flux get alert-providers --all-namespaces
 
 - Use specific event selectors in Alert resources to reduce the volume of events processed
 - Set `eventSeverity: error` on alerts where you only need failure notifications
-- Monitor the Notification Controller metrics endpoint for event queue depth
+- Monitor the Notification Controller metrics endpoint for controller runtime, HTTP request, and rate-limited event metrics
 - Test webhook endpoints for reachability before configuring Providers
 - Set appropriate timeouts in Provider configurations to prevent the controller from hanging
 - Keep the number of Alert resources manageable and consolidate where possible
