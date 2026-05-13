@@ -24,10 +24,10 @@ After applying any fix, the calico-node pod must be restarted cleanly. A fresh s
 
 ## Root Causes
 
-- Kernel modules not loaded (`ipip`, `xt_set`, `nf_conntrack`)
+- Required kernel support is unavailable (`ipip` for IP-in-IP mode, IP sets, or netfilter conntrack)
 - CNI config at `/etc/cni/net.d/` is corrupted or belongs to another CNI
 - RBAC ClusterRole missing required API group permissions
-- etcd endpoint in calico-config ConfigMap is stale or unreachable
+- etcd endpoint in calico-config ConfigMap is stale or unreachable when Calico is using the etcd datastore
 
 ## Diagnosis Steps
 
@@ -35,6 +35,7 @@ After applying any fix, the calico-node pod must be restarted cleanly. A fresh s
 # Get crash reason from previous container
 
 NODE_POD=<calico-node-pod-name>
+NODE_NAME=<node-name>
 kubectl logs $NODE_POD -n kube-system --previous -c calico-node | tail -30
 ```
 
@@ -48,8 +49,8 @@ modprobe ipip
 modprobe xt_set
 modprobe nf_conntrack
 
-# Make permanent across reboots
-cat >> /etc/modules <<EOF
+# Make permanent across reboots on systems that use modules-load.d
+cat > /etc/modules-load.d/calico.conf <<EOF
 ipip
 xt_set
 nf_conntrack
@@ -75,18 +76,21 @@ kubectl delete pod $NODE_POD -n kube-system
 
 ```bash
 # Re-apply the Calico ClusterRole and ClusterRoleBinding
+# Use the manifest version that matches your installed Calico release.
 kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml \
   --server-side --field-manager=calico
 
-# Or patch specific missing permissions
+# Or patch the exact missing rule after comparing against the official manifest.
+# Example: EndpointSlice permissions required by Calico v3.27.0
 kubectl patch clusterrole calico-node --type=json \
-  -p='[{"op":"add","path":"/rules/-","value":{"apiGroups":[""],"resources":["pods","nodes","namespaces"],"verbs":["get","list","watch"]}}]'
+  -p='[{"op":"add","path":"/rules/-","value":{"apiGroups":["discovery.k8s.io"],"resources":["endpointslices"],"verbs":["watch","list"]}}]'
 ```
 
 **Fix 4: Update stale datastore endpoint**
 
 ```bash
-# Update the calico-config ConfigMap
+# Only for Calico installations that use the etcd datastore.
+# The default v3.27 manifest uses the Kubernetes API datastore and does not set etcd_endpoints.
 kubectl patch configmap calico-config -n kube-system --type=merge \
   -p '{"data":{"etcd_endpoints":"https://<correct-etcd-ip>:2379"}}'
 
@@ -98,14 +102,15 @@ kubectl rollout status daemonset calico-node -n kube-system
 **Fix 5: Reset calico-node on a single node**
 
 ```bash
-# Cordon the node first to prevent workload disruption
+# Cordon the node first to prevent new workloads while node networking restarts
 kubectl cordon <node-name>
 
 # Delete calico-node pod
 kubectl delete pod $NODE_POD -n kube-system
 
-# Wait for replacement to be ready
+# Wait for the replacement on the same node to be ready
 kubectl wait pods -l k8s-app=calico-node -n kube-system \
+  --field-selector spec.nodeName=$NODE_NAME \
   --for=condition=Ready --timeout=120s
 
 # Uncordon
@@ -115,10 +120,10 @@ kubectl uncordon <node-name>
 ```mermaid
 flowchart TD
     A[CrashLoopBackOff] --> B{Root cause?}
-    B -- Missing kernel module --> C[modprobe ipip xt_set]
+    B -- Missing kernel support --> C[modprobe ipip xt_set]
     B -- CNI config conflict --> D[Remove old CNI config files]
     B -- RBAC missing --> E[Re-apply ClusterRole]
-    B -- Bad datastore endpoint --> F[Patch calico-config ConfigMap]
+    B -- Bad etcd datastore endpoint --> F[Patch calico-config ConfigMap]
     C --> G[Delete pod to restart]
     D --> G
     E --> G
