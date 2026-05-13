@@ -28,7 +28,7 @@ Operationalizing Calico VPP troubleshooting means creating repeatable processes 
 
 2. Collect immediate state:
    kubectl logs -n calico-vpp-dataplane <vpp-pod> -c vpp | tail -100
-   kubectl logs -n calico-vpp-dataplane <vpp-pod> -c calico-vpp-manager | tail -100
+   kubectl logs -n calico-vpp-dataplane <vpp-pod> -c agent | tail -100
 
 3. Attempt VPP restart (if confirmed VPP process is dead):
    kubectl delete pod -n calico-vpp-dataplane <vpp-pod>
@@ -55,12 +55,12 @@ kubectl get felixconfiguration default -o yaml > "${BUNDLE}/felixconfig.yaml"
 
 # Per-node VPP state
 for pod in $(kubectl get pods -n "${VPP_NS}" \
-  -l app=calico-vpp-node -o jsonpath='{.items[*].metadata.name}'); do
+  -l k8s-app=calico-vpp-node -o jsonpath='{.items[*].metadata.name}'); do
   NODE=$(kubectl get pod -n "${VPP_NS}" "${pod}" -o jsonpath='{.spec.nodeName}')
   mkdir -p "${BUNDLE}/nodes/${NODE}"
 
   for cmd in "show version" "show interface" "show ip fib" \
-             "show error" "show nat44 summary" "show hardware-interfaces"; do
+             "show errors" "show nat44 summary" "show hardware-interfaces"; do
     FNAME=$(echo "${cmd}" | tr ' ' '-')
     kubectl exec -n "${VPP_NS}" "${pod}" -c vpp -- \
       vppctl ${cmd} > "${BUNDLE}/nodes/${NODE}/${FNAME}.txt" 2>/dev/null || true
@@ -68,8 +68,8 @@ for pod in $(kubectl get pods -n "${VPP_NS}" \
 
   kubectl logs -n "${VPP_NS}" "${pod}" -c vpp \
     > "${BUNDLE}/nodes/${NODE}/vpp-logs.txt" 2>/dev/null || true
-  kubectl logs -n "${VPP_NS}" "${pod}" -c calico-vpp-manager \
-    > "${BUNDLE}/nodes/${NODE}/manager-logs.txt" 2>/dev/null || true
+  kubectl logs -n "${VPP_NS}" "${pod}" -c agent \
+    > "${BUNDLE}/nodes/${NODE}/agent-logs.txt" 2>/dev/null || true
 done
 
 tar -czf "${BUNDLE}.tar.gz" "${BUNDLE}/"
@@ -101,10 +101,10 @@ flowchart TD
 Before handling VPP incidents independently, engineers must complete:
 
 1. **Lab exercise**: Deploy Calico VPP in test cluster, break connectivity,
-   diagnose using vppctl show error and trace commands
+   diagnose using vppctl show errors and trace commands
 
 2. **Command fluency**: Be able to run from memory:
-   - vppctl show interface | show ip fib | show error | show nat44 summary
+   - vppctl show interface | show ip fib | show errors | show nat44 summary
    - Collect diagnostic bundle using support script
 
 3. **Escalation judgment**: Know when to escalate vs. attempt restart:
