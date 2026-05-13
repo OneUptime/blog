@@ -220,8 +220,8 @@ spec:
         metadata:
           type: bash
           cmd: |
-            kubectl get canary order-service -n default -o jsonpath='{.status.phase}' | grep -v Failed &&
-            kubectl get canary payment-service -n default -o jsonpath='{.status.phase}' | grep -v Failed
+            kubectl get canary order-service -n default -o jsonpath='{.status.phase}' | grep -q '^Succeeded$' &&
+            kubectl get canary payment-service -n default -o jsonpath='{.status.phase}' | grep -q '^Succeeded$'
 ```
 
 The `confirm-promotion` webhook runs after analysis passes but before the canary is promoted. This lets you gate promotion on the status of other canaries.
@@ -271,7 +271,7 @@ If one service fails its canary analysis while others succeed, you have two opti
 
 1. **Independent rollback**: Let each canary manage its own lifecycle. Failed services roll back while successful ones promote. This works when services maintain backward compatibility.
 
-2. **Coordinated rollback**: Use `confirm-promotion` webhooks to check that all related canaries are healthy. If any canary fails, the others will not promote and will eventually roll back when they hit their threshold.
+2. **Coordinated rollback**: Use `confirm-promotion` webhooks to check that all related canaries have completed successfully before a dependent canary promotes. If any canary fails, the gated canaries will not promote; use a rollback webhook or external automation if you need to actively roll them back together.
 
 For coordinated rollback, increase the `threshold` value to give dependent services time to complete their analysis:
 
