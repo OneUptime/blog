@@ -85,33 +85,41 @@ spec:
   - Egress
   egress:
   - action: Allow
+    protocol: UDP
     destination:
       selector: k8s-app == "kube-dns"
       namespaceSelector: kubernetes.io/metadata.name == "kube-system"
-    ports:
-    - protocol: UDP
-      port: 53
+      ports:
+      - 53
+  - action: Allow
+    protocol: TCP
+    destination:
+      selector: k8s-app == "kube-dns"
+      namespaceSelector: kubernetes.io/metadata.name == "kube-system"
+      ports:
+      - 53
 EOF
 ```
 
 This denies all traffic except DNS by default.
 
-## Step 5: Configure IP Pools for Block Sizing
+## Step 5: Configure Per-Node Pod CIDR Sizing
 
-Even in Canal mode, Calico manages IPAM. Adjust block sizes if nodes are large or if you need finer allocation.
+In Canal mode with the Kubernetes API datastore, Flannel uses Kubernetes-assigned PodCIDRs with the host-local IPAM plugin. Configure per-node CIDR sizing on the Kubernetes controller manager before cluster creation.
+
+```yaml
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+networking:
+  podSubnet: 192.168.0.0/16
+controllerManager:
+  extraArgs:
+  - name: node-cidr-mask-size
+    value: "24"
+```
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: default-ipv4-ippool
-spec:
-  cidr: 192.168.0.0/16
-  blockSize: 24
-  natOutgoing: true
-  nodeSelector: all()
-EOF
+kubeadm init --config kubeadm-config.yaml
 ```
 
 ## Step 6: Set Node-Specific Configuration
@@ -130,19 +138,25 @@ spec:
 EOF
 ```
 
-## Step 7: Enable Wireguard Encryption (Optional)
+## Step 7: Plan WireGuard Encryption (Optional)
 
-Canal supports WireGuard for in-cluster traffic encryption.
+Calico's `wireguardEnabled` setting applies to Calico-managed pod networking. For a Canal cluster that uses Flannel VXLAN for the data path, enable encryption by choosing Flannel's WireGuard backend before rollout, or migrate to Calico native networking and then enable Calico WireGuard.
 
-```bash
-kubectl patch felixconfiguration default \
-  --patch '{"spec":{"wireguardEnabled": true}}'
+Edit the `net-conf.json` backend before applying Canal.
+
+```json
+{
+  "Network": "192.168.0.0/16",
+  "Backend": {
+    "Type": "wireguard"
+  }
+}
 ```
 
-Verify WireGuard is active.
+After rollout, verify the WireGuard interface on each node.
 
 ```bash
-kubectl get nodes -o yaml | grep wireguard
+ip link show flannel-wg
 ```
 
 ## Conclusion
