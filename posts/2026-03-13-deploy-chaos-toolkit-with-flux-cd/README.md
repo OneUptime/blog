@@ -19,7 +19,7 @@ By the end of this tutorial, you will have a GitOps workflow where adding a new 
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD bootstrapped
-- Docker registry accessible from the cluster (for the Chaos Toolkit image)
+- Access to `chaostoolkit/chaostoolkit:full`, or a custom Chaos Toolkit image with `chaostoolkit-kubernetes` installed
 - `flux` and `kubectl` CLI tools
 - Git repository connected to Flux CD
 
@@ -144,15 +144,15 @@ spec:
       restartPolicy: Never
       containers:
         - name: chaos-toolkit
-          # Official Chaos Toolkit image with Kubernetes driver
-          image: chaostoolkit/chaostoolkit:latest
+          # Official Chaos Toolkit image with popular extensions, including the Kubernetes driver
+          image: chaostoolkit/chaostoolkit:full
           command: ["chaos", "run", "/experiments/experiment.json"]
           volumeMounts:
             - name: experiment
               mountPath: /experiments
           env:
-            - name: CHAOSTOOLKIT_LOADER_PATH
-              value: /experiments
+            - name: CHAOSTOOLKIT_IN_POD
+              value: "true"
       volumes:
         - name: experiment
           configMap:
@@ -169,7 +169,7 @@ metadata:
   name: chaos-pod-termination-scheduled
   namespace: chaos-toolkit
 spec:
-  # Run every day at 2 AM during business hours
+  # Run every weekday at 2 AM
   schedule: "0 2 * * 1-5"
   jobTemplate:
     spec:
@@ -179,11 +179,14 @@ spec:
           restartPolicy: Never
           containers:
             - name: chaos-toolkit
-              image: chaostoolkit/chaostoolkit:latest
+              image: chaostoolkit/chaostoolkit:full
               command: ["chaos", "run", "/experiments/experiment.json"]
               volumeMounts:
                 - name: experiment
                   mountPath: /experiments
+              env:
+                - name: CHAOSTOOLKIT_IN_POD
+                  value: "true"
           volumes:
             - name: experiment
               configMap:
@@ -193,7 +196,7 @@ spec:
 ## Step 6: Create the Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/chaos-toolkit/kustomization.yaml
+# clusters/my-cluster/flux-system/chaos-toolkit-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -207,6 +210,8 @@ spec:
     kind: GitRepository
     name: flux-system
 ```
+
+Commit this Flux `Kustomization` manifest in a path that is already reconciled by Flux, such as `clusters/my-cluster/flux-system`. The `path` field should point to the directory that contains the Chaos Toolkit manifests.
 
 ## Best Practices
 
