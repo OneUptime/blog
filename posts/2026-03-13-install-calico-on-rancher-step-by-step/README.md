@@ -10,7 +10,7 @@ Description: A step-by-step guide to installing Calico as the CNI on Kubernetes 
 
 ## Introduction
 
-Rancher supports multiple CNI plugins for its RKE and RKE2 clusters, with Calico being one of the most popular choices for teams that need advanced network policy enforcement. When using Rancher to provision clusters, you can select Calico as the CNI at cluster creation time or install it separately on imported clusters.
+Rancher supports multiple CNI plugins for its RKE and RKE2 clusters, with Calico being one of the most popular choices for teams that need advanced network policy enforcement. When using Rancher to provision RKE2 clusters, you can select Calico as the CNI at cluster creation time; for imported clusters, Calico must already be installed or installed outside Rancher before you manage Calico-specific policies.
 
 This guide covers both paths: provisioning a new RKE2 cluster with Calico via Rancher, and adding Calico policies to an existing Rancher-managed cluster.
 
@@ -19,7 +19,7 @@ This guide covers both paths: provisioning a new RKE2 cluster with Calico via Ra
 - Rancher Manager installed (v2.7+)
 - Access to create clusters in Rancher
 - `kubectl` access to the target cluster
-- `calicoctl` installed: `curl -L https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64 -o /usr/local/bin/calicoctl && chmod +x /usr/local/bin/calicoctl`
+- `calicoctl` installed at a version that matches the Calico version in your cluster. For example: `CALICO_VERSION=v3.32.0 && curl -L https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calicoctl-linux-amd64 -o calicoctl && chmod +x ./calicoctl && sudo mv ./calicoctl /usr/local/bin/calicoctl`
 
 ## Step 1: Create RKE2 Cluster with Calico via Rancher UI
 
@@ -28,10 +28,9 @@ In the Rancher UI:
 2. Select "RKE2/K3s" and your infrastructure provider
 3. Under Cluster Configuration → Networking, set:
    - Container Network Interface (CNI): Calico
-   - Disable Network Policy: unchecked (keep enabled)
 4. Save and create the cluster
 
-For an automated approach using the Rancher API:
+For an automated approach using the Rancher API, include the Calico CNI setting in the full cluster spec along with the machine pools and provider configuration required for your environment:
 
 ```bash
 # Create an RKE2 cluster with Calico via Rancher API
@@ -45,8 +44,7 @@ curl -X POST \
     "spec": {
       "rkeConfig": {
         "machineGlobalConfig": {
-          "cni": "calico",
-          "disable-network-policy": false
+          "cni": "calico"
         }
       }
     }
@@ -86,7 +84,7 @@ calicoctl get ippools -o wide
 
 ## Step 4: Deploy Network Policies via Rancher
 
-You can apply Calico policies through the Rancher UI (Explorer → Network → Network Policies) or using calicoctl/kubectl:
+You can manage basic Kubernetes NetworkPolicy objects through the Rancher UI (Explorer → Network → Network Policies). For Calico-specific policy resources such as `projectcalico.org/v3` `NetworkPolicy`, use calicoctl or kubectl:
 
 ```yaml
 # rancher-app-isolation.yaml - Network policies for a Rancher-managed namespace
@@ -123,6 +121,11 @@ spec:
       destination:
         ports:
           - 53
+    - action: Allow
+      protocol: TCP
+      destination:
+        ports:
+          - 53
   types:
     - Ingress
     - Egress
@@ -144,12 +147,31 @@ If Rancher Monitoring (Prometheus + Grafana) is installed:
 
 ```bash
 # Enable Calico metrics collection
-# Apply a ServiceMonitor for Calico node metrics
+# Felix metrics are disabled by default
+kubectl patch felixconfiguration default --type merge --patch '{"spec":{"prometheusMetricsEnabled": true}}'
+
+# Expose Felix metrics with a Service, then apply a ServiceMonitor for Rancher Monitoring
 cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: kube-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: felix-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: calico-node
+  name: calico-felix
   namespace: cattle-monitoring-system
   labels:
     release: rancher-monitoring
@@ -161,7 +183,7 @@ spec:
     matchLabels:
       k8s-app: calico-node
   endpoints:
-    - port: metrics-port
+    - port: felix-metrics
       interval: 30s
 EOF
 ```
