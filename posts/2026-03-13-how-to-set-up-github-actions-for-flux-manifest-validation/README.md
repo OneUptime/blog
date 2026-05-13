@@ -46,12 +46,14 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
-      - name: Validate manifests
+      - name: Run Flux pre-checks
         run: |
           flux check --pre
 ```
 
 The `paths` filter ensures the workflow only runs when Flux-related files are modified, saving CI minutes on unrelated changes.
+
+The `flux check --pre` command verifies that the GitHub Actions runner has the prerequisites needed before installing Flux components. The manifest-specific validation is added in the following steps.
 
 ## Adding Kubernetes Schema Validation
 
@@ -60,8 +62,8 @@ Beyond basic syntax checks, you should validate your manifests against Kubernete
 ```yaml
       - name: Install kubeconform
         run: |
-          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
 
       - name: Validate Kubernetes schemas
         run: |
@@ -85,7 +87,7 @@ Flux relies heavily on Kustomize. You should verify that all your Kustomize over
         run: |
           find . -name 'kustomization.yaml' -not -path './.git/*' -exec dirname {} \; | while read dir; do
             echo "Validating $dir"
-            kustomize build "$dir" > /dev/null || exit 1
+            kubectl kustomize "$dir" > /dev/null || exit 1
           done
 ```
 
@@ -96,11 +98,14 @@ Use the `flux build` command to validate Flux Kustomization resources specifical
 ```yaml
       - name: Validate Flux Kustomizations
         run: |
-          for ks in $(find ./clusters -name '*.yaml' -exec grep -l "kind: Kustomization" {} \;); do
+          find ./clusters -name '*.yaml' -exec grep -l "kind: Kustomization" {} \; | while IFS= read -r ks; do
+            name=$(awk '/^kind: Kustomization/{found=1} found && /^[[:space:]]*name:/{print $2; exit}' "$ks")
+            path=$(awk '/^spec:/{found=1} found && /^[[:space:]]*path:/{print $2; exit}' "$ks")
             echo "Checking $ks"
-            flux build kustomization \
-              --path $(dirname "$ks") \
-              --dry-run 2>&1 || exit 1
+            flux build kustomization "$name" \
+              --path "$path" \
+              --kustomization-file "$ks" \
+              --dry-run > /dev/null
           done
 ```
 
@@ -132,8 +137,8 @@ jobs:
 
       - name: Install kubeconform
         run: |
-          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
 
       - name: Run Flux pre-checks
         run: flux check --pre
@@ -152,7 +157,19 @@ jobs:
         run: |
           find . -name 'kustomization.yaml' -not -path './.git/*' -exec dirname {} \; | while read dir; do
             echo "Validating $dir"
-            kustomize build "$dir" > /dev/null || exit 1
+            kubectl kustomize "$dir" > /dev/null || exit 1
+          done
+
+      - name: Validate Flux Kustomizations
+        run: |
+          find ./clusters -name '*.yaml' -exec grep -l "kind: Kustomization" {} \; | while IFS= read -r ks; do
+            name=$(awk '/^kind: Kustomization/{found=1} found && /^[[:space:]]*name:/{print $2; exit}' "$ks")
+            path=$(awk '/^spec:/{found=1} found && /^[[:space:]]*path:/{print $2; exit}' "$ks")
+            echo "Checking $ks"
+            flux build kustomization "$name" \
+              --path "$path" \
+              --kustomization-file "$ks" \
+              --dry-run > /dev/null
           done
 
       - name: YAML lint
@@ -187,16 +204,15 @@ Navigate to Settings, then Branches, then Branch protection rules. Add a rule fo
 
 ## Caching for Faster Builds
 
-Speed up your workflow by caching the Flux CLI and kubeconform binaries:
+Speed up your workflow by caching the kubeconform binary:
 
 ```yaml
       - name: Cache tools
         uses: actions/cache@v4
         with:
           path: |
-            /usr/local/bin/flux
             /usr/local/bin/kubeconform
-          key: tools-${{ runner.os }}-flux-kubeconform
+          key: tools-${{ runner.os }}-kubeconform
 ```
 
 ## Conclusion
