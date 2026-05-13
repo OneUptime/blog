@@ -36,8 +36,8 @@ Every Typha deployment should have a written architecture description that expla
 - **kube-apiserver**: Authoritative source for all Calico resources
   (NetworkPolicy, IPPool, FelixConfiguration, etc.)
 - **calico-typha**: Fan-out cache between the API server and Felix agents.
-  Holds one watch connection per resource type and broadcasts updates to
-  all connected Felix agents. Runs as 3 replicas (one per AZ).
+  Maintains datastore watches, caches and deduplicates updates, and fans them
+  out to connected Felix agents. Runs as 3 replicas (one per AZ).
 - **calico-node (Felix)**: Enforces network policy on each node by
   programming iptables/eBPF rules. Connects to Typha instead of the
   API server directly.
@@ -55,15 +55,17 @@ Every Typha deployment should have a written architecture description that expla
 - Pod anti-affinity by hostname ensures no two replicas are co-located
 - TopologySpreadConstraint ensures one replica per zone
 - PodDisruptionBudget: minAvailable=2 (one pod can be evicted at a time)
-- Topology-aware Service routing: Felix agents prefer Typha in the same zone
+- Topology-aware Service routing: Kubernetes may prefer same-zone Typha
+  endpoints when EndpointSlice hints are available; verify it does not fall
+  back to cluster-wide routing in this topology
 
 ## mTLS Configuration
 
 - All Felix-to-Typha connections use mutual TLS
-- Calico CA: stored in calico-ca Secret (outside cluster - in Vault)
-- Certificate expiry: 825 days from last rotation date (see rotation log)
+- Calico CA: stored in Vault and mounted from the calico-ca Secret
+- Certificate expiry: record each certificate NotAfter date in the rotation log
 - TYPHA_CLIENTCN: calico-felix
-- typhaServerCN: calico-typha
+- FELIX_TYPHACN: calico-typha
 ```
 
 ---
@@ -109,11 +111,11 @@ Every common Typha operation should have a step-by-step runbook entry:
 ## Scale Typha Replicas
 
 **When**: After cluster grows beyond the current replica threshold
-(rule: 1 replica per 200 nodes, minimum 2)
+(rule: at least 1 replica per 200 nodes, minimum 3 in production, maximum 20)
 
 **Steps**:
 1. Check current node count: `kubectl get nodes --no-headers | wc -l`
-2. Calculate desired replicas: `ceil(node_count / 200)`
+2. Calculate desired replicas: `max(3, ceil(node_count / 200))`, capped at 20 and kept below the node count
 3. Scale: `kubectl scale deployment calico-typha -n kube-system --replicas=<N>`
 4. Monitor: `kubectl rollout status deployment/calico-typha -n kube-system`
 5. Verify Felix connections: check `typha_connections_active` in Prometheus
@@ -154,11 +156,13 @@ Record the rationale behind HA configuration choices so future engineers underst
 
 - **Date**: 2026-03-13
 - **Rationale**: Cluster spans 3 availability zones. Using 3 replicas (one per zone)
-  ensures that a full zone failure leaves 2 replicas operational, exceeding the
-  PDB minAvailable=2 requirement. 2 replicas would leave only 1 after a zone failure,
-  which is a single point of failure.
+  means that a full zone failure should leave 2 replicas operational if the
+  remaining zones are healthy. The PDB only protects against voluntary evictions,
+  but minAvailable=2 prevents planned drains from evicting too many Typha pods.
+  2 replicas would leave only 1 after a zone failure, which is a single point of
+  failure.
 
-## Decision: PDB minAvailable=2 (not maxUnavailable=1)
+## Decision: PDB minAvailable=2 (not a percentage)
 
 - **Date**: 2026-03-13
 - **Rationale**: minAvailable=2 is expressed as an absolute count, which is more
@@ -170,7 +174,10 @@ Record the rationale behind HA configuration choices so future engineers underst
 - **Date**: 2026-03-13
 - **Rationale**: In a 3-zone cluster with ~300 nodes, cross-zone traffic to Typha
   adds unnecessary bandwidth costs and increases Felix reconnection latency during
-  zone-local issues. Topology routing reduces this by 2/3 on average.
+  zone-local issues. Topology-aware routing can reduce cross-zone traffic when
+  Kubernetes assigns usable EndpointSlice hints; validate the hints after changes
+  because kube-proxy falls back to cluster-wide routing when the safeguards are
+  not met.
 ```
 
 ---
