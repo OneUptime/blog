@@ -26,18 +26,21 @@ Monitoring certificate health means tracking expiry dates across all Calico etcd
 Use the `x509-certificate-exporter` to expose certificate expiry as Prometheus metrics:
 
 ```bash
-helm repo add enix https://charts.enix.io
-helm install x509-certificate-exporter enix/x509-certificate-exporter \
+helm install x509-certificate-exporter \
+  oci://quay.io/enix/charts/x509-certificate-exporter \
   --namespace monitoring \
+  --create-namespace \
   --set secretsExporter.enabled=true \
-  --set secretsExporter.secrets[0].namespace=kube-system \
-  --set secretsExporter.secrets[0].name=calico-etcd-certs
+  --set 'secretsExporter.includeNamespaces[0]=kube-system' \
+  --set 'secretsExporter.includeSecrets[0]=calico-etcd-secrets' \
+  --set 'secretsExporter.secretTypes[0].type=Opaque' \
+  --set 'secretsExporter.secretTypes[0].keyPatterns[0]=^(etcd-ca|etcd-cert)$'
 ```
 
 This exposes metrics like:
 
 ```plaintext
-x509_cert_not_after{secret_name="calico-etcd-certs",namespace="kube-system"} 1.760313e+09
+x509_cert_not_after{secret_name="calico-etcd-secrets",secret_namespace="kube-system",secret_key="etcd-cert"} 1.760313e+09
 ```
 
 ## Step 2: Create Expiry Alerts
@@ -48,7 +51,7 @@ groups:
     rules:
       - alert: CalicoEtcdCertExpiringSoon
         expr: |
-          (x509_cert_not_after{secret_name=~"calico-etcd.*"} - time()) / 86400 < 30
+          (x509_cert_not_after{secret_name="calico-etcd-secrets",secret_namespace="kube-system"} - time()) / 86400 < 30
         for: 1h
         labels:
           severity: warning
@@ -58,7 +61,7 @@ groups:
 
       - alert: CalicoEtcdCertCritical
         expr: |
-          (x509_cert_not_after{secret_name=~"calico-etcd.*"} - time()) / 86400 < 7
+          (x509_cert_not_after{secret_name="calico-etcd-secrets",secret_namespace="kube-system"} - time()) / 86400 < 7
         for: 1h
         labels:
           severity: critical
@@ -98,7 +101,7 @@ Create a Grafana panel showing days until expiry for each Calico etcd certificat
 ```plaintext
 # Prometheus query for dashboard
 
-(x509_cert_not_after{secret_name=~"calico-etcd.*"} - time()) / 86400
+(x509_cert_not_after{secret_name="calico-etcd-secrets",secret_namespace="kube-system"} - time()) / 86400
 ```
 
 Display as a stat panel with thresholds:
@@ -129,13 +132,22 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  kubectl get secret calico-etcd-certs -n kube-system \
-                    -o jsonpath='{.data.etcd-cert}' | base64 -d | \
-                    openssl x509 -noout -enddate -checkend 2592000
+                  openssl x509 -in /calico-secrets/etcd-cert -noout -enddate -checkend 2592000
                   if [ $? -ne 0 ]; then
                     echo "ALERT: Calico etcd cert expires within 30 days!"
                     exit 1
                   fi
+              volumeMounts:
+                - name: calico-etcd-secrets
+                  mountPath: /calico-secrets
+                  readOnly: true
+          volumes:
+            - name: calico-etcd-secrets
+              secret:
+                secretName: calico-etcd-secrets
+                items:
+                  - key: etcd-cert
+                    path: etcd-cert
           restartPolicy: OnFailure
 ```
 
