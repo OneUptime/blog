@@ -61,7 +61,7 @@ Events include information about successful reconciliations, failed attempts, an
 
 ## Viewing Helm Release History
 
-Flux-managed Helm releases are stored as Kubernetes Secrets in the release namespace. You can inspect them with the Helm CLI:
+Flux-managed Helm releases are stored as Kubernetes Secrets in the HelmRelease storage namespace. By default, this is the HelmRelease namespace, but it can be changed with `.spec.storageNamespace`. The examples below assume the Helm release name is `my-app` and the storage namespace is `default`; if `.spec.releaseName` or `.spec.storageNamespace` is set, use those values instead. You can inspect the release with the Helm CLI:
 
 ```bash
 helm history my-app -n default
@@ -81,7 +81,7 @@ This history tells you that revision 3 failed and Flux rolled back to revision 2
 
 ## Inspecting Helm Release Secrets
 
-Helm stores release data as Secrets with the label `owner=helm`. You can list all release secrets for a given release:
+Helm stores release data as Secrets with the label `owner=helm` in the storage namespace. You can list all release secrets for a given release:
 
 ```bash
 kubectl get secrets -n default -l owner=helm,name=my-app
@@ -157,7 +157,7 @@ To force a reconciliation and watch the output:
 flux reconcile helmrelease my-app -n default --with-source
 ```
 
-The `--with-source` flag also reconciles the HelmRepository source, ensuring you have the latest chart version.
+The `--with-source` flag also reconciles the HelmRelease source before applying changes, so Flux refreshes the source and chart artifact used by the release.
 
 ## Diagnosing Common Failure Patterns
 
