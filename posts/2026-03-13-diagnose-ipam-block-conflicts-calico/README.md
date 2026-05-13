@@ -12,13 +12,13 @@ Description: Diagnose Calico IPAM block conflicts by examining block affinity as
 
 Calico IPAM organizes IP addresses into blocks (typically /26 subnets). Each block is affiliated with a specific node, and pods on that node receive IPs from its affiliated blocks. IPAM block conflicts occur when the same IP block is recorded as affiliated with more than one node, or when the block affinity records are inconsistent with actual IP allocations.
 
-These conflicts can arise during cluster upgrades, node replacements, or split-brain scenarios where the IPAM datastore becomes temporarily inconsistent. The symptoms are pods receiving duplicate IP addresses, pods failing IP allocation on specific nodes, or routing anomalies for specific IP ranges.
+These conflicts can arise during cluster upgrades, node replacements, or split-brain scenarios where the IPAM datastore becomes temporarily inconsistent. The symptoms are pods receiving duplicate IP addresses, pods failing to start because IPAM cannot allocate an address on specific nodes, or routing anomalies for specific IP ranges.
 
 ## Symptoms
 
 - `calicoctl ipam check` reports inconsistencies or duplicate allocations
 - Multiple pods with the same IP address in `kubectl get pods -o wide`
-- Pods failing to schedule on specific nodes with IPAM allocation errors
+- Pods failing to start on specific nodes with IPAM allocation errors
 - Routing loops or drops for specific pod IP ranges
 - BlockAffinity objects showing the same block claimed by multiple nodes
 
@@ -38,7 +38,7 @@ calicoctl ipam check
 calicoctl ipam check --show-all-ips 2>/dev/null | grep -i "conflict\|duplicate\|error"
 ```
 
-**Step 2: List all IPAM blocks and their affiliations**
+**Step 2: List all IPAM blocks and usage**
 
 ```bash
 calicoctl ipam show --show-blocks
