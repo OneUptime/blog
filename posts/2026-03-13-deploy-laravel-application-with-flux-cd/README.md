@@ -35,7 +35,7 @@ FROM php:8.3-fpm-alpine AS base
 WORKDIR /var/www/html
 
 # Install system dependencies and PHP extensions
-RUN apk add --no-cache nginx supervisor curl && \
+RUN apk add --no-cache nginx supervisor curl postgresql-dev && \
     docker-php-ext-install pdo_mysql pdo_pgsql bcmath opcache pcntl
 
 # Install Composer
@@ -45,9 +45,8 @@ FROM base AS builder
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 COPY . .
-# Cache Laravel configuration and routes
-RUN php artisan config:cache && \
-    php artisan route:cache && \
+# Cache Laravel routes and views
+RUN php artisan route:cache && \
     php artisan view:cache
 
 FROM base AS runner
@@ -86,7 +85,8 @@ autorestart=true
 
 ```nginx
 # docker/nginx.conf (simplified)
-events { worker_processes auto; }
+worker_processes auto;
+events { worker_connections 1024; }
 http {
     server {
         listen 80;
@@ -112,7 +112,6 @@ metadata:
   name: laravel-migrate-v1-0-0
   namespace: my-laravel-app
 spec:
-  ttlSecondsAfterFinished: 300
   backoffLimit: 2
   template:
     spec:
@@ -311,7 +310,7 @@ curl http://localhost:8080/up
 ## Best Practices
 
 - Use `--force` flag with `php artisan migrate` in production Job to bypass the confirmation prompt.
-- Cache configuration, routes, and views during `docker build` (not at startup) to reduce cold start time.
+- Cache routes and views during `docker build` to reduce cold start time. Run `config:cache` only after production environment variables are available.
 - Set `LOG_CHANNEL=stderr` to send all Laravel logs to stdout/stderr for Kubernetes log collection.
 - Use Laravel Horizon (backed by Redis) for queue management; it provides visibility into queue depth, job failures, and throughput.
 - Store `APP_KEY` in a Kubernetes Secret and never rotate it without a coordinated deployment, as it is used to encrypt all application data.
