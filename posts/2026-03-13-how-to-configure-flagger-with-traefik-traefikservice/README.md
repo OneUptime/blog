@@ -33,12 +33,23 @@ Deploy Traefik using the official Helm chart with the Kubernetes CRD provider en
 helm repo add traefik https://traefik.github.io/charts
 helm repo update
 
-# Install Traefik with CRD support and metrics enabled
-helm install traefik traefik/traefik \
+# Install Traefik with CRD support and Prometheus metrics scraping enabled
+helm upgrade -i traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set providers.kubernetesCRD.enabled=true \
-  --set metrics.prometheus.enabled=true
+  -f - <<EOF
+providers:
+  kubernetesCRD:
+    enabled: true
+deployment:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9100"
+    prometheus.io/path: "/metrics"
+metrics:
+  prometheus:
+    entryPoint: metrics
+EOF
 ```
 
 Verify that Traefik is running.
@@ -58,6 +69,10 @@ helm install flagger flagger/flagger \
   --namespace traefik \
   --set meshProvider=traefik \
   --set metricsServer=http://prometheus.monitoring:9090
+
+helm upgrade -i flagger-loadtester flagger/loadtester \
+  --namespace test \
+  --create-namespace
 ```
 
 ## Deploying the Application
@@ -196,8 +211,10 @@ spec:
       - name: load-test
         type: rollout
         url: http://flagger-loadtester.test/
+        timeout: 5s
         metadata:
-          cmd: "hey -z 1m -q 10 -c 2 http://podinfo-canary.test/"
+          type: cmd
+          cmd: "hey -z 1m -q 10 -c 2 -host app.example.com http://traefik.traefik/"
 ```
 
 Apply the Canary resource.
