@@ -107,7 +107,7 @@ spec:
     targetPort: http
     # Gateway and host settings for Istio (adjust for your mesh)
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
     hosts:
       - podinfo.example.com
 
@@ -166,7 +166,8 @@ service:
   targetPort: http    # The container port name or number
 ```
 
-Flagger creates these services automatically:
+Flagger creates or manages these services automatically:
+- `podinfo` - the apex service that routes to the primary (stable) pods by default
 - `podinfo-primary` - routes to the primary (stable) pods
 - `podinfo-canary` - routes to the canary (new version) pods
 
@@ -249,7 +250,7 @@ spec:
     name: podinfo
 ```
 
-Flagger will create a copy of your HPA for the primary Deployment and scale the canary HPA during analysis.
+Flagger will create a copy of your HPA for the primary Deployment. During analysis, the original HPA continues to target the canary Deployment, and Flagger pauses traffic increases while the target or primary workloads are scaling.
 
 ## Conclusion
 
