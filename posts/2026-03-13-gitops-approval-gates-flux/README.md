@@ -73,8 +73,8 @@ Map directory paths to teams so GitHub automatically assigns the correct reviewe
 ```plaintext
 # .github/CODEOWNERS
 
-# Any change to production app manifests requires sign-off from both
-# the platform team and the application team
+# Any change to production app manifests requests review from
+# both the platform team and the application team
 /apps/production/     @your-org/platform-team @your-org/app-owners
 
 # Staging changes only need the application team
@@ -87,7 +87,7 @@ Map directory paths to teams so GitHub automatically assigns the correct reviewe
 /clusters/production/flux-system/  @your-org/senior-platform
 ```
 
-GitHub automatically adds the listed code owners as required reviewers on any PR that touches those paths.
+GitHub automatically requests reviews from the listed code owners on any PR that touches those paths. When branch protection requires review from Code Owners, approval from one of the matching owners satisfies GitHub's code-owner requirement; requiring separate approvals from multiple teams needs an additional required status check, ruleset, or workflow policy.
 
 ## Step 3: Configure Branch Protection Rules
 
@@ -98,7 +98,7 @@ Branch name pattern: main
 
 Required settings:
   ✅ Require a pull request before merging
-     - Required approving reviews: 2  (for production paths)
+     - Required approving reviews: 2  (applies to the protected branch)
      - Dismiss stale pull request approvals when new commits are pushed
      - Require review from Code Owners
 
@@ -117,7 +117,7 @@ With these rules, no merge can land on `main` - and therefore no deployment can 
 
 ## Step 4: Add a Staged Approval Flow for High-Risk Changes
 
-For changes that touch multiple environments, enforce a sequential approval pattern using GitHub Environments with required reviewers.
+For changes that touch multiple environments, record an additional post-merge approval using GitHub Environments with required reviewers. This gates the Actions job that references the environment; it does not stop Flux from reconciling a commit that is already on the branch Flux watches unless your promotion flow makes Flux watch an artifact, branch, or path that is updated only after the approved job runs.
 
 ```yaml
 # .github/workflows/promote.yaml
@@ -151,7 +151,7 @@ jobs:
         run: echo "Production deployment approved by ${{ github.actor }}"
 ```
 
-In GitHub go to **Settings → Environments → production** and add required reviewers. This creates a second approval gate after PR merge but before the CI job completes its record.
+In GitHub go to **Settings → Environments → production** and add required reviewers. This creates a second approval record after PR merge before the protected CI job completes.
 
 ## Step 5: Verify Approval Gate Behavior
 
@@ -171,13 +171,13 @@ gh pr create --title "Update production image" --base main
 gh pr view --json reviewRequests
 ```
 
-After the PR is merged and Flux reconciles, confirm the gate was recorded:
+After the PR is merged and Flux reconciles, confirm the deployment and review records:
 
 ```bash
 # Flux events show the reconciliation with a timestamp
 flux events --for Kustomization/apps-production
 
-# Git log shows the PR merge commit with approval metadata
+# Git log shows the PR merge commit; approval metadata remains in the PR review record
 git log --oneline -5
 ```
 
@@ -188,8 +188,8 @@ git log --oneline -5
 - Record approval metadata in PR descriptions using a standardized template so auditors can quickly find the evidence.
 - Combine CODEOWNERS with team-level permissions so rotating staff does not leave gaps in coverage.
 - Review and update CODEOWNERS whenever teams change - stale ownership creates unenforced gates.
-- Use GitHub's "Required reviewers" in Environments for an additional gate that fires after merge for regulated workflows.
+- Use GitHub's "Required reviewers" in Environments for an additional post-merge approval record for regulated workflows, or pair it with a promotion branch or artifact if Flux should wait for that approval.
 
 ## Conclusion
 
-Approval gates in Flux CD are implemented at the Git layer, not inside Kubernetes. By combining CODEOWNERS-based review routing with branch protection rules and optional environment approval gates, you create a deployment pipeline where every change to production must pass through designated human approvers. The approvals are recorded in Git history permanently, satisfying audit requirements while keeping the workflow familiar to developers who already use pull requests every day.
+Approval gates in Flux CD are implemented at the Git layer, not inside Kubernetes. By combining CODEOWNERS-based review routing with branch protection rules and optional environment approval gates, you create a deployment pipeline where every change to production must pass through designated human approvers. The approvals are recorded in pull request review history, satisfying audit requirements while keeping the workflow familiar to developers who already use pull requests every day.
