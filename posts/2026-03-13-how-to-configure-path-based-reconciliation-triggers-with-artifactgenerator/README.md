@@ -14,23 +14,23 @@ One of the biggest operational challenges in GitOps is controlling when reconcil
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
-- Flux 2.8 installed on your cluster
+- A Kubernetes cluster supported by Flux 2.8 (Kubernetes v1.33-v1.35)
+- Flux 2.8 installed on your cluster with the `source-watcher` component enabled
 - A Git repository with multiple application directories
 - kubectl configured to access your cluster
 
 ## How Path-Based Triggers Work
 
-The ArtifactGenerator watches a source (such as a GitRepository) and generates a new artifact only when files matching the configured path patterns change. The path patterns use glob syntax, similar to `.gitignore` files.
+The ArtifactGenerator watches a source (such as a GitRepository) and generates ExternalArtifacts from files selected by copy operations. The `from` and `exclude` fields use glob patterns to control which files are copied into the generated artifact.
 
 When a new commit arrives in the GitRepository source:
 
 1. Flux detects the new revision
-2. ArtifactGenerator compares the changed files against its path include/exclude patterns
-3. If any changed files match the include patterns (and are not excluded), a new artifact is generated
-4. Downstream resources (Kustomizations or HelmReleases) that reference the ArtifactGenerator reconcile
+2. ArtifactGenerator rebuilds the affected ExternalArtifacts from the configured copy operations
+3. If the copied content for an artifact changes, that ExternalArtifact gets a new revision
+4. Downstream resources (Kustomizations or HelmReleases) that reference the generated ExternalArtifact reconcile
 
-If no changed files match the patterns, the ArtifactGenerator does not produce a new artifact, and downstream resources are not triggered.
+If the copied content for an ExternalArtifact does not change, its revision does not change, and downstream resources are not triggered by that source update.
 
 ## Basic Path Include Configuration
 
@@ -44,13 +44,18 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform-repo
   artifacts:
-    - path: "services/api/**"
+    - name: api-service
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/api/**"
+          to: "@artifact/"
 ```
 
-This triggers artifact generation only when files under `services/api/` change.
+This creates an ExternalArtifact named `api-service` whose revision changes only when the copied content from `services/api/` changes.
 
 ## Multiple Include Paths
 
@@ -64,15 +69,22 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform-repo
   artifacts:
-    - path: "services/api/**"
-    - path: "shared/config/**"
-    - path: "shared/templates/**"
+    - name: api-service
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/api/**"
+          to: "@artifact/"
+        - from: "@repo/shared/config/**"
+          to: "@artifact/shared/config/"
+        - from: "@repo/shared/templates/**"
+          to: "@artifact/shared/templates/"
 ```
 
-This configuration triggers when changes occur in the API service directory OR in shared configuration and template directories. This is useful when your service depends on shared resources.
+This configuration changes the generated ExternalArtifact revision when copied content changes in the API service directory OR in shared configuration and template directories. This is useful when your service depends on shared resources.
 
 ## Combining Include and Exclude Patterns
 
@@ -86,15 +98,20 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform-repo
   artifacts:
-    - path: "services/api/**"
-      exclude:
-        - "services/api/docs/**"
-        - "services/api/tests/**"
-        - "services/api/**/*.md"
-        - "services/api/.gitignore"
+    - name: api-service
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/services/api/**"
+          to: "@artifact/"
+          exclude:
+            - "**/docs/**"
+            - "**/tests/**"
+            - "**/*.md"
+            - ".gitignore"
 ```
 
 This includes all files under `services/api/` except documentation, tests, markdown files, and the .gitignore file. Changes to excluded files do not trigger reconciliation.
@@ -111,14 +128,23 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform-repo
   artifacts:
-    - path: "deploy/**/*.yaml"
-    - path: "deploy/**/*.yml"
-      exclude:
-        - "deploy/**/test-*.yaml"
-        - "deploy/**/example-*.yaml"
+    - name: k8s-manifests
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/deploy/**/*.yaml"
+          to: "@artifact/"
+          exclude:
+            - "**/test-*.yaml"
+            - "**/example-*.yaml"
+        - from: "@repo/deploy/**/*.yml"
+          to: "@artifact/"
+          exclude:
+            - "**/test-*.yml"
+            - "**/example-*.yml"
 ```
 
 This configuration only triggers on YAML file changes within the deploy directory, ignoring test and example files.
@@ -135,11 +161,17 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform-repo
   artifacts:
-    - path: "environments/staging/**"
-    - path: "environments/base/**"
+    - name: staging-manifests
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/environments/staging/**"
+          to: "@artifact/"
+        - from: "@repo/environments/base/**"
+          to: "@artifact/base/"
 ---
 apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
@@ -148,18 +180,24 @@ metadata:
   namespace: flux-system
 spec:
   sources:
-    - kind: GitRepository
+    - alias: repo
+      kind: GitRepository
       name: platform-repo
   artifacts:
-    - path: "environments/production/**"
-    - path: "environments/base/**"
+    - name: production-manifests
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/environments/production/**"
+          to: "@artifact/"
+        - from: "@repo/environments/base/**"
+          to: "@artifact/base/"
 ```
 
-Changes to `environments/base/` trigger both staging and production ArtifactGenerators, while changes to environment-specific directories only trigger the corresponding generator.
+Changes to `environments/base/` change both generated ExternalArtifacts, while changes to environment-specific directories only change the corresponding generated artifact.
 
 ## Connecting ArtifactGenerator to Kustomizations
 
-Once you have path-based triggers configured, connect them to Kustomizations:
+Once you have path-based triggers configured, connect Kustomizations to the generated ExternalArtifacts:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -170,34 +208,35 @@ metadata:
 spec:
   interval: 10m
   sourceRef:
-    kind: ArtifactGenerator
+    kind: ExternalArtifact
     name: staging-manifests
-  path: ./environments/staging/api-service
+  path: ./api-service
   prune: true
   targetNamespace: staging
 ```
 
-The Kustomization only reconciles when the `staging-manifests` ArtifactGenerator produces a new artifact, which only happens when files in `environments/staging/` or `environments/base/` change.
+The Kustomization only reconciles from a source update when the generated `staging-manifests` ExternalArtifact gets a new revision, which only happens when copied content from `environments/staging/` or `environments/base/` changes.
 
 ## Verifying Trigger Behavior
 
-To verify that path-based triggers are working correctly, check the ArtifactGenerator status after making commits:
+To verify that path-based triggers are working correctly, check the ArtifactGenerator and ExternalArtifact status after making commits:
 
 ```bash
 kubectl get artifactgenerators -n flux-system -w
+kubectl get externalartifacts -n flux-system -w
 ```
 
-Make a commit that changes a file outside the configured paths and observe that the ArtifactGenerator's last artifact revision does not change. Then make a commit that changes a file within the configured paths and verify that a new artifact is generated.
+Make a commit that changes a file outside the configured copy paths and observe that the generated ExternalArtifact's artifact revision does not change. Then make a commit that changes a copied file and verify that a new ExternalArtifact revision is generated.
 
 You can also check the events:
 
 ```bash
-kubectl events --for artifactgenerator/api-service -n flux-system
+kubectl events --for ArtifactGenerator/api-service -n flux-system
 ```
 
 ## Glob Pattern Reference
 
-Here is a quick reference for the glob patterns supported in ArtifactGenerator paths:
+Here is a quick reference for common glob patterns used in ArtifactGenerator `from` and `exclude` fields:
 
 | Pattern | Matches |
 |---------|---------|
@@ -209,4 +248,4 @@ Here is a quick reference for the glob patterns supported in ArtifactGenerator p
 
 ## Conclusion
 
-Path-based reconciliation triggers with ArtifactGenerator give you fine-grained control over when Flux reconciles your resources. By carefully defining include and exclude patterns, you can prevent unnecessary reconciliation cycles, reduce the load on your cluster, and ensure that deployments are only triggered by relevant changes. This is essential for teams working with monorepos or shared repositories where not every commit should affect every deployment.
+Path-based reconciliation triggers with ArtifactGenerator give you fine-grained control over when Flux reconciles your resources. By carefully defining copy and exclude patterns, you can prevent unnecessary reconciliation cycles, reduce the load on your cluster, and ensure that deployments are only triggered by relevant changes. This is essential for teams working with monorepos or shared repositories where not every commit should affect every deployment.
