@@ -10,57 +10,40 @@ Description: Set up monitoring for Calico VPP host networking using VPP metrics,
 
 ## Introduction
 
-Monitoring Calico VPP requires tracking metrics that are unique to the VPP dataplane - vector size statistics, DPDK interface counters, hugepage utilization, and VPP worker thread health. These metrics are not available through standard Linux networking tools or the Felix metrics that apply to the kernel dataplane.
+Monitoring Calico VPP requires tracking metrics that are unique to the VPP dataplane - VPP interface counters, punt counters, buffer allocation failures, and TCP/session dataplane statistics. These metrics are not available through standard Linux networking tools or the Felix metrics that apply to the kernel dataplane.
 
-VPP exposes a rich set of performance counters through its native metrics API, which can be integrated with Prometheus via the VPP stats exporter. Combined with Calico's own agent metrics, this provides comprehensive observability into the VPP dataplane health.
+VPP exposes a rich set of performance counters through its native stats segment. Calico VPP can expose selected VPP statistics directly from `calico-vpp-agent` in Prometheus format. Combined with Calico's own agent metrics, this provides comprehensive observability into the VPP dataplane health.
 
 ## Prerequisites
 
 - Calico VPP deployed and operational
 - Prometheus and Grafana deployed in the cluster
-- VPP stats exporter configured (or Prometheus native VPP exporter)
+- Calico VPP Prometheus feature gate enabled
 
 ## Step 1: Enable VPP Prometheus Metrics
 
-Deploy the VPP Prometheus exporter:
+Enable the built-in Calico VPP Prometheus endpoint. The agent listens on `:8888` by default and serves metrics at `/metrics` when the Prometheus feature gate is enabled:
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: vpp-exporter
-  namespace: calico-vpp-dataplane
-spec:
-  selector:
-    matchLabels:
-      app: vpp-exporter
-  template:
-    metadata:
-      labels:
-        app: vpp-exporter
-    spec:
-      containers:
-        - name: vpp-exporter
-          image: calicovpp/vpp-prometheus-exporter:latest
-          ports:
-            - containerPort: 9099
-          volumeMounts:
-            - name: vpp-stats
-              mountPath: /run/vpp
-      volumes:
-        - name: vpp-stats
-          hostPath:
-            path: /run/vpp
+```bash
+kubectl patch configmap calico-vpp-config \
+  -n calico-vpp-dataplane \
+  --type merge \
+  -p '{"data":{"CALICOVPP_FEATURE_GATES":"{\"prometheusEnabled\":true}"}}'
+
+kubectl rollout restart daemonset/calico-vpp-node \
+  -n calico-vpp-dataplane
 ```
+
+Configure Prometheus to scrape each node IP on port `8888`, or expose the host-networked `calico-vpp-node` pods through your existing Kubernetes monitoring setup.
 
 ## Step 2: Key VPP Metrics
 
 ```mermaid
 graph TD
-    A[VPP Stats API] --> B[vector_rate - packets per batch]
-    A --> C[input_rate - packets per second per thread]
+    A[VPP Stats Segment] --> B[rx/tx packets - interface packet counters]
+    A --> C[rx/tx bytes - interface throughput]
     A --> D[drops - dropped packets]
-    A --> E[interface_rx/tx bytes - throughput]
+    A --> E[punt - packets punted to slow path]
     B --> F[Grafana Dashboard]
     C --> F
     D --> G[Alerting]
@@ -69,10 +52,11 @@ graph TD
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|----------------|
-| `vpp_vector_rate` | Average packets per processing vector | < 1 (VPP idle) or > 256 (saturation) |
-| `vpp_dpdk_rx_missed_errors` | Packets dropped at NIC level | > 0 |
-| `vpp_punt_rx` | Packets punted to slow path | High rate |
-| `vpp_worker_wait` | Worker thread idle time | Consistently 100% (underutilized) |
+| `cni_projectcalico_vpp_rx_packets` / `cni_projectcalico_vpp_tx_packets` | Per-worker interface packet counters | Unexpected traffic drop or imbalance |
+| `cni_projectcalico_vpp_rx_bytes` / `cni_projectcalico_vpp_tx_bytes` | Per-worker interface byte counters | Unexpected throughput drop |
+| `cni_projectcalico_vpp_drops` | Packets dropped on a VPP interface | Sustained rate > 0 |
+| `cni_projectcalico_vpp_punt` | Packets punted to slow path | High sustained rate |
+| `cni_projectcalico_vpp_rx_miss` / `cni_projectcalico_vpp_rx_no_buf` | Receive drops from missing buffers or allocation failures | Sustained rate > 0 |
 
 ## Step 3: VPP Interface Counters
 
@@ -93,29 +77,29 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 groups:
   - name: calico-vpp
     rules:
-      - alert: VPPInterfaceDown
-        expr: vpp_if_combined_drop_packets{interface="GigabitEthernet0/0/0"} > 1000
+      - alert: VPPInterfaceDrops
+        expr: rate(cni_projectcalico_vpp_drops{vppInterfaceName="GigabitEthernet0/0/0"}[5m]) > 100
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "VPP uplink interface dropping packets on {{ $labels.node }}"
+          summary: "VPP uplink interface {{ $labels.vppInterfaceName }} is dropping packets"
 
-      - alert: VPPHugepageExhausted
-        expr: vpp_memory_free_bytes < 104857600  # 100MB
+      - alert: VPPReceiveBufferPressure
+        expr: rate(cni_projectcalico_vpp_rx_no_buf[5m]) > 0 or rate(cni_projectcalico_vpp_rx_miss[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "VPP hugepage memory low on {{ $labels.node }}"
+          summary: "VPP receive buffer pressure on {{ $labels.vppInterfaceName }}"
 
-      - alert: VPPWorkerSaturation
-        expr: vpp_vector_rate > 200
+      - alert: VPPHighPuntRate
+        expr: rate(cni_projectcalico_vpp_punt[5m]) > 100
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "VPP worker threads saturated on {{ $labels.node }}"
+          summary: "VPP interface {{ $labels.vppInterfaceName }} has a high punt rate"
 ```
 
 ## Step 5: Grafana Dashboard
@@ -124,21 +108,21 @@ Key panels for a VPP health dashboard:
 
 ```plaintext
 # Throughput panel
-rate(vpp_if_combined_bytes[5m])
+sum(rate(cni_projectcalico_vpp_rx_bytes[5m])) + sum(rate(cni_projectcalico_vpp_tx_bytes[5m]))
 
 # Packet rate per second
-rate(vpp_if_combined_packets[5m])
+sum(rate(cni_projectcalico_vpp_rx_packets[5m])) + sum(rate(cni_projectcalico_vpp_tx_packets[5m]))
 
 # Drop rate
-rate(vpp_if_combined_drop_packets[5m])
+rate(cni_projectcalico_vpp_drops[5m])
 
-# Vector rate (health indicator)
-vpp_vector_rate
+# Punt rate
+rate(cni_projectcalico_vpp_punt[5m])
 ```
 
 ## Step 6: Correlate with Host Network Metrics
 
-Compare VPP throughput with host NIC counters to detect DPDK driver issues:
+Compare VPP throughput with host NIC counters to detect driver issues. This works for kernel-visible interfaces such as AF_PACKET and AF_XDP uplinks; DPDK-bound interfaces may no longer appear as standard Linux network devices:
 
 ```bash
 # On the node, check NIC RX/TX counters
@@ -147,4 +131,4 @@ ethtool -S eth0 | grep -E "rx_packets|tx_packets|rx_bytes|tx_bytes"
 
 ## Conclusion
 
-Monitoring Calico VPP requires VPP-native metrics that expose performance counters not available through standard Linux networking tools. By deploying the VPP Prometheus exporter, tracking vector rates, drop counters, and hugepage utilization, you can maintain visibility into VPP dataplane health and detect performance degradation before it impacts application traffic. Correlate VPP metrics with host NIC statistics to catch hardware-level issues that VPP's software metrics won't directly reveal.
+Monitoring Calico VPP requires VPP-native metrics that expose performance counters not available through standard Linux networking tools. By enabling the built-in Calico VPP Prometheus endpoint and tracking interface counters, drop counters, punt counters, and receive buffer pressure, you can maintain visibility into VPP dataplane health and detect performance degradation before it impacts application traffic. Correlate VPP metrics with host NIC statistics where the uplink remains visible to Linux to catch hardware-level issues that VPP's software metrics won't directly reveal.
