@@ -12,7 +12,7 @@ Description: Create golden path templates for application deployment using Flux 
 
 The "golden path" concept in platform engineering describes the paved road that makes the right thing the easy thing. When you build a golden path, you codify your organization's best practices - security defaults, observability, scaling, reliability - into a template that developers can use without understanding every underlying decision. The golden path should be the path of least resistance to production.
 
-Flux CD is the ideal runtime for golden path templates. The templates define what a properly configured workload looks like in your organization, and Flux ensures every workload continuously matches that definition. When the platform team improves the golden path (adding a new security control, updating default resource limits), all workloads that follow the path inherit the improvement automatically.
+Flux CD is the ideal runtime for golden path templates. The templates define what a properly configured workload looks like in your organization, and Flux ensures every workload continuously matches that definition. When the platform team improves the golden path (adding a new security control, updating default resource limits), workloads that track that template version, or move to the new released version, inherit the improvement.
 
 In this guide you will build complete golden path templates for three common workload archetypes: a web API, a background worker, and a scheduled job. Each template bundles everything a production workload needs without requiring developers to understand Kubernetes internals.
 
@@ -192,8 +192,10 @@ patches:
         value: my-service.acme.example.com
     target:
       kind: Ingress
-commonLabels:
-  app.kubernetes.io/name: my-service
+labels:
+  - pairs:
+      app.kubernetes.io/name: my-service
+    includeSelectors: true
 ```
 
 ## Step 5: Wire into Flux
@@ -222,7 +224,7 @@ spec:
 
 ## Step 6: Validate Golden Path Compliance
 
-Use Kyverno policies to prevent deployments that bypass the golden path.
+Use Kyverno policies to audit, and then prevent, deployments that bypass the golden path.
 
 ```yaml
 # infrastructure/policies/golden-path-compliance.yaml
@@ -231,7 +233,7 @@ kind: ClusterPolicy
 metadata:
   name: require-golden-path-labels
 spec:
-  validationFailureAction: Warn   # Start with Warn, move to Enforce after rollout
+  emitWarning: true
   rules:
     - name: check-golden-path-label
       match:
@@ -240,6 +242,7 @@ spec:
               kinds: ["Deployment"]
               namespaces: ["team-*"]
       validate:
+        failureAction: Audit   # Start with Audit, move to Enforce after rollout
         message: "Deployments should use a golden path template and have the golden-path label."
         pattern:
           metadata:
