@@ -76,7 +76,7 @@ This achieves a similar result but from the opposite direction. Use whichever ap
 
 ## Matching Nested Keys
 
-The regex matches against the full key path in dot notation. For deeply nested structures, you can write patterns that match at any level:
+The regex matches against YAML key names. For deeply nested structures, you can write patterns that match keys wherever they appear:
 
 ```yaml
 creation_rules:
@@ -214,10 +214,10 @@ encrypted_regex: ^(data|stringData)$
 encrypted_regex: ^(password|token|secret|key|credential)$
 
 # Everything except standard Kubernetes metadata
-unencrypted_regex: ^(apiVersion|kind|metadata|type|spec\.selector|spec\.replicas)$
+unencrypted_regex: ^(apiVersion|kind|metadata|type|selector|replicas)$
 
-# Only values under a specific parent key
-encrypted_regex: ^(data|stringData|spec\.template\.spec\.containers\[\d+\]\.env)$
+# Secret data plus common sensitive key names
+encrypted_regex: ^(data|stringData|password|token|secret|key|credential)$
 ```
 
 ## Best Practices
