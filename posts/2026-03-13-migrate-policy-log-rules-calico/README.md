@@ -10,7 +10,7 @@ Description: Migrate existing network policies to Calico Policy Log Rules in Cal
 
 ## Introduction
 
-Calico Policy Log Rules in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to migrate Policy Logging effectively.
+Calico Policy Log Rules in Calico provides fine-grained diagnostic visibility for network security policies using the `projectcalico.org/v3` API. This guide covers how to migrate Policy Logging effectively.
 
 Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Policy Logging criteria.
 
@@ -41,6 +41,9 @@ spec:
   order: 100
   selector: all()
   ingress:
+    - action: Log
+      source:
+        selector: app == 'authorized'
     - action: Allow
       source:
         selector: app == 'authorized'
