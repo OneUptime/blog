@@ -14,7 +14,7 @@ Pull request-based promotion provides code review, approval gates, CI validation
 
 ## Repository Structure
 
-The key to PR-based promotion is using separate branches for each environment:
+The key to PR-based promotion is using separate branches for each environment. Keep the application manifests at the same paths on each branch so a PR from one environment branch to the next promotes the files Flux reconciles:
 
 ```text
 flux-repo/
@@ -26,16 +26,10 @@ flux-repo/
 │       └── flux-system/
 │           └── gotk-sync.yaml
 └── apps/
-    ├── staging/
-    │   ├── kustomization.yaml
-    │   └── web-app/
-    │       ├── kustomization.yaml
-    │       └── release.yaml
-    └── production/
+    ├── kustomization.yaml
+    └── web-app/
         ├── kustomization.yaml
-        └── web-app/
-            ├── kustomization.yaml
-            └── release.yaml
+        └── release.yaml
 ```
 
 ## Branch Strategy
@@ -43,7 +37,7 @@ flux-repo/
 Use environment-specific branches:
 
 - `main` - Source of truth for staging deployments
-- `production` - Source of truth for production deployments
+- `production` - Source of truth for production deployments, with the same manifest paths as `main`
 
 ```yaml
 # clusters/staging/flux-system/gotk-sync.yaml
@@ -85,7 +79,7 @@ The promotion flow follows these steps:
 ```bash
 # 1. Developer creates a feature branch and makes changes
 git checkout -b feature/update-app main
-# ... make changes to apps/staging/ ...
+# ... make changes to apps/web-app/ ...
 git commit -m "Update web-app to v2.0"
 git push origin feature/update-app
 
@@ -112,7 +106,11 @@ on:
     branches:
       - main
     paths:
-      - "apps/staging/**"
+      - "apps/**"
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   promote:
@@ -124,7 +122,8 @@ jobs:
 
       - name: Create promotion PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use a GitHub App token or fine-grained PAT so the created PR triggers validation workflows.
+          GH_TOKEN: ${{ secrets.PROMOTION_PR_TOKEN }}
         run: |
           # Check if a promotion PR already exists
           EXISTING_PR=$(gh pr list --base production --head main --json number -q '.[0].number')
@@ -152,6 +151,9 @@ on:
     branches:
       - production
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -161,18 +163,29 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
+      - name: Configure production kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.PRODUCTION_KUBECONFIG }}" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
       - name: Validate Kustomizations
         run: |
           find . -name kustomization.yaml -exec dirname {} \; | while read dir; do
             echo "Validating $dir"
-            kustomize build "$dir" | kubectl apply --dry-run=client -f -
+            kubectl kustomize "$dir" | kubectl apply --dry-run=client -f -
           done
 
       - name: Run diff against production
         run: |
+          set +e
           flux diff kustomization apps \
-            --path=./apps/production \
-            --source-ref=production
+            --path=./apps \
+            --context=production
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            exit "$status"
+          fi
 ```
 
 ## Branch Protection Rules
@@ -182,9 +195,11 @@ Configure branch protection to enforce the promotion workflow:
 ```bash
 # Protect the production branch
 gh api repos/myorg/flux-repo/branches/production/protection -X PUT \
-  -f required_status_checks='{"strict":true,"contexts":["validate"]}' \
-  -f enforce_admins=true \
-  -f required_pull_request_reviews='{"required_approving_review_count":2}'
+  -F required_status_checks[strict]=true \
+  -F required_status_checks[contexts][]=validate \
+  -F enforce_admins=true \
+  -F required_pull_request_reviews[required_approving_review_count]=2 \
+  -F restrictions=null
 ```
 
 Key settings for the production branch:
@@ -223,6 +238,9 @@ on:
   pull_request:
     branches:
       - production
+
+permissions:
+  pull-requests: write
 
 jobs:
   label:
