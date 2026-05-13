@@ -52,9 +52,9 @@ rto_targets:
 ## Step 2: Enable Flux Prometheus Metrics
 
 ```yaml
-# Flux controllers expose metrics by default; ensure Prometheus can scrape them
+# Flux controllers expose metrics by default; ensure Prometheus can scrape their pods
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: flux-system
@@ -62,7 +62,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/part-of: flux
-  endpoints:
+  podMetricsEndpoints:
     - port: http-prom
       interval: 15s
 ```
@@ -70,14 +70,14 @@ spec:
 Key Flux metrics for RTO measurement:
 
 ```promql
-# Time since last successful reconciliation
+# Kustomization reconciliation duration
 gotk_reconcile_duration_seconds_bucket{kind="Kustomization"}
 
-# Number of failed reconciliations
-gotk_reconcile_condition{kind="Kustomization", type="Ready", status="False"}
+# Flux resource readiness from kube-state-metrics custom resource metrics
+gotk_resource_info{customresource_kind="Kustomization", ready="False"}
 
-# Source controller fetch duration
-gotk_source_duration_seconds{kind="GitRepository"}
+# GitRepository reconciliation duration
+gotk_reconcile_duration_seconds_bucket{kind="GitRepository"}
 ```
 
 ## Step 3: Instrument Recovery Scripts with Timing
@@ -106,8 +106,7 @@ step_bootstrap() {
     --owner=my-org \
     --repository=my-fleet \
     --branch=main \
-    --path=clusters/production \
-    --token-env=GITHUB_TOKEN
+    --path=clusters/production
 }
 
 step_restore_secrets() {
@@ -170,26 +169,26 @@ EOF
       "type": "graph",
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, rate(gotk_reconcile_duration_seconds_bucket{kind='Kustomization'}[5m]))",
+          "expr": "histogram_quantile(0.99, sum by (name, namespace, le) (rate(gotk_reconcile_duration_seconds_bucket{kind='Kustomization'}[5m])))",
           "legendFormat": "{{name}} p99"
         }
       ]
     },
     {
-      "title": "Failed Reconciliations",
+      "title": "Kustomizations Not Ready",
       "type": "stat",
       "targets": [
         {
-          "expr": "count(gotk_reconcile_condition{type='Ready',status='False'}) by (kind, name)"
+          "expr": "sum by (name, exported_namespace) (gotk_resource_info{customresource_kind='Kustomization',ready='False'})"
         }
       ]
     },
     {
-      "title": "Time Since Last Successful Reconciliation",
+      "title": "Git Source Reconciliation Duration (p99)",
       "type": "table",
       "targets": [
         {
-          "expr": "time() - gotk_reconcile_duration_seconds_sum{type='Ready',status='True'}"
+          "expr": "histogram_quantile(0.99, sum by (name, namespace, le) (rate(gotk_reconcile_duration_seconds_bucket{kind='GitRepository'}[5m])))"
         }
       ]
     }
@@ -249,7 +248,7 @@ jq -s '
     avg_minutes: (map(.total_minutes) | add / length),
     min_minutes: (map(.total_minutes) | min),
     max_minutes: (map(.total_minutes) | max),
-    trend: (if ([-2:] | .[1].total_minutes) < ([-2:] | .[0].total_minutes) then "improving" else "degrading" end)
+    trend: (if length < 2 then "insufficient_data" elif .[-1].total_minutes < .[-2].total_minutes then "improving" else "degrading" end)
   })
 ' /var/log/rto-results/*.json
 ```
