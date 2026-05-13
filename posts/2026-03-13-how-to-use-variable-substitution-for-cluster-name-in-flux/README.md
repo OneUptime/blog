@@ -280,7 +280,7 @@ spec:
 
 ## Step 9: Handle Default Values
 
-To prevent errors when a variable is missing, use Flux's default value syntax:
+To avoid empty values when a variable is missing, use Flux's default value syntax:
 
 ```yaml
 metadata:
@@ -289,7 +289,7 @@ metadata:
     environment: ${CLUSTER_ENVIRONMENT:=dev}
 ```
 
-If `CLUSTER_NAME` is not defined, it defaults to `unknown`. This is useful as a safety net during initial setup.
+If `CLUSTER_NAME` is not defined, it defaults to `unknown`. This is useful as a safety net during initial setup, especially when strict post-build substitutions are enabled.
 
 ## Step 10: Verify Variable Substitution
 
@@ -301,7 +301,7 @@ Check that variables are being resolved correctly:
 kubectl get configmap cluster-info -n flux-system -o yaml
 
 # Check the Kustomization status
-flux get kustomization apps
+flux get kustomizations
 
 # Inspect the applied resources to see resolved values
 kubectl get ingress webapp -n app -o yaml | grep host
