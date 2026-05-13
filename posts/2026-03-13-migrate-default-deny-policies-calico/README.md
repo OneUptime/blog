@@ -18,7 +18,7 @@ This guide provides a structured migration process from an open-by-default clust
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.30+ for Calico Open Source flow logs, or Calico Cloud/Enterprise flow logs
 - Existing Kubernetes NetworkPolicy objects to migrate
 - `calicoctl` and `kubectl` installed
 - Flow logging enabled for traffic discovery
@@ -37,10 +37,21 @@ calicoctl get globalnetworkpolicies
 
 ## Step 2: Enable Traffic Discovery
 
-Use flow logs to discover unlocked traffic paths before migrating:
+Use flow logs to discover allowed traffic paths before migrating. For Calico Open Source installed with the operator or Helm, enable Goldmane and Whisker if they are not already enabled:
 
 ```bash
-kubectl patch felixconfiguration default --type=merge -p '{"spec":{"flowLogsEnabled":true}}'
+kubectl apply -f - <<EOF
+apiVersion: operator.tigera.io/v1
+kind: Goldmane
+metadata:
+  name: default
+---
+apiVersion: operator.tigera.io/v1
+kind: Whisker
+metadata:
+  name: default
+EOF
+
 # Run for 48-72 hours to capture all traffic patterns
 ```
 
@@ -82,6 +93,7 @@ spec:
   selector: app == 'backend'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: app == 'frontend'
       destination:
@@ -104,11 +116,11 @@ kubectl get networkpolicies -n production
 ## Step 5: Apply Default Deny and Remove Old Policies
 
 ```bash
-# Apply global deny
-calicoctl apply -f global-default-deny.yaml
-
 # Test all traffic paths (see testing guide)
 ./run-traffic-tests.sh
+
+# Only if tests pass, apply a global default deny scoped to non-system namespaces
+calicoctl apply -f global-default-deny.yaml
 
 # Only if tests pass, remove old Kubernetes NetworkPolicies
 kubectl delete networkpolicies --all --all-namespaces
