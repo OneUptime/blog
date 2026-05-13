@@ -43,9 +43,12 @@ ECDSA P-256 handshakes are approximately 10x faster than RSA 4096 handshakes.
 
 TLS 1.3 reduces the handshake from 2 round trips (TLS 1.2) to 1 round trip, halving handshake latency.
 
+Typha does not currently expose a configurable minimum TLS version (see Calico issue #9507) - it relies on the Go runtime's TLS defaults. Modern Go versions negotiate TLS 1.3 automatically when both Typha and Felix support it, so the practical step is to make sure Typha is built with a recent Go toolchain by running an up-to-date Calico release.
+
 ```bash
-kubectl set env deployment/calico-typha -n calico-system \
-  TYPHA_MINTLSVERSION=VersionTLS13
+# Confirm Typha is running a recent Calico image (TLS 1.3 capable via Go runtime)
+kubectl get deployment calico-typha -n calico-system \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
 ## Step 3: Measure Handshake Latency Before and After
@@ -107,8 +110,8 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 Measure Typha CPU usage during a rolling restart.
 
 ```bash
-# Watch CPU during restart
-kubectl top pod -n calico-system -l k8s-app=calico-typha --containers -w
+# Watch CPU during restart (kubectl top does not support --watch, use the watch utility)
+watch -n 2 kubectl top pod -n calico-system -l k8s-app=calico-typha --containers
 ```
 
 CPU spikes above the limit indicate that Typha is CPU-throttled during handshakes, which will slow Felix reconnections.
