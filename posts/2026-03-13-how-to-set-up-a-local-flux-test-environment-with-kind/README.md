@@ -18,7 +18,8 @@ Kind (Kubernetes IN Docker) is a tool for running local Kubernetes clusters usin
 - kubectl installed
 - Flux CLI installed (v2.0 or later)
 - A GitHub personal access token (for bootstrapping)
-- Go 1.19 or later (optional, for building Kind from source)
+- Go 1.16 or later (optional, for installing Kind with `go install`)
+- Helm installed (optional, for running Gitea as a local Git server)
 
 ## Step 1: Install Kind
 
@@ -28,7 +29,8 @@ Kind (Kubernetes IN Docker) is a tool for running local Kubernetes clusters usin
 brew install kind
 
 # Linux (binary download)
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-arm64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -226,15 +228,16 @@ For offline testing, use Gitea as a local Git server inside Kind.
 
 ```bash
 # Deploy Gitea
-kubectl create namespace gitea
-kubectl apply -f https://raw.githubusercontent.com/gitea/gitea/main/contrib/k8s/gitea.yaml -n gitea
+helm repo add gitea-charts https://dl.gitea.com/charts/
+helm repo update
+helm install gitea gitea-charts/gitea --namespace gitea --create-namespace
 
 # Port-forward to access Gitea
-kubectl port-forward svc/gitea -n gitea 3000:3000 &
+kubectl port-forward svc/gitea-http -n gitea 3000:3000 &
 
 # Configure Flux to use the local Gitea instance
 flux create source git local-repo \
-  --url=http://gitea.gitea.svc.cluster.local:3000/user/repo \
+  --url=http://gitea-http.gitea.svc.cluster.local:3000/user/repo \
   --branch=main \
   --interval=1m
 ```
