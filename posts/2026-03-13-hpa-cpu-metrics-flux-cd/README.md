@@ -28,6 +28,15 @@ kubectl get deployment metrics-server -n kube-system
 
 ```yaml
 # infrastructure/metrics-server/helmrelease.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: metrics-server
+  namespace: kube-system
+spec:
+  interval: 1h
+  url: https://kubernetes-sigs.github.io/metrics-server/
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -57,7 +66,6 @@ metadata:
   name: myapp
   namespace: myapp
 spec:
-  replicas: 2  # Initial replicas; HPA will override this
   selector:
     matchLabels:
       app: myapp
@@ -105,7 +113,7 @@ spec:
           averageUtilization: 70  # Target 70% CPU utilization
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60  # Wait 60s before scaling up again
+      stabilizationWindowSeconds: 60  # Consider recent recommendations before scaling up
       policies:
         - type: Pods
           value: 4     # Add at most 4 pods per minute
@@ -115,7 +123,7 @@ spec:
           periodSeconds: 60
       selectPolicy: Min
     scaleDown:
-      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      stabilizationWindowSeconds: 300  # Smooth scale-down over 5 minutes
       policies:
         - type: Pods
           value: 2     # Remove at most 2 pods per minute
@@ -148,33 +156,24 @@ spec:
 
 ## Step 5: Handle the HPA-Flux Replica Conflict
 
-When Flux manages a Deployment that is also managed by HPA, Flux may reset replicas to the value in the Git manifest. Add a patch to ignore the `spec.replicas` field:
+When Flux manages a Deployment that is also managed by HPA, Flux may reset replicas to the value in the Git manifest. Omit the `spec.replicas` field from the Deployment manifest so the HPA can manage it:
 
 ```yaml
-# clusters/production/apps/myapp-ignore-replicas.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: myapp
-  namespace: flux-system
+# apps/myapp/deployment.yaml
 spec:
-  patches:
-    - patch: |
-        - op: add
-          path: /metadata/annotations
-          value:
-            kustomize.toolkit.fluxcd.io/ssa-ignore: spec.replicas
-      target:
-        kind: Deployment
-        name: myapp
+  # Omit replicas when HPA manages this Deployment.
+  selector:
+    matchLabels:
+      app: myapp
 ```
 
-Or in Kustomize's strategic merge, set a high replica count as a placeholder that HPA will always override:
+If `spec.replicas` is present in Git, Flux will continue reconciling it and can fight with the HPA. Let the HPA enforce `minReplicas` and `maxReplicas` instead:
 
 ```yaml
-# In the Deployment, set replicas to match maxReplicas as a safe default
+# apps/myapp/hpa.yaml
 spec:
-  replicas: 2  # HPA min replicas - Flux will set this, HPA will change it
+  minReplicas: 2
+  maxReplicas: 20
 ```
 
 ## Step 6: Verify HPA Operation
@@ -204,7 +203,7 @@ kubectl get deployment myapp -n myapp
 - Use scale-down `stabilizationWindowSeconds: 300` to prevent rapid scale-down after traffic spikes.
 - Set a conservative `maxReplicas` to prevent runaway scaling from consuming all cluster capacity.
 - Monitor HPA decisions using `kubectl describe hpa` to understand why scaling was or was not triggered.
-- Use PodDisruptionBudgets alongside HPA to ensure availability during scale-down events.
+- Use PodDisruptionBudgets alongside HPA to help protect availability during voluntary disruptions.
 
 ## Conclusion
 
