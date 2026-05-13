@@ -85,8 +85,8 @@ spec:
   # This must match the existing workspace name exactly
   workspace: production-vpc
 
-  # Start with manual approval to review the first plan before auto-applying
-  approvePlan: "manual"
+  # Start in manual approval mode to review the first plan before auto-applying
+  approvePlan: ""
 
   # Use the SAME backend configuration as your existing pipeline
   # The controller will find the existing state and use it
@@ -170,15 +170,19 @@ Zero changes means the controller found the existing state and the configuration
 ## Step 6: Approve the Migration Plan
 
 ```bash
-# Get the plan ID
+# Get the pending plan ID
 PLAN_ID=$(kubectl get terraform production-vpc \
   -n flux-system \
-  -o jsonpath='{.status.plan.planId}')
+  -o jsonpath='{.status.plan.pending}')
 
-# Approve the plan (even a no-op plan requires approval in manual mode)
-kubectl annotate terraform production-vpc \
-  -n flux-system \
-  infra.contrib.fluxcd.io/approvePlan="${PLAN_ID}"
+# Approve the plan by setting spec.approvePlan to the pending plan ID.
+# Commit and push this manifest change so Flux applies it.
+# In infrastructure/terraform/production/vpc-migrated.yaml, set:
+#   approvePlan: "${PLAN_ID}"
+git add infrastructure/terraform/production/vpc-migrated.yaml
+git commit -m "chore: approve production-vpc migration plan"
+git push origin main
+flux reconcile kustomization terraform-production --with-source
 
 # Watch the apply
 kubectl get terraform production-vpc -n flux-system --watch
@@ -189,15 +193,13 @@ kubectl get terraform production-vpc -n flux-system --watch
 After verifying the migration is successful:
 
 ```bash
-# Update the resource to enable auto-apply for future reconciliations
-kubectl patch terraform production-vpc \
-  -n flux-system \
-  --type='merge' \
-  -p '{"spec":{"approvePlan": "auto"}}'
-
-# Also update the manifest in Git
+# Update the manifest in Git to enable auto-apply for future reconciliations
+# In infrastructure/terraform/production/vpc-migrated.yaml, set:
+#   approvePlan: "auto"
 git add infrastructure/terraform/production/vpc-migrated.yaml
 git commit -m "chore: enable auto-apply for production-vpc after migration"
+git push origin main
+flux reconcile kustomization terraform-production --with-source
 ```
 
 ## Best Practices
