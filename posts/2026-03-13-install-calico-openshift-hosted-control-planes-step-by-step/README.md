@@ -19,9 +19,8 @@ This guide covers installing Calico on OpenShift Hosted Control Plane worker nod
 ## Prerequisites
 
 - An OpenShift management cluster with HyperShift operator installed
-- A Hosted Cluster created and worker nodes provisioned
+- A Hosted Cluster created with `--network-type Other` and worker nodes provisioned
 - `oc` CLI configured to access the hosted cluster
-- `calicoctl` installed
 - The hosted cluster's kubeconfig available
 
 ## Step 1: Access the Hosted Cluster
@@ -29,27 +28,34 @@ This guide covers installing Calico on OpenShift Hosted Control Plane worker nod
 ```bash
 # Get the hosted cluster kubeconfig
 
-oc extract secret/admin-kubeconfig -n <hosted-cluster-namespace> --to=- > hosted-kubeconfig.yaml
+oc extract -n <hosted-cluster-namespace> \
+  secret/<hosted-cluster-name>-admin-kubeconfig \
+  --to=- > hosted-kubeconfig.yaml
 export KUBECONFIG=hosted-kubeconfig.yaml
 
 # Verify access
-kubectl get nodes
+oc get nodes
 ```
 
-## Step 2: Install the Tigera Operator on the Hosted Cluster
+## Step 2: Download the Calico OpenShift Manifests
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/ocp/tigera-operator.yaml
-kubectl rollout status deployment/tigera-operator -n tigera-operator
+mkdir calico
+wget -qO- https://github.com/projectcalico/calico/releases/download/v3.32.0/ocp.tgz | \
+  tar xvz --strip-components=1 -C calico
 ```
 
-## Step 3: Apply the Required SCCs
+## Step 3: Configure the Iptables Data Plane
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/ocp/calico-scc.yaml
+sed -i 's/^\(\s*linuxDataplane:\s*\)BPF/\1Iptables/' calico/03-cr-installation.yaml
+rm -f calico/cluster-network-operator.yaml
+rm -f calico/01-configmap-kubernetes-services-endpoint.yaml
 ```
 
 ## Step 4: Create the Installation CR
+
+Edit `calico/03-cr-installation.yaml` so the Installation CR includes your pod CIDR:
 
 ```yaml
 apiVersion: operator.tigera.io/v1
@@ -60,6 +66,7 @@ spec:
   variant: Calico
   kubernetesProvider: OpenShift
   calicoNetwork:
+    linuxDataplane: Iptables
     ipPools:
     - blockSize: 26
       cidr: 10.132.0.0/14
@@ -68,33 +75,41 @@ spec:
       nodeSelector: all()
 ```
 
+## Step 5: Apply the Calico Manifests
+
 ```bash
-kubectl apply -f calico-installation.yaml
+cd calico
+ls 00* | xargs -n1 oc apply -f
+ls 01* | xargs -n1 oc apply -f
+ls 02* | xargs -n1 oc apply -f
+
+timeout --foreground 600 bash -c "while ! oc get crd installations.operator.tigera.io; do sleep 5; done"
+ls 03* | xargs -n1 oc apply -f
 ```
 
-## Step 5: Monitor Calico Initialization
+## Step 6: Monitor Calico Initialization
 
 ```bash
-kubectl get tigerastatus -w
-kubectl get pods -n calico-system -w
+oc get tigerastatus -w
+oc get pods -n calico-system -w
 ```
 
-## Step 6: Verify Worker Nodes Are Ready
+## Step 7: Verify Worker Nodes Are Ready
 
 ```bash
-kubectl get nodes
-kubectl get pods -A | grep calico
+oc get nodes
+oc get pods -A | grep calico
 ```
 
-## Step 7: Verify Connectivity from a Test Pod
+## Step 8: Verify Connectivity from a Test Pod
 
 ```bash
-kubectl run test --image=busybox -- sleep 300
-kubectl get pod test -o wide
-kubectl exec test -- wget -qO- --timeout=5 http://kubernetes.default.svc.cluster.local
-kubectl delete pod test
+oc run test --image=curlimages/curl:8.7.1 -- sleep 300
+oc get pod test -o wide
+oc exec test -- curl -kfsS --connect-timeout 5 https://kubernetes.default.svc.cluster.local
+oc delete pod test
 ```
 
 ## Conclusion
 
-Installing Calico on OpenShift Hosted Control Planes requires targeting the hosted cluster's API server rather than the management cluster. The installation process follows the standard OpenShift Calico workflow - Tigera Operator, SCCs, Installation CR - but uses the hosted cluster's kubeconfig. The Calico data plane runs entirely on the worker nodes, while the API server it communicates with runs as pods in the management cluster.
+Installing Calico on OpenShift Hosted Control Planes requires targeting the hosted cluster's API server rather than the management cluster. The installation process follows the standard OpenShift HCP Calico workflow - OpenShift manifest bundle, data plane configuration, Installation CR - but uses the hosted cluster's kubeconfig. The Calico data plane runs entirely on the worker nodes, while the API server it communicates with runs as pods in the management cluster.
