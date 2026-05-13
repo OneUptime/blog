@@ -72,17 +72,17 @@ spec:
 graph LR
     A[Pod deleted] --> B[IPAM entry lingers]
     B --> C[calicoctl ipam check]
-    C --> D[Leaked IP list]
-    D --> E[calicoctl ipam gc]
+    C --> D[Leaked IP report]
+    D --> E[calicoctl ipam release --from-report]
     E --> F[etcd keys reclaimed]
 ```
 
 ```bash
-# Identify and fix IPAM leaks
-calicoctl ipam check --show-all-ips
+# Identify IPAM leaks and write a report
+calicoctl ipam check --show-problem-ips -o ipam-report.json
 
-# Garbage collect leaked allocations
-calicoctl ipam gc
+# Release leaked allocations from the report
+calicoctl ipam release --from-report=ipam-report.json
 ```
 
 ## Optimization 4: Optimize Watch Performance
@@ -114,7 +114,6 @@ calicoctl datastore migrate export > calico-backup.yaml
 # Update Calico to use KDD
 kubectl set env ds/calico-node \
   -n kube-system \
-  CALICO_DATASTORE_TYPE=kubernetes \
   DATASTORE_TYPE=kubernetes
 
 # Import existing data
@@ -128,7 +127,7 @@ calicoctl datastore migrate import -f calico-backup.yaml
 etcdctl get /calico/ --prefix --keys-only | wc -l
 
 # Track IPAM key count separately (most volatile)
-etcdctl get /calico/v1/ipam/ --prefix --keys-only | wc -l
+etcdctl get /calico/ipam/v2/ --prefix --keys-only | wc -l
 ```
 
 ## Conclusion
