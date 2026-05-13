@@ -30,12 +30,28 @@ This guide covers generating etcd certificates for Calico using OpenSSL for manu
 
 openssl genrsa -out calico-etcd-ca.key 4096
 
+# Create CA certificate configuration
+cat > calico-etcd-ca.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+prompt = no
+[req_distinguished_name]
+C = US
+O = Calico
+CN = calico-etcd-ca
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+EOF
+
 # Generate self-signed CA certificate (10-year validity)
 openssl req -x509 -new -nodes \
   -key calico-etcd-ca.key \
   -sha256 -days 3650 \
   -out calico-etcd-ca.crt \
-  -subj "/C=US/O=Calico/CN=calico-etcd-ca"
+  -config calico-etcd-ca.conf
 ```
 
 ## Step 2: Generate etcd Server Certificate
@@ -52,7 +68,8 @@ distinguished_name = req_distinguished_name
 [req_distinguished_name]
 [v3_req]
 basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 [alt_names]
 DNS.1 = etcd
@@ -93,24 +110,38 @@ for component in calico-felix calico-cni calico-admin; do
   # Generate key
   openssl genrsa -out "${component}.key" 2048
 
+  # Create client certificate configuration
+  cat > "${component}-csr.conf" <<EOF
+[req]
+req_extensions = v3_req
+distinguished_name = req_distinguished_name
+[req_distinguished_name]
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+EOF
+
   # Generate CSR
   openssl req -new \
     -key "${component}.key" \
     -out "${component}.csr" \
-    -subj "/CN=${component}/O=calico"
+    -subj "/CN=${component}/O=calico" \
+    -config "${component}-csr.conf"
 
   # Sign with CA
   openssl x509 -req -in "${component}.csr" \
     -CA calico-etcd-ca.crt -CAkey calico-etcd-ca.key \
     -CAcreateserial -out "${component}.crt" \
-    -days 365 -sha256
+    -days 365 -sha256 -extensions v3_req \
+    -extfile "${component}-csr.conf"
 done
 ```
 
 ## Step 4: Store Certificates in Kubernetes Secrets
 
 ```bash
-kubectl create secret generic calico-etcd-certs \
+kubectl create secret generic calico-etcd-secrets \
   -n kube-system \
   --from-file=etcd-ca=calico-etcd-ca.crt \
   --from-file=etcd-cert=calico-felix.crt \
@@ -118,6 +149,15 @@ kubectl create secret generic calico-etcd-certs \
 ```
 
 ## Step 5: Automate with cert-manager (Recommended)
+
+Create the CA secret that the cert-manager `Issuer` uses for signing:
+
+```bash
+kubectl create secret tls calico-etcd-ca-secret \
+  -n kube-system \
+  --cert=calico-etcd-ca.crt \
+  --key=calico-etcd-ca.key
+```
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -146,6 +186,8 @@ spec:
   issuerRef:
     name: calico-etcd-ca-issuer
 ```
+
+cert-manager writes issued certificates to the target Secret as `tls.crt`, `tls.key`, and, when the CA is known, `ca.crt`. Map or copy those values into Calico's expected `etcd-cert`, `etcd-key`, and `etcd-ca` secret keys before mounting them with the standard Calico manifests.
 
 ## Conclusion
 
