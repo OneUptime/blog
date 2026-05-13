@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Migration, EKS, AWS
 
-Description: A comprehensive guide to installing Calico network policy on Amazon EKS, replacing the default AWS CNI network policy with Calico's advanced policy engine for richer traffic control.
+Description: A comprehensive guide to installing Calico network policy on Amazon EKS, disabling AWS VPC CNI network policy and using Calico's advanced policy engine for richer traffic control.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A comprehensive guide to installing Calico network policy on Amazon
 
 Amazon EKS uses the AWS VPC CNI plugin for pod networking, which provides native VPC IP addresses for pods. However, EKS's built-in network policy support is limited compared to what Calico offers. By adding Calico as a network policy engine on top of the AWS VPC CNI, you get the best of both worlds: native VPC networking with Calico's powerful GlobalNetworkPolicy, namespace isolation, and egress controls.
 
-This approach - running Calico for policy while keeping the AWS VPC CNI for IPAM and routing - is the recommended pattern for EKS. Calico operates as a pure policy engine in this mode, using iptables or eBPF to enforce rules without replacing the existing data plane.
+This approach - running Calico for policy while keeping the AWS VPC CNI for IPAM and routing - is a supported pattern for EKS. Calico operates as a policy engine in this mode without replacing the existing pod networking data plane.
 
 This guide walks through installing Calico on an existing EKS cluster, migrating your network policies, and validating that all workloads maintain connectivity under the new policy model.
 
@@ -20,7 +20,7 @@ This guide walks through installing Calico on an existing EKS cluster, migrating
 
 - EKS cluster v1.27+ with worker nodes
 - `kubectl` configured for the EKS cluster (`aws eks update-kubeconfig`)
-- `calicoctl` v3.27+ installed
+- `calicoctl` v3.32+ installed
 - IAM permissions for EKS management
 - Existing network policies (if any) exported and ready for conversion
 - `eksctl` v0.150+ (optional but recommended)
@@ -29,20 +29,36 @@ This guide walks through installing Calico on an existing EKS cluster, migrating
 
 Before installing Calico, disable the AWS VPC CNI's network policy functionality to avoid conflicts.
 
-Update the aws-node DaemonSet to disable the AWS network policy controller:
+If you manage the VPC CNI as an Amazon EKS add-on, update the add-on configuration so `enableNetworkPolicy` is not enabled:
 
 ```bash
-# Disable the AWS network policy controller to avoid conflicts with Calico
+aws eks update-addon \
+  --cluster-name <cluster-name> \
+  --addon-name vpc-cni \
+  --configuration-values '{"enableNetworkPolicy":"false"}'
+```
 
-kubectl set env daemonset aws-node \
+If you manage the add-on directly in the cluster, make sure the VPC CNI ConfigMap and node agent argument are disabled:
+
+```bash
+# Disable the AWS network policy controller in the VPC CNI ConfigMap
+kubectl patch configmap amazon-vpc-cni \
   -n kube-system \
-  ENABLE_NETWORK_POLICY_CONTROLLER=false
+  --type merge \
+  -p '{"data":{"enable-network-policy-controller":"false"}}'
+
+# Disable the AWS network policy node agent in the aws-node DaemonSet
+kubectl patch daemonset aws-node \
+  -n kube-system \
+  --type strategic \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"aws-network-policy-agent","args":["--enable-network-policy=false","--metrics-bind-addr=:8162","--health-probe-bind-addr=:8163"]}]}}}}'
 
 # Restart the aws-node DaemonSet to apply the change
 kubectl rollout restart daemonset aws-node -n kube-system
 
-# Verify the environment variable was applied
-kubectl get daemonset aws-node -n kube-system -o jsonpath='{.spec.template.spec.containers[*].env}'
+# Verify the network policy argument is disabled
+kubectl get daemonset aws-node -n kube-system \
+  -o jsonpath='{.spec.template.spec.containers[*].args}'
 ```
 
 ## Step 2: Install Calico on EKS
@@ -52,11 +68,30 @@ Install Calico using the operator-based installation targeting EKS.
 Apply the Tigera operator and configure it for EKS policy-only mode:
 
 ```bash
+# Install Calico custom resource definitions
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+
 # Install the Tigera operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Wait for the operator to be ready
 kubectl wait --for=condition=available deployment tigera-operator -n tigera-operator --timeout=120s
+```
+
+Configure AWS VPC CNI to annotate pods with their IPs so Calico receives pod IP information quickly:
+
+```bash
+cat <<EOF > aws-node-patch-permission.yaml
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - patch
+EOF
+
+kubectl apply -f <(cat <(kubectl get clusterrole aws-node -o yaml) aws-node-patch-permission.yaml)
+kubectl set env -n kube-system daemonset/aws-node ANNOTATE_POD_IP=true
 ```
 
 Create an Installation resource that uses the existing AWS VPC CNI for networking:
@@ -96,7 +131,7 @@ kubectl get pods -n calico-system -w
 calicoctl get nodes
 
 # Check that Calico is operating in policy-only mode
-calicoctl get installation default -o yaml | grep -A5 cni
+kubectl get installation.operator.tigera.io default -o yaml | grep -A5 cni
 ```
 
 ## Step 4: Migrate Network Policies to Calico
@@ -131,9 +166,9 @@ spec:
   egress:
   - action: Allow
     destination:
-      ports:
-      - 53
-      selector: "k8s-app == 'kube-dns'"
+      services:
+        name: kube-dns
+        namespace: kube-system
 ```
 
 Apply the global policies:
@@ -151,10 +186,12 @@ Run connectivity tests to validate policy enforcement:
 
 ```bash
 # Deploy two test pods in different namespaces
+kubectl create namespace app-ns
+kubectl create namespace other-ns
 kubectl run allowed-pod --image=curlimages/curl -n app-ns -- sleep 3600
 kubectl run blocked-pod --image=curlimages/curl -n other-ns -- sleep 3600
 
-# Test allowed connectivity
+# After applying your application allow policies, test expected allowed connectivity
 kubectl exec allowed-pod -n app-ns -- curl -s http://backend-service.app-ns:8080/health
 
 # Test that default-deny is working for unauthorized traffic
@@ -168,10 +205,10 @@ calicoctl get globalnetworkpolicies -o wide
 
 - Run Calico in policy-only mode on EKS to preserve native VPC CNI IP management
 - Use Calico tiers to separate platform team policies from application team policies
-- Enable Calico eBPF mode on EKS for improved performance on high-throughput workloads
+- Evaluate Calico eBPF mode separately for high-throughput workloads; it has additional kube-proxy and API endpoint requirements
 - Integrate with AWS CloudTrail for audit logging of policy changes
 - Use OneUptime to monitor pod-to-pod connectivity and alert on unexpected policy drops
 
 ## Conclusion
 
-Installing Calico on EKS in policy-only mode gives you a powerful, expressive network policy engine without replacing AWS's native VPC networking. The combination of AWS VPC CNI for routing and Calico for policy enforcement is a production-proven pattern used by many large EKS deployments. Complement your Calico policies with OneUptime monitoring to maintain continuous visibility into network connectivity and security compliance.
+Installing Calico on EKS in policy-only mode gives you a powerful, expressive network policy engine without replacing AWS's native VPC networking. The combination of AWS VPC CNI for routing and Calico for policy enforcement is a supported pattern used by many EKS deployments. Complement your Calico policies with OneUptime monitoring to maintain continuous visibility into network connectivity and security compliance.
