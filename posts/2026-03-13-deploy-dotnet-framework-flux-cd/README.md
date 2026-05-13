@@ -18,7 +18,7 @@ This guide covers deploying a .NET Framework WCF service and a Web Forms applica
 
 ## Prerequisites
 
-- Kubernetes cluster with Windows Server 2022 or 2019 nodes
+- Kubernetes cluster with Windows Server 2022 nodes
 - .NET Framework application containerized with Windows Server Core base image
 - Flux CD managing the cluster
 - SQL Server or other backend accessible from Windows pods
@@ -31,7 +31,7 @@ This guide covers deploying a .NET Framework WCF service and a Web Forms applica
 ```dockerfile
 # Multi-stage build for .NET Framework WCF service
 
-FROM mcr.microsoft.com/dotnet/framework/sdk:4.8-windowsservercore-ltsc2022 AS build
+FROM mcr.microsoft.com/dotnet/framework/sdk:4.8.1-windowsservercore-ltsc2022 AS build
 WORKDIR /src
 
 # Restore and build
@@ -43,7 +43,7 @@ COPY . .
 RUN msbuild MyService/MyService.csproj /p:Configuration=Release /p:OutputPath=/app/publish
 
 # Runtime image - smaller than SDK
-FROM mcr.microsoft.com/dotnet/framework/wcf:4.8-windowsservercore-ltsc2022 AS runtime
+FROM mcr.microsoft.com/dotnet/framework/wcf:4.8.1-windowsservercore-ltsc2022 AS runtime
 WORKDIR /inetpub/wwwroot
 
 COPY --from=build /app/publish .
@@ -63,7 +63,7 @@ metadata:
   labels:
     app: wcf-service
     os: windows
-    runtime: dotnet-framework-4.8
+    runtime: dotnet-framework-4.8.1
 spec:
   replicas: 2
   selector:
@@ -80,6 +80,8 @@ spec:
         app: wcf-service
         os: windows
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
         node.kubernetes.io/windows-build: "10.0.20348"
@@ -168,6 +170,8 @@ spec:
         app: webforms-app
         os: windows
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
 
@@ -185,7 +189,7 @@ spec:
             - containerPort: 80
 
           env:
-            - name: ASPNETCORE_ENVIRONMENT
+            - name: APP_ENVIRONMENT
               value: Production
             # Session state - use Redis for shared sessions across replicas
             - name: REDIS_CONNECTION
