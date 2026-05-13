@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Monitor for Kubernetes probe failures caused by Calico NetworkPolicies using pod readiness metrics, probe failure counters, and pod restart rate alerts.
+Description: Monitor for Kubernetes readiness regressions after Calico policy changes using pod readiness metrics, probe failure events, and pod restart rate alerts.
 
 ---
 
 ## Introduction
 
-Monitoring for health check failures caused by Calico NetworkPolicies requires tracking pod readiness state, probe failure events, and pod restart rates at the namespace level. When a NetworkPolicy change blocks kubelet probe traffic, multiple pods in the affected namespace will transition to NotReady simultaneously - this correlated failure pattern is a strong signal that a policy change is the root cause rather than an application issue.
+Monitoring for health check failures after Calico NetworkPolicy changes requires tracking pod readiness state, probe failure events, and pod restart rates at the namespace level. Standard Kubernetes NetworkPolicy and Calico workload policy do not block kubelet traffic from the node to local pods, but policy changes can still make readiness checks fail by blocking application dependencies, peer traffic, or external health checks. Multiple pods in the affected namespace transitioning to NotReady simultaneously is a strong signal that a recent policy change is involved rather than a single application instance issue.
 
 Prometheus kube-state-metrics exposes the pod readiness and container restart count metrics needed to build these alerts. Combining them with a Kubernetes event watch for probe failures provides fast detection and useful context for diagnosis.
 
@@ -30,7 +30,7 @@ Prometheus kube-state-metrics exposes the pod readiness and container restart co
 ```bash
 # Check pod readiness state
 
-kubectl get pods -n <namespace> -o wide | grep "0/"
+kubectl get pods -n <namespace> | awk 'NR == 1 {print; next} {split($2,a,"/"); if (a[1] != a[2]) print}'
 
 # Check for probe failure events
 kubectl get events -n <namespace> | grep -i "probe\|unhealthy\|failed"
@@ -53,17 +53,19 @@ spec:
     - alert: MultiplePodsNotReady
       expr: |
         count by (namespace) (
-          kube_pod_status_ready{condition="false",namespace!~"kube-system|kube-public"}
+          kube_pod_status_ready{condition="false",namespace!~"kube-system|kube-public"} == 1
         ) > 2
       for: 3m
       labels:
         severity: warning
       annotations:
         summary: "Multiple pods not ready in {{ $labels.namespace }}"
-        description: "{{ $value }} pods are not ready in {{ $labels.namespace }} - possible NetworkPolicy probe block"
+        description: "{{ $value }} pods are not ready in {{ $labels.namespace }} - possible policy-related readiness regression"
     - alert: PodRestartSpike
       expr: |
-        increase(kube_pod_container_status_restarts_total{namespace!~"kube-system"}[10m]) > 5
+        sum by (namespace, pod) (
+          increase(kube_pod_container_status_restarts_total{namespace!~"kube-system"}[10m])
+        ) > 5
       for: 5m
       labels:
         severity: warning
@@ -88,8 +90,8 @@ Monitor these metrics in Grafana for correlation with policy changes:
 
 ```mermaid
 flowchart LR
-    A[Pod probe fails] --> B[kubelet reports Unhealthy event]
-    B --> C[kube-state-metrics: kube_pod_status_ready=false]
+    A[Readiness check fails] --> B[kubelet reports Unhealthy event]
+    B --> C[kube-state-metrics: kube_pod_status_ready condition=false]
     C --> D[Prometheus evaluates MultiplePodsNotReady]
     D -- 2+ pods in namespace --> E[Alert fires]
     E --> F[On-call checks for recent NetworkPolicy changes]
@@ -103,4 +105,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring for health check failures from Calico policies requires tracking correlated pod readiness drops across namespaces. The pattern of multiple pods becoming NotReady simultaneously after a policy change is a reliable signal. Prometheus rules on kube-state-metrics pod readiness metrics detect this pattern within minutes.
+Monitoring for health check failures after Calico policy changes requires tracking correlated pod readiness drops across namespaces. The pattern of multiple pods becoming NotReady simultaneously after a policy change is a useful signal to investigate. Prometheus rules on kube-state-metrics pod readiness metrics detect this pattern within minutes.
