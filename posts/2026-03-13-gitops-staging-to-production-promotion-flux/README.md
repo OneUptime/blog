@@ -34,11 +34,9 @@ fleet-infra/
 │       │   ├── deployment.yaml
 │       │   └── service.yaml
 │       ├── staging/                 # Staging-specific overrides
-│       │   ├── kustomization.yaml
-│       │   └── image-patch.yaml    # Staging image tag
+│       │   └── kustomization.yaml  # Staging image tag
 │       └── production/             # Production-specific overrides
-│           ├── kustomization.yaml
-│           └── image-patch.yaml    # Production image tag
+│           └── kustomization.yaml  # Production image tag
 ```
 
 ```yaml
@@ -213,7 +211,7 @@ After the promotion PR is reviewed and merged, Flux reconciles production with t
 
 ```bash
 # Check that production Kustomization reconciled successfully
-flux get kustomization my-app-production -n flux-system
+flux get kustomizations my-app-production -n flux-system
 
 # Confirm the correct image version is running in production
 kubectl get deployment my-app -n production \
@@ -227,7 +225,7 @@ flux events --for Kustomization/my-app-production
 
 - Never update the production image tag directly - always go through a PR so the promotion has a record and a reviewer.
 - Add a mandatory waiting period or explicit staging sign-off step before the promotion bot opens the production PR. Automated promotion that is too eager can promote a version that passed CI but failed real traffic.
-- Use semantic version tags (not `latest`) so every promotion references an immutable, traceable artifact.
+- Use semantic version tags (not `latest`) and enforce registry tag immutability, or promote image digests when you need every promotion to reference an immutable, traceable artifact.
 - Include the staging deployment timestamp in the promotion PR description so reviewers can see how long the version has been running in staging.
 - Set up Flux health checks on the production Kustomization so that Flux marks the promotion as failed if the new version does not become healthy within the timeout.
 
