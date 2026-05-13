@@ -58,7 +58,7 @@ This pattern only matches tags that start with `v`, followed by exactly three do
 
 ## Excluding Specific Prefixes
 
-If your tags have varied formats but you want to exclude tags with certain prefixes, use a negative lookahead:
+Flux uses Go regular expressions for tag filters, so lookahead assertions are not supported. If your tags have varied formats but you want to exclude tags with certain prefixes, write the filter as a positive match for the tag formats you do want:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -70,14 +70,14 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^(?!debug-)(?!test-)(?!nightly-)(?P<version>.+)$'
+    pattern: '^(?:release-|prod-)?v(?P<version>\d+\.\d+\.\d+)$'
     extract: '$version'
   policy:
     semver:
       range: '>=1.0.0'
 ```
 
-The negative lookahead assertions `(?!debug-)`, `(?!test-)`, and `(?!nightly-)` cause the regex to reject any tag starting with those prefixes. All other tags pass through for policy evaluation.
+This pattern allows tags such as `v1.2.0`, `release-v1.2.0`, and `prod-v1.2.0`. Tags starting with prefixes like `debug-`, `test-`, or `nightly-` are excluded because they do not match the allowed formats.
 
 ## Excluding the latest Tag
 
@@ -93,14 +93,14 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^(?!latest$)v(?P<version>\d+\.\d+\.\d+)$'
+    pattern: '^v(?P<version>\d+\.\d+\.\d+)$'
     extract: '$version'
   policy:
     semver:
       range: '>=1.0.0'
 ```
 
-The `(?!latest$)` assertion ensures the entire tag `latest` is excluded. Combined with the `v` prefix requirement, this is doubly protected.
+The `v` prefix and numeric version requirement ensure the tag `latest` is excluded because it does not match the allowed format.
 
 ## Excluding Pre-Release Tags
 
@@ -139,16 +139,18 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^v(?P<version>\d+\.\d+\.\d+)(?!.*(-dirty|-snapshot))$'
+    pattern: '^v(?P<version>\d+\.\d+\.\d+)$'
     extract: '$version'
   policy:
     semver:
       range: '>=1.0.0'
 ```
 
+The same anchored positive pattern ignores `v1.2.0-dirty` and `v1.2.0-snapshot` because it only allows the tag to contain the three-part version after `v`.
+
 ## Combining Multiple Exclusions
 
-For complex scenarios, you can chain multiple negative lookaheads:
+For complex scenarios, combine the allowed formats into one positive pattern:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -160,21 +162,21 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^(?!latest$)(?!.*-dirty$)(?!.*-snapshot$)(?!debug-)(?!test-)v(?P<version>\d+\.\d+\.\d+)$'
+    pattern: '^(?:release-|prod-)?v(?P<version>\d+\.\d+\.\d+)$'
     extract: '$version'
   policy:
     semver:
       range: '>=1.0.0'
 ```
 
-This pattern excludes `latest`, any tag ending in `-dirty` or `-snapshot`, and any tag prefixed with `debug-` or `test-`, while only matching semantic version tags.
+This pattern excludes `latest`, any tag ending in `-dirty` or `-snapshot`, and any tag prefixed with `debug-` or `test-`, because it only matches the approved semantic version tag formats.
 
 ## Verifying Exclusions
 
 After applying the policy, confirm the selected image:
 
 ```bash
-kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestImage}'
+kubectl -n flux-system get imagepolicy my-app -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 ```
 
 Check for errors or unexpected selections:
@@ -187,4 +189,4 @@ Review the conditions in the status to verify the policy is reconciling successf
 
 ## Conclusion
 
-Ignoring specific tags in Flux CD ImagePolicy is essential for production safety. The most robust approach is to use a positive match pattern that explicitly defines the expected tag format. For more nuanced requirements, negative lookaheads provide a way to exclude specific tags or patterns. Whichever approach you use, always verify the policy status after applying changes to confirm the correct image is being selected.
+Ignoring specific tags in Flux CD ImagePolicy is essential for production safety. The most robust approach is to use a positive match pattern that explicitly defines the expected tag format. Whichever approach you use, always verify the policy status after applying changes to confirm the correct image is being selected.
