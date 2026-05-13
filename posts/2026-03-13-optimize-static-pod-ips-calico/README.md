@@ -18,8 +18,8 @@ This guide covers the full lifecycle - from pool design to pod annotation to mon
 
 ## Prerequisites
 
-- Calico v3.18+ configured as the CNI plugin
-- `calicoctl` v3.18+ installed
+- Calico v3.21+ configured as the CNI plugin (required for `IPReservation`)
+- `calicoctl` v3.21+ installed
 - Kubernetes 1.24+
 - Node CIDR ranges that accommodate per-node blocks large enough for static assignments
 
@@ -38,8 +38,8 @@ spec:
   # CIDR dedicated to static assignments
   cidr: 10.48.100.0/24
   # Disable NAT for this pool since IPs are tracked externally
-  natOutgoing: true
-  # Disable auto-allocation - IPs must be explicitly requested
+  natOutgoing: false
+  # Keep pool enabled - specific IPs are reserved via IPReservation in Step 2
   disabled: false
   nodeSelector: "all()"
 ```
