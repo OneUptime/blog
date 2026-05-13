@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Kustomization, HelmRelease, Deployment Order, Microservice
 
-Description: Learn how to implement ordered deployment of microservices in Flux CD using Kustomization and HelmRelease dependency chains.
+Description: Learn how to implement ordered deployment of microservices in Flux CD using HelmRelease dependency chains.
 
 ---
 
@@ -14,7 +14,7 @@ In a microservices architecture, deployment order matters. Databases must be ini
 
 Flux CD provides a `dependsOn` field for both Kustomization and HelmRelease resources. This field creates ordered reconciliation chains where Flux will not begin reconciling a resource until all its listed dependencies have reached a Ready state. Unlike application-level retry logic, this approach handles ordering at the infrastructure orchestration layer, which is cleaner and more reliable.
 
-In this guide you will learn how to configure deployment order for an entire microservice stack using both Kustomization and HelmRelease `dependsOn` chains, how to use cross-namespace dependencies, and how to validate that ordering is working correctly.
+In this guide you will learn how to configure deployment order for an entire microservice stack using HelmRelease `dependsOn` chains, how to use cross-namespace dependencies, and how to validate that ordering is working correctly.
 
 ## Prerequisites
 
@@ -29,20 +29,20 @@ Organize microservices into deployment tiers based on dependencies.
 
 ```mermaid
 graph LR
-    subgraph Tier 1 - Infrastructure
+    subgraph tier1["Tier 1 - Infrastructure"]
         DB[(PostgreSQL)]
         MQ[RabbitMQ]
         Cache[Redis]
     end
-    subgraph Tier 2 - Core Services
+    subgraph tier2["Tier 2 - Core Services"]
         Auth[Auth Service]
         Config[Config Service]
     end
-    subgraph Tier 3 - Business Services
+    subgraph tier3["Tier 3 - Business Services"]
         API[Backend API]
         Worker[Background Worker]
     end
-    subgraph Tier 4 - Edge Services
+    subgraph tier4["Tier 4 - Edge Services"]
         GW[API Gateway]
         FE[Frontend]
     end
@@ -74,7 +74,7 @@ spec:
   chart:
     spec:
       chart: postgresql
-      version: "15.x"
+      version: "18.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -85,11 +85,9 @@ spec:
         enabled: true
         size: 20Gi
     auth:
-      postgresPassword:
-        valueFrom:
-          secretKeyRef:
-            name: postgresql-secret
-            key: password
+      existingSecret: postgresql-secret
+      secretKeys:
+        adminPasswordKey: password
 ```
 
 ```yaml
@@ -106,7 +104,7 @@ spec:
   chart:
     spec:
       chart: rabbitmq
-      version: "14.x"
+      version: "16.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -115,6 +113,30 @@ spec:
     persistence:
       enabled: true
       size: 10Gi
+```
+
+```yaml
+# clusters/production/infrastructure/redis-helmrelease.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: redis
+  namespace: flux-system
+spec:
+  interval: 10m
+  targetNamespace: infrastructure
+  createNamespace: true
+  chart:
+    spec:
+      chart: redis
+      version: "25.x"
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+  values:
+    architecture: standalone
+    auth:
+      enabled: true
 ```
 
 ## Step 3: Deploy Tier 2 - Core Services (Depend on Tier 1)
@@ -278,10 +300,14 @@ flux get helmreleases --watch
 kubectl get helmrelease -n flux-system \
   -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
 
-# Force reconcile the entire stack in order
+# Force reconcile each tier in order
 flux reconcile helmrelease postgresql --with-source
+flux reconcile helmrelease rabbitmq --with-source
+flux reconcile helmrelease redis --with-source
 flux reconcile helmrelease auth-service
+flux reconcile helmrelease config-service
 flux reconcile helmrelease backend-api
+flux reconcile helmrelease background-worker
 flux reconcile helmrelease api-gateway
 ```
 
