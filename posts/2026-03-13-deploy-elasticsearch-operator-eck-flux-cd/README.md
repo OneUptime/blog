@@ -16,9 +16,9 @@ Deploying ECK through Flux CD gives you GitOps control over the operator install
 
 ## Prerequisites
 
-- Kubernetes v1.26+ with Flux CD bootstrapped
+- Kubernetes version supported by your ECK release (ECK 3.4.0 supports Kubernetes 1.31-1.35) with Flux CD bootstrapped
 - StorageClass supporting `ReadWriteOnce` PVCs
-- At least 4 GiB memory per Elasticsearch node
+- At least 4 GiB memory per data node; dedicated master nodes in this example use 2 GiB
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Add the Elastic HelmRepository
@@ -50,7 +50,7 @@ spec:
   chart:
     spec:
       chart: eck-operator
-      version: "2.13.0"
+      version: "3.4.0"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -68,8 +68,9 @@ spec:
         cpu: 100m
         memory: 128Mi
     # Enable metrics for Prometheus
-    metrics:
-      port: 8080
+    config:
+      metrics:
+        port: 8080
 ```
 
 ```yaml
@@ -99,9 +100,6 @@ spec:
       config:
         node.roles:
           - master
-        xpack.security.enabled: true
-        xpack.security.http.ssl.enabled: true
-        xpack.security.transport.ssl.enabled: true
       podTemplate:
         spec:
           containers:
@@ -142,9 +140,6 @@ spec:
           - data_content
           - ingest
         node.attr.data: hot
-        xpack.security.enabled: true
-        xpack.security.http.ssl.enabled: true
-        xpack.security.transport.ssl.enabled: true
       podTemplate:
         spec:
           containers:
@@ -244,7 +239,7 @@ spec:
 
 ```bash
 # Check ECK operator
-kubectl get deployment elastic-operator -n elastic-system
+kubectl get statefulset elastic-operator -n elastic-system
 
 # Check Elasticsearch cluster status
 kubectl get elasticsearch -n elastic-system
