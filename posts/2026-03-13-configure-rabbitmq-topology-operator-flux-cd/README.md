@@ -10,14 +10,14 @@ Description: Manage RabbitMQ queues, exchanges, and bindings with the Topology O
 
 ## Introduction
 
-The RabbitMQ Messaging Topology Operator extends the Cluster Operator with CRDs for managing RabbitMQ topology objects - queues, exchanges, bindings, virtual hosts, policies, and users - through Kubernetes resources. This means your entire AMQP topology: which queues exist, which exchanges route to them, and what dead-letter configurations are in place, is described in Git and automatically applied.
+The RabbitMQ Messaging Topology Operator works alongside the Cluster Operator with CRDs for managing RabbitMQ topology objects - queues, exchanges, bindings, virtual hosts, policies, and users - through Kubernetes resources. This means your entire AMQP topology: which queues exist, which exchanges route to them, and what dead-letter configurations are in place, is described in Git and automatically applied.
 
 Managing RabbitMQ topology through Flux CD eliminates the common problem of undocumented queues created manually in the management UI. When a team needs a new queue, they open a pull request, and the Topology Operator creates it automatically.
 
 ## Prerequisites
 
 - RabbitMQ Cluster Operator with a running cluster (see previous post)
-- RabbitMQ Messaging Topology Operator installed (comes with the cluster operator Helm chart)
+- RabbitMQ Messaging Topology Operator installed
 - `kubectl` and `flux` CLIs installed
 
 ## Step 1: Create a Virtual Host
@@ -54,8 +54,7 @@ spec:
   type: topic
   durable: true
   autoDelete: false
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -71,8 +70,7 @@ spec:
   type: direct
   durable: true
   autoDelete: false
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -88,8 +86,7 @@ spec:
   type: fanout
   durable: true
   autoDelete: false
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -108,8 +105,7 @@ metadata:
 spec:
   name: order.processing
   durable: true
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -118,7 +114,7 @@ spec:
     x-queue-type: quorum
     # Dead letter exchange for failed messages
     x-dead-letter-exchange: orders.topic
-    x-dead-letter-routing-key: order.dead-letter
+    x-dead-letter-routing-key: dead-letter.order
     # Message TTL: 24 hours
     x-message-ttl: 86400000
     # Max queue length: 100,000 messages
@@ -135,8 +131,7 @@ metadata:
 spec:
   name: order.dead-letter
   durable: true
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -154,8 +149,7 @@ metadata:
 spec:
   name: notification.email
   durable: true
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -179,8 +173,7 @@ spec:
   destination: order.processing
   destinationType: queue
   routingKey: "order.#"    # topic pattern: all order.* keys
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -195,9 +188,8 @@ spec:
   source: orders.topic
   destination: order.dead-letter
   destinationType: queue
-  routingKey: "order.dead-letter"
-  vhostReference:
-    name: orders-vhost
+  routingKey: "dead-letter.order"
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -213,8 +205,7 @@ spec:
   destination: notification.email
   destinationType: queue
   routingKey: ""  # fanout ignores routing keys
-  vhostReference:
-    name: orders-vhost
+  vhost: orders
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -244,12 +235,11 @@ metadata:
   namespace: rabbitmq
 spec:
   vhost: orders
-  userReference:
-    name: orders-service-user
+  user: orders-service-user
   permissions:
-    configure: "^order\\..*"   # can declare order.* queues/exchanges
-    write: "^order\\..*"       # can publish to order.* exchanges
-    read: "^order\\..*"        # can consume from order.* queues
+    configure: "^(order|orders)\\..*"   # can declare order.* queues and orders.* exchanges
+    write: "^(order|orders)\\..*"       # can publish to orders.* exchanges
+    read: "^(order|orders)\\..*"        # can consume from order.* queues
   rabbitmqClusterReference:
     name: production
     namespace: rabbitmq
@@ -283,15 +273,15 @@ kubectl get queue,exchange,binding,vhost -n rabbitmq
 
 # Check queue status in RabbitMQ
 kubectl exec -n rabbitmq production-server-0 -- \
-  rabbitmqctl list_queues name messages consumers --vhost orders
+  rabbitmqctl list_queues -p orders name messages consumers
 
 # Check exchange list
 kubectl exec -n rabbitmq production-server-0 -- \
-  rabbitmqctl list_exchanges --vhost orders
+  rabbitmqctl list_exchanges -p orders
 
 # Check bindings
 kubectl exec -n rabbitmq production-server-0 -- \
-  rabbitmqctl list_bindings --vhost orders
+  rabbitmqctl list_bindings -p orders
 ```
 
 ## Best Practices
