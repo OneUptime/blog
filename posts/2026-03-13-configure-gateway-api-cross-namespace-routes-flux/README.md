@@ -12,7 +12,7 @@ Description: Manage Kubernetes Gateway API cross-namespace route references usin
 
 One of the most powerful features of the Kubernetes Gateway API is its role-oriented multi-tenant model. In traditional Kubernetes Ingress, a single resource controls all routing in a namespace, and there is no standard mechanism for safely allowing application teams to attach routes to centrally-managed gateways. Gateway API solves this with a three-tier model: platform engineers manage GatewayClass and Gateway resources, while application developers manage HTTPRoute resources in their own namespaces.
 
-The cross-namespace reference capability - enabled by the `ReferenceGrant` CRD - allows routes in one namespace to reference services or gateways in another namespace, with explicit, auditable grants. This enables a platform team to run a shared gateway in a dedicated namespace while giving application teams autonomous control over their routing rules, all managed through Flux CD with clear ownership boundaries.
+Gateway API allows routes in one namespace to attach to Gateways in another namespace when the Gateway listener's `allowedRoutes` policy permits it. For other cross-namespace references, such as an `HTTPRoute` forwarding to a `Service` in another namespace, the target namespace must opt in with a `ReferenceGrant`. This enables a platform team to run a shared gateway in a dedicated namespace while giving application teams autonomous control over their routing rules, all managed through Flux CD with clear ownership boundaries.
 
 This guide implements a complete multi-tenant routing architecture using Gateway API cross-namespace references managed by Flux CD.
 
@@ -32,15 +32,15 @@ The Gateway API multi-tenant architecture assigns different responsibilities to 
 flowchart TD
     PT[Platform Team] -->|Manages| GC[GatewayClass]
     PT -->|Manages| GW[Gateway\nenvoy-gateway-system/production-gw]
-    PT -->|Creates| RG[ReferenceGrant\nallows cross-ns access]
+    PT -->|Creates| RG[ReferenceGrant\nallows cross-ns backend access]
+    RG -->|Authorizes| SVC[Service\nbackend/api-server]
 
     AT1[Backend Team] -->|Manages| HR1[HTTPRoute\nbackend/api-route]
     AT2[Frontend Team] -->|Manages| HR2[HTTPRoute\nfrontend/app-route]
 
     HR1 -->|References| GW
     HR2 -->|References| GW
-    RG -->|Authorizes| HR1
-    RG -->|Authorizes| HR2
+    HR2 -->|Can route to| SVC
 ```
 
 ## Step 2: Platform Team - Configure the Shared Gateway
@@ -84,47 +84,12 @@ spec:
 
 ## Step 3: Platform Team - Create ReferenceGrants
 
-Explicitly grant each application namespace permission to reference the shared gateway.
+Explicitly grant application namespaces permission to reference backend resources in another namespace. Cross-namespace route attachment to the shared Gateway is controlled by the Gateway listener's `allowedRoutes` policy, so it does not require a `ReferenceGrant`.
 
 ```yaml
 # infrastructure/gateway/reference-grants.yaml
-# Grant backend team permission to attach routes to the shared gateway
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-backend-routes
-  namespace: envoy-gateway-system
-  labels:
-    app.kubernetes.io/managed-by: flux
-    managed-by: platform-team
-spec:
-  from:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: backend
-  to:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: shared-gateway
----
-# Grant frontend team permission
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-frontend-routes
-  namespace: envoy-gateway-system
-spec:
-  from:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: frontend
-  to:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: shared-gateway
----
 # Grant frontend team access to use backend services (service-to-service via gateway)
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-backend-service
@@ -137,6 +102,7 @@ spec:
   to:
     - group: ""
       kind: Service
+      name: api-server
 ```
 
 ## Step 4: Label Namespaces for Gateway Access
@@ -225,6 +191,14 @@ spec:
       backendRefs:
         - name: frontend-app
           port: 3000
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: api-server
+          namespace: backend
+          port: 8080
 ```
 
 ## Step 6: Deploy with Separate Flux Kustomizations per Team
@@ -280,13 +254,12 @@ curl -I https://api.example.com/api/v1/health
 curl -I https://app.example.com/
 
 # Verify Flux reconciliation
-flux get kustomization platform-gateway
-flux get kustomization backend-routing
+flux get kustomizations
 ```
 
 ## Best Practices
 
-- Always use `allowedRoutes.namespaces.from: Selector` with a label selector on the Gateway rather than `All`; requiring explicit namespace labels prevents unauthorized route attachment without requiring per-namespace ReferenceGrants.
+- Always use `allowedRoutes.namespaces.from: Selector` with a label selector on the Gateway rather than `All`; requiring explicit namespace labels prevents unauthorized route attachment because Route-to-Gateway attachment is governed by `allowedRoutes`, not `ReferenceGrant`.
 - Store ReferenceGrant resources in the target namespace (the namespace being referenced), not the source namespace; this keeps permission grants close to the resource they protect.
 - Require that ReferenceGrant changes go through a separate pull request review process with platform team approval; these grants define your routing security boundary.
 - Use separate Git repositories or branches for platform team resources (Gateways, ReferenceGrants) and application team resources (HTTPRoutes) to enforce ownership through repository access control.
@@ -295,4 +268,4 @@ flux get kustomization backend-routing
 
 ## Conclusion
 
-Gateway API cross-namespace routing managed through Flux CD enables a clean multi-tenant architecture where platform teams control infrastructure boundaries and application teams control their own routing rules. The `ReferenceGrant` model makes cross-namespace access explicit and auditable - every permission is documented in Git, reviewed in pull requests, and automatically enforced by the Gateway implementation. This is the foundation for a scalable, self-service API gateway platform that grows with your organization.
+Gateway API cross-namespace routing managed through Flux CD enables a clean multi-tenant architecture where platform teams control infrastructure boundaries and application teams control their own routing rules. The `allowedRoutes` and `ReferenceGrant` models make cross-namespace access explicit and auditable - every permission is documented in Git, reviewed in pull requests, and automatically enforced by the Gateway implementation. This is the foundation for a scalable, self-service API gateway platform that grows with your organization.
