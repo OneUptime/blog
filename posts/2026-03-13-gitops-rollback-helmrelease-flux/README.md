@@ -37,6 +37,7 @@ metadata:
   namespace: production
 spec:
   interval: 10m
+  releaseName: my-app
   chart:
     spec:
       chart: my-app
@@ -106,14 +107,14 @@ helm history my-app -n production
 # 2         superseded my-app-2.4.0 Upgrade complete
 # 3         deployed   my-app-2.5.0 Upgrade complete  <-- current, problematic
 
-# Annotate the HelmRelease to trigger a rollback to a specific revision
-# Flux watches for this annotation and executes the rollback
-kubectl annotate helmrelease my-app \
-  -n production \
-  "helm.toolkit.fluxcd.io/rollback=2"    # Roll back to revision 2
+# During an incident, suspend reconciliation before using Helm directly
+flux suspend helmrelease my-app -n production
+
+# Roll back the Helm release to revision 2
+helm rollback my-app 2 -n production
 ```
 
-However, the cleanest GitOps approach is to update the `values.image.tag` in Git rather than using the annotation. Use the annotation only during an active incident when Git workflow time is prohibitive.
+However, the cleanest GitOps approach is to update the `values.image.tag` in Git rather than using a direct Helm rollback. Use `helm rollback` only during an active incident when Git workflow time is prohibitive, then update Git and resume the HelmRelease once the desired state is corrected.
 
 ## Step 4: Pin to a Known-Good Version via Git
 
@@ -145,6 +146,9 @@ Rollback executed at 14:45 UTC."
 
 git push origin fix/pin-my-app-to-2.4.0
 gh pr create --title "fix: pin my-app to v2.4.0 post rollback"
+
+# After the Git change has been merged, resume automation
+flux resume helmrelease my-app -n production
 ```
 
 ## Step 5: Monitor Rollback Status
@@ -171,18 +175,20 @@ Configure Flux alerting to notify your team when a HelmRelease fails or rolls ba
 
 ```yaml
 # clusters/production/alerts/helmrelease-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-failures
   namespace: flux-system
 spec:
-  summary: "HelmRelease failure in production"
+  eventMetadata:
+    summary: "HelmRelease failure in production"
   providerRef:
     name: slack-production     # A configured notification Provider
   eventSeverity: error
   eventSources:
     - kind: HelmRelease
+      name: "*"
       namespace: production    # Alert on all HelmReleases in production
   inclusionList:
     - ".*failed.*"
@@ -192,7 +198,7 @@ spec:
 ## Best Practices
 
 - Always pin chart versions with an exact version string in production, not a range like `>=1.0.0`. Ranges allow unexpected upgrades that are harder to roll back because you may not know which version was running before.
-- Set `retries: 3` on both install and upgrade remediation. Zero retries means transient errors immediately trigger rollback; too many retries delays the rollback.
+- Set `retries: 3` on both install and upgrade remediation. Zero retries means Flux does not retry before bailing unless you explicitly set `remediateLastFailure`; too many retries delays remediation.
 - After an automatic rollback, Flux will continue trying to upgrade on the next interval unless you pin the version in Git. Pin immediately to prevent Flux from re-triggering the bad upgrade.
 - Test your rollback configuration in staging with a deliberately broken chart version to confirm that automatic remediation works as configured.
 - Record every rollback in your incident tracking system with the Helm revision numbers and timestamps.
