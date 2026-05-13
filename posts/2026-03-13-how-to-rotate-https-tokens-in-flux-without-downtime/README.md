@@ -47,11 +47,7 @@ Create a new token on your Git provider. Do not revoke the old token yet.
 ### GitHub Personal Access Token
 
 ```bash
-# Using GitHub CLI
-
-gh auth token
-
-# Or create a fine-grained PAT via the web UI:
+# Create a fine-grained PAT via the web UI:
 # Settings > Developer settings > Personal access tokens > Fine-grained tokens
 # Grant: Contents (read-only) for the required repositories
 ```
@@ -81,15 +77,19 @@ Test the token before updating Flux.
 
 ```bash
 # GitHub
-curl -s -H "Authorization: token NEW_TOKEN_HERE" \
+curl -s -H "Authorization: Bearer NEW_TOKEN_HERE" \
   https://api.github.com/repos/my-org/my-repo | jq .full_name
 
 # GitLab
 curl -s -H "PRIVATE-TOKEN: NEW_TOKEN_HERE" \
   https://gitlab.example.com/api/v4/projects/PROJECT_ID | jq .name
 
-# Test git clone with the new token
-git clone https://oauth2:NEW_TOKEN_HERE@github.com/my-org/my-repo.git /tmp/test-clone
+# Test GitHub git clone with the new token
+git clone https://YOUR-GITHUB-USERNAME:NEW_TOKEN_HERE@github.com/my-org/my-repo.git /tmp/test-clone
+rm -rf /tmp/test-clone
+
+# Test GitLab git clone with the new token
+git clone https://oauth2:NEW_TOKEN_HERE@gitlab.example.com/my-org/my-repo.git /tmp/test-clone
 rm -rf /tmp/test-clone
 ```
 
@@ -105,7 +105,7 @@ kubectl create secret generic my-git-auth \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For GitHub, the username is typically `git` or `x-access-token`:
+For GitHub, use your GitHub username or `x-access-token` as the username:
 
 ```bash
 kubectl create secret generic my-git-auth \
@@ -115,7 +115,7 @@ kubectl create secret generic my-git-auth \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For GitLab, the username is `oauth2` or the token name:
+For GitLab personal access tokens, any non-empty username works. `oauth2` is commonly used for OAuth-style tokens:
 
 ```bash
 kubectl create secret generic my-git-auth \
@@ -130,7 +130,7 @@ kubectl create secret generic my-git-auth \
 Trigger Flux to use the new credentials immediately.
 
 ```bash
-# Reconcile all Git sources
+# Reconcile the Flux system Git source
 flux reconcile source git flux-system
 
 # Reconcile a specific source
@@ -190,8 +190,11 @@ for SECRET in my-git-auth another-git-auth; do
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
-# Reconcile all sources
-flux reconcile source git --all
+# Reconcile each Git source
+for SOURCE in $(kubectl get gitrepository -n flux-system \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+  flux reconcile source git "$SOURCE" -n flux-system
+done
 ```
 
 ## Handling Helm Repository Tokens
@@ -229,7 +232,8 @@ spec:
           serviceAccountName: flux-token-rotator
           containers:
           - name: rotate
-            image: bitnami/kubectl:latest
+            # This image must include kubectl, vault, and a shell.
+            image: your-registry/flux-token-rotator:latest
             env:
             - name: VAULT_ADDR
               value: "https://vault.example.com"
