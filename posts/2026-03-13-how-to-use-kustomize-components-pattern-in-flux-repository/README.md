@@ -34,9 +34,11 @@ flux-repo/
 │   ├── resource-limits-high/
 │   │   └── kustomization.yaml
 │   ├── network-policy/
-│   │   └── kustomization.yaml
+│   │   ├── kustomization.yaml
+│   │   └── network-policy.yaml
 │   └── pod-disruption-budget/
-│       └── kustomization.yaml
+│       ├── kustomization.yaml
+│       └── pdb.yaml
 └── environments/
     ├── staging/
     │   └── kustomization.yaml
@@ -66,13 +68,13 @@ patches:
           metadata:
             annotations:
               prometheus.io/scrape: "true"
-              prometheus.io/port: "9090"
+              prometheus.io/port: "9100"
           spec:
             containers:
               - name: prometheus-exporter
-                image: prom/node-exporter:v1.7.0
+                image: quay.io/prometheus/node-exporter:v1.11.1
                 ports:
-                  - containerPort: 9090
+                  - containerPort: 9100
                     name: metrics
                 resources:
                   requests:
