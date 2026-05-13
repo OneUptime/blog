@@ -10,7 +10,7 @@ Description: Enable Felix Prometheus metrics on port 9091 to collect per-node ne
 
 ## Introduction
 
-Felix metrics provide the deepest per-node view of Calico's network policy enforcement. Enabling them requires a FelixConfiguration change to expose the metrics port, and a ServiceMonitor or Prometheus scrape configuration to collect them. Felix metrics include iptables rule counts, policy calculation times, dataplane errors, and BGP session state - covering the full operational health of the Calico data plane.
+Felix metrics provide the deepest per-node view of Calico's network policy enforcement. Enabling them requires a FelixConfiguration change to expose the metrics port, and a ServiceMonitor or Prometheus scrape configuration to collect them. Felix metrics include iptables rule counts, policy calculation times, and dataplane errors - covering the operational health of Felix and the Calico data plane.
 
 ## Key Commands
 
@@ -31,6 +31,22 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http
 ## ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
