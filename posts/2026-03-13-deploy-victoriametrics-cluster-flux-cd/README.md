@@ -10,9 +10,9 @@ Description: Deploy VictoriaMetrics cluster setup using Flux CD HelmRelease for 
 
 ## Introduction
 
-VictoriaMetrics Cluster extends the single-node deployment with a multi-component architecture designed for horizontal scaling and high availability. The cluster separates responsibilities into three stateless components: vminsert (receives writes from remote sources), vmstorage (stores metric data with replication), and vmselect (serves queries). This separation enables each component to scale independently based on write load, storage capacity, and query load.
+VictoriaMetrics Cluster extends the single-node deployment with a multi-component architecture designed for horizontal scaling and high availability. The cluster separates responsibilities into vminsert (receives writes from remote sources), vmstorage (stores metric data), and vmselect (serves queries). vminsert and vmselect are stateless, while vmstorage keeps the persistent time series data. This separation enables each component to scale independently based on write load, storage capacity, and query load.
 
-For organizations with millions of active time series, write rates exceeding 500,000 samples per second, or multi-team environments requiring high availability guarantees, VictoriaMetrics Cluster is the production-grade choice. It maintains full Prometheus API compatibility while providing the scalability that single-node deployments cannot match.
+For organizations with millions of active time series, write rates exceeding 500,000 samples per second, or multi-team environments requiring high availability guarantees, VictoriaMetrics Cluster is the production-grade choice. It provides Prometheus-compatible write and query APIs while providing the scalability that single-node deployments cannot match.
 
 This guide deploys VictoriaMetrics Cluster using Flux CD HelmRelease, configuring replication for storage availability and connecting Prometheus remote write to the cluster for metrics ingestion.
 
@@ -71,7 +71,7 @@ spec:
       extraArgs:
         # Replication factor: write to N storage nodes
         replicationFactor: "2"
-        # Maximum in-memory queue size per storage node
+        # Maximum number of labels allowed per time series
         maxLabelsPerTimeseries: "30"
       resources:
         requests:
@@ -92,15 +92,15 @@ spec:
 
     # vmstorage: Stores metrics data with replication
     vmstorage:
-      replicaCount: 3  # Must be >= replicationFactor
-      retentionPeriod: "90"  # 90 days retention
+      replicaCount: 3  # For replicationFactor=2, use at least 2*N-1 storage nodes
+      retentionPeriod: "90d"  # 90 days retention
       persistentVolume:
         enabled: true
         size: 100Gi
-        storageClass: "standard"
+        storageClassName: "standard"
       extraArgs:
-        # Percentage of disk space reserved for deduplication operations
-        dedup.minScrapeInterval: "30s"
+        # Keep storage-layer deduplication consistent with vmselect
+        dedup.minScrapeInterval: "1ms"
       resources:
         requests:
           cpu: 500m
@@ -124,10 +124,12 @@ spec:
       persistentVolume:
         enabled: true
         size: 5Gi
-        storageClass: "standard"
+        storageClassName: "standard"
       extraArgs:
+        # Replication factor used when deciding whether responses are partial
+        replicationFactor: "2"
         # Deduplication for replicated data
-        dedup.minScrapeInterval: "30s"
+        dedup.minScrapeInterval: "1ms"
         # Cache for query results
         cacheExpireDuration: "30m"
       resources:
@@ -259,12 +261,12 @@ flux get helmrelease victoria-metrics-cluster -n monitoring
 
 ## Best Practices
 
-- Set `replicationFactor` to 2 for production workloads and deploy at least 3 vmstorage nodes; this tolerates one storage node failure without data loss.
+- Set `replicationFactor` to 2 for production workloads and deploy at least 3 vmstorage nodes; this keeps replicated data available when one storage node is unavailable, assuming the remaining nodes have enough capacity.
 - Use `requiredDuringSchedulingIgnoredDuringExecution` pod anti-affinity for vmstorage to guarantee storage nodes are on different physical hosts, not just preferred.
-- Enable deduplication (`dedup.minScrapeInterval`) in vmselect to handle the case where multiple Prometheus instances write the same metrics; without it, query results include duplicates.
+- Enable deduplication (`dedup.minScrapeInterval`) in vmselect. Use `1ms` for VictoriaMetrics replication, or set it to the scrape interval when multiple identically configured Prometheus or vmagent instances write the same metrics.
 - Monitor vmstorage disk usage closely; the cluster does not automatically balance data across nodes after initial placement.
 - Use VictoriaMetrics's multi-tenancy feature (different account IDs in the remote write URL) when multiple teams share the cluster, enabling per-tenant data isolation.
-- Plan storage node capacity conservatively; vmstorage nodes cannot be easily scaled horizontally after data is written, unlike vminsert and vmselect.
+- Plan storage node capacity conservatively; vmstorage can be scaled horizontally, but historical data is not automatically rebalanced to newly added nodes.
 
 ## Conclusion
 
