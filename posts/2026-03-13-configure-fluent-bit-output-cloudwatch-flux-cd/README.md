@@ -20,13 +20,14 @@ This guide covers deploying Fluent Bit with the CloudWatch Logs output plugin on
 
 - EKS cluster with IRSA enabled
 - Flux CD bootstrapped to your Git repository
-- IAM role with `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` permissions
+- IAM role with `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:DescribeLogGroups`, `logs:DescribeLogStreams`, `logs:PutLogEvents`, and `logs:PutRetentionPolicy` permissions
 - `kubectl`, `flux`, `eksctl`, and `aws` CLIs installed
 
 ## Step 1: Create the IAM Role for CloudWatch Access
 
+Create `cloudwatch-policy.json`:
+
 ```json
-// cloudwatch-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -154,16 +155,16 @@ spec:
             Annotations         Off
 
       outputs: |
-        # Application logs → /eks/<cluster>/containers/<namespace>
+        # Application logs -> /eks/<cluster>/containers
         [OUTPUT]
             Name                cloudwatch_logs
             Match               kube.*
             region              ${AWS_REGION}
-            # Log group per namespace for fine-grained retention policies
+            # Single log group for container logs
             log_group_name      /eks/${CLUSTER_NAME}/containers
             log_stream_prefix   ${CLUSTER_NAME}-
             log_stream_template $kubernetes['namespace_name'].$kubernetes['pod_name'].$kubernetes['container_name']
-            # Use structured logging format
+            # Enable CloudWatch Embedded Metric Format extraction for JSON payloads
             log_format          json/emf
             # Set retention in days (0 = never expire)
             log_retention_days  30
@@ -193,13 +194,13 @@ Use `rewrite_tag` to separate critical application logs and send them to a log g
             Name    rewrite_tag
             Match   kube.*
             # Route logs from production namespace separately
-            Rule    $kubernetes['namespace_name'] ^production$ kube.production false
+            Rule    $kubernetes['namespace_name'] ^production$ production.$TAG false
 
       outputs: |
         # Production logs with 90-day retention
         [OUTPUT]
             Name                cloudwatch_logs
-            Match               kube.production
+            Match               production.*
             region              ${AWS_REGION}
             log_group_name      /eks/${CLUSTER_NAME}/production
             log_stream_prefix   prod-
