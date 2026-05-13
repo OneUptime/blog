@@ -43,10 +43,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install SOPS
         run: |
-          curl -Lo sops https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
+          curl -Lo sops https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
           chmod +x sops
           sudo mv sops /usr/local/bin/
 
@@ -61,7 +63,7 @@ jobs:
       - name: Check secret files are encrypted
         run: |
           EXIT_CODE=0
-          for file in $(find . -path './.git' -prune -o -name '*.yaml' -print | grep -iE '(secret|credential|token)'); do
+          while IFS= read -r file; do
             if [ -f "$file" ]; then
               if ! grep -q "sops:" "$file"; then
                 echo "ERROR: $file appears to be a secret file but is not SOPS-encrypted"
@@ -70,7 +72,7 @@ jobs:
                 echo "OK: $file is encrypted"
               fi
             fi
-          done
+          done < <(find . -path './.git' -prune -o \( -name '*.yaml' -o -name '*.yml' \) -print | grep -iE '(secret|credential|token)' || true)
           exit $EXIT_CODE
 
       - name: Check for plaintext sensitive data
@@ -90,14 +92,14 @@ jobs:
       - name: Validate SOPS metadata structure
         run: |
           EXIT_CODE=0
-          for file in $(find . -path './.git' -prune -o -name '*.yaml' -print -exec grep -l "sops:" {} \;); do
+          while IFS= read -r file; do
             if ! grep -q "lastmodified:" "$file" || ! grep -q "mac:" "$file"; then
               echo "ERROR: $file has incomplete SOPS metadata"
               EXIT_CODE=1
             else
-              echo "OK: $file has valid SOPS metadata"
+              echo "OK: $file has expected SOPS metadata fields"
             fi
-          done
+          done < <(find . -path './.git' -prune -o \( -name '*.yaml' -o -name '*.yml' \) -exec grep -l "sops:" {} +)
           exit $EXIT_CODE
 ```
 
@@ -106,12 +108,15 @@ jobs:
 Create `.gitlab-ci.yml`:
 
 ```yaml
+stages:
+  - validate
+
 validate-sops:
   stage: validate
   image: alpine:latest
   before_script:
     - apk add --no-cache curl bash grep findutils git
-    - curl -Lo /usr/local/bin/sops https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
+    - curl -Lo /usr/local/bin/sops https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
     - chmod +x /usr/local/bin/sops
   script:
     - |
@@ -174,8 +179,8 @@ if [ ! -f .sops.yaml ]; then
   echo "ERROR: .sops.yaml not found"
   ERRORS=$((ERRORS + 1))
 else
-  if ! python3 -c "import yaml; yaml.safe_load(open('.sops.yaml'))" 2>/dev/null; then
-    echo "ERROR: .sops.yaml is not valid YAML"
+  if ! sops --config .sops.yaml filestatus .sops.yaml >/dev/null 2>&1; then
+    echo "ERROR: .sops.yaml is not valid SOPS configuration"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK: .sops.yaml is valid"
