@@ -32,13 +32,20 @@ No Kustomization can proceed because each is waiting for another in the chain.
 ### Map the full dependency graph
 
 ```bash
-kubectl get kustomizations -n flux-system -o json | jq -r '.items[] | "\(.metadata.name) depends on: \(.spec.dependsOn // [] | map(.name) | join(", "))"'
+kubectl get kustomizations -A -o json | jq -r '
+  .items[] |
+  .metadata as $meta |
+  "\($meta.namespace)/\($meta.name) depends on: \((.spec.dependsOn // []) | map((.namespace // $meta.namespace) + "/" + .name) | join(", "))"'
 ```
 
 ### Check for circular dependencies visually
 
 ```bash
-kubectl get kustomizations -n flux-system -o json | jq -r '.items[] | select(.spec.dependsOn != null) | .spec.dependsOn[] as $dep | "\(.metadata.name) -> \($dep.name)"'
+kubectl get kustomizations -A -o json | jq -r '
+  .items[] |
+  .metadata as $meta |
+  (.spec.dependsOn // [])[] |
+  "\($meta.namespace)/\($meta.name) -> \((.namespace // $meta.namespace))/\(.name)"'
 ```
 
 Use this output to draw or check for cycles.
@@ -52,7 +59,12 @@ flux get kustomizations -A
 ### Identify the root blocker
 
 ```bash
-kubectl get kustomizations -n flux-system -o json | jq -r '.items[] | select(.status.conditions[0].status == "False") | "\(.metadata.name): \(.status.conditions[0].message)"'
+kubectl get kustomizations -A -o json | jq -r '
+  .items[] |
+  .metadata as $meta |
+  (.status.conditions // [])[]? |
+  select(.type == "Ready" and .status != "True") |
+  "\($meta.namespace)/\($meta.name): \(.message)"'
 ```
 
 ## Common Root Causes
@@ -118,11 +130,13 @@ If the deadlock is caused by a failed dependency rather than a cycle, find and f
 
 ```bash
 # Find the Kustomization with no unsatisfied dependencies
-kubectl get kustomizations -n flux-system -o json | jq -r '
+kubectl get kustomizations -A -o json | jq -r '
   .items[] |
-  select(.status.conditions[0].status == "False") |
+  .metadata as $meta |
   select(.spec.dependsOn == null or (.spec.dependsOn | length == 0)) |
-  "\(.metadata.name): \(.status.conditions[0].message)"'
+  (.status.conditions // [])[]? |
+  select(.type == "Ready" and .status != "True") |
+  "\($meta.namespace)/\($meta.name): \(.message)"'
 ```
 
 Fix the error in that Kustomization first, and the rest of the chain will follow.
@@ -208,11 +222,11 @@ spec:
 
 ```bash
 # Generate a simple dependency graph
-kubectl get kustomizations -n flux-system -o json | jq -r '
+kubectl get kustomizations -A -o json | jq -r '
   .items[] |
-  select(.spec.dependsOn != null) |
-  .spec.dependsOn[] as $dep |
-  "\(.metadata.name) -> \($dep.name)"' | sort
+  .metadata as $meta |
+  (.spec.dependsOn // [])[] |
+  "\($meta.namespace)/\($meta.name) -> \((.namespace // $meta.namespace))/\(.name)"' | sort
 ```
 
 Dependency deadlocks are entirely preventable with a disciplined layered architecture. Treating your Kustomization dependency graph as a directed acyclic graph and validating it automatically is the most reliable approach.
