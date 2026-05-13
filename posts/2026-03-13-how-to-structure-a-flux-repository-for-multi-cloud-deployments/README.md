@@ -271,9 +271,10 @@ kind: Ingress
 metadata:
   name: app-one
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb
 ```
 
 ```yaml
