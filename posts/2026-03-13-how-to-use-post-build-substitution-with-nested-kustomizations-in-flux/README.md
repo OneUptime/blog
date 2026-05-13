@@ -193,7 +193,7 @@ This approach is simpler because you do not need to thread variables through the
 
 ## Deploying the Shared ConfigMap
 
-To ensure the ConfigMap exists before the child Kustomizations need it, deploy it through a Kustomization with a higher priority using the `dependsOn` field:
+To ensure the ConfigMap exists before the child Kustomizations need it, deploy it through a separate Kustomization and make dependent Kustomizations wait for it with the `dependsOn` field:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -235,8 +235,8 @@ For deeply nested structures, the same rules apply. Each level must explicitly c
 
 ```text
 Level 1: platform (defines CLUSTER_NAME, ENVIRONMENT)
-  └── Level 2: apps (inherits CLUSTER_NAME, adds APP_NAMESPACE)
-        └── Level 3: web-app (inherits all, adds REPLICAS)
+  └── Level 2: apps (receives CLUSTER_NAME, adds APP_NAMESPACE)
+        └── Level 3: web-app (receives all, adds REPLICAS)
 ```
 
 At each level, variables must be explicitly passed down or read from a shared ConfigMap. There is no implicit inheritance chain.
@@ -247,10 +247,10 @@ When troubleshooting nested substitution issues, check each level independently:
 
 ```bash
 # Check parent Kustomization status
-flux get kustomization platform
+flux get kustomizations platform
 
 # Check child Kustomization status
-flux get kustomization web-app
+flux get kustomizations web-app
 
 # Inspect the child Kustomization resource on the cluster
 kubectl get kustomization web-app -n flux-system -o yaml
