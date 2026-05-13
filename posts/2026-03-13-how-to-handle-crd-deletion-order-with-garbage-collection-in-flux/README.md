@@ -76,11 +76,12 @@ spec:
     name: infrastructure
   path: ./infrastructure/cert-manager/resources
   prune: true
+  deletionPolicy: WaitForTermination
   dependsOn:
     - name: cert-manager
 ```
 
-When you remove these Kustomizations, Flux respects the dependency order in reverse. The custom resources Kustomization is deleted first, then the controller, then the CRDs. This gives the controller time to process finalizers before being removed.
+This dependency chain ensures Flux applies the CRDs first, then the controller, then the custom resources. It does not, by itself, guarantee reverse deletion order if all Kustomization objects are removed at the same time. For deletion, remove them in stages: first remove the custom resources Kustomization and wait for its resources to terminate, then remove the controller, and finally remove the CRDs. The `deletionPolicy: WaitForTermination` setting makes Flux wait for the managed resources to be removed when that Kustomization object is deleted.
 
 ## Strategy 2: Excluding CRDs from Garbage Collection
 
@@ -135,13 +136,13 @@ spec:
     name: my-repo
   path: ./custom-resources
   prune: true
+  deletionPolicy: WaitForTermination
   dependsOn:
     - name: operator-controller
-  wait: true
   timeout: 5m
 ```
 
-The `wait: true` setting ensures Flux waits for the deletion of custom resources to complete (including finalizer resolution) before proceeding. The `timeout` prevents infinite waits if a finalizer cannot be resolved.
+The `deletionPolicy: WaitForTermination` setting ensures Flux waits for the deletion of managed resources to complete when the Kustomization object is deleted. The `timeout` limits how long Flux waits if a finalizer cannot be resolved.
 
 ## Practical Example: Prometheus Operator
 
@@ -188,6 +189,7 @@ spec:
     name: infrastructure
   path: ./infrastructure/monitoring/config
   prune: true
+  deletionPolicy: WaitForTermination
   dependsOn:
     - name: prometheus-operator
 ```
@@ -239,4 +241,4 @@ kubectl patch certificate my-cert -n default --type=json -p='[{"op": "remove", "
 
 ## Conclusion
 
-Managing CRD deletion order with Flux garbage collection requires deliberate structuring of your Kustomizations. The most effective approach is separating CRDs, controllers, and custom resources into individual Kustomizations with dependency chains that enforce correct deletion order. For CRDs that should never be automatically deleted, disable pruning with annotations or by setting `prune: false`. Always ensure operator controllers remain running long enough to resolve finalizers on custom resources before being removed.
+Managing CRD deletion order with Flux garbage collection requires deliberate structuring of your Kustomizations and a staged deletion process. The most effective approach is separating CRDs, controllers, and custom resources into individual Kustomizations with dependency chains for apply order, then deleting them in the reverse sequence with `deletionPolicy: WaitForTermination` where Flux should wait for managed resources to terminate. For CRDs that should never be automatically deleted, disable pruning with annotations or by setting `prune: false`. Always ensure operator controllers remain running long enough to resolve finalizers on custom resources before being removed.
