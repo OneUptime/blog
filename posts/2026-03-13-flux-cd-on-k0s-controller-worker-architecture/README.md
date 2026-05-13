@@ -10,7 +10,7 @@ Description: Deploy Flux CD on k0s Kubernetes with a separated controller and wo
 
 ## Introduction
 
-k0s (pronounced "k-zeros") is a zero-friction Kubernetes distribution that packages everything into a single binary with no external dependencies. Its unique architecture cleanly separates the control plane (controllers) from the data plane (workers) without requiring nodes to run any Kubernetes-specific OS components. k0s controllers run the API server and schedulers, while workers run only the kubelet and container runtime.
+k0s (pronounced "k-zeros") is a zero-friction Kubernetes distribution that packages everything into a single binary with minimal external runtime dependencies. Its unique architecture cleanly separates the control plane (controllers) from the data plane (workers) without requiring nodes to run Kubernetes-specific OS packages. k0s controllers run the API server and scheduler, while workers run components such as the kubelet, kube-proxy, and container runtime.
 
 This controller-worker separation makes k0s particularly attractive for environments where you want strong isolation between your control plane infrastructure and your application workloads. Flux CD runs on k0s just like any other Kubernetes cluster, but understanding the k0s-specific bootstrap and network configuration ensures a smooth deployment.
 
@@ -31,7 +31,8 @@ This guide covers deploying a k0s cluster with separate controller and worker no
 curl -sSLf https://get.k0s.sh | sudo sh
 
 # On the controller node, generate a default config
-k0s config create > /etc/k0s/k0s.yaml
+sudo mkdir -p /etc/k0s
+k0s config create | sudo tee /etc/k0s/k0s.yaml >/dev/null
 ```
 
 ## Step 2: Customize k0s Controller Configuration
@@ -67,21 +68,21 @@ spec:
 
 ```bash
 # Install and start the k0s controller service
-k0s install controller --config /etc/k0s/k0s.yaml
-k0s start
+sudo k0s install controller --config /etc/k0s/k0s.yaml
+sudo k0s start
 
 # Check the controller status
-k0s status
+sudo k0s status
 
 # Wait for the API server to be ready
-kubectl --kubeconfig /var/lib/k0s/pki/admin.conf get nodes
+sudo k0s kubectl get --raw='/readyz?verbose'
 ```
 
 ## Step 4: Generate a Worker Join Token
 
 ```bash
 # Create a join token valid for 24 hours
-k0s token create --role=worker --expiry=24h > /tmp/worker-token.txt
+sudo k0s token create --role=worker --expiry=24h > /tmp/worker-token.txt
 
 # Display the token for the worker node
 cat /tmp/worker-token.txt
@@ -91,12 +92,13 @@ cat /tmp/worker-token.txt
 
 ```bash
 # On each worker node
-# Copy the token from the controller
-export JOIN_TOKEN="$(cat worker-token.txt)"
+# Copy worker-token.txt from the controller, then install it
+sudo mkdir -p /etc/k0s
+sudo install -m 600 worker-token.txt /etc/k0s/join-token
 
 # Install the worker component
-k0s install worker --token-file /etc/k0s/join-token
-k0s start
+sudo k0s install worker --token-file /etc/k0s/join-token
+sudo k0s start
 
 # Verify the worker joined
 # Back on controller:
@@ -115,10 +117,9 @@ export KUBECONFIG=~/.kube/k0s-config
 
 kubectl get nodes
 # Expected:
-# NAME         STATUS   ROLES           AGE
-# controller   Ready    control-plane   10m
-# worker1      Ready    <none>          5m
-# worker2      Ready    <none>          4m
+# NAME      STATUS   ROLES    AGE
+# worker1   Ready    <none>   5m
+# worker2   Ready    <none>   4m
 ```
 
 ## Step 7: Bootstrap Flux CD on k0s
@@ -139,27 +140,35 @@ kubectl get pods -n flux-system -o wide
 
 ## Step 8: Configure Node Affinity for Flux Controllers
 
-Ensure Flux controllers run on worker nodes (not controllers) by using node selectors:
+Prefer worker nodes for Flux controllers by adding a Kustomize patch to the Flux bootstrap manifests:
 
 ```yaml
-# clusters/k0s-prod/flux-system/patches/controller-nodeaffinity.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      # Prefer worker nodes for Flux controllers
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: node-role.kubernetes.io/control-plane
-                    operator: DoesNotExist
+# clusters/k0s-prod/flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=flux
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all
+      spec:
+        template:
+          spec:
+            affinity:
+              nodeAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    preference:
+                      matchExpressions:
+                        - key: node-role.kubernetes.io/control-plane
+                          operator: DoesNotExist
 ```
 
 ## Step 9: Verify Flux Reconciliation
@@ -182,11 +191,11 @@ flux get kustomizations --watch
 
 ## Best Practices
 
-- Taint k0s controller nodes with `node-role.kubernetes.io/control-plane:NoSchedule` to prevent application pods from running on the control plane.
+- Keep k0s controllers as controller-only nodes. If you intentionally run controllers with `--enable-worker`, use the default control-plane taints or add your own taints to prevent application pods from running there.
 - Use k0s's built-in support for multiple controllers (`k0s install controller --enable-worker` is NOT recommended for production - keep controllers and workers separate).
-- Configure k0s with a network provider like Calico or Cilium that supports network policies for proper microsegmentation between Flux system pods and application pods.
+- Configure k0s with an integrated network provider like Calico, or a custom CNI such as Cilium, that supports network policies for proper microsegmentation between Flux system pods and application pods.
 - Use the k0s autopilot feature for automated, rolling k0s version upgrades managed declaratively through Kubernetes resources.
-- Monitor k0s controller health with `k0s status` and the Kubernetes control plane metrics exposed on port 10249-10259.
+- Monitor k0s controller health with `k0s status` and the Kubernetes control plane metrics endpoints such as the controller-manager on 10257 and scheduler on 10259.
 
 ## Conclusion
 
