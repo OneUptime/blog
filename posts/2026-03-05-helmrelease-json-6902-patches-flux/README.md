@@ -8,15 +8,15 @@ Description: Learn how to apply JSON 6902 (RFC 6902) patches to HelmRelease post
 
 ---
 
-When you need precise control over modifications to Helm chart output in Flux CD, JSON 6902 patches (defined in RFC 6902) offer operation-based patching. Unlike JSON Merge Patches, which describe the desired state, JSON 6902 patches define explicit operations such as add, remove, replace, move, copy, and test. Flux supports these through the `spec.postRenderers[].kustomize.patchesJson6902` field on a HelmRelease.
+When you need precise control over modifications to Helm chart output in Flux CD, JSON 6902 patches (defined in RFC 6902) offer operation-based patching. Unlike merge-style patches, which describe the desired state, JSON 6902 patches define explicit operations such as add, remove, replace, move, copy, and test. Flux supports these through the `spec.postRenderers[].kustomize.patches` field on a HelmRelease.
 
-## JSON 6902 vs JSON Merge Patches
+## JSON 6902 vs Strategic Merge Patches
 
-JSON 6902 patches use an array of operations, each specifying an `op`, a `path`, and optionally a `value`. This approach is more verbose but provides capabilities that merge patches cannot, such as:
+JSON 6902 patches use an array of operations, each specifying an `op`, a `path`, and operation-specific fields such as `value` or `from`. This approach is more verbose but provides capabilities that merge patches cannot, such as:
 
 - Adding elements to a specific index in an array
 - Removing fields without setting them to `null`
-- Testing that a value exists before modifying it
+- Testing that a value matches before modifying it
 - Moving or copying values between paths
 
 ## Prerequisites
@@ -25,22 +25,22 @@ JSON 6902 patches use an array of operations, each specifying an `op`, a `path`,
 - A HelmRepository source configured
 - `kubectl` and `flux` CLI tools
 
-## Understanding the patchesJson6902 Structure
+## Understanding the patches Structure
 
-In Flux HelmRelease v2, JSON 6902 patches are configured under the post-renderers section. Each entry targets a specific resource and provides an array of patch operations:
+In Flux HelmRelease v2, JSON 6902 patches are configured under the post-renderers section. Each entry targets a specific resource and provides a patch document with an array of patch operations:
 
 ```yaml
-# Structure of patchesJson6902 in a HelmRelease post-renderer
+# Structure of patches in a HelmRelease post-renderer
 
 postRenderers:
   - kustomize:
-      patchesJson6902:
+      patches:
         - target:
             group: apps          # API group of the target resource
             version: v1          # API version
             kind: Deployment     # Resource kind
             name: my-app         # Resource name
-          patch:
+          patch: |
             - op: replace        # Operation: add, remove, replace, move, copy, test
               path: /spec/replicas
               value: 3
@@ -69,13 +69,13 @@ spec:
         namespace: flux-system
   postRenderers:
     - kustomize:
-        patchesJson6902:
+        patches:
           - target:
               group: apps
               version: v1
               kind: Deployment
               name: my-app
-            patch:
+            patch: |
               - op: replace
                 path: /spec/replicas
                 value: 5
@@ -89,13 +89,13 @@ The `add` operation inserts new values. When adding to a map that may not exist,
 # Add labels and annotations to a Deployment using JSON 6902 patches
 postRenderers:
   - kustomize:
-      patchesJson6902:
+      patches:
         - target:
             group: apps
             version: v1
             kind: Deployment
             name: my-app
-          patch:
+          patch: |
             # Add a new label
             - op: add
               path: /metadata/labels/team
@@ -114,12 +114,12 @@ The `remove` operation deletes a field at the specified path:
 # Remove an annotation from a Service
 postRenderers:
   - kustomize:
-      patchesJson6902:
+      patches:
         - target:
             version: v1
             kind: Service
             name: my-app
-          patch:
+          patch: |
             - op: remove
               path: /metadata/annotations/deprecated-key
 ```
@@ -132,18 +132,18 @@ JSON 6902 patches handle arrays by index, which is useful when you need to modif
 # Modify the first container's image and add an environment variable
 postRenderers:
   - kustomize:
-      patchesJson6902:
+      patches:
         - target:
             group: apps
             version: v1
             kind: Deployment
             name: my-app
-          patch:
+          patch: |
             # Replace the image of the first container (index 0)
             - op: replace
               path: /spec/template/spec/containers/0/image
               value: my-registry/my-app:v2.0.0
-            # Add a new environment variable to the first container
+            # Add a new environment variable to the first container's existing env array
             - op: add
               path: /spec/template/spec/containers/0/env/-
               value:
@@ -155,19 +155,19 @@ The `/-` syntax appends to the end of an array, while `/0` targets the first ele
 
 ## Using the Test Operation
 
-The `test` operation verifies that a value exists before applying subsequent operations. If the test fails, the entire patch is rejected:
+The `test` operation verifies that a value matches before applying subsequent operations. If the test fails, the entire patch is rejected:
 
 ```yaml
 # Test that a field exists before replacing it
 postRenderers:
   - kustomize:
-      patchesJson6902:
+      patches:
         - target:
             group: apps
             version: v1
             kind: Deployment
             name: my-app
-          patch:
+          patch: |
             # Verify the current image before replacing
             - op: test
               path: /spec/template/spec/containers/0/image
@@ -186,13 +186,13 @@ You can target different resources within the same post-renderer:
 # Patch both a Deployment and a ConfigMap
 postRenderers:
   - kustomize:
-      patchesJson6902:
+      patches:
         - target:
             group: apps
             version: v1
             kind: Deployment
             name: my-app
-          patch:
+          patch: |
             - op: replace
               path: /spec/replicas
               value: 3
@@ -200,21 +200,21 @@ postRenderers:
             version: v1
             kind: ConfigMap
             name: my-app-config
-          patch:
+          patch: |
             - op: add
               path: /data/FEATURE_FLAG
               value: "enabled"
 ```
 
-## Combining JSON 6902 with Merge Patches
+## Combining JSON 6902 with Strategic Merge Patches
 
-You can use both `patches` (merge patches) and `patchesJson6902` in the same post-renderer:
+You can use both strategic merge patches and JSON 6902 patches in the same `patches` list:
 
 ```yaml
 # Use both patch types together
 postRenderers:
   - kustomize:
-      # JSON Merge Patches for simple additions
+      # Strategic merge patch for simple additions
       patches:
         - target:
             kind: Deployment
@@ -226,14 +226,13 @@ postRenderers:
               name: my-app
               labels:
                 environment: staging
-      # JSON 6902 for precise operations
-      patchesJson6902:
+        # JSON 6902 for precise operations
         - target:
             group: apps
             version: v1
             kind: Deployment
             name: my-app
-          patch:
+          patch: |
             - op: add
               path: /spec/template/spec/containers/0/env/-
               value:
@@ -247,7 +246,7 @@ After applying your HelmRelease, confirm the patches took effect:
 
 ```bash
 # Check the HelmRelease status for any errors
-flux get helmrelease my-app
+flux get helmreleases -n default
 
 # Inspect the patched resource
 kubectl get deployment my-app -o jsonpath='{.spec.replicas}'
@@ -268,10 +267,10 @@ If your JSON 6902 patch fails, check these common issues:
 ## Best Practices
 
 - Use JSON 6902 patches when you need array manipulation or conditional logic via `test` operations.
-- Use JSON Merge Patches for simpler key-value additions and replacements.
-- Always specify the full target selector including `group`, `version`, `kind`, and `name`.
+- Use strategic merge patches for simpler key-value additions and replacements.
+- Specify enough target selector fields to match the intended resource, commonly `group`, `version`, `kind`, and `name` for non-core resources.
 - Keep patch operations ordered logically -- place `test` operations before their dependent `replace` or `remove` operations.
 
 ## Conclusion
 
-JSON 6902 patches in Flux post-renderers provide operation-level precision for modifying Helm chart output. By using `spec.postRenderers[].kustomize.patchesJson6902`, you can add, remove, replace, test, move, and copy fields in rendered manifests. This is especially valuable when working with arrays or when you need to conditionally apply changes based on existing values.
+JSON 6902 patches in Flux post-renderers provide operation-level precision for modifying Helm chart output. By using `spec.postRenderers[].kustomize.patches`, you can add, remove, replace, test, move, and copy fields in rendered manifests. This is especially valuable when working with arrays or when you need to conditionally apply changes based on existing values.
