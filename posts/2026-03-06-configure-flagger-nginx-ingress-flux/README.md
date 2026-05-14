@@ -14,6 +14,8 @@ Flagger can work with the NGINX Ingress Controller to perform canary deployments
 
 This guide walks you through installing NGINX Ingress, configuring Flagger, and deploying an application with automated canary releases managed by Flux.
 
+> Note: This guide uses the community Kubernetes `ingress-nginx` controller. Kubernetes retired Ingress NGINX on March 24, 2026, so existing artifacts remain available but there are no further bug fixes or security updates. Use this setup for existing or test clusters, and plan production migrations to Gateway API or another maintained ingress controller.
+
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.25 or later)
@@ -53,7 +55,7 @@ spec:
 
 ```yaml
 # nginx-ingress-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -63,7 +65,7 @@ spec:
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.x"
+      version: "4.15.x"
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
@@ -100,7 +102,7 @@ spec:
 
 ```yaml
 # prometheus-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
@@ -110,7 +112,7 @@ spec:
   chart:
     spec:
       chart: prometheus
-      version: "25.x"
+      version: "29.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -146,7 +148,7 @@ spec:
 
 ```yaml
 # flagger-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -241,9 +243,8 @@ kind: Ingress
 metadata:
   name: podinfo
   namespace: demo
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: podinfo.example.com
       http:
@@ -433,7 +434,7 @@ spec:
 
 ### Canary ingress not created
 
-Ensure the `ingressRef` in the Canary resource matches the name of your ingress exactly. Also verify the ingress class is set to nginx.
+Ensure the `ingressRef` in the Canary resource matches the name of your ingress exactly. Also verify `spec.ingressClassName` is set to `nginx`.
 
 ### Metrics returning no data
 
