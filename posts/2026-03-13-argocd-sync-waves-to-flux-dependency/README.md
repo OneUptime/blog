@@ -10,7 +10,7 @@ Description: Learn how to convert ArgoCD sync wave annotations to Flux CD Kustom
 
 ## Introduction
 
-ArgoCD sync waves allow you to control the order in which resources are applied during a sync operation using the `argocd.argoproj.io/sync-wave` annotation. Resources with lower wave numbers are applied first, and ArgoCD waits for them to become healthy before proceeding to higher wave numbers.
+ArgoCD sync waves allow you to control the order in which resources are applied during a sync operation using the `argocd.argoproj.io/sync-wave` annotation. Resources with lower wave numbers are applied first, and ArgoCD repeats the process until all phases and waves are in-sync and healthy.
 
 Flux CD achieves ordered deployment through the `dependsOn` field in Kustomization resources. Instead of annotating individual resources, you express dependencies between entire Kustomizations. This guide shows how to map ArgoCD sync wave patterns to Flux dependsOn configurations.
 
@@ -73,7 +73,7 @@ In Flux, you split the single application into multiple Kustomizations with expl
 
 ```yaml
 # clusters/production/infra/crds.yaml
-# Wave -10 and -5 equivalent
+# Wave -10 and -5 equivalent: namespace and CRDs
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -162,6 +162,7 @@ fleet-repo/
   infrastructure/
     crds/              # Wave -10 to -5
       kustomization.yaml
+      namespace.yaml
       database-crd.yaml
     database-operator/ # Wave 0
       kustomization.yaml
@@ -189,7 +190,7 @@ spec:
   interval: 1h
   path: ./infrastructure/crds
   prune: false
-  wait: true  # Flux waits for all resources to be ready
+  wait: true  # Flux waits for all reconciled resources to pass health checks
   timeout: 2m
   sourceRef:
     kind: GitRepository
@@ -220,17 +221,17 @@ spec:
     - name: cert-manager            # Third dependency
 ```
 
-Both dependencies must be Ready before `myapp` reconciliation starts.
+All dependencies must be Ready before `myapp` reconciliation starts.
 
 ## Best Practices
 
 - Map each distinct sync wave to a separate Flux Kustomization; do not try to maintain wave annotations within Flux.
 - Use `wait: true` on CRD Kustomizations to ensure custom resource types are established before their instances are deployed.
 - Set realistic `timeout` values on health checks; CRD operators may take longer to become ready than regular Deployments.
-- Use health checks (`healthChecks`) to define readiness criteria rather than relying on pod running status alone.
+- Use health checks (`healthChecks`) to define readiness criteria rather than relying on pod running status alone. For custom resources, make sure the resource is compatible with kstatus or define custom health logic with `healthCheckExprs`.
 - Keep the dependency graph as shallow as possible; deep chains (A → B → C → D) increase total reconciliation time.
 - Document the dependency rationale in comments in the Kustomization YAML for future maintainers.
 
 ## Conclusion
 
-The mapping from ArgoCD sync waves to Flux dependsOn requires splitting a monolithic application into discrete Kustomizations at each dependency boundary. While this feels like more work initially, the result is a clearer, more modular dependency graph where each layer's purpose and dependencies are explicit. The `dependsOn` model is also more correct: it waits for health, not just application order, preventing the "applied but not ready" failures that can occur with fixed sync wave ordering.
+The mapping from ArgoCD sync waves to Flux dependsOn requires splitting a monolithic application into discrete Kustomizations at each dependency boundary. While this feels like more work initially, the result is a clearer, more modular dependency graph where each layer's purpose and dependencies are explicit. When combined with `wait`, `healthChecks`, or `healthCheckExprs`, the `dependsOn` model waits for health, not just application order, preventing the "applied but not ready" failures that can occur with fixed sync wave ordering.
