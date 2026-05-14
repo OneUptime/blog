@@ -195,6 +195,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  provider: github
   url: https://github.com/my-org/my-private-repo.git
   secretRef:
     name: github-app-auth
