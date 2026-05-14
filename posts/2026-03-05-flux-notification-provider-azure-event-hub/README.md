@@ -40,7 +40,7 @@ az eventhubs eventhub create \
   --name flux-events \
   --namespace-name flux-events-ns \
   --resource-group flux-events-rg \
-  --message-retention 1 \
+  --retention-time 24 \
   --partition-count 2
 ```
 
@@ -64,6 +64,12 @@ The connection string will look like:
 Endpoint=sb://flux-events-ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=XXXXX
 ```
 
+Append the Event Hub name as the `EntityPath` so Flux can send events to the correct Event Hub:
+
+```text
+Endpoint=sb://flux-events-ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=XXXXX;EntityPath=flux-events
+```
+
 ## Step 3: Create a Kubernetes Secret
 
 Store the Event Hub connection string in a Kubernetes secret.
@@ -72,7 +78,7 @@ Store the Event Hub connection string in a Kubernetes secret.
 # Create a secret containing the Azure Event Hub connection string
 kubectl create secret generic azure-eventhub-secret \
   --namespace=flux-system \
-  --from-literal=address="Endpoint=sb://flux-events-ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=XXXXX"
+  --from-literal=address="Endpoint=sb://flux-events-ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=XXXXX;EntityPath=flux-events"
 ```
 
 ## Step 4: Create the Flux Notification Provider
@@ -82,7 +88,7 @@ Define a Provider resource for Azure Event Hub.
 ```yaml
 # provider-azure-eventhub.yaml
 # Configures Flux to send notifications to Azure Event Hub
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: azure-eventhub-provider
@@ -90,9 +96,7 @@ metadata:
 spec:
   # Use "azureeventhub" as the provider type
   type: azureeventhub
-  # The Event Hub name within the namespace
-  channel: flux-events
-  # Reference to the secret containing the connection string
+  # Reference to the secret containing the connection string and EntityPath
   secretRef:
     name: azure-eventhub-secret
 ```
@@ -111,7 +115,7 @@ Create an Alert that streams Flux events to Azure Event Hub.
 ```yaml
 # alert-azure-eventhub.yaml
 # Routes Flux events to Azure Event Hub
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: azure-eventhub-alert
@@ -155,12 +159,19 @@ Trigger a reconciliation and verify events arrive in Event Hub:
 # Force reconciliation to generate events
 flux reconcile kustomization flux-system --with-source
 
-# Optionally, use Azure CLI to check Event Hub metrics
-az eventhubs eventhub show \
-  --name flux-events \
+# Optionally, use Azure CLI to check incoming message metrics
+NAMESPACE_ID=$(az eventhubs namespace show \
   --namespace-name flux-events-ns \
   --resource-group flux-events-rg \
-  --query "messageRetentionInDays"
+  --query id \
+  --output tsv)
+
+az monitor metrics list \
+  --resource "$NAMESPACE_ID" \
+  --metric IncomingMessages \
+  --filter "EntityName eq 'flux-events'" \
+  --interval PT1M \
+  --aggregation Total
 ```
 
 ## How It Works
@@ -210,8 +221,8 @@ az eventhubs namespace authorization-rule keys list \
 
 If events are not appearing in Azure Event Hub:
 
-1. **Connection string format**: Verify the secret contains the full connection string with the `Endpoint`, `SharedAccessKeyName`, and `SharedAccessKey` components.
-2. **Event Hub name**: The `channel` field must match the Event Hub name (not the namespace name).
+1. **Connection string format**: Verify the secret contains the full connection string with the `Endpoint`, `SharedAccessKeyName`, `SharedAccessKey`, and `EntityPath` components.
+2. **Event Hub name**: The `EntityPath` value in the connection string must match the Event Hub name.
 3. **Permissions**: Ensure the shared access policy has Send permissions.
 4. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
 5. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for errors.
