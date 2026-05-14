@@ -10,18 +10,18 @@ Description: Learn how to configure Kubernetes NetworkPolicies for Flux CD contr
 
 Flux CD controllers need network access to communicate with the Kubernetes API server, Git repositories, Helm repositories, container registries, and notification endpoints. By default, pods in Kubernetes can communicate with any other pod or external endpoint. Network policies let you restrict this traffic to only what is required.
 
-This guide walks you through creating NetworkPolicies for each Flux CD controller.
+This guide walks you through creating NetworkPolicies for common Flux CD controllers.
 
 ## Prerequisites
 
-Network policies require a CNI plugin that supports them, such as Calico, Cilium, or Weave Net. Verify your cluster supports network policies:
+Network policies require a CNI plugin that supports them, such as Calico, Cilium, or Weave Net. Verify your cluster uses a policy-enforcing CNI and that the NetworkPolicy resource is available:
 
 ```bash
 # Check which CNI plugin is installed
 
 kubectl get pods -n kube-system | grep -E "calico|cilium|weave"
 
-# Verify network policy enforcement by checking for the NetworkPolicy API
+# Verify the NetworkPolicy API is available
 kubectl api-resources | grep networkpolicies
 ```
 
@@ -46,7 +46,7 @@ spec:
 
 ## Allow DNS Resolution
 
-All controllers need DNS resolution to function. Allow egress to the kube-dns service:
+All controllers need DNS resolution to function. Allow egress to the DNS pods in the `kube-system` namespace:
 
 ```yaml
 # allow-dns.yaml
@@ -66,6 +66,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -90,7 +93,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow HTTPS traffic to the API server
+    # Allow HTTPS traffic on common API server ports
     # Replace with your API server IP/CIDR for stricter control
     - ports:
         - protocol: TCP
@@ -128,7 +131,7 @@ spec:
         - protocol: TCP
           port: 9090
         - protocol: TCP
-          port: 8080
+          port: 80
   egress:
     # Allow HTTPS to external Git/Helm/OCI endpoints
     - ports:
@@ -170,7 +173,7 @@ spec:
         - protocol: TCP
           port: 9090
         - protocol: TCP
-          port: 8080
+          port: 80
     # Allow communication with the Kubernetes API server
     - ports:
         - protocol: TCP
@@ -210,6 +213,8 @@ spec:
           port: 443
     # Allow Kubernetes API server access
     - ports:
+        - protocol: TCP
+          port: 443
         - protocol: TCP
           port: 6443
 ```
@@ -251,7 +256,7 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "timeout\|ref
 kubectl delete networkpolicy default-deny-all -n flux-system
 
 # Use a debug pod to test connectivity from the flux-system namespace
-kubectl run nettest --image=busybox -n flux-system --rm -it -- wget -qO- https://github.com --timeout=5
+kubectl run nettest --image=busybox -n flux-system --rm -it -- wget -T 5 -qO- https://github.com
 ```
 
 ## Best Practices
