@@ -40,11 +40,12 @@ flux --version
 
 ## Accessing Your Platform9 Cluster
 
-Download the kubeconfig from the Platform9 management console or use the CLI:
+Download the kubeconfig from the Platform9 management console:
 
 ```bash
 # Download kubeconfig from Platform9 UI:
-# Navigate to Clusters > Your Cluster > Download Kubeconfig
+# Navigate to API Access > Download kubeconfig, select your cluster and
+# authentication method, then download the config
 
 # Set the KUBECONFIG environment variable
 export KUBECONFIG=~/.kube/platform9-config
@@ -52,22 +53,6 @@ export KUBECONFIG=~/.kube/platform9-config
 # Verify cluster access
 kubectl get nodes
 kubectl cluster-info
-```
-
-Alternatively, use the Platform9 CLI tool:
-
-```bash
-# Install pf9ctl
-pip install pf9ctl
-
-# Configure pf9ctl
-pf9ctl config set \
-  --account-url https://your-account.platform9.io \
-  --username admin@example.com \
-  --region us-east-1
-
-# Get kubeconfig
-pf9ctl cluster credentials --name flux-cluster --output ~/.kube/platform9-config
 ```
 
 ## Verifying the Platform9 Cluster
@@ -144,13 +129,28 @@ cd platform9-gitops
 
 # Create directory structure
 mkdir -p clusters/platform9/infrastructure
+mkdir -p clusters/platform9/certificates
 mkdir -p clusters/platform9/apps
 mkdir -p infrastructure/sources
 mkdir -p infrastructure/controllers
+mkdir -p infrastructure/certificates
 mkdir -p infrastructure/storage
 mkdir -p apps/base
 mkdir -p apps/staging
 mkdir -p apps/production
+```
+
+Flux bootstrap creates `clusters/platform9/kustomization.yaml`. Keep the generated `flux-system` entry and add the infrastructure, certificates, and app entries you create below:
+
+```yaml
+# clusters/platform9/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./flux-system
+  - infrastructure.yaml
+  - certificates.yaml
+  - apps
 ```
 
 ## Deploying Infrastructure Components
@@ -256,6 +256,24 @@ spec:
         memory: 256Mi
 ```
 
+```yaml
+# infrastructure/certificates/cluster-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: admin@example.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+```
+
 Wire infrastructure into the cluster configuration:
 
 ```yaml
@@ -278,6 +296,36 @@ metadata:
 spec:
   interval: 10m
   path: ./clusters/platform9/infrastructure
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  wait: true
+  timeout: 5m
+```
+
+Create a separate certificate configuration that waits for cert-manager to install its CRDs:
+
+```yaml
+# clusters/platform9/certificates/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../infrastructure/certificates/cluster-issuer.yaml
+```
+
+```yaml
+# clusters/platform9/certificates.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: certificates
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: infrastructure
+  path: ./clusters/platform9/certificates
   prune: true
   sourceRef:
     kind: GitRepository
@@ -424,7 +472,7 @@ metadata:
 spec:
   interval: 5m
   dependsOn:
-    - name: infrastructure
+    - name: certificates
   path: ./apps/base
   prune: true
   sourceRef:
@@ -436,6 +484,16 @@ spec:
       name: platform9-app
       namespace: production
   timeout: 3m
+```
+
+Add the app Kustomization to the cluster apps directory:
+
+```yaml
+# clusters/platform9/apps/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - production-app.yaml
 ```
 
 ## Deploying Monitoring
@@ -472,7 +530,8 @@ spec:
           limits:
             cpu: 1000m
             memory: 2Gi
-        # Scrape Flux metrics
+        # Scrape Flux metrics. In production, prefer the PodMonitor objects
+        # published by Flux when using kube-prometheus-stack.
         additionalScrapeConfigs:
           - job_name: flux-system
             metrics_path: /metrics
@@ -503,6 +562,19 @@ spec:
               editable: true
               options:
                 path: /var/lib/grafana/dashboards/flux
+```
+
+Add monitoring to the infrastructure kustomization:
+
+```yaml
+# clusters/platform9/infrastructure/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../infrastructure/sources/helm-repos.yaml
+  - ../../../infrastructure/controllers/ingress.yaml
+  - ../../../infrastructure/controllers/cert-manager.yaml
+  - ../../../infrastructure/controllers/monitoring.yaml
 ```
 
 ## Setting Up Multi-Cluster with Platform9
@@ -555,9 +627,17 @@ spec:
 
 Set up deployment notifications:
 
+Create the Slack webhook secret outside the Git repository:
+
+```bash
+kubectl create secret generic slack-webhook \
+  --namespace=flux-system \
+  --from-literal=address=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+```
+
 ```yaml
 # clusters/platform9/apps/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -568,7 +648,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: platform9-alerts
@@ -583,6 +663,17 @@ spec:
     - kind: HelmRelease
       name: "*"
   summary: "Platform9 cluster deployment event"
+```
+
+Add notifications to the app kustomization:
+
+```yaml
+# clusters/platform9/apps/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - production-app.yaml
+  - notifications.yaml
 ```
 
 ## Handling Platform9 Upgrades
