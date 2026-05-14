@@ -72,14 +72,12 @@ spec:
     # Enable Cilium as the cluster CNI
     ipam:
       mode: kubernetes
-    # Enable the Cilium service mesh features
-    serviceMesh:
-      enabled: true
     # Enable Envoy proxy for L7 policies (sidecar-free mode)
     envoyConfig:
       enabled: true
-    # Enable mutual TLS for service-to-service communication
+    # Enable mutual authentication for service-to-service communication
     authentication:
+      enabled: true
       mutual:
         spire:
           enabled: true
@@ -129,7 +127,7 @@ spec:
     bandwidthManager:
       enabled: true
       bbr: true
-    # Enable host routing for improved performance
+    # Enable native routing when the underlying network can route PodCIDRs
     routingMode: native
     autoDirectNodeRoutes: true
     # Enable Kubernetes endpoint slices
@@ -250,9 +248,11 @@ spec:
               # Allow POST requests to specific endpoints
               - method: POST
                 path: "/api/v1/orders"
-              # Allow health check endpoint from any source
+              # Allow health check endpoint
               - method: GET
                 path: "/health"
+      authentication:
+        mode: "required"
 ```
 
 ## Configuring CiliumEnvoyConfig for Advanced L7
@@ -273,6 +273,8 @@ spec:
       namespace: demo-app
   backendServices:
     - name: backend-api
+      namespace: demo-app
+    - name: backend-api-canary
       namespace: demo-app
   resources:
     - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
@@ -307,6 +309,16 @@ spec:
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: "demo-app/backend-api"
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: "demo-app/backend-api-canary"
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ## Configuring Cluster-Wide Network Policies
@@ -420,4 +432,4 @@ flux reconcile kustomization cilium --with-source
 
 ## Summary
 
-Deploying Cilium service mesh with Flux CD delivers a powerful combination of eBPF-based networking and GitOps automation. Cilium's sidecar-free architecture reduces overhead while providing L3/L4/L7 network policies, mTLS via SPIRE, and deep observability through Hubble. Managing all of this through Flux ensures every network configuration change is version-controlled, peer-reviewed, and automatically reconciled.
+Deploying Cilium service mesh with Flux CD delivers a powerful combination of eBPF-based networking and GitOps automation. Cilium's sidecar-free architecture reduces overhead while providing L3/L4/L7 network policies, mutual authentication via SPIRE, and deep observability through Hubble. Managing all of this through Flux ensures every network configuration change is version-controlled, peer-reviewed, and automatically reconciled.
