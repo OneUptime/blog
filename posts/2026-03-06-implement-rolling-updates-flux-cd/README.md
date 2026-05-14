@@ -16,7 +16,7 @@ This guide covers how to configure and optimize rolling updates with Flux CD, in
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.26+)
+- A Kubernetes cluster (v1.31+)
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux
 
@@ -53,15 +53,11 @@ spec:
     name: flux-system
   path: ./apps/myapp
   prune: true
+  # Wait for reconciled resources to become ready before marking this Kustomization ready
   wait: true
   timeout: 10m
-  # Force apply to handle conflicts during rolling updates
+  # Keep force disabled unless you intentionally want Flux to recreate resources
   force: false
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: myapp
-      namespace: myapp
 ```
 
 ## Configuring Rolling Update Strategy
@@ -168,7 +164,7 @@ spec:
 
 ## Pod Disruption Budget
 
-Ensure minimum availability during rolling updates and node maintenance:
+Ensure minimum availability during voluntary disruptions such as node maintenance. Deployment rolling updates are controlled by the Deployment strategy; PDBs mainly affect eviction API users such as `kubectl drain`.
 
 ```yaml
 # apps/myapp/pdb.yaml
@@ -183,7 +179,7 @@ spec:
   selector:
     matchLabels:
       app: myapp
-  # Allow disruptions to unblock stuck updates after 60 seconds
+  # Allow unhealthy running pods to be evicted during voluntary disruptions
   unhealthyPodEvictionPolicy: AlwaysAllow
 ```
 
@@ -220,8 +216,7 @@ spec:
     - port: 80
       targetPort: 8080
       name: http
-  # Session affinity helps during rolling updates
-  # to keep users on the same pod version
+  # Keep traffic balanced across ready endpoints
   sessionAffinity: None
 ```
 
@@ -317,7 +312,7 @@ spec:
   policy:
     semver:
       # Automatically update to latest patch version
-      range: ">=1.5.0 <2.0.0"
+      range: ">=1.5.0 <1.6.0"
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
@@ -457,18 +452,17 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
-  channel: deployments
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
