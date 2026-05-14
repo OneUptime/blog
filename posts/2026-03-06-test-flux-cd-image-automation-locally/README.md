@@ -39,6 +39,11 @@ flowchart LR
 
 # Deploy a local container registry accessible from Kind
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: local-registry
@@ -74,11 +79,6 @@ spec:
   ports:
     - port: 5000
       targetPort: 5000
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: registry
 ```
 
 ### Kind Configuration with Registry Access
@@ -90,8 +90,8 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: flux-image-test
 containerdConfigPatches:
   - |-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
-      endpoint = ["http://kind-registry:5000"]
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
 nodes:
   - role: control-plane
     extraPortMappings:
@@ -120,6 +120,8 @@ if ! docker inspect "$REG_NAME" > /dev/null 2>&1; then
     --network bridge \
     --name "$REG_NAME" \
     registry:2
+elif [ "$(docker inspect -f '{{.State.Running}}' "$REG_NAME")" != "true" ]; then
+  docker start "$REG_NAME"
 fi
 
 # Create Kind cluster
@@ -130,6 +132,19 @@ kind create cluster --name "$CLUSTER_NAME" --config kind-with-registry.yaml
 if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "$REG_NAME")" = 'null' ]; then
   docker network connect "kind" "$REG_NAME"
 fi
+
+# Configure Kind nodes to use the HTTP registry. The localhost entry lets
+# Kubernetes pull images tagged as localhost:5001/..., and the kind-registry
+# entry lets it pull images written by Flux from the in-cluster registry name.
+for node in $(kind get nodes --name "$CLUSTER_NAME"); do
+  for registry_host in "localhost:${REG_PORT}" "${REG_NAME}:5000"; do
+    REGISTRY_DIR="/etc/containerd/certs.d/${registry_host}"
+    docker exec "$node" mkdir -p "$REGISTRY_DIR"
+    cat <<EOF | docker exec -i "$node" cp /dev/stdin "$REGISTRY_DIR/hosts.toml"
+[host."http://${REG_NAME}:5000"]
+EOF
+  done
+done
 
 # Document the local registry for Kind nodes
 kubectl apply -f - <<EOF
@@ -409,30 +424,11 @@ spec:
 ### Using Separate Image and Tag Markers
 
 ```yaml
-# apps/test-app/deployment-split-markers.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: test-app-split
-  namespace: default
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: test-app-split
-  template:
-    metadata:
-      labels:
-        app: test-app-split
-    spec:
-      containers:
-        - name: test-app
-          # Split markers for image name and tag
-          image: kind-registry:5000/test-app # {"$imagepolicy": "flux-system:test-app-semver:name"}
-          # You can also use the tag marker separately in env vars
-          env:
-            - name: APP_VERSION
-              value: "1.0.0" # {"$imagepolicy": "flux-system:test-app-semver:tag"}
+# apps/test-app/values.yaml
+# Split markers work for manifests or Helm values that keep repository and tag separate.
+image:
+  repository: kind-registry:5000/test-app # {"$imagepolicy": "flux-system:test-app-semver:name"}
+  tag: "1.0.0" # {"$imagepolicy": "flux-system:test-app-semver:tag"}
 ```
 
 ## Step 7: Verify the Automation
@@ -444,6 +440,8 @@ spec:
 kubectl apply -f image-repository.yaml
 kubectl apply -f image-policy-semver.yaml
 kubectl apply -f image-policy-numerical.yaml
+kubectl apply -f image-policy-alpha.yaml
+kubectl apply -f git-source-for-updates.yaml
 kubectl apply -f image-update-automation.yaml
 
 # Wait for image scanning to complete
@@ -462,11 +460,11 @@ kubectl get imagepolicies -n flux-system
 ```bash
 # Check which image was selected by each policy
 kubectl get imagepolicy test-app-semver -n flux-system \
-  -o jsonpath='{.status.latestImage}'
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 # Expected: kind-registry:5000/test-app:1.2.0
 
 kubectl get imagepolicy test-app-date -n flux-system \
-  -o jsonpath='{.status.latestImage}'
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 # Expected: kind-registry:5000/test-app:20260306
 
 echo ""
@@ -491,7 +489,7 @@ echo "=== Testing Image Automation ==="
 # 1. Record current state
 echo "Current image policy:"
 kubectl get imagepolicy test-app-semver -n flux-system \
-  -o jsonpath='{.status.latestImage}'
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 echo ""
 
 # 2. Push a new image tag
@@ -510,7 +508,7 @@ sleep 30
 # 5. Check the updated policy
 echo "Updated image policy:"
 LATEST=$(kubectl get imagepolicy test-app-semver -n flux-system \
-  -o jsonpath='{.status.latestImage}')
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}')
 echo "$LATEST"
 
 # 6. Verify the expected version was selected
@@ -561,7 +559,7 @@ sleep 15
 
 # Verify semver policy ignores non-semver tags
 LATEST=$(kubectl get imagepolicy test-app-semver -n flux-system \
-  -o jsonpath='{.status.latestImage}')
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}')
 
 if echo "$LATEST" | grep -qE ":[0-9]+\.[0-9]+\.[0-9]+$"; then
   echo "PASS: Semver policy correctly ignores non-semver tags"
@@ -594,7 +592,7 @@ sleep 15
 
 # Verify 2.x was not selected
 LATEST=$(kubectl get imagepolicy test-app-semver -n flux-system \
-  -o jsonpath='{.status.latestImage}')
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}')
 
 if echo "$LATEST" | grep -q ":2\."; then
   echo "FAIL: Policy selected a 2.x version outside the range"
