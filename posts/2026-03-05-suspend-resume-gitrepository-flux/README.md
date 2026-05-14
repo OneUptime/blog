@@ -56,7 +56,7 @@ Verify the suspension.
 
 ```bash
 # Check that the GitRepository shows as suspended
-flux get source git my-app
+flux get sources git -n flux-system
 ```
 
 The output will show `SUSPENDED` as `True`.
@@ -228,7 +228,7 @@ Suspend the source in production while testing changes in staging. Resume only a
 flux suspend source git prod-app -n flux-system
 
 # Validate in staging...
-flux get kustomization staging-app
+flux get kustomizations -n flux-system
 
 # Resume production after staging looks good
 flux resume source git prod-app -n flux-system
@@ -244,7 +244,7 @@ kubectl get gitrepositories -A -o json | \
   jq -r '.items[] | select(.spec.suspend==true) | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
-You can also set up a Prometheus alert for long-running suspensions.
+You can also set up a Prometheus alert for long-running suspensions if you collect Flux custom resource metrics with kube-state-metrics.
 
 ```yaml
 # prometheus-alert-suspended-sources.yaml
@@ -259,7 +259,7 @@ spec:
   - name: flux.rules
     rules:
     - alert: GitRepositorySuspendedTooLong
-      expr: gotk_suspend_status{kind="GitRepository"} == 1
+      expr: gotk_resource_info{customresource_group="source.toolkit.fluxcd.io",customresource_kind="GitRepository",customresource_version="v1",suspended="true"} == 1
       for: 24h
       labels:
         severity: warning
