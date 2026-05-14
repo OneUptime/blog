@@ -10,11 +10,11 @@ Description: Learn how to configure the install action in a Flux CD HelmRelease 
 
 ## Introduction
 
-When Flux CD encounters a HelmRelease for the first time (or when the corresponding Helm release does not exist on the cluster), it performs an install action. The `spec.install` field allows you to fine-tune how this installation behaves, including remediation strategies for failed installs, resource replacement policies, and Custom Resource Definition handling.
+When Flux CD encounters a HelmRelease for the first time (or when the corresponding Helm release does not exist on the cluster), it performs an install action. The `spec.install` field allows you to fine-tune how this installation behaves, including remediation strategies for failed installs, release replacement behavior, and Custom Resource Definition handling.
 
 ## Default Install Behavior
 
-Without any `spec.install` configuration, Flux performs a standard `helm install` with default settings. The install will be attempted once, and if it fails, the HelmRelease will report a failure condition. Configuring `spec.install` gives you control over retries, timeouts, and error handling.
+Without any `spec.install` configuration, Flux performs a Helm install action with the helm-controller defaults. By default, no automatic remediation retries are configured; if the install fails, the HelmRelease reports a failure condition and the release is left in a failed state until a new release configuration or chart revision is reconciled, or the release is retried manually. Configuring `spec.install` gives you control over retries, timeouts, and error handling.
 
 ## Basic Install Configuration
 
@@ -75,8 +75,7 @@ spec:
     remediation:
       # Number of retries after the initial failure (default: 0)
       retries: 5
-      # Whether to uninstall on failure before retrying
-      # This cleans up any partial resources from the failed install
+      # Whether to uninstall the failed release after retries are exhausted
       remediateLastFailure: true
 ```
 
@@ -86,11 +85,12 @@ The remediation flow works as follows.
 graph TD
     A[Install Attempt] -->|Success| B[Release Ready]
     A -->|Failure| C{Retries Remaining?}
-    C -->|Yes| D{remediateLastFailure?}
-    D -->|Yes| E[Uninstall Failed Release]
+    C -->|Yes| E[Uninstall Failed Release]
     E --> A
-    D -->|No| A
-    C -->|No| F[Report Failure]
+    C -->|No| D{remediateLastFailure?}
+    D -->|Yes| G[Uninstall Failed Release]
+    G --> F[Report Failure]
+    D -->|No| F[Report Failure]
 ```
 
 ## Create Namespace on Install
@@ -139,7 +139,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.x"
+      version: "v1.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -151,7 +151,8 @@ spec:
     remediation:
       retries: 3
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ```
 
 The CRD policy options are:
@@ -164,7 +165,7 @@ The CRD policy options are:
 
 ## Disable Wait
 
-By default, Helm waits for all resources to be ready before marking the install as successful. You can disable this behavior.
+By default, Flux waits for resources to be ready before marking the install as successful. You can disable this behavior.
 
 ```yaml
 # HelmRelease with wait disabled during install
@@ -196,7 +197,7 @@ Disabling wait is useful for charts with long startup times or jobs that take a 
 
 ## Replace on Install
 
-The `replace` option uses `helm install --replace` which reuses the name of a failed or deleted release.
+The `replace` option uses `helm install --replace` which reuses the name of a deleted release that remains in the Helm release history.
 
 ```yaml
 # HelmRelease with replace on install
@@ -216,7 +217,7 @@ spec:
         name: my-repo
         namespace: flux-system
   install:
-    # Replace a deleted or failed release with the same name
+    # Replace a deleted release with the same name if it remains in history
     replace: true
     remediation:
       retries: 3
@@ -253,7 +254,7 @@ spec:
     disableWait: false
     # Do not wait for Jobs to complete
     disableWaitForJobs: false
-    # Replace a previous failed release
+    # Replace a deleted release that remains in history
     replace: false
     # Remediation for install failures
     remediation:
