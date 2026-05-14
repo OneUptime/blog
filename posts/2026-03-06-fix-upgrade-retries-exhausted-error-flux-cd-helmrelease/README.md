@@ -54,7 +54,7 @@ kubectl logs -n flux-system deploy/helm-controller --tail=200 | grep -i "immutab
 Common immutable fields include:
 - `spec.selector` in Deployments and StatefulSets
 - `spec.volumeClaimTemplates` in StatefulSets
-- `spec.ports[*].nodePort` in Services (when already assigned)
+- `spec.clusterIP` and `spec.clusterIPs` in Services
 
 ### Fix: Force Resource Replacement
 
@@ -113,8 +113,8 @@ kubectl logs -n flux-system deploy/helm-controller --tail=200 | grep -i "hook"
 ### Fix: Clean Up Failed Hook Jobs
 
 ```bash
-# Delete failed hook Jobs so helm can create new ones
-kubectl delete job -n <namespace> -l "helm.sh/hook"
+# Delete the failed hook Job so helm can create a new one
+kubectl delete job <hook-job-name> -n <namespace>
 
 # Force reconciliation
 flux reconcile helmrelease <name> -n <namespace>
@@ -177,20 +177,24 @@ spec:
         name: my-repo
         namespace: flux-system
   upgrade:
-    # Force ownership of resources
-    force: true
-  # Use server-side apply to handle ownership conflicts
+    # Keep the default behavior of taking ownership of existing resources
+    disableTakeOwnership: false
   install:
-    crds: CreateReplace
+    # Keep the default behavior of taking ownership of existing resources
+    disableTakeOwnership: false
 ```
 
 Or manually fix ownership annotations:
 
 ```bash
-# Update the Helm ownership annotations on the conflicting resource
+# Update the Helm ownership metadata on the conflicting resource
 kubectl annotate deployment <name> -n <namespace> \
   meta.helm.sh/release-name=<helm-release-name> \
   meta.helm.sh/release-namespace=<namespace> \
+  --overwrite
+
+kubectl label deployment <name> -n <namespace> \
+  app.kubernetes.io/managed-by=Helm \
   --overwrite
 ```
 
@@ -238,13 +242,11 @@ spec:
         namespace: flux-system
   # Configure upgrade behavior
   upgrade:
-    # Number of retries before remediation kicks in
-    retries: 3
     # Clean up new resources on upgrade failure
     cleanupOnFail: true
     # Remediation strategy
     remediation:
-      # Number of retries before taking remediation action
+      # Number of retries before giving up
       retries: 3
       # Rollback to the last successful release on failure
       strategy: rollback
@@ -252,7 +254,7 @@ spec:
       # strategy: uninstall
   # Configure rollback behavior (used when strategy is rollback)
   rollback:
-    # Keep the rollback release history
+    # Clean up new resources created during a failed rollback
     cleanupOnFail: true
     # Recreate resources if needed during rollback
     force: false
@@ -314,6 +316,9 @@ kubectl apply -f fixed-helmrelease.yaml
 
 # Resume reconciliation
 flux resume helmrelease <name> -n <namespace>
+
+# If the same release configuration should be retried, reset the retry counter
+flux reconcile helmrelease <name> -n <namespace> --reset
 ```
 
 ### Option 2: Manual Helm Rollback
