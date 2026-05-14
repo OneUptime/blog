@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, CNI, Networking, Team Communication, Calico Cloud, Calico Enterprise
 
-Description: A practical guide for explaining the differences between Calico Open Source, Calico Cloud, and Calico Enterprise to non-technical stakeholders and engineering teams.
+Description: A practical guide for explaining the differences between the main Calico product editions - Calico Open Source, Calico Cloud, and Calico Enterprise - to non-technical stakeholders and engineering teams.
 
 ---
 
@@ -18,7 +18,7 @@ The goal is not to oversimplify - it's to give each audience the right level of 
 
 ## Prerequisites
 
-- Familiarity with Calico's three editions (Open Source, Cloud, Enterprise)
+- Familiarity with Calico's main editions (Open Source, Cloud, Enterprise)
 - Understanding of your organization's compliance requirements
 - Basic knowledge of who manages your Kubernetes infrastructure
 
@@ -40,10 +40,10 @@ Security stakeholders care about visibility and control. Frame it this way:
 |---|---|---|---|
 | Who sees my traffic metadata? | Only you | Tigera (SaaS) | Only you |
 | Can I do FQDN-based egress policy? | No | Yes | Yes |
-| Compliance evidence reports? | Manual | Automated (deprecated current feature) | Automated (deprecated current feature) |
+| Compliance evidence and reports? | Manual | Automated, using deprecated compliance reports | Automated, using deprecated compliance reports |
 | Threat detection? | No | Yes | Yes |
 
-Security teams in regulated industries (finance, healthcare, government) typically need Enterprise or at minimum Cloud-level observability to pass audits.
+Security teams in regulated industries (finance, healthcare, government) typically need Enterprise or at minimum Cloud-level observability to gather audit evidence.
 
 ## What Engineering Managers Need to Hear
 
@@ -61,8 +61,8 @@ Open Source is free but requires your team to handle upgrades, troubleshoot netw
 
 Platform engineers want to know about API compatibility, upgrade paths, and operational complexity. Key points:
 
-- All three editions share the same core Calico data model and CRDs
-- Migrating from Open Source to Cloud or Enterprise does **not** require reinstalling the CNI or re-IPing nodes
+- All three editions share the same core Calico data model, with Cloud and Enterprise adding commercial CRDs
+- Moving from Open Source to Cloud or Enterprise is usually an in-place migration or upgrade for supported Calico installs, but you should validate the install method and platform before assuming no CNI changes
 - Enterprise adds CRD-based resources (`GlobalThreatFeed`, `PacketCapture`, `PolicyRecommendationScope`) that are not available in Open Source
 - Calico Cloud connects via a lightweight agent that reports to Tigera's SaaS - no inbound connectivity required from Tigera
 

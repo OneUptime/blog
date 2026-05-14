@@ -18,7 +18,7 @@ In this guide you will build a component catalog with OCI artifacts, set up a pu
 
 ## Prerequisites
 
-- Flux CD v2.1+ with OCI source support
+- Flux CD v2.6+ with `source.toolkit.fluxcd.io/v1` OCIRepository support
 - An OCI-compatible registry (GHCR, ECR, GCR, or Harbor)
 - The Flux CLI installed locally
 - A platform Git repository for catalog source
@@ -98,6 +98,11 @@ spec:
                 secretKeyRef:
                   name: redis-credentials
                   key: password
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: redis-credentials
+                  key: password
           resources:
             requests:
               cpu: 100m
@@ -113,6 +118,27 @@ spec:
             exec:
               command: ["redis-cli", "ping"]
             initialDelaySeconds: 5
+```
+
+This component expects each consuming team to provide a `redis-credentials` Secret with a `password` key in the target namespace.
+
+```yaml
+# components/redis/v1.1.0/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app.kubernetes.io/name: redis
+    catalog.platform.io/component: redis
+    catalog.platform.io/version: "1.1.0"
+spec:
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
 ```
 
 ```yaml
@@ -167,8 +193,9 @@ jobs:
       - name: Log in to GHCR
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            flux push artifact \
-            --credentials=username:${{ github.actor }}
+            docker login ghcr.io \
+              --username "${{ github.actor }}" \
+              --password-stdin
 
       - name: Parse component and version from tag
         id: parse
@@ -185,7 +212,7 @@ jobs:
             oci://ghcr.io/acme/platform-catalog/${{ steps.parse.outputs.component }}:${{ steps.parse.outputs.version }} \
             --path=./components/${{ steps.parse.outputs.component }}/${{ steps.parse.outputs.version }} \
             --source="$(git remote get-url origin)" \
-            --revision="${{ github.ref_name }}/$(git rev-parse HEAD)"
+            --revision="${{ github.ref_name }}@sha1:$(git rev-parse HEAD)"
 ```
 
 ## Step 4: Consume Catalog Components in Team Applications
@@ -235,13 +262,10 @@ spec:
 
 ## Step 5: List and Discover Available Components
 
-Teams can browse available catalog components using the Flux CLI.
+Teams can browse versions of known catalog component repositories using the Flux CLI.
 
 ```bash
-# List all available components in the catalog registry
-flux list artifacts oci://ghcr.io/acme/platform-catalog
-
-# List versions of a specific component
+# List versions of a specific component repository
 flux list artifacts oci://ghcr.io/acme/platform-catalog/redis
 
 # Inspect a component before using it

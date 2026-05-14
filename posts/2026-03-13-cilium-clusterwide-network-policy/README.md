@@ -12,13 +12,14 @@ Description: Use CiliumClusterwideNetworkPolicy to enforce security policies acr
 
 `CiliumNetworkPolicy` is namespace-scoped, which means it only affects pods in the namespace where it is defined. This is appropriate for application-level segmentation but creates a gap for cluster-wide security requirements: you cannot enforce a single deny-all policy across all namespaces, control traffic to Kubernetes nodes (as opposed to pods), or establish baseline security rules that namespace owners cannot override.
 
-`CiliumClusterwideNetworkPolicy` (CCNP) fills this gap. As a cluster-scoped resource, it applies to all endpoints across all namespaces and can also target host networking (node processes) using the `nodeSelector` field instead of `endpointSelector`. This makes CCNP the right tool for cluster security baselines, compliance requirements that span all workloads, and node-level traffic controls like allowing SSH from specific jump hosts or restricting kubelet access.
+`CiliumClusterwideNetworkPolicy` (CCNP) fills this gap. As a cluster-scoped resource, it applies to all endpoints across all namespaces and can also target the host namespace on nodes, including host-networking pods, using the `nodeSelector` field instead of `endpointSelector` when Cilium host firewall is enabled. This makes CCNP the right tool for cluster security baselines, compliance requirements that span all workloads, and node-level traffic controls like allowing SSH from specific jump hosts or restricting kubelet access.
 
 This guide covers the key use cases for CCNP with practical examples of cluster-wide default deny, host policies, and baseline allow rules.
 
 ## Prerequisites
 
 - Cilium v1.10+ with cluster-scoped CRD support
+- Cilium host firewall enabled for `nodeSelector` host policies (`hostFirewall.enabled=true`)
 - `kubectl` with cluster-admin permissions
 - Understanding of CiliumNetworkPolicy fundamentals
 
@@ -35,7 +36,7 @@ spec:
   endpointSelector: {}  # Empty selector matches ALL endpoints
   ingress:
     - fromEntities:
-        - "kube-apiserver"   # Allow kubelet probes
+        - "host"             # Allow kubelet probes from the local node
   egress:
     - toEntities:
         - "kube-apiserver"   # Allow API server access
@@ -51,7 +52,7 @@ spec:
 
 ## Step 2: Node-Level Host Policy
 
-Control traffic on the Kubernetes nodes themselves (not pods):
+Control traffic in the host namespace on the Kubernetes nodes themselves, including host-networking pods:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -117,7 +118,7 @@ kubectl describe ciliumclusterwidenetworkpolicy default-deny-all
 
 # Verify specific pod is covered
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint list | grep -E "ID|POLICY"
+  cilium-dbg endpoint list | grep -E "ID|POLICY"
 ```
 
 ## Policy Scope Comparison
@@ -140,4 +141,4 @@ flowchart TD
 
 ## Conclusion
 
-`CiliumClusterwideNetworkPolicy` is the right tool for cluster-wide security baselines that must apply uniformly across all namespaces and that namespace administrators should not be able to override. The `nodeSelector` field makes CCNP unique in its ability to enforce policies on Kubernetes nodes themselves, not just pods - essential for hardening node access to SSH, kubelet, and other system services. Use CCNP for the foundation layer of your security model and namespace-scoped CNP for application-specific rules on top.
+`CiliumClusterwideNetworkPolicy` is the right tool for cluster-wide security baselines that must apply uniformly across all namespaces and that namespace administrators should not be able to override. With Cilium host firewall enabled, the `nodeSelector` field makes CCNP unique in its ability to enforce policies on the host namespace on Kubernetes nodes, not just regular pods - essential for hardening node access to SSH, kubelet, and other system services. Use CCNP for the foundation layer of your security model and namespace-scoped CNP for application-specific rules on top.

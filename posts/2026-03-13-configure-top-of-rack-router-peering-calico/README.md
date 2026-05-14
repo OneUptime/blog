@@ -22,10 +22,32 @@ This guide covers configure of Top-of-Rack Router Peering with Calico in Calico 
 
 ## Steps
 
+Create a BGPPeer resource for the top-of-rack router. Replace the peer IP address, AS number, and node selector with values that match your rack topology.
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: rack1-tor
+spec:
+  peerIP: 192.20.30.40
+  asNumber: 64567
+  nodeSelector: rack == 'rack-1'
+```
+
 ```bash
+# Apply the BGPPeer resource
+calicoctl apply -f rack1-tor.yaml
+
 # Verify current configuration
 
 calicoctl get bgpconfiguration default -o yaml
+
+# Verify configured BGP peers
+calicoctl get bgppeer -o wide
+
+# Check BGP session status on a node
+calicoctl node status
 
 # Check node status
 kubectl get nodes -o wide

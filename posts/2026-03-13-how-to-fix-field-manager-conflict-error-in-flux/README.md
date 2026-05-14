@@ -34,7 +34,7 @@ Controllers or operators that modify resources (such as Istio sidecar injection 
 
 ### 3. Multiple Flux Kustomizations Overlapping
 
-When two Flux Kustomizations manage manifests that touch the same resource, each Kustomization's field manager will conflict with the other.
+When two Flux Kustomizations manage manifests that touch the same resource, they can fight over the desired state and ownership labels. Flux uses the kustomize-controller field manager by default, so this is usually an overlap and drift problem rather than two separate Flux field managers conflicting.
 
 ### 4. Stale managedFields Entries
 
@@ -60,7 +60,7 @@ From the error message, note the manager name (e.g., `before-first-apply`, `kube
 kubectl get deployment my-app -n default -o json | jq '.metadata.managedFields[] | {manager, time}'
 ```
 
-The timestamps show when each manager first took ownership.
+The timestamps show when each managedFields entry was added or last updated by that manager.
 
 ### Step 4: List All Field Managers for a Resource
 
@@ -70,27 +70,17 @@ kubectl get deployment my-app -n default -o json | jq '[.metadata.managedFields[
 
 ## How to Fix
 
-### Fix 1: Force Flux to Take Ownership
+### Fix 1: Configure Flux to Override a Field Manager
 
-Set `force: true` on the Kustomization to override field manager conflicts:
+For a known field manager that Flux should supersede, configure kustomize-controller with the `--override-manager` flag:
 
-```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./apps/my-app
-  prune: true
-  force: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
+```bash
+kubectl -n flux-system patch deployment kustomize-controller --type=json -p='[
+  {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--override-manager=manager"}
+]'
 ```
 
-With `force: true`, Flux will take ownership of all fields it manages, regardless of the current owner. This is safe for initial migration but should be reconsidered once ownership is established.
+This tells Flux that the named field manager is not allowed to keep ownership of fields on resources managed by Flux. Do not use Kustomization `spec.force` for SSA ownership conflicts; in Flux, `force: true` is for recreating resources when patching fails because immutable fields changed.
 
 ### Fix 2: Adopt Resources with Server-Side Apply
 
@@ -100,7 +90,7 @@ Use kubectl with the `--force-conflicts` flag and the Flux field manager name to
 kubectl apply --server-side --field-manager=kustomize-controller --force-conflicts -f deployment.yaml
 ```
 
-After this one-time operation, Flux will own the fields and subsequent reconciliations will succeed without conflict.
+After this one-time operation, the default Flux field manager (`kustomize-controller`) will own the fields and subsequent reconciliations will succeed without conflict.
 
 ### Fix 3: Remove Stale Field Manager Entries
 
@@ -111,6 +101,8 @@ kubectl get deployment my-app -n default -o json | \
   jq 'del(.metadata.managedFields[] | select(.manager == "before-first-apply"))' | \
   kubectl replace -f -
 ```
+
+Manual changes to `managedFields` are discouraged because the API server manages this metadata. Use this only when the entries are known to be stale and other ownership-transfer options are not appropriate.
 
 ### Fix 4: Consolidate Kustomizations
 
@@ -136,4 +128,4 @@ flux reconcile kustomization my-app --with-source
 
 ## Prevention
 
-When adopting Flux for an existing cluster, plan a migration phase where you transfer field ownership to Flux controllers. Use `force: true` temporarily during migration, then remove it once all field ownership is established. Maintain strict boundaries between Kustomizations so that no two Kustomizations manage the same resource. Document which controllers are expected to modify which resources.
+When adopting Flux for an existing cluster, plan a migration phase where you transfer field ownership to Flux controllers. Use server-side apply with `--force-conflicts` or kustomize-controller `--override-manager` for known managers during migration, then remove temporary overrides once field ownership is established. Maintain strict boundaries between Kustomizations so that no two Kustomizations manage the same resource. Document which controllers are expected to modify which resources.

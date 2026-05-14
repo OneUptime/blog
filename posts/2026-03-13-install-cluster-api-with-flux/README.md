@@ -17,13 +17,14 @@ This guide covers installing Cluster API on a management cluster with Flux and p
 ## Prerequisites
 
 - Management Kubernetes cluster with Flux CD installed
-- `clusterctl` CLI installed: `curl -L https://github.com/kubernetes-sigs/cluster-api/releases/latest/download/clusterctl-linux-amd64 -o /usr/local/bin/clusterctl && chmod +x /usr/local/bin/clusterctl`
+- `clusterctl` CLI installed: `curl -L https://github.com/kubernetes-sigs/cluster-api/releases/latest/download/clusterctl-linux-amd64 -o clusterctl && chmod +x clusterctl && sudo mv clusterctl /usr/local/bin/clusterctl`
+- `clusterawsadm` CLI installed when using AWS
 - Cloud provider credentials (AWS, GCP, or Azure)
 - `kubectl` cluster-admin access to the management cluster
 
-## Step 1: Install Cluster API Components via Flux
+## Step 1: Install Cluster API Components
 
-Install CAPI providers using Flux HelmReleases for GitOps-managed lifecycle:
+Create namespaces for CAPI providers and related cluster definitions:
 
 ```yaml
 # capi-namespace.yaml - Create namespaces for CAPI providers
@@ -48,11 +49,17 @@ export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=<your-access-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret-key>
 
+# Create the IAM resources required by Cluster API Provider AWS
+clusterawsadm bootstrap iam create-cloudformation-stack
+
+# Encode credentials for the AWS provider manager
+export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
+
 # Initialize with AWS provider
 clusterctl init --infrastructure aws
 
-# Export the installed manifests for Flux management
-clusterctl generate cluster --list-variables my-cluster
+# Inspect required variables for generated AWS workload cluster templates
+clusterctl generate cluster --infrastructure aws --list-variables production-workload
 
 # Check CAPI is running
 kubectl get pods -n capi-system
@@ -61,26 +68,39 @@ kubectl get pods -n capa-system
 
 ## Step 2: Manage Cluster Definitions via Flux
 
-Store workload cluster definitions in Git. Flux reconciles them, and CAPI provisions the clusters:
+Store workload cluster definitions in Git. Generate a complete provider template with `clusterctl`, commit it under the Flux path, and let Flux reconcile it:
+
+```bash
+clusterctl generate cluster production-workload \
+  --kubernetes-version v1.34.0 \
+  --control-plane-machine-count=3 \
+  --worker-machine-count=3 \
+  --infrastructure aws \
+  > clusters/workloads/production-workload.yaml
+```
+
+A shortened excerpt of that generated manifest looks like this:
 
 ```yaml
 # workload-cluster-aws.yaml - CAPI workload cluster on AWS
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: production-workload
   namespace: default
+  labels:
+    managed-by: flux
 spec:
   clusterNetwork:
     pods:
       cidrBlocks:
         - 192.168.0.0/16
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: AWSCluster
     name: production-workload
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: production-workload-control-plane
 ---
@@ -100,12 +120,13 @@ metadata:
   namespace: default
 spec:
   replicas: 3
-  version: "v1.29.0"
+  version: "v1.34.0"
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-      kind: AWSMachineTemplate
-      name: production-workload-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: AWSMachineTemplate
+        name: production-workload-control-plane
   kubeadmConfigSpec:
     initConfiguration:
       nodeRegistration:
@@ -113,7 +134,19 @@ spec:
     clusterConfiguration:
       apiServer:
         extraArgs:
-          cloud-provider: aws
+          - name: cloud-provider
+            value: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: production-workload-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: m5.large
+      iamInstanceProfile: control-plane.cluster-api-provider-aws.sigs.k8s.io
 ```
 
 Create a Flux Kustomization to manage cluster definitions:
@@ -136,7 +169,7 @@ spec:
   dependsOn:
     - name: capi-providers
   healthChecks:
-    - apiVersion: cluster.x-k8s.io/v1beta1
+    - apiVersion: cluster.x-k8s.io/v1beta2
       kind: Cluster
       name: production-workload
       namespace: default
@@ -148,12 +181,13 @@ When CAPI provisions a new cluster, automatically bootstrap Flux on it using a `
 
 ```yaml
 # cluster-resource-set.yaml - Automatically apply Flux bootstrap to new clusters
-apiVersion: addons.cluster.x-k8s.io/v1alpha3
+apiVersion: addons.cluster.x-k8s.io/v1beta2
 kind: ClusterResourceSet
 metadata:
   name: flux-bootstrap
   namespace: default
 spec:
+  strategy: Reconcile
   # Apply to all clusters with this label
   clusterSelector:
     matchLabels:

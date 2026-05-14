@@ -26,8 +26,8 @@ The most critical mistake is starting the migration without capturing the curren
 ```bash
 # WRONG - starting migration immediately
 
-kubectl create -f tigera-operator.yaml
-kubectl apply -f installation.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
+kubectl create -f installation.yaml
 # If something goes wrong, you have no reference for what the config was
 
 # CORRECT - always backup first
@@ -48,7 +48,6 @@ spec:
   calicoNetwork:
     ipPools:
       - cidr: 192.168.0.0/16
-        encapsulation: IPIP   # Actually correct
         ipipMode: CrossSubnet  # WRONG - this is not an Installation field
 
 # CORRECT - use operator encapsulation values
@@ -65,39 +64,39 @@ spec:
 
 ## Mistake 3: Migrating Without Maintenance Window
 
-The migration restarts calico-node on each node, causing a brief network interruption per node. Some operators attempt this during business hours without a maintenance window:
+The migration moves Calico components from `kube-system` to `calico-system` and replaces operator-managed resources. Plan for Calico pods to be recreated during the migration, and assume that in-progress connections may be disrupted. Some operators attempt this during business hours without a maintenance window:
 
 ```bash
 # WRONG - migration during peak traffic
-# Each node will have ~10-30 seconds of network interruption as
-# calico-node restarts. With 20 nodes this means 200-600 seconds
-# of rolling interruptions.
+# Calico components are being replaced while production traffic is active.
+# Switching encapsulation modes can also disrupt in-progress connections.
 
 # CORRECT - schedule a maintenance window
-# Calculate estimated duration: <node_count> * 30 seconds + 10 minutes buffer
-# Example: 20 nodes * 30s = 10 minutes + 10 buffer = 20 minute window minimum
-echo "Estimated migration time: $(( $(kubectl get nodes --no-headers | wc -l) * 30 / 60 )) minutes"
+# Start with the official migration steps, monitor tigerastatus, and keep
+# enough buffer for image pulls and DaemonSet rollout on every node.
+kubectl describe tigerastatus calico
+kubectl get pods -n calico-system
 ```
 
-## Mistake 4: Not Specifying nodeSelector in IP Pool
+## Mistake 4: Not Checking the IP Pool nodeSelector
 
 ```yaml
-# WRONG - missing nodeSelector causes operator to create new default pools
+# WRONG - assuming the generated pool selector matches a custom old pool
 spec:
   calicoNetwork:
     ipPools:
       - cidr: 192.168.0.0/16
         encapsulation: VXLAN
-        # Missing: nodeSelector
+        # nodeSelector omitted, so the Installation default is all()
 
-# CORRECT - include nodeSelector to match all nodes
+# CORRECT - include nodeSelector explicitly when preserving or documenting pool scope
 spec:
   calicoNetwork:
     ipPools:
       - cidr: 192.168.0.0/16
         encapsulation: VXLAN
         natOutgoing: Enabled
-        nodeSelector: "all()"  # Required!
+        nodeSelector: "all()"
 ```
 
 ## Mistake 5: Migrating Multiple Clusters Simultaneously
@@ -140,8 +139,9 @@ calicoctl get felixconfiguration default -o yaml | \
 # - prometheusMetricsEnabled
 # - chainInsertMode
 
-# These are NOT automatically migrated by the operator
-# You must apply them via FelixConfiguration after migration
+# The operator migration preserves supported customizations and warns about
+# unsupported configuration. Validate the resulting FelixConfiguration after
+# migration, and reapply any missing supported settings explicitly.
 ```
 
 ## Common Mistakes Summary
@@ -155,7 +155,7 @@ mindmap
       No maintenance window
     Configuration
       Wrong encapsulation names
-      Missing nodeSelector
+      Unverified IP pool selector
       Missing Felix custom config
     Process
       Parallel cluster migration
@@ -168,4 +168,4 @@ mindmap
 
 ## Conclusion
 
-The most impactful mistakes in Calico operator migration are the preparatory ones: skipping backups, not testing in staging, and not scheduling a maintenance window. Configuration mistakes like wrong encapsulation names and missing `nodeSelector` cause the operator to behave unexpectedly but are easy to avoid with the correct Installation CR format. Always use a wave-based migration approach, validate each cluster before proceeding to the next, and keep your backup files until you have high confidence in the migrated state.
+The most impactful mistakes in Calico operator migration are the preparatory ones: skipping backups, not testing in staging, and not scheduling a maintenance window. Configuration mistakes like wrong encapsulation names and unverified IP pool selectors cause the operator to behave unexpectedly but are easy to avoid with the correct Installation CR format. Always use a wave-based migration approach, validate each cluster before proceeding to the next, and keep your backup files until you have high confidence in the migrated state.

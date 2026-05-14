@@ -10,7 +10,7 @@ Description: Learn how to use directory-based promotion to manage environment pr
 
 ## Introduction
 
-Directory-based environment promotion is a strategy where each environment has its own directory within a single Git branch. Promoting a change means copying or updating manifests from one directory to another. This approach avoids the merge conflicts of branch-based promotion and gives you full visibility into all environments from a single branch.
+Directory-based environment promotion is a strategy where each environment has its own directory within a single Git branch. Promoting a change means copying or updating manifests from one directory to another. This approach reduces the merge conflicts common in branch-based promotion and gives you full visibility into all environments from a single branch.
 
 This guide walks through implementing directory-based promotion with Flux CD, including repository layout, automation strategies, and practical examples.
 
@@ -19,7 +19,7 @@ This guide walks through implementing directory-based promotion with Flux CD, in
 Compared to branch-based and tag-based approaches, directory-based promotion offers:
 
 - All environments visible on one branch, making it easy to compare configurations
-- No merge conflicts since each environment has its own isolated directory
+- Fewer merge conflicts between environment changes because each environment has its own isolated directory
 - Simple diffs to see what differs between environments
 - Works with a single GitRepository resource in Flux
 - Pull request reviews can show exactly what changes are being promoted
@@ -443,6 +443,9 @@ on:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -452,6 +455,8 @@ jobs:
       - name: Create promotion PR
         run: |
           BRANCH="promote/${{ inputs.source }}-to-${{ inputs.target }}-$(date +%s)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add "environments/${{ inputs.target }}/"
           git commit -m "Promote from ${{ inputs.source }} to ${{ inputs.target }}"

@@ -33,7 +33,7 @@ mkdir flux-pulumi-infra && cd flux-pulumi-infra
 pulumi new typescript --name flux-infrastructure --yes
 
 # Install required packages
-npm install @pulumi/aws @pulumi/eks @pulumi/kubernetes @pulumi/github
+npm install @pulumi/aws @pulumi/eks @pulumi/kubernetes @pulumi/github @pulumi/tls
 ```
 
 ## Provisioning an EKS Cluster
@@ -43,10 +43,10 @@ Define the Kubernetes cluster that Flux will manage.
 ```typescript
 // index.ts
 import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
 import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
 import * as github from "@pulumi/github";
+import * as tls from "@pulumi/tls";
 
 // Load configuration values
 const config = new pulumi.Config();
@@ -56,10 +56,15 @@ const githubOwner = config.require("githubOwner");
 const githubToken = config.requireSecret("githubToken");
 const repoName = config.get("repoName") || "fleet-infra";
 
-// Create an EKS cluster with managed node groups
+const githubProvider = new github.Provider("github-provider", {
+  owner: githubOwner,
+  token: githubToken,
+});
+
+// Create an EKS cluster with worker nodes
 const cluster = new eks.Cluster(clusterName, {
-  // Use the latest Kubernetes version supported
-  version: "1.31",
+  // Use a currently supported Kubernetes version
+  version: "1.35",
   instanceType: "t3.medium",
   desiredCapacity: 3,
   minSize: 2,
@@ -94,9 +99,9 @@ const fleetRepo = new github.Repository("fleet-infra", {
   description: "Flux CD fleet infrastructure repository",
   visibility: "private",
   autoInit: true,
-  // Protect the main branch from direct pushes
+  // Enable issues for tracking GitOps changes
   hasIssues: true,
-});
+}, { provider: githubProvider });
 
 // Generate an SSH key pair for Flux authentication
 const sshKey = new tls.PrivateKey("flux-ssh-key", {
@@ -109,7 +114,7 @@ const deployKey = new github.RepositoryDeployKey("flux-deploy-key", {
   repository: fleetRepo.name,
   key: sshKey.publicKeyOpenssh,
   readOnly: false,
-});
+}, { provider: githubProvider });
 ```
 
 ## Installing Flux CD
@@ -153,11 +158,11 @@ const gitSecret = new k8s.core.v1.Secret("flux-git-secret", {
 
 ## Deploying Flux Controllers with Helm
 
-Install the Flux controllers using Helm charts through Pulumi.
+Install the Flux controllers using the community-maintained Helm chart through Pulumi.
 
 ```typescript
 // flux-controllers.ts
-// Install Flux controllers using the official Helm chart
+// Install Flux controllers using the community-maintained Helm chart
 const fluxHelmRelease = new k8s.helm.v4.Chart("flux2", {
   chart: "flux2",
   namespace: "flux-system",
@@ -259,7 +264,7 @@ resources:
   - apps.yaml
 `,
   commitMessage: "Initialize cluster structure via Pulumi",
-});
+}, { provider: githubProvider, dependsOn: [fleetRepo] });
 
 // Create the infrastructure Kustomization reference
 const infraRef = new github.RepositoryFile("infra-kustomization", {
@@ -282,7 +287,47 @@ spec:
   wait: true
 `,
   commitMessage: "Add infrastructure kustomization via Pulumi",
-});
+}, { provider: githubProvider, dependsOn: [clusterKustomization] });
+
+// Create the applications Kustomization reference
+const appsRef = new github.RepositoryFile("apps-kustomization", {
+  repository: fleetRepo.name,
+  branch: "main",
+  file: `clusters/${environment}/${clusterName}/apps.yaml`,
+  content: `# Applications Kustomization - syncs environment applications
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: applications
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/${environment}
+  prune: true
+  wait: true
+`,
+  commitMessage: "Add applications kustomization via Pulumi",
+}, { provider: githubProvider, dependsOn: [infraRef] });
+
+// Seed empty environment roots so the initial Flux sync has valid paths
+const infraRoot = new github.RepositoryFile("infra-root", {
+  repository: fleetRepo.name,
+  branch: "main",
+  file: `infrastructure/${environment}/.gitkeep`,
+  content: "# Managed by Pulumi\n",
+  commitMessage: "Add infrastructure root via Pulumi",
+}, { provider: githubProvider, dependsOn: [appsRef] });
+
+const appsRoot = new github.RepositoryFile("apps-root", {
+  repository: fleetRepo.name,
+  branch: "main",
+  file: `apps/${environment}/.gitkeep`,
+  content: "# Managed by Pulumi\n",
+  commitMessage: "Add applications root via Pulumi",
+}, { provider: githubProvider, dependsOn: [infraRoot] });
 ```
 
 ## Adding Stack Configuration
@@ -363,7 +408,7 @@ spec:
       tag: latest
 `,
   commitMessage: "Add application HelmRelease via Pulumi",
-});
+}, { provider: githubProvider, dependsOn: [appsRoot] });
 ```
 
 ## Cleaning Up

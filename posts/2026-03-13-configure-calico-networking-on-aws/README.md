@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, AWS, Cloud, VPC, Configuration
 
-Description: A complete guide to configuring Calico networking on AWS self-managed Kubernetes clusters, covering VPC routing, IP pool configuration, and BGP setup for optimal cloud integration.
+Description: A complete guide to configuring Calico networking on AWS self-managed Kubernetes clusters, covering VPC routing, IP pool configuration, and encapsulation setup for optimal cloud integration.
 
 ---
 
@@ -45,14 +45,18 @@ graph TD
 
 ```bash
 helm repo add projectcalico https://docs.tigera.io/calico/charts
+kubectl create namespace tigera-operator
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 | kubectl apply --server-side -f -
 helm install calico projectcalico/tigera-operator \
   --namespace tigera-operator \
-  --create-namespace \
   --set installation.calicoNetwork.ipPools[0].cidr=192.168.0.0/16 \
+  --set installation.calicoNetwork.ipPools[0].blockSize=24 \
   --set installation.calicoNetwork.ipPools[0].encapsulation=VXLANCrossSubnet
 ```
 
 ## Step 2: Configure IP Pool for AWS
+
+The operator-created pool should match this Calico IPPool configuration. If you manage IP pools directly instead of through the operator, create this pool instead of creating a second overlapping pool.
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -62,7 +66,6 @@ metadata:
 spec:
   cidr: 192.168.0.0/16
   blockSize: 24
-  ipipMode: CrossSubnet
   vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: all()
@@ -76,7 +79,6 @@ AWS security groups must allow Calico's encapsulation traffic:
 
 ```bash
 # Allow VXLAN (UDP 4789) between nodes
-
 aws ec2 authorize-security-group-ingress \
   --group-id sg-0123456789 \
   --protocol udp \
@@ -119,7 +121,7 @@ For native routing without encapsulation, add routes to the VPC route table:
 aws ec2 create-route \
   --route-table-id rtb-0123456789 \
   --destination-cidr-block 192.168.0.0/24 \
-  --instance-id i-0123456789abcdef0
+  --network-interface-id eni-0123456789abcdef0
 ```
 
 ## Conclusion

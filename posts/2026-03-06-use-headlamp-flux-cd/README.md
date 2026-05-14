@@ -61,7 +61,7 @@ metadata:
   namespace: flux-system
 spec:
   # Official Headlamp Helm chart repository
-  url: https://headlamp-k8s.github.io/headlamp/
+  url: https://kubernetes-sigs.github.io/headlamp/
   interval: 1h
 ```
 
@@ -78,7 +78,7 @@ spec:
   chart:
     spec:
       chart: headlamp
-      version: "0.24.x"
+      version: "0.42.x"
       sourceRef:
         kind: HelmRepository
         name: headlamp
@@ -101,8 +101,17 @@ spec:
     # Persistence for plugins
     persistentVolumeClaim:
       enabled: true
+      accessModes:
+        - ReadWriteOnce
       size: 1Gi
       storageClassName: standard
+    volumeMounts:
+      - name: headlamp-plugins
+        mountPath: /headlamp/plugins
+    volumes:
+      - name: headlamp-plugins
+        persistentVolumeClaim:
+          claimName: headlamp
 ```
 
 Apply the resources:
@@ -118,8 +127,8 @@ kubectl apply -f headlamp-helmrelease.yaml
 Headlamp is also available as a desktop application:
 
 ```bash
-# macOS (via Homebrew)
-brew install headlamp
+# macOS (via Homebrew Cask)
+brew install --cask headlamp
 
 # Linux (Flatpak)
 flatpak install flathub io.kinvolk.Headlamp
@@ -144,7 +153,7 @@ flux get helmrelease headlamp -n headlamp
 
 ### Creating a Service Account Token
 
-Headlamp requires a service account token for authentication:
+Headlamp accepts a bearer token for authentication. For Kubernetes v1.24 and later, create a service account and generate a token with `kubectl create token`:
 
 ```yaml
 # headlamp-admin-sa.yaml
@@ -168,26 +177,15 @@ roleRef:
   kind: ClusterRole
   name: cluster-admin
   apiGroup: rbac.authorization.k8s.io
----
-# Long-lived token for the service account
-apiVersion: v1
-kind: Secret
-metadata:
-  name: headlamp-admin-token
-  namespace: headlamp
-  annotations:
-    kubernetes.io/service-account.name: headlamp-admin
-type: kubernetes.io/service-account-token
 ```
 
-Apply and retrieve the token:
+Apply and retrieve a token:
 
 ```bash
 kubectl apply -f headlamp-admin-sa.yaml
 
 # Get the authentication token
-kubectl get secret headlamp-admin-token -n headlamp \
-  -o jsonpath='{.data.token}' | base64 -d
+kubectl create token headlamp-admin -n headlamp
 ```
 
 ### Port Forwarding
@@ -235,16 +233,11 @@ spec:
 
 ### Step 1: Build or Download the Plugin
 
-The Flux plugin for Headlamp can be installed from the Headlamp plugin catalog:
+The Flux plugin for Headlamp can be installed from the Headlamp desktop Plugin Catalog. For in-cluster deployments, use the official Flux plugin image.
 
-```bash
-# Using the Headlamp plugin CLI
-npx @kinvolk/headlamp-plugin install flux
-```
+### Step 2: Deploy the Plugin via Init Container
 
-### Step 2: Deploy the Plugin via ConfigMap
-
-For in-cluster installations, package the plugin as a ConfigMap:
+For in-cluster installations, copy the plugin files from the official plugin image into a shared volume:
 
 ```yaml
 # flux-plugin-deployment.yaml
@@ -259,37 +252,38 @@ spec:
   chart:
     spec:
       chart: headlamp
-      version: "0.24.x"
+      version: "0.42.x"
       sourceRef:
         kind: HelmRepository
         name: headlamp
         namespace: flux-system
   values:
     config:
-      pluginsDir: /headlamp/plugins
-    # Init container to download and install plugins
+      pluginsDir: /build/plugins
+    # Init container to copy the Flux plugin into a shared plugin directory
     initContainers:
-      - name: install-flux-plugin
-        image: alpine:3.19
+      - name: headlamp-plugins
+        image: ghcr.io/headlamp-k8s/headlamp-plugin-flux:latest
+        imagePullPolicy: Always
         command:
-          - sh
+          - /bin/sh
           - -c
-          - |
-            # Download the Flux plugin for Headlamp
-            apk add --no-cache curl
-            mkdir -p /plugins/flux
-            curl -sL https://github.com/headlamp-k8s/plugins/releases/latest/download/flux-plugin.tar.gz \
-              | tar -xz -C /plugins/flux
+          - mkdir -p /build/plugins && cp -r /plugins/* /build/plugins/ && chown -R 100:101 /build
+        securityContext:
+          runAsNonRoot: false
+          privileged: false
+          runAsUser: 0
+          runAsGroup: 0
         volumeMounts:
-          - name: plugins
-            mountPath: /plugins
+          - name: headlamp-plugins
+            mountPath: /build/plugins
     # Volume for plugins shared between init and main containers
-    extraVolumes:
-      - name: plugins
+    volumeMounts:
+      - name: headlamp-plugins
+        mountPath: /build/plugins
+    volumes:
+      - name: headlamp-plugins
         emptyDir: {}
-    extraVolumeMounts:
-      - name: plugins
-        mountPath: /headlamp/plugins
 ```
 
 ### Step 3: Configure RBAC for the Plugin
@@ -330,6 +324,13 @@ rules:
       - providers
       - receivers
     verbs: ["get", "list", "watch"]
+  # Image automation resources
+  - apiGroups: ["image.toolkit.fluxcd.io"]
+    resources:
+      - imagerepositories
+      - imagepolicies
+      - imageupdateautomations
+    verbs: ["get", "list", "watch"]
 ---
 # Bind the role to the Headlamp service account
 apiVersion: rbac.authorization.k8s.io/v1
@@ -350,11 +351,12 @@ roleRef:
 
 ### Flux Resource Views
 
-With the plugin installed, Headlamp adds new sections to the sidebar:
+With the plugin installed, Headlamp adds a Flux section to the sidebar with views such as:
 
-- **Flux Sources** - Browse all source resources
-- **Flux Kustomizations** - View and manage Kustomizations
-- **Flux Helm Releases** - View and manage HelmReleases
+- **Sources** - Browse source resources
+- **Kustomizations** - View Kustomizations
+- **HelmReleases** - View HelmReleases
+- **Image Automations** and **Notifications** - View image automation and notification resources when their CRDs are installed
 
 ### Viewing Kustomization Details
 
@@ -362,27 +364,27 @@ Click on any Kustomization to see:
 
 - Current status and conditions
 - Source reference and revision
-- Health checks and their results
 - Dependent resources
+- Inventory resources
 - Recent events
 
 ### Viewing HelmRelease Details
 
 HelmRelease details include:
 
-- Chart name, version, and repository
+- Chart source reference and version
 - Values applied to the release
-- Release history and rollback options
-- Test results if Helm tests are configured
+- Dependent HelmReleases
+- Inventory resources
+- Current status and conditions
 
 ### Kubernetes Resource Correlation
 
-Headlamp links Flux resources to the underlying Kubernetes objects they manage. For example, clicking a HelmRelease shows:
+Headlamp links Flux resources to inventory entries for the Kubernetes objects they manage. For example, clicking a HelmRelease can show:
 
 - The Deployments created by the chart
 - The Services and Ingresses
 - ConfigMaps and Secrets
-- Pod status and logs
 
 ## Configuring OIDC Authentication
 
@@ -401,7 +403,7 @@ spec:
   chart:
     spec:
       chart: headlamp
-      version: "0.24.x"
+      version: "0.42.x"
       sourceRef:
         kind: HelmRepository
         name: headlamp
@@ -413,6 +415,7 @@ spec:
         clientID: headlamp
         clientSecret: your-client-secret
         issuerURL: https://dex.example.com
+        callbackURL: https://headlamp.example.com/oidc-callback
         # Scopes to request from the OIDC provider
         scopes: "openid,profile,email,groups"
 ```
@@ -421,29 +424,28 @@ spec:
 
 Headlamp supports managing multiple clusters from a single instance:
 
+```bash
+# Create a Secret containing kubeconfig files for the extra clusters
+kubectl -n headlamp create secret generic headlamp-kubeconfigs \
+  --from-file=staging=./staging.kubeconfig \
+  --from-file=production=./production.kubeconfig
+```
+
 ```yaml
-# headlamp-multicluster.yaml
-# ConfigMap defining additional clusters
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: headlamp-clusters
-  namespace: headlamp
-data:
-  # JSON configuration for additional clusters
-  clusters.json: |
-    [
-      {
-        "name": "staging",
-        "server": "https://staging-api.example.com:6443",
-        "authType": "token"
-      },
-      {
-        "name": "production",
-        "server": "https://production-api.example.com:6443",
-        "authType": "oidc"
-      }
-    ]
+# headlamp-multicluster-values.yaml
+# HelmRelease values for loading multiple kubeconfig files
+values:
+  env:
+    - name: KUBECONFIG
+      value: /kubeconfigs/staging:/kubeconfigs/production
+  volumeMounts:
+    - name: kubeconfigs
+      mountPath: /kubeconfigs
+      readOnly: true
+  volumes:
+    - name: kubeconfigs
+      secret:
+        secretName: headlamp-kubeconfigs
 ```
 
 ## Troubleshooting
@@ -452,7 +454,7 @@ data:
 
 ```bash
 # Check if the plugin files exist in the container
-kubectl exec -n headlamp deployment/headlamp -- ls /headlamp/plugins/
+kubectl exec -n headlamp deployment/headlamp -- ls /build/plugins/
 
 # Check Headlamp logs for plugin loading errors
 kubectl logs -n headlamp deployment/headlamp
@@ -464,20 +466,15 @@ kubectl rollout restart deployment headlamp -n headlamp
 ### Token Authentication Failing
 
 ```bash
-# Regenerate the token
-kubectl delete secret headlamp-admin-token -n headlamp
-kubectl apply -f headlamp-admin-sa.yaml
-
-# Retrieve the new token
-kubectl get secret headlamp-admin-token -n headlamp \
-  -o jsonpath='{.data.token}' | base64 -d
+# Generate a fresh token
+kubectl create token headlamp-admin -n headlamp
 ```
 
 ### Flux Resources Not Visible
 
 ```bash
 # Verify CRDs are installed
-kubectl get crd | grep fluxcd
+kubectl get crd | grep toolkit.fluxcd.io
 
 # Check RBAC permissions
 kubectl auth can-i list kustomizations.kustomize.toolkit.fluxcd.io \

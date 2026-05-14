@@ -14,7 +14,7 @@ Understanding Calico editions at an abstract level is useful, but the real test 
 
 This post walks through three representative Kubernetes traffic scenarios and shows how each Calico edition handles them - from visibility to enforcement. The goal is to connect the theoretical edition comparison to the operational reality of running workloads.
 
-Each scenario represents a class of traffic you will encounter in any production cluster: internal pod-to-pod, external egress, and cross-namespace communication.
+Each scenario represents a class of traffic you will encounter in any production cluster: internal pod-to-pod, external egress, and cross-namespace workload traffic.
 
 ## Prerequisites
 
@@ -25,16 +25,16 @@ Each scenario represents a class of traffic you will encounter in any production
 ## Scenario 1: Pod-to-Pod Traffic in the Same Namespace
 
 A frontend pod sends HTTP traffic to a backend pod in the same namespace. All three editions can:
-- Route the traffic via the configured dataplane (iptables, eBPF, VXLAN)
+- Route the traffic using the configured Linux dataplane (iptables, nftables, or eBPF) and any configured encapsulation such as VXLAN or IP-in-IP
 - Enforce Kubernetes `NetworkPolicy` or Calico `NetworkPolicy` to allow or deny the connection
-- Generate policy logs with Calico `Log` rules
+- Log matched traffic when you add explicit Calico `Log` rules
 
 Only Cloud and Enterprise can:
-- Show this flow in a graphical traffic visualization dashboard
+- Show this flow in richer service-graph and flow-visualization dashboards
 - Alert on anomalous flow volume or pattern changes
 - Include the flow in an automated compliance report
 
-For Open Source, visibility into allowed flows usually comes from explicit `Log` rules, component metrics, or node-level tools such as `conntrack` and packet captures rather than a built-in graphical flow dashboard.
+For Open Source, visibility into allowed flows comes from Calico flow logs in the Whisker web console or Goldmane API, explicit `Log` rules, Felix metrics, or node-level tools such as `conntrack`.
 
 ## Scenario 2: Pod Egress to an External API
 
@@ -62,10 +62,20 @@ kind: GlobalNetworkPolicy
 metadata:
   name: allow-stripe-egress
 spec:
+  types:
+  - Egress
   selector: app == 'payment-service'
   egress:
   - action: Allow
+    protocol: UDP
     destination:
+      ports:
+      - 53
+  - action: Allow
+    protocol: TCP
+    destination:
+      ports:
+      - 443
       domains:
       - api.stripe.com
   - action: Deny

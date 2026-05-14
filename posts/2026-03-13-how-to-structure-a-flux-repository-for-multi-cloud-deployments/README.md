@@ -97,13 +97,14 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ```
 
 This is cloud-agnostic and deployed everywhere.
@@ -124,7 +125,7 @@ spec:
   chart:
     spec:
       chart: aws-load-balancer-controller
-      version: "1.7.x"
+      version: "1.14.x"
       sourceRef:
         kind: HelmRepository
         name: eks-charts

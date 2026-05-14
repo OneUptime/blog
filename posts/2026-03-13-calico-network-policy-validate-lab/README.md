@@ -32,6 +32,9 @@ kubectl run pod-beta --image=nicolaka/netshoot \
 kubectl run pod-gamma --image=nicolaka/netshoot \
   --labels="role=gamma,tier=data" -- sleep 3600
 
+kubectl wait --for=condition=Ready pod/pod-alpha pod/pod-beta pod/pod-gamma \
+  --timeout=120s
+
 ALPHA_IP=$(kubectl get pod pod-alpha -o jsonpath='{.status.podIP}')
 ```
 
@@ -69,6 +72,8 @@ kubectl exec pod-beta -- wget --timeout=5 -qO- http://$ALPHA_IP
 
 kubectl exec pod-gamma -- wget --timeout=5 -qO- http://$ALPHA_IP
 # Expected: timeout
+
+kubectl delete networkpolicy deny-all-alpha
 ```
 
 ## Test 3: Selector-Based Allow (Only Matching Pods)
@@ -94,6 +99,8 @@ kubectl exec pod-beta -- wget --timeout=10 -qO- http://$ALPHA_IP
 
 kubectl exec pod-gamma -- wget --timeout=5 -qO- http://$ALPHA_IP
 # Expected: timeout (gamma does not match selector)
+
+kubectl delete networkpolicy.projectcalico.org allow-beta-only -n default
 ```
 
 ## Test 4: Rule Ordering Verification
@@ -112,7 +119,7 @@ spec:
   ingress:
   - action: Deny
     source:
-      selector: tier == 'web'  # Denies both beta and gamma (tier=web)
+      selector: tier == 'web'  # Denies beta (tier=web)
   - action: Allow
     source:
       selector: role == 'beta'  # This comes after deny - should NOT override
@@ -121,6 +128,8 @@ EOF
 
 kubectl exec pod-beta -- wget --timeout=5 -qO- http://$ALPHA_IP
 # Expected: timeout - first matching rule is Deny (beta has tier=web)
+
+kubectl delete networkpolicy.projectcalico.org ordered-rules-test -n default
 ```
 
 This test validates that earlier rules take precedence over later rules.
@@ -132,6 +141,8 @@ This test validates that earlier rules take precedence over later rules.
 kubectl create namespace ns-external
 kubectl run external-pod -n ns-external --image=nicolaka/netshoot \
   --labels="role=external" -- sleep 3600
+kubectl wait --for=condition=Ready pod/external-pod -n ns-external \
+  --timeout=120s
 
 # Apply GlobalNetworkPolicy
 kubectl apply -f - <<EOF
@@ -151,6 +162,8 @@ EOF
 
 kubectl exec -n ns-external external-pod -- wget --timeout=5 -qO- http://$ALPHA_IP
 # Expected: timeout (blocked by GlobalNetworkPolicy)
+
+kubectl delete globalnetworkpolicy block-external-ns
 ```
 
 ## Test 6: Union Semantics (Multiple Policies, Same Pod)
@@ -158,24 +171,59 @@ kubectl exec -n ns-external external-pod -- wget --timeout=5 -qO- http://$ALPHA_
 Verify that if two policies select the same pod, allow from either policy is sufficient:
 
 ```bash
-# Policy A: allows gamma
-# Policy B: allows beta (already applied above)
+# Baseline deny-all for alpha
 kubectl apply -f - <<EOF
-apiVersion: projectcalico.org/v3
+apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-gamma-too
-  namespace: default
+  name: deny-all-alpha
 spec:
-  selector: role == 'alpha'
+  podSelector:
+    matchLabels:
+      role: alpha
+  policyTypes:
+  - Ingress
+  ingress: []
+EOF
+
+# Policy A: allows beta
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-beta
+spec:
+  podSelector:
+    matchLabels:
+      role: alpha
   ingress:
-  - action: Allow
-    source:
-      selector: role == 'gamma'
+  - from:
+    - podSelector:
+        matchLabels:
+          role: beta
+EOF
+
+# Policy B: allows gamma
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gamma
+spec:
+  podSelector:
+    matchLabels:
+      role: alpha
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: gamma
 EOF
 
 kubectl exec pod-gamma -- wget --timeout=10 -qO- http://$ALPHA_IP
 # Expected: success (gamma allowed by this new policy - union semantics)
+
+kubectl delete networkpolicy deny-all-alpha allow-beta allow-gamma
 ```
 
 ## Validation Summary

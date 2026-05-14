@@ -12,15 +12,15 @@ Description: Configure NodeLocal DNSCache with Calico to reduce DNS latency and 
 
 DNS lookups are on the critical path for almost every network connection in Kubernetes. By default, all DNS queries from pods flow through kube-dns (or CoreDNS), which runs as a centralized service. In high-traffic clusters, this creates latency from cross-node network hops and potential DNS amplification under high load.
 
-NodeLocal DNSCache addresses this by running a caching DNS agent (node-cache) as a DaemonSet on every node, using a link-local IP address (169.254.20.10) that intercepts DNS queries before they leave the node. This reduces DNS latency from milliseconds to microseconds for cached entries.
+NodeLocal DNSCache addresses this by running a caching DNS agent (node-cache) as a DaemonSet on every node, using a node-local IP address such as 169.254.20.10. This can reduce DNS latency for cached entries.
 
-Calico requires specific configuration when NodeLocal DNSCache is used, particularly around network policy to allow traffic to the link-local DNS cache IP and iptables rules that interact with NodeLocal DNSCache's NOTRACK rules.
+Calico requires specific configuration when NodeLocal DNSCache is used, particularly around network policy to allow traffic from the node-local cache to CoreDNS. Calico eBPF dataplane clusters also need a service annotation so Calico's kube-proxy replacement handles kube-dns correctly.
 
 ## Prerequisites
 
 - Kubernetes cluster with CoreDNS
-- Calico v3.20+
-- kubectl and calicoctl access
+- Calico installed
+- kubectl access
 
 ## Deploy NodeLocal DNSCache
 
@@ -29,7 +29,9 @@ Calico requires specific configuration when NodeLocal DNSCache is used, particul
 
 curl -LO https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
 
-# Customize DNS IP addresses
+# Customize DNS IP addresses for kube-proxy in iptables mode
+# If your cluster uses kube-proxy in IPVS mode, use the IPVS substitutions
+# from the Kubernetes NodeLocal DNSCache documentation instead.
 # KUBEDNS_IP: CoreDNS ClusterIP
 KUBEDNS=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
 sed -i "s/__PILLAR__DNS__SERVER__/${KUBEDNS}/g" nodelocaldns.yaml
@@ -41,42 +43,34 @@ kubectl apply -f nodelocaldns.yaml
 
 ## Configure Calico to Allow NodeLocal DNS Traffic
 
-Create a network policy allowing traffic to the link-local DNS cache:
+Create a network policy allowing traffic from NodeLocal DNSCache to CoreDNS:
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: NetworkPolicy
 metadata:
-  name: allow-nodelocal-dns
+  name: default.local-dns-to-core-dns
+  namespace: kube-system
 spec:
-  order: 10
-  selector: all()
+  tier: default
+  selector: k8s-app == "kube-dns"
   types:
-  - Egress
-  egress:
-  - action: Allow
-    protocol: UDP
-    destination:
-      nets:
-      - 169.254.20.10/32
-      ports:
-      - 53
+  - Ingress
+  ingress:
   - action: Allow
     protocol: TCP
     destination:
-      nets:
-      - 169.254.20.10/32
+      selector: k8s-app == "kube-dns"
       ports:
-      - 53
+      - '53'
 ```
 
-## Configure Felix for NodeLocal DNS
+## Configure Calico eBPF for NodeLocal DNS
 
-NodeLocal DNSCache uses NOTRACK iptables rules. Configure Felix to not interfere with these:
+If your Calico installation uses the eBPF dataplane, annotate the kube-dns service so Calico does not apply service NAT to NodeLocal DNSCache traffic:
 
 ```bash
-calicoctl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"chainInsertMode":"Insert"}}'
+kubectl annotate service kube-dns -n kube-system projectcalico.org/natExcludeService=true
 ```
 
 ## Verify NodeLocal DNS is Working
@@ -88,10 +82,12 @@ kubectl get pods -n kube-system -l k8s-app=node-local-dns
 # Test DNS resolution using node-local cache
 kubectl exec -it test-pod -- nslookup kubernetes.default 169.254.20.10
 
-# Check cache stats
+# Check cache metrics
 NODE_POD=$(kubectl get pod -n kube-system -l k8s-app=node-local-dns \
   --field-selector spec.nodeName=<node-name> -o name | head -1)
-kubectl exec -n kube-system ${NODE_POD} -- cat /run/node-cache/health
+kubectl port-forward -n kube-system ${NODE_POD} 9253:9253
+# In another terminal:
+curl http://127.0.0.1:9253/metrics | grep coredns_cache
 ```
 
 ## Architecture
@@ -108,4 +104,4 @@ graph TD
 
 ## Conclusion
 
-Configuring NodeLocal DNSCache with Calico reduces DNS latency by caching responses on each node, eliminating cross-node DNS roundtrips for cached entries. The key Calico-specific requirement is creating a global network policy allowing egress to 169.254.20.10:53. After deployment, verify cache pods are running on all nodes and test that DNS queries are being resolved by the local cache.
+Configuring NodeLocal DNSCache with Calico reduces DNS latency by caching responses on each node, eliminating cross-node DNS roundtrips for cached entries. The key Calico-specific requirement is creating a network policy allowing NodeLocal DNSCache to reach CoreDNS on port 53. If you use Calico eBPF, annotate the kube-dns service for NodeLocal DNSCache. After deployment, verify cache pods are running on all nodes and test that DNS queries are being resolved by the local cache.

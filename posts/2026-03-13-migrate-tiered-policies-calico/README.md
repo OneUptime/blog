@@ -25,19 +25,28 @@ This guide provides practical techniques for migrate Tiered Policies in your Kub
 ## Step 1: Inventory Existing Policies
 
 ```bash
-kubectl get networkpolicies --all-namespaces -o yaml > current-policies-backup.yaml
-calicoctl get networkpolicies --all-namespaces -o yaml >> current-policies-backup.yaml
+kubectl get networkpolicies --all-namespaces -o yaml > kubernetes-network-policies-backup.yaml
+calicoctl get networkpolicies --all-namespaces -o yaml > calico-network-policies-backup.yaml
 ```
 
 ## Step 2: Write Calico Replacement Policies
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: application
+spec:
+  order: 500
+  defaultAction: Pass
+---
+apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
   name: migrated-tiered-policies
   namespace: production
 spec:
+  tier: application
   order: 100
   selector: all()
   ingress:
@@ -71,7 +80,8 @@ echo "Migration complete"
 flowchart TD
     A[Source Pod] -->|Traffic| B{Calico Policy\nTiered Policies}
     B -->|Allow Rule Matches| C[Destination Pod]
-    B -->|No Match / Deny| D[BLOCKED]
+    B -->|Deny Rule Matches| D[BLOCKED]
+    B -->|No Match| F[Next Tier]
     E[Policy Controller] -->|Updates| B
 ```
 

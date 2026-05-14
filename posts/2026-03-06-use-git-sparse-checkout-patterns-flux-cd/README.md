@@ -199,7 +199,7 @@ spec:
   ref:
     branch: main
   secretRef:
-    # Team-alpha has its own deploy key with limited access
+    # Team-alpha has its own repository credentials
     name: team-alpha-git-credentials
   sparseCheckout:
     - teams/team-alpha/staging
@@ -246,7 +246,7 @@ patches:
       kind: NetworkPolicy
       name: default-deny
     patch: |
-      - op: replace
+      - op: add
         path: /metadata/namespace
         value: team-alpha
 ```
@@ -395,7 +395,7 @@ flux logs --kind=Kustomization --name=team-alpha-apps
 
 1. **Use `sparseCheckout` on GitRepository sources** to reduce the directories included in source artifacts.
 2. **Leverage the ignore field** to exclude non-deployment files from GitRepository artifacts.
-3. **Create per-team sources** when strict access isolation is required.
+3. **Create per-team sources** when separate credentials or operational boundaries are required.
 4. **Use the include field** to compose configurations from multiple repositories without submodules.
 5. **Use path-based Kustomizations** to scope which directory each reconciliation builds and applies.
 6. **Keep paths stable** to avoid breaking Kustomization references when restructuring the repo.
