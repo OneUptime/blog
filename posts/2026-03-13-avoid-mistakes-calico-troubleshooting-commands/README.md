@@ -33,17 +33,16 @@ alias calicoctl-safe='calicoctl get'
 ```bash
 # WRONG INTERPRETATION:
 # "calicoctl node status shows all BGP peers in the cluster"
-# ACTUAL: It only shows peers from the calico-node pod you exec into
+# ACTUAL: It only shows peers from the node where the command runs
 
-# If you exec into node-A's pod:
-kubectl exec -n calico-system calico-node-abc -c calico-node -- calicoctl node status
+# If you run this on node-A:
+sudo calicoctl node status
 # Result: shows BGP peers seen FROM node-A only
 
-# CORRECT approach: run on multiple nodes
-for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
-  -o jsonpath='{.items[*].metadata.name}'); do
-  echo "=== ${pod} ==="
-  kubectl exec -n calico-system "${pod}" -c calico-node -- calicoctl node status
+# CORRECT approach: run on multiple nodes (adjust SSH targets for your environment)
+for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+  echo "=== ${node} ==="
+  ssh "${node}" 'sudo calicoctl node status'
 done
 ```
 
@@ -53,14 +52,12 @@ done
 # WRONG: Using calicoctl v3.25 against a Calico v3.27 cluster
 calicoctl version
 # Client Version: v3.25.0
-# Cluster Calico Version: v3.27.0
-# This can cause parsing errors or missing fields
+# Cluster Version: v3.27.0
+# Calls fail by default when versions do not match unless --allow-version-mismatch is used
 
 # CORRECT: Always match versions
-CLUSTER_VERSION=$(kubectl get pods -n calico-system \
-  -l k8s-app=calico-node \
-  -o jsonpath='{.items[0].spec.containers[0].image}' | cut -d: -f2)
-echo "Cluster version: ${CLUSTER_VERSION}"
+calicoctl version
+# Use the reported Cluster Version to download the matching calicoctl
 # Download matching calicoctl
 ```
 
@@ -99,4 +96,4 @@ mindmap
 
 ## Conclusion
 
-The highest-risk mistake is running `calicoctl delete` or `calicoctl ipam release` when a read command was intended - these are irreversible without a backup. Always default to `calicoctl get` for diagnostics, and require a second person to approve any write operation during an incident. The second most impactful mistake is treating `calicoctl node status` as cluster-wide when it only reflects one node's perspective. Run it on multiple nodes before concluding that BGP is globally healthy.
+The highest-risk mistake is running `calicoctl delete` or `calicoctl ipam release` when a read command was intended - these are disruptive and hard to recover from without a backup or a clear record of the previous state. Always default to `calicoctl get` for diagnostics, and require a second person to approve any write operation during an incident. The second most impactful mistake is treating `calicoctl node status` as cluster-wide when it only reflects one node's perspective. Run it on multiple nodes before concluding that BGP is globally healthy.
