@@ -29,10 +29,9 @@ This guide covers creating and managing Network Policies with Flux CD, from basi
 #   network-policies/
 #     base/
 #       default-deny.yaml
-#       dns-egress.yaml
-#     namespaces/
-#       production/
-#       staging/
+#       allow-dns.yaml
+#     production/
+#     staging/
 #     calico/
 #       global-policies.yaml
 ```
@@ -114,7 +113,7 @@ spec:
 Allow the frontend to communicate with the API:
 
 ```yaml
-# infrastructure/network-policies/namespaces/production/frontend-policy.yaml
+# infrastructure/network-policies/production/frontend-policy.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -138,7 +137,7 @@ spec:
 ```
 
 ```yaml
-# infrastructure/network-policies/namespaces/production/api-server-policy.yaml
+# infrastructure/network-policies/production/api-server-policy.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -174,7 +173,7 @@ spec:
 Restrict database access to only authorized services:
 
 ```yaml
-# infrastructure/network-policies/namespaces/production/database-policy.yaml
+# infrastructure/network-policies/production/database-policy.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -205,7 +204,7 @@ spec:
 Allow a monitoring namespace to scrape metrics:
 
 ```yaml
-# infrastructure/network-policies/namespaces/production/allow-monitoring.yaml
+# infrastructure/network-policies/production/allow-monitoring.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -239,7 +238,7 @@ spec:
 Allow specific pods to reach external APIs:
 
 ```yaml
-# infrastructure/network-policies/namespaces/production/external-egress.yaml
+# infrastructure/network-policies/production/external-egress.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -282,9 +281,9 @@ metadata:
 spec:
   # Apply to all non-system namespaces
   namespaceSelector: >
-    kubernetes.io/metadata.name != "kube-system" &&
-    kubernetes.io/metadata.name != "flux-system" &&
-    kubernetes.io/metadata.name != "calico-system"
+    projectcalico.org/name != "kube-system" &&
+    projectcalico.org/name != "flux-system" &&
+    projectcalico.org/name != "calico-system"
   types:
     - Ingress
     - Egress
@@ -299,7 +298,7 @@ metadata:
 spec:
   # Higher order number means lower priority
   order: 100
-  namespaceSelector: has(kubernetes.io/metadata.name)
+  namespaceSelector: all()
   types:
     - Egress
   egress:
@@ -388,7 +387,7 @@ resources:
 
 ```yaml
 # clusters/my-cluster/netpol-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: network-policy-alerts
@@ -401,7 +400,8 @@ spec:
     - kind: Kustomization
       name: network-policies
       namespace: flux-system
-  summary: "Network policy change detected"
+  eventMetadata:
+    summary: "Network policy change detected"
 ```
 
 ## Testing Network Policies
@@ -418,8 +418,8 @@ kubectl describe networkpolicy api-server-ingress -n production
 # Test connectivity from frontend to api-server (should succeed)
 kubectl exec -n production deploy/frontend -- wget -qO- --timeout=5 http://api-server:8080/healthz
 
-# Test connectivity from unauthorized pod (should fail)
-kubectl exec -n production deploy/worker -- wget -qO- --timeout=5 http://postgresql:5432
+# Test TCP connectivity from unauthorized pod (should fail)
+kubectl exec -n production deploy/worker -- nc -zvw5 postgresql 5432
 
 # Verify Flux reconciliation
 flux get kustomizations network-policies
