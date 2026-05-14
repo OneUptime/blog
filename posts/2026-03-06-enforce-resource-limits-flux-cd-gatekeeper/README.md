@@ -91,25 +91,43 @@ spec:
     # High availability configuration
     replicas: 3
     # Audit configuration
-    audit:
-      replicas: 2
-      # Check existing resources every 5 minutes
-      auditInterval: 300
-      # Report violations for existing resources
-      constraintViolationsLimit: 100
+    # Check existing resources every 5 minutes
+    auditInterval: 300
+    # Report violations for existing resources
+    constraintViolationsLimit: 100
     # Exempt system namespaces from enforcement
-    exemptNamespaces:
-      - kube-system
-      - gatekeeper-system
-      - flux-system
-    # Resource configuration for Gatekeeper itself
-    resources:
-      limits:
-        cpu: "1"
-        memory: 512Mi
-      requests:
-        cpu: 200m
-        memory: 256Mi
+    controllerManager:
+      exemptNamespaces:
+        - kube-system
+        - gatekeeper-system
+        - flux-system
+      # Resource configuration for Gatekeeper itself
+      resources:
+        limits:
+          cpu: "1"
+          memory: 512Mi
+        requests:
+          cpu: 200m
+          memory: 256Mi
+    postInstall:
+      labelNamespace:
+        extraNamespaces:
+          - kube-system
+          - flux-system
+    postUpgrade:
+      labelNamespace:
+        enabled: true
+        extraNamespaces:
+          - kube-system
+          - flux-system
+    audit:
+      resources:
+        limits:
+          cpu: "1"
+          memory: 512Mi
+        requests:
+          cpu: 200m
+          memory: 256Mi
 ```
 
 ## Constraint Template: Require Resource Limits
@@ -197,7 +215,7 @@ spec:
 
 ## Constraint Template: Maximum Resource Limits
 
-Prevent containers from requesting excessive resources.
+Prevent containers from setting excessive resource limits.
 
 ```yaml
 # clusters/my-cluster/resource-policies/templates/max-limits.yaml
@@ -399,9 +417,9 @@ spec:
       - gatekeeper-system
       - monitoring
   parameters:
-    # No single container should request more than 4 CPUs
+    # No single container should set a limit above 4 CPUs
     maxCPU: "4"
-    # No single container should request more than 8Gi memory
+    # No single container should set a limit above 8Gi memory
     maxMemory: "8Gi"
 ```
 
@@ -417,7 +435,7 @@ metadata:
 spec:
   interval: 10m
   dependsOn:
-    # Gatekeeper must be running before applying policies
+    # A Flux Kustomization named gatekeeper must be ready before applying policies
     - name: gatekeeper
   sourceRef:
     kind: GitRepository
@@ -449,8 +467,21 @@ kubectl run test-no-limits --image=nginx -n production
 
 # Test: Create a pod with proper limits
 kubectl run test-with-limits --image=nginx -n production \
-  --requests='cpu=100m,memory=128Mi' \
-  --limits='cpu=500m,memory=256Mi'
+  --overrides='{
+    "apiVersion": "v1",
+    "spec": {
+      "containers": [
+        {
+          "name": "test-with-limits",
+          "image": "nginx",
+          "resources": {
+            "requests": {"cpu": "100m", "memory": "128Mi"},
+            "limits": {"cpu": "500m", "memory": "256Mi"}
+          }
+        }
+      ]
+    }
+  }'
 # Expected: Pod created successfully
 
 # View audit results
