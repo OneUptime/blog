@@ -28,13 +28,12 @@ Before getting started, ensure you have:
 
 ```bash
 # Install on macOS
-
-brew install datawire/blackbird/telepresence-oss
+brew install telepresenceio/telepresence/telepresence-oss
 
 # Install on Linux
-sudo curl -fL https://app.getambassador.io/download/tel2oss/releases/download/v2.20.0/telepresence-linux-amd64 \
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 \
   -o /usr/local/bin/telepresence
-sudo chmod +x /usr/local/bin/telepresence
+sudo chmod a+x /usr/local/bin/telepresence
 
 # Verify installation
 telepresence version
@@ -291,7 +290,7 @@ docker compose -f docker-compose.debug.yaml up
 
 ## Preventing Flux CD Conflicts
 
-When using Telepresence with Flux CD-managed services, the Traffic Manager modifies pods by injecting a sidecar. Flux CD might try to reconcile these changes. Here is how to handle this:
+When using Telepresence with Flux CD-managed services, Telepresence injects a Traffic Agent sidecar through a mutating webhook when you intercept a workload. Because this happens at the pod level, the Flux-managed Deployment normally stays in sync with Git. Here is how to handle cases where your cluster requires explicit injection settings or you need to pause reconciliation during debugging:
 
 ### Annotate Deployments to Allow Telepresence
 
@@ -303,9 +302,6 @@ metadata:
   name: order-service
   labels:
     app: order-service
-  annotations:
-    # Tell Flux to ignore Telepresence modifications to the pod spec
-    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
 spec:
   replicas: 2
   selector:
@@ -315,6 +311,9 @@ spec:
     metadata:
       labels:
         app: order-service
+      annotations:
+        # Pre-inject the Telepresence Traffic Agent for this workload
+        telepresence.io/inject-traffic-agent: enabled
     spec:
       containers:
         - name: order-service
@@ -470,8 +469,8 @@ flux get kustomizations
 kubectl cluster-info
 
 # Reinstall the Traffic Manager
-telepresence uninstall --everything
-telepresence connect
+telepresence helm uninstall
+telepresence helm install
 
 # Check for RBAC issues
 kubectl auth can-i create pods -n staging
