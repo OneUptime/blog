@@ -23,21 +23,19 @@ You must provide the CA certificate to Flux so it can establish trust.
 
 Before configuring Flux, you need the CA certificate in PEM format. There are several ways to obtain it.
 
-Export the CA certificate from your Git server:
+Export or obtain the CA certificate for your Git server:
 
 ```bash
-# Method 1: Download from the server using openssl
+# Method 1: Save the certificate chain presented by the server for inspection
+openssl s_client -connect git.internal.company.com:443 -servername git.internal.company.com -showcerts </dev/null 2>/dev/null \
+  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ print }' > server-chain.pem
 
-openssl s_client -connect git.internal.company.com:443 -showcerts </dev/null 2>/dev/null \
+# Method 2: If the server certificate is self-signed, extract that certificate
+openssl s_client -connect git.internal.company.com:443 -servername git.internal.company.com -showcerts </dev/null 2>/dev/null \
   | openssl x509 -outform PEM > ca-cert.pem
 
-# Method 2: If you have the full chain, extract the root CA
-# The last certificate in the chain is typically the root CA
-openssl s_client -connect git.internal.company.com:443 -showcerts </dev/null 2>/dev/null \
-  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ print }' > full-chain.pem
-
 # Method 3: Copy from your organization's PKI distribution point
-# Often available at an internal URL or shared drive
+# Often available at an internal URL or shared drive; this is the preferred source
 ```
 
 Verify the certificate is correct:
@@ -46,13 +44,17 @@ Verify the certificate is correct:
 # Display certificate details
 openssl x509 -in ca-cert.pem -text -noout
 
-# Verify the Git server certificate against this CA
+# Verify the Git server certificate against this CA, if you have the leaf certificate
 openssl verify -CAfile ca-cert.pem server-cert.pem
+
+# Or verify the live TLS connection with this CA bundle
+openssl s_client -connect git.internal.company.com:443 -servername git.internal.company.com \
+  -CAfile ca-cert.pem -verify_return_error </dev/null
 ```
 
 ## Step 2: Create a Secret with the CA Certificate
 
-Flux reads the CA certificate from a Kubernetes secret referenced by the GitRepository. The CA certificate is included in the same secret used for authentication.
+Flux reads the CA certificate from a Kubernetes secret referenced by the GitRepository. The CA certificate can be included in the same secret used for authentication.
 
 Create a secret with HTTPS credentials and the CA certificate:
 
@@ -68,7 +70,7 @@ stringData:
   username: flux-bot
   password: your-personal-access-token
   # The CA certificate in PEM format
-  caFile: |
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     MIIFazCCA1OgAwIBAgIUEZ4hjmLqOB8mBKnr0V2bIhkTjhwwDQYJKoZIhvcNAQEL
     BQAwRTELMAkGA1UEBhMCVVMxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
@@ -85,7 +87,7 @@ Alternatively, create the secret using kubectl:
 kubectl create secret generic git-https-with-ca \
   --from-literal=username=flux-bot \
   --from-literal=password=your-personal-access-token \
-  --from-file=caFile=./ca-cert.pem \
+  --from-file=ca.crt=./ca-cert.pem \
   --namespace=flux-system
 ```
 
@@ -107,7 +109,7 @@ spec:
   ref:
     branch: main
   secretRef:
-    # This secret contains username, password, and caFile
+    # This secret contains username, password, and ca.crt
     name: git-https-with-ca
   timeout: 60s
 ```
@@ -121,7 +123,7 @@ kubectl apply -f gitrepository.yaml
 
 ## Step 4: Handle Certificate Chains
 
-If your Git server's certificate is signed by an intermediate CA, you need to include the full certificate chain in the `caFile` field.
+If your Git server's certificate is signed by an intermediate CA, include the required CA certificates in the `ca.crt` field.
 
 A secret with a full certificate chain (intermediate + root CA):
 
@@ -135,8 +137,8 @@ type: Opaque
 stringData:
   username: flux-bot
   password: your-access-token
-  # Include the full chain: intermediate CA followed by root CA
-  caFile: |
+  # Include the CA bundle: intermediate CA and root CA
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     (Intermediate CA certificate)
     -----END CERTIFICATE-----
@@ -145,7 +147,7 @@ stringData:
     -----END CERTIFICATE-----
 ```
 
-The order matters: list the intermediate CA first, followed by the root CA.
+Flux also supports the older `caFile` key for GitRepository secrets, but `ca.crt` takes precedence when both keys are present.
 
 ## Step 5: Use CA Certificates with SSH (Known Hosts)
 
@@ -233,7 +235,7 @@ stringData:
   username: flux-bot
   password: your-access-token
   # Include both CAs during the rotation period
-  caFile: |
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     (New CA certificate)
     -----END CERTIFICATE-----
@@ -273,16 +275,16 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "tls\|certifi
 
 ## Troubleshooting
 
-**x509: certificate signed by unknown authority:** The `caFile` in your secret does not contain the correct CA. Re-export it from the server using `openssl s_client`.
+**x509: certificate signed by unknown authority:** The `ca.crt` in your secret does not contain the correct CA. Confirm the issuer from `openssl s_client -showcerts` and get the matching CA certificate from your PKI source.
 
 **x509: certificate has expired:** Your CA or server certificate has expired. Check expiration with `openssl x509 -in ca-cert.pem -enddate -noout`.
 
-**Certificate chain issues:** If you see `unable to get local issuer certificate`, you are likely missing an intermediate CA. Include the full chain in `caFile`.
+**Certificate chain issues:** If you see `unable to get local issuer certificate`, you are likely missing an intermediate CA. Include the required CA certificates in `ca.crt`.
 
 **Secret not picked up:** After updating a secret, Flux may take up to one reconciliation interval to detect the change. Force an immediate reconciliation with `flux reconcile source git <name>`.
 
-**Wrong secret key name:** The field must be named `caFile` exactly. Using `ca.crt`, `ca-bundle.crt`, or other names will not work.
+**Wrong secret key name:** Use `ca.crt` or `caFile` for GitRepository CA data. Other names such as `ca-bundle.crt` will not be used.
 
 ## Summary
 
-Configuring custom CA certificates in Flux CD is accomplished by including the CA certificate in PEM format under the `caFile` key in the authentication secret referenced by the GitRepository. This approach works for self-signed certificates, internal CAs, and certificate chains. The same secret can hold both authentication credentials and the CA certificate, keeping the configuration simple. During CA rotation, include both old and new certificates to maintain uninterrupted service.
+Configuring custom CA certificates in Flux CD is accomplished by including the CA certificate in PEM format under the `ca.crt` key in the authentication secret referenced by the GitRepository. This approach works for self-signed certificates, internal CAs, and certificate chains. The same secret can hold both authentication credentials and the CA certificate, keeping the configuration simple. During CA rotation, include both old and new certificates to maintain uninterrupted service.
