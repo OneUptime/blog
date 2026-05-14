@@ -10,7 +10,7 @@ Description: Learn how to configure Flux CD HelmRepository sources using the OCI
 
 ## Introduction
 
-Helm 3 introduced support for storing and distributing charts through OCI (Open Container Initiative) registries. Instead of using the traditional Helm chart repository index format, OCI-based repositories store each chart as an OCI artifact in a container registry. Flux CD supports OCI-based HelmRepository sources, allowing you to pull charts from any OCI-compliant registry such as Docker Hub, GitHub Container Registry (GHCR), AWS ECR, Azure ACR, and Google Artifact Registry.
+Helm 3 introduced support for storing and distributing charts through OCI (Open Container Initiative) registries. Instead of using the traditional Helm chart repository index format, OCI-based repositories store each chart as an OCI artifact in a container registry. Flux CD supports OCI-based HelmRepository sources, allowing you to pull charts from OCI-compliant registries such as Docker Hub, GitHub Container Registry (GHCR), AWS ECR, Azure ACR, and Google Artifact Registry. In current Flux documentation, the OCI type for HelmRepository is in maintenance mode; for new setups that need improved OCI chart support, consider the OCIRepository API.
 
 This guide explains how to configure OCI-based HelmRepository resources in Flux CD, covering public and authenticated access to various registry providers.
 
@@ -52,6 +52,7 @@ spec:
   # Use the oci:// scheme for the registry URL
   # Note: The URL points to the registry and path, NOT including the chart name
   url: oci://ghcr.io/stefanprodan/charts
+  # This field is accepted but ignored for OCI HelmRepository resources
   interval: 30m
 ```
 
@@ -86,6 +87,7 @@ metadata:
 spec:
   type: oci
   url: oci://ghcr.io/my-org/charts
+  # This field is accepted but ignored for OCI HelmRepository resources
   interval: 30m
   # Reference the GHCR authentication secret
   secretRef:
@@ -108,6 +110,7 @@ spec:
   type: oci
   # Docker Hub OCI URL uses the registry-1.docker.io host
   url: oci://registry-1.docker.io/myorg
+  # This field is accepted but ignored for OCI HelmRepository resources
   interval: 30m
   secretRef:
     name: dockerhub-creds
@@ -138,6 +141,7 @@ metadata:
 spec:
   type: oci
   url: oci://123456789012.dkr.ecr.us-east-1.amazonaws.com
+  # This field is accepted but ignored for OCI HelmRepository resources
   interval: 30m
   # Use the aws provider for automatic IAM role-based authentication
   # Requires IRSA (IAM Roles for Service Accounts) configured on the cluster
@@ -168,6 +172,7 @@ metadata:
 spec:
   type: oci
   url: oci://myregistry.azurecr.io/helm
+  # This field is accepted but ignored for OCI HelmRepository resources
   interval: 30m
   # Use the azure provider for workload identity authentication
   provider: azure
@@ -188,6 +193,7 @@ metadata:
 spec:
   type: oci
   url: oci://us-central1-docker.pkg.dev/my-gcp-project/helm-charts
+  # This field is accepted but ignored for OCI HelmRepository resources
   interval: 30m
   # Use the gcp provider for workload identity federation
   provider: gcp
@@ -230,7 +236,7 @@ flux get sources helm
 kubectl describe helmrepository -n flux-system my-org-charts
 ```
 
-For OCI repositories, the status will not show a stored artifact for the repository itself since there is no index file. The artifact is fetched when a HelmChart references a specific chart from the repository.
+For OCI repositories, the status will not show a stored artifact for the repository itself since there is no index file. The existence of the HelmRepository object means it is ready for use, and the chart artifact is fetched when a HelmChart references a specific chart from the repository.
 
 ## Troubleshooting OCI-Specific Issues
 
@@ -252,4 +258,4 @@ url: oci://ghcr.io/my-org/charts
 
 ## Summary
 
-OCI-based HelmRepository sources in Flux CD provide a modern way to distribute and consume Helm charts through standard container registries. Set `spec.type` to `oci`, use the `oci://` URL scheme, and leverage cloud provider authentication where available. This approach eliminates the need for a separate chart repository server and integrates Helm chart management with your existing container registry infrastructure.
+OCI-based HelmRepository sources in Flux CD provide a way to distribute and consume Helm charts through standard container registries. Set `spec.type` to `oci`, use the `oci://` URL scheme, and leverage cloud provider authentication where available. This approach eliminates the need for a separate chart repository server and integrates Helm chart management with your existing container registry infrastructure. For new OCI chart workflows, also evaluate Flux's OCIRepository API because the HelmRepository `oci` type is in maintenance mode.
