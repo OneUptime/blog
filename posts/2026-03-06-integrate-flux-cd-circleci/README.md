@@ -89,8 +89,8 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            # Use the short Git SHA as the image tag
-            IMAGE_TAG=$(echo $CIRCLE_SHA1 | cut -c1-7)
+            # Use a semver-compatible tag for Flux semver policies
+            IMAGE_TAG="1.0.${CIRCLE_BUILD_NUM}"
 
             # Build the container image
             docker build \
@@ -102,7 +102,7 @@ jobs:
       - run:
           name: Push Docker image
           command: |
-            IMAGE_TAG=$(echo $CIRCLE_SHA1 | cut -c1-7)
+            IMAGE_TAG="1.0.${CIRCLE_BUILD_NUM}"
 
             # Push both tags to the registry
             docker push $DOCKER_USERNAME/my-app:$IMAGE_TAG
@@ -155,18 +155,21 @@ CircleCI orbs simplify common integrations. Here is an example using the AWS ECR
 version: 2.1
 
 orbs:
+  aws-cli: circleci/aws-cli@5.1.2
   # Use the official AWS ECR orb for ECR authentication
-  aws-ecr: circleci/aws-ecr@9.0
+  aws-ecr: circleci/aws-ecr@9.6.0
 
 workflows:
   build-and-push-ecr:
     jobs:
       - aws-ecr/build_and_push_image:
+          auth:
+            - aws-cli/setup
           repo: my-app
-          # Tag with the short SHA for Flux to detect
-          tag: "${CIRCLE_SHA1:0:7}"
-          # Additional tag
-          extra-build-args: "--build-arg VERSION=${CIRCLE_SHA1:0:7}"
+          # Tag with a semver-compatible version for Flux semver policies
+          tag: "1.0.${CIRCLE_BUILD_NUM}"
+          # Additional build argument
+          extra_build_args: "--build-arg VERSION=1.0.${CIRCLE_BUILD_NUM}"
           filters:
             branches:
               only: main
@@ -340,25 +343,24 @@ spec:
               value: production
 ```
 
-## Step 9: Set Up Flux Notifications for CircleCI
+## Step 9: Set Up Flux Notifications
 
 Configure Flux to send notifications about deployment status.
 
 ```yaml
 # clusters/my-cluster/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-notifications
   namespace: flux-system
 spec:
   type: slack
-  channel: deployments
   secretRef:
     name: slack-webhook-url
 ---
 # clusters/my-cluster/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
