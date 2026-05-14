@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
-Description: Compare how different Kubernetes CNI plugins handle default access - from fully permissive models to those with built-in default-deny - and why Cilium's approach provides the best balance.
+Description: Compare how different Kubernetes CNI plugins handle default access - from simple connectivity to rich policy enforcement - and why Cilium's approach provides the best balance.
 
 ---
 
@@ -24,7 +24,7 @@ Understanding these differences is critical when evaluating CNI options for a ne
 ```mermaid
 graph TD
     A[New Kubernetes Pod] --> B{CNI Plugin?}
-    B -->|Flannel| C[Full access, no policy support]
+    B -->|Flannel| C[Full access, optional policy controller]
     B -->|Calico| D[Full access, NetworkPolicy enforced]
     B -->|Weave Net| E[Full access, NetworkPolicy enforced]
     B -->|Cilium| F[Full access, NetworkPolicy + CiliumNetworkPolicy enforced]
@@ -34,25 +34,25 @@ graph TD
 
 | CNI | Default Access | Policy Support | L7 Support | Observability |
 |-----|---------------|----------------|------------|---------------|
-| Flannel | Permissive | None | No | Minimal |
-| Calico | Permissive | L3/L4 NetworkPolicy + GlobalNetworkPolicy | Via Envoy sidecar | Moderate |
+| Flannel | Permissive | None by default; optional kube-network-policies controller | No | Minimal |
+| Calico | Permissive | L3/L4 NetworkPolicy + GlobalNetworkPolicy | Via Istio/Envoy and Dikastes sidecars | Moderate |
 | Weave Net | Permissive | L3/L4 NetworkPolicy | No | Minimal |
-| Cilium | Permissive | L3/L4/L7 CiliumNetworkPolicy | Native eBPF | Full (Hubble) |
+| Cilium | Permissive | L3/L4/L7 CiliumNetworkPolicy | Integrated Envoy proxy with eBPF redirection | Full (Hubble) |
 
-## Flannel: No Policy at All
+## Flannel: No Policy by Default
 
-Flannel is a network overlay that provides IP routing but ignores `NetworkPolicy` resources entirely. If you apply a policy on a Flannel cluster, it has no effect.
+Flannel is a network overlay that provides IP routing. Base Flannel does not implement `NetworkPolicy` itself, so a policy has no effect unless you deploy an additional policy controller such as the `kube-network-policies` controller supported by the Flannel Helm chart.
 
 ```bash
-# On a Flannel cluster, this policy does nothing
+# On a base Flannel cluster without a policy controller, this policy does nothing
 
 kubectl apply -f sw_l3_l4_policy.yaml
-# xwing can still reach deathstar - Flannel ignores the policy
+# xwing can still reach deathstar - no policy controller is enforcing it
 ```
 
 ## Calico: L3/L4 Policy With iptables or eBPF
 
-Calico enforces `NetworkPolicy` using iptables or its own eBPF dataplane. L7 policy requires deploying Envoy as a sidecar or DaemonSet, adding operational overhead.
+Calico enforces `NetworkPolicy` using iptables or its own eBPF dataplane. L7 policy for Istio-enabled apps requires Envoy plus Calico's Dikastes sidecar, adding operational overhead.
 
 ```bash
 # Calico policy equivalent
@@ -71,14 +71,14 @@ spec:
 EOF
 ```
 
-## Cilium: Native eBPF with Full Observability
+## Cilium: eBPF Dataplane with Full Observability
 
-Cilium's advantage is native L7 enforcement without sidecars and built-in flow observability via Hubble.
+Cilium's advantage is L7 enforcement without application sidecars and built-in flow observability via Hubble. Cilium uses eBPF for the dataplane and redirects L7 policy traffic through its integrated Envoy proxy.
 
 ```bash
-# Cilium gives you visibility out of the box
+# Cilium enables Hubble visibility with its CLI
 cilium hubble enable
-hubble observe --follow --namespace default
+hubble observe -P --follow --namespace default
 
 # Policy covers L3/L4/L7 in a single resource
 kubectl apply -f sw_l3_l4_l7_policy.yaml
@@ -90,4 +90,4 @@ All CNIs start permissive because Kubernetes was designed for connectivity. The 
 
 ## Conclusion
 
-Every Kubernetes CNI starts with permissive default access - that is a feature, not a flaw, of the Kubernetes network model. The question is what each CNI provides to move from permissive to controlled. Cilium's combination of native L7 enforcement, identity-based policy, and Hubble observability makes it the most capable platform for implementing network security in Kubernetes. The Star Wars demo's current access phase is the starting line; Cilium provides the tools to finish the race.
+Every Kubernetes CNI starts with permissive default access - that is a feature, not a flaw, of the Kubernetes network model. The question is what each CNI provides to move from permissive to controlled. Cilium's combination of L7 enforcement, identity-based policy, and Hubble observability makes it the most capable platform for implementing network security in Kubernetes. The Star Wars demo's current access phase is the starting line; Cilium provides the tools to finish the race.
