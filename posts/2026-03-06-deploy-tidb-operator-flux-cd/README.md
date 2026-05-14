@@ -32,20 +32,25 @@ clusters/
   my-cluster/
     databases/
       tidb/
-        namespace.yaml
-        helmrepository.yaml
-        helmrelease-operator.yaml
-        helmrelease-crds.yaml
-        tidb-cluster.yaml
-        tidb-monitor.yaml
-        backup.yaml
-        kustomization.yaml
+        operator/
+          namespace.yaml
+          crd.yaml
+          helmrepository.yaml
+          helmrelease-operator.yaml
+          kustomization.yaml
+        cluster/
+          tidb-cluster.yaml
+          tidb-monitor.yaml
+          backup.yaml
+          kustomization.yaml
+        tidb-operator-kustomization.yaml
+        tidb-cluster-kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
 
 ```yaml
-# clusters/my-cluster/databases/tidb/namespace.yaml
+# clusters/my-cluster/databases/tidb/operator/namespace.yaml
 
 apiVersion: v1
 kind: Namespace
@@ -59,7 +64,7 @@ metadata:
 ## Step 2: Add the PingCAP Helm Repository
 
 ```yaml
-# clusters/my-cluster/databases/tidb/helmrepository.yaml
+# clusters/my-cluster/databases/tidb/operator/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -73,37 +78,17 @@ spec:
 
 ## Step 3: Deploy TiDB Operator CRDs
 
-CRDs must be installed before the operator.
+CRDs must be installed before TiDB custom resources. Commit the official CRD manifest for the TiDB Operator version you deploy.
 
-```yaml
-# clusters/my-cluster/databases/tidb/helmrelease-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: tidb-operator-crds
-  namespace: tidb
-spec:
-  interval: 30m
-  chart:
-    spec:
-      chart: tidb-operator
-      version: "1.5.x"
-      sourceRef:
-        kind: HelmRepository
-        name: pingcap
-        namespace: tidb
-  timeout: 10m
-  # Only install CRDs
-  values:
-    # This is handled by the separate CRD chart if available
-    # Otherwise install via the operator chart
-    operatorImage: pingcap/tidb-operator:v1.5.3
+```bash
+curl -L https://raw.githubusercontent.com/pingcap/tidb-operator/v1.5.5/manifests/crd.yaml \
+  -o clusters/my-cluster/databases/tidb/operator/crd.yaml
 ```
 
 ## Step 4: Deploy the TiDB Operator
 
 ```yaml
-# clusters/my-cluster/databases/tidb/helmrelease-operator.yaml
+# clusters/my-cluster/databases/tidb/operator/helmrelease-operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -111,32 +96,30 @@ metadata:
   namespace: tidb
 spec:
   interval: 30m
-  dependsOn:
-    - name: tidb-operator-crds
   chart:
     spec:
       chart: tidb-operator
-      version: "1.5.x"
+      version: "v1.5.5"
       sourceRef:
         kind: HelmRepository
         name: pingcap
         namespace: tidb
   timeout: 10m
   values:
-    # Operator resource configuration
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
     # Controller manager configuration
     controllerManager:
       # Number of workers for reconciliation
       workers: 5
       # Auto-failover settings
       autoFailover: true
+      # Operator resource configuration
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
     # Scheduler configuration for TiDB-aware pod scheduling
     scheduler:
       create: true
@@ -153,7 +136,7 @@ spec:
 ## Step 5: Deploy a TiDB Cluster
 
 ```yaml
-# clusters/my-cluster/databases/tidb/tidb-cluster.yaml
+# clusters/my-cluster/databases/tidb/cluster/tidb-cluster.yaml
 apiVersion: pingcap.com/v1alpha1
 kind: TidbCluster
 metadata:
@@ -170,7 +153,8 @@ spec:
   pvReclaimPolicy: Retain
 
   # Enable TLS for internal communication
-  enableTLSCluster: false
+  tlsCluster:
+    enabled: false
 
   # PD (Placement Driver) configuration
   pd:
@@ -275,8 +259,10 @@ spec:
     config:
       log:
         level: info
+        # Slow query log threshold (in milliseconds)
+        slow-threshold: 300
       performance:
-        # Maximum number of connections
+        # Go runtime GOMAXPROCS value; 0 lets TiDB use the host CPU count
         max-procs: 0
         # TCP keepalive
         tcp-keep-alive: true
@@ -291,14 +277,12 @@ spec:
       mysqlNodePort: 0
       # Status port for health checks
       statusNodePort: 0
-    # Slow query log threshold (in milliseconds)
-    slowLogThreshold: 300
 ```
 
 ## Step 6: Deploy TiDB Monitoring
 
 ```yaml
-# clusters/my-cluster/databases/tidb/tidb-monitor.yaml
+# clusters/my-cluster/databases/tidb/cluster/tidb-monitor.yaml
 apiVersion: pingcap.com/v1alpha1
 kind: TidbMonitor
 metadata:
@@ -309,6 +293,11 @@ spec:
   clusters:
     - name: tidb-cluster
       namespace: tidb
+
+  # Persist monitoring data
+  persistent: true
+  storageClassName: standard
+  storage: 50Gi
 
   # Prometheus configuration
   prometheus:
@@ -323,9 +312,6 @@ spec:
       limits:
         cpu: "1"
         memory: 2Gi
-    # Storage for metrics data
-    storageClassName: standard
-    storage: 50Gi
     service:
       type: ClusterIP
 
@@ -350,12 +336,20 @@ spec:
   initializer:
     baseImage: pingcap/tidb-monitor-initializer
     version: v7.5.1
+
+  # Config reloaders required by the TidbMonitor CRD
+  reloader:
+    baseImage: pingcap/tidb-monitor-reloader
+    version: v1.0.1
+  prometheusReloader:
+    baseImage: quay.io/prometheus-operator/prometheus-config-reloader
+    version: v0.49.0
 ```
 
 ## Step 7: Configure Backup
 
 ```yaml
-# clusters/my-cluster/databases/tidb/backup.yaml
+# clusters/my-cluster/databases/tidb/cluster/backup.yaml
 # S3 credentials for backup storage
 apiVersion: v1
 kind: Secret
@@ -380,12 +374,7 @@ spec:
   # Backup schedule (daily at 2 AM UTC)
   schedule: "0 2 * * *"
   backupTemplate:
-    # Reference to the TiDB cluster
-    from:
-      host: tidb-cluster-tidb.tidb.svc.cluster.local
-      port: 4000
-      user: root
-      secretName: tidb-root-secret
+    backupType: full
     br:
       cluster: tidb-cluster
       clusterNamespace: tidb
@@ -399,47 +388,43 @@ spec:
       secretName: tidb-s3-credentials
     storageClassName: standard
     storageSize: 100Gi
----
-# Root user secret for backups
-apiVersion: v1
-kind: Secret
-metadata:
-  name: tidb-root-secret
-  namespace: tidb
-type: Opaque
-stringData:
-  user: root
-  password: ""
 ```
 
 ## Step 8: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/databases/tidb/kustomization.yaml
+# clusters/my-cluster/databases/tidb/operator/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
+  - crd.yaml
   - helmrepository.yaml
-  - helmrelease-crds.yaml
   - helmrelease-operator.yaml
+```
+
+```yaml
+# clusters/my-cluster/databases/tidb/cluster/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
   - tidb-cluster.yaml
   - tidb-monitor.yaml
   - backup.yaml
 ```
 
-## Step 9: Create the Flux Kustomization
+## Step 9: Create the Flux Kustomizations
 
 ```yaml
-# clusters/my-cluster/databases/tidb-kustomization.yaml
+# clusters/my-cluster/databases/tidb-operator-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: tidb
+  name: tidb-operator
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./clusters/my-cluster/databases/tidb
+  path: ./clusters/my-cluster/databases/tidb/operator
   prune: true
   sourceRef:
     kind: GitRepository
@@ -452,11 +437,30 @@ spec:
   timeout: 30m
 ```
 
+```yaml
+# clusters/my-cluster/databases/tidb-cluster-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tidb-cluster
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: tidb-operator
+  path: ./clusters/my-cluster/databases/tidb/cluster
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  timeout: 30m
+```
+
 ## Verify the Deployment
 
 ```bash
 # Check Flux reconciliation
-flux get kustomizations tidb
+flux get kustomizations
 
 # Verify operator pods
 kubectl get pods -n tidb -l app.kubernetes.io/name=tidb-operator
