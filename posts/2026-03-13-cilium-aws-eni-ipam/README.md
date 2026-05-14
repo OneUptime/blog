@@ -38,6 +38,7 @@ Set up required IAM permissions:
         "ec2:DescribeNetworkInterfaces",
         "ec2:DescribeSubnets",
         "ec2:DescribeVpcs",
+        "ec2:DescribeRouteTables",
         "ec2:DescribeSecurityGroups",
         "ec2:DescribeInstances",
         "ec2:DescribeInstanceTypes",
@@ -45,11 +46,11 @@ Set up required IAM permissions:
         "ec2:DetachNetworkInterface",
         "ec2:DeleteNetworkInterface",
         "ec2:CreateNetworkInterface",
+        "ec2:CreateTags",
+        "ec2:DescribeTags",
         "ec2:ModifyNetworkInterfaceAttribute",
         "ec2:AssignPrivateIpAddresses",
-        "ec2:UnassignPrivateIpAddresses",
-        "ec2:AssignIpv6Addresses",
-        "ec2:UnassignIpv6Addresses"
+        "ec2:UnassignPrivateIpAddresses"
       ],
       "Resource": "*"
     }
@@ -63,11 +64,11 @@ Install Cilium with ENI IPAM:
 # Install Cilium with AWS ENI IPAM
 
 helm install cilium cilium/cilium \
-  --version 1.15.6 \
+  --version 1.19.4 \
   --namespace kube-system \
   --set ipam.mode=eni \
   --set eni.enabled=true \
-  --set tunnel=disabled \
+  --set routingMode=native \
   --set autoDirectNodeRoutes=false \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=<api-server-endpoint> \
@@ -78,15 +79,15 @@ helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set eni.awsEnablePrefixDelegation=true \
-  --set ipam.operator.eniMinAllocate=8 \
-  --set ipam.operator.eniMaxAllocate=32
+  --set ipam.nodeSpec.ipamMinAllocate=8 \
+  --set ipam.nodeSpec.ipamMaxAllocate=32
 
 # Configure ENI tags for filtering
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set "eni.tags.cilium=true" \
-  --set "eni.tags.Environment=production"
+  --set "eni.eniTags.cilium=true" \
+  --set "eni.eniTags.Environment=production"
 ```
 
 View ENI allocation state:
@@ -96,14 +97,16 @@ View ENI allocation state:
 kubectl get ciliumnodes -o json | \
   jq '.items[] | {
     node: .metadata.name,
-    instance_id: .spec.eni.instance_id,
-    eni_count: (.status.eni | length),
-    ips: [.status.eni[] | .addresses[].ip] | length
+    instance_id: .spec.eni["instance-id"],
+    eni_count: (.status.eni.enis // {} | length),
+    ips: [.status.eni.enis[]?.addresses[]?] | length
   }'
 
 # Check available ENI IPs
 kubectl get ciliumnode <node-name> -o json | \
-  jq '.status.ipam.available | length'
+  jq '(.spec.ipam.pool // {}) as $pool |
+      (.status.ipam.used // {}) as $used |
+      [$pool | keys[] | select($used[.] == null)] | length'
 ```
 
 ## Troubleshoot AWS ENI IPAM Issues
@@ -130,10 +133,10 @@ aws ec2 describe-subnets \
 
 # Check CiliumNode ENI errors
 kubectl get ciliumnodes -o json | \
-  jq '.items[] | select(.status.eni != null) | {
+  jq '.items[] | {
     node: .metadata.name,
-    eni_errors: [.status.eni[] | select(.tags == null) | .id]
-  }'
+    ipam_error: .status.ipam["operator-status"].error
+  } | select(.ipam_error != null)'
 ```
 
 Fix common ENI issues:
@@ -184,19 +187,18 @@ Monitor ENI IPAM utilization:
 # Monitor ENI utilization per node
 kubectl get ciliumnodes -o json | jq '[.items[] | {
   node: .metadata.name,
-  eni_count: (.status.eni | length),
-  total_ips: ([.status.eni[] | .addresses | length] | add // 0),
-  used_ips: (.status.ipam.used | length),
-  available_ips: (.status.ipam.available | length)
+  eni_count: (.status.eni.enis // {} | length),
+  total_ips: (.spec.ipam.pool // {} | length),
+  used_ips: (.status.ipam.used // {} | length),
+  available_ips: ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length))
 }]'
 
 # Key Prometheus metrics for ENI IPAM
-# cilium_ipam_available_ips - Available IPs per node
-# cilium_ipam_allocated_ips - Allocated IPs per node
+# cilium_operator_ipam_available_ips - Available IPs per node
+# cilium_operator_ipam_used_ips - Used IPs per node
 
-# Monitor subnet IP utilization via AWS CloudWatch
-# MetricName: AvailableIpAddressCount
-# Namespace: AWS/EC2
+# Monitor subnet IP utilization with EC2 DescribeSubnets,
+# or use AWS/IPAM SubnetIPUsage when VPC IPAM is enabled.
 
 # Alert on subnet running low
 kubectl apply -f - <<EOF
@@ -210,7 +212,7 @@ spec:
   - name: eni-ipam
     rules:
     - alert: CiliumENIIPsLow
-      expr: cilium_ipam_available_ips < 10
+      expr: cilium_operator_ipam_available_ips < 10
       for: 5m
       labels:
         severity: warning
