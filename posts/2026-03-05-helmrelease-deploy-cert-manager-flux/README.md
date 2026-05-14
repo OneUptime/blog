@@ -58,13 +58,10 @@ spec:
   install:
     # Create the cert-manager namespace if it does not exist
     createNamespace: true
-    # Use atomic to roll back on any installation failure
-    atomic: true
     timeout: 10m
     remediation:
       retries: 3
   upgrade:
-    atomic: true
     timeout: 10m
     cleanupOnFail: true
     remediation:
@@ -99,6 +96,9 @@ spec:
         limits:
           cpu: 100m
           memory: 128Mi
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
 
     # CA injector configuration
     cainjector:
@@ -110,6 +110,9 @@ spec:
         limits:
           cpu: 100m
           memory: 256Mi
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
 
     # Enable Prometheus metrics
     prometheus:
