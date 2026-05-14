@@ -63,13 +63,13 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "67.*"
+      version: "85.*"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
       interval: 10m
-  # Install CRDs separately for cleaner upgrades
+  # Create and replace CRDs during install and upgrade
   install:
     crds: CreateReplace
   upgrade:
@@ -139,7 +139,7 @@ spec:
   chart:
     spec:
       chart: prometheus
-      version: "26.*"
+      version: "29.*"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -182,7 +182,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "67.*"
+      version: "85.*"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -225,7 +225,7 @@ spec:
   chart:
     spec:
       chart: prometheus-adapter
-      version: "4.*"
+      version: "5.*"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
