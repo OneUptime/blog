@@ -10,7 +10,7 @@ Description: Learn how to use spec.valuesFrom to load sensitive Helm chart value
 
 ## Introduction
 
-Many Helm charts require sensitive configuration such as database passwords, API keys, or TLS certificates. Storing these values inline in a HelmRelease manifest is a security risk, especially when manifests are committed to Git. Flux CD solves this with the `spec.valuesFrom` field, which can reference Kubernetes Secrets as value sources. This keeps secrets out of your Git repository while still maintaining a GitOps workflow.
+Many Helm charts require sensitive configuration such as database passwords, API keys, or TLS certificates. Storing these values inline in a HelmRelease manifest is a security risk, especially when manifests are committed to Git. Flux CD solves this with the `spec.valuesFrom` field, which can reference Kubernetes Secrets as value sources. This keeps plain-text secrets out of your Git repository while still maintaining a GitOps workflow.
 
 ## Why Use Secrets for Helm Values
 
@@ -100,11 +100,11 @@ spec:
       port: 8080
 ```
 
-The sensitive values from the Secret are merged with the inline values. Inline `spec.values` take higher priority than `spec.valuesFrom` entries.
+The sensitive values from the Secret are merged with the inline values. For values merged at the root, inline `spec.values` take higher priority than `spec.valuesFrom` entries.
 
 ## Step 3: Using targetPath for Individual Secret Values
 
-When a Secret contains individual keys rather than a full values YAML, use `targetPath` to map each key to the correct location in the chart values.
+When a Secret contains individual keys rather than a full values YAML, use `targetPath` to map each key to the correct location in the chart values. A `targetPath` entry is treated like Helm's `--set` path syntax and overwrites the value at that path, including any inline value at the same path.
 
 ```yaml
 # Secret with individual sensitive values
@@ -187,7 +187,7 @@ spec:
     replicaCount: 3
 ```
 
-The merge order is: chart defaults, then valuesFrom entries in order, then inline values.
+The merge order is: chart defaults, then valuesFrom entries in order, then inline values. Entries that use `targetPath` overwrite the value at that path.
 
 ## Step 5: Optional Secret References
 
@@ -207,11 +207,11 @@ spec:
       optional: true
 ```
 
-When `optional: true` is set, the HelmRelease reconciles successfully even if the Secret does not exist.
+When `optional: true` is set, the HelmRelease reconciles successfully even if the Secret does not exist. Missing keys inside an existing Secret and other reference errors still cause reconciliation to fail.
 
 ## Using SOPS-Encrypted Secrets
 
-In a GitOps workflow, you can use Mozilla SOPS to encrypt Secrets before committing them to Git. Flux has built-in support for SOPS decryption.
+In a GitOps workflow, you can use Mozilla SOPS to encrypt Secrets before committing them to Git. Flux's Kustomize Controller supports SOPS decryption when decryption is configured on the Flux Kustomization.
 
 ```yaml
 # encrypted-secret.yaml - SOPS-encrypted Secret (safe to commit to Git)
@@ -248,7 +248,7 @@ After applying the HelmRelease, verify the values were applied correctly.
 # Check HelmRelease status
 flux get helmreleases -n default
 
-# View the applied values (sensitive values will be visible)
+# View the applied values from Helm's storage namespace (sensitive values will be visible)
 helm get values my-app -n default
 
 # Check for errors in the Helm Controller logs
