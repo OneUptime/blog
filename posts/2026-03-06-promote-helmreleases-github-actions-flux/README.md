@@ -291,6 +291,9 @@ on:
     types:
       - staging-deploy-success
 
+permissions:
+  actions: write
+
 jobs:
   run-staging-tests:
     runs-on: ubuntu-latest
@@ -356,7 +359,7 @@ jobs:
             echo "Validating $file"
             flux build kustomization apps \
               --path ./apps/production \
-              --dry-run 2>&1 || true
+              --dry-run
 
             # Basic YAML validation
             python3 -c "import yaml; yaml.safe_load(open('$file'))"
@@ -400,7 +403,7 @@ Set up Flux to notify your team when a promoted HelmRelease is deployed:
 
 ```yaml
 # clusters/production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -412,7 +415,7 @@ spec:
     name: slack-webhook
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-alerts
