@@ -25,8 +25,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 
 # That single command:
 # 1. Creates the Git repository if it doesn't exist
@@ -70,8 +69,8 @@ spec:
   values:
     image:
       repository: ghcr.io/my-org/my-app
-      # Flux image automation updates this automatically
-      tag: 1.2.3 # {"$imagepolicy": "flux-system:my-app"}
+      # Flux image automation can update this automatically
+      tag: 1.2.3 # {"$imagepolicy": "flux-system:my-app:tag"}
 ```
 
 ### Automatic Drift Detection and Correction
@@ -89,13 +88,13 @@ spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
-    name: fleet-infra
+    name: flux-system
   path: ./apps/production
   # Prune resources that are removed from Git
   prune: true
-  # Force apply to correct drift
+  # Do not recreate resources when immutable fields change
   force: false
-  # Get notified about drift
+  # Check application health after apply
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -105,7 +104,7 @@ spec:
 
 ### Simplified Secrets Management
 
-Small teams often struggle with secrets. Flux integrates with SOPS and Sealed Secrets, so secrets can live in Git safely.
+Small teams often struggle with secrets. Flux supports SOPS natively and can apply Sealed Secrets manifests, so secrets can live in Git safely.
 
 ```yaml
 # Use Mozilla SOPS to encrypt secrets in Git
@@ -118,7 +117,7 @@ spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
-    name: fleet-infra
+    name: flux-system
   path: ./apps/production
   prune: true
   # Decrypt SOPS-encrypted secrets during reconciliation
@@ -133,12 +132,13 @@ spec:
 creation_rules:
   # Encrypt all secret files with an age key
   - path_regex: .*.secret.yaml
+    encrypted_regex: '^(data|stringData)$'
     age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ```bash
 # Encrypt a secret before committing to Git
-sops --encrypt --in-place apps/production/db-secret.yaml
+sops --encrypt --encrypted-regex '^(data|stringData)$' --in-place apps/production/db-secret.yaml
 
 # The encrypted file is safe to commit
 git add apps/production/db-secret.yaml
@@ -182,7 +182,7 @@ spec:
   retryInterval: 1m
   sourceRef:
     kind: GitRepository
-    name: fleet-infra
+    name: flux-system
   path: ./infrastructure
   prune: true
   wait: true
@@ -203,7 +203,7 @@ spec:
     - name: infrastructure
   sourceRef:
     kind: GitRepository
-    name: fleet-infra
+    name: flux-system
   path: ./apps
   prune: true
   healthChecks:
@@ -293,8 +293,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 
 # 4. Add your first application (10 minutes)
 # Create the app manifests in the repo and push
