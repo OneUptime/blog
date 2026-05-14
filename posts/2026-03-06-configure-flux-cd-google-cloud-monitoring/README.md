@@ -37,7 +37,7 @@ graph LR
 
 ## Step 1: Enable Google Managed Prometheus on GKE
 
-GKE clusters created after GKE version 1.27 have managed collection enabled by default. Verify or enable it with the following command.
+GKE Standard clusters running GKE version 1.27 or later have managed collection enabled by default. Verify or enable it with the following command.
 
 ```bash
 # Check if managed collection is enabled
@@ -149,6 +149,25 @@ spec:
         - sourceLabels: [__name__]
           regex: "gotk_.*|controller_runtime_.*"
           action: keep
+---
+# notification-controller-monitoring.yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: notification-controller
+  namespace: flux-system
+spec:
+  selector:
+    matchLabels:
+      app: notification-controller
+  endpoints:
+    - port: http-prom
+      interval: 30s
+      path: /metrics
+      metricRelabeling:
+        - sourceLabels: [__name__]
+          regex: "gotk_.*|controller_runtime_.*"
+          action: keep
 ```
 
 ## Step 4: Manage Monitoring Resources with Flux
@@ -203,11 +222,11 @@ Here are the most important Flux CD metrics to track in Cloud Monitoring.
 
 | Metric Name | Description | Use Case |
 |---|---|---|
-| `gotk_reconcile_condition` | Current condition of reconciliation | Track health status |
 | `gotk_reconcile_duration_seconds` | Time taken to reconcile | Performance monitoring |
-| `gotk_suspend_status` | Whether a resource is suspended | Detect paused deployments |
 | `controller_runtime_reconcile_total` | Total reconciliation attempts | Throughput tracking |
-| `controller_runtime_reconcile_errors_total` | Failed reconciliations | Error detection |
+| `controller_runtime_reconcile_total{result="error"}` | Failed reconciliation attempts | Error detection |
+| `gotk_cache_events_total` | Source artifact cache activity | Source controller cache monitoring |
+| `rest_client_requests_total` | Kubernetes API client requests | API usage monitoring |
 
 ## Step 7: Create a Cloud Monitoring Dashboard
 
@@ -222,12 +241,12 @@ Use the `gcloud` CLI or Terraform to create a monitoring dashboard for Flux CD.
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Reconciliation Status",
+          "title": "Reconciliation Rate by Result",
           "xyChart": {
             "dataSets": [
               {
                 "timeSeriesQuery": {
-                  "prometheusQuery": "sum by (kind, name) (gotk_reconcile_condition{type=\"Ready\", status=\"True\"})"
+                  "prometheusQuery": "sum by (controller, result) (rate(controller_runtime_reconcile_total[5m]))"
                 },
                 "plotType": "LINE"
               }
@@ -279,11 +298,8 @@ conditions:
   - displayName: "Flux Reconciliation Failure"
     conditionPrometheusQueryLanguage:
       query: >
-        sum by (kind, name, namespace) (
-          gotk_reconcile_condition{
-            type="Ready",
-            status="False"
-          }
+        sum by (controller) (
+          rate(controller_runtime_reconcile_total{result="error"}[5m])
         ) > 0
       duration: 300s
       evaluationInterval: 60s
@@ -297,7 +313,7 @@ Create the alert policy.
 
 ```bash
 # Create alerting policy
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --policy-from-file=alert-policy.yaml
 ```
 
@@ -321,7 +337,7 @@ For organizations running Flux across multiple GKE clusters, use Cloud Monitorin
 
 ```yaml
 # cluster-pod-monitoring.yaml
-# Deploy this PodMonitoring to each cluster
+# Deploy this ClusterPodMonitoring to each cluster
 # Metrics are automatically labeled with the cluster name
 apiVersion: monitoring.googleapis.com/v1
 kind: ClusterPodMonitoring
@@ -337,9 +353,10 @@ spec:
     - port: http-prom
       interval: 30s
       path: /metrics
-  # Target only the flux-system namespace
+  # Add useful Kubernetes metadata labels, including namespace
   targetLabels:
     metadata:
+      - namespace
       - pod
       - container
       - node
@@ -375,8 +392,8 @@ metricRelabeling:
     # Only keep Flux-specific and controller runtime metrics
     regex: "gotk_.*|controller_runtime_reconcile_.*"
     action: keep
-  - sourceLabels: [revision]
-    # Drop the revision label to reduce cardinality
+  - regex: "revision"
+    # Drop the revision label to reduce cardinality if it is present
     action: labeldrop
 ```
 
