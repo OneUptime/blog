@@ -117,7 +117,7 @@ spec:
 
 ## Tilde Range (~) -- Patch-Level Flexibility
 
-The tilde range allows the rightmost specified version component to increment. This is ideal for accepting bug fixes only.
+The tilde range allows patch-level changes when a minor version is specified, and minor plus patch changes when only a major version is specified. This is ideal for accepting bug fixes only when you specify both major and minor versions.
 
 ```yaml
 # helmchart-tilde-examples.yaml
@@ -273,7 +273,7 @@ metadata:
   namespace: flux-system
 spec:
   chart: my-app
-  # * matches any version at all
+  # * matches any stable version
   version: "*"
   sourceRef:
     kind: HelmRepository
