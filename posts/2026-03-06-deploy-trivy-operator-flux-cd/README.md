@@ -98,9 +98,11 @@ spec:
         namespace: trivy-system
       interval: 12h
   values:
+    # Scan all namespaces except these system namespaces
+    excludeNamespaces: "kube-system,kube-public,kube-node-lease"
+
     # Operator configuration
     operator:
-      # Scan all namespaces
       scanJobsConcurrentLimit: 10
       # Automatically scan new workloads
       vulnerabilityScannerEnabled: true
@@ -108,10 +110,13 @@ spec:
       rbacAssessmentScannerEnabled: true
       infraAssessmentScannerEnabled: true
       exposedSecretScannerEnabled: true
-      # Scan schedule (every 24 hours)
+      # Remove completed scan jobs after 30 minutes
       scanJobTTL: 30m
-      # Namespaces to exclude from scanning
-      excludeNamespaces: "kube-system,kube-public,kube-node-lease"
+      # Refresh scanner reports every 24 hours
+      scannerReportTTL: 24h
+      # Optional additional image pull secrets for namespaces without imagePullSecrets
+      privateRegistryScanSecretsNames:
+        default: trivy-registry-credentials
 
     # Trivy scanner configuration
     trivy:
@@ -130,10 +135,11 @@ spec:
           cpu: 500m
           memory: 512Mi
       # Vulnerability database update settings
-      dbRepository: ghcr.io/aquasecurity/trivy-db
+      dbRegistry: ghcr.io
+      dbRepository: aquasecurity/trivy-db
       dbRepositoryInsecure: false
       # Use built-in policies for config auditing
-      useBuiltinPolicies: true
+      useEmbeddedRegoPolicies: "true"
       # Ignore unfixed vulnerabilities
       ignoreUnfixed: false
 
@@ -177,11 +183,11 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: trivy-registry-credentials
-  namespace: trivy-system
-type: Opaque
+  namespace: default
+type: kubernetes.io/dockerconfigjson
 stringData:
   # Docker config for private registry access
-  docker-config.json: |
+  .dockerconfigjson: |
     {
       "auths": {
         "registry.example.com": {
@@ -207,20 +213,26 @@ Define custom compliance policies using ConfigMap.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: trivy-operator-custom-policies
+  name: trivy-operator-policies-config
   namespace: trivy-system
   labels:
     app.kubernetes.io/managed-by: flux
 data:
   # Custom policy to enforce read-only root filesystem
+  policy.readonly_rootfs.kinds: "Workload"
   policy.readonly_rootfs.rego: |
-    package appshield.kubernetes.KSV014
+    package trivyoperator.policy.k8s.custom.readonly_rootfs
 
-    import data.lib.kubernetes
-    import data.lib.result
+    containers[container] {
+      container := input.spec.template.spec.containers[_]
+    }
+
+    containers[container] {
+      container := input.spec.containers[_]
+    }
 
     __rego_metadata__ := {
-      "id": "KSV014",
+      "id": "readonly_rootfs",
       "title": "Root file system is not read-only",
       "description": "Container should use a read-only root file system",
       "severity": "HIGH",
@@ -228,23 +240,27 @@ data:
     }
 
     deny[res] {
-      container := kubernetes.containers[_]
+      container := containers[_]
       not container.securityContext.readOnlyRootFilesystem == true
-      res := result.new(
-        sprintf("Container '%s' should set readOnlyRootFilesystem to true", [container.name]),
-        container,
-      )
+      msg := sprintf("Container '%s' should set readOnlyRootFilesystem to true", [container.name])
+      res := {"msg": msg}
     }
 
   # Custom policy to require resource limits
+  policy.resource_limits.kinds: "Workload"
   policy.resource_limits.rego: |
-    package appshield.kubernetes.KSV015
+    package trivyoperator.policy.k8s.custom.resource_limits
 
-    import data.lib.kubernetes
-    import data.lib.result
+    containers[container] {
+      container := input.spec.template.spec.containers[_]
+    }
+
+    containers[container] {
+      container := input.spec.containers[_]
+    }
 
     __rego_metadata__ := {
-      "id": "KSV015",
+      "id": "resource_limits",
       "title": "CPU and memory limits not set",
       "description": "All containers should have CPU and memory limits",
       "severity": "MEDIUM",
@@ -252,21 +268,17 @@ data:
     }
 
     deny[res] {
-      container := kubernetes.containers[_]
+      container := containers[_]
       not container.resources.limits.cpu
-      res := result.new(
-        sprintf("Container '%s' should set CPU limits", [container.name]),
-        container,
-      )
+      msg := sprintf("Container '%s' should set CPU limits", [container.name])
+      res := {"msg": msg}
     }
 
     deny[res] {
-      container := kubernetes.containers[_]
+      container := containers[_]
       not container.resources.limits.memory
-      res := result.new(
-        sprintf("Container '%s' should set memory limits", [container.name]),
-        container,
-      )
+      msg := sprintf("Container '%s' should set memory limits", [container.name])
+      res := {"msg": msg}
     }
 ```
 
