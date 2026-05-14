@@ -80,8 +80,9 @@ branch_protection:
       teams:
         - flux-deployers
       users: []
+      apps: []
 
-    # Require signed commits
+    # Require signed commits (enable through the signed commits API endpoint or UI)
     required_signatures: true
 
     # Prevent force pushes
@@ -109,13 +110,34 @@ gh api \
   --method PUT \
   -H "Accept: application/vnd.github+json" \
   "/repos/${REPO}/branches/${BRANCH}/protection" \
-  -f required_status_checks='{"strict":true,"contexts":["ci/validate-manifests","ci/kustomize-build","ci/policy-check"]}' \
-  -f enforce_admins=true \
-  -f required_pull_request_reviews='{"required_approving_review_count":2,"dismiss_stale_reviews":true,"require_code_owner_reviews":true}' \
-  -f restrictions=null \
-  -F allow_force_pushes=false \
-  -F allow_deletions=false \
-  -F required_linear_history=true
+  --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [
+      "ci/validate-manifests",
+      "ci/kustomize-build",
+      "ci/policy-check"
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2,
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true
+  },
+  "restrictions": null,
+  "required_linear_history": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
+
+# Enable required signed commits
+gh api \
+  --method POST \
+  -H "Accept: application/vnd.github+json" \
+  "/repos/${REPO}/branches/${BRANCH}/protection/required_signatures"
 ```
 
 ## Defining CODEOWNERS for Flux CD Repositories
@@ -177,21 +199,13 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
-      - name: Validate Flux manifests
-        # Validate all Flux custom resources in the repository
-        run: |
-          flux check --pre
-          find . -name '*.yaml' -path '*/clusters/*' | while read file; do
-            echo "Validating $file"
-            kubectl apply --dry-run=client -f "$file" 2>/dev/null || true
-          done
-
       - name: Run Kustomize build
         # Ensure all Kustomize overlays build without errors
         run: |
-          for dir in clusters/*/; do
+          find clusters -name 'kustomization.yaml' | while read file; do
+            dir="$(dirname "$file")"
             echo "Building kustomize for $dir"
-            kustomize build "$dir" > /dev/null
+            kubectl kustomize "$dir" > /dev/null
           done
 
       - name: Validate with kubeconform
@@ -203,8 +217,6 @@ jobs:
             -strict
             -ignore-missing-schemas
             -schema-location default
-            -schema-location
-            'https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/crds/{{.Group}}_{{.ResourceKind}}.json'
             clusters/
 
   policy-check:
@@ -215,7 +227,7 @@ jobs:
 
       - name: Run Kyverno CLI checks
         # Validate manifests against Kyverno policies locally
-        uses: kyverno/action-install-cli@v0.2
+        uses: kyverno/action-install-cli@v0.2.0
       - run: |
           kyverno apply infrastructure/policies/ \
             --resource apps/ \
@@ -224,7 +236,7 @@ jobs:
 
 ## Configuring GitLab Branch Protection
 
-For teams using GitLab, here is the equivalent configuration.
+For teams using GitLab, pair protected branches and merge request approvals with an equivalent validation pipeline.
 
 ```yaml
 # .gitlab-ci.yml
@@ -235,16 +247,14 @@ stages:
 
 validate-manifests:
   stage: validate
-  image: ghcr.io/fluxcd/flux-cli:v2.2.0
+  image: ghcr.io/fluxcd/flux-cli:v2.7.0
   script:
     # Validate all Kubernetes manifests
-    - flux check --pre || true
     - |
-      find . -name '*.yaml' -path '*/clusters/*' | while read file; do
-        echo "Validating $file"
-        flux build kustomization flux-system \
-          --path="$(dirname $file)" \
-          --dry-run 2>/dev/null || true
+      find . -name 'kustomization.yaml' -path '*/clusters/*' | while read file; do
+        dir="$(dirname "$file")"
+        echo "Building kustomize for $dir"
+        kubectl kustomize "$dir" > /dev/null
       done
   rules:
     - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
@@ -282,8 +292,7 @@ spec:
     branch: main
   # Verify commit signatures using GPG keys
   verify:
-    mode: head
-    provider: github
+    mode: HEAD
     secretRef:
       # Secret containing the GPG public keys of authorized committers
       name: gpg-public-keys
@@ -301,7 +310,7 @@ type: Opaque
 data:
   # Base64-encoded GPG public key of authorized committers
   # Generate with: gpg --export --armor <key-id> | base64
-  author1.pub: <base64-encoded-gpg-key>
+  author1.asc: <base64-encoded-gpg-key>
 ```
 
 ## Setting Up Notifications for Branch Protection Events
@@ -361,8 +370,9 @@ spec:
   ref:
     branch: main
   verify:
-    mode: head
-    provider: github
+    mode: HEAD
+    secretRef:
+      name: gpg-public-keys
 ---
 # clusters/staging/flux-system/gotk-sync.yaml
 # Staging watches the staging branch with relaxed verification
