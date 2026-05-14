@@ -42,8 +42,8 @@ The most common reason is simply that the reconciliation interval has not elapse
 # Check the configured interval
 kubectl get gitrepository -n flux-system flux-system -o jsonpath='{.spec.interval}'
 
-# Check when the last reconciliation happened
-kubectl get gitrepository -n flux-system flux-system -o jsonpath='{.status.conditions[0].lastTransitionTime}'
+# Check when the source artifact was last updated
+kubectl get gitrepository -n flux-system flux-system -o jsonpath='{.status.artifact.lastUpdateTime}'
 ```
 
 ### Fix: Force Immediate Reconciliation
@@ -122,7 +122,7 @@ kubectl get receiver -n flux-system github-receiver -o jsonpath='{.status.webhoo
 ### Exposing the Webhook Endpoint
 
 ```yaml
-# Create an Ingress for the notification-controller webhook
+# Create an Ingress for the notification-controller webhook receiver
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -141,7 +141,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
