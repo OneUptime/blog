@@ -89,7 +89,7 @@ Here is how to implement this workflow.
 flux push artifact oci://ghcr.io/my-org/my-app-manifests:1.2.3 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="main@sha1:$(git rev-parse HEAD)"
 
 # Step 2: Promote to staging by adding the "staging" tag
 flux tag artifact oci://ghcr.io/my-org/my-app-manifests:1.2.3 \
