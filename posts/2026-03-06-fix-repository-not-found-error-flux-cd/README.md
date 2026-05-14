@@ -22,7 +22,7 @@ failed to checkout and determine revision: repository not found
 
 Or from GitHub specifically:
 
-```python
+```text
 ERROR: Repository not found.
 fatal: Could not read from remote repository.
 ```
@@ -56,7 +56,7 @@ Common URL mistakes include:
 - Misspelled organization or repository name
 - Wrong hosting platform (github.com vs gitlab.com)
 - Extra or missing path segments
-- Using HTTP instead of HTTPS
+- Using the wrong protocol or an unsupported SSH URL format, such as `git@github.com:org/repo.git` instead of `ssh://git@github.com/org/repo.git`
 
 ### Fix
 
@@ -208,7 +208,7 @@ If a repository was renamed, moved to a different organization, or transferred, 
 kubectl get gitrepository <name> -n flux-system -o jsonpath='{.spec.url}'
 
 # Try to verify the actual current URL of the repository
-# GitHub sometimes redirects, but Git operations may not follow redirects
+# GitHub may redirect renamed repositories, but Flux should still point to the current canonical URL
 curl -sI https://github.com/my-org/old-repo-name | grep -i location
 ```
 
@@ -258,10 +258,10 @@ Some organizations restrict which applications and tokens can access their repos
 ### Diagnosing for GitHub Organizations with SSO
 
 ```bash
-# Check if the organization uses SAML SSO
-curl -H "Authorization: token ghp_your_token" \
-  https://api.github.com/orgs/<org-name>
-# Look for "saml" in the response
+# Check whether GitHub reports an SSO authorization problem for the token
+curl -i -H "Authorization: Bearer ghp_your_token" \
+  https://api.github.com/repos/<org-name>/<repo-name>
+# Look for a 403/404 response or an X-GitHub-SSO header
 ```
 
 ### Fix
@@ -302,7 +302,7 @@ To avoid "repository not found" errors in the future:
 
 1. **Use infrastructure as code** for Flux resources so URLs are version controlled
 2. **Set up monitoring** for Flux source reconciliation failures
-3. **Use long-lived credentials** such as GitHub App tokens that auto-renew
+3. **Use managed credentials** such as GitHub App authentication, which can issue short-lived installation tokens automatically
 4. **Document repository moves** and update all Flux references when renaming repos
 5. **Test credentials** before applying them to the cluster
 
