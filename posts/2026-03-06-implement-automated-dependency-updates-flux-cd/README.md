@@ -16,7 +16,7 @@ This guide covers how to set up a fully automated dependency update pipeline for
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.24+)
+- A Kubernetes cluster supported by your Flux CD version
 - Flux CD v2 installed with image automation controllers
 - A Git repository connected to Flux CD
 - Renovate or Dependabot configured (for Helm chart updates)
@@ -124,8 +124,8 @@ spec:
   imageRepositoryRef:
     name: frontend
   policy:
-    # Use alphabetical sorting for timestamp-based tags
-    alphabetical:
+    # Use numerical sorting for timestamp-based tags
+    numerical:
       order: asc
   filterTags:
     # Match tags like main-20260306-abc1234
@@ -212,10 +212,10 @@ Renovate can automatically detect and update Helm chart versions in your Flux CD
     "config:recommended"
   ],
   "flux": {
-    "fileMatch": [
-      "(^|/)clusters/.+\\.yaml$",
-      "(^|/)apps/.+\\.yaml$",
-      "(^|/)infrastructure/.+\\.yaml$"
+    "managerFilePatterns": [
+      "/(^|/)clusters/.+\\.yaml$/",
+      "/(^|/)apps/.+\\.yaml$/",
+      "/(^|/)infrastructure/.+\\.yaml$/"
     ]
   },
   "packageRules": [
@@ -252,7 +252,7 @@ Renovate can automatically detect and update Helm chart versions in your Flux CD
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["(^|/)clusters/.+\\.yaml$"],
+      "managerFilePatterns": ["/(^|/)clusters/.+\\.yaml$/"],
       "matchStrings": [
         "registryUrl=(?<registryUrl>[^\\s]+)\\s+chart:\\s+(?<depName>[^\\s]+)\\s+version:\\s+(?<currentValue>[^\\s]+)"
       ],
@@ -291,7 +291,7 @@ spec:
     # Remediation strategy if upgrade fails
     remediation:
       retries: 3
-  # Automatic rollback if upgrade fails health checks
+  # Run Helm tests after install or upgrade; test failures are subject to remediation
   test:
     enable: true
   values:
@@ -309,7 +309,7 @@ spec:
 ```yaml
 # clusters/production/notifications/dependency-alerts.yaml
 # Notify the team about dependency update events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: deps-slack
@@ -320,7 +320,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-update-alerts
