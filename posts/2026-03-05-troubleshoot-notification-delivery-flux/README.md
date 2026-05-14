@@ -125,13 +125,13 @@ Test connectivity to the provider endpoint from within the cluster.
 
 ```bash
 # For Slack webhooks, test the URL directly
-kubectl run curl-test --image=curlimages/curl --rm -it -- \
+kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it --command -- \
   curl -X POST -H "Content-Type: application/json" \
   -d '{"text":"Test from Flux cluster"}' \
   "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
 # For generic webhooks, test connectivity
-kubectl run curl-test --image=curlimages/curl --rm -it -- \
+kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it --command -- \
   curl -I "https://your-webhook-endpoint.example.com"
 ```
 
@@ -156,7 +156,7 @@ If the provider endpoint uses HTTPS, certificate verification might fail.
 
 ```bash
 # Test TLS connectivity from within the cluster
-kubectl run curl-test --image=curlimages/curl --rm -it -- \
+kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it --command -- \
   curl -v "https://your-provider-endpoint.example.com" 2>&1 | grep -i "ssl\|certificate\|tls"
 
 # Check notification controller logs for TLS errors
