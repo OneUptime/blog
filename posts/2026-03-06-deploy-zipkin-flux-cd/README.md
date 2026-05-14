@@ -12,7 +12,7 @@ Description: A practical guide to deploying Zipkin distributed tracing on Kubern
 
 Zipkin is an open-source distributed tracing system that helps gather timing data needed to troubleshoot latency problems in service architectures. It manages both the collection and lookup of trace data. Originally developed at Twitter based on the Google Dapper paper, Zipkin has become one of the most widely adopted tracing solutions.
 
-This guide covers deploying Zipkin on Kubernetes using Flux CD, with Elasticsearch as the storage backend and production-ready configuration.
+This guide covers deploying Zipkin on Kubernetes using Flux CD, with Elasticsearch as the storage backend and production-oriented configuration.
 
 ## Prerequisites
 
@@ -38,7 +38,19 @@ metadata:
 
 ## Deploying Elasticsearch for Storage
 
-For production, use Elasticsearch as the storage backend. If you already have an Elasticsearch cluster deployed (for example, from the Jaeger guide), you can reuse it.
+For production, use Elasticsearch as the storage backend. If you already have an Elasticsearch cluster deployed (for example, from the Jaeger guide), you can reuse it. Elastic recommends Elastic Cloud on Kubernetes (ECK) for operating Elasticsearch on Kubernetes; the example below uses the Elastic Helm chart directly for a compact Flux example.
+
+```yaml
+# clusters/my-cluster/zipkin/helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: elastic
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://helm.elastic.co
+```
 
 ```yaml
 # clusters/my-cluster/zipkin/elasticsearch.yaml
@@ -52,7 +64,7 @@ spec:
   chart:
     spec:
       chart: elasticsearch
-      version: "8.x"
+      version: "8.5.x"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -94,7 +106,7 @@ spec:
 
 ## Deploying Zipkin Server
 
-Since Zipkin does not have an official Helm chart for production use, deploy it using raw Kubernetes manifests managed by Flux.
+Although OpenZipkin publishes a Helm chart, this guide deploys Zipkin using raw Kubernetes manifests managed by Flux.
 
 ```yaml
 # clusters/my-cluster/zipkin/configmap.yaml
@@ -120,12 +132,12 @@ data:
   QUERY_LOOKBACK: "604800000"
   # Maximum number of traces to return
   QUERY_MAX_TRACES: "250"
-  # Self-tracing sample rate (10%)
-  SELF_TRACING_SAMPLE_RATE: "0.1"
-  # Enable health check
+  # Enable query API and UI
   QUERY_ENABLED: "true"
   # Collector sample rate (100%)
   COLLECTOR_SAMPLE_RATE: "1.0"
+  # Let Zipkin install Elasticsearch index templates when needed
+  ES_ENSURE_TEMPLATES: "true"
 ```
 
 ```yaml
@@ -229,8 +241,8 @@ metadata:
   name: zipkin-dependencies
   namespace: zipkin
 spec:
-  # Run every hour
-  schedule: "0 * * * *"
+  # Run just before midnight UTC
+  schedule: "55 23 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -262,61 +274,7 @@ spec:
 
 ## Setting Up the Elasticsearch Index Template
 
-Configure an index template for optimal Zipkin storage.
-
-```yaml
-# clusters/my-cluster/zipkin/index-template-job.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: zipkin-index-template
-  namespace: zipkin
-  annotations:
-    # Run after Elasticsearch is ready
-    helm.sh/hook-weight: "10"
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: setup
-          image: curlimages/curl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Wait for Elasticsearch
-              until curl -s http://zipkin-elasticsearch-master.zipkin.svc:9200/_cluster/health | grep -q '"status":"green\|yellow"'; do
-                echo "Waiting for Elasticsearch..."
-                sleep 5
-              done
-
-              # Create ILM policy for trace retention
-              curl -X PUT "http://zipkin-elasticsearch-master.zipkin.svc:9200/_ilm/policy/zipkin-traces-policy" \
-                -H "Content-Type: application/json" \
-                -d '{
-                  "policy": {
-                    "phases": {
-                      "hot": {
-                        "actions": {
-                          "rollover": {
-                            "max_age": "1d",
-                            "max_size": "50gb"
-                          }
-                        }
-                      },
-                      "delete": {
-                        "min_age": "14d",
-                        "actions": {
-                          "delete": {}
-                        }
-                      }
-                    }
-                  }
-                }'
-
-              echo "Index template and ILM policy created successfully"
-```
+Zipkin installs Elasticsearch index templates automatically by default when `ES_ENSURE_TEMPLATES` is set to `true`. Keep this enabled unless you manage compatible Zipkin index templates separately.
 
 ## Configuring Applications to Send Traces to Zipkin
 
@@ -348,10 +306,10 @@ spec:
               value: "http://zipkin.zipkin.svc:9411/api/v2/spans"
             - name: ZIPKIN_SERVICE_NAME
               value: "my-service"
-            # For Spring Boot applications
-            - name: SPRING_ZIPKIN_BASE_URL
-              value: "http://zipkin.zipkin.svc:9411"
-            - name: SPRING_SLEUTH_SAMPLER_PROBABILITY
+            # For Spring Boot 3 applications using Micrometer Tracing
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: "http://zipkin.zipkin.svc:9411/api/v2/spans"
+            - name: MANAGEMENT_TRACING_SAMPLING_PROBABILITY
               value: "0.1"
 ```
 
@@ -403,14 +361,14 @@ spec:
       app: zipkin
   endpoints:
     - port: http
-      path: /metrics
+      path: /prometheus
       interval: 30s
 ```
 
 ## Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/zipkin/kustomization.yaml
+# clusters/my-cluster/zipkin-stack.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -418,7 +376,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: zipkin
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -451,7 +408,7 @@ kubectl exec -n zipkin deploy/zipkin -- wget -qO- http://localhost:9411/health
 
 # Access Zipkin UI via port-forward
 kubectl port-forward -n zipkin svc/zipkin 9411:9411
-# Visit http://localhost:9411
+# Visit http://localhost:9411/zipkin
 
 # Send a test span
 curl -X POST http://localhost:9411/api/v2/spans \
@@ -475,4 +432,4 @@ curl -s "http://localhost:9411/api/v2/dependencies?endTs=$(date +%s)000" | pytho
 
 ## Conclusion
 
-You now have a production-ready Zipkin deployment managed by Flux CD. The setup includes a highly available Zipkin deployment with multiple replicas, Elasticsearch backend with ILM for automatic retention management, service dependency analysis via the Zipkin Dependencies CronJob, Prometheus metrics integration for monitoring Zipkin itself, and ingress configuration for secure external access. All resources are version-controlled and automatically reconciled by Flux CD, ensuring your tracing infrastructure stays consistent with your desired state.
+You now have a production-ready Zipkin deployment managed by Flux CD. The setup includes a highly available Zipkin deployment with multiple replicas, Elasticsearch backend with Zipkin-managed index templates, service dependency analysis via the Zipkin Dependencies CronJob, Prometheus metrics integration for monitoring Zipkin itself, and ingress configuration for secure external access. All resources are version-controlled and automatically reconciled by Flux CD, ensuring your tracing infrastructure stays consistent with your desired state.
