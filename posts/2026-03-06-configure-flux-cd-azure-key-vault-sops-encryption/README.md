@@ -44,6 +44,11 @@ export LOCATION="eastus"
 export KEY_VAULT_NAME="kv-fluxcd-sops"
 export KEY_NAME="sops-key"
 
+# Create a resource group if you do not already have one
+az group create \
+  --name $RESOURCE_GROUP \
+  --location $LOCATION
+
 # Create a Key Vault with RBAC authorization
 az keyvault create \
   --resource-group $RESOURCE_GROUP \
@@ -54,7 +59,7 @@ az keyvault create \
 
 ## Step 2: Create an Encryption Key in Key Vault
 
-SOPS uses an RSA key stored in Azure Key Vault for encryption and decryption operations.
+SOPS encrypts file values with a data key, then uses an RSA key stored in Azure Key Vault to encrypt and decrypt that data key.
 
 ```bash
 # Create an RSA key for SOPS encryption
@@ -104,6 +109,12 @@ export IDENTITY_PRINCIPAL_ID=$(az identity show \
   --query "principalId" \
   --output tsv)
 
+export IDENTITY_TENANT_ID=$(az identity show \
+  --resource-group $RESOURCE_GROUP \
+  --name $IDENTITY_NAME \
+  --query "tenantId" \
+  --output tsv)
+
 # Get the Key Vault resource ID
 export KV_RESOURCE_ID=$(az keyvault show \
   --name $KEY_VAULT_NAME \
@@ -140,10 +151,10 @@ az identity federated-credential create \
   --audiences "api://AzureADTokenExchange"
 ```
 
-## Step 5: Patch the Kustomize Controller Service Account
+## Step 5: Patch the Kustomize Controller Service Account and Deployment
 
 ```yaml
-# File: clusters/my-cluster/flux-system/patches/sops-workload-identity.yaml
+# File: clusters/my-cluster/flux-system/patches/sops-workload-identity-service-account.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -152,8 +163,21 @@ metadata:
   annotations:
     # Associate with the managed identity that has Key Vault access
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    azure.workload.identity/use: "true"
+    azure.workload.identity/tenant-id: "<IDENTITY_TENANT_ID>"
+```
+
+```yaml
+# File: clusters/my-cluster/flux-system/patches/sops-workload-identity-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
 ```
 
 Update the Flux kustomization to apply the patch:
@@ -166,28 +190,32 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  - path: patches/sops-workload-identity.yaml
+  - path: patches/sops-workload-identity-service-account.yaml
     target:
       kind: ServiceAccount
+      name: kustomize-controller
+  - path: patches/sops-workload-identity-deployment.yaml
+    target:
+      kind: Deployment
       name: kustomize-controller
 ```
 
 ## Step 6: Configure SOPS
 
-Create a `.sops.yaml` configuration file at the root of your GitOps repository. This tells SOPS which key to use and which files to encrypt.
+Create a `.sops.yaml` configuration file at the root of your GitOps repository. This tells SOPS which key to use and which files to encrypt. Use the versioned key identifier from Step 2, or end the key URL with a trailing slash if you intentionally want SOPS to resolve the latest key version.
 
 ```yaml
 # File: .sops.yaml
 creation_rules:
   # Encrypt all files matching *-secret.yaml in any directory
   - path_regex: .*-secret\.yaml$
-    azure_keyvault: "https://kv-fluxcd-sops.vault.azure.net/keys/sops-key"
+    azure_keyvault: "https://kv-fluxcd-sops.vault.azure.net/keys/sops-key/<KEY_VERSION>"
     # Only encrypt the 'data' and 'stringData' fields in Kubernetes secrets
     encrypted_regex: "^(data|stringData)$"
 
   # Encrypt all files in the secrets/ directory
   - path_regex: secrets/.*\.yaml$
-    azure_keyvault: "https://kv-fluxcd-sops.vault.azure.net/keys/sops-key"
+    azure_keyvault: "https://kv-fluxcd-sops.vault.azure.net/keys/sops-key/<KEY_VERSION>"
     encrypted_regex: "^(data|stringData)$"
 ```
 
@@ -309,17 +337,17 @@ For different encryption keys per environment, extend the `.sops.yaml` file:
 creation_rules:
   # Production secrets use the production Key Vault
   - path_regex: environments/production/.*-secret\.yaml$
-    azure_keyvault: "https://kv-prod-sops.vault.azure.net/keys/sops-key"
+    azure_keyvault: "https://kv-prod-sops.vault.azure.net/keys/sops-key/<PROD_KEY_VERSION>"
     encrypted_regex: "^(data|stringData)$"
 
   # Staging secrets use the staging Key Vault
   - path_regex: environments/staging/.*-secret\.yaml$
-    azure_keyvault: "https://kv-staging-sops.vault.azure.net/keys/sops-key"
+    azure_keyvault: "https://kv-staging-sops.vault.azure.net/keys/sops-key/<STAGING_KEY_VERSION>"
     encrypted_regex: "^(data|stringData)$"
 
   # Default fallback for development
   - path_regex: .*-secret\.yaml$
-    azure_keyvault: "https://kv-dev-sops.vault.azure.net/keys/sops-key"
+    azure_keyvault: "https://kv-dev-sops.vault.azure.net/keys/sops-key/<DEV_KEY_VERSION>"
     encrypted_regex: "^(data|stringData)$"
 ```
 
