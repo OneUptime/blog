@@ -10,7 +10,7 @@ Description: A packet-level walkthrough of how Calico's VXLAN and IP-in-IP overl
 
 ## Introduction
 
-Understanding how L2 overlay encapsulation works at the packet level helps you debug cross-node connectivity issues and explain the networking behavior to your team. The observable artifacts - VXLAN interfaces, FDB entries, `tcpdump` captures - connect the conceptual model to reality.
+Understanding how overlay encapsulation works at the packet level helps you debug cross-node connectivity issues and explain the networking behavior to your team. The observable artifacts - VXLAN interfaces, FDB entries, `tcpdump` captures - connect the conceptual model to reality.
 
 This post traces the complete packet journey for cross-node pod-to-pod traffic in both VXLAN and IP-in-IP modes, showing what you can observe at each stage.
 
@@ -36,7 +36,7 @@ sequenceDiagram
     Calico1->>Calico1: Policy check: allow
     Calico1->>Calico1: Route lookup: 10.0.2.0/26 via vxlan.calico
     Calico1->>VXLAN1: Forward to VXLAN interface
-    VXLAN1->>VXLAN1: FDB lookup: 10.0.2.5 MAC → Node2-IP (172.16.2.1)
+    VXLAN1->>VXLAN1: FDB lookup: Node2 vxlan.calico MAC → Node2-IP (172.16.2.1)
     VXLAN1->>Network: UDP packet: src=172.16.1.1:random, dst=172.16.2.1:4789\nVXLAN header (VNI)\nInner IP: src=10.0.1.4, dst=10.0.2.5
     Network->>VXLAN2: UDP packet received
     VXLAN2->>VXLAN2: Decapsulate: remove UDP + VXLAN headers
@@ -51,11 +51,12 @@ sequenceDiagram
 # Stage 1: Route table on Node 1 (programmed by Felix)
 
 ip route show 10.0.2.0/26
-# Expected: 10.0.2.0/26 dev vxlan.calico src 10.0.1.1 onlink
+# Expected: 10.0.2.0/26 via <Node2-vxlan-tunnel-IP> dev vxlan.calico onlink
+# The exact remote prefix and tunnel IP depend on the IPPool block and node allocation.
 
 # Stage 2: VXLAN FDB entry for the remote pod's node
-bridge fdb show dev vxlan.calico | grep <Node2-MAC>
-# Expected: <MAC> dst 172.16.2.1 self permanent
+bridge fdb show dev vxlan.calico | grep <Node2-vxlan-MAC>
+# Expected: <Node2-vxlan-MAC> dev vxlan.calico dst 172.16.2.1 self permanent
 
 # Stage 3: Capture encapsulated traffic on the underlay NIC
 sudo tcpdump -i eth0 -n udp port 4789 -c 5
@@ -99,15 +100,15 @@ In CrossSubnet mode, same-subnet traffic uses direct routing and cross-subnet tr
 
 ```bash
 # Same-subnet pod-to-pod: no encapsulation on vxlan.calico
-POD_SAME_NODE_IP=<pod-on-same-node>
+POD_SAME_SUBNET_IP=<pod-on-node-in-same-subnet>
 sudo tcpdump -i vxlan.calico -n -c 5 &
-kubectl exec test-pod -- wget -qO- http://$POD_SAME_NODE_IP
-# No VXLAN packets captured
+kubectl exec test-pod -- wget -qO- http://$POD_SAME_SUBNET_IP
+# No inner packets captured on vxlan.calico for this flow
 
-# Cross-subnet pod-to-pod: encapsulated on vxlan.calico
+# Cross-subnet pod-to-pod: encapsulated over the underlay and visible as inner traffic on vxlan.calico
 POD_CROSS_AZ_IP=<pod-on-different-subnet-node>
 kubectl exec test-pod -- wget -qO- http://$POD_CROSS_AZ_IP
-# VXLAN packets captured
+# Inner pod packets captured on vxlan.calico; encapsulated UDP/4789 packets are visible on the physical NIC
 ```
 
 ## Debugging with Layer-by-Layer tcpdump
@@ -138,4 +139,4 @@ By comparing what appears at each layer, you can identify exactly where the pack
 
 ## Conclusion
 
-L2 overlay traffic in Calico follows a deterministic encapsulation path: Felix programs routes and FDB entries, packets traverse the VXLAN or IP-in-IP interface for encapsulation, the underlay network routes the outer packet, and the destination node decapsulates and delivers. Each stage has observable artifacts that enable systematic debugging when connectivity fails.
+Overlay traffic in Calico follows a deterministic encapsulation path: Felix programs routes and, for VXLAN, FDB entries; packets traverse the VXLAN or IP-in-IP interface for encapsulation, the underlay network routes the outer packet, and the destination node decapsulates and delivers. Each stage has observable artifacts that enable systematic debugging when connectivity fails.
