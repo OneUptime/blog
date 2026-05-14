@@ -36,6 +36,10 @@ clusters/
         batch-queue.yaml
       jobs/
         example-job.yaml
+        mpi-job.yaml
+      quotas/
+        namespace-quotas.yaml
+      volcano-kustomization.yaml
       kustomization.yaml
 ```
 
@@ -102,28 +106,12 @@ spec:
       retries: 3
   values:
     # Volcano controller configuration
-    controller:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: 1000m
-          memory: 1Gi
-
-    # Volcano scheduler configuration
-    scheduler:
-      replicas: 2
-      resources:
-        requests:
-          cpu: 500m
-          memory: 512Mi
-        limits:
-          cpu: 2000m
-          memory: 2Gi
+    custom:
+      controller_replicas: 2
+      scheduler_replicas: 2
+      admission_replicas: 2
       # Scheduler plugins configuration
-      config: |
+      scheduler_config_override: |
         actions: "enqueue, allocate, backfill"
         tiers:
           - plugins:
@@ -144,11 +132,21 @@ spec:
                   binpack.cpu: 3
                   binpack.memory: 1
                   binpack.resources: nvidia.com/gpu
-
-    # Admission webhook configuration
-    admission:
-      replicas: 2
-      resources:
+      controller_resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+      scheduler_resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: 2000m
+          memory: 2Gi
+      admission_resources:
         requests:
           cpu: 100m
           memory: 128Mi
@@ -226,6 +224,9 @@ spec:
   queue: gpu-workloads
   # Scheduling policy
   schedulerName: volcano
+  plugins:
+    env: []
+    svc: []
   # Job policies for lifecycle management
   policies:
     - event: PodEvicted
@@ -256,9 +257,9 @@ spec:
                   # Start distributed training master
                   python -m torch.distributed.launch \
                     --nproc_per_node=1 \
-                    --nnodes=$VC_TASK_NUM \
+                    --nnodes=$((VC_MASTER_NUM + VC_WORKER_NUM)) \
                     --node_rank=0 \
-                    --master_addr=$VC_MASTER_HOST \
+                    --master_addr=$(head -n1 /etc/volcano/master.host) \
                     --master_port=23456 \
                     train.py
               resources:
@@ -289,9 +290,9 @@ spec:
                   # Start distributed training worker
                   python -m torch.distributed.launch \
                     --nproc_per_node=1 \
-                    --nnodes=$VC_TASK_NUM \
-                    --node_rank=$VC_TASK_INDEX \
-                    --master_addr=$VC_MASTER_HOST \
+                    --nnodes=$((VC_MASTER_NUM + VC_WORKER_NUM)) \
+                    --node_rank=$((VC_TASK_INDEX + 1)) \
+                    --master_addr=$(head -n1 /etc/volcano/master.host) \
                     --master_port=23456 \
                     train.py
               resources:
@@ -306,12 +307,22 @@ spec:
           restartPolicy: OnFailure
 ```
 
-## Step 6: Configure Resource Quotas per Queue
+## Step 6: Configure Resource Quotas per Namespace
 
-Apply resource quotas to enforce queue limits at the namespace level.
+Apply resource quotas to enforce team namespace limits alongside the Volcano queue capabilities.
 
 ```yaml
 # clusters/production/volcano/quotas/namespace-quotas.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-workloads
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: batch-processing
+---
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -325,7 +336,6 @@ spec:
     requests.nvidia.com/gpu: "8"
     limits.cpu: "128"
     limits.memory: 256Gi
-    limits.nvidia.com/gpu: "8"
     # Maximum number of pods
     pods: "50"
 ---
@@ -359,10 +369,8 @@ spec:
   queue: batch-processing
   schedulerName: volcano
   plugins:
-    # SSH plugin enables inter-pod communication for MPI
-    ssh: []
-    # SVC plugin creates a headless service for pod discovery
-    svc: []
+    # MPI plugin enables SSH, service discovery, and MPI_HOST for the master
+    mpi: ["--master=mpimaster", "--worker=mpiworker", "--port=22"]
   tasks:
     - replicas: 1
       name: mpimaster
@@ -382,7 +390,7 @@ spec:
                   # Run MPI job across all nodes
                   mpirun --allow-run-as-root \
                     -np 4 \
-                    --host $(cat /etc/volcano/mpihost) \
+                    --host ${MPI_HOST} \
                     /app/simulation
               resources:
                 requests:
@@ -415,7 +423,7 @@ spec:
 ## Step 8: Create the Flux Kustomization
 
 ```yaml
-# clusters/production/volcano/kustomization.yaml
+# clusters/production/volcano/volcano-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -429,13 +437,9 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: volcano-controllers
-      namespace: volcano-system
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: volcano-scheduler
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: volcano
       namespace: volcano-system
   timeout: 10m
 ```
