@@ -135,7 +135,7 @@ If the controller cannot reach the registry, you will see timeout or DNS resolut
 Check if the controller pod can reach the registry.
 
 ```bash
-# Test connectivity from the controller pod's network namespace
+# Test connectivity from a temporary pod in the same namespace
 kubectl run test-registry --rm -it --restart=Never \
   --namespace flux-system \
   --image=curlimages/curl:latest \
@@ -195,7 +195,7 @@ A successful scan will show `Ready: True` and a `Last scan result` with the numb
 Even when scans succeed, the ImagePolicy may not find a matching tag. Verify that your ImagePolicy filter and policy settings match actual tags in the registry.
 
 ```bash
-# List all tags discovered by the ImageRepository
+# Show scan metadata and the latest tags reported by the ImageRepository
 kubectl get imagerepository my-app -n flux-system -o jsonpath='{.status.lastScanResult}'
 ```
 
@@ -208,7 +208,7 @@ Set up alerts to catch scan failures early.
 ```yaml
 # alert-image-scan.yaml
 # Alert on ImageRepository scan failures via a notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-scan-failures
