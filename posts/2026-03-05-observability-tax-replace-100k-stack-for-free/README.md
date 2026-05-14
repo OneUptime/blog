@@ -133,21 +133,36 @@ If you're already using OpenTelemetry, you're halfway there - just add another e
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 exporters:
-  otlp/oneuptime:
-    endpoint: "your-oneuptime-instance:4317"
-    tls:
-      insecure: false
-  datadog:
+  otlphttp/oneuptime:
+    endpoint: "https://your-oneuptime-instance/otlp"
+    encoding: json
+    headers:
+      "Content-Type": "application/json"
+      "x-oneuptime-token": "ONEUPTIME_TOKEN"
+  datadog/exporter:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
 service:
   pipelines:
     traces:
-      exporters: [otlp/oneuptime, datadog]
+      receivers: [otlp]
+      exporters: [otlphttp/oneuptime, datadog/exporter]
     metrics:
-      exporters: [otlp/oneuptime, datadog]
+      receivers: [otlp]
+      exporters: [otlphttp/oneuptime, datadog/exporter]
+    logs:
+      receivers: [otlp]
+      exporters: [otlphttp/oneuptime, datadog/exporter]
 ```
 
 Run both simultaneously. Compare trace data. Make sure you're capturing everything.
