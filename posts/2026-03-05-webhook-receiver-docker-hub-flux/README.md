@@ -19,7 +19,7 @@ Docker Hub can send webhook notifications when new images are pushed to a reposi
 
 ## Step 1: Create the Webhook Secret
 
-Create a Kubernetes secret for webhook authentication.
+Create a Kubernetes secret with a random token. Flux uses this token to generate the Receiver webhook path.
 
 ```bash
 # Generate a random token
@@ -49,10 +49,7 @@ metadata:
 spec:
   # Docker Hub webhook type
   type: dockerhub
-  # Docker Hub sends push events
-  events:
-    - "push"
-  # Secret for webhook validation
+  # Secret used to generate the webhook path
   secretRef:
     name: dockerhub-webhook-secret
   # Resources to reconcile when a new image is pushed
@@ -82,7 +79,7 @@ kubectl get receiver dockerhub-receiver -n flux-system -o jsonpath='{.status.web
 
 ## Step 4: Expose the Receiver Endpoint
 
-Make the notification controller accessible from Docker Hub.
+Make the Flux webhook receiver service accessible from Docker Hub.
 
 ```yaml
 # Ingress for Docker Hub webhook receiver
@@ -102,7 +99,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -125,7 +122,7 @@ Note that Docker Hub webhooks are simpler than Git provider webhooks. They fire 
 
 ## Step 6: Trigger Image Automation Resources
 
-For a complete image update workflow, configure the receiver to trigger both ImageRepository and related resources.
+For a complete image update workflow, configure the receiver to trigger the ImageRepository resources that should scan images after a push.
 
 ```yaml
 # Receiver for Docker Hub triggering image automation resources
@@ -136,8 +133,6 @@ metadata:
   namespace: flux-system
 spec:
   type: dockerhub
-  events:
-    - "push"
   secretRef:
     name: dockerhub-webhook-secret
   resources:
