@@ -12,17 +12,15 @@ In Kubernetes, resource ordering matters. Namespaces must exist before the resou
 
 ## The Default Apply Order
 
-By default, Flux applies resources within a single Kustomization in a specific order based on resource kind. Flux follows the same ordering logic as `kubectl apply`, which sorts resources by kind priority. For example, Namespaces are applied before Deployments, and CRDs are applied before custom resources.
+By default, Flux applies resources within a single Kustomization using server-side apply stages based on resource kind and scope. For example, CRDs and Namespaces are applied before namespaced resources that may depend on them.
 
-The built-in kind ordering (simplified) is:
+The built-in apply stages (simplified) are:
 
-1. Namespaces
-2. CustomResourceDefinitions
-3. ServiceAccounts, Roles, RoleBindings, ClusterRoles, ClusterRoleBindings
-4. ConfigMaps, Secrets
-5. Services
-6. Deployments, StatefulSets, DaemonSets
-7. Custom Resources
+1. CustomResourceDefinitions
+2. Namespaces
+3. Custom apply-stage kinds, if configured on the kustomize-controller
+4. Other cluster-scoped resources
+5. Other namespaced resources
 
 This ordering is automatic and requires no configuration.
 
@@ -88,7 +86,7 @@ The `dependsOn` field ensures that a Kustomization will not begin reconciliation
 
 ## The Importance of wait: true
 
-The `wait: true` field is critical for `dependsOn` to work correctly. Without it, a Kustomization is marked as ready immediately after the resources are applied, even if the resources are not yet running.
+The `wait: true` field is important when a dependency should only become ready after its resources are healthy. Without `wait: true` or explicit `healthChecks`, a Kustomization can be marked as ready after the resources are applied, even if the resources are not yet running.
 
 ```yaml
 # Without wait: true -- dependency may start too early
@@ -110,7 +108,7 @@ spec:
   timeout: 10m
 ```
 
-Without `wait: true`, Flux marks the Kustomization as ready as soon as the apply succeeds. With `wait: true`, Flux waits for Deployments to have all replicas available, StatefulSets to have all pods running, and Jobs to complete before marking the Kustomization as ready.
+Without `wait: true` or explicit `healthChecks`, Flux marks the Kustomization as ready as soon as the apply succeeds. With `wait: true`, Flux performs health checks for all reconciled resources before marking the Kustomization as ready.
 
 ## Visualizing the Apply Order
 
@@ -159,28 +157,23 @@ spec:
 
 ## Ordering Resources Within a Single Kustomization
 
-Sometimes you need to control ordering within a single Kustomization. While Flux handles kind-based ordering automatically, you may need finer control. The recommended approach is to split resources into separate Kustomizations with dependencies, but you can also use Kustomize's built-in ordering.
+Sometimes you need to control ordering within a single Kustomization. While Flux handles apply stages automatically, the recommended approach for finer control is to split resources into separate Kustomizations with dependencies.
 
-In your Kustomize overlay, the order of resources in the `kustomization.yaml` file determines apply order.
+In your Kustomize overlay, the `resources` list determines what is included in the build, but it should not be used as a Flux apply-order mechanism.
 
 ```yaml
-# kustomization.yaml -- resources are applied in the order listed
+# kustomization.yaml -- resources are included in the build
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Applied first: namespace
   - namespace.yaml
-  # Applied second: RBAC
   - service-account.yaml
   - role.yaml
   - role-binding.yaml
-  # Applied third: configuration
   - configmap.yaml
   - secret.yaml
-  # Applied fourth: workloads
   - deployment.yaml
   - service.yaml
-  # Applied last: ingress
   - ingress.yaml
 ```
 
@@ -202,7 +195,6 @@ spec:
     name: flux-system
   path: ./infrastructure/cert-manager/operator
   prune: true
-  wait: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -257,18 +249,18 @@ When things are not applying in the expected order, use these commands to invest
 
 ```bash
 # View the dependency tree to verify ordering
-flux tree ks apps --namespace flux-system
+flux tree kustomization apps --namespace flux-system
 
 # Check which Kustomizations are ready and which are waiting
-flux get ks --all-namespaces
+flux get kustomizations --all-namespaces
 
 # View events for a Kustomization stuck waiting on dependencies
 flux events --for Kustomization/apps --namespace flux-system
 
 # Force reconciliation of a dependency to unblock the chain
-flux reconcile ks infrastructure --namespace flux-system --with-source
+flux reconcile kustomization infrastructure --namespace flux-system --with-source
 ```
 
 ## Summary
 
-Controlling apply order in Flux is primarily achieved through `dependsOn` relationships between Kustomizations, combined with `wait: true` to ensure resources are truly ready before dependents proceed. Structure your deployments in layers -- prerequisites, infrastructure, and applications -- with each layer depending on the one before it. For ordering within a single Kustomization, rely on Flux's built-in kind ordering or the resource listing order in your `kustomization.yaml`. When CRDs are involved, always separate operator deployment from custom resource creation using the dependency chain.
+Controlling apply order in Flux is primarily achieved through `dependsOn` relationships between Kustomizations, combined with `wait: true` or explicit `healthChecks` to ensure resources are truly ready before dependents proceed. Structure your deployments in layers -- prerequisites, infrastructure, and applications -- with each layer depending on the one before it. For ordering within a single Kustomization, rely on Flux's built-in apply stages, or split resources into separate Kustomizations when you need explicit sequencing. When CRDs are involved, separate operator deployment from custom resource creation using the dependency chain.
