@@ -128,8 +128,8 @@ spec:
 
   # Deployment configuration
   deployment:
-    accessible_namespaces:
-      - "**"
+    # Grant Kiali cluster-wide namespace visibility
+    cluster_wide_access: true
     # Number of replicas
     replicas: 2
     resources:
@@ -162,9 +162,9 @@ spec:
     grafana:
       enabled: true
       # Internal URL for server-side queries
-      in_cluster_url: "http://grafana-service.grafana.svc:3000"
+      internal_url: "http://grafana-service.grafana.svc:3000"
       # External URL for browser links
-      url: "https://grafana.example.com"
+      external_url: "https://grafana.example.com"
       auth:
         type: basic
         username: admin
@@ -182,13 +182,12 @@ spec:
     # Tracing integration (Jaeger)
     tracing:
       enabled: true
+      provider: jaeger
       # Internal URL
-      in_cluster_url: "http://jaeger-production-query.jaeger.svc:16686"
+      internal_url: "http://jaeger-production-query.jaeger.svc:16685"
       # External URL for browser links
-      url: "https://jaeger.example.com"
+      external_url: "https://jaeger.example.com"
       use_grpc: true
-      # gRPC port for direct queries
-      grpc_port: 16685
       # Namespace selector
       namespace_selector: true
       whitelist_istio_system:
@@ -197,16 +196,9 @@ spec:
 
     # Istio configuration
     istio:
-      # Root namespace for Istio
-      root_namespace: istio-system
-      # Istio config map name
-      config_map_name: istio
-      # Istiod URL
-      istiod_deployment_name: istiod
-      istio_sidecar_injector_config_map_name: istio-sidecar-injector
-      # Component URLs
-      component_namespaces:
-        prometheus: monitoring
+      # Enable integration with istiod
+      istio_api_enabled: true
+      istiod_polling_interval_seconds: 10
 
   # Server configuration
   server:
@@ -233,17 +225,36 @@ spec:
     cert_file: ""
     private_key_file: ""
 
+  # Custom health thresholds
+  health_config:
+    rate:
+      - namespace: "production"
+        tolerance:
+          - code: "^5\\d\\d$"
+            direction: ".*"
+            # Mark as degraded above 1% error rate
+            degraded: 1
+            # Mark as failure above 5% error rate
+            failure: 5
+            protocol: "http"
+          - code: "^4\\d\\d$"
+            direction: ".*"
+            degraded: 5
+            failure: 10
+            protocol: "http"
+
+  # Clustering support
+  clustering:
+    autodetect_secrets:
+      enabled: true
+      label: "kiali.io/multiCluster=true"
+
   # Kiali features configuration
   kiali_feature_flags:
     # Enable validation of Istio resources
     validations:
       ignore:
         - "KIA1301"
-    # Clustering support
-    clustering:
-      autodetect_secrets:
-        enabled: true
-        label: "kiali.io/multiCluster=true"
     # UI preferences
     ui_defaults:
       graph:
@@ -279,7 +290,7 @@ spec:
   # ... rest of configuration remains the same
 ```
 
-Create a ServiceAccount and ClusterRoleBinding for token access.
+Create a ServiceAccount and bind it to the Kiali ClusterRole for token access.
 
 ```yaml
 # clusters/my-cluster/kiali/rbac.yaml
@@ -296,21 +307,17 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kiali-viewer
+  name: kiali
 subjects:
   - kind: ServiceAccount
     name: kiali-viewer
     namespace: istio-system
----
-# Create a long-lived token for the ServiceAccount
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kiali-viewer-token
-  namespace: istio-system
-  annotations:
-    kubernetes.io/service-account.name: kiali-viewer
-type: kubernetes.io/service-account-token
+```
+
+Request a token for the ServiceAccount when you need to log in.
+
+```bash
+kubectl -n istio-system create token kiali-viewer
 ```
 
 ## Exposing Kiali with Istio VirtualService
@@ -373,10 +380,10 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: kiali
+      app.kubernetes.io/name: kiali
   endpoints:
-    - port: http-metrics
-      path: /kiali/metrics
+    - port: tcp-metrics
+      path: /metrics
       interval: 30s
 ```
 
@@ -414,33 +421,26 @@ spec:
 
 ## Configuring Custom Health Checks
 
-Define custom health indicators for your services in Kiali.
+Define custom health indicators for your services in the Kiali CR.
 
 ```yaml
-# clusters/my-cluster/kiali/health-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kiali-health-config
-  namespace: istio-system
-data:
-  health_config.yaml: |
-    # Custom health thresholds
-    rate:
-      - namespace: "production"
-        tolerance:
-          - code: "5\\d\\d"
-            direction: ".*"
-            # Mark as degraded above 1% error rate
-            degraded: 1
-            # Mark as failure above 5% error rate
-            failure: 5
-            protocol: "http"
-          - code: "4\\d\\d"
-            direction: ".*"
-            degraded: 5
-            failure: 10
-            protocol: "http"
+# Add under spec in clusters/my-cluster/kiali/instance.yaml
+health_config:
+  rate:
+    - namespace: "production"
+      tolerance:
+        - code: "^5\\d\\d$"
+          direction: ".*"
+          # Mark as degraded above 1% error rate
+          degraded: 1
+          # Mark as failure above 5% error rate
+          failure: 5
+          protocol: "http"
+        - code: "^4\\d\\d$"
+          direction: ".*"
+          degraded: 5
+          failure: 10
+          protocol: "http"
 ```
 
 ## Verifying the Deployment
