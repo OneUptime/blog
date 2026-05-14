@@ -100,7 +100,7 @@ az identity create \
   --name $IDENTITY_NAME \
   --location $LOCATION
 
-# Get the identity resource ID and client ID
+# Get the identity resource ID, client ID, principal ID, and tenant ID
 export USER_IDENTITY_RESOURCE_ID=$(az identity show \
   --resource-group $RESOURCE_GROUP \
   --name $IDENTITY_NAME \
@@ -111,6 +111,18 @@ export USER_IDENTITY_CLIENT_ID=$(az identity show \
   --resource-group $RESOURCE_GROUP \
   --name $IDENTITY_NAME \
   --query "clientId" \
+  --output tsv)
+
+export USER_IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --resource-group $RESOURCE_GROUP \
+  --name $IDENTITY_NAME \
+  --query "principalId" \
+  --output tsv)
+
+export USER_IDENTITY_TENANT_ID=$(az identity show \
+  --resource-group $RESOURCE_GROUP \
+  --name $IDENTITY_NAME \
+  --query "tenantId" \
   --output tsv)
 
 echo "User-assigned identity client ID: $USER_IDENTITY_CLIENT_ID"
@@ -158,7 +170,7 @@ export ACR_ID=$(az acr show \
 
 # Grant AcrPull role to the user-assigned managed identity
 az role assignment create \
-  --assignee $USER_IDENTITY_CLIENT_ID \
+  --assignee $USER_IDENTITY_PRINCIPAL_ID \
   --role "AcrPull" \
   --scope $ACR_ID
 ```
@@ -189,7 +201,7 @@ az identity federated-credential create \
 
 ## Step 7: Install Flux CD on AKS
 
-Bootstrap Flux CD with the managed identity configuration.
+Bootstrap Flux CD using a GitHub repository. The managed identity configuration is applied in the next step.
 
 ```bash
 # Bootstrap Flux CD using a GitHub repository
@@ -203,10 +215,10 @@ flux bootstrap github \
 
 ## Step 8: Patch Flux Service Accounts for Workload Identity
 
-After Flux is installed, annotate the service accounts with the managed identity client ID.
+After Flux is installed, annotate the service accounts with the managed identity client ID and tenant ID. On AKS, the controller pod templates also need the `azure.workload.identity/use` label so the workload identity webhook injects the projected token and Azure environment variables.
 
 ```yaml
-# File: clusters/aks-fluxcd-demo/flux-system/patches/workload-identity.yaml
+# File: clusters/aks-fluxcd-demo/flux-system/patches/source-controller-service-account.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -215,9 +227,27 @@ metadata:
   annotations:
     # Associate the service account with the user-assigned managed identity
     azure.workload.identity/client-id: "<USER_IDENTITY_CLIENT_ID>"
+    azure.workload.identity/tenant-id: "<USER_IDENTITY_TENANT_ID>"
   labels:
     azure.workload.identity/use: "true"
----
+```
+
+```yaml
+# File: clusters/aks-fluxcd-demo/flux-system/patches/source-controller-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: source-controller
+  namespace: flux-system
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+```
+
+```yaml
+# File: clusters/aks-fluxcd-demo/flux-system/patches/kustomize-controller-service-account.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -226,8 +256,23 @@ metadata:
   annotations:
     # Associate the service account with the user-assigned managed identity
     azure.workload.identity/client-id: "<USER_IDENTITY_CLIENT_ID>"
+    azure.workload.identity/tenant-id: "<USER_IDENTITY_TENANT_ID>"
   labels:
     azure.workload.identity/use: "true"
+```
+
+```yaml
+# File: clusters/aks-fluxcd-demo/flux-system/patches/kustomize-controller-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
 ```
 
 Apply the patches using a Kustomization overlay:
@@ -240,17 +285,36 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  - path: patches/workload-identity.yaml
+  - path: patches/source-controller-service-account.yaml
     target:
       kind: ServiceAccount
+      name: source-controller
+  - path: patches/source-controller-deployment.yaml
+    target:
+      kind: Deployment
+      name: source-controller
+  - path: patches/kustomize-controller-service-account.yaml
+    target:
+      kind: ServiceAccount
+      name: kustomize-controller
+  - path: patches/kustomize-controller-deployment.yaml
+    target:
+      kind: Deployment
+      name: kustomize-controller
 ```
 
 ## Step 9: Configure RBAC for Flux CD
 
-Create appropriate Kubernetes RBAC roles to limit what Flux CD can manage in your cluster.
+Create appropriate Kubernetes RBAC roles for a service account that Flux Kustomizations can impersonate. Binding a role directly to the controller service account does not limit Flux by itself, because Flux is installed with broad controller permissions by default.
 
 ```yaml
 # File: clusters/aks-fluxcd-demo/rbac/flux-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-deployer
+  namespace: flux-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -277,8 +341,20 @@ roleRef:
   name: flux-deployer
 subjects:
   - kind: ServiceAccount
-    name: kustomize-controller
+    name: flux-deployer
     namespace: flux-system
+```
+
+Reference this service account from the Flux Kustomization that should use the restricted permissions:
+
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
+spec:
+  serviceAccountName: flux-deployer
 ```
 
 ## Step 10: Configure an OCI Source from ACR
