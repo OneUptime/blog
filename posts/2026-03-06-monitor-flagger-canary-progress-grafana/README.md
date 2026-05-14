@@ -32,11 +32,11 @@ If Grafana is not already installed, deploy it using a Flux HelmRelease.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: grafana
+  name: grafana-community
   namespace: monitoring
 spec:
   interval: 1h
-  url: https://grafana.github.io/helm-charts
+  url: https://grafana-community.github.io/helm-charts
 ```
 
 ```yaml
@@ -51,10 +51,10 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: "7.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
       interval: 1h
   values:
     # Enable persistence for dashboard storage
@@ -68,22 +68,9 @@ spec:
         datasources:
           - name: Prometheus
             type: prometheus
-            url: http://prometheus-server.monitoring:9090
+            url: http://prometheus-server.monitoring.svc.cluster.local
             access: proxy
             isDefault: true
-    # Load dashboards from ConfigMaps
-    dashboardProviders:
-      dashboardproviders.yaml:
-        apiVersion: 1
-        providers:
-          - name: flagger
-            orgId: 1
-            folder: Flagger
-            type: file
-            disableDeletion: false
-            editable: true
-            options:
-              path: /var/lib/grafana/dashboards/flagger
     sidecar:
       dashboards:
         enabled: true
@@ -115,10 +102,8 @@ stringData:
         - source_labels: [__meta_kubernetes_pod_label_app]
           regex: flagger
           action: keep
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-          action: replace
+        - source_labels: [__meta_kubernetes_pod_ip]
           target_label: __address__
-          regex: (.+)
           replacement: ${1}:8080
 ```
 
@@ -127,20 +112,26 @@ stringData:
 Flagger exposes several critical metrics. Here are the most important ones:
 
 ```text
-# Canary status: 0=initialized, 1=progressing, 2=promoting, 3=finalising, 4=succeeded, 5=failed
+# Canary promotion last known status: 0=running, 1=successful, 2=failed
 flagger_canary_status
 
-# Total weight currently assigned to the canary
+# Traffic weight currently assigned to each canary or primary workload
 flagger_canary_weight
 
-# Number of canary analysis iterations completed
-flagger_canary_iteration
+# Last canary metric analysis result for each configured metric
+flagger_canary_metric_analysis
 
-# Total number of canary operations
+# Total number of canary resources
 flagger_canary_total
 
-# Duration of canary analysis in seconds
-flagger_canary_duration_seconds
+# Duration of canary analysis as a Prometheus histogram
+flagger_canary_duration_seconds_bucket
+flagger_canary_duration_seconds_sum
+flagger_canary_duration_seconds_count
+
+# Canary success and failure counters
+flagger_canary_successes_total
+flagger_canary_failures_total
 ```
 
 ## Step 4: Create the Canary Overview Dashboard
@@ -161,27 +152,25 @@ metadata:
 data:
   canary-overview.json: |
     {
-      "dashboard": {
-        "title": "Flagger Canary Overview",
-        "uid": "flagger-canary-overview",
-        "timezone": "browser",
-        "refresh": "10s",
-        "templating": {
-          "list": [
-            {
-              "name": "namespace",
-              "type": "query",
-              "query": "label_values(flagger_canary_status, namespace)",
-              "datasource": "Prometheus"
-            },
-            {
-              "name": "canary",
-              "type": "query",
-              "query": "label_values(flagger_canary_status{namespace=\"$namespace\"}, name)",
-              "datasource": "Prometheus"
-            }
-          ]
-        }
+      "title": "Flagger Canary Overview",
+      "uid": "flagger-canary-overview",
+      "timezone": "browser",
+      "refresh": "10s",
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "query",
+            "query": "label_values(flagger_canary_status, namespace)",
+            "datasource": "Prometheus"
+          },
+          {
+            "name": "canary",
+            "type": "query",
+            "query": "label_values(flagger_canary_status{namespace=\"$namespace\"}, name)",
+            "datasource": "Prometheus"
+          }
+        ]
       }
     }
 ```
@@ -194,7 +183,7 @@ Here are the PromQL queries for each panel in your dashboard.
 
 ```promql
 # Shows current canary status as a stat panel
-# Map: 0=Initialized, 1=Progressing, 2=Promoting, 3=Finalising, 4=Succeeded, 5=Failed
+# Map: 0=Running, 1=Successful, 2=Failed
 flagger_canary_status{
   namespace="$namespace",
   name="$canary"
@@ -208,7 +197,7 @@ flagger_canary_status{
 # Useful for visualizing the progressive traffic shift
 flagger_canary_weight{
   namespace="$namespace",
-  name="$canary"
+  workload="$canary"
 }
 ```
 
@@ -221,7 +210,7 @@ sum(
   rate(
     istio_requests_total{
       destination_workload_namespace="$namespace",
-      destination_workload=~"$canary",
+      destination_workload="$canary",
       response_code!~"5.*"
     }[1m]
   )
@@ -231,7 +220,7 @@ sum(
   rate(
     istio_requests_total{
       destination_workload_namespace="$namespace",
-      destination_workload=~"$canary"
+      destination_workload="$canary"
     }[1m]
   )
 ) * 100
@@ -246,7 +235,7 @@ histogram_quantile(0.99,
     rate(
       istio_request_duration_milliseconds_bucket{
         destination_workload_namespace="$namespace",
-        destination_workload=~"$canary"
+        destination_workload="$canary"
       }[1m]
     )
   ) by (le)
@@ -261,7 +250,7 @@ sum(
   rate(
     istio_requests_total{
       destination_workload_namespace="$namespace",
-      destination_workload="$canary-primary"
+      destination_workload="${canary}-primary"
     }[1m]
   )
 )
@@ -282,102 +271,74 @@ sum(
 ```promql
 # Track total canary promotions and rollbacks over time
 # Successful promotions
-sum(flagger_canary_total{namespace="$namespace", name="$canary", status="successful"})
+sum(increase(flagger_canary_successes_total{namespace="$namespace", name="$canary"}[24h]))
 
 # Failed rollbacks
-sum(flagger_canary_total{namespace="$namespace", name="$canary", status="failed"})
+sum(increase(flagger_canary_failures_total{namespace="$namespace", name="$canary"}[24h]))
 ```
 
 ## Step 6: Create Alert Rules for Canary Failures
 
-Set up Grafana alerts to notify your team when canary deployments fail.
+Set up Prometheus alerting rules to notify your team when canary deployments fail. If you use Prometheus Operator, create a `PrometheusRule`.
 
 ```yaml
-# monitoring/grafana/alerts/canary-alerts.yaml
-apiVersion: v1
-kind: ConfigMap
+# monitoring/prometheus/rules/flagger-canary-alerts.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: flagger-alert-rules
   namespace: monitoring
   labels:
-    grafana_dashboard: "true"
-data:
-  canary-alerts.json: |
-    {
-      "groups": [
-        {
-          "name": "flagger-canary-alerts",
-          "rules": [
-            {
-              "alert": "CanaryRollbackDetected",
-              "expr": "flagger_canary_status == 5",
-              "for": "1m",
-              "labels": {
-                "severity": "warning"
-              },
-              "annotations": {
-                "summary": "Canary rollback detected for {{ $labels.name }}",
-                "description": "Canary {{ $labels.name }} in namespace {{ $labels.namespace }} has been rolled back."
-              }
-            },
-            {
-              "alert": "CanaryStuck",
-              "expr": "flagger_canary_status == 1 and flagger_canary_weight == 0",
-              "for": "30m",
-              "labels": {
-                "severity": "warning"
-              },
-              "annotations": {
-                "summary": "Canary {{ $labels.name }} appears stuck",
-                "description": "Canary {{ $labels.name }} has been progressing for 30 minutes without weight increase."
-              }
-            }
-          ]
-        }
-      ]
-    }
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: flagger-canary-alerts
+      rules:
+        - alert: CanaryRollbackDetected
+          expr: flagger_canary_status > 1
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Canary rollback detected for {{ $labels.name }}"
+            description: "Canary {{ $labels.name }} in namespace {{ $labels.namespace }} has been rolled back."
+        - alert: CanaryStuck
+          expr: flagger_canary_status == 0 and on(namespace, name) label_replace(flagger_canary_weight{workload!~".*-primary"} == 0, "name", "$1", "workload", "(.*)")
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Canary {{ $labels.workload }} appears stuck"
+            description: "Canary workload {{ $labels.workload }} in namespace {{ $labels.namespace }} has been running for 30 minutes without weight increase."
 ```
 
 ## Step 7: Configure Flagger to Send Events to Grafana Annotations
 
-Flagger can send webhook notifications that you can capture as Grafana annotations.
+Flagger can send event webhook notifications that you can capture with a small receiver and write to the Grafana annotations API.
 
 ```yaml
-# flagger/alert-provider.yaml
-apiVersion: flagger.app/v1beta1
-kind: AlertProvider
+# flagger/helmrelease.yaml (add to spec.values)
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
-  name: grafana
-  namespace: production
+  name: flagger
+  namespace: flagger-system
 spec:
-  type: grafana
-  address: http://grafana.monitoring
-  # Secret containing the Grafana API key
-  secretRef:
-    name: grafana-api-key
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: grafana-api-key
-  namespace: production
-stringData:
-  # Replace with your actual Grafana API key
-  token: "your-grafana-api-key-here"
+  values:
+    eventWebhook: http://grafana-annotation-receiver.monitoring.svc.cluster.local/flagger-events
 ```
 
-Reference the alert provider in your Canary resource:
+You can also configure the event webhook per Canary resource:
 
 ```yaml
 # apps/my-app/canary.yaml (add to spec section)
 spec:
   analysis:
-    alerts:
+    webhooks:
       - name: "grafana-annotation"
-        severity: info
-        providerRef:
-          name: grafana
-          namespace: production
+        type: event
+        url: http://grafana-annotation-receiver.monitoring.svc.cluster.local/flagger-events
 ```
 
 ## Step 8: Deploy Everything with Flux Kustomization
@@ -428,13 +389,13 @@ kubectl get configmaps -n monitoring -l grafana_dashboard=true
 
 When a canary deployment is in progress, here is what to look for on your dashboard:
 
-1. **Status Panel**: Should show "Progressing" (value 1) during analysis
+1. **Status Panel**: Should show "Running" (value 0) during analysis
 2. **Weight Panel**: Should show a staircase pattern as traffic shifts incrementally
 3. **Success Rate**: Should remain above your configured threshold (e.g., 99%)
 4. **Latency**: Should remain below your configured maximum (e.g., 500ms)
 5. **Annotations**: Should show Flagger events marking each analysis step
 
-If the canary succeeds, the status transitions through Promoting (2) and Finalising (3) to Succeeded (4). If it fails, you will see status 5 and the weight drops back to 0.
+If the canary succeeds, the status changes to Successful (1). If it fails, you will see Failed (2) and the canary workload weight drops back to 0.
 
 ## Troubleshooting
 
