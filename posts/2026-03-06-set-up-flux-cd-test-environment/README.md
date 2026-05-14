@@ -51,7 +51,7 @@ nodes:
         kind: InitConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            # Enable metrics server support
+            # Label the node for ingress controller scheduling
             node-labels: "ingress-ready=true"
     extraPortMappings:
       # Map ports for ingress testing
@@ -129,7 +129,7 @@ spec:
             - containerPort: 22
               name: ssh
           env:
-            # Disable registration for security
+            # Allow registration for local testing
             - name: GITEA__service__DISABLE_REGISTRATION
               value: "false"
             # Use SQLite for simplicity
@@ -181,6 +181,11 @@ kubectl port-forward -n gitea svc/gitea 3000:3000 &
 
 ```yaml
 # git-server.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flux-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -197,7 +202,7 @@ spec:
         app: git-server
     spec:
       containers:
-        - name: git-daemon
+        - name: git-http
           image: alpine/git:latest
           command:
             - sh
@@ -207,14 +212,20 @@ spec:
               mkdir -p /git/fleet-repo.git
               cd /git/fleet-repo.git
               git init --bare
-              # Start git daemon for read access
-              git daemon --verbose --export-all \
-                --base-path=/git \
-                --reuseaddr \
-                --enable=receive-pack \
-                /git
+              git config http.receivepack true
+
+              # Start a minimal HTTP Git server
+              mkdir -p /www/cgi-bin
+              cat > /www/cgi-bin/git <<'EOF'
+              #!/bin/sh
+              export GIT_PROJECT_ROOT=/git
+              export GIT_HTTP_EXPORT_ALL=1
+              exec git http-backend
+              EOF
+              chmod +x /www/cgi-bin/git
+              httpd -f -p 8080 -h /www
           ports:
-            - containerPort: 9418
+            - containerPort: 8080
           volumeMounts:
             - name: git-data
               mountPath: /git
@@ -231,8 +242,8 @@ spec:
   selector:
     app: git-server
   ports:
-    - port: 9418
-      targetPort: 9418
+    - port: 8080
+      targetPort: 8080
 ```
 
 ## Step 3: Install Flux CD in the Test Cluster
@@ -286,7 +297,10 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  # Point to the in-cluster Gitea or git-server
+  # Point to the in-cluster Gitea.
+  # For the HTTP git-server option, use:
+  # http://git-server.flux-system.svc.cluster.local:8080/cgi-bin/git/fleet-repo.git
+  # and remove secretRef if no authentication is configured.
   url: http://gitea.gitea.svc.cluster.local:3000/test-user/fleet-repo.git
   ref:
     branch: main
@@ -342,7 +356,9 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
----
+```
+
+```yaml
 # apps/test/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -371,7 +387,9 @@ spec:
             limits:
               cpu: 100m
               memory: 128Mi
----
+```
+
+```yaml
 # apps/test/service.yaml
 apiVersion: v1
 kind: Service
@@ -392,6 +410,11 @@ spec:
 
 ```yaml
 # monitoring-helmrelease.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -411,7 +434,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "55.x"
+      version: "84.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -473,7 +496,7 @@ kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
 # Step 3: Install Flux
 echo "Installing Flux CD..."
-flux install --version=latest
+flux install
 
 # Step 4: Wait for Flux to be ready
 echo "Waiting for Flux controllers..."
@@ -556,8 +579,8 @@ jobs:
       - name: Wait for reconciliation
         run: |
           # Wait for Kustomizations to reconcile
-          flux reconcile kustomization flux-system --timeout=5m
-          kubectl wait --for=condition=Ready kustomizations --all \
+          flux reconcile kustomization test-apps --timeout=5m
+          kubectl wait --for=condition=Ready kustomizations.kustomize.toolkit.fluxcd.io --all \
             -n flux-system --timeout=300s
 
       - name: Verify deployments
