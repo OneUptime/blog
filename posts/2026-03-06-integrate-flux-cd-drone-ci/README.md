@@ -86,7 +86,7 @@ steps:
     image: golang:1.22
     commands:
       # Run your test suite
-      - go test ./... || echo "Tests passed"
+      - go test ./...
 
   # Step 2: Build and push the container image
   - name: build-and-push
@@ -94,9 +94,9 @@ steps:
     settings:
       # Docker Hub repository
       repo: my-org/my-app
-      # Use the short commit SHA as the tag
+      # Use the build number plus short commit SHA as the tag
       tags:
-        - "${DRONE_COMMIT_SHA:0:7}"
+        - "${DRONE_BUILD_NUMBER}-${DRONE_COMMIT_SHA:0:7}"
         - latest
       # Registry credentials from Drone secrets
       username:
@@ -124,11 +124,12 @@ type: docker
 name: build-semver
 
 trigger:
-  branch:
-    - main
   event:
     - push
     - tag
+  ref:
+    - refs/heads/main
+    - refs/tags/v*
 
 steps:
   # Step 1: Determine the version
@@ -142,7 +143,7 @@ steps:
         else
           VERSION="1.0.${DRONE_BUILD_NUMBER}"
         fi
-      - echo "$VERSION" > .version
+      - echo -n "$VERSION" > .tags
       - echo "Building version: $VERSION"
 
   # Step 2: Build and push with semver tag
@@ -150,9 +151,7 @@ steps:
     image: plugins/docker
     settings:
       repo: my-org/my-app
-      # Read the tag from the version file
-      tags:
-        - "${DRONE_TAG##v}"
+      # Read the tag from the .tags file
       username:
         from_secret: docker_username
       password:
@@ -199,11 +198,11 @@ steps:
     image: plugins/ecr
     settings:
       # ECR repository settings
-      repo: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
+      repo: my-app
       registry: 123456789012.dkr.ecr.us-east-1.amazonaws.com
       region: us-east-1
       tags:
-        - "${DRONE_COMMIT_SHA:0:7}"
+        - "${DRONE_BUILD_NUMBER}-${DRONE_COMMIT_SHA:0:7}"
         - latest
       # AWS credentials from Drone secrets
       access_key:
@@ -236,7 +235,7 @@ steps:
       repo: my-project-id/my-app
       registry: gcr.io
       tags:
-        - "${DRONE_COMMIT_SHA:0:7}"
+        - "${DRONE_BUILD_NUMBER}-${DRONE_COMMIT_SHA:0:7}"
         - latest
       # GCP service account JSON key
       json_key:
@@ -295,10 +294,10 @@ spec:
       range: ">=1.0.0"
 ```
 
-For commit SHA-based tagging:
+For build-number-prefixed commit SHA tagging:
 
 ```yaml
-# Alternative: commit SHA-based policy
+# Alternative: build-number-prefixed commit SHA policy
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -308,9 +307,10 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    pattern: '^[a-f0-9]{7}$'
+    pattern: '^(?P<build>[0-9]+)-[a-f0-9]{7}$'
+    extract: '$build'
   policy:
-    alphabetical:
+    numerical:
       order: asc
 ```
 
