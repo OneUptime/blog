@@ -14,7 +14,7 @@ Service Load Balancer Addresses with Calico enables important networking capabil
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico v3.30+ installed
 - kubectl and calicoctl access
 - Cluster-admin access
 
@@ -23,6 +23,7 @@ Service Load Balancer Addresses with Calico enables important networking capabil
 ```bash
 calicoctl get ippools -o yaml
 calicoctl get bgpconfiguration -o yaml
+kubectl get kubecontrollersconfiguration default -o yaml
 ```
 
 ## Example Configuration
@@ -31,10 +32,14 @@ calicoctl get bgpconfiguration -o yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: example-pool
+  name: loadbalancer-ip-pool
 spec:
   cidr: 10.48.0.0/16
   natOutgoing: true
+  disabled: false
+  assignmentMode: Automatic
+  allowedUses:
+    - LoadBalancer
 ```
 
 ## Verify
@@ -48,10 +53,11 @@ calicoctl ipam check
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> SERVICE[Service IP]
-    SERVICE --> POD[Pod]
+    POOL[IP Pool] --> IP[LoadBalancer IP]
+    IP --> SERVICE[Service]
+    SERVICE --> BACKEND[Backend Pod]
 ```
 
 ## Conclusion
 
-How to Avoid Common Mistakes with Service Load Balancer Addresses with Calico in Calico provides reliable IP addressing for Kubernetes services and workloads. Follow the configuration and verification steps to ensure correct behavior.
+How to Avoid Common Mistakes with Service Load Balancer Addresses with Calico in Calico provides reliable IP addressing for Kubernetes LoadBalancer services. Follow the configuration and verification steps to ensure correct behavior.
