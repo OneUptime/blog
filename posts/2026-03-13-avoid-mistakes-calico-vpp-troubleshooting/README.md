@@ -30,10 +30,10 @@ kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
   vppctl show ip fib
 ```
 
-## Mistake 2: Leaving Packet Traces Enabled in Production
+## Mistake 2: Capturing Too Many Packets in Production
 
 ```bash
-# WRONG: Enabling traces and forgetting to disable them
+# WRONG: Capturing too many packets and forgetting to clear the trace buffer
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
   vppctl trace add virtio-input 1000  # Captures 1000 packets and impacts performance
 
@@ -49,7 +49,7 @@ kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
 ## Mistake 3: Misreading Error Counter Scope
 
 ```bash
-# Error counters are CUMULATIVE since VPP started
+# Error counters are CUMULATIVE since VPP started or since they were last cleared
 # A counter of 5000 doesn't mean there's an active problem
 
 # CORRECT: Compare counters over time to detect active drops
@@ -85,7 +85,7 @@ mindmap
       iptables irrelevant
       ip route wrong table
     Traces
-      Left enabled too long
+      Captured too many packets
       Count too high
       Not cleared after use
     Error Counters
@@ -98,4 +98,4 @@ mindmap
 
 ## Conclusion
 
-The single most common Calico VPP troubleshooting mistake is reaching for familiar Linux kernel tools - tcpdump, iptables, ip route - that simply do not see VPP-forwarded traffic. Build the habit of always starting with `vppctl show interface` and `vppctl show error` before any other diagnostic. Avoid leaving packet traces running in production, always compare error counters over time rather than reading them in isolation, and collect VPP logs before restarting pods.
+The single most common Calico VPP troubleshooting mistake is reaching for familiar Linux kernel tools - tcpdump, iptables, ip route - that simply do not see VPP-forwarded traffic. Build the habit of always starting with `vppctl show interface` and `vppctl show error` before any other diagnostic. Avoid capturing too many packets in production traces, clear trace buffers when done, always compare error counters over time rather than reading them in isolation, and collect VPP logs before restarting pods.
