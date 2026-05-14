@@ -12,7 +12,7 @@ Description: Incorporate automated chaos testing into the Flux CD GitOps pipelin
 
 Chaos testing is most valuable when it runs automatically - triggered by deployments, scheduled on a cadence, and integrated with your alerting and promotion workflows. Without automation, chaos experiments are run infrequently and only by specialists who remember to run them. With automation, every new deployment is systematically tested for resilience before reaching production.
 
-Flux CD provides the reconciliation engine that keeps your cluster in sync with Git. By combining Flux's event-driven model with Chaos Mesh experiments and Kubernetes Jobs, you can build a fully automated chaos testing pipeline where deployments automatically trigger resilience validation, results are reported, and rollbacks happen without human intervention.
+Flux CD provides the reconciliation engine that keeps your cluster in sync with Git. By combining Flux's event-driven model with Chaos Mesh experiments and Kubernetes Jobs, you can build a fully automated chaos testing pipeline where deployments automatically trigger resilience validation, results are reported, and remediation can be automated by your webhook or CI/CD workflow.
 
 This guide covers building an automated chaos testing pipeline using Flux CD image automation, Chaos Mesh, and Kubernetes Jobs for result validation.
 
@@ -34,6 +34,7 @@ clusters/
       myapp/
         deployment.yaml
         service.yaml
+        imagerepository.yaml # Flux image scanning
         imagepolicy.yaml     # Flux image automation
     chaos/
       experiments/
@@ -45,6 +46,18 @@ clusters/
 ```
 
 ## Step 2: Configure Flux Image Automation
+
+```yaml
+# clusters/my-cluster/apps/myapp/imagerepository.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: myapp
+  namespace: flux-system
+spec:
+  image: ghcr.io/example/myapp
+  interval: 1m
+```
 
 ```yaml
 # clusters/my-cluster/apps/myapp/imagepolicy.yaml
@@ -59,8 +72,20 @@ spec:
     name: myapp
   policy:
     semver:
-      # Automatically track patch releases
+      # Automatically track versions at or above 1.0.0
       range: ">=1.0.0"
+```
+
+Mark the deployment image field with a Flux image setter comment so `ImageUpdateAutomation` knows which field to update.
+
+```yaml
+# clusters/my-cluster/apps/myapp/deployment.yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: myapp
+          image: ghcr.io/example/myapp:1.0.0 # {"$imagepolicy": "flux-system:myapp"}
 ```
 
 ```yaml
@@ -80,7 +105,7 @@ spec:
       author:
         email: fluxbot@example.com
         name: FluxBot
-      messageTemplate: "chore: update myapp image to {{ .Updated.Images | toString }}"
+      messageTemplate: "chore: update myapp image"
   update:
     path: ./clusters/my-cluster/apps/myapp
     strategy: Setters
@@ -88,19 +113,20 @@ spec:
 
 ## Step 3: Create a Post-Deployment Chaos Job
 
-Use a Kubernetes Job triggered by a Flux notification receiver to run chaos experiments automatically after a deployment.
+Use a Kubernetes Job template that your Flux notification webhook handler creates after a deployment. The handler should create a new Job from this template for each matching Flux Alert event.
 
 ```yaml
 # clusters/my-cluster/chaos/experiments/post-deploy-chaos-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: post-deploy-chaos-validator
+  generateName: post-deploy-chaos-validator-
   namespace: chaos-mesh
   labels:
     app: chaos-validator
 spec:
   ttlSecondsAfterFinished: 7200
+  activeDeadlineSeconds: 300
   template:
     spec:
       serviceAccountName: chaos-validator
@@ -140,11 +166,15 @@ spec:
             name: chaos-experiment-configs
 ```
 
+Store this as a template consumed by `chaos-gate` rather than as a resource listed directly in the Flux-applied `chaos/kustomization.yaml`.
+
 ## Step 4: Create a Flux Alert for Deployment Events
+
+Filter for successful reconciliation events and have the webhook handler deduplicate by the Flux revision metadata so periodic reconciliations do not launch duplicate chaos Jobs for the same deployment.
 
 ```yaml
 # clusters/my-cluster/chaos/flux-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: myapp-deployment-chaos-trigger
@@ -158,19 +188,19 @@ spec:
       name: myapp
   eventSeverity: info
   inclusionList:
-    - ".*ReconciliationSucceeded.*"
+    - ".*Reconciliation finished.*"
 ```
 
 ```yaml
 # clusters/my-cluster/chaos/flux-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: chaos-webhook-provider
   namespace: flux-system
 spec:
-  type: webhook
-  # Endpoint that creates the post-deploy chaos Job
+  type: generic
+  # Endpoint that creates a new post-deploy chaos Job from the template
   address: http://chaos-gate.chaos-mesh.svc.cluster.local/trigger
 ```
 
@@ -206,7 +236,7 @@ flowchart LR
     D --> E[Flux Alert fires]
     E --> F[Chaos Job triggered]
     F --> G{Pods recovered?}
-    G -- Yes --> H[Deployment promoted]
+    G -- Yes --> H[Deployment validated]
     G -- No --> I[Alert: chaos validation failed]
 ```
 
@@ -215,9 +245,9 @@ flowchart LR
 - Use `ttlSecondsAfterFinished` on chaos Jobs so they clean up automatically and do not accumulate.
 - Emit structured logs from chaos validation Jobs so results can be collected by your log aggregation system.
 - Set a timeout on the chaos Job (`activeDeadlineSeconds`) so a hung experiment does not block the pipeline indefinitely.
-- Use Flux alerts to notify Slack or PagerDuty when chaos validation fails so the team can investigate before the release progresses.
+- Use your webhook handler, Prometheus, or Alertmanager to notify Slack or PagerDuty when chaos validation fails so the team can investigate before the release progresses.
 - Version experiment ConfigMaps alongside deployment manifests so the chaos test always matches the application version it is testing.
 
 ## Conclusion
 
-Automating chaos testing within a Flux CD GitOps pipeline closes the loop between deployment and resilience validation. By triggering experiments automatically after every deployment and reporting results through Flux's notification system, you transform chaos engineering from a manual gate into a continuous, self-enforcing quality check that improves system reliability with every release.
+Automating chaos testing within a Flux CD GitOps pipeline closes the loop between deployment and resilience validation. By triggering experiments automatically after every deployment and reporting results through your validation Jobs and alerting workflow, you transform chaos engineering from a manual gate into a continuous, self-enforcing quality check that improves system reliability with every release.
