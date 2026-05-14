@@ -48,7 +48,7 @@ metadata:
 spec:
   # Select the istio ingress gateway deployment
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     # HTTP server configuration
     - port:
@@ -77,7 +77,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     # HTTPS server with TLS termination
     - port:
@@ -158,7 +158,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     - port:
         number: 443
@@ -196,7 +196,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     - port:
         number: 443
@@ -210,7 +210,7 @@ spec:
         # Server certificate
         credentialName: secure-api-tls
         # Minimum TLS version
-        minProtocolVersion: TLSV1_3
+        minProtocolVersion: TLSV1_2
         # Allowed cipher suites
         cipherSuites:
           - ECDHE-ECDSA-AES256-GCM-SHA384
@@ -227,7 +227,7 @@ kind: Secret
 metadata:
   name: secure-api-tls
   namespace: istio-ingress
-type: generic
+type: Opaque
 data:
   # Server certificate
   tls.crt: LS0tLS1CRUd...
@@ -251,7 +251,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     # Primary domain
     - port:
@@ -309,7 +309,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     # TCP server for database connections
     - port:
@@ -317,10 +317,7 @@ spec:
         name: tcp-postgres
         protocol: TCP
       hosts:
-        - "db.example.com"
-      tls:
-        mode: SIMPLE
-        credentialName: db-tls
+        - "*"
 ---
 # grpc-gateway.yaml
 # Istio Gateway for gRPC traffic
@@ -331,7 +328,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     # gRPC server with TLS
     - port:
@@ -359,7 +356,7 @@ metadata:
   namespace: istio-ingress
 spec:
   selector:
-    istio: ingress
+    istio: ingressgateway
   servers:
     - port:
         number: 443
@@ -406,6 +403,21 @@ Configure an egress gateway for controlling outbound traffic:
 
 ```yaml
 # egress-gateway.yaml
+# ServiceEntry for the external HTTPS service
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: my-app
+spec:
+  hosts:
+    - "external-api.thirdparty.com"
+  ports:
+    - number: 443
+      name: tls
+      protocol: TLS
+  resolution: DNS
+---
 # Istio Gateway for controlling egress (outbound) traffic
 apiVersion: networking.istio.io/v1
 kind: Gateway
@@ -419,12 +431,23 @@ spec:
   servers:
     - port:
         number: 443
-        name: https
-        protocol: HTTPS
+        name: tls
+        protocol: TLS
       hosts:
         - "external-api.thirdparty.com"
       tls:
-        mode: ISTIO_MUTUAL
+        mode: PASSTHROUGH
+---
+# DestinationRule for the egress gateway service
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-external-api
+  namespace: my-app
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+    - name: external-api
 ---
 # Egress VirtualService to route through the egress gateway
 apiVersion: networking.istio.io/v1
@@ -438,20 +461,27 @@ spec:
   gateways:
     - istio-system/egress-gateway
     - mesh
-  http:
+  tls:
     # Route mesh traffic to the egress gateway
     - match:
         - gateways:
             - mesh
+          port: 443
+          sniHosts:
+            - "external-api.thirdparty.com"
       route:
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: external-api
             port:
               number: 443
     # Route from egress gateway to the external service
     - match:
         - gateways:
             - istio-system/egress-gateway
+          port: 443
+          sniHosts:
+            - "external-api.thirdparty.com"
       route:
         - destination:
             host: external-api.thirdparty.com
@@ -496,10 +526,10 @@ kubectl describe gateway https-gateway -n istio-ingress
 kubectl get svc -n istio-ingress
 
 # Verify TLS certificate is loaded
-istioctl proxy-config secret deploy/istio-ingress -n istio-ingress
+istioctl proxy-config secret deploy/istio-ingressgateway -n istio-ingress
 
 # Check listener configuration on the gateway
-istioctl proxy-config listener deploy/istio-ingress -n istio-ingress
+istioctl proxy-config listener deploy/istio-ingressgateway -n istio-ingress
 
 # Test HTTPS connectivity
 curl -v https://app.example.com
@@ -523,4 +553,4 @@ flux get kustomizations istio-gateways
 
 ## Conclusion
 
-Managing Istio Gateways with Flux CD provides a robust, GitOps-driven approach to ingress configuration. By storing Gateway definitions in Git, you maintain version control over your edge infrastructure, including TLS certificates, protocol configurations, and domain routing. Flux CD's automated reconciliation ensures your gateways stay in the desired state, and the dependency system guarantees that Istio is properly installed before gateway configurations are applied. This approach is essential for maintaining secure and reliable ingress to your service mesh.
+Managing Istio Gateways with Flux CD provides a robust, GitOps-driven approach to ingress configuration. By storing Gateway definitions in Git, you maintain version control over your edge infrastructure, including certificate references, protocol configurations, and domain routing. Flux CD's automated reconciliation ensures your gateways stay in the desired state, and the dependency system guarantees that Istio is properly installed before gateway configurations are applied. This approach is essential for maintaining secure and reliable ingress to your service mesh.
