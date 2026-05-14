@@ -12,7 +12,7 @@ Description: Avoid Mistakes secure BGP sessions in Calico to prevent route injec
 
 BGP (Border Gateway Protocol) sessions in Calico are used to distribute pod routes between nodes and to upstream routers. Unsecured BGP sessions are vulnerable to route injection attacks, where a malicious peer could inject false routes and redirect cluster traffic. Securing BGP sessions is an essential part of hardening a production Calico deployment.
 
-Calico supports BGP session authentication using MD5 passwords and can be configured to only peer with authorized BGP peers. The `projectcalico.org/v3` BGPPeer resource lets you configure per-peer authentication and encryption settings.
+Calico supports BGP session authentication using MD5 passwords and can be configured to only peer with authorized BGP peers. The `projectcalico.org/v3` BGPPeer resource lets you configure per-peer authentication. Password authentication does not encrypt the BGP data exchange.
 
 This guide covers avoid mistakes BGP sessions in Calico to prevent unauthorized route injection and BGP hijacking.
 
@@ -21,10 +21,49 @@ This guide covers avoid mistakes BGP sessions in Calico to prevent unauthorized 
 - Kubernetes cluster with Calico v3.26+ in BGP mode
 - `calicoctl` and `kubectl` installed
 - Access to BGP peer configuration on both sides
+- The namespace where the `calico-node` pod runs, usually `calico-system` for operator installs or `kube-system` for manifest installs
 
 ## Secure BGP Configuration
 
+Keep the Kubernetes Secret and RBAC resources in `bgp-secret-rbac.yaml`, and keep the Calico BGPPeer resource in `secure-bgp-peer.yaml`:
+
 ```yaml
+# bgp-secret-rbac.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bgp-peer-secrets
+  namespace: calico-system
+type: Opaque
+stringData:
+  router01-password: "replace-with-the-shared-bgp-password"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bgp-peer-secrets-reader
+  namespace: calico-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["bgp-peer-secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calico-read-bgp-peer-secrets
+  namespace: calico-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bgp-peer-secrets-reader
+subjects:
+  - kind: ServiceAccount
+    name: calico-node
+    namespace: calico-system
+---
+# secure-bgp-peer.yaml
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
@@ -37,23 +76,11 @@ spec:
       name: bgp-peer-secrets
       key: router01-password
   node: "node01"
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: bgp-peer-secrets
-  namespace: kube-system
-type: Opaque
-data:
-  router01-password: <base64-encoded-password>
 ```
 
 ```bash
-# Create BGP password secret
-
-kubectl create secret generic bgp-peer-secrets \
-  --from-literal=router01-password="$(openssl rand -base64 32)" \
-  -n kube-system
+# Create the BGP password secret in the calico-node namespace and allow calico-node to read it
+kubectl apply -f bgp-secret-rbac.yaml
 
 # Apply BGP peer with authentication
 calicoctl apply -f secure-bgp-peer.yaml
@@ -68,8 +95,8 @@ calicoctl node status
 # Check BGP peer status
 calicoctl node status | grep Established
 
-# Verify MD5 authentication is active
-bird cli <<< "show protocols all bgp_peer_router01" | grep auth
+# Verify the BGPPeer references the password secret
+calicoctl get bgppeer secure-bgp-peer-router01 -o yaml | grep -A3 password
 
 # Check for unauthorized BGP connections
 calicoctl get bgppeers -o wide
@@ -87,4 +114,4 @@ flowchart LR
 
 ## Conclusion
 
-Securing BGP sessions in Calico with MD5 authentication prevents route injection attacks and unauthorized BGP peering. Configure BGP passwords using Kubernetes Secrets, apply them to each BGPPeer resource, and monitor your BGP session status regularly to detect unauthorized connection attempts. In high-security environments, combine BGP authentication with strict host endpoint policies to restrict which hosts can establish BGP connections with your nodes.
+Securing BGP sessions in Calico with MD5 authentication helps prevent route injection attacks and unauthorized BGP peering. Configure BGP passwords using Kubernetes Secrets in the `calico-node` namespace, apply them to each BGPPeer resource, and monitor your BGP session status regularly to detect unauthorized connection attempts. In high-security environments, combine BGP authentication with strict host endpoint policies to restrict which hosts can establish BGP connections with your nodes.
