@@ -95,10 +95,10 @@ kind: Mesh
 metadata:
   name: demo-mesh
 spec:
-  # Allow traffic from all namespaces
+  # Select namespaces associated with this mesh
   namespaceSelector:
     matchLabels:
-      appmesh.k8s.aws/sidecarInjectorWebhook: enabled
+      mesh: demo-mesh
 ```
 
 ## Step 4: Install Prometheus
@@ -151,11 +151,17 @@ spec:
           - source_labels: [__meta_kubernetes_pod_container_name]
             action: keep
             regex: envoy
-          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          - source_labels: [__address__]
             action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
+            regex: ([^:]+)(?::\d+)?
             replacement: ${1}:9901
             target_label: __address__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
 ```
 
 ## Step 5: Install Flagger with App Mesh Provider
@@ -287,11 +293,9 @@ spec:
   service:
     port: 9898
     targetPort: http
-    # App Mesh specific configuration
-    meshName: demo-mesh
     # Backend services that this app can communicate with
     backends: []
-    # Match incoming requests on specific headers (optional)
+    # Match incoming requests by URI (optional)
     match:
       - uri:
           prefix: /
@@ -333,9 +337,8 @@ kubectl get canary -n demo
 # Verify virtual nodes
 kubectl get virtualnode -n demo
 
-# Verify virtual router and routes
+# Verify virtual router and embedded routes
 kubectl get virtualrouter -n demo
-kubectl get virtualroute -n demo
 
 # Verify virtual service
 kubectl get virtualservice -n demo
