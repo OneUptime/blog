@@ -14,6 +14,8 @@ Most Kubernetes clusters rely on Helm charts from multiple publishers. You might
 
 Each Helm chart publisher has its own repository. Here is a complete set of HelmRepository resources for a typical production cluster:
 
+Note: ingress-nginx project artifacts remain available, but the project announced retirement after March 2026. Evaluate a maintained ingress controller for new production clusters.
+
 ```yaml
 # Prometheus community charts for monitoring
 
@@ -242,6 +244,8 @@ spec:
 
 Flux supports both OCI and traditional HTTPS Helm repositories side by side. The key difference is the `type: oci` field. HTTPS repositories do not need a `type` field (it defaults to `default`):
 
+For new OCI chart sources, Flux recommends the `OCIRepository` API for improved OCI support. The `type: oci` HelmRepository form remains supported, but its reconciliation interval is ignored because the object acts as a registry reference for HelmChart resources.
+
 ```yaml
 # HTTPS repository - traditional index-based
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -312,7 +316,7 @@ If one HelmRepository fails, it does not affect others. Each source is reconcile
 
 ```yaml
 # Alert provider for Slack notifications on source failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -324,7 +328,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert on HelmRepository failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helm-source-alerts
