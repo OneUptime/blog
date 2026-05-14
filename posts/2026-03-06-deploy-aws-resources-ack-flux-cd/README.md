@@ -61,6 +61,12 @@ Install the ACK controllers using HelmRelease resources. Each AWS service requir
 
 ```yaml
 # ack-s3-controller.yaml
+# Namespace for ACK controllers
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ack-system
+---
 # HelmRepository for ACK charts
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -68,8 +74,9 @@ metadata:
   name: ack-charts
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h
-  url: https://aws-controllers-k8s.github.io/community/helm
+  url: oci://public.ecr.aws/aws-controllers-k8s
 ---
 # HelmRelease to install the ACK S3 controller
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -180,9 +187,9 @@ spec:
           kmsMasterKeyID: alias/my-kms-key
   # Block public access
   publicAccessBlock:
-    blockPublicAcls: true
+    blockPublicACLs: true
     blockPublicPolicy: true
-    ignorePublicAcls: true
+    ignorePublicACLs: true
     restrictPublicBuckets: true
   # Add tags for resource tracking
   tagging:
@@ -220,6 +227,7 @@ spec:
   # Database credentials from a Kubernetes secret
   masterUsername: dbadmin
   masterUserPassword:
+    namespace: default
     name: rds-credentials
     key: password
   # Network configuration
@@ -253,7 +261,8 @@ metadata:
   namespace: default
 spec:
   # CIDR block for the VPC
-  cidrBlock: "10.0.0.0/16"
+  cidrBlocks:
+    - "10.0.0.0/16"
   # Enable DNS support
   enableDNSSupport: true
   enableDNSHostnames: true
@@ -274,7 +283,9 @@ spec:
   # CIDR for this subnet
   cidrBlock: "10.0.1.0/24"
   # The VPC reference
-  vpcID: vpc-0123456789abcdef0
+  vpcRef:
+    from:
+      name: my-app-vpc
   # Availability zone
   availabilityZone: us-east-1a
   # Map public IPs to instances in this subnet
@@ -308,8 +319,6 @@ spec:
   path: ./aws/production
   # Prune resources that are removed from the repository
   prune: true
-  # Wait for resources to become ready
-  wait: true
   # Set a timeout for resource readiness
   timeout: 30m
   # Health checks for deployed resources
@@ -322,14 +331,21 @@ spec:
       kind: DBInstance
       name: my-app-database
       namespace: default
-  # Define dependencies to ensure proper ordering
-  dependsOn:
-    - name: ack-controllers
+  # Use ACK status conditions for custom resource health checks
+  healthCheckExprs:
+    - apiVersion: s3.services.k8s.aws/v1alpha1
+      kind: Bucket
+      current: status.conditions.exists(e, e.type == 'ACK.ResourceSynced' && e.status == 'True')
+      failed: status.conditions.exists(e, e.type == 'ACK.Terminal' && e.status == 'True')
+    - apiVersion: rds.services.k8s.aws/v1alpha1
+      kind: DBInstance
+      current: status.conditions.exists(e, e.type == 'ACK.ResourceSynced' && e.status == 'True')
+      failed: status.conditions.exists(e, e.type == 'ACK.Terminal' && e.status == 'True')
 ```
 
 ## Step 8: Set Up IAM Roles for Service Accounts (IRSA)
 
-Create the IAM trust policy for ACK controllers:
+Create or configure the service account for ACK controllers:
 
 ```yaml
 # ack-service-account.yaml
@@ -344,38 +360,17 @@ metadata:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ack-s3-controller
 ```
 
-Create the IAM policy:
+Attach the recommended IAM policy:
 
 ```bash
-# Create an IAM policy for the ACK S3 controller
-cat > s3-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:CreateBucket",
-        "s3:DeleteBucket",
-        "s3:PutBucketVersioning",
-        "s3:PutEncryptionConfiguration",
-        "s3:PutBucketPublicAccessBlock",
-        "s3:PutBucketTagging",
-        "s3:GetBucketVersioning",
-        "s3:GetEncryptionConfiguration",
-        "s3:GetBucketPublicAccessBlock",
-        "s3:GetBucketTagging",
-        "s3:ListBucket"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-EOF
+# Attach the ACK recommended policy for the S3 controller
+export SERVICE=s3
+export ACK_CONTROLLER_ROLE=ack-s3-controller
+export POLICY_ARN=$(curl -s https://raw.githubusercontent.com/aws-controllers-k8s/${SERVICE}-controller/main/config/iam/recommended-policy-arn)
 
-aws iam create-policy \
-  --policy-name ack-s3-controller-policy \
-  --policy-document file://s3-policy.json
+aws iam attach-role-policy \
+  --role-name ${ACK_CONTROLLER_ROLE} \
+  --policy-arn ${POLICY_ARN}
 ```
 
 ## Step 9: Configure Notifications
@@ -385,7 +380,7 @@ Set up alerts for ACK resource status changes:
 ```yaml
 # ack-alerts.yaml
 # Alert for ACK resource changes managed by Flux CD
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: ack-resource-alerts
@@ -431,7 +426,7 @@ kubectl logs -n ack-system deployment/ack-s3-controller -f
 4. **Enable pruning** in Flux CD Kustomizations to clean up deleted resources
 5. **Tag all resources** with metadata for cost tracking and ownership
 6. **Set appropriate reconciliation intervals** based on resource criticality
-7. **Use Flux CD dependencies** to ensure resources are created in the correct order
+7. **Use Flux CD dependencies** between separate Kustomization resources to ensure resources are created in the correct order
 
 ## Conclusion
 
