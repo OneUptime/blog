@@ -29,11 +29,12 @@ This guide covers installing MicroK8s with the right addons, bootstrapping Flux 
 ```bash
 # Install MicroK8s via snap
 
-sudo snap install microk8s --classic --channel=1.29/stable
+sudo snap install microk8s --classic --channel=1.35/stable
 
 # Add current user to microk8s group
-sudo usermod -aG microk8s $USER
-sudo chown -R $USER ~/.kube
+sudo usermod -a -G microk8s $USER
+mkdir -p ~/.kube
+chmod 0700 ~/.kube
 newgrp microk8s
 
 # Wait for MicroK8s to be ready
@@ -67,21 +68,19 @@ alias kubectl='microk8s kubectl'
 
 ## Step 3: Enable the Local Registry for Edge Bandwidth Reduction
 
-MicroK8s includes a built-in container registry addon that can cache images locally, dramatically reducing bandwidth for air-gapped or bandwidth-constrained edge deployments.
+MicroK8s includes a built-in container registry addon that can host images locally, reducing repeated pulls from external registries for air-gapped or bandwidth-constrained edge deployments.
 
 ```bash
 # Enable built-in registry (runs on port 32000)
 microk8s enable registry
 
-# Configure containerd to use the local registry as a mirror
-# /var/snap/microk8s/current/args/containerd-template.toml
-sudo cat >> /var/snap/microk8s/current/args/containerd-template.toml << 'EOF'
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-  endpoint = ["http://localhost:32000", "https://registry-1.docker.io"]
-EOF
+# Tag and push images to the local registry before deploying them
+docker pull nginx:1.27
+docker tag nginx:1.27 localhost:32000/nginx:1.27
+docker push localhost:32000/nginx:1.27
 
-# Restart containerd to apply
-sudo snap restart microk8s
+# Reference the local image in manifests
+# image: localhost:32000/nginx:1.27
 ```
 
 ## Step 4: Bootstrap Flux on MicroK8s
@@ -95,8 +94,7 @@ flux bootstrap github \
   --repository=my-fleet \
   --branch=main \
   --path=clusters/microk8s-edge-001 \
-  --components=source-controller,kustomize-controller \
-  --token-env=GITHUB_TOKEN
+  --components=source-controller,kustomize-controller,notification-controller
 
 # Verify Flux controllers are running
 kubectl get pods -n flux-system
@@ -151,15 +149,15 @@ MicroK8s snaps can auto-update. Configure Flux to handle version transitions gra
 
 ```bash
 # Pin MicroK8s to a specific channel for production stability
-sudo snap refresh microk8s --channel=1.29/stable
-sudo snap set microk8s refresh.timer=mon5,04:00  # Update only Monday mornings
+sudo snap refresh microk8s --channel=1.35/stable
+sudo snap set system refresh.timer=mon,04:00  # Update snaps only Monday mornings
 
-# Create a Flux alert to notify when MicroK8s version changes
+# Create a Flux alert to notify on reconciliation errors after updates
 ```
 
 ```yaml
-# Monitor the Kubernetes version via Flux alert
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Monitor Flux reconciliation errors via Flux alert
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: microk8s-health
@@ -167,16 +165,16 @@ metadata:
 spec:
   providerRef:
     name: slack-edge-ops
-  eventSeverity: warning
+  eventSeverity: error
   eventSources:
     - kind: Kustomization
       name: "*"
-  summary: "MicroK8s edge node {{ .InvolvedObject.Name }} alert"
+  summary: "MicroK8s edge node alert"
 ```
 
 ```yaml
 # Flux Provider for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-edge-ops
@@ -190,8 +188,8 @@ spec:
 
 ## Best Practices
 
-- Use MicroK8s `--channel=LTS/stable` to avoid unexpected updates disrupting edge workloads.
-- Enable the built-in registry addon to reduce bandwidth consumption from repeated image pulls.
+- Use a versioned MicroK8s stable channel such as `--channel=1.35/stable` to avoid unexpected minor-version upgrades disrupting edge workloads.
+- Enable the built-in registry addon and push frequently used images to it to reduce bandwidth consumption from repeated external image pulls.
 - Configure snap refresh windows to occur during maintenance hours at the edge site.
 - Use MicroK8s `hostpath-storage` for edge PVCs since cloud storage is not available.
 - Set up a MicroK8s HA cluster with 3 nodes for production-critical edge sites.
