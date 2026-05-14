@@ -12,7 +12,7 @@ Helm charts often require sensitive values like database passwords, API keys, an
 
 ## How SOPS Works with Flux
 
-Flux CD's kustomize-controller handles SOPS decryption natively. When a Kustomization resource is configured with a decryption provider, Flux decrypts any SOPS-encrypted files before applying them. For Helm values, the pattern involves creating a Kubernetes Secret from your encrypted values file and referencing that Secret in your HelmRelease.
+Flux CD's kustomize-controller handles SOPS decryption natively. When a Kustomization resource is configured with a decryption provider, Flux can decrypt SOPS-encrypted Secret data before applying it. For Helm values, the pattern involves creating a Kubernetes Secret from your encrypted values file and referencing that Secret in your HelmRelease.
 
 ## Setting Up the Encryption Key
 
@@ -106,7 +106,8 @@ You need a Kustomization that generates a Kubernetes Secret from the encrypted v
 # apps/my-app/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: []
+resources:
+  - release.yaml
 secretGenerator:
   - name: my-app-helm-values
     namespace: default
@@ -143,6 +144,7 @@ spec:
 With the Secret created by the Kustomization above, reference it in your HelmRelease using `valuesFrom`:
 
 ```yaml
+# apps/my-app/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -150,9 +152,6 @@ metadata:
   namespace: default
 spec:
   interval: 10m
-  dependsOn:
-    - name: my-app-helm-values
-      namespace: flux-system
   chart:
     spec:
       chart: my-app
@@ -171,7 +170,7 @@ spec:
       valuesKey: values.yaml
 ```
 
-The `dependsOn` field ensures the Secret is created before the HelmRelease tries to use it. The `values` field contains non-sensitive defaults, while `valuesFrom` pulls in the decrypted secret values. Values from `valuesFrom` override those in `values` when keys overlap.
+Including the HelmRelease in the same Flux Kustomization path lets Flux decrypt and apply the generated Secret before the helm-controller reconciles the HelmRelease. The `values` field contains non-sensitive defaults, while `valuesFrom` pulls in the decrypted secret values. Inline values in `values` override values from `valuesFrom` when keys overlap.
 
 ## Editing Encrypted Files
 
@@ -211,4 +210,4 @@ The output should show your decrypted values, confirming that Flux successfully 
 
 ## Common Pitfalls
 
-Forgetting to add the `decryption` block to the Kustomization is the most common mistake. Without it, Flux applies the encrypted data as-is, resulting in garbled Secret values. Always verify that the `sops-age` secret exists in the `flux-system` namespace and that the age key matches the public key used for encryption. If you rotate your age key, you must re-encrypt all SOPS files with the new key before removing the old one from the cluster.
+Forgetting to add the `decryption` block to the Kustomization is the most common mistake. Without it, Flux cannot decrypt the generated Secret data, so the HelmRelease will not receive usable plaintext values. Always verify that the `sops-age` secret exists in the `flux-system` namespace and that the age key matches the public key used for encryption. If you rotate your age key, you must re-encrypt all SOPS files with the new key before removing the old one from the cluster.
