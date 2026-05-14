@@ -10,13 +10,13 @@ Description: A practical guide to configuring proxy settings for Flux using the 
 
 ## Introduction
 
-Many enterprise environments require all outbound traffic to pass through HTTP/HTTPS proxy servers. The `flux create secret proxy` command creates Kubernetes secrets that configure Flux controllers to route their traffic through proxy servers when accessing Git repositories, Helm repositories, OCI registries, and other external services.
+Many enterprise environments require all outbound traffic to pass through HTTP/HTTPS proxy servers. The `flux create secret proxy` command creates Kubernetes secrets that configure Flux sources to route their traffic through proxy servers when accessing Git repositories, OCI registries, buckets, and other Flux APIs that support `proxySecretRef`.
 
 This guide covers proxy configuration for Flux in enterprise environments, including authenticated proxies, proxy exceptions, and troubleshooting common proxy-related issues.
 
 ## Prerequisites
 
-- Flux CLI v2.0 or later installed
+- Flux CLI v2.4 or later installed
 - kubectl configured with cluster access
 - Flux installed on your Kubernetes cluster
 - Proxy server address and credentials (if required)
@@ -37,7 +37,7 @@ graph LR
     A[Flux Controller] -->|HTTP/HTTPS via Proxy| B[Proxy Server]
     B -->|Forward Request| C[External Services]
     C -->|Git Repos| D[GitHub / GitLab]
-    C -->|Helm Charts| E[Chart Repositories]
+    C -->|Buckets| E[S3-compatible Storage]
     C -->|OCI Artifacts| F[Container Registries]
 
     A -->|Direct Connection| G[Internal Services<br/>NO_PROXY]
@@ -105,20 +105,13 @@ kubectl apply -f git-repo-with-proxy.yaml
 flux get sources git
 ```
 
-### HelmRepository with Proxy
+### Helm Repository Traffic with Proxy
 
 ```yaml
-# helm-repo-with-proxy.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: bitnami
-  namespace: flux-system
-spec:
-  interval: 30m
-  url: https://charts.bitnami.com/bitnami
-  proxySecretRef:
-    name: proxy-config
+# HelmRepository does not support proxySecretRef. For HTTP/S Helm chart
+# repositories, configure the source-controller environment variables in the
+# Global Proxy Configuration section. For OCI-hosted Helm charts, use an
+# OCIRepository with proxySecretRef.
 ```
 
 ### OCIRepository with Proxy
@@ -308,7 +301,7 @@ flux create secret proxy proxy-config \
 
 # Force reconciliation of affected sources
 flux reconcile source git app-repo
-flux reconcile source helm bitnami
+flux reconcile source oci app-artifacts
 ```
 
 ## Troubleshooting
@@ -360,7 +353,7 @@ kubectl get secret proxy-config -n flux-system -o jsonpath='{.data.address}' | b
 
 ## Best Practices
 
-1. **Use per-source proxy configuration** with `proxySecretRef` rather than global environment variables for fine-grained control.
+1. **Use per-source proxy configuration** with `proxySecretRef` where supported rather than global environment variables for fine-grained control.
 2. **Configure NO_PROXY** for internal services to avoid routing cluster-internal traffic through the proxy.
 3. **Use dedicated proxy credentials** for Flux rather than sharing credentials with other services.
 4. **Monitor proxy logs** for connection issues and blocked requests.
