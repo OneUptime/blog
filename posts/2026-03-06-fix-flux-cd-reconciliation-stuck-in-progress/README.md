@@ -31,11 +31,11 @@ kubectl describe kustomization -n flux-system my-app
 ```
 
 ```bash
-# Check the last reconciliation attempt time
+# Check the last attempted revision
 kubectl get kustomization -n flux-system my-app -o jsonpath='{.status.lastAttemptedRevision}'
 
-# Check if the reconciliation has been running for too long
-kubectl get kustomization -n flux-system my-app -o jsonpath='{.status.conditions[0].lastTransitionTime}'
+# Check when the Ready condition last changed
+kubectl get kustomization -n flux-system my-app -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}'
 ```
 
 ## Common Cause 1: Health Check Failures
@@ -79,7 +79,7 @@ spec:
   timeout: 5m
 ```
 
-The reconciliation will stay in progress if `my-deployment` does not become Ready within the timeout period.
+The reconciliation will stay in progress while Flux waits for `my-deployment` to become Ready. If it does not become Ready within the timeout period, the Kustomization `Ready` condition is set to `False`.
 
 ### Common Reasons for Health Check Failures
 
@@ -164,8 +164,8 @@ If a Kustomization depends on another via `dependsOn` and the dependency is not 
 ### Diagnosing the Issue
 
 ```bash
-# Check the dependency chain
-flux tree kustomization my-app -n flux-system
+# Check which Kustomizations this one depends on
+kubectl get kustomization -n flux-system my-app -o jsonpath='{.spec.dependsOn[*].name}{"\n"}'
 
 # Check the status of all dependencies
 kubectl get kustomization -n flux-system
@@ -240,12 +240,11 @@ kubectl get secret -n my-namespace -l owner=helm,name=my-release
 flux suspend helmrelease my-release -n my-namespace
 flux resume helmrelease my-release -n my-namespace
 
-# Option 2: Force a remediation by deleting the failed Helm secret
-# Find the latest failed release secret
-kubectl get secret -n my-namespace -l owner=helm,name=my-release --sort-by=.metadata.creationTimestamp
+# Option 2: Reset remediation retries and reconcile again
+flux reconcile helmrelease my-release -n my-namespace --reset
 
-# Delete the last failed release secret to allow Flux to retry
-kubectl delete secret -n my-namespace sh.helm.release.v1.my-release.v3
+# Option 3: Force a one-off Helm install or upgrade
+flux reconcile helmrelease my-release -n my-namespace --force
 ```
 
 ### Fix: Configure Automatic Remediation
@@ -275,9 +274,9 @@ spec:
       retries: 3
       # Rollback to last successful release on failure
       remediateLastFailure: true
-    # Clean up failed release on upgrade failure
+    # Delete new resources created during a failed upgrade
     cleanupOnFail: true
-  # Uninstall on failure to allow fresh install
+  # Do not retain Helm release history when Flux uninstalls this release
   uninstall:
     keepHistory: false
 ```
@@ -363,8 +362,8 @@ flux get all -A
 kubectl get kustomization -A -o custom-columns=\
 "NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[0].status,MESSAGE:.status.conditions[0].message"
 
-# Step 3: Check the dependency tree
-flux tree kustomization <name> -n flux-system
+# Step 3: Check declared dependencies
+kubectl get kustomization -n flux-system <name> -o jsonpath='{.spec.dependsOn[*].name}{"\n"}'
 
 # Step 4: Check controller logs for errors
 kubectl logs -n flux-system deploy/kustomize-controller --tail=100 | grep "<name>"
