@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Configure Prometheus alert rules for Felix metrics to detect dataplane programming failures, policy calculation slowdowns, and IPAM allocation errors before they impact pod connectivity.
+Description: Configure Prometheus scraping for Felix metrics to detect dataplane programming failures and policy calculation slowdowns before they impact pod connectivity.
 
 ---
 
 ## Introduction
 
-Felix metric alerts detect data plane problems before they manifest as pod connectivity failures. Dataplane failure alerts fire when Felix fails to program iptables rules, giving operators time to investigate before policy enforcement gaps are exploited. Policy calculation latency alerts detect when policy complexity is causing delayed policy enforcement.
+Felix metric alerts detect data plane problems before they manifest as pod connectivity failures. Dataplane failure alerts fire when Felix fails to apply data plane updates, giving operators time to investigate before policy enforcement gaps are exploited. Policy calculation latency alerts detect when policy complexity is causing delayed policy enforcement.
 
 ## Key Commands
 
@@ -31,6 +31,22 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http
 ## ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calico-felix-metrics
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
