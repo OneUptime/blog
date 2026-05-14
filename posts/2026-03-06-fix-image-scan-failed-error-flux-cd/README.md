@@ -14,12 +14,12 @@ Flux CD's image automation controllers scan container registries to detect new i
 
 ## Understanding Image Automation Components
 
-Flux CD uses two custom resources for image automation:
+Flux CD uses two custom resources for image scanning and policy selection:
 
 - **ImageRepository**: Scans a container registry for available tags
 - **ImagePolicy**: Selects the latest image based on a policy (semver, alphabetical, numerical)
 
-Both must be healthy for automated image updates to work.
+Both must be healthy for automated image selection to work. A third resource, **ImageUpdateAutomation**, is used when you want Flux to commit the selected image updates back to Git.
 
 ## Identifying the Error
 
@@ -97,6 +97,8 @@ spec:
 
 #### AWS ECR
 
+The following cloud provider examples assume Workload Identity is configured for the referenced ServiceAccount and the image-reflector-controller has the `ObjectLevelWorkloadIdentity` feature gate enabled. If you use controller-level cloud identity instead, omit `serviceAccountName` and grant the identity to the image-reflector-controller ServiceAccount.
+
 ```yaml
 # imagerepository-ecr.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -109,6 +111,7 @@ spec:
   interval: 5m
   # Use AWS provider for automatic ECR authentication
   provider: aws
+  serviceAccountName: image-reflector-controller
 ```
 
 Ensure the image-reflector-controller has the correct IAM permissions:
@@ -148,6 +151,7 @@ spec:
   interval: 5m
   # Use GCP provider for automatic authentication
   provider: gcp
+  serviceAccountName: image-reflector-controller
 ```
 
 #### Azure Container Registry
@@ -164,6 +168,7 @@ spec:
   interval: 5m
   # Use Azure provider for automatic authentication
   provider: azure
+  serviceAccountName: image-reflector-controller
 ```
 
 ## Cause 2: Docker Hub Rate Limiting
@@ -173,16 +178,16 @@ Docker Hub enforces rate limits for anonymous and free-tier users. Image scannin
 ### Diagnosing Rate Limits
 
 ```bash
-# Check remaining Docker Hub rate limit from inside the cluster
+# Check Docker Hub registry API reachability from inside the cluster
 kubectl run -it --rm rate-check \
-  --image=alpine/curl \
+  --image=curlimages/curl \
   --namespace=flux-system \
   --restart=Never \
   -- sh -c 'curl -s -o /dev/null -w "%{http_code}" https://registry-1.docker.io/v2/ && echo ""'
 
 # Check rate limit headers
 kubectl run -it --rm rate-check \
-  --image=alpine/curl \
+  --image=curlimages/curl \
   --namespace=flux-system \
   --restart=Never \
   -- sh -c 'TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull" | grep -o "\"token\":\"[^\"]*\"" | cut -d\" -f4) && curl -sI -H "Authorization: Bearer $TOKEN" https://registry-1.docker.io/v2/library/nginx/manifests/latest 2>&1 | grep -i ratelimit'
