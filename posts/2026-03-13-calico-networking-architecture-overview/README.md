@@ -41,7 +41,7 @@ Felix is the heart of Calico. It runs as a DaemonSet on every node and is respon
 
 - **Policy enforcement**: Translating Calico NetworkPolicy into iptables rules or eBPF programs
 - **Route programming**: Adding host routes for pod IPs on the local node
-- **Endpoint management**: Creating and managing WorkloadEndpoints in the datastore as pods are created
+- **Interface management**: Programming host interfaces so traffic is correctly routed to local workload endpoints
 - **Health reporting**: Reporting node readiness status
 
 Felix watches the Calico datastore (via Typha) for changes to policies, endpoints, and IP pools, then reconciles the local node's network state.
@@ -58,14 +58,15 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep "Feli
 BIRD (Bird Internet Routing Daemon) handles BGP routing in Calico. It runs inside the `calico-node` pod and:
 
 - Advertises pod CIDR routes to BGP peers (other nodes or top-of-rack switches)
-- Learns routes from peers and makes them available for Felix to program
+- Learns routes from peers and installs them in the node's routing table for the Linux dataplane
 - Maintains BGP session state with all configured peers
 
-BIRD is optional - it is only required when using BGP routing mode. In VXLAN or IP-in-IP mode, BIRD is not involved in pod routing.
+BIRD is optional - it is required when BGP is used to distribute cluster routes or advertise routes to external peers. For VXLAN pools, BGP is not required for internal cluster routing; for IP-in-IP or unencapsulated pools, BGP distributes cluster routes by default unless Felix cluster route programming is explicitly enabled.
 
 ```bash
-# Check BIRD status via Felix
-kubectl exec -n calico-system -l k8s-app=calico-node \
+# Check BIRD status in a calico-node pod
+POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system "$POD" \
   -c calico-node -- birdcl show protocols
 ```
 
@@ -73,7 +74,7 @@ kubectl exec -n calico-system -l k8s-app=calico-node \
 
 confd watches the Calico datastore and renders BGP configuration files for BIRD. When BGP peer configuration changes (new peers added, old ones removed), confd re-renders the BIRD configuration and signals BIRD to reload.
 
-confd is the bridge between Calico's data model (stored in Kubernetes CRDs) and BIRD's configuration format (a proprietary config file syntax).
+confd is the bridge between Calico's data model (stored in Kubernetes CRDs) and BIRD's configuration format.
 
 ## Typha: The Datastore Fanout Proxy
 
@@ -91,20 +92,20 @@ graph LR
     Typha --> FelixN[Felix Node N]
 ```
 
-Typha is enabled automatically in large clusters. In small clusters (< 200 nodes), Felix connects directly to the API server.
+Operator installations deploy Typha automatically, and may run one or more Typha instances depending on cluster scale. In manifest-based installations, Typha is optional but strongly recommended for high-scale Kubernetes clusters (100+ nodes).
 
 ## The CNI Plugin
 
 The Calico CNI plugin is invoked by kubelet for each new pod. It:
 1. Calls Calico IPAM to allocate a pod IP
 2. Creates the veth pair and configures the pod's network namespace
-3. Notifies Felix via a socket that a new endpoint exists
+3. Creates the workload endpoint data that Felix watches, and can wait for Felix to report that policy has been programmed before the pod starts
 
 The CNI plugin runs as a binary on each node, not as a pod.
 
 ## Best Practices
 
-- Monitor all Calico components via Prometheus metrics - Felix, Typha, and BIRD each expose metrics
+- Monitor Calico components via Prometheus metrics where available - Felix, Typha, and kube-controllers expose metrics; monitor BIRD/BGP health with `calicoctl node status` or `birdcl`
 - Enable Typha when your cluster exceeds 100 nodes to reduce API server load
 - Set appropriate resource limits on calico-node pods - Felix and BIRD are sensitive to CPU and memory constraints during policy churn
 
