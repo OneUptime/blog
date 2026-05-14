@@ -20,7 +20,8 @@ Before starting, ensure you have:
 
 - A Kubernetes cluster (v1.25 or later)
 - Flux CD bootstrapped on the cluster
-- A service mesh installed (Istio or Linkerd)
+- A service mesh installed (Istio or Linkerd with the Linkerd SMI extension)
+- Gateway API v1.2 or later CRDs and a compatible Gateway controller if using HTTPRoute timeouts
 - Two versions of an application deployed (stable and canary)
 - kubectl access to the cluster
 
@@ -294,7 +295,7 @@ spec:
 
 ## Traffic Splitting with Linkerd and SMI
 
-Use the SMI TrafficSplit resource for Linkerd-based traffic splitting.
+Use the SMI TrafficSplit resource for Linkerd-based traffic splitting. Linkerd's SMI extension and TrafficSplit support are deprecated, so use this pattern only for clusters that still rely on SMI and plan to migrate to Linkerd dynamic request routing.
 
 ```yaml
 # apps/my-app/linkerd/traffic-split.yaml
@@ -428,7 +429,7 @@ Monitor traffic splitting changes with Flux alerts.
 
 ```yaml
 # infrastructure/notifications/traffic-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: traffic-split-alert
@@ -459,8 +460,9 @@ kubectl get trafficsplit my-app-split -n production -o yaml
 # Verify Flux reconciliation
 flux get kustomizations my-app-traffic-split
 
-# Monitor traffic distribution (Istio)
-kubectl exec -n production deploy/my-app-stable -- curl -s localhost:15000/stats | grep upstream_rq
+# Monitor traffic distribution from an Istio sidecar
+POD=$(kubectl get pod -n production -l app=my-app,version=stable -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n production "$POD" -c istio-proxy -- pilot-agent request GET stats | grep upstream_rq
 
 # Check Gateway API HTTPRoute
 kubectl get httproute my-app-route -n production -o yaml
