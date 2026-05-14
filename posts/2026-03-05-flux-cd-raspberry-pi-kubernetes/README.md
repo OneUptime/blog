@@ -46,7 +46,8 @@ Copy the kubeconfig to your workstation:
 
 ```bash
 # On your workstation, copy the kubeconfig
-scp pi@SERVER_IP:/etc/rancher/k3s/k3s.yaml ~/.kube/config-pi
+mkdir -p ~/.kube
+ssh pi@SERVER_IP 'sudo cat /etc/rancher/k3s/k3s.yaml' > ~/.kube/config-pi
 
 # Update the server address in the kubeconfig
 sed -i 's/127.0.0.1/SERVER_IP/' ~/.kube/config-pi
@@ -278,6 +279,7 @@ git push origin main
 
 # Trigger immediate reconciliation
 flux reconcile kustomization flux-system --with-source
+flux reconcile kustomization apps --with-source
 ```
 
 ## Step 8: Verify the Deployment
