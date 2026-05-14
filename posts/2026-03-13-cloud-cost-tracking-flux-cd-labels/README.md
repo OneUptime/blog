@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Cost, Kubernetes, Labels, FinOps, Cloud-cost, GitOps
 
-Description: Learn how to implement cloud cost tracking for Flux-managed workloads by automatically applying cost allocation labels to Kubernetes resources through Kustomization post-build patches.
+Description: Learn how to implement cloud cost tracking for Flux-managed workloads by automatically applying cost allocation labels to Kubernetes resources through Kustomization variable substitution and Kustomize patches.
 
 ---
 
 ## Introduction
 
-Cloud cost allocation in Kubernetes requires consistent labeling of workloads with team, environment, and service metadata. When deploying with Flux CD, you can enforce cost allocation labels automatically using Kustomization `postBuild` patches and variable substitution - ensuring every resource created by Flux carries the labels needed by your FinOps tooling (Kubecost, OpenCost, Cloud provider cost allocation).
+Cloud cost allocation in Kubernetes requires consistent labeling of workloads with team, environment, and service metadata. When deploying with Flux CD, you can enforce cost allocation labels automatically using Kustomization variable substitution and Kustomize patches - ensuring every resource created by Flux carries the labels needed by your FinOps tooling (Kubecost, OpenCost, Cloud provider cost allocation).
 
 Without systematic label enforcement, cost allocation becomes a manual, error-prone process. This guide shows how to build cost tracking into your Flux-managed GitOps pipeline so that labels are applied consistently at the GitOps layer, not by individual teams.
 
@@ -116,25 +116,29 @@ spec:
 
 ## Step 4: Enforce Cost Labels With Kustomize Patches
 
-For Helm-deployed workloads that don't have labels in their charts, use patches to add them.
+For generated or third-party manifests that don't have labels, use Flux Kustomization patches to add them.
 
 ```yaml
-# clusters/production/patches/add-cost-labels.yaml
-# Patch to add cost labels to ALL Deployments in the cluster
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: "*"
-  labels:
-    environment: ${ENVIRONMENT}
-    cost-center: ${COST_CENTER}
-    cluster: ${CLUSTER_NAME}
-spec:
-  template:
-    metadata:
-      labels:
-        environment: ${ENVIRONMENT}
-        cost-center: ${COST_CENTER}
+# Add this to the Kustomization spec to patch all Deployments
+# rendered by this Flux Kustomization.
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: not-used
+        labels:
+          environment: ${ENVIRONMENT}
+          cost-center: ${COST_CENTER}
+          cluster: ${CLUSTER_NAME}
+      spec:
+        template:
+          metadata:
+            labels:
+              environment: ${ENVIRONMENT}
+              cost-center: ${COST_CENTER}
+    target:
+      kind: Deployment
 ```
 
 ## Step 5: Validate Cost Label Coverage
@@ -161,9 +165,9 @@ kubectl get pods -A -l cost-center=CC-1001 --no-headers | wc -l
 - Define your cost label schema as part of your platform standards document before enabling it in Flux.
 - Store cost allocation ConfigMaps in `flux-system` namespace and reference them from all app Kustomizations.
 - Use `optional: false` for cost label ConfigMaps to fail fast if they're missing.
-- Enforce cost labels at the cluster level using patches for Helm-deployed workloads.
+- Enforce cost labels at the Kustomization level using `spec.patches` for workloads rendered by that Kustomization.
 - Integrate cost label audits into your CI pipeline to catch missing labels before they reach production.
 
 ## Conclusion
 
-Flux CD's variable substitution and postBuild patching capabilities make it straightforward to enforce consistent cost allocation labels across all managed workloads. By defining labels at the cluster level and substituting them into every Kustomization, you ensure your FinOps tooling receives the metadata it needs for accurate cost attribution.
+Flux CD's variable substitution and Kustomize patching capabilities make it straightforward to enforce consistent cost allocation labels across all managed workloads. By defining labels at the cluster level and substituting them into every Kustomization, you ensure your FinOps tooling receives the metadata it needs for accurate cost attribution.
