@@ -16,10 +16,11 @@ This guide covers setting up TLS secrets for various scenarios, from simple CA t
 
 ## Prerequisites
 
-- Flux CLI v2.0 or later installed
+- Flux CLI v2.6 or later installed
 - kubectl configured with cluster access
 - Flux installed on your Kubernetes cluster
 - TLS certificates and keys as needed
+- jq for the verification examples
 
 ```bash
 # Verify Flux installation
@@ -51,7 +52,7 @@ graph TD
 # Create a TLS secret with a custom CA certificate
 # This is used when your server uses a certificate signed by an internal CA
 flux create secret tls my-tls-secret \
-  --ca-file=./ca.crt \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 ```
 
@@ -60,9 +61,9 @@ flux create secret tls my-tls-secret \
 ```bash
 # Create a TLS secret with client certificate and key for mutual TLS
 flux create secret tls mtls-secret \
-  --cert-file=./client.crt \
-  --key-file=./client.key \
-  --ca-file=./ca.crt \
+  --tls-crt-file=./client.crt \
+  --tls-key-file=./client.key \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 ```
 
@@ -71,7 +72,7 @@ flux create secret tls mtls-secret \
 ```bash
 # When you only need to trust a custom CA without client authentication
 flux create secret tls custom-ca \
-  --ca-file=./internal-ca.crt \
+  --ca-crt-file=./internal-ca.crt \
   --namespace=flux-system
 ```
 
@@ -167,7 +168,7 @@ openssl x509 -req \
 ```bash
 # Create a TLS secret for a Git server with a self-signed certificate
 flux create secret tls git-tls \
-  --ca-file=./ca.crt \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 ```
 
@@ -184,10 +185,9 @@ spec:
   ref:
     branch: main
   secretRef:
-    # This secret contains Git credentials (username/password)
-    name: git-auth
-  certSecretRef:
-    # This secret contains the CA certificate for TLS verification
+    # This secret contains the CA certificate for TLS verification.
+    # If Git authentication is also required, include the credentials
+    # and TLS data in the same secretRef secret.
     name: git-tls
 ```
 
@@ -196,9 +196,9 @@ spec:
 ```bash
 # Create a TLS secret with client cert for mTLS with a Helm repository
 flux create secret tls helm-mtls \
-  --cert-file=./client.crt \
-  --key-file=./client.key \
-  --ca-file=./ca.crt \
+  --tls-crt-file=./client.crt \
+  --tls-key-file=./client.key \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 ```
 
@@ -221,7 +221,7 @@ spec:
 ```bash
 # Create a TLS secret for an internal OCI registry with a custom CA
 flux create secret tls oci-tls \
-  --ca-file=./internal-ca.crt \
+  --ca-crt-file=./internal-ca.crt \
   --namespace=flux-system
 ```
 
@@ -243,13 +243,12 @@ spec:
     name: oci-auth
 ```
 
-### Notification Controller Webhooks
+### Notification Controller Providers
 
 ```bash
-# Create a TLS secret for webhook receivers that use self-signed certs
+# Create a TLS secret for notification providers that call endpoints using self-signed certs
 flux create secret tls webhook-tls \
-  --cert-file=./webhook-server.crt \
-  --key-file=./webhook-server.key \
+  --ca-crt-file=./webhook-ca.crt \
   --namespace=flux-system
 ```
 
@@ -258,15 +257,15 @@ flux create secret tls webhook-tls \
 ```bash
 # Export the TLS secret as YAML for declarative management
 flux create secret tls git-tls \
-  --ca-file=./ca.crt \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system \
   --export > tls-secret.yaml
 
 # Export mTLS secret
 flux create secret tls mtls-secret \
-  --cert-file=./client.crt \
-  --key-file=./client.key \
-  --ca-file=./ca.crt \
+  --tls-crt-file=./client.crt \
+  --tls-key-file=./client.key \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system \
   --export > mtls-secret.yaml
 
@@ -284,15 +283,15 @@ sops --encrypt --in-place mtls-secret.yaml
 # Generate new certificates first, then update the secret
 
 flux create secret tls git-tls \
-  --ca-file=./new-ca.crt \
+  --ca-crt-file=./new-ca.crt \
   --namespace=flux-system \
   --export | kubectl apply -f -
 
 # For mTLS, update both client cert and CA
 flux create secret tls mtls-secret \
-  --cert-file=./new-client.crt \
-  --key-file=./new-client.key \
-  --ca-file=./new-ca.crt \
+  --tls-crt-file=./new-client.crt \
+  --tls-key-file=./new-client.key \
+  --ca-crt-file=./new-ca.crt \
   --namespace=flux-system \
   --export | kubectl apply -f -
 
@@ -326,23 +325,18 @@ spec:
 ## Combining TLS with Other Secrets
 
 ```bash
-# Many scenarios require both authentication and TLS secrets
+# Many scenarios require both authentication and TLS data
 
-# Step 1: Create the auth secret for Git credentials
+# Step 1: Create one Git secret with credentials and the CA certificate
 flux create secret git git-auth \
   --url=https://git.internal.company.com/myorg/myrepo \
   --username=deploy \
   --password=${GIT_TOKEN} \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 
-# Step 2: Create the TLS secret for certificate trust
-flux create secret tls git-tls \
-  --ca-file=./ca.crt \
-  --namespace=flux-system
-
-# Step 3: Reference both in the GitRepository
-# The secretRef provides authentication
-# The certSecretRef provides TLS configuration
+# Step 2: Reference the secret in the GitRepository
+# The secretRef provides authentication and TLS configuration for GitRepository
 ```
 
 ## Verifying TLS Configuration
@@ -379,8 +373,8 @@ openssl verify -CAfile server-trusted-ca.crt client.crt
 
 # Error: "tls: private key does not match public key"
 # The private key does not match the certificate
-openssl x509 -noout -modulus -in client.crt | md5
-openssl rsa -noout -modulus -in client.key | md5
+openssl x509 -noout -modulus -in client.crt | openssl md5
+openssl rsa -noout -modulus -in client.key | openssl md5
 # Both hashes should match
 
 # Check the GitRepository or HelmRepository for TLS errors
@@ -391,7 +385,7 @@ flux get sources git
 ## Best Practices
 
 1. **Use cert-manager** for automated certificate lifecycle management when possible.
-2. **Separate CA and client certificates** into different secrets if they have different rotation schedules.
+2. **Separate TLS data from other credentials** when the Flux API supports separate references, and keep them together when a resource uses a single `secretRef`.
 3. **Monitor certificate expiration** and set up alerts before certificates expire.
 4. **Use ECDSA keys** instead of RSA for better performance and shorter key lengths.
 5. **Store CA certificates securely** and limit access to private keys.

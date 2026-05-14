@@ -18,7 +18,7 @@ This guide walks you through practical usage of `flux debug helmrelease` with re
 
 Before you begin, ensure you have:
 
-- Flux CLI v2.2.0 or later
+- Flux CLI v2.5.0 or later
 - A running Kubernetes cluster with Flux CD installed
 - At least one HelmRelease deployed in your cluster
 
@@ -52,17 +52,17 @@ graph TD
 
 ## Basic Usage of flux debug helmrelease
 
-The `flux debug helmrelease` command outputs the computed values that Flux will pass to Helm during installation or upgrade:
+The `flux debug helmrelease` command can output the computed values that Flux will pass to Helm during installation or upgrade when you use `--show-values`:
 
 ```bash
 # Debug a HelmRelease in the default namespace
-flux debug helmrelease my-app
+flux debug helmrelease my-app --show-values
 
 # Debug a HelmRelease in a specific namespace
-flux debug helmrelease my-app --namespace=production
+flux debug helmrelease my-app --namespace=production --show-values
 
 # Output the computed values to a file for inspection
-flux debug helmrelease my-app --namespace=production > computed-values.yaml
+flux debug helmrelease my-app --namespace=production --show-values > computed-values.yaml
 ```
 
 ## Inspecting Computed Values
@@ -71,7 +71,7 @@ One of the most common issues with HelmReleases is incorrect or unexpected value
 
 ```bash
 # View the full computed values
-flux debug helmrelease nginx-ingress --namespace=ingress-system
+flux debug helmrelease nginx-ingress --namespace=ingress-system --show-values
 ```
 
 Example output:
@@ -117,6 +117,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: my-charts
+        namespace: flux-system
   # Base values defined inline
   values:
     replicaCount: 2
@@ -135,20 +136,20 @@ spec:
 
 ```bash
 # Debug to see the merged values from all sources
-flux debug helmrelease my-app --namespace=production
+flux debug helmrelease my-app --namespace=production --show-values
 
 # Compare with the inline values to identify what valuesFrom added
-flux debug helmrelease my-app --namespace=production | \
+flux debug helmrelease my-app --namespace=production --show-values | \
   diff - <(kubectl get helmrelease my-app -n production \
     -o jsonpath='{.spec.values}' | yq eval -P -)
 ```
 
 ## Debugging with Show Values Flag
 
-You can control what information the debug command outputs:
+You can control what information the debug command outputs. The command requires exactly one output flag:
 
 ```bash
-# Show only the computed values (default behavior)
+# Show the computed values
 flux debug helmrelease my-app --show-values
 
 # Show detailed information about the HelmRelease status
@@ -166,10 +167,10 @@ When Flux cannot fetch the Helm chart:
 flux get helmrelease my-app -n production
 
 # Check the associated HelmChart
-flux get sources chart -n production
+flux get sources chart -n flux-system
 
 # Debug the helmrelease for clues
-flux debug helmrelease my-app -n production
+flux debug helmrelease my-app -n production --show-status
 
 # Verify the HelmRepository is accessible
 flux get sources helm --all-namespaces
@@ -184,7 +185,7 @@ When values from different sources conflict:
 
 ```bash
 # Step 1: See the final computed values
-flux debug helmrelease my-app -n production > /tmp/computed.yaml
+flux debug helmrelease my-app -n production --show-values > /tmp/computed.yaml
 
 # Step 2: Check the inline values
 kubectl get helmrelease my-app -n production \
@@ -199,7 +200,7 @@ kubectl get secret my-app-secrets -n production \
   -o jsonpath='{.data.secrets\.yaml}' | base64 -d > /tmp/secret.yaml
 
 # Step 5: Compare to understand merge order
-# Values are merged in order: inline < valuesFrom (in order listed)
+# Values are merged in order: valuesFrom (in order listed) < inline values
 diff /tmp/inline.yaml /tmp/computed.yaml
 ```
 
@@ -213,10 +214,10 @@ kubectl get helmrelease my-app -n production \
   -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}'
 
 # Debug the values to identify template input issues
-flux debug helmrelease my-app -n production
+flux debug helmrelease my-app -n production --show-values
 
 # Try rendering the chart locally with the same values
-flux debug helmrelease my-app -n production > /tmp/debug-values.yaml
+flux debug helmrelease my-app -n production --show-values > /tmp/debug-values.yaml
 
 # Pull the chart and test rendering locally
 helm pull my-charts/my-app --version 2.1.0 --untar
@@ -232,7 +233,7 @@ When the Helm upgrade operation fails:
 kubectl describe helmrelease my-app -n production
 
 # Debug to verify values are correct
-flux debug helmrelease my-app -n production
+flux debug helmrelease my-app -n production --show-values
 
 # Check the Helm history for the release
 helm history my-app -n production
@@ -248,7 +249,7 @@ When the release installs but health checks fail:
 
 ```bash
 # Debug the helmrelease to check timeout and health check config
-flux debug helmrelease my-app -n production
+flux debug helmrelease my-app -n production --show-status
 
 # Check what resources are not ready
 kubectl get pods -n production -l app.kubernetes.io/name=my-app
@@ -266,7 +267,7 @@ A powerful workflow is to use the debug output for local Helm testing:
 
 ```bash
 # Export computed values
-flux debug helmrelease my-app -n production > computed-values.yaml
+flux debug helmrelease my-app -n production --show-values > computed-values.yaml
 
 # Add the Helm repository locally
 helm repo add my-charts https://charts.example.com
@@ -305,7 +306,7 @@ for release in $RELEASES; do
   echo "Debugging HelmRelease: $NAMESPACE/$NAME"
 
   # Run debug and capture output
-  OUTPUT=$(flux debug helmrelease "$NAME" -n "$NAMESPACE" 2>&1)
+  OUTPUT=$(flux debug helmrelease "$NAME" -n "$NAMESPACE" --show-values 2>&1)
   EXIT_CODE=$?
 
   if [ $EXIT_CODE -ne 0 ]; then
@@ -338,10 +339,10 @@ flux get helmrelease my-app -n production
 
 echo "=== Source Status ==="
 flux get sources helm -n flux-system
-flux get sources chart -n production
+flux get sources chart -n flux-system
 
 echo "=== Computed Values ==="
-flux debug helmrelease my-app -n production
+flux debug helmrelease my-app -n production --show-values
 
 echo "=== Events ==="
 flux events --for HelmRelease/my-app -n production
@@ -355,7 +356,7 @@ kubectl logs -n flux-system deployment/helm-controller \
 
 1. **Debug before applying changes** - Export and review computed values before deploying new value overrides.
 2. **Use debug output for local testing** - Always test Helm template rendering locally with the exact computed values.
-3. **Check value merge order** - Remember that `valuesFrom` entries are merged in order, with later entries taking precedence.
+3. **Check value merge order** - Remember that `valuesFrom` entries are merged in order, with later entries taking precedence, and inline `spec.values` overrides those merged values.
 4. **Monitor controller logs** - The helm-controller logs provide the most detailed error information.
 5. **Version pin your charts** - Always specify chart versions to avoid unexpected changes during debugging.
 6. **Save debug output** - When troubleshooting, save debug output to files for comparison over time.
