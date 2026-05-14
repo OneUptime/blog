@@ -18,7 +18,7 @@ This guide shows how to build a complete automation pipeline that handles image 
 
 ## Prerequisites
 
-- Calico installed via the Tigera Operator (v3.25+)
+- Calico installed via the Tigera Operator (v3.25+), with the Installation resource configured to use your private registry or image path
 - CI/CD platform (GitHub Actions, GitLab CI, or Jenkins)
 - `crane` CLI available in your CI runner
 - Private container registry with push access
@@ -45,26 +45,30 @@ flowchart TD
 
 set -euo pipefail
 
-CALICO_VERSION="${1:-v3.27.0}"
+CALICO_VERSION="${1:-v3.32.0}"
+OPERATOR_IMAGE="${OPERATOR_IMAGE:-quay.io/tigera/operator:v1.42.0}"
 REGISTRY="${REGISTRY:-registry.internal.example.com/calico}"
 
 IMAGES=(
-  "docker.io/calico/cni"
-  "docker.io/calico/node"
-  "docker.io/calico/kube-controllers"
-  "docker.io/calico/typha"
-  "docker.io/calico/pod2daemon-flexvol"
-  "docker.io/calico/apiserver"
-  "quay.io/tigera/operator"
+  "quay.io/calico/cni|calico/cni|${CALICO_VERSION}"
+  "quay.io/calico/node|calico/node|${CALICO_VERSION}"
+  "quay.io/calico/kube-controllers|calico/kube-controllers|${CALICO_VERSION}"
+  "quay.io/calico/typha|calico/typha|${CALICO_VERSION}"
+  "quay.io/calico/pod2daemon-flexvol|calico/pod2daemon-flexvol|${CALICO_VERSION}"
+  "quay.io/calico/apiserver|calico/apiserver|${CALICO_VERSION}"
+  "quay.io/calico/node-windows|calico/node-windows|${CALICO_VERSION}"
+  "quay.io/calico/key-cert-provisioner|calico/key-cert-provisioner|${CALICO_VERSION}"
+  "${OPERATOR_IMAGE%:*}|tigera/operator|${OPERATOR_IMAGE##*:}"
 )
 
 DIGEST_FILE="imageset-digests.env"
 > "${DIGEST_FILE}"
 
-for src_image in "${IMAGES[@]}"; do
-  image_name=$(basename "${src_image}")
-  src="${src_image}:${CALICO_VERSION}"
-  dest="${REGISTRY}/${image_name}:${CALICO_VERSION}"
+for entry in "${IMAGES[@]}"; do
+  IFS="|" read -r src_image imageset_image image_tag <<< "${entry}"
+  image_name=$(basename "${imageset_image}")
+  src="${src_image}:${image_tag}"
+  dest="${REGISTRY}/${image_name}:${image_tag}"
 
   echo "Mirroring ${src} -> ${dest}"
   crane copy "${src}" "${dest}"
@@ -72,6 +76,7 @@ for src_image in "${IMAGES[@]}"; do
   digest=$(crane digest "${dest}")
   var_name="${image_name//-/_}"
   echo "${var_name}=${digest}" >> "${DIGEST_FILE}"
+  echo "${var_name}_image=${imageset_image}" >> "${DIGEST_FILE}"
   echo "  Digest: ${digest}"
 done
 
@@ -85,7 +90,7 @@ echo "Mirroring complete. Digests saved to ${DIGEST_FILE}"
 # generate-imageset.sh
 set -euo pipefail
 
-CALICO_VERSION="${1:-v3.27.0}"
+CALICO_VERSION="${1:-v3.32.0}"
 source imageset-digests.env
 
 cat > "calico-imageset-${CALICO_VERSION}.yaml" <<EOF
@@ -95,19 +100,23 @@ metadata:
   name: calico-${CALICO_VERSION}
 spec:
   images:
-    - image: "calico/cni"
+    - image: "${cni_image}"
       digest: "${cni}"
-    - image: "calico/node"
+    - image: "${node_image}"
       digest: "${node}"
-    - image: "calico/kube-controllers"
+    - image: "${kube_controllers_image}"
       digest: "${kube_controllers}"
-    - image: "calico/typha"
+    - image: "${typha_image}"
       digest: "${typha}"
-    - image: "calico/pod2daemon-flexvol"
+    - image: "${pod2daemon_flexvol_image}"
       digest: "${pod2daemon_flexvol}"
-    - image: "calico/apiserver"
+    - image: "${apiserver_image}"
       digest: "${apiserver}"
-    - image: "tigera/operator"
+    - image: "${node_windows_image}"
+      digest: "${node_windows}"
+    - image: "${key_cert_provisioner_image}"
+      digest: "${key_cert_provisioner}"
+    - image: "${operator_image}"
       digest: "${operator}"
 EOF
 
@@ -128,13 +137,19 @@ on:
       calico_version:
         description: 'Calico version to mirror'
         required: true
-        default: 'v3.27.0'
+        default: 'v3.32.0'
+      operator_image:
+        description: 'Tigera operator image for this Calico release'
+        required: true
+        default: 'quay.io/tigera/operator:v1.42.0'
 
 jobs:
   mirror-and-generate:
     runs-on: ubuntu-latest
     env:
       REGISTRY: ${{ secrets.REGISTRY_URL }}
+      CALICO_VERSION: ${{ inputs.calico_version || 'v3.32.0' }}
+      OPERATOR_IMAGE: ${{ inputs.operator_image || 'quay.io/tigera/operator:v1.42.0' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -151,19 +166,19 @@ jobs:
       - name: Mirror images
         run: |
           chmod +x mirror-calico-images.sh
-          ./mirror-calico-images.sh "${{ github.event.inputs.calico_version }}"
+          ./mirror-calico-images.sh "${CALICO_VERSION}"
 
       - name: Generate ImageSet
         run: |
           chmod +x generate-imageset.sh
-          ./generate-imageset.sh "${{ github.event.inputs.calico_version }}"
+          ./generate-imageset.sh "${CALICO_VERSION}"
 
       - name: Commit and push
         run: |
           git config user.email "ci@example.com"
           git config user.name "CI Bot"
           git add "calico-imageset-*.yaml"
-          git commit -m "chore: sync Calico ImageSet ${{ github.event.inputs.calico_version }}"
+          git commit -m "chore: sync Calico ImageSet ${CALICO_VERSION}"
           git push
 ```
 
@@ -189,10 +204,10 @@ spec:
 
 ```bash
 # Check the active ImageSet after automation runs
-kubectl get imageset -o wide
+kubectl get imagesets.operator.tigera.io -o wide
 
 # Verify operator used the new ImageSet
-kubectl describe installation default | grep -A5 "Image"
+kubectl get installation default -o yaml | grep imageSet
 
 # Check pod image sources
 kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}'
