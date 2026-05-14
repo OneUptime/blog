@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Image Automation, ImageUpdateAutomation, Path Filtering
 
-Description: Learn how to configure include and exclude paths in Flux ImageUpdateAutomation to control which files are updated during automated image updates.
+Description: Learn how to use Flux ImageUpdateAutomation update paths to control which files are updated during automated image updates.
 
 ---
 
-Flux image automation can automatically update container image references in your Git repository when new images are detected. However, in repositories with many manifests, you may want to restrict which files Flux modifies. The ImageUpdateAutomation resource supports include and exclude path configurations that give you fine-grained control over which directories and files are eligible for image updates. In this post, we will explore how to set up these path filters effectively.
+Flux image automation can automatically update container image references in your Git repository when new images are detected. However, in repositories with many manifests, you may want to restrict which files Flux modifies. The ImageUpdateAutomation resource supports an update path that gives you control over which directory is eligible for image updates. In this post, we will explore how to set up these path filters effectively.
 
 ## Why Path Filtering Matters
 
@@ -49,7 +49,7 @@ The `update.path` field defines the root directory that Flux will scan for image
 
 ## Configuring Include Paths
 
-To restrict image updates to specific subdirectories or files, you can use the `update.path` field in combination with multiple ImageUpdateAutomation resources. Each resource targets a different path:
+To restrict image updates to specific subdirectories, you can use the `update.path` field in combination with multiple ImageUpdateAutomation resources. Each resource targets a different path:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
