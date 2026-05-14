@@ -34,10 +34,10 @@ Example output:
 
 ```yaml
 flux: v2.4.0
-helm-controller: v0.37.4
-kustomize-controller: v1.2.2
-notification-controller: v1.2.4
-source-controller: v1.2.4
+helm-controller: v1.1.0
+kustomize-controller: v1.4.0
+notification-controller: v1.4.0
+source-controller: v1.4.1
 ```
 
 This shows the Flux CLI version on the first line, followed by each controller version deployed in the cluster.
@@ -73,10 +73,10 @@ Output:
 ```json
 {
   "flux": "v2.4.0",
-  "helm-controller": "v0.37.4",
-  "kustomize-controller": "v1.2.2",
-  "notification-controller": "v1.2.4",
-  "source-controller": "v1.2.4"
+  "helm-controller": "v1.1.0",
+  "kustomize-controller": "v1.4.0",
+  "notification-controller": "v1.4.0",
+  "source-controller": "v1.4.1"
 }
 ```
 
@@ -85,7 +85,7 @@ Output:
 ```bash
 # Extract a specific component version using jq
 flux version -o json | jq -r '.["source-controller"]'
-# Output: v1.2.4
+# Output: v1.4.1
 
 # Get the CLI version
 flux version -o json | jq -r '.flux'
@@ -106,15 +106,14 @@ Version mismatches between the CLI and controllers can cause unexpected behavior
 
 set -euo pipefail
 
-# Get version info as JSON
+# Get version info from the cluster as JSON
 VERSION_JSON=$(flux version -o json 2>/dev/null)
 
-# Extract CLI version
+# Extract CLI version and render the component versions expected for that Flux release
 CLI_VERSION=$(echo "${VERSION_JSON}" | jq -r '.flux')
-CLI_MINOR=$(echo "${CLI_VERSION}" | sed 's/v//' | cut -d. -f1-2)
+EXPECTED_MANIFESTS=$(flux install --version="${CLI_VERSION}" --export)
 
 echo "Flux CLI version: ${CLI_VERSION}"
-echo "CLI minor version: ${CLI_MINOR}"
 echo ""
 
 # Check each controller
@@ -122,20 +121,24 @@ MISMATCH_FOUND=false
 
 for COMPONENT in helm-controller kustomize-controller notification-controller source-controller; do
   COMP_VERSION=$(echo "${VERSION_JSON}" | jq -r --arg c "${COMPONENT}" '.[$c] // "not found"')
+  EXPECTED_VERSION=$(echo "${EXPECTED_MANIFESTS}" | awk -F: -v c="${COMPONENT}" '$0 ~ "image: .*/" c ":" {print $NF; exit}')
 
   if [ "${COMP_VERSION}" = "not found" ]; then
     echo "WARNING: ${COMPONENT} is not deployed"
     MISMATCH_FOUND=true
+  elif [ "${COMP_VERSION}" != "${EXPECTED_VERSION}" ]; then
+    echo "WARNING: ${COMPONENT} is ${COMP_VERSION}, expected ${EXPECTED_VERSION}"
+    MISMATCH_FOUND=true
   else
-    echo "${COMPONENT}: ${COMP_VERSION}"
+    echo "${COMPONENT}: ${COMP_VERSION} (matches ${CLI_VERSION})"
   fi
 done
 
 echo ""
 if [ "${MISMATCH_FOUND}" = true ]; then
-  echo "Version mismatches detected. Consider upgrading."
+  echo "Version mismatches detected. Consider upgrading the cluster components."
 else
-  echo "All components are present."
+  echo "All checked components match the Flux CLI release."
 fi
 ```
 
@@ -162,7 +165,7 @@ if [ "${CURRENT}" = "${LATEST}" ]; then
 else
   echo "An update is available."
   echo "Upgrade CLI: curl -s https://fluxcd.io/install.sh | sudo bash"
-  echo "Upgrade cluster: flux install"
+  echo "Upgrade cluster: rerun bootstrap or update gotk-components.yaml with flux install --export"
 fi
 ```
 
@@ -245,12 +248,12 @@ flux version
 
 # Expected output with optional components:
 # flux: v2.4.0
-# helm-controller: v0.37.4
-# image-automation-controller: v0.37.1
-# image-reflector-controller: v0.31.2
-# kustomize-controller: v1.2.2
-# notification-controller: v1.2.4
-# source-controller: v1.2.4
+# helm-controller: v1.1.0
+# image-automation-controller: v0.39.0
+# image-reflector-controller: v0.33.0
+# kustomize-controller: v1.4.0
+# notification-controller: v1.4.0
+# source-controller: v1.4.1
 ```
 
 ## Checking CRD Versions
@@ -265,7 +268,7 @@ kubectl get crds -o custom-columns=NAME:.metadata.name,VERSION:.spec.versions[*]
 # Check a specific CRD version
 kubectl get crd gitrepositories.source.toolkit.fluxcd.io \
   -o jsonpath='{.spec.versions[*].name}'
-# Output: v1 v1beta2
+# Output: v1 v1beta1 v1beta2
 ```
 
 ## Upgrading Based on Version Information
@@ -289,7 +292,13 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 # Step 4: Verify the new CLI version
 flux version --client
 
-# Step 5: Upgrade cluster components
+# Step 5: Upgrade cluster components managed in Git
+flux install --export > ./clusters/my-cluster/flux-system/gotk-components.yaml
+git add ./clusters/my-cluster/flux-system/gotk-components.yaml
+git commit -m "Update Flux components"
+git push
+
+# If Flux was installed directly instead of bootstrapped, apply the manifests directly
 flux install
 
 # Step 6: Verify the upgrade
