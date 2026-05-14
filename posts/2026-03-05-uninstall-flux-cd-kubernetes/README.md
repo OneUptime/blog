@@ -31,16 +31,16 @@ Before uninstalling, it helps to understand what Flux CD creates in your cluster
 Before uninstalling, suspend all Flux resources to prevent reconciliation loops during the teardown.
 
 ```bash
-# Suspend all Kustomizations across all namespaces
-
-flux suspend kustomization --all -A
-
-# Suspend all HelmReleases across all namespaces
-flux suspend helmrelease --all -A
-
-# Suspend all source resources
-flux suspend source git --all -A
-flux suspend source helm --all -A
+# Suspend Flux resources in every namespace
+for namespace in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
+  flux suspend kustomization --all --namespace "$namespace"
+  flux suspend helmrelease --all --namespace "$namespace"
+  flux suspend source git --all --namespace "$namespace"
+  flux suspend source helm --all --namespace "$namespace"
+  flux suspend source chart --all --namespace "$namespace"
+  flux suspend source bucket --all --namespace "$namespace"
+  flux suspend source oci --all --namespace "$namespace"
+done
 ```
 
 This prevents Flux from re-creating resources as you remove them.
@@ -134,17 +134,9 @@ If the `flux uninstall` command did not remove all CRDs, you can delete them man
 # List all Flux-related CRDs
 kubectl get crds | grep -E "fluxcd|toolkit.fluxcd"
 
-# Delete each CRD individually
-kubectl delete crd gitrepositories.source.toolkit.fluxcd.io
-kubectl delete crd kustomizations.kustomize.toolkit.fluxcd.io
-kubectl delete crd helmreleases.helm.toolkit.fluxcd.io
-kubectl delete crd helmrepositories.source.toolkit.fluxcd.io
-kubectl delete crd helmcharts.source.toolkit.fluxcd.io
-kubectl delete crd buckets.source.toolkit.fluxcd.io
-kubectl delete crd ocirepositories.source.toolkit.fluxcd.io
-kubectl delete crd receivers.notification.toolkit.fluxcd.io
-kubectl delete crd alerts.notification.toolkit.fluxcd.io
-kubectl delete crd providers.notification.toolkit.fluxcd.io
+# Delete all Flux CRDs
+kubectl get crds | grep "toolkit.fluxcd.io" | awk '{print $1}' | \
+  while read -r crd; do kubectl delete crd "$crd"; done
 ```
 
 ## Cleaning Up the Git Repository
@@ -162,26 +154,19 @@ git push origin main
 
 ## Uninstall Without the Flux CLI
 
-If you do not have the Flux CLI available, you can uninstall using `kubectl` directly.
+If you do not have the Flux CLI available, you can do a manual cleanup using `kubectl` directly. This is a fallback procedure; the Flux project supports uninstalling controllers with the Flux CLI.
 
 ```bash
 # Delete all Flux custom resources first
-kubectl delete helmreleases.helm.toolkit.fluxcd.io --all -A
-kubectl delete kustomizations.kustomize.toolkit.fluxcd.io --all -A
-kubectl delete gitrepositories.source.toolkit.fluxcd.io --all -A
-kubectl delete helmrepositories.source.toolkit.fluxcd.io --all -A
-kubectl delete helmcharts.source.toolkit.fluxcd.io --all -A
-kubectl delete buckets.source.toolkit.fluxcd.io --all -A
-kubectl delete ocirepositories.source.toolkit.fluxcd.io --all -A
-kubectl delete alerts.notification.toolkit.fluxcd.io --all -A
-kubectl delete providers.notification.toolkit.fluxcd.io --all -A
-kubectl delete receivers.notification.toolkit.fluxcd.io --all -A
+kubectl api-resources --verbs=list --namespaced -o name | grep "toolkit.fluxcd.io" | \
+  while read -r resource; do kubectl delete "$resource" --all -A; done
 
 # Delete the flux-system namespace
 kubectl delete namespace flux-system
 
 # Remove all Flux CRDs
-kubectl get crds | grep toolkit.fluxcd.io | awk '{print $1}' | xargs kubectl delete crd
+kubectl get crds | grep "toolkit.fluxcd.io" | awk '{print $1}' | \
+  while read -r crd; do kubectl delete crd "$crd"; done
 
 # Remove Flux cluster roles and bindings
 kubectl get clusterroles | grep flux | awk '{print $1}' | xargs kubectl delete clusterrole
