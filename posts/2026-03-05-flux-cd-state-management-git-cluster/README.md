@@ -42,20 +42,20 @@ Flux tracks which resources belong to each Kustomization through an inventory st
 kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.entries}' | jq .
 ```
 
-The output shows each managed resource with its group, kind, namespace, name, and version:
+The output shows each managed resource with its namespace, name, group, kind, and version:
 
 ```json
 [
   {
-    "id": "_default_Deployment_apps_my-app",
+    "id": "default_my-app_apps_Deployment",
     "v": "v1"
   },
   {
-    "id": "_default_Service__my-app",
+    "id": "default_my-app__Service",
     "v": "v1"
   },
   {
-    "id": "_default_ConfigMap__my-app-config",
+    "id": "default_my-app-config__ConfigMap",
     "v": "v1"
   }
 ]
@@ -64,7 +64,7 @@ The output shows each managed resource with its group, kind, namespace, name, an
 The inventory serves several purposes:
 
 - **Pruning**: When a resource is removed from Git, Flux checks the inventory to find resources that should no longer exist and deletes them
-- **Ownership**: The inventory establishes which Kustomization owns which resources, preventing conflicts between multiple Kustomizations
+- **Ownership visibility**: The inventory, together with the owner labels Flux sets on applied objects, shows which Kustomization manages which resources
 - **Drift detection**: Flux uses the inventory to know which resources to check for drift during each reconciliation
 
 ## Source Artifact Management
@@ -100,7 +100,7 @@ The controller uses server-side apply, which means it only manages the fields th
 
 ## The Role of Field Managers
 
-Kubernetes server-side apply tracks which manager owns which fields in a resource. Flux's kustomize-controller uses a field manager name based on the Kustomization resource. This means:
+Kubernetes server-side apply tracks which manager owns which fields in a resource. Flux's kustomize-controller applies resources with its controller field manager and labels the objects with the owning Kustomization name and namespace. This means:
 
 - Fields set by Flux are owned by Flux and will be corrected if modified externally
 - Fields set by other controllers (HPA, admission webhooks) are owned by those controllers and left untouched
@@ -154,7 +154,7 @@ When `lastAppliedRevision` matches `lastAttemptedRevision` and the `Ready` condi
 
 ## Handling Conflicts Between Kustomizations
 
-If two Kustomizations try to manage the same resource, Flux detects the conflict through field ownership. The second Kustomization to apply will see a conflict error:
+If two Kustomizations try to manage the same resource, Flux can surface ownership or server-side apply conflicts depending on the fields involved and the existing managed fields. The Kustomization status and controller logs will show the apply error, for example:
 
 ```text
 Apply failed: conflict with "kustomize-controller" using apps/v1
