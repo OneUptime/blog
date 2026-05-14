@@ -52,10 +52,12 @@ k8s-manifests/
       overlays/
         staging/
           kustomization.yaml
+          namespace.yaml
           patches/
             deployment-patch.yaml
         production/
           kustomization.yaml
+          namespace.yaml
           patches/
             deployment-patch.yaml
   clusters/
@@ -296,7 +298,6 @@ spec:
     name: k8s-manifests
   path: ./apps/myapp/overlays/staging
   prune: true
-  wait: true
   timeout: 5m
   # Health checks gate the promotion process
   healthChecks:
@@ -325,16 +326,11 @@ spec:
     name: k8s-manifests
   path: ./apps/myapp/overlays/production
   prune: true
-  wait: true
   timeout: 10m
   # Strict health checks for production
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: myapp
-      namespace: myapp-production
-    - apiVersion: autoscaling/v2
-      kind: HorizontalPodAutoscaler
       name: myapp
       namespace: myapp-production
 ```
@@ -350,23 +346,24 @@ name: Promote Staging to Production
 on:
   # Trigger manually or on successful staging deployment
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Image tag to promote"
-        required: true
   # Also trigger when staging overlay changes on main
   push:
     branches: [main]
     paths:
       - "apps/myapp/overlays/staging/kustomization.yaml"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   check-staging-health:
     runs-on: ubuntu-latest
     steps:
       - name: Check staging deployment health
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v5
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.STAGING_KUBECONFIG }}
 
       - name: Verify staging is healthy
@@ -388,7 +385,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout manifests
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get staging image tag
         id: get-tag
@@ -405,7 +402,7 @@ jobs:
           sed -i "s/newTag: .*/newTag: ${TAG}/" apps/myapp/overlays/production/kustomization.yaml
 
       - name: Create promotion pull request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "promote: update production to ${{ steps.get-tag.outputs.tag }}"
@@ -426,7 +423,7 @@ jobs:
           labels: |
             promotion
             production
-          reviewers: |
+          team-reviewers: |
             team-leads
 ```
 
@@ -439,20 +436,31 @@ Configure GitHub branch protection to require reviews for changes to the product
 # Require at least 2 reviewers for production changes
 gh api repos/myorg/k8s-manifests/rulesets \
   --method POST \
-  --field name="production-protection" \
-  --field target="branch" \
-  --field enforcement="active" \
-  -f conditions='{"ref_name":{"include":["refs/heads/main"]}}' \
-  -f rules='[
+  --input - <<'EOF'
+{
+  "name": "production-protection",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main"],
+      "exclude": []
+    }
+  },
+  "rules": [
     {
       "type": "pull_request",
       "parameters": {
         "required_approving_review_count": 2,
         "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_reviews": true
+        "require_code_owner_review": true,
+        "require_last_push_approval": true,
+        "required_review_thread_resolution": true
       }
     }
-  ]'
+  ]
+}
+EOF
 ```
 
 Add a CODEOWNERS file to require specific team members to approve production changes:
@@ -470,7 +478,7 @@ Configure Flux notifications to alert the team on deployment status.
 
 ```yaml
 # clusters/production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -481,7 +489,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-alerts
@@ -494,7 +502,8 @@ spec:
     - kind: Kustomization
       name: myapp-production
   # Include summary in the notification
-  summary: "Production deployment status update"
+  eventMetadata:
+    summary: "Production deployment status update"
 ```
 
 ## Step 10: Verify the Promotion Workflow
