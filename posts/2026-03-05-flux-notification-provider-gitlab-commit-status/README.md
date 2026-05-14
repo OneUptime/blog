@@ -43,7 +43,7 @@ Define a Provider resource for GitLab commit status updates.
 ```yaml
 # provider-gitlab-commit-status.yaml
 # Configures Flux to update GitLab commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitlab-status-provider
@@ -51,8 +51,8 @@ metadata:
 spec:
   # Use "gitlab" as the provider type for commit status updates
   type: gitlab
-  # The GitLab project address
-  address: https://gitlab.com/YOUR_GROUP/YOUR_PROJECT
+  # The GitLab project address using the project ID
+  address: https://gitlab.com/YOUR_PROJECT_ID
   # Reference to the secret containing the GitLab token
   secretRef:
     name: gitlab-token
@@ -61,7 +61,7 @@ spec:
 For self-hosted GitLab instances, update the address accordingly:
 
 ```yaml
-  address: https://gitlab.your-company.com/YOUR_GROUP/YOUR_PROJECT
+  address: https://gitlab.your-company.com/YOUR_PROJECT_ID
 ```
 
 Apply the Provider:
@@ -78,7 +78,7 @@ Create an Alert that triggers commit status updates.
 ```yaml
 # alert-gitlab-commit-status.yaml
 # Updates GitLab commit statuses based on Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gitlab-status-alert
@@ -90,8 +90,6 @@ spec:
   eventSeverity: info
   eventSources:
     - kind: Kustomization
-      name: "*"
-    - kind: HelmRelease
       name: "*"
 ```
 
@@ -121,7 +119,7 @@ Trigger a reconciliation:
 flux reconcile kustomization flux-system --with-source
 ```
 
-Navigate to your GitLab project and check the latest commit. You should see a pipeline status or external status from Flux.
+Navigate to your GitLab project and check the commit reconciled by the Flux `Kustomization`. You should see a pipeline status or external status from Flux.
 
 ## How It Works
 
@@ -129,13 +127,13 @@ Navigate to your GitLab project and check the latest commit. You should see a pi
 graph LR
     A[Git Push] --> B[GitLab Repository]
     B -->|detected by| C[Flux Source Controller]
-    C -->|triggers| D[Flux Kustomize/Helm Controller]
+    C -->|triggers| D[Flux Kustomize Controller]
     D -->|emits event| E[Notification Controller]
     E -->|matches Alert| F[Provider: gitlab]
     F -->|GitLab Commit Status API| B
 ```
 
-The notification controller extracts the commit SHA from the Flux event's revision metadata and updates the commit status via the GitLab API. The status reflects the reconciliation outcome:
+The notification controller extracts the commit SHA from the Flux `Kustomization` event's revision metadata and updates the commit status via the GitLab API. The status reflects the reconciliation outcome:
 
 - **Success**: Reconciliation completed successfully
 - **Failed**: Reconciliation encountered an error
@@ -146,7 +144,7 @@ The notification controller extracts the commit SHA from the Flux event's revisi
 When commit statuses are configured, they appear as external pipeline statuses in GitLab merge requests. This means:
 
 - Merge request reviewers can see whether the change deployed successfully after merging
-- You can configure merge request approval rules to require a successful Flux deployment status
+- You can configure GitLab status checks to require a successful Flux deployment status, depending on your GitLab edition and project settings
 - The deployment status is visible in the commit history
 
 ## Self-Hosted GitLab Configuration
@@ -154,15 +152,15 @@ When commit statuses are configured, they appear as external pipeline statuses i
 For self-hosted GitLab instances:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitlab-self-hosted
   namespace: flux-system
 spec:
   type: gitlab
-  # Use your self-hosted GitLab URL
-  address: https://gitlab.internal.company.com/team/project
+  # Use your self-hosted GitLab URL with the project ID
+  address: https://gitlab.internal.company.com/YOUR_PROJECT_ID
   secretRef:
     name: gitlab-token
 ```
@@ -174,25 +172,25 @@ Ensure the cluster can reach your self-hosted GitLab instance on the network.
 Create separate providers for each GitLab project:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitlab-infra
   namespace: flux-system
 spec:
   type: gitlab
-  address: https://gitlab.com/YOUR_GROUP/infrastructure
+  address: https://gitlab.com/YOUR_INFRASTRUCTURE_PROJECT_ID
   secretRef:
     name: gitlab-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitlab-apps
   namespace: flux-system
 spec:
   type: gitlab
-  address: https://gitlab.com/YOUR_GROUP/applications
+  address: https://gitlab.com/YOUR_APPLICATIONS_PROJECT_ID
   secretRef:
     name: gitlab-token
 ```
@@ -202,7 +200,7 @@ spec:
 If commit statuses are not appearing in GitLab:
 
 1. **Token scope**: The GitLab token must have `api` scope to update commit statuses.
-2. **Project URL**: The `address` must be the full project URL (not just the GitLab instance URL).
+2. **Project address**: For GitLab.com and current self-hosted GitLab installations that use the GitLab v4 API, the `address` must include the project ID, not the project path.
 3. **Commit SHA**: The notification controller uses the revision from the Flux event. If the revision does not match a commit in the project, the status update will fail.
 4. **Self-hosted TLS**: If your GitLab instance uses a self-signed certificate, the notification controller may reject the connection.
 5. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
