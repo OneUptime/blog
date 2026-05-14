@@ -35,9 +35,9 @@ The result is the same (allowed or denied), but the speed difference at scale is
 
 Developers care about latency and source IP preservation. Frame eBPF for them:
 
-> "With Calico eBPF enabled, when your service gets a request from an external client, the pod sees the original client IP - not a NAT'd internal IP. This means your access logs are accurate and IP-based rate limiting works correctly."
+> "With Calico eBPF enabled, when your service gets a request from an external client over supported service paths such as NodePort, the pod sees the original client IP - not a NAT'd internal IP. This means your access logs are accurate and IP-based rate limiting works correctly."
 
-Also useful: Calico eBPF mode replaces kube-proxy, which eliminates one layer of network address translation. Fewer NAT hops means lower latency for every request.
+Also useful: Calico eBPF mode replaces kube-proxy, which eliminates some network address translation overhead on Kubernetes service traffic. Fewer NAT hops can mean lower latency, especially for service connections.
 
 ## What to Tell SREs
 
@@ -45,7 +45,7 @@ SREs care about CPU efficiency and debuggability:
 
 ```mermaid
 graph LR
-    IPTABLES[iptables mode\nO(n) rule traversal\nHigh CPU at scale] --> EBPF[eBPF mode\nO(1) map lookup\nConstant CPU overhead]
+    IPTABLES[iptables mode\nRule traversal grows with scale\nHigher CPU at scale] --> EBPF[eBPF mode\nMap-based lookups\nLower CPU per Gbit at scale]
 ```
 
 Key SRE talking points:
@@ -57,9 +57,9 @@ Key SRE talking points:
 
 Managers care about risk and cost:
 
-> "Calico eBPF requires Linux kernel 5.3 or later. Our current node images run 5.15, so we are compatible. Enabling eBPF is a configuration change in the Calico operator - it does not require replacing nodes or reinstalling the CNI. The migration is reversible."
+> "Current Calico eBPF requires Linux kernel 5.10 or later, with supported distribution backports such as RHEL 8.4's 4.18.0-305 kernel as an exception. Our current node images run 5.15, so we are compatible. Enabling eBPF is a configuration change in the Calico operator - it does not require replacing nodes or reinstalling the CNI. The migration is reversible."
 
-The key risk message for managers: eBPF is not experimental. It is running in production at major cloud providers and has been a stable Calico feature since v3.13.
+The key risk message for managers: eBPF is not experimental. It is running in production at major cloud providers, and Calico introduced its eBPF dataplane in v3.13 before it became a documented supported dataplane in current releases.
 
 ## What Not to Say
 
@@ -75,4 +75,4 @@ The key risk message for managers: eBPF is not experimental. It is running in pr
 
 ## Conclusion
 
-Explaining Calico eBPF to your team is most effective when you start from the problem iptables creates at scale, use the bouncer analogy to make the mechanism intuitive, and anchor the value in outcomes that each role cares about. Developers get accurate source IPs, SREs get lower CPU overhead, and managers get a low-risk migration path to a stable production feature.
+Explaining Calico eBPF to your team is most effective when you start from the problem iptables creates at scale, use the bouncer analogy to make the mechanism intuitive, and anchor the value in outcomes that each role cares about. Developers get accurate source IPs for supported external service traffic, SREs get lower CPU overhead, and managers get a low-risk migration path to a stable production feature.
