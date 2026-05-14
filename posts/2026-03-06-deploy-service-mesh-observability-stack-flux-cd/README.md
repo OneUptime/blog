@@ -60,7 +60,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://grafana.github.io/helm-charts
+  url: https://grafana-community.github.io/helm-charts
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -141,16 +141,16 @@ spec:
         # Additional scrape configs for service mesh
         additionalScrapeConfigs:
           # Scrape Istio control plane metrics
-          - job_name: "istio-mesh"
+          - job_name: "istiod"
             kubernetes_sd_configs:
               - role: endpoints
                 namespaces:
                   names:
                     - istio-system
             relabel_configs:
-              - source_labels: [__meta_kubernetes_service_name]
+              - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
                 action: keep
-                regex: istio-telemetry
+                regex: istiod;http-monitoring
           # Scrape Envoy sidecar proxy metrics
           - job_name: "envoy-stats"
             metrics_path: /stats/prometheus
@@ -223,7 +223,7 @@ spec:
           # Jaeger data source for traces
           - name: Jaeger
             type: jaeger
-            url: http://jaeger-query.observability:16686
+            url: http://jaeger-query.observability:80
             access: proxy
           # Loki data source for logs
           - name: Loki
@@ -306,8 +306,7 @@ spec:
         namespace: flux-system
       interval: 12h
   values:
-    # Use the all-in-one deployment for simplicity
-    # For production, use the production strategy with Elasticsearch
+    # Use the production strategy with Elasticsearch
     provisionDataStore:
       cassandra: false
       elasticsearch: true
@@ -318,7 +317,7 @@ spec:
         port: 9200
     # Collector configuration
     collector:
-      replicas: 2
+      replicaCount: 2
       resources:
         requests:
           memory: "256Mi"
@@ -332,7 +331,7 @@ spec:
           port: 9411
     # Query service for the Jaeger UI
     query:
-      replicas: 1
+      replicaCount: 1
       resources:
         requests:
           memory: "128Mi"
@@ -355,10 +354,26 @@ spec:
 
 ## Configuring Istio Telemetry
 
-Configure Istio to send metrics and traces to the observability stack.
+Configure Istio to send traces to the observability stack.
 
 ```yaml
 # infrastructure/observability/istio-telemetry.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-control-plane
+  namespace: istio-system
+spec:
+  meshConfig:
+    enableTracing: true
+    defaultConfig:
+      tracing: {}
+    extensionProviders:
+      - name: jaeger
+        zipkin:
+          service: jaeger-collector.observability.svc.cluster.local
+          port: 9411
+---
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
@@ -420,12 +435,12 @@ spec:
         url: http://prometheus-kube-prometheus-prometheus.observability:9090
       grafana:
         enabled: true
-        in_cluster_url: http://grafana.observability:80
-        url: https://grafana.example.com
+        internal_url: http://grafana.observability:80
+        external_url: https://grafana.example.com
       tracing:
         enabled: true
-        in_cluster_url: http://jaeger-query.observability:16686
-        url: https://jaeger.example.com
+        internal_url: http://jaeger-query.observability:80
+        external_url: https://jaeger.example.com
         use_grpc: false
     # Deployment configuration
     deployment:
@@ -457,27 +472,26 @@ spec:
     name: flux-system
   path: ./infrastructure/observability
   prune: true
-  wait: true
   timeout: 15m
   # Ensure service mesh is deployed first
   dependsOn:
     - name: istio
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: prometheus
+      namespace: observability
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: grafana
       namespace: observability
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: jaeger-query
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: jaeger
       namespace: observability
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: kiali
-      namespace: observability
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: prometheus-kube-prometheus-prometheus
       namespace: observability
 ```
 
@@ -555,7 +569,7 @@ kubectl port-forward -n observability svc/grafana 3000:80 &
 # Visit http://localhost:3000
 
 # Verify Jaeger is collecting traces
-kubectl port-forward -n observability svc/jaeger-query 16686:16686 &
+kubectl port-forward -n observability svc/jaeger-query 16686:80 &
 # Visit http://localhost:16686
 
 # Check Kiali dashboard
