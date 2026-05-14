@@ -245,7 +245,7 @@ Example output showing current usage versus limits:
 
 ## Step 8: Handle Quota Violations
 
-When a tenant exceeds their quota, new pods will fail to schedule. Flux will report reconciliation errors for resources that cannot be created due to quota limits.
+When a tenant exceeds their quota, new resources will fail Kubernetes API admission. Flux will report reconciliation errors for resources that cannot be created due to quota limits.
 
 ```bash
 # Check for quota-related events in the tenant namespace
@@ -259,7 +259,7 @@ Set up alerts so the platform admin is notified when tenants approach their quot
 
 ```yaml
 # tenants/team-alpha/quota-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-quota-alert
