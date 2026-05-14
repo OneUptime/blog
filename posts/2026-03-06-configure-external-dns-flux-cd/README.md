@@ -21,6 +21,7 @@ This guide walks through deploying External-DNS with Flux CD and configuring it 
 - kubectl configured for your cluster
 - A DNS zone managed by a supported DNS provider
 - Appropriate cloud credentials for DNS management
+- Gateway API CRDs installed if you plan to use Gateway API sources
 
 ## Architecture
 
@@ -113,7 +114,7 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
@@ -124,18 +125,17 @@ spec:
     provider:
       name: aws
 
+    # External-DNS synchronization settings
+    policy: upsert-only
+    domainFilters:
+      - example.com
+    txtOwnerId: my-cluster
+    interval: 1m
+
     # AWS-specific configuration
     extraArgs:
       # Only manage records in these hosted zones
       - --aws-zone-type=public
-      # Prevent accidental deletion
-      - --policy=upsert-only
-      # Filter by domain
-      - --domain-filter=example.com
-      # Use TXT records for ownership tracking
-      - --txt-owner-id=my-cluster
-      # Sync interval
-      - --interval=1m
 
     # Sources to watch for DNS records
     sources:
@@ -166,7 +166,8 @@ spec:
         cpu: 200m
         memory: 128Mi
 
-    # Service account for IRSA (preferred over static credentials)
+    # Service account for IRSA (preferred over static credentials). If using IRSA,
+    # omit the static credential env, volume, and volumeMount blocks above.
     serviceAccount:
       annotations:
         eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/external-dns"
@@ -186,7 +187,7 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
@@ -196,11 +197,13 @@ spec:
     provider:
       name: cloudflare
 
+    policy: sync
+    domainFilters:
+      - example.com
+    txtOwnerId: my-cluster
+
     extraArgs:
       - --cloudflare-proxied
-      - --domain-filter=example.com
-      - --policy=sync
-      - --txt-owner-id=my-cluster
 
     sources:
       - ingress
@@ -234,10 +237,10 @@ metadata:
   name: my-app-ingress
   namespace: default
   annotations:
-    # External-DNS will create an A record for this hostname
+    # External-DNS will create a DNS record for this hostname
     external-dns.alpha.kubernetes.io/hostname: app.example.com
-    # Set the TTL for the DNS record
-    external-dns.alpha.kubernetes.io/ttl: "300"
+    # For Cloudflare proxied records, use automatic TTL
+    external-dns.alpha.kubernetes.io/ttl: "1"
     # For Cloudflare, control proxy status
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 spec:
@@ -267,7 +270,7 @@ metadata:
   annotations:
     # Create a DNS record for the LoadBalancer
     external-dns.alpha.kubernetes.io/hostname: api.example.com
-    external-dns.alpha.kubernetes.io/ttl: "60"
+    external-dns.alpha.kubernetes.io/ttl: "120"
 spec:
   type: LoadBalancer
   ports:
@@ -332,8 +335,8 @@ spec:
     secretRef:
       name: sops-age
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: external-dns
       namespace: external-dns
   timeout: 5m
@@ -376,4 +379,4 @@ kubectl get sa -n external-dns external-dns -o yaml
 
 ## Conclusion
 
-External-DNS with Flux CD automates DNS record management as part of your GitOps workflow. When you deploy a new Ingress or Service, DNS records are automatically created and updated. When resources are removed, the corresponding DNS records are cleaned up. This eliminates manual DNS management and ensures your DNS configuration always matches your deployed services.
+External-DNS with Flux CD automates DNS record management as part of your GitOps workflow. When you deploy a new Ingress or Service, DNS records are automatically created and updated. When resources are removed, the corresponding DNS records are cleaned up when the External-DNS policy is set to `sync`; with `upsert-only`, records are created and updated but not deleted. This eliminates most manual DNS management and helps keep DNS configuration aligned with your deployed services.
