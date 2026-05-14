@@ -224,9 +224,11 @@ Apply the Restricted security profile to the Flux namespace:
 # Label the flux-system namespace with Restricted PSS
 kubectl label namespace flux-system \
   pod-security.kubernetes.io/enforce=restricted \
-  pod-security.kubernetes.io/enforce-version=v1.28 \
+  pod-security.kubernetes.io/enforce-version=v1.36 \
   pod-security.kubernetes.io/warn=restricted \
+  pod-security.kubernetes.io/warn-version=v1.36 \
   pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/audit-version=v1.36 \
   --overwrite
 ```
 
@@ -250,13 +252,13 @@ for IMAGE in $IMAGES; do
 
   # Verify image signature
   cosign verify "$IMAGE" \
-    --certificate-identity-regexp="^https://github.com/fluxcd/${CONTROLLER}/.*" \
+    --certificate-identity-regexp="^https://github\\.com/fluxcd/${CONTROLLER}/.*" \
     --certificate-oidc-issuer="$ISSUER" > /dev/null 2>&1 && echo "  Signature: OK" || echo "  Signature: FAILED"
 
   # Verify SLSA provenance
   cosign verify-attestation "$IMAGE" \
     --type slsaprovenance \
-    --certificate-identity-regexp="^https://github.com/slsa-framework/slsa-github-generator/.*" \
+    --certificate-identity-regexp="^https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v" \
     --certificate-oidc-issuer="$ISSUER" > /dev/null 2>&1 && echo "  SLSA: OK" || echo "  SLSA: FAILED"
 done
 ```
@@ -268,18 +270,17 @@ Set up comprehensive monitoring for your Flux installation:
 ```yaml
 # flux-alerts.yaml
 # Alert configuration for production Flux monitoring
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: production-alerts
   namespace: flux-system
 spec:
   type: slack
-  channel: production-gitops
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-flux-events
