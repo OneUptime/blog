@@ -62,17 +62,14 @@ ssh-keyscan gitlab.com > /tmp/known_hosts
 ssh-keyscan your-git-server.example.com > /tmp/known_hosts
 ```
 
-### Step 2: Create or Update the Known Hosts Secret
+### Step 2: Verify the Known Hosts File
 
 ```bash
-# Create the known_hosts secret used by Flux
-kubectl create secret generic ssh-known-hosts \
-  --from-file=known_hosts=/tmp/known_hosts \
-  -n flux-system \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Confirm the known_hosts file contains entries for your Git server
+cat /tmp/known_hosts
 ```
 
-### Step 3: Update Your GitRepository to Reference Known Hosts
+### Step 3: Update Your GitRepository to Reference the SSH Secret
 
 ```yaml
 # gitrepository.yaml
@@ -87,13 +84,11 @@ spec:
   ref:
     branch: main
   secretRef:
-    # This secret must contain the SSH private key
+    # This secret must contain the SSH private key and known_hosts
     name: my-app-ssh-key
-  verify:
-    mode: HEAD
 ```
 
-### Step 4: Create the SSH Key Secret
+### Step 4: Create or Update the SSH Key Secret
 
 ```bash
 # Generate a new SSH key pair (if you do not already have one)
@@ -104,7 +99,8 @@ kubectl create secret generic my-app-ssh-key \
   --from-file=identity=/tmp/flux-key \
   --from-file=identity.pub=/tmp/flux-key.pub \
   --from-file=known_hosts=/tmp/known_hosts \
-  -n flux-system
+  -n flux-system \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Cause 2: Firewall Blocking Git Traffic
@@ -292,19 +288,20 @@ spec:
   ref:
     branch: main
   secretRef:
+    # This secret must contain username, password, and ca.crt
     name: my-app-https-creds
-  # Reference a secret containing your custom CA certificate
-  certSecretRef:
-    name: git-ca-cert
 ```
 
-Create the CA certificate secret:
+Create the HTTPS credentials secret with the CA certificate:
 
 ```bash
-# Create secret with your custom CA certificate
-kubectl create secret generic git-ca-cert \
+# Create secret with credentials and your custom CA certificate
+kubectl create secret generic my-app-https-creds \
+  --from-literal=username=git \
+  --from-literal=password=your_personal_access_token \
   --from-file=ca.crt=/path/to/custom-ca.crt \
-  -n flux-system
+  -n flux-system \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Quick Troubleshooting Checklist
@@ -322,7 +319,7 @@ kubectl describe gitrepository <name> -n flux-system
 kubectl logs -n flux-system deploy/source-controller --tail=50
 
 # 4. Verify the secret exists and has correct keys
-kubectl get secret <secret-name> -n flux-system -o jsonpath='{.data}' | jq 'keys'
+kubectl get secret <secret-name> -n flux-system -o json | jq '.data | keys'
 
 # 5. Test network connectivity from the cluster
 kubectl run -it --rm debug \
