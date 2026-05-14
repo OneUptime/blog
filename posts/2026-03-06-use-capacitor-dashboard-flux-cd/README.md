@@ -18,7 +18,7 @@ In this guide, you will learn how to deploy Capacitor alongside Flux CD, configu
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your Flux release
 - Flux CD installed and bootstrapped
 - kubectl configured to access your cluster
 - A Git repository connected to Flux
@@ -50,27 +50,27 @@ Capacitor runs as a single deployment in your cluster and reads Flux resources d
 
 ### Method 1: Direct Manifest Deployment
 
-The simplest way to install Capacitor is using a Flux Kustomization that references the official manifests:
+The simplest way to install Capacitor is using a Flux Kustomization that references the official OCI manifests:
 
 ```yaml
 # capacitor-source.yaml
-# GitRepository pointing to the Capacitor source code
+# OCIRepository pointing to the Capacitor manifests
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
+kind: OCIRepository
 metadata:
   name: capacitor
   namespace: flux-system
 spec:
-  interval: 30m
-  url: https://github.com/gimlet-io/capacitor
+  interval: 12h
+  url: oci://ghcr.io/gimlet-io/capacitor-manifests
   ref:
-    # Use a specific tag for stability
-    tag: v0.4.3
+    # Track compatible Capacitor manifest releases
+    semver: ">=0.1.0"
 ```
 
 ```yaml
 # capacitor-kustomization.yaml
-# Kustomization to deploy Capacitor from its repository
+# Kustomization to deploy Capacitor from the OCI artifact
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -78,12 +78,15 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  wait: true
   # Wait for the source to be ready
   sourceRef:
-    kind: GitRepository
+    kind: OCIRepository
     name: capacitor
-  # Path to the deployment manifests in the repository
-  path: ./deploy/manifests
+  # Path to the deployment manifests in the OCI artifact
+  path: ./
   prune: true
   targetNamespace: flux-system
 ```
@@ -108,35 +111,36 @@ metadata:
   name: capacitor
   namespace: flux-system
 ---
-# ClusterRole granting read access to all Flux CRDs
+# ClusterRole granting access to resources Capacitor displays and reconciles
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: capacitor
 rules:
+  # Access to Kubernetes resources shown by Capacitor
+  - apiGroups: ["", "apps", "networking.k8s.io"]
+    resources:
+      - pods
+      - pods/log
+      - ingresses
+      - deployments
+      - services
+      - secrets
+      - events
+      - configmaps
+    verbs: ["get", "list", "watch"]
   # Access to Flux source resources
   - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
+    resources: ["gitrepositories", "ocirepositories", "buckets", "helmrepositories", "helmcharts"]
+    verbs: ["get", "list", "watch", "patch"]
   # Access to Flux kustomize resources
   - apiGroups: ["kustomize.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
+    resources: ["kustomizations"]
+    verbs: ["get", "list", "watch", "patch"]
   # Access to Flux helm resources
   - apiGroups: ["helm.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
-  # Access to Flux notification resources
-  - apiGroups: ["notification.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
-  # Access to core Kubernetes resources for context
-  - apiGroups: [""]
-    resources: ["namespaces", "pods", "events"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
-    verbs: ["get", "list", "watch"]
+    resources: ["helmreleases"]
+    verbs: ["get", "list", "watch", "patch"]
 ---
 # Bind the ClusterRole to the Capacitor ServiceAccount
 apiVersion: rbac.authorization.k8s.io/v1
@@ -162,11 +166,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: capacitor
+      app.kubernetes.io/name: onechart
+      app.kubernetes.io/instance: capacitor
   template:
     metadata:
       labels:
-        app: capacitor
+        app.kubernetes.io/name: onechart
+        app.kubernetes.io/instance: capacitor
     spec:
       serviceAccountName: capacitor
       containers:
@@ -206,7 +212,8 @@ metadata:
   namespace: flux-system
 spec:
   selector:
-    app: capacitor
+    app.kubernetes.io/name: onechart
+    app.kubernetes.io/instance: capacitor
   ports:
     - port: 9000
       targetPort: http
@@ -225,7 +232,7 @@ kubectl apply -f capacitor-deployment.yaml
 
 ```bash
 # Check that the Capacitor pod is running
-kubectl get pods -n flux-system -l app=capacitor
+kubectl get pods -n flux-system -l app.kubernetes.io/instance=capacitor
 
 # Check the deployment status
 kubectl get deployment capacitor -n flux-system
@@ -301,7 +308,7 @@ The main page shows a summary of all Flux resources grouped by type:
 - **Sources** - GitRepositories, HelmRepositories, OCIRepositories, and Buckets
 - **Kustomizations** - All Kustomization resources and their status
 - **Helm Releases** - All HelmRelease resources and their chart versions
-- **Notifications** - Alert and Provider configurations
+- **Resources** - Kubernetes resources deployed by Flux
 
 ### Monitoring Reconciliation
 
@@ -314,7 +321,7 @@ Each resource in Capacitor displays:
 
 ### Triggering Manual Reconciliation
 
-While Capacitor is primarily a read-only dashboard, you can trigger reconciliation from the CLI and watch the results in real time:
+Capacitor can trigger reconciliation when its service account has patch permissions on Flux resources. You can also trigger reconciliation from the CLI and watch the results in real time:
 
 ```bash
 # Trigger a reconciliation and watch the result in Capacitor
@@ -394,7 +401,8 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: capacitor
+      app.kubernetes.io/name: onechart
+      app.kubernetes.io/instance: capacitor
   policyTypes:
     - Ingress
     - Egress
@@ -419,7 +427,12 @@ spec:
           protocol: TCP
     # Allow DNS resolution
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - port: 53
           protocol: UDP
@@ -433,8 +446,8 @@ spec:
 
 ```bash
 # Check pod events and logs
-kubectl describe pod -n flux-system -l app=capacitor
-kubectl logs -n flux-system -l app=capacitor
+kubectl describe pod -n flux-system -l app.kubernetes.io/instance=capacitor
+kubectl logs -n flux-system -l app.kubernetes.io/instance=capacitor
 
 # Verify RBAC permissions are correct
 kubectl auth can-i list kustomizations.kustomize.toolkit.fluxcd.io \
