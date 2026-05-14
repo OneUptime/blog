@@ -18,7 +18,7 @@ This guide walks through the complete version compatibility validation workflow,
 
 - A lab Kubernetes cluster running a Calico version matching production
 - `kubectl` and `calicoctl` configured
-- The Tigera version compatibility matrix (available at docs.tigera.io)
+- The Calico Kubernetes requirements and upgrade documentation (available at docs.tigera.io)
 - Your target Kubernetes and Calico versions identified
 
 ## Step 1: Pre-Upgrade Version Audit
@@ -28,7 +28,7 @@ Document your current versions before making any changes:
 ```bash
 # Current Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Current Calico version (from calico-node pods)
 kubectl get pods -n calico-system -l k8s-app=calico-node \
@@ -43,7 +43,7 @@ calicoctl version
 
 # Document all in a pre-upgrade record
 echo "Pre-upgrade versions:" > upgrade-record.txt
-echo "Kubernetes: $(kubectl version --short 2>/dev/null | grep Server)" >> upgrade-record.txt
+echo "Kubernetes: $(kubectl version -o json | jq -r '.serverVersion.gitVersion')" >> upgrade-record.txt
 echo "Calico: $(kubectl get pods -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].spec.containers[0].image}')" >> upgrade-record.txt
 ```
 
@@ -53,16 +53,16 @@ Cross-reference your current and target versions with the Tigera compatibility m
 
 ```bash
 # Current K8s version
-K8S_VERSION=$(kubectl version -o json | jq -r '.serverVersion.minor')
+K8S_VERSION=$(kubectl version -o json | jq -r '.serverVersion.major + "." + (.serverVersion.minor | sub("\\+$"; ""))')
 echo "Current Kubernetes minor version: $K8S_VERSION"
 
-# Target Calico version's supported K8s range
+# Target Calico version's tested K8s versions
 # Check at: https://docs.tigera.io/calico/latest/getting-started/kubernetes/requirements
 ```
 
 Verify that:
-1. Your target Calico version supports your target Kubernetes version
-2. Your target Calico version supports your current Kubernetes version (so you can upgrade Calico first)
+1. Your target Calico version is tested with your target Kubernetes version
+2. Your target Calico version can run on your current Kubernetes version (so you can upgrade Calico first)
 
 ## Step 3: Pre-Upgrade Functional Baseline
 
@@ -70,8 +70,10 @@ Record the baseline state before upgrading:
 
 ```bash
 # Deploy test pods
-kubectl run pre-upgrade-test-server --image=nginx
+kubectl run pre-upgrade-test-server --image=nginx --labels app=pre-upgrade-test-server
 kubectl run pre-upgrade-test-client --image=nicolaka/netshoot -- sleep 3600
+kubectl wait --for=condition=Ready pod/pre-upgrade-test-server --timeout=120s
+kubectl wait --for=condition=Ready pod/pre-upgrade-test-client --timeout=120s
 
 SERVER_IP=$(kubectl get pod pre-upgrade-test-server -o jsonpath='{.status.podIP}')
 
@@ -80,9 +82,21 @@ kubectl exec pre-upgrade-test-client -- wget -qO- http://$SERVER_IP
 # Record result
 
 # Test policy enforcement
-kubectl apply -f test-deny-policy.yaml
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-pre-upgrade-test-server
+spec:
+  podSelector:
+    matchLabels:
+      app: pre-upgrade-test-server
+  policyTypes:
+  - Ingress
+EOF
 kubectl exec pre-upgrade-test-client -- wget --timeout=5 -qO- http://$SERVER_IP
 # Record: should timeout
+kubectl delete networkpolicy deny-pre-upgrade-test-server
 
 # Check node status
 calicoctl node status > pre-upgrade-node-status.txt
@@ -94,19 +108,20 @@ kubectl get nodes > pre-upgrade-node-state.txt
 Using the Calico operator:
 
 ```bash
-# Patch the operator to use the new version
-kubectl set image deployment/tigera-operator \
-  tigera-operator=quay.io/tigera/operator:v1.30.0 \
-  -n tigera-operator
+# Download the target version's operator manifest and Calico CRDs
+CALICO_VERSION=v3.32.0
+curl -LO https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/v1_crd_projectcalico_org.yaml
+curl -LO https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
 
-# Or update the Installation resource for the Calico version
-kubectl patch installation default \
-  --type merge \
-  -p '{"spec":{"variant":"Calico"}}'
+# Apply the target version's CRDs and operator manifest
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 
 # Wait for upgrade to complete
-kubectl rollout status daemonset calico-node -n calico-system
-kubectl rollout status deployment calico-kube-controllers -n calico-system
+kubectl rollout status deployment/tigera-operator -n tigera-operator
+kubectl rollout status daemonset/calico-node -n calico-system
+kubectl rollout status deployment/calico-kube-controllers -n calico-system
+kubectl wait --for=condition=Available tigerastatus/calico --timeout=10m
 ```
 
 ## Step 5: Post-Calico-Upgrade Validation
@@ -123,6 +138,23 @@ kubectl get tigerastatus
 kubectl exec pre-upgrade-test-client -- wget -qO- http://$SERVER_IP
 # Expected: Same result as baseline
 
+# Re-run policy enforcement test
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-pre-upgrade-test-server
+spec:
+  podSelector:
+    matchLabels:
+      app: pre-upgrade-test-server
+  policyTypes:
+  - Ingress
+EOF
+kubectl exec pre-upgrade-test-client -- wget --timeout=5 -qO- http://$SERVER_IP
+# Expected: should timeout
+kubectl delete networkpolicy deny-pre-upgrade-test-server
+
 # Re-check node status
 calicoctl node status
 # Compare with pre-upgrade-node-status.txt
@@ -135,7 +167,8 @@ After Calico upgrade is validated, upgrade Kubernetes (method depends on your cl
 ```bash
 # For kubeadm clusters:
 sudo kubeadm upgrade plan
-sudo kubeadm upgrade apply v1.28.0
+sudo kubeadm upgrade apply <target-version>
+# Then drain and upgrade kubelet and kubectl on each control-plane and worker node
 
 # Wait for control plane
 kubectl get nodes
@@ -145,7 +178,7 @@ kubectl get nodes
 
 ```bash
 # Verify Kubernetes version
-kubectl version --short
+kubectl version
 
 # Verify Calico is still healthy after Kubernetes upgrade
 kubectl get tigerastatus
@@ -153,12 +186,25 @@ kubectl get pods -n calico-system
 
 # Re-run full connectivity and policy tests
 kubectl exec pre-upgrade-test-client -- wget -qO- http://$SERVER_IP
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-pre-upgrade-test-server
+spec:
+  podSelector:
+    matchLabels:
+      app: pre-upgrade-test-server
+  policyTypes:
+  - Ingress
+EOF
 kubectl exec pre-upgrade-test-client -- wget --timeout=5 -qO- http://$SERVER_IP
 # Policy should still be enforced
+kubectl delete networkpolicy deny-pre-upgrade-test-server
 
 # Check calicoctl compatibility
 calicoctl version
-# Update calicoctl if version doesn't match
+# Update calicoctl if it is older than the upgraded cluster version
 ```
 
 ## Validation Checklist
@@ -168,7 +214,7 @@ calicoctl version
 | Version documented | Yes | Yes | Yes |
 | Node connectivity | Working | Working | Working |
 | Policy enforcement | Working | Working | Working |
-| calicoctl version sync | Match | Match | Match |
+| calicoctl version current | Match | Match | Match |
 | TigeraStatus healthy | - | All Available | All Available |
 
 ## Best Practices
