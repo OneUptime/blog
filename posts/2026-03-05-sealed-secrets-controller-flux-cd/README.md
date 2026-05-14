@@ -109,24 +109,14 @@ resources:
 
 ## Step 5: Add to the Infrastructure Kustomization
 
-Include the Sealed Secrets directory in your infrastructure Flux Kustomization.
+Include the Sealed Secrets directory in your root infrastructure kustomization.
 
 ```yaml
-# clusters/my-cluster/infrastructure.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
+# infrastructure/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-metadata:
-  name: infrastructure
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./infrastructure
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  dependsOn:
-    - name: flux-system
+resources:
+  - sealed-secrets
 ```
 
 ## Step 6: Commit and Deploy
@@ -135,7 +125,7 @@ Push the configuration and wait for Flux to deploy the controller.
 
 ```bash
 # Commit and push
-git add infrastructure/sealed-secrets/
+git add infrastructure/sealed-secrets/ infrastructure/kustomization.yaml
 git commit -m "Add Sealed Secrets controller via HelmRelease"
 git push
 
@@ -188,12 +178,12 @@ kubectl label secret sealed-secrets-custom-key \
   sealedsecrets.bitnami.com/sealed-secrets-key=active
 ```
 
-### High Availability Configuration
+### Pod Disruption Budget and Scheduling Configuration
 
-Configure the controller for high availability in production clusters.
+Configure disruption handling and pod scheduling for production clusters.
 
 ```yaml
-# infrastructure/sealed-secrets/helmrelease.yaml - HA configuration
+# infrastructure/sealed-secrets/helmrelease.yaml - PDB and scheduling configuration
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -212,8 +202,8 @@ spec:
   values:
     fullnameOverride: sealed-secrets-controller
     # Pod disruption budget
-    podDisruptionBudget:
-      enabled: true
+    pdb:
+      create: true
       minAvailable: 1
     # Node affinity for reliability
     affinity:
@@ -252,7 +242,7 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Allow the Kubernetes API server to reach the controller webhook
+    # Allow ingress to the controller HTTP port
     - ports:
         - port: 8080
           protocol: TCP
