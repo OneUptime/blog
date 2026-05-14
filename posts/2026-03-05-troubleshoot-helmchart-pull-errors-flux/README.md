@@ -75,7 +75,7 @@ spec:
 This typically indicates a network or connectivity issue.
 
 ```bash
-# Check if the source controller pod can reach the repository URL
+# Check source-controller logs for chart fetch errors
 kubectl logs -n flux-system deploy/source-controller | grep -i "error\|failed\|chart"
 ```
 
@@ -157,6 +157,23 @@ kubectl create secret docker-registry oci-creds \
   --docker-password=my-token
 ```
 
+Then reference it from an OCI HelmRepository.
+
+```yaml
+# OCI HelmRepository with authentication secret reference
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: my-private-oci-repo
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: oci://registry.example.com/charts
+  type: oci
+  secretRef:
+    name: oci-creds
+```
+
 ## Step 5: Check Version Constraints
 
 A common cause of pull failures is specifying a version that does not exist in the repository.
@@ -210,10 +227,10 @@ kubectl logs -n flux-system deploy/source-controller --since=10m | grep -E "erro
 For even more detail, you can increase the log verbosity.
 
 ```bash
-# Patch the source controller to use debug-level logging
+# Append debug-level logging if the source controller does not already have a --log-level argument
 kubectl patch deployment source-controller -n flux-system \
   --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/args","value":["--log-level=debug","--storage-path=/data","--events-addr=http://notification-controller.flux-system.svc.cluster.local./"]}]'
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--log-level=debug"}]'
 ```
 
 Remember to revert the log level after debugging.
