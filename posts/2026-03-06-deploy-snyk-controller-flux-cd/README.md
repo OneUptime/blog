@@ -18,11 +18,11 @@ This guide walks through deploying the Snyk Controller on Kubernetes using Flux 
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.26 or later)
+- A Kubernetes cluster with a linux/amd64 worker node and at least 50 GiB of temporary storage
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A Git repository connected to Flux CD
-- A Snyk account with an Organization ID and API token
+- A Snyk Enterprise account with an Organization ID and service account API token
 - Snyk integration ID for Kubernetes (obtain from Snyk dashboard)
 
 ## Architecture Overview
@@ -73,24 +73,16 @@ metadata:
   namespace: snyk-monitor
 type: Opaque
 stringData:
-  # Snyk API token - obtain from Snyk account settings
-  # https://app.snyk.io/account
-  snykToken: "your-snyk-api-token-here"
-
   # Snyk Integration ID for Kubernetes
   # Obtain from: Snyk Dashboard > Integrations > Kubernetes
   integrationId: "your-integration-id-here"
----
-# Docker config for private registry access
-# Required if your cluster uses private container registries
-apiVersion: v1
-kind: Secret
-metadata:
-  name: snyk-docker-config
-  namespace: snyk-monitor
-type: kubernetes.io/dockerconfigjson
-stringData:
-  .dockerconfigjson: |
+
+  # Snyk service account API token with permission to publish Kubernetes resources
+  serviceAccountApiToken: "your-snyk-service-account-api-token-here"
+
+  # Docker config for private registry access
+  # Use {} if you only scan public registries
+  dockercfg.json: |
     {
       "auths": {
         "registry.example.com": {
@@ -124,7 +116,7 @@ metadata:
   namespace: snyk-monitor
 spec:
   interval: 1h
-  url: https://snyk.github.io/kubernetes-monitor/
+  url: https://snyk.github.io/kubernetes-monitor
 ```
 
 ## Step 4: Create the HelmRelease
@@ -157,25 +149,21 @@ spec:
     # Use existing secrets for authentication
     monitorSecrets: snyk-monitor
 
-    # Image pull secrets for private registries
-    registryCredentials: snyk-docker-config
-
     # Resource limits for the controller
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 400Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
 
     # Temporary storage for image analysis
+    temporaryStorageSize: 50Gi
     pvc:
       enabled: true
       create: true
       name: snyk-monitor-pvc
       storageClassName: standard
-      size: 20Gi
 
     # Node selector for scheduling
     nodeSelector: {}
@@ -183,85 +171,71 @@ spec:
     # Tolerations
     tolerations: []
 
-    # Scope configuration - which namespaces to monitor
-    scope:
-      # Monitor all namespaces except excluded ones
-      excludedNamespaces:
-        - kube-system
-        - kube-public
-        - kube-node-lease
-        - flux-system
+    # Monitor all namespaces except excluded ones
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - flux-system
 
-    # Image scanning configuration
-    image:
-      # Scan init containers as well
-      scanInitContainers: true
-      # Scan sidecar containers
-      scanSidecarContainers: true
+    # Enable automatic workload import through workload policies
+    policyOrgs:
+      - "your-snyk-org-id-here"
 
-    # Workload event monitoring
-    workloadEvents:
-      enabled: true
+    # Optional: use the custom Rego policy from Step 5
+    workloadPoliciesMap: snyk-monitor-workload-policies
 
-    # Skip TLS verification for internal registries (use with caution)
+    # Skopeo compression level for image handling
     skopeo:
       compression:
         level: 6
 ```
 
-## Step 5: Configure Namespace Annotations
+## Step 5: Configure Workload Policies
 
-Annotate namespaces to control Snyk monitoring behavior.
+Create a Rego workload policy to control which namespaces are automatically imported.
 
 ```yaml
-# namespace-annotations.yaml
-# Annotate namespaces for Snyk monitoring control
+# snyk-workload-policies.yaml
+# Workload policy for automatic Snyk imports
 apiVersion: v1
-kind: Namespace
+kind: ConfigMap
 metadata:
-  name: production
-  labels:
-    # Enable Snyk monitoring for this namespace
-    snyk-monitor: "enabled"
-  annotations:
-    # Custom Snyk organization for this namespace
-    snyk.io/organization: "production-team"
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: staging
-  labels:
-    snyk-monitor: "enabled"
-  annotations:
-    snyk.io/organization: "staging-team"
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: development
-  labels:
-    # Disable monitoring for development
-    snyk-monitor: "disabled"
+  name: snyk-monitor-workload-policies
+  namespace: snyk-monitor
+data:
+  workload-events.rego: |-
+    package snyk
+
+    orgs := ["your-snyk-org-id-here"]
+
+    default workload_events = false
+
+    workload_events {
+      input.kind != "Job"
+      input.kind != "Pod"
+      input.metadata.namespace == "production"
+    }
+
+    workload_events {
+      input.kind != "Job"
+      input.kind != "Pod"
+      input.metadata.namespace == "staging"
+    }
 ```
 
-## Step 6: Set Up Workload Annotations
+## Step 6: Set Up a Workload to Import
 
-Add annotations to workloads for fine-grained Snyk configuration.
+Deploy workloads in namespaces allowed by the Snyk workload policy.
 
 ```yaml
-# example-workload-annotations.yaml
-# Example deployment with Snyk annotations
+# example-workload.yaml
+# Example deployment that matches the workload policy
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web-application
   namespace: production
-  annotations:
-    # Override the default Snyk project name
-    snyk.io/project-name: "web-app-production"
-    # Set a custom severity threshold
-    snyk.io/severity-threshold: "high"
 spec:
   replicas: 3
   selector:
@@ -291,33 +265,15 @@ spec:
 Secure Snyk Controller network access.
 
 ```yaml
-# snyk-networkpolicy.yaml
-# Network policy for Snyk Controller
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: snyk-monitor-policy
-  namespace: snyk-monitor
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: snyk-monitor
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    # Allow metrics scraping from Prometheus
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              name: monitoring
-      ports:
-        - protocol: TCP
-          port: 8080
+# Add under spec.values in snyk-helmrelease.yaml
+networkPolicy:
+  enabled: true
   egress:
     # Allow DNS resolution
     - ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
     # Allow HTTPS to Snyk API and container registries
     - ports:
@@ -335,27 +291,10 @@ spec:
 
 ## Step 8: Configure Monitoring and Alerts
 
-Set up Prometheus monitoring for the Snyk Controller.
+Set up Prometheus alerts for the Snyk Controller.
 
 ```yaml
-# snyk-servicemonitor.yaml
-# Prometheus ServiceMonitor for Snyk Controller
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: snyk-monitor-metrics
-  namespace: snyk-monitor
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: snyk-monitor
-  endpoints:
-    - port: http
-      interval: 60s
-      path: /metrics
----
+# snyk-prometheusrule.yaml
 # Alert rules for Snyk Controller health
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -370,7 +309,7 @@ spec:
       rules:
         # Alert if Snyk Controller is down
         - alert: SnykControllerDown
-          expr: up{job="snyk-monitor"} == 0
+          expr: kube_deployment_status_replicas_available{namespace="snyk-monitor", deployment="snyk-monitor"} < 1
           for: 5m
           labels:
             severity: critical
@@ -469,17 +408,14 @@ kubectl exec -n snyk-monitor deploy/snyk-monitor -- df -h /var/tmp
 After deployment, the Snyk Controller will automatically discover and scan workloads.
 
 ```bash
-# Use Snyk CLI to check imported projects
-snyk monitor --org=your-org-id
-
 # List Kubernetes projects via Snyk API
-curl -s -H "Authorization: token $SNYK_TOKEN" \
-  "https://api.snyk.io/rest/orgs/$SNYK_ORG_ID/projects?type=k8sconfig" | \
-  jq '.data[] | {name: .attributes.name, status: .attributes.status}'
+curl -s -H "Authorization: Token $SNYK_TOKEN" \
+  "https://api.snyk.io/rest/orgs/$SNYK_ORG_ID/projects?version=2024-10-15" | \
+  jq '.data[] | select(.attributes.origin == "kubernetes") | {name: .attributes.name, origin: .attributes.origin}'
 
 # Check for critical vulnerabilities
-curl -s -H "Authorization: token $SNYK_TOKEN" \
-  "https://api.snyk.io/rest/orgs/$SNYK_ORG_ID/issues?severity=critical" | \
+curl -s -H "Authorization: Token $SNYK_TOKEN" \
+  "https://api.snyk.io/rest/orgs/$SNYK_ORG_ID/issues?version=2024-10-15&effective_severity_level=critical" | \
   jq '.data | length'
 ```
 
@@ -496,10 +432,10 @@ kubectl exec -n snyk-monitor deploy/snyk-monitor -- env | grep -i snyk
 
 # Check if the controller can reach Snyk API
 kubectl exec -n snyk-monitor deploy/snyk-monitor -- \
-  wget -qO- --timeout=5 https://api.snyk.io/rest/openapi
+  wget -qO- --timeout=5 https://api.snyk.io/rest/self?version=2024-10-15
 
 # Verify docker config is valid for private registries
-kubectl get secret snyk-docker-config -n snyk-monitor -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
+kubectl get secret snyk-monitor -n snyk-monitor -o jsonpath='{.data.dockercfg\.json}' | base64 -d | jq .
 
 # Check Flux errors
 kubectl describe helmrelease snyk-monitor -n snyk-monitor
