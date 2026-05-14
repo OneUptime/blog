@@ -54,7 +54,7 @@ If the repository has tags `v1.0.0`, `v1.1.0`, `v1.2.3`, and `v2.0.0`, the Sourc
 
 ## SemVer Range Syntax
 
-Flux uses the Go semver library for range evaluation. Here are the most commonly used range patterns.
+Flux uses the Masterminds Go semver library for range evaluation. Here are the most commonly used range patterns.
 
 ### Exact Version
 
@@ -116,7 +116,7 @@ spec:
 # Match 1.x or 2.x versions
 spec:
   ref:
-    semver: ">=1.0.0 <3.0.0"
+    semver: "1.x || 2.x"
 ```
 
 ## Tag Prefix Handling
@@ -191,7 +191,7 @@ SemVer pre-release tags (e.g., `v1.2.0-rc.1`) are only matched if the range expl
 spec:
   ref:
     # Match release candidates for 1.2.0
-    semver: ">=1.2.0-rc.1 <1.2.1"
+    semver: ">=1.2.0-rc.1 <1.2.0"
 ```
 
 ```yaml
