@@ -10,7 +10,9 @@ Description: Learn the most common mistakes teams make when deploying and managi
 
 ## Introduction
 
-The Calico API server extends the Kubernetes API with Calico-specific resources, but it is often misconfigured or misunderstood. Teams frequently encounter issues ranging from 503 errors when querying Calico resources to RBAC misconfigurations that silently deny legitimate requests.
+The Calico API server extends the Kubernetes API with Calico-specific resources, but it is often misconfigured or misunderstood. Teams frequently encounter issues ranging from 503 errors when querying Calico resources to RBAC misconfigurations that deny legitimate requests.
+
+In current Calico releases, the aggregated API server is deprecated and planned for removal in a future release. New installations should use native v3 CRDs instead, but existing clusters that still run the Calico API server need to operate it carefully.
 
 Understanding common failure modes helps you build a more robust Calico deployment and resolve issues faster when they do occur. This post covers the mistakes that appear most frequently in production environments and in support escalations.
 
@@ -22,6 +24,7 @@ Most of these mistakes stem from not treating the Calico API server with the sam
 - `kubectl` with cluster-admin access
 - `calicoctl` CLI configured
 - Basic understanding of Kubernetes aggregated API servers
+- Commands below use the `calico-apiserver` namespace used by the manifest install; operator-managed clusters commonly run the deployment in `calico-system`
 
 ## Step 1: Mistake - Running a Single Replica in Production
 
@@ -29,22 +32,24 @@ A single API server replica means that any node failure or pod eviction takes do
 
 ```bash
 # Check if you are running only one replica (common mistake)
+kubectl get deployment -A -l k8s-app=calico-apiserver \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPLICAS:.spec.replicas
 
-kubectl get deployment calico-apiserver -n calico-apiserver \
-  -o jsonpath='{.spec.replicas}'
-
-# If the result is 1, patch to increase replicas
-kubectl patch apiserver default \
+# For operator-managed installs, set the HA replica count
+kubectl patch installation default \
   --type='merge' \
-  -p '{"spec":{"apiServerDeployment":{"spec":{"replicas":2}}}}'
+  -p '{"spec":{"controlPlaneReplicas":2}}'
+
+# For manifest-based installs, scale the Deployment directly
+kubectl scale deployment/calico-apiserver -n calico-apiserver --replicas=2
 
 # Verify both replicas come up healthy
-kubectl get pods -n calico-apiserver
+kubectl get pods -A -l k8s-app=calico-apiserver
 ```
 
 ## Step 2: Mistake - Forgetting to Check TigeraStatus
 
-Teams often debug raw pod logs without first checking TigeraStatus, which provides a structured summary of all Calico component health.
+On operator-managed installations, teams often debug raw pod logs without first checking TigeraStatus, which provides a structured summary of Calico component health.
 
 ```bash
 # Always start debugging with TigeraStatus
@@ -60,9 +65,9 @@ kubectl describe tigerastatus apiserver
 # Message: Pod calico-apiserver-xxx is not running
 ```
 
-## Step 3: Mistake - Incorrect KUBECONFIG or Datastore Configuration
+## Step 3: Mistake - Incorrect Kubernetes API Access or Datastore Configuration
 
-The Calico API server needs to reach the Kubernetes API. A misconfigured kubeconfig or missing service account token causes authentication failures.
+The Calico API server needs to reach the Kubernetes API, and the manifest-based API server is intended for clusters using the Kubernetes API datastore. A missing service account token, certificate secret, or incorrect datastore configuration causes authentication and startup failures.
 
 ```bash
 # Check if the API server pod can reach the Kubernetes API
@@ -83,46 +88,43 @@ kubectl get apiservice v3.projectcalico.org
 After installing the Calico API server, teams sometimes proceed without verifying that the API extension was properly registered, leading to confusing "resource not found" errors later.
 
 ```bash
-# Verify the Calico API group is registered
-kubectl api-versions | grep projectcalico
-
-# Expected output: projectcalico.org/v3
+# Verify the Calico API resources are registered
+kubectl api-resources --api-group=projectcalico.org
 
 # Test that you can list Calico resources through the aggregated API
 kubectl get networkpolicies.projectcalico.org --all-namespaces
 
 # Check the API service status - it should show Available=True
 kubectl get apiservice v3.projectcalico.org \
-  -o jsonpath='{.status.conditions}' | jq .
+  -o json | jq '.status.conditions[] | select(.type == "Available")'
 ```
 
-## Step 5: Mistake - Using kubectl Instead of calicoctl for Complex Queries
+## Step 5: Mistake - Expecting kubectl to Replace Every calicoctl Command
 
-While kubectl works for simple Calico resource operations, complex queries involving Calico-specific fields and selectors require `calicoctl`.
+With the Calico API server or native v3 CRDs, `kubectl` can manage `projectcalico.org/v3` resources directly. However, `calicoctl` is still required for some Calico-specific operational commands, including `node`, `ipam`, `convert`, and `version`.
 
 ```bash
-# MISTAKE: Using kubectl with Calico label selectors (may not work as expected)
-# kubectl get networkpolicies -l projectcalico.org/selector=...
+# MISTAKE: Assuming kubectl replaces every calicoctl workflow
+# kubectl does not provide calicoctl ipam, node, convert, or version subcommands
 
-# CORRECT: Use calicoctl for Calico-specific query patterns
 # List all global network policies
 calicoctl get globalnetworkpolicies -o wide
 
-# Get detailed policy with Calico-specific fields rendered correctly
+# Get detailed policy output with calicoctl
 calicoctl get networkpolicy -n default my-policy -o yaml
 
-# Verify Felix is applying the policies from the API server
+# Inspect Felix configuration
 calicoctl get felixconfiguration default -o yaml
 ```
 
 ## Best Practices
 
 - Run at least two API server replicas with pod anti-affinity to different nodes
-- Always check TigeraStatus before diving into raw pod logs
+- On operator-managed clusters, check TigeraStatus before diving into raw pod logs
 - Monitor the API service endpoint availability with regular synthetic checks
-- Use `calicoctl` for operations that require Calico-specific field handling
+- Use `calicoctl` for operations that require Calico-specific subcommands
 - Set resource requests and limits to prevent the API server from being OOM-killed
 
 ## Conclusion
 
-The most impactful Calico API server mistakes are single-replica deployments, skipping TigeraStatus checks during debugging, and not validating API extension registration after installation. By running multiple replicas, monitoring component health through TigeraStatus, and using the right CLI tool for each operation, you avoid the majority of API server incidents.
+The most impactful Calico API server mistakes are single-replica deployments, skipping TigeraStatus checks on operator-managed clusters during debugging, and not validating API extension registration after installation. By running multiple replicas, monitoring component health through TigeraStatus where available, and using the right CLI tool for each operation, you avoid the majority of API server incidents.
