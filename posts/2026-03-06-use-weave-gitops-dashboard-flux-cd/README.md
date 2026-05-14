@@ -18,10 +18,10 @@ In this guide, you will learn how to install the Weave GitOps Dashboard, connect
 
 Before you begin, make sure you have the following:
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your Flux version
 - Flux CD installed and bootstrapped on your cluster
 - kubectl configured to access your cluster
-- Helm v3 installed
+- The Weave GitOps `gitops` CLI installed
 
 You can verify your Flux installation with:
 
@@ -137,6 +137,9 @@ spec:
       # Use the secret created earlier
       createSecret: false
       createClusterRole: true
+    rbac:
+      impersonationResourceNames:
+        - admin
     # Configure resource limits for the dashboard pod
     resources:
       requests:
@@ -325,8 +328,9 @@ spec:
         kind: HelmRepository
         name: weave-gitops
   values:
-    # Configure OIDC provider (e.g., Dex, Keycloak, Okta)
-    oidcSecret: oidc-auth
+    # Use the manually created oidc-auth Secret
+    oidcSecret:
+      create: false
     additionalArgs:
       - --auth-methods=oidc
       - --oidc-issuer-url=https://dex.example.com
@@ -363,7 +367,7 @@ Set up alerts for the Weave GitOps Dashboard itself:
 ```yaml
 # weave-gitops-alert.yaml
 # Alert configuration to notify when the dashboard has issues
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: weave-gitops-alert
@@ -392,7 +396,7 @@ kubectl get pods -n flux-system -l app.kubernetes.io/name=weave-gitops
 kubectl logs -n flux-system -l app.kubernetes.io/name=weave-gitops
 
 # Check the HelmRelease status
-flux get helmrelease weave-gitops -n flux-system
+flux get helmreleases -n flux-system
 ```
 
 ### Authentication Issues
