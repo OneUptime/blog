@@ -21,7 +21,7 @@ kubectl rollout restart deployment/calico-typha -n calico-system
 # This destroys the pre-failure state needed for root cause analysis
 
 # CORRECT: Collect first
-./collect-calico-cluster-diags.sh
+calicoctl cluster diags
 # Then remediate
 kubectl rollout restart deployment/calico-typha -n calico-system
 ```
@@ -52,9 +52,9 @@ calicoctl ipam check
 # (wastes time on the wrong scope)
 
 # SYMPTOM: All pods on ALL nodes can't connect to services
-# FIRST CHECK: kubectl get tigerastatus
-# If kube-controllers is degraded: this is a cluster-level issue
-# → Fix: restart kube-controllers, NOT individual calico-node pods
+# FIRST CHECK: cluster-level diagnostics and shared components
+# If TigeraStatus shows a shared component degraded: this is a cluster-level issue
+# → Investigate that shared component, NOT individual calico-node pods
 
 # CORRECT scope identification:
 ALL_NODES_AFFECTED=true  # Based on symptom scope
@@ -73,7 +73,7 @@ SINGLE_NODE_AFFECTED=true
 # CORRECT: Alert when >85%
 
 # Add to your monitoring stack:
-# Alert: (calico_ipam_used_ips / calico_ipam_total_ips) > 0.85
+# Alert: (sum by (ippool) (ipam_allocations_in_use) / max by (ippool) (ipam_ippool_size)) > 0.85
 
 # Check current state
 calicoctl ipam show
@@ -107,8 +107,8 @@ mindmap
 # WRONG: Never running ipam check
 # CORRECT: Weekly ipam check
 calicoctl ipam check
-# "IPAM is consistent" = no leaked allocations
-# "Found N inconsistencies" = leaked IPs, action required
+# No reported inconsistencies = no leaked or incorrectly allocated IPs detected
+# Reported problem IPs = review the report and release unnecessary addresses
 ```
 
 ## Conclusion
