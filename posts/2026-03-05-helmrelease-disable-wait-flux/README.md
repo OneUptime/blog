@@ -212,7 +212,7 @@ After applying your HelmRelease, confirm it is reconciling without wait issues:
 
 ```bash
 # Check the HelmRelease status
-flux get helmrelease my-app
+flux get helmreleases -n default
 
 # Verify the Helm release was created
 helm list -n default
