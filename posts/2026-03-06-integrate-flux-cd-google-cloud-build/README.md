@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Google Cloud Build, CI/CD, GitOps, Kubernetes, GKE, GCR, Artifact Registry
+Tags: Flux CD, Google Cloud Build, CI/CD, GitOps, Kubernetes, GKE, Artifact Registry
 
 Description: A step-by-step guide to integrating Google Cloud Build with Flux CD for automated container image builds and GitOps deployments on GKE.
 
@@ -18,7 +18,7 @@ Before starting, make sure you have:
 
 - A GKE cluster or any Kubernetes cluster with Flux CD installed
 - A Google Cloud project with Cloud Build API enabled
-- Google Artifact Registry or Container Registry configured
+- Google Artifact Registry configured
 - `gcloud`, `kubectl`, and `flux` CLI tools installed
 - Appropriate IAM permissions for Cloud Build
 
@@ -70,8 +70,8 @@ steps:
     args:
       - '-c'
       - |
-        # Build a test image and run tests
-        docker build --target test -t my-app-test . || echo "No test stage"
+        # Build a test image and run tests. Replace this if your Dockerfile has no test stage.
+        docker build --target test -t my-app-test .
 
   # Step 2: Build the container image
   - name: 'gcr.io/cloud-builders/docker'
@@ -107,7 +107,7 @@ images:
 options:
   # Use a larger machine for faster builds
   machineType: 'E2_HIGHCPU_8'
-  # Enable Docker layer caching
+  # Store build logs only in Cloud Logging
   logging: CLOUD_LOGGING_ONLY
 ```
 
@@ -131,8 +131,8 @@ steps:
         if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
           VERSION="${TAG_NAME#v}"
         else
-          # Use build number as patch version
-          VERSION="1.0.${BUILD_ID:0:8}"
+          echo "This build must be triggered by a semantic version tag like v1.2.3"
+          exit 1
         fi
         echo "$VERSION" > /workspace/version.txt
         echo "Building version: $VERSION"
@@ -338,14 +338,21 @@ spec:
 
 ## Step 10: Set Up Pub/Sub Notifications (Optional)
 
-Use Google Cloud Pub/Sub to notify Flux immediately when Cloud Build completes.
+Use Google Cloud Pub/Sub to notify Flux when Cloud Build changes state, including when a build completes.
 
 ```bash
-# Cloud Build automatically publishes to the cloud-builds topic
-# Create a subscription for monitoring
+# Create the token secret used by the Flux Receiver
+kubectl -n flux-system create secret generic webhook-token \
+  --from-literal=token="$(openssl rand -hex 32)"
+
+# After applying the Receiver manifest below, use its generated webhook path
+WEBHOOK_PATH=$(kubectl -n flux-system get receiver gcb-receiver -o jsonpath='{.status.webhookPath}')
+
+# Cloud Build publishes build state changes to the cloud-builds topic by default
+# Create a subscription that triggers the Flux receiver
 gcloud pubsub subscriptions create flux-build-notifications \
   --topic=cloud-builds \
-  --push-endpoint="https://your-flux-webhook-endpoint/hook/gcb-receiver"
+  --push-endpoint="https://your-flux-webhook-endpoint${WEBHOOK_PATH}"
 ```
 
 ```yaml
