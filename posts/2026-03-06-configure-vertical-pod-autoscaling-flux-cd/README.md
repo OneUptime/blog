@@ -40,7 +40,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/vpa-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa
@@ -94,7 +94,7 @@ spec:
   path: ./infrastructure/vpa/production
   prune: true
   wait: true
-  # VPA resources depend on the VPA controller being installed
+  # VPA resources depend on the Flux Kustomization that installs the VPA controller
   dependsOn:
     - name: vpa-controller
 ```
@@ -122,9 +122,9 @@ spec:
     updateMode: "Off"
 ```
 
-## VPA with Auto Update Mode
+## VPA with Recreate Update Mode
 
-Once you trust the recommendations, enable automatic updates:
+Once you trust the recommendations, enable eviction-based automatic updates:
 
 ```yaml
 # infrastructure/vpa/base/api-server-vpa.yaml
@@ -138,9 +138,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-server
-  # Auto mode applies recommendations by evicting and recreating pods
+  # Recreate mode applies recommendations by evicting and recreating pods
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: api-server
@@ -203,7 +203,7 @@ spec:
     kind: Deployment
     name: sidecar-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       # Main application container
@@ -283,8 +283,8 @@ patches:
     patch: |
       - op: replace
         path: /spec/updatePolicy/updateMode
-        # Production uses Auto mode after validation
-        value: "Auto"
+        # Production uses Recreate mode after validation
+        value: "Recreate"
 ```
 
 ```yaml
@@ -321,7 +321,7 @@ spec:
     kind: Deployment
     name: combined-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: app
@@ -378,7 +378,7 @@ flux get kustomizations vpa-resources
 
 ```yaml
 # clusters/my-cluster/vpa-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: vpa-alerts
