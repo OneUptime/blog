@@ -18,7 +18,7 @@ This guide walks you through setting up Consul Connect on Kubernetes using Flux 
 
 Before getting started, ensure you have the following:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster (v1.22 or later)
 - Flux CD bootstrapped on the cluster
 - kubectl configured to access your cluster
 - A Git repository connected to Flux CD
@@ -28,7 +28,7 @@ Before getting started, ensure you have the following:
 First, define a HelmRepository source so Flux can pull the official Consul Helm chart.
 
 ```yaml
-# clusters/my-cluster/consul/helmrepository.yaml
+# clusters/my-cluster/consul/install/helmrepository.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -45,7 +45,7 @@ spec:
 Create a dedicated namespace for Consul components.
 
 ```yaml
-# clusters/my-cluster/consul/namespace.yaml
+# clusters/my-cluster/consul/install/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -60,7 +60,7 @@ metadata:
 Define the HelmRelease to deploy Consul with Connect enabled.
 
 ```yaml
-# clusters/my-cluster/consul/helmrelease.yaml
+# clusters/my-cluster/consul/install/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -131,22 +131,21 @@ spec:
 
 ## Configuring a Kustomization for Consul
 
-Use a Flux Kustomization to orchestrate the deployment order.
+Use Flux Kustomizations to orchestrate the deployment order. Install the Consul chart first, then apply Consul configuration entries after the chart has installed the CRDs.
 
 ```yaml
-# clusters/my-cluster/consul/kustomization.yaml
+# clusters/my-cluster/consul-kustomizations.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: consul
+  name: consul-install
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: consul
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./clusters/my-cluster/consul
+  path: ./clusters/my-cluster/consul/install
   prune: true
   # Wait for resources to become ready
   wait: true
@@ -155,12 +154,51 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: StatefulSet
-      name: consul-consul-server
+      name: consul-server
       namespace: consul
     - apiVersion: apps/v1
       kind: Deployment
-      name: consul-consul-connect-injector
+      name: consul-connect-injector
       namespace: consul
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: consul-config
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/my-cluster/consul/config
+  prune: true
+  wait: true
+  timeout: 5m
+  dependsOn:
+    - name: consul-install
+```
+
+In each reconciled directory, include a standard Kustomize file that lists the resources Flux should apply.
+
+```yaml
+# clusters/my-cluster/consul/install/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+```
+
+```yaml
+# clusters/my-cluster/consul/config/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - intentions.yaml
+  - service-defaults.yaml
+  - proxy-defaults.yaml
 ```
 
 ## Deploying a Service with Connect Sidecar
@@ -169,6 +207,12 @@ Once Consul Connect is running, annotate your application pods to inject the Con
 
 ```yaml
 # apps/my-app/deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web-app
+  namespace: default
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -186,9 +230,13 @@ spec:
       annotations:
         # Enable Connect sidecar injection for this pod
         consul.hashicorp.com/connect-inject: "true"
+        # Register this workload as the web-app Consul service
+        consul.hashicorp.com/connect-service: "web-app"
         # Define the upstream service to connect to
-        consul.hashicorp.com/connect-service-upstreams: "api-service:8081"
+        consul.hashicorp.com/connect-service-upstreams: "api-service.svc:8081"
     spec:
+      # With ACLs enabled, the Consul service name must match the pod's service account.
+      serviceAccountName: web-app
       containers:
         - name: web-app
           image: my-registry/web-app:v1.0.0
@@ -209,11 +257,11 @@ spec:
 Service intentions control which services are allowed to communicate with each other.
 
 ```yaml
-# clusters/my-cluster/consul/intentions.yaml
+# clusters/my-cluster/consul/config/intentions.yaml
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceIntentions
 metadata:
-  name: api-service-intentions
+  name: api-service
   namespace: default
 spec:
   # The destination service that traffic flows to
@@ -233,7 +281,7 @@ spec:
 Set default protocol and mesh gateway settings for your services.
 
 ```yaml
-# clusters/my-cluster/consul/service-defaults.yaml
+# clusters/my-cluster/consul/config/service-defaults.yaml
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceDefaults
 metadata:
@@ -260,23 +308,20 @@ spec:
 Define global proxy defaults that apply to all Connect sidecar proxies.
 
 ```yaml
-# clusters/my-cluster/consul/proxy-defaults.yaml
+# clusters/my-cluster/consul/config/proxy-defaults.yaml
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ProxyDefaults
 metadata:
   name: global
-  namespace: consul
+  namespace: default
 spec:
   # Configure the default proxy behavior
   config:
     # Set the protocol for all proxies
     protocol: http
-    # Configure Envoy access logging
-    envoy_extra_static_clusters_json: |
-      {
-        "connect_timeout": "3.000s",
-        "dns_lookup_family": "V4_ONLY"
-      }
+  # Configure Envoy access logging
+  accessLogs:
+    enabled: true
   # Configure mesh gateway defaults
   meshGateway:
     mode: local
@@ -291,7 +336,8 @@ After committing the manifests, verify the deployment status using Flux CLI.
 
 ```bash
 # Check the Kustomization reconciliation status
-flux get kustomizations consul
+flux get kustomizations consul-install
+flux get kustomizations consul-config
 
 # Check the HelmRelease status
 flux get helmreleases -n consul
@@ -311,7 +357,7 @@ kubectl get serviceintentions --all-namespaces
 To upgrade Consul, update the chart version in the HelmRelease manifest.
 
 ```yaml
-# Update the version constraint in helmrelease.yaml
+# Update the version constraint in install/helmrelease.yaml
 spec:
   chart:
     spec:
@@ -336,7 +382,8 @@ kubectl logs -n consul -l component=connect-injector --tail=50
 kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations}'
 
 # Force Flux to reconcile immediately
-flux reconcile kustomization consul --with-source
+flux reconcile kustomization consul-install --with-source
+flux reconcile kustomization consul-config
 ```
 
 ## Summary
