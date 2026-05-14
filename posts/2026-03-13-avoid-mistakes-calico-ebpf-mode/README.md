@@ -10,7 +10,7 @@ Description: Identify and avoid the most common mistakes when enabling and opera
 
 ## Introduction
 
-Calico eBPF mode has a well-documented set of common mistakes that operators encounter when enabling or operating it. Many of these mistakes result in silent degradation - the cluster continues to work, but in iptables mode rather than eBPF mode - defeating the purpose of enabling eBPF. Others result in service connectivity failures that are difficult to diagnose without understanding the eBPF architecture.
+Calico eBPF mode has a well-documented set of common mistakes that operators encounter when enabling or operating it. Many of these mistakes result in silent degradation - the cluster continues to work, but in the standard dataplane rather than eBPF mode - defeating the purpose of enabling eBPF. Others result in service connectivity failures that are difficult to diagnose without understanding the eBPF architecture.
 
 This guide catalogs the most common eBPF mistakes with concrete examples and corrective actions.
 
@@ -32,19 +32,20 @@ Different eBPF features require different kernel minimum versions:
 kernel_major=$(uname -r | cut -d. -f1)
 [[ "${kernel_major}" -ge 5 ]] && echo "OK"  # This passes on 5.0 which is too old!
 
-# CORRECT - check for minimum 5.3, and understand 5.10+ gives better performance
+# CORRECT - check for minimum 5.10 for current Calico Open Source releases
 check_kernel() {
   local major minor
   major=$(uname -r | cut -d. -f1)
   minor=$(uname -r | cut -d. -f2)
 
-  if [[ "${major}" -gt 5 ]] || \
-     ([[ "${major}" -eq 5 ]] && [[ "${minor}" -ge 10 ]]); then
-    echo "OK: Kernel $(uname -r) - full eBPF support"
-  elif [[ "${major}" -eq 5 ]] && [[ "${minor}" -ge 3 ]]; then
-    echo "WARN: Kernel $(uname -r) - basic eBPF support (upgrade to 5.10+ recommended)"
+  if [[ "${major}" -gt 6 ]] || \
+     ([[ "${major}" -eq 6 ]] && [[ "${minor}" -ge 6 ]]); then
+    echo "OK: Kernel $(uname -r) - base eBPF support with newer feature support"
+  elif [[ "${major}" -gt 5 ]] || \
+       ([[ "${major}" -eq 5 ]] && [[ "${minor}" -ge 10 ]]); then
+    echo "OK: Kernel $(uname -r) - base eBPF support"
   else
-    echo "FAIL: Kernel $(uname -r) too old for Calico eBPF"
+    echo "FAIL: Kernel $(uname -r) too old for current Calico eBPF requirements"
   fi
 }
 ```
@@ -52,19 +53,24 @@ check_kernel() {
 ## Mistake 2: Leaving kube-proxy Running
 
 ```bash
-# WRONG - enabling eBPF without disabling kube-proxy
-kubectl patch installation default --type=merge \
+# WRONG - enabling eBPF without disabling kube-proxy or enabling operator management
+kubectl patch installation.operator.tigera.io default --type merge \
   -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
-# kube-proxy is still running! This causes double NAT for services
-# Symptoms: services may work but with higher latency or failures
-# under load due to conntrack conflicts
+# kube-proxy is still running! This can cause confusion over which
+# component is handling services and conflicts with Calico's cleanup of
+# kube-proxy iptables rules.
 
-# CORRECT - disable kube-proxy BEFORE or SIMULTANEOUSLY with eBPF enablement
+# CORRECT - for compatible self-managed clusters, let the operator bootstrap
+# API server access and manage kube-proxy while enabling eBPF
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
+
+# Or disable kube-proxy manually before or while enabling eBPF
 kubectl patch ds kube-proxy -n kube-system \
   -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico-ebpf":"true"}}}}}'
 
 # THEN enable eBPF
-kubectl patch installation default --type=merge \
+kubectl patch installation.operator.tigera.io default --type merge \
   -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
 ```
 
@@ -83,29 +89,32 @@ data:
 
 # Why this fails: When kube-proxy is disabled, the VIP 10.96.0.1 doesn't
 # work because kube-proxy was creating the NAT rule for it.
-# Felix needs the REAL control plane node IP.
+# Felix needs a stable real API server address.
 
-# CORRECT - use the real endpoint IP
+# CORRECT - use a stable real API server address, such as the control plane
+# node address for a single-node control plane or the load balancer address
+# for a highly available control plane
 # kubectl get endpoints kubernetes -n default
 data:
-  KUBERNETES_SERVICE_HOST: "192.168.1.100"   # Real control plane node IP
+  KUBERNETES_SERVICE_HOST: "192.168.1.100"   # Stable real API server address
   KUBERNETES_SERVICE_PORT: "6443"
 ```
 
-## Mistake 4: Enabling eBPF with hostPorts Enabled
+## Mistake 4: Forcing hostPorts Disabled
 
 ```yaml
-# WRONG - hostPorts are not supported in eBPF mode
+# WRONG - older examples often disabled hostPorts unnecessarily
 spec:
   calicoNetwork:
     linuxDataplane: BPF
-    hostPorts: Enabled  # Will cause errors or silent fallback
+    hostPorts: Disabled
 
-# CORRECT
+# CORRECT - follow the current eBPF switch-over guidance and unset hostPorts,
+# or omit the field when creating the Installation resource
 spec:
   calicoNetwork:
     linuxDataplane: BPF
-    hostPorts: Disabled  # Required for eBPF mode
+    hostPorts: null
 ```
 
 ## Mistake 5: Not Checking BPF Programs After Node Restart
@@ -113,7 +122,8 @@ spec:
 ```bash
 # WRONG - assuming eBPF persists across reboots without checking
 # BPF programs are loaded into kernel memory and do NOT persist across reboots
-# calico-node re-loads them on startup, but if startup fails, iptables is used
+# calico-node re-loads them on startup, but if eBPF mode is not functioning
+# and kube-proxy is disabled, Kubernetes service connectivity can fail
 
 # CORRECT - add post-reboot health check
 # Add to node bootstrap script or monitoring:
@@ -126,7 +136,7 @@ check_ebpf_after_reboot() {
   done
 
   # Verify BPF programs were loaded
-  programs=$(bpftool prog list 2>/dev/null | grep -c calico || echo 0)
+  programs=$(bpftool prog list 2>/dev/null | grep -c calico || true)
   if [[ "${programs}" -lt 5 ]]; then
     echo "WARNING: eBPF programs not loaded after reboot!"
     systemctl status kubelet
@@ -144,17 +154,17 @@ mindmap
       Insufficient kernel config
     kube-proxy
       Not disabling before eBPF
-      Double NAT causing failures
+      iptables cleanup conflicts
     Configuration
       Wrong API server IP in ConfigMap
-      hostPorts not disabled
+      hostPorts forced disabled
       Missing KUBERNETES_SERVICE_HOST
     Operations
       Not checking BPF after restarts
       Not monitoring BPF map capacity
-      Mixed eBPF/iptables nodes
+      Mixed eBPF/standard dataplane nodes
 ```
 
 ## Conclusion
 
-The most impactful Calico eBPF mistakes are operational: failing to disable kube-proxy (causing double NAT), using the wrong API server IP in the ConfigMap (causing service routing failures when kube-proxy is disabled), and not verifying BPF programs are actually loaded after node restarts. Check `felix_bpf_enabled` in Prometheus continuously to detect any node that has fallen back to iptables mode. A mixed-mode cluster (some nodes eBPF, some iptables) is particularly dangerous because the inconsistency can cause intermittent connectivity issues that are very hard to debug.
+The most impactful Calico eBPF mistakes are operational: failing to disable kube-proxy or let the operator manage it, using the wrong API server IP in the ConfigMap (causing service routing failures when kube-proxy is disabled), and not verifying BPF programs are actually loaded after node restarts. Check Felix logs and metrics continuously to detect any node that has fallen back to the standard dataplane. A mixed-mode cluster (some nodes eBPF, some standard dataplane and/or Windows nodes) is not supported and can cause intermittent connectivity issues that are very hard to debug.
