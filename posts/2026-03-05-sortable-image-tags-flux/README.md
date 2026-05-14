@@ -143,7 +143,7 @@ TAG="${BRANCH}-${SHA}-${TIMESTAMP}"
 docker build -t ghcr.io/my-org/my-app:${TAG} .
 docker push ghcr.io/my-org/my-app:${TAG}
 
-# Example tags produced: main-a1b2c3d-1709654400, main-e4f5g6h-1709740800
+# Example tags produced: main-a1b2c3d-1709654400, main-e4f5a6b-1709740800
 ```
 
 Use `filterTags` with a named capture group to extract the timestamp.
@@ -217,7 +217,7 @@ spec:
 
 Tags that do not work well with Flux automation:
 
-- **`latest`** - Never changes in sort order, Flux cannot detect updates
+- **`latest`** - Never changes in sort order, so tag-based automation cannot detect updates unless you also configure digest reflection for the mutable tag
 - **Random strings** - Not sortable in any meaningful way
 - **Branch names only** - `main`, `develop` are not sortable versions
 - **Commit SHA only** - `a1b2c3d` has no chronological order
