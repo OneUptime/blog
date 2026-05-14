@@ -22,9 +22,9 @@ This post connects version compatibility failures to their traffic impact and pr
 
 ## Failure Mode 1: Policy Not Enforced for New Pods
 
-**What happens**: After a Kubernetes upgrade that leaves Calico on an incompatible version, new pods are created but Calico cannot program their policy chains because the API it uses to discover pods has changed.
+**What happens**: After a Kubernetes upgrade that leaves Calico on an unsupported version, new pods may be created but Calico may fail to create or consume the WorkloadEndpoint data it needs to program policy. WorkloadEndpoint lifecycle is normally handled by the Calico CNI/orchestrator integration, and Felix programs the dataplane from that endpoint data.
 
-**Traffic impact**: New pods have no network policy enforcement - all traffic is allowed. Existing pods with already-programmed policy chains continue to work.
+**Traffic impact**: New pods may have missing or incorrect network policy enforcement, or they may lose connectivity if endpoint programming fails. Existing pods with already-programmed dataplane state may continue to work until they are recreated or their policy state changes.
 
 **Diagnostic**:
 ```bash
@@ -32,14 +32,14 @@ This post connects version compatibility failures to their traffic impact and pr
 
 kubectl run test-pod --image=nginx
 calicoctl get workloadendpoint --all-namespaces | grep test-pod
-# If the WorkloadEndpoint is missing, Felix cannot see the new pod
+# If the WorkloadEndpoint is missing, Calico has not recorded the pod endpoint
 
 # Check Felix logs for API errors
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
   grep -i "error\|failed\|api"
 ```
 
-**Version compatibility connection**: Felix watches the Kubernetes API for pod events. If the Kubernetes API version has changed (e.g., a beta API removed in Kubernetes 1.25), Felix's watcher fails silently and new pods don't get policy programmed.
+**Version compatibility connection**: Calico releases are tested against specific Kubernetes versions. If Kubernetes removes an API that an older Calico manifest, controller, or client still uses, Calico components can fail to install, start, or process updates correctly. For example, Kubernetes 1.25 removed several deprecated beta APIs such as `policy/v1beta1` PodSecurityPolicy, so older manifests that still depended on those APIs must be updated before the cluster upgrade.
 
 ## Failure Mode 2: BGP Routes Missing After Upgrade
 
@@ -55,11 +55,11 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 # If missing, BGP advertisement is failing
 ```
 
-## Failure Mode 3: Service Routing Failure After calicoctl Version Mismatch
+## Failure Mode 3: Policy Update Failure After calicoctl Version Mismatch
 
-**What happens**: Using a mismatched `calicoctl` version to apply a service policy change results in the policy being applied with the wrong schema. The policy appears correct in `calicoctl get` but is not being enforced as intended.
+**What happens**: Using a mismatched `calicoctl` version to apply a policy change can use a client schema that does not match the Calico version running in the cluster. Depending on the mismatch, the operation may be rejected by validation or may not apply fields introduced in a newer Calico release as intended.
 
-**Traffic impact**: Service traffic appears to be allowed when it should be blocked, or vice versa - depending on which fields were silently ignored due to schema mismatch.
+**Traffic impact**: Traffic appears to be allowed when it should be blocked, or vice versa, because the policy stored in the datastore is not the policy the operator intended to apply.
 
 **Diagnostic**:
 ```bash
@@ -74,7 +74,7 @@ calicoctl version
 
 **What happens**: After a node kernel upgrade, the kernel version may not match the requirements for the Calico eBPF version currently installed.
 
-**Traffic impact**: The node's eBPF programs fail to load. Calico falls back to iptables mode on that node (if configured) or the node's pods lose connectivity.
+**Traffic impact**: The node's eBPF programs may fail to load or attach. If the cluster is configured for the eBPF dataplane, affected pods and services can lose connectivity until the kernel, Calico version, or dataplane configuration is corrected. Calico does not automatically switch an eBPF-enabled node back to the iptables dataplane as a recovery mechanism.
 
 **Diagnostic**:
 ```bash
@@ -90,8 +90,8 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
 |---|---|---|
 | K8s upgrade without Calico upgrade | New pods have no policy | Check WorkloadEndpoints for new pods |
 | Calico minor upgrade | BGP route re-advertisement | Monitor route tables during upgrade |
-| calicoctl mismatch | Policy schema errors | Compare versions, re-apply policies |
-| Kernel upgrade with eBPF | eBPF program reload | Check bpftool prog list |
+| calicoctl mismatch | Policy validation or schema errors | Compare versions, re-apply policies |
+| Kernel upgrade with eBPF | eBPF program reload or attach failure | Check bpftool prog list |
 | Operator upgrade | All components restart | Monitor tigerastatus |
 
 ## Health Monitoring After Upgrades
