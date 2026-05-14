@@ -10,7 +10,7 @@ Description: A step-by-step guide to diagnosing and resolving the 'values merge 
 
 ## Introduction
 
-The "values merge failed" error occurs when Flux CD's helm-controller cannot merge the values provided in a HelmRelease resource. This can happen due to YAML syntax errors in inline values, broken references to ConfigMaps or Secrets used in `valuesFrom`, or values that fail Helm chart schema validation.
+The "values merge failed" error occurs when Flux CD's helm-controller cannot compose the values provided in a HelmRelease resource. This usually happens because a referenced ConfigMap or Secret in `valuesFrom` is missing, contains invalid YAML, or contains values that cannot be merged with the other value sources. Similar-looking failures can also happen earlier when the HelmRelease manifest itself has YAML syntax errors, or later when the final values fail Helm chart schema validation.
 
 This guide walks through each scenario with practical examples and fixes.
 
@@ -33,9 +33,9 @@ status:
       message: 'values merge failed: unable to merge values from "my-namespace/my-config"'
 ```
 
-## Common Cause 1: YAML Syntax Errors in Inline Values
+## Common Cause 1: YAML Syntax Errors in the HelmRelease Manifest
 
-The most common cause is a YAML formatting issue within the `spec.values` block of the HelmRelease.
+A YAML formatting issue within the HelmRelease manifest, including the `spec.values` block, is often confused with a values merge failure. In this case, Kubernetes or Flux's kustomize-controller rejects the manifest before helm-controller can reconcile it.
 
 ### Example of Incorrect Configuration
 
@@ -253,7 +253,7 @@ spec:
 
 ## Common Cause 4: Values Failing Schema Validation
 
-Many Helm charts include a `values.schema.json` file that validates the provided values. If your values do not conform to the schema, the merge will fail.
+Many Helm charts include a `values.schema.json` file that validates the provided values. If your values do not conform to the schema, Helm validation fails after Flux has composed the final values.
 
 ### Diagnosing the Issue
 
@@ -329,6 +329,8 @@ Flux merges values in this order (last wins):
 2. `valuesFrom` entries (in order they appear)
 3. Inline `values` block
 
+One exception is a `valuesFrom` entry with `targetPath`: Flux treats that value like a Helm `--set` path and it overwrites anything previously set at that path, including inline values.
+
 ### Example of Proper Multi-Source Values
 
 ```yaml
@@ -358,7 +360,7 @@ spec:
       valuesKey: values.yaml
       # Optional: make the reference optional so it does not fail if missing
       optional: true
-  # Inline values override everything from valuesFrom
+  # Inline values override root-level valuesFrom entries
   values:
     replicaCount: 3
 ```
@@ -396,7 +398,8 @@ spec:
       name: maybe-exists
       valuesKey: values.yaml
       # Setting optional to true means Flux will not fail if this
-      # ConfigMap does not exist
+      # ConfigMap does not exist. Other errors, such as a missing
+      # valuesKey or malformed values data, still fail reconciliation.
       optional: true
     - kind: Secret
       name: maybe-exists-secret
@@ -420,4 +423,4 @@ spec:
 
 ## Conclusion
 
-The "values merge failed" error in Flux CD typically stems from YAML syntax errors, missing or misconfigured ConfigMap/Secret references, schema validation failures, or type conflicts between multiple value sources. Use the debugging workflow above to systematically identify the root cause. Always validate your YAML locally before committing, use the `optional` flag for non-critical value sources, and pay attention to the merge order when combining multiple value sources.
+The "values merge failed" error in Flux CD typically stems from missing or misconfigured ConfigMap/Secret references, invalid YAML inside referenced values data, or type conflicts between multiple value sources. Related failures can also come from malformed HelmRelease YAML before reconciliation or chart schema validation after the values are composed. Use the debugging workflow above to systematically identify the root cause. Always validate your YAML locally before committing, use the `optional` flag for non-critical value sources, and pay attention to the merge order when combining multiple value sources.
