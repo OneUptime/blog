@@ -31,17 +31,15 @@ Cilium requires a minimum kernel version. RKE supports multiple OS distributions
 
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
-# Minimum kernel requirements:
-# - Basic CNI: 4.9.17+
-# - kube-proxy replacement: 4.19.57+
-# - eBPF host routing: 5.10+
-# - WireGuard encryption: 5.6+
-# Recommended for production: 5.10+
+# Current Cilium kernel requirement:
+# - Linux kernel: 5.10+ or an equivalent vendor kernel (for example, 4.18 on RHEL 8.10)
+# - Newer kernels may enable additional eBPF features automatically
+# - WireGuard encryption requires kernel-mode WireGuard support and UDP 51871 between nodes
 
 # Check OS image on nodes
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.osImage}{"\n"}{end}'
 
-# Best supported OS for Cilium on RKE:
+# Examples of distributions with suitable default kernels:
 # Ubuntu 22.04 (kernel 5.15)
 # SUSE Linux Enterprise 15 SP4+ (kernel 5.14+)
 # openSUSE Leap 15.4+
@@ -49,7 +47,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.n
 
 ## Step 2: Check RKE2 Native Cilium Support
 
-RKE2 supports Cilium as a first-class CNI option since RKE2 v1.21+.
+Current RKE2 releases support Cilium as a built-in CNI option.
 
 ```bash
 # Check RKE2 version
@@ -60,7 +58,7 @@ rke2 --version 2>/dev/null || kubectl get nodes -o jsonpath='{.items[0].status.n
 cat << 'EOF'
 # /etc/rancher/rke2/config.yaml for RKE2 with Cilium
 cni: cilium                    # Tell RKE2 to use Cilium as CNI
-disable-kube-proxy: true       # Cilium replaces kube-proxy when enabled
+disable-kube-proxy: true       # Optional: use when configuring Cilium kube-proxy replacement
 EOF
 
 # Check current CNI configuration for existing RKE2 cluster
@@ -112,7 +110,8 @@ ls /etc/cni/net.d/
 
 # Check for leftover CNI binaries
 ls /opt/cni/bin/
-# Existing binaries (calico, flannel) should be removed if you're fully replacing the CNI
+# Leftover binaries are less important than stale files in /etc/cni/net.d/,
+# but remove obsolete binaries if your node-management process requires it
 ```
 
 ## Step 5: Run Pre-Installation Cilium Check
@@ -126,16 +125,17 @@ export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 # Or for RKE v1
 export KUBECONFIG=kube_config_cluster.yml
 
-# Run Cilium's built-in pre-installation check
+# Render Cilium resources without installing them
 cilium install --dry-run \
-  --helm-set kubeProxyReplacement=true \
-  --helm-set k8sServiceHost=10.0.1.10 \
-  --helm-set k8sServicePort=6443
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=10.0.1.10 \
+  --set k8sServicePort=6443
 
 # Check if nodes can communicate on required Cilium ports
 # VXLAN: UDP 8472
 # Cilium health: TCP 4240
 # Hubble: TCP 4244
+# WireGuard encryption: UDP 51871
 # Test from one node to another:
 nc -zv <node-ip> 4240 && echo "Port 4240 OK"
 ```
