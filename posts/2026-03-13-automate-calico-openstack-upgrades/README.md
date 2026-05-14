@@ -30,27 +30,44 @@ The OpenStack layer requires Ansible as the primary tool since Neutron agents ru
 - name: Upgrade Calico on OpenStack
   hosts: all
   vars:
-    calico_version: "v3.28.0"
+    calico_version: "v3.32.0"
+    calico_compute_packages:
+      - calico-compute
+      - calico-felix
+      - calico-common
+      - networking-calico
+      - calico-dhcp-agent
+    calico_control_packages:
+      - calico-control
+      - calico-common
+      - networking-calico
   tasks:
-    - name: Check Neutron ML2 compatibility
+    - name: Check current Neutron database revision
       command: neutron-db-manage current
       delegate_to: "{{ groups['neutron_api'][0] }}"
 
-    - name: Upgrade Kubernetes Calico via operator
+    - name: Upgrade Kubernetes Calico CRDs and operator
       kubernetes.core.k8s:
-        state: patched
-        api_version: operator.tigera.io/v1
-        kind: Installation
-        name: default
-        definition:
-          spec:
-            version: "{{ calico_version }}"
+        state: present
+        src: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/{{ item }}"
+        apply: yes
+        server_side_apply:
+          field_manager: ansible
+          force_conflicts: true
+      loop:
+        - v1_crd_projectcalico_org.yaml
+        - tigera-operator.yaml
       delegate_to: localhost
 
-    - name: Upgrade calico-felix on compute nodes
+    - name: Upgrade Calico packages on compute nodes
       package:
-        name: calico-felix
+        name: "{{ calico_compute_packages }}"
         state: latest
+      when: inventory_hostname in groups['compute']
+
+    - name: Verify Felix version on compute nodes
+      command: calico-felix --version
+      changed_when: false
       when: inventory_hostname in groups['compute']
 
     - name: Restart calico-felix
@@ -58,6 +75,18 @@ The OpenStack layer requires Ansible as the primary tool since Neutron agents ru
         name: calico-felix
         state: restarted
       when: inventory_hostname in groups['compute']
+
+    - name: Upgrade Calico packages on Neutron control nodes
+      package:
+        name: "{{ calico_control_packages }}"
+        state: latest
+      when: inventory_hostname in groups['neutron_api']
+
+    - name: Restart neutron-server
+      service:
+        name: neutron-server
+        state: restarted
+      when: inventory_hostname in groups['neutron_api']
 ```
 
 ## Conclusion
