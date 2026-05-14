@@ -16,7 +16,7 @@ This guide covers how to configure automatic rollback for both install and upgra
 
 ## How Automatic Rollback Works
 
-Automatic rollback in Flux is implemented through the remediation system. When a Helm operation fails and all retries are exhausted, Flux can automatically roll back the release to its previous successful state.
+Automatic rollback in Flux is implemented through the remediation system. When a Helm upgrade fails, Flux can remediate the failure with a rollback before retrying the upgrade. When all retries are exhausted, `remediateLastFailure: true` ensures Flux also remediates the final failed attempt.
 
 The following diagram shows the complete rollback flow for upgrades:
 
@@ -27,7 +27,7 @@ flowchart TD
     C --> D{Success?}
     D -->|Yes| E[Release Updated Successfully]
     D -->|No| F{Retries Left?}
-    F -->|Yes| G[Retry Upgrade]
+    F -->|Yes| G[Rollback to Previous Version]
     G --> C
     F -->|No| H{remediateLastFailure?}
     H -->|true| I[Automatic Rollback]
@@ -38,7 +38,7 @@ flowchart TD
 
 ## Configuring Automatic Rollback
 
-To enable automatic rollback, you need to set `remediateLastFailure: true` in the upgrade remediation configuration. This tells Flux to perform a Helm rollback after exhausting all retry attempts.
+To enable automatic rollback, configure upgrade remediation. The default upgrade remediation strategy is `rollback`, and `remediateLastFailure: true` tells Flux to also remediate the final failed attempt after exhausting all retry attempts.
 
 The following example enables automatic rollback with 3 retries:
 
@@ -81,9 +81,9 @@ spec:
 
 It is important to understand that rollback behaves differently for installs and upgrades:
 
-**Install remediation** (`spec.install.remediation.remediateLastFailure`): When set to `true`, Flux uninstalls the failed release. There is no previous version to roll back to since this is the first installation. On the next reconciliation, Flux will attempt a fresh install.
+**Install remediation** (`spec.install.remediation.remediateLastFailure`): When set to `true`, Flux uninstalls the failed release when no retries remain. There is no previous version to roll back to since this is the first installation. While retries remain, Flux uninstalls between attempts and retries the install from scratch.
 
-**Upgrade remediation** (`spec.upgrade.remediation.remediateLastFailure`): When set to `true`, Flux performs a Helm rollback to the last successful release revision. The application returns to the previous working version.
+**Upgrade remediation** (`spec.upgrade.remediation.remediateLastFailure`): When set to `true`, Flux performs the configured remediation for the final failed attempt. With the default upgrade remediation strategy, Flux performs a Helm rollback to the last successful release revision, and the application returns to the previous working version.
 
 The following example highlights the different behavior for each scenario:
 
@@ -187,7 +187,7 @@ The following example configures a Flux Alert to notify you when a HelmRelease f
 ```yaml
 # Alert provider configuration (e.g., Slack)
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-alerts
@@ -199,7 +199,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert configuration for HelmRelease failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-failures
@@ -223,7 +223,7 @@ Use the following steps to test automatic rollback in a non-production environme
 
 ```bash
 # Step 1: Verify the current working release
-flux get helmrelease my-application -n production
+flux get helmreleases -n production
 
 # Step 2: Push a change to Git that will cause an upgrade failure
 # (e.g., set an image tag that does not exist)
