@@ -10,6 +10,8 @@ Description: Learn how to use the Kubernetes Dashboard to monitor Flux CD custom
 
 The Kubernetes Dashboard provides a web-based interface for managing and inspecting resources running in your cluster. While Flux CD operates through custom resources and controllers, these resources are fully visible in the Kubernetes Dashboard, making it a convenient tool for monitoring your GitOps pipelines without relying solely on the command line.
 
+The Kubernetes project now marks Kubernetes Dashboard as deprecated and unmaintained, so for new clusters you should evaluate maintained alternatives such as Headlamp. If your cluster already uses Kubernetes Dashboard, the workflow below can still be useful for quick Flux resource inspection.
+
 This guide covers how to set up the Kubernetes Dashboard to work effectively with Flux CD resources, what to look for when monitoring reconciliation, and how to use the dashboard for basic troubleshooting.
 
 ## Prerequisites
@@ -19,33 +21,41 @@ Before you begin, ensure you have:
 - A Kubernetes cluster with Flux CD installed
 - `kubectl` access to the cluster
 - The Kubernetes Dashboard deployed in your cluster
+- The Helm CLI, if you need to install the Kubernetes Dashboard
 - Appropriate RBAC permissions to view Flux custom resources
 
 ## Step 1: Install the Kubernetes Dashboard
 
-If you do not already have the Kubernetes Dashboard installed, deploy it using the official manifest:
+If you do not already have the Kubernetes Dashboard installed, deploy it using the official Helm chart:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
+helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard --create-namespace --namespace kubernetes-dashboard
 ```
 
-To access the dashboard, create a proxy:
+To access the dashboard, forward the Dashboard proxy service:
 
 ```bash
-kubectl proxy
+kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443
 ```
 
 Then open your browser and navigate to:
 
 ```text
-http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+https://localhost:8443
 ```
 
 ## Step 2: Configure RBAC for Flux Resources
 
-The default dashboard service account may not have permissions to view Flux custom resources. Create a ClusterRole that grants read access to Flux CRDs:
+The service account whose token you use to log in may not have permissions to view Flux custom resources. Create a ServiceAccount and ClusterRole that grant read access to Flux CRDs:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-dashboard-viewer
+  namespace: kubernetes-dashboard
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -65,7 +75,7 @@ rules:
       - watch
 ```
 
-Bind this role to the dashboard service account:
+Bind this role to the login service account:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -78,14 +88,20 @@ roleRef:
   name: flux-dashboard-viewer
 subjects:
   - kind: ServiceAccount
-    name: kubernetes-dashboard
+    name: flux-dashboard-viewer
     namespace: kubernetes-dashboard
 ```
 
-Apply both manifests:
+Apply the manifests:
 
 ```bash
 kubectl apply -f flux-dashboard-rbac.yaml
+```
+
+Then create a token for the service account and use it to log in:
+
+```bash
+kubectl -n kubernetes-dashboard create token flux-dashboard-viewer
 ```
 
 ## Step 3: Navigate Flux Resources in the Dashboard
@@ -144,7 +160,7 @@ If the artifact revision is stale or the `lastUpdateTime` is old, it may indicat
 
 ## Step 7: Set Up Dashboard Refresh for Real-Time Monitoring
 
-The Kubernetes Dashboard does not auto-refresh by default. For continuous monitoring, enable auto-refresh in the dashboard settings or use the browser's auto-refresh feature. A refresh interval of 30 seconds works well for monitoring Flux reconciliation cycles, which typically run on intervals of one to ten minutes.
+The Kubernetes Dashboard does not provide Flux-specific live monitoring. For continuous monitoring, use your browser's auto-refresh feature. A refresh interval of 30 seconds works well for monitoring Flux reconciliation cycles, which typically run on intervals of one to ten minutes.
 
 ## Limitations of the Kubernetes Dashboard for Flux Monitoring
 
