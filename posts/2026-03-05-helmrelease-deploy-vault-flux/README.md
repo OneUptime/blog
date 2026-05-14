@@ -15,6 +15,7 @@ HashiCorp Vault provides centralized secrets management, encryption as a service
 - A Kubernetes cluster with Flux CD installed
 - A GitOps repository connected to Flux
 - A storage backend for Vault data (Raft integrated storage or an external backend like Consul)
+- A TLS secret named `vault-tls` in the `vault` namespace with `tls.crt`, `tls.key`, and `ca.crt`
 
 ## Creating the HelmRepository
 
@@ -43,9 +44,11 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vault
-  namespace: vault
+  namespace: flux-system
 spec:
   interval: 15m
+  releaseName: vault
+  targetNamespace: vault
   chart:
     spec:
       chart: vault
@@ -74,12 +77,16 @@ spec:
 
     # Vault Server configuration
     server:
+      extraEnvironmentVars:
+        VAULT_CACERT: /vault/userconfig/vault-tls/ca.crt
+
       # High Availability mode with Raft
       ha:
         enabled: true
         replicas: 3
         raft:
           enabled: true
+          setNodeId: true
           config: |
             ui = true
 
@@ -98,14 +105,20 @@ spec:
               retry_join {
                 leader_api_addr = "https://vault-0.vault-internal:8200"
                 leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+                leader_client_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+                leader_client_key_file = "/vault/userconfig/vault-tls/tls.key"
               }
               retry_join {
                 leader_api_addr = "https://vault-1.vault-internal:8200"
                 leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+                leader_client_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+                leader_client_key_file = "/vault/userconfig/vault-tls/tls.key"
               }
               retry_join {
                 leader_api_addr = "https://vault-2.vault-internal:8200"
                 leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+                leader_client_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+                leader_client_key_file = "/vault/userconfig/vault-tls/tls.key"
               }
             }
 
@@ -182,7 +195,7 @@ Vault requires initialization and unsealing after the first deployment. This is 
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease vault -n vault
+flux get helmrelease vault -n flux-system
 
 # Initialize Vault (first time only)
 kubectl exec -n vault vault-0 -- vault operator init \
@@ -195,11 +208,8 @@ kubectl exec -n vault vault-0 -- vault operator unseal <UNSEAL_KEY_1>
 kubectl exec -n vault vault-0 -- vault operator unseal <UNSEAL_KEY_2>
 kubectl exec -n vault vault-0 -- vault operator unseal <UNSEAL_KEY_3>
 
-# Join other replicas to the Raft cluster
-kubectl exec -n vault vault-1 -- vault operator raft join https://vault-0.vault-internal:8200
-kubectl exec -n vault vault-2 -- vault operator raft join https://vault-0.vault-internal:8200
-
-# Unseal vault-1 and vault-2 similarly
+# The retry_join configuration joins the other replicas to the Raft cluster.
+# Unseal vault-1 and vault-2 similarly.
 ```
 
 Store the initialization output (root token and unseal keys) securely outside of Git.
