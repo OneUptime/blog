@@ -10,7 +10,7 @@ Description: Step-by-step validation tests for Calico's L3 BGP routing fabric in
 
 ## Introduction
 
-Validating L3 BGP routing in Calico requires confirming that BGP sessions are established, routes are correctly advertised and learned, Felix has programmed the learned routes into the Linux routing table, and cross-node traffic flows without encapsulation. Each of these is independently testable with standard tools.
+Validating L3 BGP routing in Calico requires confirming that BGP sessions are established, routes are correctly advertised and learned, learned routes are present in the Linux routing table, and cross-node traffic flows without encapsulation. Each of these is independently testable with standard tools.
 
 This guide provides a complete BGP validation suite organized by layer - from BGP session state to packet-level routing verification.
 
@@ -43,7 +43,11 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "vxlanMode|ipipMode"
 Check that BIRD has established BGP sessions with its peers:
 
 ```bash
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+CALICO_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
+  --field-selector spec.nodeName=worker-1 \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show protocols
 ```
 
@@ -61,18 +65,22 @@ Confirm that each node is advertising its pod CIDR:
 
 ```bash
 # From Node 1, view routes received from Node 2
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+CALICO_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
+  --field-selector spec.nodeName=worker-1 \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show route
 # Expected: 10.0.2.0/26 via 172.16.2.1 (Node 2's pod CIDR)
 
 # View what routes this node is advertising
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show route export <peer-name>
 ```
 
 ## Validation 4: Linux Routing Table Verification
 
-Felix programs learned BGP routes into the Linux routing table. Verify these are present:
+BIRD pushes learned BGP routes into the Linux routing table. Verify these are present:
 
 ```bash
 # On Node 1, verify route to Node 2's pod CIDR
@@ -81,7 +89,7 @@ ip route show | grep "proto bird"
 
 # Verify specific pod route
 POD_IP=$(kubectl get pod pod-on-node2 -o jsonpath='{.status.podIP}')
-ip route show $POD_IP
+ip route get $POD_IP
 # Expected: Route pointing to Node 2
 ```
 
@@ -92,9 +100,12 @@ Verify that cross-node traffic travels without encapsulation:
 ```bash
 # Deploy pods on different nodes
 kubectl run pod-a --image=nicolaka/netshoot \
-  --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600
+  --overrides='{"spec":{"nodeName":"worker-1"}}' --command -- sleep 3600
 kubectl run pod-b --image=nginx \
   --overrides='{"spec":{"nodeName":"worker-2"}}'
+
+kubectl wait pod pod-a --for=condition=Ready --timeout=60s
+kubectl wait pod pod-b --for=condition=Ready --timeout=60s
 
 # Capture on the physical NIC to check for encapsulation
 sudo tcpdump -i eth0 -n -c 10 &
@@ -106,11 +117,11 @@ In BGP mode, `tcpdump` on the physical NIC should show pod IPs directly, without
 
 ## Validation 6: BGP Route Convergence Time
 
-Measure how long it takes for a new pod's route to propagate across the cluster:
+Measure how long it takes for a new pod's route to become usable across the cluster:
 
 ```bash
-# Start a new pod and measure time until cross-node connectivity
-time kubectl run convergence-test --image=nginx --overrides='{"spec":{"nodeName":"worker-2"}}'
+# Start a new pod
+kubectl run convergence-test --image=nginx --overrides='{"spec":{"nodeName":"worker-2"}}'
 
 # Wait for pod to be ready
 kubectl wait pod convergence-test --for=condition=Ready --timeout=30s
@@ -118,11 +129,11 @@ kubectl wait pod convergence-test --for=condition=Ready --timeout=30s
 # Verify route is in table on other node
 NEW_POD_IP=$(kubectl get pod convergence-test -o jsonpath='{.status.podIP}')
 # On Node 1:
-ip route show $NEW_POD_IP
+time sh -c 'until ip route get "$1" | grep -q "via"; do sleep 0.2; done' _ "$NEW_POD_IP"
 # Expected: Route present within a few seconds of pod Ready
 ```
 
-BGP convergence in Calico is typically sub-second for small clusters.
+Calico usually advertises IPAM block routes rather than one BGP route per pod, so a new pod may use an already-converged block route. In a small lab, route availability is typically within seconds.
 
 ## Validation 7: BGP Session Recovery After Disconnect
 
@@ -137,7 +148,11 @@ sudo iptables -I INPUT -s <node-2-ip> -p tcp --dport 179 -j DROP
 sleep 10
 
 # Verify session is disrupted
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+CALICO_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
+  --field-selector spec.nodeName=worker-1 \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show protocols | grep <node-2-ip>
 # Expected: Session shows Active or Idle
 
@@ -146,7 +161,7 @@ sudo iptables -D INPUT -s <node-2-ip> -p tcp --dport 179 -j DROP
 
 # Verify recovery
 sleep 10
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show protocols | grep <node-2-ip>
 # Expected: Session re-established
 ```
@@ -171,4 +186,4 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 
 ## Conclusion
 
-L3 BGP validation confirms the full routing stack: BGP sessions established, routes correctly advertised and learned, Felix programming Linux routes, and packets flowing natively without encapsulation. Each layer has distinct observable artifacts and specific test cases. Running the complete validation suite gives you high confidence that the BGP fabric is functioning correctly before relying on it for production traffic.
+L3 BGP validation confirms the full routing stack: BGP sessions established, routes correctly advertised and learned, routes present in the Linux routing table, and packets flowing natively without encapsulation. Each layer has distinct observable artifacts and specific test cases. Running the complete validation suite gives you high confidence that the BGP fabric is functioning correctly before relying on it for production traffic.
