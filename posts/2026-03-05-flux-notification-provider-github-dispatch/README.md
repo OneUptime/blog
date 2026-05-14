@@ -17,12 +17,12 @@ This guide covers setting up the GitHub dispatch provider to bridge Flux events 
 - A Kubernetes cluster with Flux CD installed (including the notification controller)
 - `kubectl` access to the cluster
 - A GitHub repository with GitHub Actions workflows configured
-- A GitHub personal access token (PAT) with `repo` scope
+- A GitHub personal access token (PAT) with `repo` scope, or a fine-grained token with write access to repository contents
 - The `flux` CLI installed (optional but helpful)
 
 ## Step 1: Create a GitHub Personal Access Token
 
-Navigate to GitHub **Settings** then **Developer settings** then **Personal access tokens**. Create a new token with the `repo` scope (required for dispatching repository events). Copy the token.
+Navigate to GitHub **Settings** then **Developer settings** then **Personal access tokens**. Create a new classic token with the `repo` scope, or a fine-grained token with write access to repository contents (required for dispatching repository events). Copy the token.
 
 ## Step 2: Create a Kubernetes Secret
 
@@ -43,7 +43,7 @@ Define a Provider resource for GitHub dispatch.
 ```yaml
 # provider-github-dispatch.yaml
 # Configures Flux to trigger GitHub Actions via repository dispatch
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-dispatch-provider
@@ -72,7 +72,7 @@ Create an Alert that triggers dispatch events for specific Flux resources.
 ```yaml
 # alert-github-dispatch.yaml
 # Triggers GitHub repository dispatch on Flux reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-dispatch-alert
@@ -80,7 +80,7 @@ metadata:
 spec:
   providerRef:
     name: github-dispatch-provider
-  # Trigger on successful reconciliations
+  # Trigger on informational and error events
   eventSeverity: info
   eventSources:
     - kind: Kustomization
@@ -98,20 +98,17 @@ kubectl apply -f alert-github-dispatch.yaml
 
 ## Step 5: Create a GitHub Actions Workflow
 
-In your GitHub repository, create a workflow that listens for repository dispatch events:
+In your GitHub repository, create a workflow that listens for repository dispatch events. Since Flux dispatch event types include the concrete resource name and namespace, this example listens for all repository dispatch events and filters by Flux resource kind in the job:
 
 ```yaml
 # .github/workflows/on-flux-event.yaml
 # Triggered by Flux CD via repository dispatch
 name: On Flux Event
-on:
-  repository_dispatch:
-    types:
-      - Kustomization/*
-      - HelmRelease/*
+on: repository_dispatch
 
 jobs:
   handle-event:
+    if: ${{ startsWith(github.event.action, 'Kustomization/') || startsWith(github.event.action, 'HelmRelease/') }}
     runs-on: ubuntu-latest
     steps:
       - name: Print event details
@@ -162,7 +159,7 @@ graph LR
     E --> H[External Notifications]
 ```
 
-The notification controller sends a repository dispatch event to the GitHub API. The event type is derived from the Flux resource kind and name. GitHub Actions workflows that listen for matching `repository_dispatch` event types will be triggered automatically.
+The notification controller sends a repository dispatch event to the GitHub API. The event type is derived from the Flux resource kind, name, and namespace in the format `{Kind}/{Name}.{Namespace}`. GitHub Actions workflows that listen for matching `repository_dispatch` event types will be triggered automatically.
 
 ## Dispatch Event Payload
 
@@ -182,7 +179,7 @@ You can use this payload in your GitHub Actions workflow to make decisions about
 You can scope the Alert to specific resources so that only certain deployments trigger the workflow:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: dispatch-production-only
@@ -203,7 +200,7 @@ Trigger workflows in different repositories based on different events:
 
 ```yaml
 # Dispatch to the test repository
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: dispatch-tests
@@ -215,7 +212,7 @@ spec:
     name: github-dispatch-token
 ---
 # Dispatch to the monitoring repository
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: dispatch-monitoring
@@ -231,9 +228,9 @@ spec:
 
 If GitHub Actions workflows are not being triggered:
 
-1. **Token scope**: The GitHub token must have `repo` scope (not just `repo:status`).
+1. **Token scope**: A classic GitHub token must have `repo` scope (not just `repo:status`); a fine-grained token must have write access to repository contents.
 2. **Repository URL**: The `address` must match the repository exactly.
-3. **Workflow trigger**: Ensure the workflow has `repository_dispatch` in its `on` section with matching event types.
+3. **Workflow trigger**: Ensure the workflow has `repository_dispatch` in its `on` section and, if you use `types`, that they exactly match Flux event types such as `Kustomization/app1.apps`.
 4. **Default branch**: The workflow file must exist on the repository's default branch for `repository_dispatch` to work.
 5. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
 6. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for GitHub API errors.
