@@ -19,7 +19,7 @@ Before configuring autocompletion, make sure you have:
 
 Check your PowerShell version.
 
-```bash
+```powershell
 # Check PowerShell version
 
 $PSVersionTable.PSVersion
@@ -35,7 +35,7 @@ PowerShell has a profile script that runs every time a new session starts. You w
 
 Find your profile path.
 
-```bash
+```powershell
 # Display your PowerShell profile path
 echo $PROFILE
 ```
@@ -50,7 +50,7 @@ This typically returns one of these paths:
 
 The profile file may not exist by default. Create it if needed.
 
-```bash
+```powershell
 # Check if the profile file exists
 Test-Path $PROFILE
 
@@ -65,13 +65,13 @@ if (!(Test-Path -Path $PROFILE)) {
 
 ## Step 3: Add Flux Autocompletion to Your Profile
 
-There are two approaches to adding the completion script.
+There are three approaches to adding the completion script.
 
 ### Option A: Inline Generation (Simplest)
 
 Add a line to your profile that generates and executes the completion script each time PowerShell starts.
 
-```bash
+```powershell
 # Add Flux completion to your PowerShell profile
 Add-Content -Path $PROFILE -Value 'flux completion powershell | Out-String | Invoke-Expression'
 ```
@@ -82,12 +82,13 @@ This runs `flux completion powershell` on every shell startup and evaluates the 
 
 Generate the completion script once and source it from a file for faster startup.
 
-```bash
+```powershell
 # Generate the completion script to a file
-flux completion powershell > "$HOME\.flux-completion.ps1"
+$FluxCompletionPath = Join-Path $HOME '.flux-completion.ps1'
+flux completion powershell > $FluxCompletionPath
 
 # Add the source command to your profile
-Add-Content -Path $PROFILE -Value '. "$HOME\.flux-completion.ps1"'
+Add-Content -Path $PROFILE -Value '. (Join-Path $HOME ''.flux-completion.ps1'')'
 ```
 
 Remember to regenerate the file whenever you update the Flux CLI.
@@ -96,7 +97,7 @@ Remember to regenerate the file whenever you update the Flux CLI.
 
 If you want to test the completions before making them permanent, run the following in your current session.
 
-```bash
+```powershell
 # Load Flux completions for the current session only
 flux completion powershell | Out-String | Invoke-Expression
 ```
@@ -107,14 +108,14 @@ This does not persist across sessions.
 
 Apply the changes by reloading your PowerShell profile.
 
-```bash
+```powershell
 # Reload the PowerShell profile
 . $PROFILE
 ```
 
 If you encounter an execution policy error, adjust the policy.
 
-```bash
+```powershell
 # Allow script execution for the current user
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
@@ -125,16 +126,16 @@ Then reload the profile again.
 
 Verify the completions are working by typing `flux` and pressing Tab.
 
-```bash
+```powershell
 # Type flux and press Tab to cycle through commands
 flux <Tab>
 ```
 
-PowerShell cycles through available completions with each Tab press. Press Ctrl+Space to see all available completions at once (in PowerShell 7+ with PSReadLine).
+PowerShell cycles through available completions with each Tab press. With PSReadLine, Ctrl+Spacebar commonly opens menu completion on Windows; key bindings can vary by platform and terminal.
 
 Test subcommand completion.
 
-```bash
+```powershell
 # Complete subcommands
 flux create <Tab>
 # Cycles through: source, kustomization, helmrelease, alert, etc.
@@ -148,23 +149,23 @@ flux bootstrap github --<Tab>
 
 PowerShell 7+ includes PSReadLine, which provides a richer completion interface. Configure it for a better experience with Flux completions.
 
-```bash
+```powershell
 # Add to your profile for menu-style completion
 Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
 ```
 
 With `MenuComplete`, pressing Tab shows an interactive menu of all options instead of cycling one at a time. Use arrow keys to navigate and Enter to select.
 
-For an even more informative display, enable list view.
+For an even more informative display of command predictions, enable list view if your PSReadLine version supports Predictive IntelliSense.
 
-```bash
-# Show completions in a list with descriptions
+```powershell
+# Show predictive suggestions in a list
 Set-PSReadLineOption -PredictionViewStyle ListView
 ```
 
 Add these to your profile for persistence.
 
-```bash
+```powershell
 # Add PSReadLine enhancements to your profile
 Add-Content -Path $PROFILE -Value @'
 Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
@@ -176,7 +177,7 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 
 Here is a complete PowerShell profile snippet with Flux completions and enhanced completion settings.
 
-```bash
+```powershell
 # Flux CD CLI autocompletion
 flux completion powershell | Out-String | Invoke-Expression
 
@@ -186,18 +187,20 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 
 # Optional: Flux alias
 Set-Alias -Name f -Value flux
+Register-ArgumentCompleter -CommandName 'f' -ScriptBlock ${__fluxCompleterBlock}
 ```
 
 ## Setting Up an Alias
 
 Create a short alias for the flux command.
 
-```bash
+```powershell
 # Create a persistent alias for flux
 Add-Content -Path $PROFILE -Value 'Set-Alias -Name f -Value flux'
+Add-Content -Path $PROFILE -Value 'Register-ArgumentCompleter -CommandName ''f'' -ScriptBlock ${__fluxCompleterBlock}'
 ```
 
-The completion will work with the alias automatically because PowerShell resolves the alias before applying completions.
+The completion script registers completions for the `flux` command name. Register the same completer for the alias after loading the Flux completion script if you want tab completion to work with `f`.
 
 ## PowerShell on macOS and Linux
 
@@ -214,6 +217,12 @@ Install PowerShell on Ubuntu.
 
 ```bash
 # Install PowerShell on Ubuntu
+sudo apt-get update
+sudo apt-get install -y wget apt-transport-https software-properties-common
+source /etc/os-release
+wget -q https://packages.microsoft.com/config/ubuntu/$VERSION_ID/packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
 sudo apt-get update
 sudo apt-get install -y powershell
 ```
@@ -233,9 +242,10 @@ If you use Option A (inline generation), completions update automatically on the
 
 If you use Option B (pre-generated script), regenerate the file.
 
-```bash
+```powershell
 # Regenerate the completion script
-flux completion powershell > "$HOME\.flux-completion.ps1"
+$FluxCompletionPath = Join-Path $HOME '.flux-completion.ps1'
+flux completion powershell > $FluxCompletionPath
 ```
 
 ## Troubleshooting
@@ -244,7 +254,7 @@ flux completion powershell > "$HOME\.flux-completion.ps1"
 
 **Execution policy prevents profile loading:** Change the execution policy to allow running local scripts.
 
-```bash
+```powershell
 # Set execution policy
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
@@ -254,7 +264,7 @@ Get-ExecutionPolicy -Scope CurrentUser
 
 **Profile file not loading:** Verify the profile path and that the file contains valid PowerShell commands.
 
-```bash
+```powershell
 # Display profile path and check if file exists
 echo $PROFILE
 Test-Path $PROFILE
@@ -265,7 +275,7 @@ Get-Content $PROFILE
 
 **Tab only cycles through file names:** The completion script is not loaded. Check your profile for syntax errors and ensure the Flux completion line is present.
 
-```bash
+```powershell
 # Test completion registration manually
 flux completion powershell | Out-String | Invoke-Expression
 flux <Tab>
@@ -275,4 +285,4 @@ flux <Tab>
 
 ## Conclusion
 
-You now have Flux CD autocompletion configured in PowerShell. Combined with PSReadLine enhancements like menu completion and list view, you have a productive environment for managing Flux CD from the command line. Tab completion covers every Flux command, subcommand, and flag, making it easy to work with Flux without memorizing the full CLI syntax. Remember to refresh the completion script after upgrading the Flux CLI to access new commands and options.
+You now have Flux CD autocompletion configured in PowerShell. Combined with PSReadLine enhancements like menu completion and prediction list view, you have a productive environment for managing Flux CD from the command line. Tab completion covers every Flux command, subcommand, and flag, making it easy to work with Flux without memorizing the full CLI syntax. Remember to refresh the completion script after upgrading the Flux CLI to access new commands and options.
