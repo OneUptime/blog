@@ -75,7 +75,7 @@ spec:
     kind: GitRepository
     name: my-app
   prune: false  # Never delete CRDs automatically
-  # CRDs should not use server-side apply validation
+  # Wait for the CRDs to be established
   wait: true
 ---
 # app-kustomization.yaml
@@ -125,7 +125,7 @@ spec:
     installCRDs: true  # Chart-specific CRD installation
 ```
 
-Then make your Kustomization depend on the HelmRelease:
+If that HelmRelease is applied by a Flux Kustomization named `cert-manager`, make your application Kustomization depend on that Kustomization:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -140,7 +140,7 @@ spec:
     kind: GitRepository
     name: my-app
   dependsOn:
-    - name: cert-manager  # Wait for the HelmRelease
+    - name: cert-manager  # Wait for the Kustomization that applies the HelmRelease
 ```
 
 ## Cause 2: API Version Mismatch
@@ -156,8 +156,8 @@ kubectl api-versions
 # Check if a specific API version exists
 kubectl api-versions | grep "networking.k8s.io"
 
-# Check deprecation warnings
-kubectl apply --dry-run=server -f manifest.yaml 2>&1 | grep -i "deprecated\|removed"
+# Check deprecation warnings using server-side apply dry-run
+kubectl apply --server-side --dry-run=server -f manifest.yaml 2>&1 | grep -i "deprecated\|removed"
 ```
 
 ### Common API Version Changes
@@ -314,26 +314,31 @@ When multiple controllers manage the same field, server-side apply can report co
 dry-run failed: Apply failed with 1 conflict: conflict with "helm-controller" using apps/v1: .spec.replicas
 ```
 
-### Fix: Force Server-Side Apply
+### Fix: Use the Merge Apply Policy for Non-Overlapping Fields
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
-  namespace: flux-system
+  annotations:
+    # Preserve fields added by other tools when they do not overlap with the desired state
+    kustomize.toolkit.fluxcd.io/ssa: "Merge"
 spec:
-  interval: 10m
-  path: ./deploy
-  sourceRef:
-    kind: GitRepository
-    name: my-app
-  prune: true
-  # Force server-side apply to take ownership of conflicting fields
-  force: true
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: my-app:latest
 ```
 
-Use `force: true` with caution. It overrides ownership of fields managed by other controllers. Make sure you understand which fields are in conflict and that taking ownership is the right approach.
+The `Merge` policy preserves fields added by other tools, but it does not solve conflicts for fields that are also set in your Git manifests. Make sure you understand which fields are in conflict before changing the apply policy.
 
 ### Fix: Remove Conflicting Fields
 
@@ -401,28 +406,18 @@ metadata:
   name: my-namespace
 ```
 
-## Skipping Dry-Run Validation
+## Do Not Bypass Dry-Run Validation
 
-As a last resort, you can skip the dry-run validation entirely. This is not recommended for production but can help when dealing with edge cases:
+Flux does not provide a Kustomization field to turn off server-side dry-run validation. If Flux should not manage a specific resource, you can annotate that resource with `Ignore`, but this is not a substitute for fixing missing CRDs, invalid API versions, RBAC, or field ownership conflicts:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: example.com/v1
+kind: MyCustomResource
 metadata:
   name: my-app
-  namespace: flux-system
   annotations:
-    # Skip dry-run for this specific Kustomization
-    kustomize.toolkit.fluxcd.io/ssa: "IfNotPresent"
-spec:
-  interval: 10m
-  path: ./deploy
-  sourceRef:
-    kind: GitRepository
-    name: my-app
-  prune: true
-  # Force apply without dry-run validation
-  force: true
+    # Skip applying this specific resource
+    kustomize.toolkit.fluxcd.io/ssa: "Ignore"
 ```
 
 ## Debugging Dry-Run Locally
@@ -433,14 +428,14 @@ Test the dry-run locally before pushing:
 # Build the kustomize output
 kustomize build ./deploy > rendered.yaml
 
-# Perform a server-side dry-run against the cluster
-kubectl apply --dry-run=server -f rendered.yaml
+# Perform a server-side apply dry-run against the cluster
+kubectl apply --server-side --dry-run=server -f rendered.yaml
 
 # If that fails, try client-side dry-run for basic validation
 kubectl apply --dry-run=client -f rendered.yaml
 
 # Check for deprecated APIs
-kubectl apply --dry-run=server -f rendered.yaml 2>&1 | grep -i "warning"
+kubectl apply --server-side --dry-run=server -f rendered.yaml 2>&1 | grep -i "warning"
 ```
 
 ## Summary
