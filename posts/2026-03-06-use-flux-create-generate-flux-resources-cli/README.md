@@ -124,7 +124,7 @@ flux create source helm bitnami \
 
 # Create an OCI-based HelmRepository
 flux create source helm podinfo \
-  --url=oci://ghcr.io/stefanprodan/charts \
+  --url=oci://ghcr.io/stefanprodan/charts/podinfo \
   --interval=10m \
   --export > podinfo-oci-repo.yaml
 ```
@@ -145,7 +145,7 @@ flux create helmrelease nginx \
 ### HelmRelease with Custom Values
 
 ```bash
-# Create a HelmRelease with inline values
+# Create a HelmRelease with values from a local YAML file
 flux create helmrelease redis \
   --source=HelmRepository/bitnami \
   --chart=redis \
