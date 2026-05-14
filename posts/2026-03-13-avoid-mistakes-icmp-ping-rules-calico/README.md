@@ -43,7 +43,7 @@ egress:
 ```bash
 # Check policy order - lower order = higher priority
 
-calicoctl get networkpolicies -n production -o wide | sort -k4 -n
+calicoctl get networkpolicy -n production -o wide | sort -k2 -n
 ```
 
 ## Mistake 3: Selector Typos
@@ -55,20 +55,26 @@ kubectl get pods -n production -l "your-label-key=your-label-value"
 
 ## Mistake 4: Missing Bidirectional Rules
 
-Both ingress on destination AND egress on source must be permitted:
+Where both source egress and destination ingress are restricted, the echo request must be permitted by both policies:
 
 ```yaml
-# Source side - egress
+# Source side - egress echo request
 egress:
   - action: Allow
+    protocol: ICMP
     destination:
       selector: app == 'backend'
+    icmp:
+      type: 8
 
-# Destination side - ingress  
+# Destination side - ingress echo request
 ingress:
   - action: Allow
+    protocol: ICMP
     source:
       selector: app == 'frontend'
+    icmp:
+      type: 8
 ```
 
 ## Architecture
