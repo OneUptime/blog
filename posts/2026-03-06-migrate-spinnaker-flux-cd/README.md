@@ -80,14 +80,12 @@ flux bootstrap github \
   --repository=fleet-config \
   --path=clusters/production \
   --branch=main \
+  --components-extra=image-reflector-controller,image-automation-controller \
+  --read-write-key \
   --personal
 
 # Verify Flux is running
 flux check
-
-# If you need image automation (to replace Spinnaker image triggers)
-flux install \
-  --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 ## Step 3: Migrate Simple Deploy Pipelines
@@ -395,7 +393,7 @@ Replace Spinnaker's notification stages with Flux notifications.
 ```yaml
 # notifications/providers.yaml
 # Slack notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -407,7 +405,7 @@ spec:
     name: slack-webhook
 ---
 # GitHub commit status provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -422,13 +420,14 @@ spec:
 ```yaml
 # notifications/alerts.yaml
 # Alert on deployment events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
   namespace: flux-system
 spec:
-  summary: "Deployment notification"
+  eventMetadata:
+    summary: "Deployment notification"
   # Alert on both success and failure
   eventSeverity: info
   eventSources:
@@ -436,11 +435,12 @@ spec:
       name: "*"
     - kind: HelmRelease
       name: "*"
+      namespace: default
   providerRef:
     name: slack
 ---
 # Update GitHub commit status on reconciliation
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-status-updates
@@ -503,10 +503,13 @@ After verifying all deployments are managed by Flux, decommission Spinnaker.
 
 ```bash
 # Disable all Spinnaker pipelines
-# Use the Spinnaker API to disable pipelines
-curl -X PUT http://spinnaker-gate:8084/pipelines/my-app/deploy-pipeline \
+# Use the Spinnaker API to disable a pipeline by updating its full definition
+curl -s http://spinnaker-gate:8084/applications/my-app/pipelineConfigs/deploy-pipeline \
+  | jq '.disabled = true' > deploy-pipeline-disabled.json
+
+curl -X POST "http://spinnaker-gate:8084/pipelines" \
   -H 'Content-Type: application/json' \
-  -d '{"disabled": true}'
+  -d @deploy-pipeline-disabled.json
 
 # Monitor Flux for a few weeks to ensure stability
 flux get all -A
