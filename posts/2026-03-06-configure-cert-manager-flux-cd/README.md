@@ -16,7 +16,7 @@ This guide covers installing cert-manager with Flux CD, configuring various issu
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.24 or later)
+- A Kubernetes cluster supported by your chosen cert-manager release (cert-manager v1.20 supports Kubernetes v1.32 to v1.35)
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A domain name you control (for ACME/Let's Encrypt)
@@ -34,7 +34,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://charts.jetstack.io
+  type: oci
+  url: oci://quay.io/jetstack/charts
 ```
 
 ## Creating the Namespace
@@ -63,7 +64,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.16.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -258,7 +259,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: admin@example.com
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
