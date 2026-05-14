@@ -18,6 +18,8 @@ This guide covers avoid mistakes Trusted Node Reduction in Calico with practical
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
+- Calico HostEndpoint objects created for the nodes you want to protect, or automatic HostEndpoints enabled
+- Calico host failsafe ports reviewed and adjusted before relying on policy to restrict default failsafe ports such as 22, 2379, 2380, and 6443
 - Understanding of Calico's monitoring and security architecture
 
 ## Core Configuration
@@ -31,20 +33,23 @@ metadata:
   name: reduce-trusted-nodes
 spec:
   order: 100
-  selector: has(kubernetes.io/hostname)
+  selector: "projectcalico.org/created-by == 'calico-kube-controllers' && has(kubernetes.io/hostname)"
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        selector: kubernetes.io/hostname == 'trusted-node-01'
+        selector: "projectcalico.org/created-by == 'calico-kube-controllers' && kubernetes.io/hostname == 'trusted-node-01'"
       destination:
         ports: [2380, 2379]  # etcd
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/24  # Management subnet only
       destination:
         ports: [22, 6443]  # SSH and k8s API
     - action: Deny
+      protocol: TCP
       destination:
         ports: [22, 2379, 2380, 6443]
   types:
@@ -54,10 +59,13 @@ spec:
 ## Implementation
 
 ```bash
+# Enable automatic HostEndpoints if you are not creating HostEndpoint objects manually
+calicoctl patch kubecontrollersconfiguration default --patch='{"spec": {"controllers": {"node": {"hostEndpoint": {"autoCreate": "Enabled"}}}}}'
+
 # Apply trusted node policy
 calicoctl apply -f reduce-trusted-nodes.yaml
 
-# Test that restricted ports are blocked from untrusted IPs
+# Test that restricted ports are blocked from untrusted IPs after host failsafe ports are adjusted
 # From an untrusted node:
 nc -zv node-ip 2379
 echo "etcd access from untrusted node (should fail): $?"
