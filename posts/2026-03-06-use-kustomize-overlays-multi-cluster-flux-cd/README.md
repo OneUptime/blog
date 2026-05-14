@@ -199,8 +199,10 @@ resources:
   - service.yaml
   - configmap.yaml
   - hpa.yaml
-commonLabels:
-  managed-by: flux
+labels:
+  - pairs:
+      managed-by: flux
+    includeSelectors: true
 ```
 
 ## Building Cluster Overlays
@@ -220,9 +222,11 @@ resources:
   - extra-resources/pdb.yaml
   - extra-resources/service-monitor.yaml
 # Add cluster-identifying labels to all resources
-commonLabels:
-  cluster: us-east
-  region: us-east-1
+labels:
+  - pairs:
+      cluster: us-east
+      region: us-east-1
+    includeSelectors: true
 # Add cluster-identifying annotations
 commonAnnotations:
   fleet.example.com/cluster: cluster-us-east
@@ -367,9 +371,11 @@ resources:
   - ../../base/apps/inventory-service
   # EU-specific compliance resources
   - extra-resources/gdpr-network-policy.yaml
-commonLabels:
-  cluster: eu-west
-  region: eu-west-1
+labels:
+  - pairs:
+      cluster: eu-west
+      region: eu-west-1
+    includeSelectors: true
 patches:
   - path: patches/order-service-deployment.yaml
   - path: patches/order-service-config.yaml
@@ -410,7 +416,7 @@ spec:
 
 ```yaml
 # overlays/cluster-eu-west/extra-resources/gdpr-network-policy.yaml
-# GDPR compliance: restrict data egress to EU-only endpoints
+# GDPR compliance: restrict data egress to private EU database endpoints
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -427,7 +433,7 @@ spec:
     - ports:
         - protocol: UDP
           port: 53
-    # Allow egress only to EU database endpoints
+    # Allow egress only to private database endpoints in the EU network
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -512,7 +518,8 @@ kustomize build overlays/cluster-eu-west
 diff <(kustomize build overlays/cluster-us-east) <(kustomize build overlays/cluster-eu-west)
 
 # Validate the output against Kubernetes schemas
-kustomize build overlays/cluster-us-east | kubeval --strict
+# Add schema locations for CRDs such as ServiceMonitor when you want to validate them too.
+kustomize build overlays/cluster-us-east | kubeconform -strict -ignore-missing-schemas
 
 # Dry-run against a cluster to check for conflicts
 kustomize build overlays/cluster-us-east | kubectl apply --dry-run=server -f -
@@ -567,7 +574,7 @@ patches:
 3. **Use JSON patches for precise modifications**: When you need to target specific array elements or paths.
 4. **Test locally before pushing**: Always run `kustomize build` to verify overlay output.
 5. **Add extra resources in overlays**: Cluster-specific resources like PDBs or NetworkPolicies belong in the overlay.
-6. **Use commonLabels for identification**: Add cluster and region labels via the overlay's commonLabels field.
+6. **Use labels for identification**: Add cluster and region labels via the overlay's labels field.
 7. **Layer overlays when needed**: Use intermediate overlays for cloud-provider-specific shared configurations.
 8. **Keep patches focused**: Each patch file should address one concern (resources, config, networking).
 
