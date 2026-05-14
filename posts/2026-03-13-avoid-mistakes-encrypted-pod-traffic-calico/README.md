@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Encryption, WireGuard, Security
 
-Description: Avoid Mistakes Calico WireGuard encrypted pod traffic to ensure all inter-pod communication is encrypted in transit.
+Description: Avoid Mistakes Calico WireGuard encrypted pod traffic to protect inter-node pod communication in transit.
 
 ---
 
 ## Introduction
 
-Encrypted Pod Traffic in Calico ensures that pod-to-pod communication cannot be intercepted or tampered with, even by other processes on the same node. Using WireGuard or IPsec, Calico encrypts all data-plane traffic transparently, without requiring application changes.
+Encrypted Pod Traffic in Calico uses WireGuard to protect inter-node pod communication on the host-to-host portion of the path. It does not encrypt same-node pod traffic or the hop between a pod and its local host, so node-level access should still be tightly controlled.
 
 Calico's encryption works alongside network policies - traffic is still subject to policy evaluation, but the payload is encrypted in transit. This combination of network-layer policy enforcement and encryption provides defense in depth for sensitive workloads.
 
@@ -18,7 +18,7 @@ This guide covers avoid mistakes WireGuard Encryption in Calico, including enabl
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+ (WireGuard requires Linux kernel 5.6+)
+- Kubernetes cluster with Calico v3.26+ (WireGuard is included in Linux kernel 5.6+ and has been backported to some earlier distribution kernels)
 - `calicoctl` and `kubectl` installed
 - WireGuard kernel module available on all nodes
 
@@ -30,7 +30,7 @@ This guide covers avoid mistakes WireGuard Encryption in Calico, including enabl
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
     "wireguardEnabled": true,
-    "wireguardInterfaceMTU": 1440
+    "wireguardMTU": 1440
   }
 }'
 
@@ -53,15 +53,16 @@ spec:
   selector: app == 'payment-service'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: app == 'authorized-client'
       destination:
         ports: [8443]
   egress:
     - action: Allow
+      protocol: TCP
       destination:
         selector: app == 'payment-db'
-      destination:
         ports: [5432]
     - action: Allow
       protocol: UDP
@@ -81,7 +82,7 @@ kubectl exec -n kube-system calico-node-node1 -- wg show all
 # Check encryption statistics
 kubectl exec -n kube-system calico-node-node1 -- wg show all | grep transfer
 
-# Verify no unencrypted traffic (packet capture should show WireGuard frames)
+# Verify inter-node traffic uses WireGuard frames
 kubectl debug node/node1 -it --image=busybox -- tcpdump -i any -n port 51820
 ```
 
@@ -99,4 +100,4 @@ Node 2]
 
 ## Conclusion
 
-Encrypted Pod Traffic with Calico provides transparent, high-performance encryption for all pod-to-pod traffic. WireGuard integration in Calico makes it straightforward to enable encryption across the entire cluster without changing application code. Combine encryption with strict network policies for a complete zero-trust data plane where traffic is both encrypted and access-controlled. Monitor WireGuard statistics regularly to ensure encryption is active and performing well.
+Encrypted Pod Traffic with Calico provides transparent, high-performance encryption for inter-node pod traffic. WireGuard integration in Calico makes it straightforward to enable encryption across the cluster without changing application code. Combine encryption with strict network policies for a complete zero-trust data plane where traffic is both encrypted and access-controlled. Monitor WireGuard statistics regularly to ensure encryption is active and performing well.
