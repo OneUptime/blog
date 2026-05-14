@@ -20,20 +20,21 @@ When you see a "chart not found" error, your HelmRelease status will typically l
 
 ```bash
 # Check the status of your HelmRelease
-
 kubectl get helmrelease -n my-namespace my-release -o yaml
 ```
 
-The output will contain a condition similar to:
+The output will often show that the generated HelmChart is not ready:
 
 ```yaml
 status:
   conditions:
     - type: Ready
       status: "False"
-      reason: ChartPullFailed
-      message: 'chart "my-chart" version "1.2.3" not found in repository "my-repo"'
+      message: "HelmChart 'my-namespace/my-namespace-my-release' is not ready"
+  helmChart: my-namespace/my-namespace-my-release
 ```
+
+The generated HelmChart or Flux source status will contain the more specific error, such as `no chart version found for my-chart-1.2.3`.
 
 ## Common Cause 1: Wrong Chart Name
 
@@ -42,12 +43,12 @@ The most frequent cause is a mismatch between the chart name specified in the He
 ### Diagnosing the Issue
 
 ```bash
-# List all charts available in the HelmRepository
-kubectl get helmchart -n my-namespace
+# Check the generated HelmChart status
+kubectl get helmchart -n my-namespace my-namespace-my-release
 ```
 
 ```bash
-# Check the HelmRepository index for available charts
+# Check the HelmRepository status and events
 kubectl describe helmrepository -n my-namespace my-repo
 ```
 
@@ -108,7 +109,7 @@ helm search repo my-repo/
 
 ## Common Cause 2: Wrong or Unreachable Repository URL
 
-If the HelmRepository URL is incorrect or the repository is unreachable, Flux cannot fetch the chart index and will report a "chart not found" error.
+If the HelmRepository URL is incorrect or the repository is unreachable, Flux cannot fetch the chart index. The HelmRepository will not become ready, and the HelmRelease may fail because the source is unavailable.
 
 ### Diagnosing the Issue
 
@@ -295,13 +296,16 @@ kubectl get helmrelease -n my-namespace my-release -o yaml | grep -A 10 "conditi
 # Step 2: Verify the HelmRepository is ready
 kubectl get helmrepository -n my-namespace my-repo
 
-# Step 3: Force reconciliation of the HelmRepository
+# Step 3: Check the generated HelmChart for chart name or version errors
+flux get sources chart -n my-namespace
+
+# Step 4: Force reconciliation of the HelmRepository
 flux reconcile source helm my-repo -n my-namespace
 
-# Step 4: Force reconciliation of the HelmRelease
+# Step 5: Force reconciliation of the HelmRelease
 flux reconcile helmrelease my-release -n my-namespace
 
-# Step 5: Check Flux helm-controller logs for detailed errors
+# Step 6: Check Flux helm-controller logs for detailed errors
 kubectl logs -n flux-system deploy/helm-controller | grep "my-release"
 ```
 
