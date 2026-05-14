@@ -57,7 +57,7 @@ flux-repo/
 │   ├── controllers/
 │   │   ├── base/
 │   │   │   ├── cert-manager/
-│   │   │   ├── ingress-nginx/
+│   │   │   ├── traefik/
 │   │   │   ├── external-dns/
 │   │   │   └── kustomization.yaml
 │   │   ├── production/
@@ -124,11 +124,11 @@ spec:
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: ingress-nginx
+  name: traefik
   namespace: flux-system
 spec:
   interval: 24h
-  url: https://kubernetes.github.io/ingress-nginx
+  url: https://traefik.github.io/charts
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -193,6 +193,7 @@ spec:
     name: flux-system
   path: ./infrastructure/configs/production
   prune: true
+  wait: true
   dependsOn:
     # Configs depend on controllers being ready
     # (e.g., ClusterIssuer requires cert-manager CRDs)
@@ -276,34 +277,33 @@ resources:
 ### Ingress Controller
 
 ```yaml
-# infrastructure/controllers/base/ingress-nginx/namespace.yaml
+# infrastructure/controllers/base/traefik/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ingress-system
+  name: traefik
 ```
 
 ```yaml
-# infrastructure/controllers/base/ingress-nginx/helmrelease.yaml
+# infrastructure/controllers/base/traefik/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: ingress-nginx
-  namespace: ingress-system
+  name: traefik
+  namespace: traefik
 spec:
   interval: 1h
   chart:
     spec:
-      chart: ingress-nginx
-      version: "4.9.x"
+      chart: traefik
+      version: "40.x"
       sourceRef:
         kind: HelmRepository
-        name: ingress-nginx
+        name: traefik
         namespace: flux-system
   values:
-    controller:
-      metrics:
-        enabled: true
+    metrics:
+      prometheus: {}
 ```
 
 ### Production Overrides
@@ -314,33 +314,29 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../base/cert-manager
-  - ../base/ingress-nginx
+  - ../base/traefik
   - ../base/external-dns
 patches:
-  - path: patches/ingress-ha.yaml
+  - path: patches/traefik-ha.yaml
     target:
       kind: HelmRelease
-      name: ingress-nginx
+      name: traefik
 ```
 
 ```yaml
-# infrastructure/controllers/production/patches/ingress-ha.yaml
+# infrastructure/controllers/production/patches/traefik-ha.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: ingress-nginx
+  name: traefik
 spec:
   values:
-    controller:
-      replicaCount: 3
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-      autoscaling:
-        enabled: true
-        minReplicas: 3
-        maxReplicas: 10
+    deployment:
+      replicas: 3
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
 ```
 
 ## Infrastructure Configs
@@ -362,7 +358,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: traefik
 ```
 
 ```yaml
@@ -374,6 +370,14 @@ resources:
 ```
 
 ## Applications Layer
+
+```yaml
+# apps/base/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+```
 
 ```yaml
 # apps/base/frontend/deployment.yaml
@@ -404,8 +408,23 @@ spec:
 ```
 
 ```yaml
+# apps/base/frontend/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: apps
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+```
+
+```yaml
 # apps/base/frontend/ingress.yaml
-# This depends on ingress-nginx and cert-manager being available
+# This depends on Traefik and cert-manager being available
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -414,13 +433,13 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   tls:
     - hosts:
-        - "${FRONTEND_HOST}"
+        - frontend.example.com
       secretName: frontend-tls
   rules:
-    - host: "${FRONTEND_HOST}"
+    - host: frontend.example.com
       http:
         paths:
           - path: /
@@ -485,6 +504,7 @@ spec:
     name: flux-system
   path: ./infrastructure/configs/production
   prune: true
+  wait: true
   dependsOn:
     - name: infra-controllers
 ```
