@@ -177,7 +177,7 @@ Warning events indicate problems that need attention:
 
 ```bash
 # Step 1: Check the kustomization status
-flux get kustomization my-app
+flux get kustomizations
 
 # Step 2: View events for the failing resource
 flux events --for Kustomization/my-app
@@ -226,13 +226,13 @@ Common issues revealed by events:
 
 ```text
 # Authentication failure
-Warning  ArtifactFailed  GitRepository/my-repo  failed to checkout: authentication required
+Warning  GitOperationFailed  GitRepository/my-repo  failed to checkout and determine revision: authentication required
 
 # Network issue
-Warning  ArtifactFailed  GitRepository/my-repo  failed to clone: dial tcp: timeout
+Warning  GitOperationFailed  GitRepository/my-repo  failed to checkout and determine revision: dial tcp: timeout
 
 # Branch not found
-Warning  ArtifactFailed  GitRepository/my-repo  failed to checkout: reference not found
+Warning  GitOperationFailed  GitRepository/my-repo  failed to checkout and determine revision: reference not found
 ```
 
 ### Scenario 4: Checking Dependency Chain Issues
@@ -252,7 +252,7 @@ If you see `DependencyNotReady`, check the dependency:
 ```bash
 # Check the dependency status
 flux events --for Kustomization/infrastructure
-flux get kustomization infrastructure
+flux get kustomizations
 ```
 
 ## Combining Events with Logs
@@ -267,7 +267,7 @@ flux events --for Kustomization/my-app --types=Warning
 flux logs --kind=Kustomization --name=my-app --level=error --since=10m
 
 # Step 3: Check the resource status
-flux get kustomization my-app
+flux get kustomizations
 ```
 
 ## Exporting Events
@@ -355,10 +355,10 @@ If events for a specific resource are not appearing:
 
 ```bash
 # Verify the resource exists
-flux get kustomization my-app
+flux get kustomizations
 
 # Check the resource namespace
-flux get kustomization my-app --namespace my-team
+flux get kustomizations --namespace my-team
 
 # Try viewing events with kubectl for comparison
 kubectl get events -n flux-system --field-selector involvedObject.name=my-app
