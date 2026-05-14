@@ -44,7 +44,7 @@ If Tekton is not already installed, deploy it to your cluster.
 ```bash
 # Install Tekton Pipelines
 
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+kubectl apply --filename https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Install Tekton Triggers
 kubectl apply --filename https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
@@ -111,6 +111,9 @@ spec:
   workspaces:
     - name: output
       description: The workspace to clone the repo into
+  results:
+    - name: image-tag
+      description: Timestamp-prefixed image tag for Flux image automation
   steps:
     - name: clone
       image: alpine/git:2.43.0
@@ -122,10 +125,11 @@ spec:
         cd $(workspaces.output.path)/source
         # Checkout the specified revision
         git checkout $(params.revision)
-        # Output the commit SHA for tagging
+        # Output a sortable tag for Flux image automation
         COMMIT_SHA=$(git rev-parse --short HEAD)
-        echo -n "$COMMIT_SHA" > $(workspaces.output.path)/commit-sha
-        echo "Cloned $(params.url) at $COMMIT_SHA"
+        IMAGE_TAG="$(date -u +%Y%m%d%H%M%S)-$COMMIT_SHA"
+        echo -n "$IMAGE_TAG" > $(results.image-tag.path)
+        echo "Cloned $(params.url) at $COMMIT_SHA and generated tag $IMAGE_TAG"
 ```
 
 ```yaml
@@ -149,19 +153,25 @@ spec:
       description: The build context directory
       type: string
       default: .
+    - name: tag
+      description: The image tag to push
+      type: string
   workspaces:
     - name: source
       description: Workspace containing the source code
   steps:
     - name: build-and-push
       image: gcr.io/kaniko-project/executor:v1.19.2
+      env:
+        - name: DOCKER_CONFIG
+          value: /tekton/home/.docker/
       args:
         # Set the Docker context
-        - --context=$(workspaces.source.path)/source
+        - --context=$(workspaces.source.path)/source/$(params.context)
         # Path to Dockerfile
         - --dockerfile=$(workspaces.source.path)/source/$(params.dockerfile)
-        # Destination image with tag from commit SHA
-        - --destination=$(params.image):$(cat $(workspaces.source.path)/commit-sha)
+        # Destination image with the sortable build tag
+        - --destination=$(params.image):$(params.tag)
         # Also push as latest
         - --destination=$(params.image):latest
         # Enable layer caching
@@ -227,6 +237,8 @@ spec:
           value: $(params.image)
         - name: dockerfile
           value: $(params.dockerfile)
+        - name: tag
+          value: $(tasks.clone-repo.results.image-tag)
       workspaces:
         - name: source
           workspace: shared-workspace
@@ -246,7 +258,8 @@ metadata:
 spec:
   pipelineRef:
     name: build-and-push-pipeline
-  serviceAccountName: tekton-build-sa
+  taskRunTemplate:
+    serviceAccountName: tekton-build-sa
   params:
     - name: git-url
       value: "https://github.com/my-org/my-app.git"
@@ -300,7 +313,8 @@ spec:
       spec:
         pipelineRef:
           name: build-and-push-pipeline
-        serviceAccountName: tekton-build-sa
+        taskRunTemplate:
+          serviceAccountName: tekton-build-sa
         params:
           - name: git-url
             value: $(tt.params.git-url)
@@ -384,8 +398,9 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    # Match short commit SHA tags
-    pattern: '^[a-f0-9]{7,}$'
+    # Match sortable timestamp-prefixed commit tags
+    pattern: '^(?P<timestamp>[0-9]{14})-[a-f0-9]{7,}$'
+    extract: '$timestamp'
   policy:
     alphabetical:
       order: asc
