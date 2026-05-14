@@ -41,13 +41,13 @@ kubectl port-forward -n flux-system deploy/source-controller 8080:8080 &
 curl -s http://localhost:8080/metrics | grep workqueue
 ```
 
-### Configure ServiceMonitor for Prometheus
+### Configure PodMonitor for Prometheus
 
 ```yaml
-# flux-service-monitors.yaml
-# ServiceMonitor for all Flux CD controllers
+# flux-pod-monitor.yaml
+# PodMonitor for all Flux CD controllers
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: flux-system
@@ -55,13 +55,21 @@ metadata:
     # Match your Prometheus operator selector
     release: prometheus
 spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/part-of: flux
   namespaceSelector:
     matchNames:
       - flux-system
-  endpoints:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - kustomize-controller
+          - helm-controller
+          - notification-controller
+          - image-reflector-controller
+          - image-automation-controller
+  podMetricsEndpoints:
     - port: http-prom
       # Scrape every 15 seconds for timely queue monitoring
       interval: 15s
@@ -72,13 +80,13 @@ spec:
           targetLabel: controller
 ```
 
-### PodMonitor Alternative
+### ServiceMonitor Alternative
 
 ```yaml
-# flux-pod-monitors.yaml
-# Use PodMonitor if services are not configured
+# flux-service-monitor.yaml
+# Use ServiceMonitor only if you expose each controller metrics port through a Service
 apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+kind: ServiceMonitor
 metadata:
   name: flux-controllers
   namespace: flux-system
@@ -88,7 +96,11 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/part-of: flux
-  podMetricsEndpoints:
+      app.kubernetes.io/component: controller-metrics
+  namespaceSelector:
+    matchNames:
+      - flux-system
+  endpoints:
     - port: http-prom
       interval: 15s
       path: /metrics
@@ -120,7 +132,9 @@ rate(workqueue_queue_duration_seconds_count{namespace="flux-system"}[5m])
 
 # 95th percentile queue wait time
 histogram_quantile(0.95,
-  rate(workqueue_queue_duration_seconds_bucket{namespace="flux-system"}[5m])
+  sum by (name, le) (
+    rate(workqueue_queue_duration_seconds_bucket{namespace="flux-system"}[5m])
+  )
 )
 ```
 
@@ -136,7 +150,9 @@ rate(workqueue_work_duration_seconds_count{namespace="flux-system"}[5m])
 
 # 99th percentile processing time
 histogram_quantile(0.99,
-  rate(workqueue_work_duration_seconds_bucket{namespace="flux-system"}[5m])
+  sum by (name, le) (
+    rate(workqueue_work_duration_seconds_bucket{namespace="flux-system"}[5m])
+  )
 )
 ```
 
@@ -204,7 +220,9 @@ spec:
         - alert: FluxControllerQueueLatencyHigh
           expr: |
             histogram_quantile(0.95,
-              rate(workqueue_queue_duration_seconds_bucket{namespace="flux-system"}[5m])
+              sum by (name, le) (
+                rate(workqueue_queue_duration_seconds_bucket{namespace="flux-system"}[5m])
+              )
             ) > 60
           for: 10m
           labels:
@@ -305,7 +323,7 @@ data:
             "type": "timeseries",
             "targets": [
               {
-                "expr": "histogram_quantile(0.95, rate(workqueue_queue_duration_seconds_bucket{namespace='flux-system'}[5m]))",
+                "expr": "histogram_quantile(0.95, sum by (name, le) (rate(workqueue_queue_duration_seconds_bucket{namespace='flux-system'}[5m])))",
                 "legendFormat": "{{ name }}"
               }
             ]
@@ -338,7 +356,7 @@ data:
             "type": "timeseries",
             "targets": [
               {
-                "expr": "histogram_quantile(0.99, rate(workqueue_work_duration_seconds_bucket{namespace='flux-system'}[5m]))",
+                "expr": "histogram_quantile(0.99, sum by (name, le) (rate(workqueue_work_duration_seconds_bucket{namespace='flux-system'}[5m])))",
                 "legendFormat": "{{ name }}"
               }
             ]
@@ -377,32 +395,36 @@ kubectl get pods -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{"
 ### Scale Controller Resources
 
 ```yaml
-# flux-controller-resources.yaml
-# Patch Flux controllers with increased resources
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          resources:
-            requests:
-              # Increase CPU to process queue items faster
-              cpu: "500m"
-              memory: "256Mi"
-            limits:
-              cpu: "1000m"
-              memory: "1Gi"
-          args:
-            # Increase concurrent reconciliations to drain queue faster
-            - --concurrent=10
-            # Set events per second rate limit for the controller
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
+# kustomization-patch-resources.yaml
+# Apply this via Flux bootstrap kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  # Increase resources for the main reconciling controllers
+  - target:
+      kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller)"
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                resources:
+                  requests:
+                    # Increase CPU to process queue items faster
+                    cpu: "500m"
+                    memory: "256Mi"
+                  limits:
+                    cpu: "1000m"
+                    memory: "1Gi"
 ```
 
 ### Increase Controller Concurrency
@@ -444,52 +466,115 @@ patches:
 
 ## Automating Queue Depth Response
 
-### Horizontal Pod Autoscaling for Controllers
+### Sharding for Controllers
 
 ```yaml
-# flux-controller-hpa.yaml
-# Note: HPA for Flux controllers requires careful consideration
-# Only use if queue depth is consistently high
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: source-controller
-  minReplicas: 1
-  maxReplicas: 3
-  metrics:
-    # Scale based on CPU utilization
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-    # Scale based on custom queue depth metric
-    - type: Pods
-      pods:
-        metric:
-          name: workqueue_depth
-        target:
-          type: AverageValue
-          averageValue: "50"
+# flux-controller-shard.yaml
+# Use sharding for horizontal scaling instead of increasing replicas on one controller
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+resources:
+  - ../gotk-components.yaml
+nameSuffix: "-shard1"
+commonAnnotations:
+  sharding.fluxcd.io/role: "shard"
+patches:
+  # Keep only the controllers that support sharding
+  - target:
+      kind: (Namespace|CustomResourceDefinition|ClusterRole|ClusterRoleBinding|ServiceAccount|NetworkPolicy|ResourceQuota)
+      labelSelector: "app.kubernetes.io/part-of=flux"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      labelSelector: "app.kubernetes.io/component=notification-controller"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      labelSelector: "app.kubernetes.io/component=source-watcher"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: (image-reflector-controller|image-automation-controller)
+    patch: |
+      apiVersion: v1
+      kind: Deployment
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      kind: Service
+      name: source-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/app
+        value: source-controller-shard1
+  - target:
+      kind: Deployment
+      name: source-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: source-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: source-controller-shard1
+      - op: replace
+        path: /spec/template/spec/containers/0/args/6
+        value: --storage-adv-addr=source-controller-shard1.$(RUNTIME_NAMESPACE).svc.cluster.local.
+  - target:
+      kind: Deployment
+      name: kustomize-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: kustomize-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: kustomize-controller-shard1
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: helm-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: helm-controller-shard1
+  # Assign this controller copy to resources labeled sharding.fluxcd.io/key=shard1
+  - target:
+      kind: Deployment
+      name: (source-controller|kustomize-controller|helm-controller)
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --watch-label-selector=sharding.fluxcd.io/key=shard1
 ```
 
 ## Best Practices Summary
 
-1. **Set up ServiceMonitors** - Ensure all Flux controllers are scraped by Prometheus
+1. **Set up PodMonitors** - Ensure all Flux controllers are scraped by Prometheus
 2. **Monitor queue depth continuously** - Use dashboards to visualize queue trends
 3. **Alert on sustained high depth** - Brief spikes are normal; sustained growth is not
 4. **Increase concurrency** - Use the `--concurrent` flag to process more items in parallel
 5. **Allocate sufficient resources** - CPU-starved controllers process queues slowly
 6. **Watch retry rates** - High retries indicate upstream issues, not just load
 7. **Correlate with reconciliation intervals** - Shorter intervals create more queue pressure
-8. **Review during scale events** - Adding many new resources will spike queue depth
+8. **Use sharding for horizontal scaling** - Assign large sets of Flux resources to dedicated controller instances
 
 ## Conclusion
 
