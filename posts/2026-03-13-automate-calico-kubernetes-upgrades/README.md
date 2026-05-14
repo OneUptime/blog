@@ -34,25 +34,28 @@ flowchart TD
 ## Renovate Configuration for Calico
 
 ```json
-// renovate.json
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/clusters/.*/calico/imageset.*\\.ya?ml$/"],
+      "matchStrings": ["name:\\s+calico-(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "projectcalico/calico",
+      "packageNameTemplate": "projectcalico/calico",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver-coerced"
+    }
+  ],
   "packageRules": [
     {
-      "matchDepTypes": ["calico"],
+      "matchDatasources": ["github-releases"],
+      "matchPackageNames": ["projectcalico/calico"],
       "automerge": false,
       "reviewers": ["platform-team"],
       "labels": ["calico-upgrade"]
     }
-  ],
-  "customDatasources": {
-    "calico": {
-      "defaultRegistryUrlTemplate": "https://github.com/projectcalico/calico",
-      "transformTemplates": [
-        "{\"releases\": $.releases.map(r => {\"version\": r.version})}"
-      ]
-    }
-  }
+  ]
 }
 ```
 
@@ -67,7 +70,7 @@ K8S_VERSION=$(kubectl version -o json | jq -r '.serverVersion.gitVersion')
 
 # Compatibility matrix (simplified)
 declare -A COMPAT_MAP
-COMPAT_MAP["v3.27"]="1.26 1.27 1.28 1.29"
+COMPAT_MAP["v3.27"]="1.27 1.28 1.29"
 COMPAT_MAP["v3.28"]="1.27 1.28 1.29 1.30"
 
 # Extract minor version
@@ -139,10 +142,12 @@ echo "=== Post-Upgrade Calico Validation ==="
 # Version check
 RUNNING_VERSION=$(kubectl get installation default \
   -o jsonpath='{.status.calicoVersion}')
-if [[ "${RUNNING_VERSION}" == "${TARGET_VERSION}" ]]; then
+RUNNING_IMAGESET=$(kubectl get installation default \
+  -o jsonpath='{.status.imageSet}')
+if [[ "${RUNNING_VERSION}" == "${TARGET_VERSION}" && "${RUNNING_IMAGESET}" == "calico-${TARGET_VERSION}" ]]; then
   echo "OK:   Version ${TARGET_VERSION} running"
 else
-  echo "FAIL: Expected ${TARGET_VERSION}, got ${RUNNING_VERSION}"
+  echo "FAIL: Expected ${TARGET_VERSION} with ImageSet calico-${TARGET_VERSION}, got ${RUNNING_VERSION} with ImageSet ${RUNNING_IMAGESET}"
   FAILURES=$((FAILURES + 1))
 fi
 
@@ -152,10 +157,15 @@ NOT_RUNNING=$(kubectl get pods -n calico-system --no-headers | grep -v Running |
   { echo "FAIL: ${NOT_RUNNING} pods not running"; FAILURES=$((FAILURES + 1)); }
 
 # TigeraStatus Available
-STATUS=$(kubectl get tigerastatus calico \
+AVAILABLE=$(kubectl get tigerastatus calico \
   -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')
-[[ "${STATUS}" == "True" ]] && echo "OK:   TigeraStatus Available" || \
-  { echo "FAIL: TigeraStatus not Available"; FAILURES=$((FAILURES + 1)); }
+PROGRESSING=$(kubectl get tigerastatus calico \
+  -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}')
+DEGRADED=$(kubectl get tigerastatus calico \
+  -o jsonpath='{.status.conditions[?(@.type=="Degraded")].status}')
+[[ "${AVAILABLE}" == "True" && "${PROGRESSING}" == "False" && "${DEGRADED}" == "False" ]] && \
+  echo "OK:   TigeraStatus Available" || \
+  { echo "FAIL: TigeraStatus is Available=${AVAILABLE}, Progressing=${PROGRESSING}, Degraded=${DEGRADED}"; FAILURES=$((FAILURES + 1)); }
 
 echo "Validation: ${FAILURES} failure(s)"
 exit ${FAILURES}
