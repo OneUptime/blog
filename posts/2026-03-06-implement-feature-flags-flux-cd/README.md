@@ -100,7 +100,7 @@ data:
 
 ## Using Kustomize configMapGenerator
 
-Generate ConfigMaps with hash suffixes so flag changes trigger pod restarts:
+Generate ConfigMaps with hash suffixes so flag changes trigger pod restarts when the workloads that reference the generated ConfigMap are rendered in the same Kustomize build:
 
 ```yaml
 # apps/feature-flags/base/kustomization.yaml
@@ -237,10 +237,9 @@ spec:
             - containerPort: 8080
           # Load feature flags as environment variables
           envFrom:
-            - configMapRef:
+            - prefix: "" # Optional: prefix all keys
+              configMapRef:
                 name: feature-flags
-                # Optional: prefix all keys
-                prefix: ""
           # Mount the JSON flags file
           volumeMounts:
             - name: feature-flags
@@ -382,7 +381,7 @@ spec:
 
 ## Gradual Feature Rollout Workflow
 
-Use Git commits to progressively roll out a feature:
+Use Git commits to progressively roll out a feature. The application or feature flag service must evaluate `rollout_percentage` and `allowed_users` when deciding whether a feature is enabled for a request:
 
 ```yaml
 # Step 1: Enable for internal users (commit 1)
@@ -433,7 +432,7 @@ Track feature flag changes with Flux notifications:
 
 ```yaml
 # clusters/my-cluster/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -444,7 +443,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: feature-flag-changes
@@ -456,7 +455,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: feature-flags
-  summary: "Feature flag configuration updated"
+  eventMetadata:
+    summary: "Feature flag configuration updated"
 ```
 
 ## Audit Trail
@@ -481,4 +481,4 @@ Implementing feature flags with Flux CD provides a controlled, auditable way to 
 - Implement gradual rollouts by progressively updating flag values through Git commits
 - Maintain a complete audit trail of all flag changes in Git history
 - Set up Flux notifications to alert your team when flags change
-- Use percentage-based rollouts for controlled progressive delivery
+- Use percentage values in your application or feature flag service for controlled progressive delivery
