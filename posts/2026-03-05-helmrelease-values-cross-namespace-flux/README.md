@@ -1,21 +1,21 @@
-# How to Use HelmRelease with Values References Across Namespaces in Flux
+# How to Use HelmRelease with Values References in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Cross-Namespace, ValuesFrom, ConfigMap, Secret
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, ValuesFrom, ConfigMap, Secret
 
-Description: Learn how to configure HelmRelease to reference values from ConfigMaps and Secrets across different namespaces in Flux CD.
+Description: Learn how to configure HelmRelease to reference values from ConfigMaps and Secrets in Flux CD.
 
 ---
 
-Flux CD allows HelmRelease resources to pull values from ConfigMaps and Secrets using the `spec.valuesFrom` field. By default, these references are limited to the same namespace as the HelmRelease. However, there are scenarios where you need to share configuration across namespaces -- for example, a shared database connection string used by multiple applications in different namespaces. This guide covers how to configure cross-namespace value references and the security implications involved.
+Flux CD allows HelmRelease resources to pull values from ConfigMaps and Secrets using the `spec.valuesFrom` field. These references are limited to the same namespace as the HelmRelease. However, there are scenarios where you need to reuse configuration across applications -- for example, a common set of chart values used by multiple releases. This guide covers how to configure value references and the security implications involved.
 
 ## How valuesFrom Works
 
 The `spec.valuesFrom` field on a HelmRelease accepts a list of references to ConfigMaps or Secrets. During reconciliation, Flux reads the values from these sources and merges them with `spec.values`. The merge order is:
 
 1. Values from `spec.valuesFrom` entries (in order)
-2. Values from `spec.values` (inline values override valuesFrom)
+2. Values from `spec.values` (inline values override valuesFrom when `targetPath` is not used)
 
 ```yaml
 # Basic valuesFrom example (same namespace)
@@ -38,7 +38,7 @@ spec:
     - kind: ConfigMap
       name: shared-config
       # Optional: specify a key within the ConfigMap
-      # If omitted, the entire ConfigMap data is used as values
+      # If omitted, this defaults to values.yaml
       valuesKey: values.yaml
     - kind: Secret
       name: db-credentials
@@ -48,25 +48,25 @@ spec:
     replicaCount: 3
 ```
 
-## Cross-Namespace References
+## Namespace Limitations
 
-To reference a ConfigMap or Secret in a different namespace, use the `targetNamespace` field in the `valuesFrom` entry. However, cross-namespace references require explicit permission through Flux's access control.
+The `valuesFrom` entries do not support a `namespace` or `targetNamespace` field. The referenced ConfigMap or Secret must exist in the same namespace as the HelmRelease.
 
-### Enabling Cross-Namespace References
+### Cross-Namespace Controller Flags
 
-By default, Flux denies cross-namespace references for security. To allow them, the helm-controller must be started with the `--no-cross-namespace-refs=false` flag, and the source namespace must not have the `toolkit.fluxcd.io/deny-cross-namespace-source` annotation.
+Flux's helm-controller has a `--no-cross-namespace-refs` flag, but this controls cross-namespace references to source objects such as HelmRepository, GitRepository, Bucket, OCIRepository, and HelmChart references. It does not add cross-namespace support to `spec.valuesFrom`.
 
 First, check your current configuration:
 
 ```bash
-# Check if cross-namespace refs are allowed
+# Check if cross-namespace source refs are allowed
 kubectl get deployment helm-controller -n flux-system -o yaml | grep "no-cross-namespace"
 ```
 
-If cross-namespace references are disabled, you need to update the helm-controller deployment. This is typically done through your Flux installation configuration:
+If cross-namespace source references are disabled, a HelmRelease must reference its chart source from the same namespace as the HelmRelease. This is typically configured through your Flux installation configuration:
 
 ```yaml
-# Flux Kustomization to configure helm-controller flags
+# Flux Kustomization to configure helm-controller flags for source refs
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -82,12 +82,12 @@ patches:
         value: --no-cross-namespace-refs=false
 ```
 
-### Referencing Values from Another Namespace
+### Referencing Values from the Same Namespace
 
-Once cross-namespace references are enabled, you can reference ConfigMaps and Secrets from other namespaces:
+Create the ConfigMap or Secret in the same namespace as the HelmRelease:
 
 ```yaml
-# HelmRelease referencing values from a different namespace
+# HelmRelease referencing values from its own namespace
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -103,15 +103,13 @@ spec:
         name: my-repo
         namespace: flux-system
   valuesFrom:
-    # Reference a ConfigMap from the shared-config namespace
+    # Reference a ConfigMap from the app-namespace namespace
     - kind: ConfigMap
       name: global-config
-      namespace: shared-config
       valuesKey: values.yaml
-    # Reference a Secret from the secrets namespace
+    # Reference a Secret from the app-namespace namespace
     - kind: Secret
       name: shared-credentials
-      namespace: secrets
       valuesKey: values.yaml
   values:
     replicaCount: 2
@@ -121,20 +119,20 @@ spec:
 
 ### Creating a Shared ConfigMap
 
-Create a ConfigMap in a central namespace that multiple HelmReleases can reference:
+Create a ConfigMap in each namespace that contains a HelmRelease which needs the shared values. You can keep the source values in Git and use Kustomize generators or your preferred GitOps workflow to create the same ConfigMap in multiple namespaces.
 
 ```yaml
-# Shared ConfigMap in a dedicated namespace
+# Shared ConfigMap data generated into an application namespace
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: shared-config
+  name: app-namespace
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: global-config
-  namespace: shared-config
+  namespace: app-namespace
 data:
   values.yaml: |
     global:
@@ -150,15 +148,15 @@ data:
 
 ### Creating Shared Secrets
 
-Store shared credentials in a central Secret:
+Store credentials in a Secret in the same namespace as the HelmRelease:
 
 ```yaml
-# Shared Secret for database credentials
+# Secret for database credentials in an application namespace
 apiVersion: v1
 kind: Secret
 metadata:
   name: shared-db-credentials
-  namespace: secrets
+  namespace: app-namespace
 type: Opaque
 stringData:
   values.yaml: |
@@ -171,9 +169,33 @@ stringData:
 
 ### Referencing Shared Values in Multiple HelmReleases
 
-Multiple applications can now reference the same shared configuration:
+Multiple applications can reference the same values structure, but the ConfigMap and Secret must be present in each application's namespace:
 
 ```yaml
+# Values objects in namespace-a
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: global-config
+  namespace: namespace-a
+data:
+  values.yaml: |
+    global:
+      domain: example.com
+      environment: production
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shared-db-credentials
+  namespace: namespace-a
+type: Opaque
+stringData:
+  values.yaml: |
+    database:
+      host: postgres.database.svc.cluster.local
+      port: 5432
+---
 # App 1 in namespace-a
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -192,14 +214,36 @@ spec:
   valuesFrom:
     - kind: ConfigMap
       name: global-config
-      namespace: shared-config
       valuesKey: values.yaml
     - kind: Secret
       name: shared-db-credentials
-      namespace: secrets
       valuesKey: values.yaml
   values:
     replicaCount: 3
+---
+# Values objects in namespace-b
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: global-config
+  namespace: namespace-b
+data:
+  values.yaml: |
+    global:
+      domain: example.com
+      environment: production
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shared-db-credentials
+  namespace: namespace-b
+type: Opaque
+stringData:
+  values.yaml: |
+    database:
+      host: postgres.database.svc.cluster.local
+      port: 5432
 ---
 # App 2 in namespace-b
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -219,11 +263,9 @@ spec:
   valuesFrom:
     - kind: ConfigMap
       name: global-config
-      namespace: shared-config
       valuesKey: values.yaml
     - kind: Secret
       name: shared-db-credentials
-      namespace: secrets
       valuesKey: values.yaml
   values:
     replicaCount: 2
@@ -242,7 +284,7 @@ graph TD
     style D fill:#6f6
 ```
 
-Later entries override earlier entries. Inline `spec.values` always takes the highest precedence.
+Later entries override earlier entries. Inline `spec.values` takes the highest precedence when `targetPath` is not used.
 
 ```yaml
 # Demonstrating merge order
@@ -264,17 +306,14 @@ spec:
     # First: base configuration (lowest priority in valuesFrom)
     - kind: ConfigMap
       name: base-config
-      namespace: shared-config
       valuesKey: values.yaml
     # Second: environment-specific overrides
     - kind: ConfigMap
       name: prod-config
-      namespace: shared-config
       valuesKey: values.yaml
     # Third: secrets (overrides base and env configs)
     - kind: Secret
       name: shared-credentials
-      namespace: secrets
       valuesKey: values.yaml
   # Inline values override everything above
   values:
@@ -290,7 +329,6 @@ If a referenced ConfigMap or Secret might not exist, mark it as optional:
 valuesFrom:
   - kind: ConfigMap
     name: optional-config
-    namespace: shared-config
     valuesKey: values.yaml
     # If the ConfigMap does not exist, skip it instead of failing
     optional: true
@@ -298,50 +336,50 @@ valuesFrom:
 
 ## Security Considerations
 
-Cross-namespace value references have security implications:
+Value references have security implications:
 
-1. **Secret exposure** -- A HelmRelease in one namespace can read Secrets from another namespace, potentially accessing credentials it should not have.
-2. **Blast radius** -- A compromised namespace can read shared secrets.
-3. **RBAC** -- The helm-controller's service account needs RBAC permissions to read resources in the source namespace.
+1. **Secret exposure** -- Secret values used as Helm values may be visible to users who can inspect Helm release storage or run Helm commands against the release.
+2. **Blast radius** -- Reusing the same secret values across many namespaces increases the impact if those values are compromised.
+3. **RBAC** -- Limit who can read ConfigMaps, Secrets, HelmReleases, and Helm release storage in application namespaces.
 
 ### Restricting Access
 
-Use Kubernetes RBAC to limit which namespaces the helm-controller can read from:
+Use Kubernetes RBAC to limit who can read value objects in an application namespace:
 
 ```yaml
-# RBAC to allow helm-controller to read from the shared-config namespace
+# RBAC to allow an application operator to read values in one namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: helm-controller-reader
-  namespace: shared-config
+  name: app-values-reader
+  namespace: app-namespace
 rules:
   - apiGroups: [""]
     resources: ["configmaps", "secrets"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: helm-controller-reader
-  namespace: shared-config
+  name: app-values-reader
+  namespace: app-namespace
 subjects:
-  - kind: ServiceAccount
-    name: helm-controller
-    namespace: flux-system
+  - kind: Group
+    name: app-operators
+    apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role
-  name: helm-controller-reader
+  name: app-values-reader
   apiGroup: rbac.authorization.k8s.io
 ```
 
-## Verifying Cross-Namespace References
+## Verifying Values References
 
-After configuring cross-namespace references, verify they are working:
+After configuring values references, verify they are working:
 
 ```bash
 # Check if the HelmRelease is reconciling successfully
-flux get helmrelease my-app -n app-namespace
+flux get helmreleases -n app-namespace
 
 # Verify the values were merged correctly
 helm get values my-app -n app-namespace
@@ -352,12 +390,12 @@ kubectl describe helmrelease my-app -n app-namespace | grep -A 5 "valuesFrom\|Me
 
 ## Best Practices
 
-1. **Minimize cross-namespace references.** Only use them when truly necessary. Prefer duplicating non-sensitive configuration over sharing secrets across namespaces.
-2. **Use dedicated namespaces for shared config.** Keep shared ConfigMaps and Secrets in a dedicated namespace with strict RBAC.
+1. **Keep values references local.** Create the referenced ConfigMaps and Secrets in the same namespace as the HelmRelease.
+2. **Generate repeated values consistently.** Use Kustomize generators, SOPS, or another GitOps-friendly workflow to produce the same value objects in multiple namespaces when needed.
 3. **Mark optional references explicitly.** Use `optional: true` for configuration that may not exist in all environments.
 4. **Document the merge order.** Add comments in your HelmRelease explaining the precedence of valuesFrom entries.
-5. **Audit cross-namespace access.** Regularly review which HelmReleases reference resources from other namespaces.
+5. **Audit access.** Regularly review who can read ConfigMaps, Secrets, HelmReleases, and Helm release storage.
 
 ## Conclusion
 
-Cross-namespace value references in Flux HelmRelease enable sharing configuration across applications in different namespaces. By using `spec.valuesFrom` with the `namespace` field, you can reference ConfigMaps and Secrets from any namespace, provided cross-namespace references are enabled in the helm-controller. Use this feature carefully, with proper RBAC and security considerations, to maintain a clean separation of concerns while sharing necessary configuration.
+Flux HelmRelease values references let you compose chart values from ConfigMaps and Secrets. By using `spec.valuesFrom`, you can reference value objects in the same namespace as the HelmRelease and combine them with inline values. Use this feature carefully, with proper RBAC and security considerations, to maintain a clean separation of concerns while sharing necessary configuration patterns.
