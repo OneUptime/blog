@@ -1,16 +1,16 @@
-# How to Alert on the Calico Flow Logs API
+# How to Alert on Calico Felix Metrics
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Configure alerts based on Calico Flow Logs API data to detect sustained denied traffic patterns, unusual cross-namespace connection attempts, and policy enforcement failures.
+Description: Configure alerts based on Calico Felix metrics to detect dataplane update failures and policy calculation latency.
 
 ---
 
 ## Introduction
 
-The Flow Logs API enables rich alerting based on flow patterns. Unlike Prometheus metric alerts that show rates, API-based alerts can include specific source/destination context in alert payloads, making them more actionable. A 'high deny rate' alert can include the specific source pod and denied destination as alert attributes.
+Felix Prometheus metrics enable alerting based on Calico data plane health and policy calculation behavior. These alerts do not replace Calico flow-log analysis for per-flow source and destination context, but they are useful for detecting sustained dataplane update failures and policy calculation latency.
 
 ## Key Commands
 
@@ -28,9 +28,25 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | grep -E   "^felix_int_dataplane_failures|^felix_calc_graph"
 ```
 
-## ServiceMonitor for Felix
+## Service and ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -50,7 +66,8 @@ spec:
 
 ```mermaid
 flowchart LR
-    A[Felix per node\nport 9091] --> B[Prometheus]
+    A[Felix per node\nport 9091] --> S[felix-metrics-svc]
+    S --> B[Prometheus]
     B --> C[Grafana dashboards]
     B --> D[Alertmanager]
     D --> E[PagerDuty / Slack]
