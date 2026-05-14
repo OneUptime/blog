@@ -32,7 +32,7 @@ Before migrating, understand how Jenkins concepts map to Flux CD.
 | kubectl apply step | Kustomization pointing to manifests |
 | Environment branches | Kustomization per environment |
 | Jenkins credentials | Kubernetes Secrets + SOPS |
-| Build triggers | GitRepository polling interval |
+| Deployment triggers | GitRepository polling interval or webhooks |
 
 ## Step 1: Install Flux CD in Your Cluster
 
@@ -45,11 +45,12 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 
 # Bootstrap Flux into your cluster with your Git repository
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/production \
-  --personal
+  --read-write-key
 ```
 
 This creates the Flux controllers in the `flux-system` namespace and sets up the Git repository connection.
@@ -174,7 +175,7 @@ spec:
 
 ## Step 4: Handle Image Updates
 
-Jenkins typically builds images and updates tags inline. With Flux CD, use Image Automation to achieve the same result.
+Jenkins typically builds images and updates deployment tags inline. With Flux CD, keep Jenkins or another CI system building images and use Image Automation to update tags in Git.
 
 ```yaml
 # clusters/production/image-automation/my-app-policy.yaml
@@ -240,8 +241,7 @@ spec:
     spec:
       containers:
         - name: my-app
-          # {"$imagepolicy": "flux-system:my-app"}
-          image: registry.example.com/my-app:1.0.0
+          image: registry.example.com/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app"}
 ```
 
 ## Step 5: Migrate Secrets Management
@@ -354,7 +354,7 @@ Set up alerts to monitor Flux CD during and after migration:
 
 ```yaml
 # clusters/production/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -369,7 +369,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -383,4 +383,4 @@ spec:
 
 ## Summary
 
-Migrating from Jenkins CD to Flux CD involves translating imperative pipeline steps into declarative Flux resources. The key steps are: install Flux alongside Jenkins, convert Helm and kubectl deployments to HelmRelease and Kustomization resources, set up image automation to replace Jenkins build triggers, migrate secrets to SOPS or Sealed Secrets, run both systems in parallel, and gradually disable Jenkins jobs as each application is verified under Flux management.
+Migrating from Jenkins CD to Flux CD involves translating imperative pipeline steps into declarative Flux resources. The key steps are: install Flux alongside Jenkins, convert Helm and kubectl deployments to HelmRelease and Kustomization resources, set up image automation to replace inline deployment tag updates, migrate secrets to SOPS or Sealed Secrets, run both systems in parallel, and gradually disable Jenkins jobs as each application is verified under Flux management.
