@@ -10,7 +10,7 @@ Description: Learn how to configure ignore rules for HelmRelease drift detection
 
 ## Introduction
 
-When you enable drift detection on a HelmRelease in Flux CD, the Helm controller compares the live state of managed resources against the desired state and corrects any differences. However, there are legitimate scenarios where certain fields should be allowed to differ from the desired state. For example, Horizontal Pod Autoscalers (HPAs) dynamically adjust replica counts, and some operators mutate resource annotations after deployment.
+When you enable drift detection on a HelmRelease in Flux CD, the Helm controller compares the live state of managed resources against the manifest stored for the Helm release and corrects any differences. However, there are legitimate scenarios where certain fields should be allowed to differ from the desired state. For example, Horizontal Pod Autoscalers (HPAs) dynamically adjust replica counts, and some operators mutate resource annotations after deployment.
 
 Flux provides the `spec.driftDetection.ignore` field to define rules that exclude specific JSON paths from drift detection. This prevents Flux from fighting with other controllers or operators that legitimately modify resource fields.
 
@@ -19,10 +19,9 @@ Flux provides the `spec.driftDetection.ignore` field to define rules that exclud
 Several common Kubernetes patterns produce expected drift:
 
 - **Horizontal Pod Autoscalers** modify `spec.replicas` on Deployments
-- **Cert-Manager** adds annotations to Ingress resources
-- **Istio sidecar injection** modifies pod templates
+- **Ingress controllers or ACME HTTP-01 solvers** modify Ingress resources
 - **Admission webhooks** add default values to resource specs
-- **Cluster autoscalers** modify node-related annotations
+- **Vertical Pod Autoscalers** modify container resource requests
 
 Without ignore rules, Flux would continuously revert these changes, creating a conflict loop between Flux and the other controller.
 
@@ -164,15 +163,15 @@ driftDetection:
         kind: Deployment
 ```
 
-### Cert-Manager Managed Ingresses
+### ACME HTTP-01 Ingress Changes
 
-Cert-Manager adds annotations and TLS configurations to Ingress resources:
+Some ACME HTTP-01 solver configurations modify Ingress resources during certificate issuance:
 
 ```yaml
 driftDetection:
   mode: enabled
   ignore:
-    # Cert-Manager modifies Ingress annotations and TLS settings
+    # ACME HTTP-01 solvers may modify Ingress annotations
     - paths:
         - "/metadata/annotations"
       target:
@@ -223,11 +222,11 @@ kubectl events --for helmrelease/my-application -n default
 ## Best Practices
 
 1. **Be specific with targets** -- always use the `target` field to scope ignore rules to specific resource kinds or names, rather than ignoring paths globally.
-2. **Use the most specific JSON path possible** -- ignoring `/metadata/annotations` is broad; prefer ignoring specific annotation keys if the JSON pointer syntax supports it.
+2. **Use the most specific JSON path possible** -- ignoring `/metadata/annotations` is broad; prefer ignoring specific annotation keys, escaping `/` as `~1` in JSON Pointer paths.
 3. **Document why each ignore rule exists** -- add comments in your YAML explaining which controller or process requires each ignore rule.
 4. **Start with warn mode** -- before adding ignore rules, run drift detection in `warn` mode to understand what drift occurs naturally in your cluster.
 5. **Review ignore rules periodically** -- as your cluster evolves, some ignore rules may no longer be necessary.
 
 ## Conclusion
 
-Drift detection ignore rules let you maintain strict GitOps enforcement while accommodating legitimate out-of-band changes from controllers like HPAs, VPAs, and Cert-Manager. By carefully targeting ignore rules with JSON Pointer paths and resource selectors, you can prevent conflict loops while still catching unauthorized manual changes. Always start with `warn` mode to understand your drift landscape before configuring ignore rules.
+Drift detection ignore rules let you maintain strict GitOps enforcement while accommodating legitimate out-of-band changes from controllers like HPAs, VPAs, and Ingress-related controllers. By carefully targeting ignore rules with JSON Pointer paths and resource selectors, you can prevent conflict loops while still catching unauthorized manual changes. Always start with `warn` mode to understand your drift landscape before configuring ignore rules.
