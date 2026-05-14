@@ -4,32 +4,34 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Security, RBAC, Service Account, Read-Only
 
-Description: Learn how to configure a Flux Kustomization with a read-only service account to perform dry-run validations without granting write permissions.
+Description: Learn how to configure a Flux Kustomization with a read-only service account to verify RBAC boundaries without granting write permissions.
 
 ---
 
-In some scenarios, you want Flux to validate and monitor resources without actually applying changes. By pairing a Kustomization with a read-only service account, you can create a validation-only workflow that detects drift and configuration issues without modifying cluster state.
+In some scenarios, you want to verify that Flux cannot modify resources unless it is explicitly granted write access. By pairing a Kustomization with a read-only service account, you can create an RBAC boundary check that fails closed with a Forbidden error instead of modifying cluster state.
+
+This is not a successful dry-run validation workflow. Flux Kustomizations validate and then apply resources, and Kubernetes authorizes server-side dry-run requests the same way it authorizes non-dry-run write requests. A service account with only `get`, `list`, and `watch` permissions should therefore be expected to fail when Flux tries to create, patch, update, or delete resources.
 
 ## Use Cases for Read-Only Service Accounts
 
-- **Drift detection**: Monitor whether deployed resources match the desired state in Git.
-- **Validation environments**: Test Kustomization configurations without deploying.
-- **Audit trails**: Record what would change without making the changes.
-- **Multi-stage deployments**: Validate in one stage before applying in another.
+- **RBAC boundary checks**: Confirm that a Kustomization cannot write outside its intended permissions.
+- **Validation environments**: Test that restricted Flux credentials fail closed before granting deploy permissions.
+- **Audit trails**: Record Forbidden reconciliation events without making the changes.
+- **Multi-stage deployments**: Keep restricted checks separate from the Kustomizations that actually apply changes.
 
 ## Step 1: Create a Read-Only Service Account
 
-Create a service account with only read permissions in the target namespace:
+Create a service account in the same namespace as the Flux Kustomization, then bind it to read-only permissions in the target namespace:
 
 ```yaml
 # readonly-service-account.yaml
 
-# Service account with read-only access for drift detection
+# Service account with read-only access for RBAC boundary checks
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: flux-readonly
-  namespace: production
+  namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -66,20 +68,20 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: flux-readonly
-    namespace: production
+    namespace: flux-system
 ```
 
 ## Step 2: Configure the Kustomization with the Read-Only Service Account
 
-Create a Flux Kustomization that uses the read-only service account. When the kustomize-controller tries to apply changes, it will fail with a Forbidden error, effectively making it read-only:
+Create a Flux Kustomization that uses the read-only service account. When the kustomize-controller tries to apply or server-side dry-run changes, it will fail with a Forbidden error. This verifies that the service account cannot write to the target namespace:
 
 ```yaml
 # kustomization-readonly.yaml
-# Flux Kustomization using a read-only service account for drift detection
+# Flux Kustomization using a read-only service account for RBAC boundary checks
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: production-drift-check
+  name: production-rbac-check
   namespace: flux-system
 spec:
   interval: 30m
@@ -93,7 +95,7 @@ spec:
   serviceAccountName: flux-readonly
   # Force apply is not needed for read-only
   force: false
-  # Health checks can still run with read-only access
+  # Health checks can still run with read-only access if the apply phase succeeds
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -112,7 +114,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: flux-deployer
-  namespace: production
+  namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -142,7 +144,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: flux-deployer
-    namespace: production
+    namespace: flux-system
 ---
 # Flux Kustomization that actually applies resources
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -159,17 +161,15 @@ spec:
     name: flux-system
   targetNamespace: production
   serviceAccountName: flux-deployer
-  dependsOn:
-    - name: production-drift-check  # Only deploy after drift check passes
 ```
 
-## Step 4: Set Up Alerts for Drift Detection
+## Step 4: Set Up Alerts for Forbidden Errors
 
-Configure Flux notifications to alert when the read-only Kustomization detects drift:
+Configure Flux notifications to alert when the read-only Kustomization fails with a Forbidden error:
 
 ```yaml
-# alert-drift-detection.yaml
-# Alert on drift detection failures from the read-only Kustomization
+# alert-readonly-rbac.yaml
+# Alert on RBAC failures from the read-only Kustomization
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
@@ -184,7 +184,7 @@ spec:
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
-  name: drift-detection
+  name: readonly-rbac-failures
   namespace: flux-system
 spec:
   providerRef:
@@ -192,7 +192,7 @@ spec:
   eventSeverity: error
   eventSources:
     - kind: Kustomization
-      name: production-drift-check
+      name: production-rbac-check
       namespace: flux-system
 ```
 
@@ -208,27 +208,32 @@ kubectl apply -f readonly-service-account.yaml
 kubectl apply -f kustomization-readonly.yaml
 
 # Check the Kustomization status
-flux get kustomization production-drift-check
+flux get kustomizations production-rbac-check
 
-# Verify the service account cannot create resources
+# Verify the service account cannot create or patch resources
 kubectl auth can-i create deployments \
-  --as=system:serviceaccount:production:flux-readonly \
+  --as=system:serviceaccount:flux-system:flux-readonly \
+  -n production
+# Expected: "no"
+
+kubectl auth can-i patch deployments \
+  --as=system:serviceaccount:flux-system:flux-readonly \
   -n production
 # Expected: "no"
 
 # Verify the service account can read resources
 kubectl auth can-i get deployments \
-  --as=system:serviceaccount:production:flux-readonly \
+  --as=system:serviceaccount:flux-system:flux-readonly \
   -n production
 # Expected: "yes"
 ```
 
 ## Best Practices
 
-1. **Separate read and write Kustomizations**: Use different Kustomizations for monitoring and deploying.
-2. **Use dependsOn for staging**: Make write Kustomizations depend on read-only ones for validation gates.
+1. **Separate read and write Kustomizations**: Use different Kustomizations for RBAC checks and deploying.
+2. **Do not gate deployments on a read-only Kustomization**: A correctly restricted read-only Kustomization will not become Ready when it needs write permissions.
 3. **Disable pruning**: Always set `prune: false` on read-only Kustomizations since deletion is a write operation.
-4. **Set up alerts**: Configure notifications for read-only Kustomization failures to catch drift early.
+4. **Set up alerts**: Configure notifications for read-only Kustomization failures to catch unexpected write attempts early.
 5. **Review RBAC scope**: Ensure the read-only Role covers all resource types in your Kustomization path.
 
-Read-only service accounts provide a safe way to use Flux for monitoring and validation without risking unintended changes. This pattern is especially useful in regulated environments where changes require explicit approval workflows.
+Read-only service accounts provide a safe way to prove that Flux cannot change a namespace without explicit write permissions. This pattern is especially useful in regulated environments where changes require explicit approval workflows.
