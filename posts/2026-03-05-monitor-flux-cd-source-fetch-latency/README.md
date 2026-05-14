@@ -23,17 +23,16 @@ The source-controller exposes the `gotk_reconcile_duration_seconds` metric, whic
 - `kind` -- The source type (GitRepository, HelmRepository, OCIRepository, Bucket)
 - `name` -- The name of the source resource
 - `namespace` -- The namespace of the source resource
-- `exported_namespace` -- The namespace where the resource is defined
 
-## Step 1: Set Up a ServiceMonitor
+## Step 1: Set Up a PodMonitor
 
 Ensure your Prometheus instance scrapes the source-controller metrics endpoint:
 
 ```yaml
-# source-controller-servicemonitor.yaml
+# source-controller-podmonitor.yaml
 
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: source-controller
   namespace: flux-system
@@ -44,7 +43,7 @@ spec:
   selector:
     matchLabels:
       app: source-controller
-  endpoints:
+  podMetricsEndpoints:
     - port: http-prom
       interval: 30s
       path: /metrics
@@ -53,26 +52,26 @@ spec:
 Apply it:
 
 ```bash
-# Apply the ServiceMonitor for source-controller
-kubectl apply -f source-controller-servicemonitor.yaml
+# Apply the PodMonitor for source-controller
+kubectl apply -f source-controller-podmonitor.yaml
 ```
 
 ## Step 2: Query Source Fetch Duration
 
-Use PromQL to visualize how long source fetches take. The `gotk_reconcile_duration_seconds` histogram gives you percentile breakdowns:
+Use PromQL to visualize how long source reconciliations take, including source fetch time. The `gotk_reconcile_duration_seconds` histogram gives you percentile breakdowns:
 
 ```yaml
 # PromQL queries for source fetch latency
 # Paste these into Grafana or Prometheus query editor
 
 # P50 (median) reconciliation duration for source resources
-# histogram_quantile(0.5, rate(gotk_reconcile_duration_seconds_bucket{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m]))
+# histogram_quantile(0.5, sum(rate(gotk_reconcile_duration_seconds_bucket{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m])) by (le, kind, name, namespace))
 
 # P95 reconciliation duration for source resources
-# histogram_quantile(0.95, rate(gotk_reconcile_duration_seconds_bucket{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m]))
+# histogram_quantile(0.95, sum(rate(gotk_reconcile_duration_seconds_bucket{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m])) by (le, kind, name, namespace))
 
 # P99 reconciliation duration for source resources
-# histogram_quantile(0.99, rate(gotk_reconcile_duration_seconds_bucket{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m]))
+# histogram_quantile(0.99, sum(rate(gotk_reconcile_duration_seconds_bucket{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m])) by (le, kind, name, namespace))
 
 # Example Grafana panel configuration
 apiVersion: v1
@@ -85,12 +84,12 @@ data:
     {
       "panels": [
         {
-          "title": "Source Fetch Latency (P95)",
+          "title": "Source Reconciliation Latency (P95)",
           "type": "timeseries",
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum(rate(gotk_reconcile_duration_seconds_bucket{kind=~\"GitRepository|HelmRepository|OCIRepository|Bucket\"}[5m])) by (le, kind, name))",
-              "legendFormat": "{{ kind }}/{{ name }}"
+              "expr": "histogram_quantile(0.95, sum(rate(gotk_reconcile_duration_seconds_bucket{kind=~\"GitRepository|HelmRepository|OCIRepository|Bucket\"}[5m])) by (le, kind, name, namespace))",
+              "legendFormat": "{{ namespace }}/{{ kind }}/{{ name }}"
             }
           ],
           "fieldConfig": {
@@ -109,10 +108,9 @@ Different source types have different latency profiles. Git repositories tend to
 
 ```yaml
 # PromQL for average reconciliation duration grouped by source kind
-# avg(rate(gotk_reconcile_duration_seconds_sum{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m])
+# sum by (kind) (rate(gotk_reconcile_duration_seconds_sum{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m]))
 # /
-# rate(gotk_reconcile_duration_seconds_count{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m]))
-# by (kind)
+# sum by (kind) (rate(gotk_reconcile_duration_seconds_count{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}[5m]))
 
 # Grafana panel for per-source-type latency comparison
 apiVersion: v1
@@ -125,11 +123,11 @@ data:
     {
       "panels": [
         {
-          "title": "Average Fetch Duration by Source Type",
+          "title": "Average Reconciliation Duration by Source Type",
           "type": "bargauge",
           "targets": [
             {
-              "expr": "avg by (kind) (rate(gotk_reconcile_duration_seconds_sum{kind=~\"GitRepository|HelmRepository|OCIRepository|Bucket\"}[10m]) / rate(gotk_reconcile_duration_seconds_count{kind=~\"GitRepository|HelmRepository|OCIRepository|Bucket\"}[10m]))",
+              "expr": "sum by (kind) (rate(gotk_reconcile_duration_seconds_sum{kind=~\"GitRepository|HelmRepository|OCIRepository|Bucket\"}[10m])) / sum by (kind) (rate(gotk_reconcile_duration_seconds_count{kind=~\"GitRepository|HelmRepository|OCIRepository|Bucket\"}[10m]))",
               "legendFormat": "{{ kind }}"
             }
           ]
