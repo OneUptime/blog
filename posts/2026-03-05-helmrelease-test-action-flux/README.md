@@ -195,11 +195,10 @@ spec:
     enable: true
     timeout: 5m
   install:
-    atomic: true
     remediation:
       retries: 3
+      remediateLastFailure: true
   upgrade:
-    atomic: true
     remediation:
       retries: 3
       strategy: rollback
@@ -226,16 +225,16 @@ kubectl logs -n default my-app-test-connection
 
 ```bash
 # Check HelmRelease status (includes test results)
-flux get helmrelease my-app -n default
+flux get helmreleases -n default
 
 # View detailed conditions including test outcomes
 kubectl describe helmrelease my-app -n default
 
 # Check test pod status
-kubectl get pods -n default -l "helm.sh/hook=test"
+kubectl get pod -n default my-app-test-connection
 
 # View test pod logs
-kubectl logs -n default -l "helm.sh/hook=test"
+kubectl logs -n default my-app-test-connection
 ```
 
 ## Summary
