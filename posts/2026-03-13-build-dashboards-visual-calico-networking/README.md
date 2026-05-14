@@ -10,7 +10,7 @@ Description: Configure Calico observability capabilities for network visibility,
 
 ## Introduction
 
-Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), flow logs for connection-level visibility, and integration with Grafana for dashboards. This guide covers how to configure and use these capabilities effectively.
+Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), Calico Cloud/Enterprise flow logs for connection-level visibility, and integration with Grafana for dashboards. This guide covers how to configure and use these capabilities effectively.
 
 ## Key Commands
 
@@ -21,7 +21,7 @@ kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
-# Enable flow logs
+# Enable file flow logs in Calico Cloud/Enterprise
 kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"flowLogsFlushInterval":"15s","flowLogsFileEnabled":true}}'
@@ -61,7 +61,7 @@ spec:
     - name: calico.network
       rules:
         - alert: CalicoHighDenyRate
-          expr: rate(felix_int_dataplane_failures[5m]) > 0
+          expr: rate(calico_denied_packets[5m]) > 0
           for: 5m
           annotations:
             summary: "High Calico policy deny rate on {{ $labels.instance }}"
@@ -74,4 +74,4 @@ spec:
 
 ## Conclusion
 
-Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates iptables programming errors), high policy deny rate (indicates policy misconfiguration or security events), and IPAM utilization (indicates capacity issues). Configure alerts for all three from day one in production clusters.
+Calico observability requires enabling Felix Prometheus metrics, configuring Calico Cloud/Enterprise flow logs for connection-level data, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates data plane update failures that will be retried), high policy deny rate (indicates policy misconfiguration or security events), and IPAM utilization (indicates capacity issues). Configure alerts for all three from day one in production clusters.
