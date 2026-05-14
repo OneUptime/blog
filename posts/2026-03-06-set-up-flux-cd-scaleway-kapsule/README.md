@@ -17,6 +17,7 @@ Scaleway Kapsule is a managed Kubernetes service from the European cloud provide
 - A Scaleway account with an API key
 - Scaleway CLI installed and configured (`scw`)
 - `kubectl` installed
+- `jq` installed
 - Flux CLI installed (`flux` version 2.x)
 - A GitHub account and personal access token
 
@@ -27,7 +28,7 @@ Scaleway Kapsule is a managed Kubernetes service from the European cloud provide
 
 scw k8s cluster create \
   name=flux-cluster \
-  version=1.29.1 \
+  version=latest \
   cni=cilium \
   region=fr-par \
   pools.0.name=default \
@@ -67,26 +68,36 @@ export REGISTRY_ENDPOINT=$(scw registry namespace list region=fr-par \
   name=my-registry -o json | jq -r '.[0].endpoint')
 
 # Log in to the registry using Scaleway credentials
-docker login ${REGISTRY_ENDPOINT} \
+scw config get secret-key | docker login ${REGISTRY_ENDPOINT} \
   --username nologin \
-  --password $(scw iam api-key list -o json | jq -r '.[0].secret_key')
+  --password-stdin
 ```
 
 ## Step 3: Create Registry Credentials in Kubernetes
 
 ```bash
 # Get your Scaleway secret key for registry authentication
-export SCW_SECRET_KEY=$(scw iam api-key list -o json | jq -r '.[0].secret_key')
+export SCW_SECRET_KEY=$(scw config get secret-key)
 
-# Create the flux-system namespace if not present
+# Create the namespaces if not present
 kubectl create namespace flux-system 2>/dev/null || true
+kubectl create namespace api-service 2>/dev/null || true
 
-# Create a docker registry secret for SCR
+# Create a docker registry secret for SCR in the Flux namespace
 kubectl create secret docker-registry scr-credentials \
   --namespace=flux-system \
   --docker-server=${REGISTRY_ENDPOINT} \
   --docker-username=nologin \
-  --docker-password=${SCW_SECRET_KEY}
+  --docker-password=${SCW_SECRET_KEY} \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Create the same pull secret in the application namespace
+kubectl create secret docker-registry scr-credentials \
+  --namespace=api-service \
+  --docker-server=${REGISTRY_ENDPOINT} \
+  --docker-username=nologin \
+  --docker-password=${SCW_SECRET_KEY} \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Step 4: Bootstrap Flux CD
@@ -101,10 +112,12 @@ flux check --pre
 
 # Bootstrap Flux on the Kapsule cluster
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=${GITHUB_USER} \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/scaleway-cluster \
+  --read-write-key=true \
   --personal
 ```
 
@@ -178,13 +191,13 @@ spec:
         annotations:
           # Scaleway Load Balancer annotations
           service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
-          service.beta.kubernetes.io/scw-loadbalancer-protocol-http: "true"
           service.beta.kubernetes.io/scw-loadbalancer-proxy-protocol-v2: "true"
-          service.beta.kubernetes.io/scw-loadbalancer-health-check-type: "http"
-          service.beta.kubernetes.io/scw-loadbalancer-health-check-http-uri: "/healthz"
+          service.beta.kubernetes.io/scw-loadbalancer-use-hostname: "true"
           # Zone for the load balancer
           service.beta.kubernetes.io/scw-loadbalancer-zone: "fr-par-1"
       config:
+        use-forwarded-headers: "true"
+        compute-full-forwarded-for: "true"
         use-proxy-protocol: "true"
 ```
 
@@ -443,7 +456,15 @@ Set up deployment notifications.
 
 ```yaml
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook-url
+  namespace: flux-system
+stringData:
+  address: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -455,7 +476,7 @@ spec:
     name: slack-webhook-url
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: scaleway-alerts
