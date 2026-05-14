@@ -123,12 +123,10 @@ spec:
       elasticsearch.yml: |
         # Disable security for internal cluster use
         xpack.security.enabled: false
-        # Index lifecycle management
-        xpack.ilm.enabled: true
         # Optimize for time-series data
         indices.query.bool.max_clause_count: 4096
     # JVM heap size (half of memory limit)
-    esJavaOpts: "-Xmx1g -Xms1g"
+    esJavaOpts: "-Xmx2g -Xms2g"
     # Anti-affinity for high availability
     antiAffinity: "soft"
 ```
@@ -243,6 +241,8 @@ spec:
         server-urls: http://jaeger-elasticsearch-master.jaeger.svc:9200
         # Index prefix
         index-prefix: jaeger
+        # Required for Jaeger rollover jobs
+        use-aliases: true
         # Number of shards per index
         num-shards: 3
         # Number of replicas per index
@@ -289,7 +289,7 @@ spec:
 Using environment variables for the Jaeger client.
 
 ```yaml
-# Example application deployment with Jaeger agent sidecar
+# Example application deployment with Jaeger agent DaemonSet
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -304,9 +304,6 @@ spec:
     metadata:
       labels:
         app: my-service
-      annotations:
-        # Inject Jaeger agent sidecar
-        sidecar.jaegertracing.io/inject: "jaeger-production"
     spec:
       containers:
         - name: my-service
@@ -316,13 +313,15 @@ spec:
             - name: JAEGER_SERVICE_NAME
               value: my-service
             - name: JAEGER_AGENT_HOST
-              value: localhost
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
             - name: JAEGER_AGENT_PORT
               value: "6831"
             - name: JAEGER_SAMPLER_TYPE
               value: remote
             - name: JAEGER_SAMPLER_MANAGER_HOST_PORT
-              value: "http://jaeger-production-agent.jaeger.svc:5778/sampling"
+              value: "$(JAEGER_AGENT_HOST):5778"
 ```
 
 Alternatively, use OTLP to send traces directly to the Jaeger collector.
@@ -385,7 +384,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: jaeger
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -396,7 +394,7 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: jaeger-operator-jaeger-operator
+      name: jaeger-operator
       namespace: jaeger
     - apiVersion: apps/v1
       kind: StatefulSet
@@ -434,4 +432,4 @@ curl -s http://localhost:16686/api/services | python3 -m json.tool
 
 ## Conclusion
 
-You now have a production-ready Jaeger deployment managed by Flux CD. The setup includes a production-strategy deployment with separate collector, query, and agent components, Elasticsearch backend with index lifecycle management, adaptive sampling strategies per service, automatic index cleanup for storage management, and sidecar injection for easy application integration. All configuration is version-controlled in Git and automatically reconciled by Flux CD.
+You now have a production-ready Jaeger deployment managed by Flux CD. The setup includes a production-strategy deployment with separate collector, query, and agent components, Elasticsearch backend with index cleanup and rollover, sampling strategies per service, automatic index cleanup for storage management, and agent-based trace collection for easy application integration. All configuration is version-controlled in Git and automatically reconciled by Flux CD.
