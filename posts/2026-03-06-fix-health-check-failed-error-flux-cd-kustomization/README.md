@@ -10,7 +10,7 @@ Description: A detailed guide to diagnosing and resolving 'health check failed' 
 
 ## Introduction
 
-Flux CD performs health checks on the resources it deploys to ensure they reach a ready state. When a deployed resource fails to become healthy within the configured timeout, Flux reports a "health check failed" error on the Kustomization. This guide walks you through diagnosing the underlying issue and configuring Flux to handle various scenarios.
+Flux CD performs health checks on the resources it deploys when `wait: true` or `healthChecks` are configured to ensure they reach a ready state. When a checked resource fails to become healthy within the configured timeout, Flux reports a "health check failed" error on the Kustomization. This guide walks you through diagnosing the underlying issue and configuring Flux to handle various scenarios.
 
 ## Understanding the Error
 
@@ -189,7 +189,7 @@ spec:
 
 ## Cause 3: Flux Health Check Timeout Too Short
 
-The default health check timeout in Flux may not be enough for applications that take a long time to start.
+The configured health check timeout in Flux may not be enough for applications that take a long time to start.
 
 ### Diagnosing
 
@@ -214,7 +214,7 @@ spec:
     name: my-app
   prune: true
   # Increase the timeout for slow-starting applications
-  timeout: 10m  # Default is typically 5m
+  timeout: 10m  # If omitted, Flux defaults this to the Kustomization interval
 ```
 
 For applications with heavy initialization (database migrations, cache warming):
@@ -400,7 +400,7 @@ spec:
   prune: true
   # Disable waiting for resources to be ready
   wait: false
-  # Or selectively disable health checks for specific resources
+  # Or remove explicitly configured health checks
   healthChecks: []
 ```
 
