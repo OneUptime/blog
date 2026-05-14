@@ -182,7 +182,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  # Increase timeout from the default 3 minutes to 5 minutes
+  # Increase the health check timeout to 5 minutes
   timeout: 5m
   sourceRef:
     kind: GitRepository
@@ -208,7 +208,7 @@ Check the dependency chain:
 flux get ks infra
 
 # View the dependsOn configuration
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.spec.dependsOn}' | jq .
+kubectl get kustomization my-app -n flux-system -o json | jq '.spec.dependsOn'
 ```
 
 Resolution: Fix the upstream dependency first. The downstream Kustomization will reconcile automatically once its dependencies are Ready.
