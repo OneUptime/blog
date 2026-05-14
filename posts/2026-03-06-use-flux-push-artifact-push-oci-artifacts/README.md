@@ -21,7 +21,7 @@ Before you begin, ensure you have the following:
 - Flux CLI installed (v2.0 or later)
 - Access to an OCI-compatible container registry (Docker Hub, GitHub Container Registry, AWS ECR, etc.)
 - kubectl configured with access to your Kubernetes cluster
-- Docker or another container runtime for registry authentication
+- Docker CLI, a registry credential helper, or Flux's `--creds`/`--provider` flags for registry authentication
 
 ```bash
 # Verify Flux CLI installation
@@ -237,16 +237,15 @@ jobs:
 # .gitlab-ci.yml
 push-manifests:
   stage: deploy
-  image: ghcr.io/fluxcd/flux-cli:v2.0
+  image: ghcr.io/fluxcd/flux-cli:v2.7.0
   script:
-    # Authenticate with the GitLab container registry
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
-
-    # Push the artifact
-    - flux push artifact oci://$CI_REGISTRY_IMAGE/deploy:$CI_COMMIT_SHORT_SHA
-        --path="./deploy"
-        --source="$CI_PROJECT_URL"
-        --revision="$CI_COMMIT_REF_NAME@sha1:$CI_COMMIT_SHA"
+    # Push the artifact using GitLab registry credentials
+    - |
+      flux push artifact oci://$CI_REGISTRY_IMAGE/deploy:$CI_COMMIT_SHORT_SHA \
+        --path="./deploy" \
+        --source="$CI_PROJECT_URL" \
+        --revision="$CI_COMMIT_REF_NAME@sha1:$CI_COMMIT_SHA" \
+        --creds="$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
   only:
     changes:
       - deploy/**
