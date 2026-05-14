@@ -28,9 +28,10 @@ Flagger supports several webhook types that are invoked at different stages of t
 - **confirm-rollout**: Called before the canary analysis begins; blocks rollout until it returns HTTP 200
 - **pre-rollout**: Called before traffic is shifted to the canary
 - **rollout**: Called during each analysis iteration
+- **confirm-traffic-increase**: Called before each canary traffic weight increase; blocks advancement until it returns HTTP 200
 - **confirm-promotion**: Called before the canary is promoted; blocks promotion until it returns HTTP 200
 - **post-rollout**: Called after the canary has been promoted or rolled back
-- **rollback**: Called when a rollback is triggered
+- **rollback**: Called during analysis or confirmation states; if it returns a successful HTTP status code, Flagger rolls back the canary
 - **event**: Called for every Flagger event
 
 ## Step 1: Create a Webhook Validation Service
@@ -100,6 +101,7 @@ Flagger sends a JSON payload to the webhook endpoint. Your service must accept t
   "name": "my-app",
   "namespace": "default",
   "phase": "Progressing",
+  "checksum": "85d557f47b",
   "metadata": {
     "custom-key": "custom-value"
   }
@@ -108,8 +110,9 @@ Flagger sends a JSON payload to the webhook endpoint. Your service must accept t
 
 Your webhook service must respond with:
 
-- **HTTP 200**: Validation passed
-- **Any other status code**: Validation failed (Flagger increments the failure counter)
+- **HTTP 2xx**: Validation passed for rollout validation hooks
+- **HTTP 200**: Required for confirmation gates such as `confirm-rollout`, `confirm-traffic-increase`, and `confirm-promotion`
+- **Timeout or non-2xx**: Validation failed (Flagger halts advancement and increments the failure counter)
 
 ## Step 3: Configure Pre-Rollout Webhook
 
@@ -236,12 +239,12 @@ spec:
           strict: "true"
 ```
 
-## Step 6: Configure Confirm-Promotion Webhook
+## Step 6: Configure Confirm-Traffic-Increase and Confirm-Promotion Webhooks
 
-A confirm-promotion webhook provides a final gate before the canary is promoted to production.
+A confirm-traffic-increase webhook gates each traffic weight increase. A confirm-promotion webhook provides a final gate before the canary is promoted to production.
 
 ```yaml
-# canary-with-confirm-promotion.yaml
+# canary-with-confirm-gates.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -261,6 +264,14 @@ spec:
     maxWeight: 50
     stepWeight: 10
     webhooks:
+      # Gate before each traffic increase
+      - name: traffic-increase-gate
+        type: confirm-traffic-increase
+        url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/confirm-traffic-increase
+        timeout: 60s
+        metadata:
+          # Check for active incidents before increasing traffic
+          incident_check: "true"
       # Final promotion gate
       - name: promotion-gate
         type: confirm-promotion
@@ -269,13 +280,13 @@ spec:
         metadata:
           # Require a minimum number of successful iterations
           min_iterations: "5"
-          # Check for active incidents
-          incident_check: "true"
+          # Require a final approval before promotion
+          final_approval: "true"
 ```
 
 ## Step 7: Configure Post-Rollout and Rollback Webhooks
 
-Post-rollout webhooks run after a successful promotion. Rollback webhooks run when a rollback occurs.
+Post-rollout webhooks run after a promotion or rollback. Rollback webhooks run during analysis or confirmation states and trigger a rollback when they return a successful HTTP status code.
 
 ```yaml
 # canary-with-post-hooks.yaml
@@ -298,23 +309,22 @@ spec:
     maxWeight: 50
     stepWeight: 10
     webhooks:
-      # Runs after successful promotion
-      - name: post-promotion-cleanup
+      # Runs after promotion or rollback
+      - name: post-rollout-cleanup
         type: post-rollout
         url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/post-rollout
         timeout: 60s
         metadata:
-          # Actions to take after promotion
+          # Actions to take after the rollout finishes
           actions: "update-changelog,notify-stakeholders,clear-cache"
-      # Runs when a rollback occurs
-      - name: rollback-notification
+      # Triggers rollback when the webhook returns HTTP 2xx
+      - name: rollback-gate
         type: rollback
-        url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/on-rollback
+        url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/rollback-check
         timeout: 30s
         metadata:
-          # Notification targets
-          notify: "slack,pagerduty"
-          severity: "warning"
+          # External condition to evaluate before forcing rollback
+          rollback_on_incident: "true"
 ```
 
 ## Step 8: Complete Canary Configuration with All Webhook Types
@@ -359,6 +369,10 @@ spec:
         type: rollout
         url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/test
         timeout: 120s
+      - name: traffic-increase-gate
+        type: confirm-traffic-increase
+        url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/confirm-traffic-increase
+        timeout: 60s
       - name: final-gate
         type: confirm-promotion
         url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/confirm
@@ -370,6 +384,10 @@ spec:
       - name: rollback-alert
         type: rollback
         url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/rollback
+        timeout: 30s
+      - name: send-events
+        type: event
+        url: http://flagger-webhook-validator.flagger-system.svc.cluster.local/events
         timeout: 30s
 ```
 
@@ -388,7 +406,7 @@ kubectl logs -n flagger-system deployment/flagger -f | grep webhook
 kubectl run -n flagger-system test-webhook --rm -it --image=curlimages/curl -- \
   curl -s -X POST http://flagger-webhook-validator.flagger-system.svc.cluster.local/test \
   -H "Content-Type: application/json" \
-  -d '{"name":"my-app","namespace":"default","phase":"Progressing","metadata":{}}'
+  -d '{"name":"my-app","namespace":"default","phase":"Progressing","checksum":"85d557f47b","metadata":{}}'
 ```
 
 ## Troubleshooting
@@ -398,7 +416,7 @@ Common webhook issues:
 - **Webhook timeout**: Increase the `timeout` value or optimize the webhook service
 - **Connection refused**: Verify the webhook service is running and the URL is correct
 - **HTTP 500 from webhook**: Check the webhook service logs for errors
-- **Canary stuck in Progressing**: A confirm-rollout or confirm-promotion webhook may be blocking; check its status
+- **Canary stuck in Waiting or WaitingPromotion**: A confirm-rollout, confirm-traffic-increase, or confirm-promotion webhook may be blocking; check its status
 
 ```bash
 # Check webhook service logs
