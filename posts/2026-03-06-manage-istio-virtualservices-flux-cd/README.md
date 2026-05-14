@@ -95,6 +95,8 @@ spec:
 
 Implement a canary deployment using weighted traffic splitting:
 
+This assumes a DestinationRule defines the `stable` and `canary` subsets for `product-service`.
+
 ```yaml
 # canary-virtualservice.yaml
 # VirtualService for canary deployment with 90/10 traffic split
@@ -162,6 +164,8 @@ spec:
 
 Route traffic based on HTTP headers:
 
+This assumes a DestinationRule defines the `v1` and `v2` subsets for `checkout-service`.
+
 ```yaml
 # ab-testing-virtualservice.yaml
 # VirtualService for A/B testing using header-based routing
@@ -213,6 +217,8 @@ spec:
 ## Step 5: Traffic Mirroring
 
 Mirror production traffic to a test version for validation:
+
+This assumes a DestinationRule defines the `stable` and `test` subsets for `payment-service`.
 
 ```yaml
 # mirror-virtualservice.yaml
@@ -397,7 +403,7 @@ spec:
   wait: true
   # Short timeout since VirtualServices apply quickly
   timeout: 5m
-  # Depend on Istio being installed
+  # Depend on the Flux Kustomization that installs Istio
   dependsOn:
     - name: istio-system
 ```
@@ -421,7 +427,7 @@ istioctl proxy-config routes deploy/frontend-web -n my-app
 
 # Verify traffic routing
 kubectl exec deploy/sleep -n my-app -- \
-  curl -s -H "Host: frontend.example.com" http://istio-ingress.istio-ingress/api/health
+  curl -s -H "Host: frontend.example.com" http://istio-ingressgateway.istio-system/api/health
 
 # Check Flux reconciliation status
 flux get kustomizations traffic-management
