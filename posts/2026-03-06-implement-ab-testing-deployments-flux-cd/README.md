@@ -57,7 +57,6 @@ spec:
     name: flux-system
   path: ./apps/ab-testing
   prune: true
-  wait: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -130,12 +129,16 @@ kind: Service
 metadata:
   name: myapp-a
   namespace: ab-testing
+  labels:
+    app: myapp
+    version: a
 spec:
   selector:
     app: myapp
     version: a
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8080
 ```
 
@@ -194,12 +197,16 @@ kind: Service
 metadata:
   name: myapp-b
   namespace: ab-testing
+  labels:
+    app: myapp
+    version: b
 spec:
   selector:
     app: myapp
     version: b
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8080
 ```
 
@@ -292,7 +299,7 @@ metadata:
   namespace: ab-testing
   annotations:
     nginx.ingress.kubernetes.io/canary: "true"
-    # Route to version B when cookie "ab_test" equals "b"
+    # Route to version B when cookie "ab_test" equals "always"
     nginx.ingress.kubernetes.io/canary-by-cookie: "ab_test"
 spec:
   ingressClassName: nginx
@@ -513,7 +520,7 @@ spec:
     matchLabels:
       app: myapp
   endpoints:
-    - port: metrics
+    - port: http
       interval: 15s
       path: /metrics
 ---
