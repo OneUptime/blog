@@ -92,19 +92,25 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: external-secrets
   chart:
     spec:
       chart: external-secrets
-      version: "0.9.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
         namespace: flux-system
   install:
     createNamespace: true
+  values:
+    serviceAccount:
+      name: external-secrets-sa
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<role-name>
 ```
 
 ## Step 2: Configure the SecretStore
@@ -112,7 +118,7 @@ spec:
 Create a SecretStore or ClusterSecretStore pointing to your external secret provider. Here is an example for AWS Secrets Manager:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -131,7 +137,7 @@ spec:
 For HashiCorp Vault:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault
@@ -169,7 +175,7 @@ aws secretsmanager create-secret \
 Replace each SOPS-encrypted Secret file with an ExternalSecret resource:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-database
@@ -200,10 +206,10 @@ The `target.name` matches the original Secret name, so applications referencing 
 To minimize risk, migrate secrets one at a time:
 
 1. Create the secret in your external provider
-2. Add the ExternalSecret resource to your Git repository
-3. Verify the Kubernetes Secret is created correctly
-4. Remove the SOPS-encrypted file from Git
-5. Commit and push
+2. In one Git change, replace the SOPS-encrypted Secret file with the ExternalSecret resource targeting the same Secret name
+3. Commit, push, and let Flux reconcile
+4. Verify the Kubernetes Secret is created correctly
+5. Move to the next secret
 
 Check that the generated Secret matches the original:
 
@@ -256,7 +262,7 @@ If issues arise during migration, you can keep both systems running simultaneous
 kubectl describe externalsecret app-database -n default
 ```
 
-**Secret values differ from SOPS version**: Compare the raw values. SOPS secrets may have been base64-encoded in the `data` field, while ESO may use `stringData` semantics depending on the provider configuration.
+**Secret values differ from SOPS version**: Compare the decoded values. Kubernetes Secret values shown under the `data` field are base64-encoded, and ESO can also decode provider values based on the `remoteRef.decodingStrategy` configuration.
 
 **Applications failing after migration**: Verify the Secret name, namespace, and key names match exactly. A mismatch in any of these will cause applications to fail to read the secret.
 
