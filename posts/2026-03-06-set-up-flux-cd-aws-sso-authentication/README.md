@@ -18,7 +18,7 @@ This guide covers configuring AWS SSO for EKS access, mapping SSO roles to Kuber
 
 Before starting, ensure you have:
 
-- An Amazon EKS cluster running Kubernetes 1.25 or later
+- An Amazon EKS cluster running a currently supported Kubernetes version
 - AWS IAM Identity Center enabled in your AWS organization
 - Flux CD installed and bootstrapped
 - AWS CLI v2 configured with SSO profile
@@ -46,18 +46,22 @@ SSO_INSTANCE_ARN=$(aws sso-admin list-instances \
   --query 'Instances[0].InstanceArn' --output text)
 
 # Create a permission set for cluster administrators
-aws sso-admin create-permission-set \
+CLUSTER_ADMIN_PERMISSION_SET_ARN=$(aws sso-admin create-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
   --name "EKS-ClusterAdmin" \
   --description "Full access to EKS clusters" \
-  --session-duration "PT8H"
+  --session-duration "PT8H" \
+  --query 'PermissionSet.PermissionSetArn' \
+  --output text)
 
 # Create a permission set for developers (read-only EKS access)
-aws sso-admin create-permission-set \
+DEVELOPER_PERMISSION_SET_ARN=$(aws sso-admin create-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
   --name "EKS-Developer" \
   --description "Developer access to EKS clusters" \
-  --session-duration "PT8H"
+  --session-duration "PT8H" \
+  --query 'PermissionSet.PermissionSetArn' \
+  --output text)
 ```
 
 ## Step 3: Create IAM Policies for Permission Sets
@@ -79,26 +83,38 @@ Attach IAM policies that allow users to interact with EKS.
       "Resource": "*"
     },
     {
-      "Sid": "STSAccess",
+      "Sid": "STSCallerIdentity",
       "Effect": "Allow",
       "Action": [
         "sts:GetCallerIdentity"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AssumeEksAccessRoles",
+      "Effect": "Allow",
+      "Action": [
+        "sts:AssumeRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::123456789012:role/EKSClusterAdmin",
+        "arn:aws:iam::123456789012:role/EKSDeveloper"
+      ]
     }
   ]
 }
 ```
 
 ```bash
-# Attach the inline policy to the ClusterAdmin permission set
-PERMISSION_SET_ARN=$(aws sso-admin list-permission-sets \
+# Attach the inline policy to both permission sets
+aws sso-admin put-inline-policy-to-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
-  --query 'PermissionSets[0]' --output text)
+  --permission-set-arn "$CLUSTER_ADMIN_PERMISSION_SET_ARN" \
+  --inline-policy file://eks-access-policy.json
 
 aws sso-admin put-inline-policy-to-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
-  --permission-set-arn "$PERMISSION_SET_ARN" \
+  --permission-set-arn "$DEVELOPER_PERMISSION_SET_ARN" \
   --inline-policy file://eks-access-policy.json
 ```
 
@@ -121,17 +137,29 @@ The resulting AWS config file looks like this:
 
 ```ini
 # ~/.aws/config
-[profile eks-admin]
+[profile eks-admin-sso]
 sso_session = my-sso
 sso_account_id = 123456789012
 sso_role_name = EKS-ClusterAdmin
 region = us-east-1
 output = json
 
-[profile eks-developer]
+[profile eks-developer-sso]
 sso_session = my-sso
 sso_account_id = 123456789012
 sso_role_name = EKS-Developer
+region = us-east-1
+output = json
+
+[profile eks-admin]
+role_arn = arn:aws:iam::123456789012:role/EKSClusterAdmin
+source_profile = eks-admin-sso
+region = us-east-1
+output = json
+
+[profile eks-developer]
+role_arn = arn:aws:iam::123456789012:role/EKSDeveloper
+source_profile = eks-developer-sso
 region = us-east-1
 output = json
 
@@ -147,7 +175,7 @@ Configure kubectl to authenticate via AWS SSO.
 
 ```bash
 # Log in with SSO
-aws sso login --profile eks-admin
+aws sso login --profile eks-admin-sso
 
 # Update kubeconfig to use the SSO profile
 aws eks update-kubeconfig \
@@ -155,6 +183,14 @@ aws eks update-kubeconfig \
   --region us-east-1 \
   --profile eks-admin \
   --alias my-cluster-admin
+
+aws sso login --profile eks-developer-sso
+
+aws eks update-kubeconfig \
+  --name my-cluster \
+  --region us-east-1 \
+  --profile eks-developer \
+  --alias my-cluster-developer
 ```
 
 The generated kubeconfig uses the `aws eks get-token` command with your SSO profile:
@@ -194,7 +230,7 @@ users:
 
 ## Step 6: Map SSO Roles to Kubernetes RBAC
 
-Configure the `aws-auth` ConfigMap to map SSO IAM roles to Kubernetes groups.
+Configure the `aws-auth` ConfigMap to map IAM roles to Kubernetes groups. The `aws-auth` ConfigMap does not support role ARNs with paths, so do not map the IAM Identity Center `AWSReservedSSO_*` roles directly. Instead, create pathless IAM roles that trust the corresponding IAM Identity Center roles, then map those pathless roles.
 
 ```yaml
 # aws-auth-configmap.yaml
@@ -211,21 +247,16 @@ data:
       groups:
         - system:bootstrappers
         - system:nodes
-    # SSO ClusterAdmin role - maps to cluster-admin group
-    - rolearn: arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_EKS-ClusterAdmin_abc123
+    # Pathless role assumed by the SSO ClusterAdmin role
+    - rolearn: arn:aws:iam::123456789012:role/EKSClusterAdmin
       username: cluster-admin:{{SessionName}}
       groups:
         - system:masters
-    # SSO Developer role - maps to a custom developer group
-    - rolearn: arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_EKS-Developer_def456
+    # Pathless role assumed by the SSO Developer role
+    - rolearn: arn:aws:iam::123456789012:role/EKSDeveloper
       username: developer:{{SessionName}}
       groups:
         - developers
-    # Flux CD controller role (if using IRSA)
-    - rolearn: arn:aws:iam::123456789012:role/flux-controller-role
-      username: flux-controller
-      groups:
-        - system:masters
 ```
 
 ## Step 7: Create Kubernetes RBAC for Developer Group
@@ -344,12 +375,11 @@ spec:
     name: fleet-infra
   path: ./infrastructure/rbac
   prune: true
-  # Do not prune system:masters bindings for safety
   patches:
     - patch: |
         - op: add
-          path: /metadata/labels/kustomize.toolkit.fluxcd.io~1prune
-          value: disabled
+          path: /metadata/annotations/kustomize.toolkit.fluxcd.io~1prune
+          value: Disabled
       target:
         kind: ClusterRoleBinding
         name: developer-role-binding
@@ -357,9 +387,14 @@ spec:
 
 ## Step 10: Use EKS Access Entries (Recommended)
 
-EKS Access Entries (available in EKS 1.28+) provide a more scalable alternative to the aws-auth ConfigMap.
+EKS Access Entries provide a more scalable alternative to the aws-auth ConfigMap. To use them, your cluster authentication mode must include the EKS API (`API_AND_CONFIG_MAP` or `API`) and the cluster must be on a supported EKS platform version.
 
 ```bash
+# Enable access entries while keeping aws-auth during migration
+aws eks update-cluster-config \
+  --name my-cluster \
+  --access-config authenticationMode=API_AND_CONFIG_MAP
+
 # Create an access entry for the SSO ClusterAdmin role
 aws eks create-access-entry \
   --cluster-name my-cluster \
@@ -380,7 +415,7 @@ aws eks create-access-entry \
   --type STANDARD \
   --kubernetes-groups developers
 
-# Associate namespace-scoped access
+# Associate read-only cluster access
 aws eks associate-access-policy \
   --cluster-name my-cluster \
   --principal-arn arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_EKS-Developer_def456 \
@@ -392,14 +427,14 @@ aws eks associate-access-policy \
 
 ```bash
 # Log in with SSO as admin
-aws sso login --profile eks-admin
+aws sso login --profile eks-admin-sso
 
 # Verify admin access
 kubectl --context my-cluster-admin auth can-i '*' '*' --all-namespaces
 # Expected: yes
 
 # Log in with SSO as developer
-aws sso login --profile eks-developer
+aws sso login --profile eks-developer-sso
 
 # Verify developer access is limited
 kubectl --context my-cluster-developer auth can-i get pods --all-namespaces
@@ -418,14 +453,14 @@ flux get sources git
 ```bash
 # Issue: "error: You must be logged in to the server"
 # Solution: Refresh SSO session
-aws sso login --profile eks-admin
+aws sso login --profile eks-admin-sso
 
 # Issue: "access denied" after SSO role mapping
-# Solution: Check the SSO role ARN matches exactly
-aws iam list-roles --query 'Roles[?contains(RoleName, `AWSReservedSSO`)].Arn'
+# Solution: Check the mapped role ARN matches exactly
+aws iam list-roles --query 'Roles[?contains(RoleName, `EKSClusterAdmin`) || contains(RoleName, `EKSDeveloper`)].Arn'
 
 # Issue: Flux controllers losing access after aws-auth changes
-# Solution: Ensure node role and Flux roles are preserved
+# Solution: Ensure the node role is preserved and Flux service account RBAC is still applied
 kubectl get configmap aws-auth -n kube-system -o yaml
 
 # Issue: SessionName not resolving in username
@@ -434,4 +469,4 @@ kubectl get configmap aws-auth -n kube-system -o yaml
 
 ## Conclusion
 
-Integrating AWS SSO with Flux CD on EKS provides centralized authentication for your team while maintaining GitOps automation. SSO users authenticate through IAM Identity Center and are mapped to Kubernetes RBAC groups, giving you fine-grained access control. Flux CD controllers continue to use IRSA for their service-level access, keeping the GitOps pipeline independent of user authentication flows. For new clusters, prefer EKS Access Entries over the aws-auth ConfigMap for more scalable role management.
+Integrating AWS SSO with Flux CD on EKS provides centralized authentication for your team while maintaining GitOps automation. SSO users authenticate through IAM Identity Center and are mapped to Kubernetes RBAC groups, giving you fine-grained access control. Flux CD controllers continue to use Kubernetes service accounts for cluster access, and IRSA for AWS service access when needed, keeping the GitOps pipeline independent of user authentication flows. For new clusters, prefer EKS Access Entries over the aws-auth ConfigMap for more scalable role management.
