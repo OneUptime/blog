@@ -18,19 +18,18 @@ This guide covers FQDN-based DNS policies, wildcard domain matching, and DNS vis
 
 ## Prerequisites
 
-- Cilium v1.9+ with DNS proxy enabled
+- Cilium v1.9+ with Layer 7 proxy support enabled
 - `kubectl` installed
 - Workloads with external egress requirements
 - `hubble` CLI for DNS observability
 
-## Step 1: Enable DNS Proxy in Cilium
+## Step 1: Enable Layer 7 Proxy in Cilium
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set dnsPolicyUnload=false \
-  --set dnsProxy.enableTransparentMode=true
+  --set l7Proxy=true
 ```
 
 ## Step 2: Basic FQDN Egress Policy
@@ -58,16 +57,19 @@ spec:
     - toEndpoints:
         - matchLabels:
             "k8s:io.kubernetes.pod.namespace": kube-system
-            k8s-app: kube-dns
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ## Step 3: Wildcard Domain Matching
 
-Allow all subdomains of a service:
+Allow all nested subdomains of a service:
 
 ```yaml
 spec:
@@ -76,7 +78,7 @@ spec:
       app: data-service
   egress:
     - toFQDNs:
-        - matchPattern: "*.amazonaws.com"
+        - matchPattern: "**.amazonaws.com"
         - matchPattern: "*.s3.amazonaws.com"
       toPorts:
         - ports:
@@ -85,11 +87,15 @@ spec:
     # Always include DNS allow rule
     - toEndpoints:
         - matchLabels:
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ## Step 4: DNS Policy with IP Fallback
@@ -104,11 +110,15 @@ egress:
       - "10.200.0.0/24"   # Fallback for when DNS resolution fails
   - toEndpoints:
       - matchLabels:
-          k8s-app: kube-dns
+          "k8s:io.kubernetes.pod.namespace": kube-system
+          "k8s:k8s-app": kube-dns
     toPorts:
       - ports:
           - port: "53"
-            protocol: UDP
+            protocol: ANY
+        rules:
+          dns:
+            - matchPattern: "*"
 ```
 
 ## Step 5: Observe DNS Traffic with Hubble
@@ -129,7 +139,7 @@ hubble observe --namespace production \
 
 # See which FQDNs are being resolved
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium fqdn cache list
+  cilium-dbg fqdn cache list
 ```
 
 ## DNS Policy Flow
