@@ -8,7 +8,7 @@ Description: Learn how to manage Terraform state files using Flux CD Bucket Sour
 
 ---
 
-Managing Terraform state in a GitOps workflow can be challenging. Flux CD's Bucket Source provides a powerful mechanism to pull Terraform state and configurations from object storage backends like AWS S3, Google Cloud Storage, or MinIO. This guide walks you through setting up Flux CD Bucket Source to manage Terraform state effectively.
+Managing Terraform state in a GitOps workflow can be challenging. Flux CD's Bucket Source provides a powerful mechanism to pull Terraform configurations from object storage backends like AWS S3, Google Cloud Storage, or MinIO, while Terraform stores state in a configured remote backend. This guide walks you through setting up Flux CD Bucket Source and a Terraform backend to manage Terraform state effectively.
 
 ## Prerequisites
 
@@ -17,19 +17,19 @@ Before you begin, ensure you have the following:
 - A Kubernetes cluster (v1.26 or later)
 - Flux CD installed on your cluster (v2.x)
 - Terraform CLI installed locally
-- An S3-compatible object storage bucket (AWS S3, MinIO, or GCS)
+- An object storage bucket supported by Flux CD Bucket Source (AWS S3, MinIO, or Google Cloud Storage)
 - kubectl configured to access your cluster
 
 ## Understanding the Architecture
 
-Flux CD Bucket Source allows you to fetch artifacts from S3-compatible storage. When combined with the Terraform Controller, you can create a fully GitOps-driven IaC workflow where Terraform configurations and state are managed through Kubernetes-native resources.
+Flux CD Bucket Source allows you to fetch artifacts from object storage. When combined with Tofu Controller (previously known as Terraform Controller), you can create a fully GitOps-driven IaC workflow where Terraform configurations are reconciled through Kubernetes-native resources and state is stored in Terraform's backend.
 
 ```mermaid
 graph LR
     A[Object Storage] -->|Bucket Source| B[Flux CD]
-    B -->|Reconcile| C[Terraform Controller]
+    B -->|Reconcile| C[Tofu Controller]
     C -->|Apply| D[Cloud Resources]
-    C -->|Store State| A
+    C -->|Terraform Backend| A
 ```
 
 ## Step 1: Set Up the Object Storage Bucket
@@ -105,7 +105,7 @@ spec:
   provider: aws
   # The name of the S3 bucket
   bucketName: my-terraform-state-bucket
-  # The S3 endpoint (omit for AWS, set for MinIO/GCS)
+  # The S3 endpoint
   endpoint: s3.amazonaws.com
   # The AWS region where the bucket resides
   region: us-east-1
@@ -122,29 +122,43 @@ Apply the Bucket Source:
 kubectl apply -f terraform-bucket-source.yaml
 ```
 
-## Step 5: Install the Terraform Controller
+## Step 5: Install Tofu Controller
 
-Install the Terraform Controller for Flux CD using the official Helm chart:
+Install Tofu Controller for Flux CD using the official Helm chart:
 
 ```yaml
-# tf-controller-helmrelease.yaml
-# HelmRelease to install the Terraform Controller
+# tofu-controller-helmrelease.yaml
+# HelmRepository and HelmRelease to install Tofu Controller
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: tofu-controller
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://flux-iac.github.io/tofu-controller
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: tf-controller
+  name: tofu-controller
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: tofu-controller
+  targetNamespace: flux-system
   chart:
     spec:
-      chart: tf-controller
-      # Use the latest stable version
-      version: "0.16.x"
+      chart: tofu-controller
+      version: ">=0.16.3"
       sourceRef:
         kind: HelmRepository
-        name: tf-controller
+        name: tofu-controller
         namespace: flux-system
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
   values:
     # Enable the runner to manage Terraform state
     runner:
@@ -185,7 +199,7 @@ spec:
         key            = "state/vpc-production/terraform.tfstate"
         region         = "us-east-1"
         encrypt        = true
-        dynamodb_table = "terraform-locks"
+        use_lockfile   = true
       }
   # Pass variables to Terraform
   vars:
@@ -200,30 +214,20 @@ spec:
 
 ## Step 7: Configure State Locking
 
-Set up DynamoDB for Terraform state locking to prevent concurrent modifications:
+Enable S3 state locking to prevent concurrent modifications by adding `use_lockfile = true` to the S3 backend configuration:
 
 ```yaml
-# state-lock-table.yaml
-# Terraform resource to create the DynamoDB lock table
-apiVersion: infra.contrib.fluxcd.io/v1alpha2
-kind: Terraform
-metadata:
-  name: state-lock-table
-  namespace: flux-system
-spec:
-  path: ./modules/state-lock
-  interval: 30m
-  sourceRef:
-    kind: Bucket
-    name: terraform-state
-  approvePlan: auto
-  backendConfig:
-    customConfiguration: |
-      backend "s3" {
-        bucket = "my-terraform-state-bucket"
-        key    = "state/lock-table/terraform.tfstate"
-        region = "us-east-1"
-      }
+# terraform-with-locking.yaml
+# Backend configuration with S3 native state locking enabled
+backendConfig:
+  customConfiguration: |
+    backend "s3" {
+      bucket       = "my-terraform-state-bucket"
+      key          = "state/vpc-production/terraform.tfstate"
+      region       = "us-east-1"
+      encrypt      = true
+      use_lockfile = true
+    }
 ```
 
 ## Step 8: Set Up Notifications for State Changes
@@ -324,18 +328,14 @@ spec:
     kind: Bucket
     name: terraform-state
   approvePlan: auto
-  # Enable drift detection
-  enableDriftDetection: true
-  # How often to check for drift (separate from reconciliation)
-  driftDetectionPeriod: 1h
-  # Force re-plan on drift detection
-  forceReplan: true
+  # Drift detection is enabled by default.
+  disableDriftDetection: false
 ```
 
 ## Best Practices
 
 1. **Enable bucket versioning** to protect against accidental state corruption
-2. **Use state locking** with DynamoDB or equivalent to prevent concurrent modifications
+2. **Use state locking** with S3 native lockfiles or another supported locking mechanism to prevent concurrent modifications
 3. **Set appropriate reconciliation intervals** -- shorter for critical resources, longer for stable ones
 4. **Use separate state files** for each environment and component
 5. **Encrypt state files** at rest and in transit
@@ -351,7 +351,7 @@ Common issues and solutions:
 flux get sources bucket -n flux-system
 
 # View detailed logs for the Terraform controller
-kubectl logs -n flux-system deployment/tf-controller -f
+kubectl logs -n flux-system deployment/tofu-controller -f
 
 # Force a reconciliation of the Bucket Source
 flux reconcile source bucket terraform-state -n flux-system
@@ -362,4 +362,4 @@ kubectl describe bucket terraform-state -n flux-system | grep -A5 "Status"
 
 ## Conclusion
 
-By combining Flux CD Bucket Source with the Terraform Controller, you achieve a fully GitOps-driven infrastructure management workflow. Terraform configurations are pulled from object storage, applied automatically, and state is managed securely. This approach provides auditability, consistency, and automation for your infrastructure as code pipelines. The Bucket Source mechanism gives you flexibility to use any S3-compatible storage backend, whether it is AWS S3, Google Cloud Storage, or a self-hosted MinIO instance.
+By combining Flux CD Bucket Source with Tofu Controller, you achieve a fully GitOps-driven infrastructure management workflow. Terraform configurations are pulled from object storage, applied automatically, and state is managed securely in the configured Terraform backend. This approach provides auditability, consistency, and automation for your infrastructure as code pipelines. The Bucket Source mechanism gives you flexibility to use supported object storage backends, whether it is AWS S3, Google Cloud Storage, or a self-hosted MinIO instance.
