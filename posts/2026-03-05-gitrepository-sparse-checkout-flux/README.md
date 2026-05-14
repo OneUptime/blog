@@ -8,7 +8,7 @@ Description: Learn how to configure Flux CD GitRepository resources with sparse 
 
 ---
 
-Large monorepos containing configurations for multiple environments, teams, or applications can slow down Flux reconciliation. Flux CD supports including only specific directories from a GitRepository through the `include` field and path-based filtering, allowing you to fetch only what you need. This guide explains how to use these capabilities to optimize your GitOps workflow with large repositories.
+Large monorepos containing configurations for multiple environments, teams, or applications can slow down Flux reconciliation. Flux CD supports sparse checkout on GitRepository resources, allowing you to check out only specific directories. This guide explains how to use sparse checkout, path filtering, and related capabilities to optimize your GitOps workflow with large repositories.
 
 ## The Problem with Large Repos
 
@@ -20,16 +20,17 @@ When Flux clones a GitRepository, it fetches the entire repository contents by d
 
 ## Understanding Flux Approach to Sparse Checkout
 
-Flux does not use Git's native sparse-checkout feature directly. Instead, it provides two mechanisms to work with subsets of a repository:
+Flux provides several mechanisms to work with subsets of a repository:
 
-1. **Kustomization path filtering** -- The Kustomization resource has a `spec.path` field that points to a specific directory within the GitRepository artifact.
-2. **GitRepository `include` field** -- The GitRepository resource can include artifacts from other GitRepository resources, allowing composition from multiple sources.
+1. **GitRepository sparse checkout** -- The GitRepository resource has a `spec.sparseCheckout` field that limits the directories checked out and included in the artifact.
+2. **Kustomization path filtering** -- The Kustomization resource has a `spec.path` field that points to a specific directory within the GitRepository artifact.
+3. **GitRepository `include` field** -- The GitRepository resource can include artifacts from other GitRepository resources, allowing composition from multiple sources.
 
-The most common and practical approach is to use `spec.path` on the Kustomization resource to select which directory within a full clone to apply.
+The most direct approach is to use `spec.sparseCheckout` on the GitRepository resource, then use `spec.path` on the Kustomization resource to select which checked-out directory to apply.
 
-## Step 1: Use Kustomization Path Filtering
+## Step 1: Use GitRepository Sparse Checkout
 
-The simplest way to work with a subset of a monorepo is to point your Kustomization at a specific subdirectory.
+The simplest way to fetch only selected directories from a monorepo is to configure sparse checkout on the GitRepository.
 
 Consider a monorepo with this structure:
 
@@ -50,7 +51,7 @@ my-monorepo/
     staging/
 ```
 
-Create a GitRepository for the monorepo and Kustomizations for specific paths:
+Create a GitRepository for the monorepo and list the paths Flux should check out:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -65,9 +66,12 @@ spec:
     branch: main
   secretRef:
     name: git-credentials
+  sparseCheckout:
+    - apps/frontend
+    - infrastructure/monitoring
 ```
 
-Now create separate Kustomization resources that each target a specific directory:
+Now create separate Kustomization resources that each target one of the checked-out directories:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -149,9 +153,9 @@ The resulting artifact for `app-config` will contain its own files plus the cont
 
 ## Step 3: Optimize Clone Depth for Performance
 
-While not a sparse checkout in the strict sense, reducing clone depth significantly speeds up fetching large repos.
+While not a sparse checkout in the strict sense, shallow cloning can speed up fetching large repos.
 
-Use a shallow clone with tag or commit reference:
+Use a branch reference:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -168,11 +172,11 @@ spec:
     name: git-credentials
 ```
 
-Flux performs shallow clones by default for branch-based references, fetching only the latest commit. This already reduces bandwidth significantly compared to a full clone.
+Flux performs shallow clones by default for branch references, fetching only the latest commit. If you pin a commit, pair it with the branch that contains the commit so the source-controller can perform a shallow clone efficiently.
 
-## Step 4: Split a Monorepo into Multiple GitRepositories
+## Step 4: Split Reconciliation by Directory
 
-Another effective strategy is to create multiple GitRepository resources pointing to the same repository but used by different Kustomizations for different paths.
+Another effective strategy is to use one GitRepository resource with different Kustomizations for different paths.
 
 Multiple Kustomizations sharing a single GitRepository but targeting different paths:
 
@@ -284,11 +288,11 @@ spec:
     **/tests/
 ```
 
-The `ignore` field reduces the size of the artifact stored by the source-controller, even though the full repo is still fetched.
+The `ignore` field reduces the size of the artifact stored by the source-controller. It is applied after checkout, so use `sparseCheckout` when you need to avoid checking out unrelated directories.
 
 ## Architecture Diagram
 
-This diagram shows how a monorepo flows through Flux with path-based filtering:
+This diagram shows how a monorepo flows through Flux with sparse checkout and path-based filtering:
 
 ```mermaid
 graph LR
@@ -320,4 +324,4 @@ kubectl describe kustomization frontend-app -n flux-system
 
 ## Summary
 
-While Flux does not implement Git's native sparse-checkout, it provides effective alternatives for working with monorepos. The primary tool is Kustomization path filtering, which lets you point multiple Kustomizations at different directories within a single GitRepository. The `include` field enables cross-repo composition, and `.sourceignore` or the `ignore` field reduces artifact size. For most monorepo use cases, combining a single GitRepository with multiple path-scoped Kustomizations delivers the best balance of simplicity and performance.
+Flux provides sparse checkout for working with monorepos, and Kustomization path filtering lets you point multiple Kustomizations at different directories within a single GitRepository artifact. The `include` field enables cross-repo composition, and `.sourceignore` or the `ignore` field reduces artifact size. For most monorepo use cases, combining GitRepository sparse checkout with path-scoped Kustomizations delivers the best balance of simplicity and performance.
