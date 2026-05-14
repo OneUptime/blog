@@ -10,15 +10,15 @@ Description: Use Cilium's explicit deny policies to block specific traffic flows
 
 ## Introduction
 
-Standard Kubernetes NetworkPolicy uses a whitelist model - everything is denied unless explicitly allowed. Cilium supports this model and extends it with explicit deny rules that can override allow rules in the same or lower-priority policy tier. This is particularly useful when you have a broad allow rule (like "allow all traffic from the monitoring namespace") but need to carve out specific exceptions ("but never allow access to the database admin port, even from monitoring").
+Standard Kubernetes NetworkPolicy uses a whitelist model once a pod is selected by policy - traffic is denied unless explicitly allowed. Cilium supports this model and extends it with explicit deny rules that take precedence over allow rules. This is particularly useful when you have a broad allow rule (like "allow all traffic from the monitoring namespace") but need to carve out specific exceptions ("but never allow access to the database admin port, even from monitoring").
 
-Cilium's deny rules are evaluated after all allow rules in the same policy. A deny rule for a specific combination of source, destination, and port will block traffic even if an allow rule would otherwise permit it. This allows you to compose policies where a broad allow rule handles the common case and targeted deny rules handle exceptions, without having to rewrite the entire allow rule with exclusions.
+Cilium's deny rules take precedence over allow rules, whether the allow rule comes from CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, or Kubernetes NetworkPolicy. A deny rule for a specific combination of source, destination, and port will block traffic even if an allow rule would otherwise permit it. This allows you to compose policies where a broad allow rule handles the common case and targeted deny rules handle exceptions, without having to rewrite the entire allow rule with exclusions.
 
 This guide covers Cilium's deny policy syntax, use cases for explicit denial, the interaction between allow and deny rules, and validation.
 
 ## Prerequisites
 
-- Cilium v1.11+ (explicit deny requires this version or later)
+- Cilium v1.9+ (explicit deny requires this version or later)
 - `kubectl` installed
 - Existing allow policies to build on
 
@@ -55,7 +55,7 @@ spec:
               protocol: TCP
 ```
 
-## Step 2: Deny Specific Paths with Allow Override
+## Step 2: Deny Specific Ports Alongside Allow Rules
 
 Use deny and allow rules together for exception-based policies:
 
@@ -69,19 +69,15 @@ spec:
   endpointSelector:
     matchLabels:
       app: api-server
-  # Deny admin paths from non-admin clients
+  # Deny the admin port from non-admin clients
   ingressDeny:
     - fromEndpoints:
         - matchLabels:
             role: regular-user
       toPorts:
         - ports:
-            - port: "8080"
+            - port: "8081"
               protocol: TCP
-          rules:
-            http:
-              - method: ".*"
-                path: "/admin/.*"
   # Allow regular API access
   ingress:
     - fromEndpoints:
@@ -91,10 +87,6 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
-          rules:
-            http:
-              - method: GET
-                path: "/api/.*"
 ```
 
 ## Step 3: Cluster-Wide Deny for Sensitive Resources
@@ -118,9 +110,9 @@ spec:
 # Test that deny rule blocks traffic
 
 kubectl exec -n production regular-user-pod -- \
-  curl -s -o /dev/null -w "%{http_code}" \
-  http://api-server:8080/admin/users
-# Expected: 403
+  curl -m 5 -s -o /dev/null -w "%{http_code}" \
+  http://api-server:8081/admin/users
+# Expected: connection timeout or failure
 
 # Verify allow rule still works
 kubectl exec -n production regular-user-pod -- \
@@ -140,10 +132,10 @@ hubble observe --namespace production \
 # Verify deny rule takes precedence over allow rules
 # Check the effective policy for an endpoint
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint list
+  cilium-dbg endpoint list
 
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium bpf policy get <endpoint-id> | grep -i "deny\|drop"
+  cilium-dbg bpf policy get --all | grep -i "deny\|drop"
 ```
 
 ## Allow and Deny Rule Interaction
@@ -161,4 +153,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium's explicit deny policies add an important capability missing from standard Kubernetes NetworkPolicy: the ability to declare exceptions within a broader allow context. The `ingressDeny` and `egressDeny` fields in `CiliumNetworkPolicy` let you block specific traffic without rewriting entire allow rules. A deny rule always wins over an allow rule - use this predictable precedence to carve out security exceptions in broad policies, block cloud metadata endpoints cluster-wide, and prevent access to sensitive ports from monitoring or utility namespaces.
+Cilium's explicit deny policies add an important capability missing from standard Kubernetes NetworkPolicy: the ability to declare exceptions within a broader allow context. The `ingressDeny` and `egressDeny` fields in `CiliumNetworkPolicy` let you block specific L3/L4 traffic without rewriting entire allow rules. A deny rule always wins over an allow rule - use this predictable precedence to carve out security exceptions in broad policies, block cloud metadata endpoints cluster-wide, and prevent access to sensitive ports from monitoring or utility namespaces.
