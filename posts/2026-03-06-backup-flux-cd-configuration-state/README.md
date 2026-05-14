@@ -150,8 +150,8 @@ kubectl get receivers -A -o yaml > "$BACKUP_DIR/receivers.yaml" 2>/dev/null
 echo "Resources backed up to: $BACKUP_DIR/"
 echo "Resource counts:"
 for file in "$BACKUP_DIR"/*.yaml; do
-  count=$(grep -c "^  name:" "$file" 2>/dev/null || echo "0")
-  echo "  $(basename $file): $count resources"
+  count=$(grep -c "^    name:" "$file" 2>/dev/null || echo "0")
+  echo "  $(basename "$file"): $count resources"
 done
 ```
 
@@ -179,7 +179,7 @@ echo "Backed up $RELEASE_COUNT Helm release state secrets"
 
 ## Automated Backup with CronJob
 
-Create a Kubernetes CronJob that regularly backs up Flux CD state to object storage.
+Create a Kubernetes CronJob that regularly archives Flux CD state. Add an upload command for your object storage destination.
 
 ```yaml
 # clusters/my-cluster/backup/namespace.yaml
@@ -220,7 +220,7 @@ rules:
   - apiGroups: ["image.toolkit.fluxcd.io"]
     resources: ["*"]
     verbs: ["get", "list"]
-  # Read secrets in flux-system namespace
+  # Read Flux and Helm release secrets
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list"]
@@ -286,22 +286,11 @@ spec:
                   # Create tar archive
                   tar -czf "/tmp/flux-backup-${TIMESTAMP}.tar.gz" -C /tmp "flux-backup-${TIMESTAMP}"
 
-                  # Upload to S3 (requires AWS credentials)
+                  # Upload to S3 (requires an image with the AWS CLI and AWS credentials)
                   # aws s3 cp "/tmp/flux-backup-${TIMESTAMP}.tar.gz" \
                   #   "s3://my-backup-bucket/flux-backups/flux-backup-${TIMESTAMP}.tar.gz"
 
                   echo "Backup completed: flux-backup-${TIMESTAMP}.tar.gz"
-              env:
-                - name: AWS_ACCESS_KEY_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: backup-s3-credentials
-                      key: access-key-id
-                - name: AWS_SECRET_ACCESS_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: backup-s3-credentials
-                      key: secret-access-key
               resources:
                 limits:
                   cpu: 200m
@@ -362,10 +351,8 @@ tar -tzf flux-backup-*.tar.gz
 velero backup get
 velero backup describe flux-system-backup-<timestamp>
 
-# Test restore in a separate namespace (dry run)
-kubectl create namespace flux-restore-test
-kubectl apply -f flux-backup-*/secrets.yaml --namespace flux-restore-test --dry-run=server
-kubectl delete namespace flux-restore-test
+# Server-validate the exported objects before using them in a restore
+kubectl apply -f flux-backup-*/secrets.yaml --dry-run=server
 ```
 
 ## Backup Verification Automation
