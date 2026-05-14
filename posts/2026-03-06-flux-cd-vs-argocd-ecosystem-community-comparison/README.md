@@ -10,29 +10,29 @@ Description: A comprehensive comparison of the ecosystem and community around Fl
 
 ## Introduction
 
-The ecosystem and community surrounding a GitOps tool are just as important as its technical features. Strong communities drive innovation, provide support, and ensure long-term sustainability. Both Flux CD and ArgoCD are Cloud Native Computing Foundation (CNCF) graduated projects with active communities, but they differ in governance, ecosystem breadth, and community engagement. This guide compares these aspects to help you evaluate the non-technical factors in your decision.
+The ecosystem and community surrounding a GitOps tool are just as important as its technical features. Strong communities drive innovation, provide support, and ensure long-term sustainability. Flux CD is a Cloud Native Computing Foundation (CNCF) graduated project, and ArgoCD is part of the CNCF graduated Argo project. Both have active communities, but they differ in governance, ecosystem breadth, and community engagement. This guide compares these aspects to help you evaluate the non-technical factors in your decision.
 
 ## Community and Governance Comparison Table
 
 | Aspect | Flux CD | ArgoCD |
 |---|---|---|
-| CNCF Status | Graduated | Graduated |
+| CNCF Status | Graduated | Graduated as part of Argo |
 | License | Apache 2.0 | Apache 2.0 |
-| Primary Maintainer | Weaveworks (historical), CNCF community | Intuit (original), Akuity, community |
-| GitHub Stars | ~6,500+ | ~18,000+ |
-| GitHub Contributors | 200+ | 800+ |
+| Primary Maintainer | Weaveworks (historical), CNCF community | Applatix/Intuit (original), Akuity, community |
+| GitHub Stars | ~8,100+ | ~22,800+ |
+| GitHub Contributors | 200+ | 1,900+ |
 | Slack Community | CNCF Slack (#flux) | CNCF Slack (#argo-cd) |
-| Release Cadence | Monthly minor releases | Monthly minor releases |
+| Release Cadence | Regular minor and patch releases | Regular minor and patch releases |
 | Enterprise Backing | Weave GitOps (historical) | Akuity, Codefresh (acquired by Octopus) |
 | Documentation Quality | Good, developer-focused | Excellent, user-focused |
-| Certification Program | No | ArgoCD certification available |
+| Certification Program | No | Argo Project certification available |
 | Conference Presence | KubeCon, GitOpsCon | KubeCon, GitOpsCon, ArgoCon |
 | Adopters | Large enterprise users | Very broad adoption |
 | Extension Mechanism | Controllers (CRDs) | Plugins, ApplicationSets |
 
 ## CNCF Graduated Status
 
-Both projects have achieved CNCF Graduated status, which means they have met the foundation's highest standards for maturity, governance, and adoption.
+Flux CD has achieved CNCF Graduated status, and ArgoCD is part of the CNCF Graduated Argo project. This means they have met the foundation's highest standards for maturity, governance, and adoption.
 
 ### Flux CD CNCF Journey
 
@@ -44,14 +44,14 @@ Graduated: November 2022
 
 Flux CD was one of the pioneering GitOps tools, originally created by Weaveworks. After Weaveworks ceased operations in early 2024, the Flux community continued development under CNCF governance. This transition demonstrated the resilience of the open-source community model.
 
-### ArgoCD CNCF Journey
+### Argo CNCF Journey
 
 ```yaml
 Incubating: April 2020
 Graduated: December 2022
 ```
 
-ArgoCD was originally created at Intuit and donated to the CNCF. It has maintained strong corporate backing through Intuit, Red Hat, and Akuity (founded by ArgoCD creators).
+ArgoCD is part of the Argo project, which was originally created at Applatix and continued at Intuit after acquisition before being donated to the CNCF. It has maintained strong corporate backing through Intuit, Red Hat, and Akuity (founded by ArgoCD creators).
 
 ## Ecosystem Integrations
 
@@ -89,7 +89,7 @@ spec:
   approvePlan: auto
   writeOutputsToSecret:
     name: vpc-outputs
-    keys:
+    outputs:
       - vpc_id
       - subnet_ids
 ```
@@ -101,7 +101,7 @@ Key Flux CD ecosystem integrations:
 | Weave GitOps | UI dashboard for Flux | Community-maintained |
 | Terraform Controller | Manage Terraform via Flux | Community project |
 | Flagger | Progressive delivery (canary, A/B) | CNCF project |
-| Capacitor | Flux UI for VS Code | Community project |
+| Capacitor | General-purpose UI dashboard for Flux | Community project |
 | Flux Subsystem for Argo | Run Flux controllers within ArgoCD | Community project |
 | Kustomize | Native integration | Built-in |
 | Helm | Native integration | Built-in |
@@ -157,9 +157,9 @@ Key ArgoCD ecosystem integrations:
 | Argo Rollouts | Progressive delivery | CNCF project |
 | Argo Events | Event-driven automation | CNCF project |
 | ApplicationSet | Dynamic app generation | Built-in |
-| ArgoCD Image Updater | Automated image updates | Official add-on |
+| ArgoCD Image Updater | Automated image updates | Argo project-maintained add-on |
 | ArgoCD Vault Plugin | Secret management with Vault | Community project |
-| ArgoCD Autopilot | Opinionated Flux-like bootstrap | Official project |
+| ArgoCD Autopilot | Opinionated Flux-like bootstrap | argoproj-labs project |
 | Notifications | Alert and notification system | Built-in |
 | Config Management Plugins | Custom manifest generators | Built-in mechanism |
 | Prometheus/Grafana | Monitoring dashboards | Community dashboards |
@@ -356,19 +356,36 @@ spec:
 
 ```yaml
 # ArgoCD supports custom config management plugins
-# for extending manifest generation
+# for extending manifest generation. Current Argo CD versions
+# load plugin configuration from a repo-server sidecar.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmp-plugin
   namespace: argocd
 data:
-  configManagementPlugins: |
-    - name: kustomize-with-envsubst
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: kustomize-with-envsubst
+    spec:
       generate:
         command: ["sh", "-c"]
         args: ["kustomize build . | envsubst"]
-    - name: jsonnet-bundler
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jsonnet-bundler-cmp-plugin
+  namespace: argocd
+data:
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: jsonnet-bundler
+    spec:
       init:
         command: ["jb", "install"]
       generate:
@@ -398,4 +415,4 @@ data:
 
 ## Conclusion
 
-Both Flux CD and ArgoCD have strong ecosystems and vibrant communities as CNCF Graduated projects. ArgoCD has broader adoption metrics with more GitHub stars, contributors, and enterprise backing through Akuity and Red Hat. Flux CD offers a more focused, modular ecosystem that integrates deeply with CNCF projects like Flagger for progressive delivery. ArgoCD benefits from the larger Argo ecosystem (Workflows, Rollouts, Events), while Flux CD benefits from its Kubernetes-native controller pattern that encourages clean integrations. Choose based on whether you prioritize a larger ecosystem with commercial support (ArgoCD) or a focused, modular approach with deep CNCF integration (Flux CD).
+Both Flux CD and ArgoCD have strong ecosystems and vibrant communities under CNCF Graduated projects. ArgoCD has broader adoption metrics with more GitHub stars, contributors, and enterprise backing through Akuity and Red Hat. Flux CD offers a more focused, modular ecosystem that integrates deeply with CNCF projects like Flagger for progressive delivery. ArgoCD benefits from the larger Argo ecosystem (Workflows, Rollouts, Events), while Flux CD benefits from its Kubernetes-native controller pattern that encourages clean integrations. Choose based on whether you prioritize a larger ecosystem with commercial support (ArgoCD) or a focused, modular approach with deep CNCF integration (Flux CD).
