@@ -1,24 +1,24 @@
-# How to Use flux debug kustomization for Kustomize Debugging
+# How to Use flux debug kustomization and flux build for Kustomize Debugging
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kustomize, Debugging, Troubleshooting, GitOps, Kubernetes, Kustomization
 
-Description: A practical guide to using the flux debug kustomization command to diagnose and fix Kustomize build and deployment issues in Flux CD.
+Description: A practical guide to using the flux debug kustomization and flux build kustomization commands to diagnose and fix Kustomize build and deployment issues in Flux CD.
 
 ---
 
 ## Introduction
 
-Kustomize is a core component of Flux CD's deployment pipeline. When a Kustomization resource fails, it can be difficult to determine whether the problem lies in the Kustomize build, variable substitution, dependency resolution, or the actual apply step. The `flux debug kustomization` command gives you deep visibility into what Flux is building and applying, making it much easier to identify and fix issues.
+Kustomize is a core component of Flux CD's deployment pipeline. When a Kustomization resource fails, it can be difficult to determine whether the problem lies in the Kustomize build, variable substitution, dependency resolution, or the actual apply step. The `flux debug kustomization` command gives you deep visibility into status, history, and substitution variables, while `flux build kustomization` shows the manifests Flux would build from local files.
 
-This guide covers practical debugging techniques using `flux debug kustomization` with real-world troubleshooting scenarios.
+This guide covers practical debugging techniques using `flux debug kustomization` and `flux build kustomization` with real-world troubleshooting scenarios.
 
 ## Prerequisites
 
 Make sure you have the following ready:
 
-- Flux CLI v2.2.0 or later
+- Flux CLI with `flux debug kustomization` and `flux build kustomization` support
 - A running Kubernetes cluster with Flux CD installed
 - One or more Kustomization resources deployed
 
@@ -53,29 +53,29 @@ graph TD
 
 ## Basic Usage
 
-The `flux debug kustomization` command outputs the manifests that Flux would apply to the cluster:
+The `flux debug kustomization` command prints diagnostic information about a Flux Kustomization:
 
 ```bash
-# Debug a Kustomization in the flux-system namespace
-flux debug kustomization flux-system
+# Show the status of a Kustomization in the flux-system namespace
+flux debug kustomization flux-system --show-status
 
-# Debug a Kustomization in a specific namespace
-flux debug kustomization my-app --namespace=production
+# Show the final post-build substitution variables
+flux debug kustomization my-app --namespace=production --show-vars
 
-# Save the output for inspection
-flux debug kustomization my-app --namespace=production > /tmp/debug-output.yaml
+# Save the reconciliation history for inspection
+flux debug kustomization my-app --namespace=production --show-history > /tmp/debug-history.txt
 ```
 
 ## Inspecting the Built Manifests
 
-The primary use of the debug command is to see exactly what manifests Flux will apply:
+Use `flux build kustomization` to render the manifests Flux would build from your local checkout:
 
 ```bash
 # View the full built output
-flux debug kustomization infrastructure --namespace=flux-system
+flux build kustomization infrastructure --namespace=flux-system --path ./infrastructure
 ```
 
-Example output showing what Flux would apply:
+Example output showing what Flux would build:
 
 ```yaml
 ---
@@ -111,7 +111,7 @@ spec:
 
 ## Debugging Variable Substitution
 
-Flux Kustomizations support post-build variable substitution. The debug command shows you the result after substitution:
+Flux Kustomizations support post-build variable substitution. The debug command can show the final variables, and the build command can show the rendered manifests after substitution:
 
 ```yaml
 # kustomization.yaml with variable substitution
@@ -139,15 +139,18 @@ spec:
 ```
 
 ```bash
-# Debug to see variables after substitution
-flux debug kustomization my-app --namespace=flux-system
+# Debug to see final substitution variables
+flux debug kustomization my-app --namespace=flux-system --show-vars
+
+# Build to see rendered manifests after substitution
+flux build kustomization my-app --namespace=flux-system --path ./apps/my-app
 
 # Compare with the raw source to identify substitution issues
 # Clone the source repo and build locally
 kustomize build ./apps/my-app > /tmp/raw-build.yaml
 
-# Compare raw build with Flux debug output
-diff /tmp/raw-build.yaml <(flux debug kustomization my-app -n flux-system)
+# Compare raw build with Flux build output
+diff /tmp/raw-build.yaml <(flux build kustomization my-app -n flux-system --path ./apps/my-app)
 ```
 
 ## Common Debugging Scenarios
@@ -191,10 +194,10 @@ resources:
 When post-build variables are not being replaced:
 
 ```bash
-# Debug to see if variables were substituted
-flux debug kustomization my-app -n flux-system | grep '\${'
+# Build with strict substitution to fail on missing variables
+flux build kustomization my-app -n flux-system --path ./apps/my-app --strict-substitute
 
-# If you see ${VARIABLE_NAME} in the output, substitution failed
+# Undefined ${VARIABLE_NAME} values are substituted with an empty string by default
 
 # Check the ConfigMap for variable values
 kubectl get configmap cluster-settings -n flux-system -o yaml
@@ -235,9 +238,9 @@ spec:
 flux get kustomization infrastructure -n flux-system
 flux get kustomization cert-manager -n flux-system
 
-# Debug each one to see if they are producing valid output
-flux debug kustomization infrastructure -n flux-system
-flux debug kustomization cert-manager -n flux-system
+# Debug each one to inspect status and history
+flux debug kustomization infrastructure -n flux-system --show-status --show-history
+flux debug kustomization cert-manager -n flux-system --show-status --show-history
 
 # Check events for dependency-related messages
 flux events --for Kustomization/apps -n flux-system
@@ -248,17 +251,16 @@ flux events --for Kustomization/apps -n flux-system
 When pruning causes issues with shared resources:
 
 ```bash
-# Debug to see which resources will be managed (and pruned)
-flux debug kustomization my-app -n flux-system | \
-  grep -E '^kind:|^  name:|^  namespace:' | paste - - -
+# Check the inventory of resources managed by this Kustomization
+kubectl get kustomization my-app -n flux-system \
+  -o jsonpath='{range .status.inventory.entries[*]}{.id}{"\n"}{end}'
+```
 
-# Check if resources are managed by multiple Kustomizations
-kubectl get deployment my-deployment -n production \
-  -o jsonpath='{.metadata.labels}' | jq .
-
-# Look for the Flux ownership labels
-kubectl get deployment my-deployment -n production \
-  -o jsonpath='{.metadata.labels.kustomize\.toolkit\.fluxcd\.io/name}'
+```yaml
+# Disable pruning for a shared resource by annotating it in source
+metadata:
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
 ```
 
 ### Scenario 5: RBAC and Permission Errors
@@ -266,8 +268,8 @@ kubectl get deployment my-deployment -n production \
 When the Kustomization applies but some resources are rejected:
 
 ```bash
-# Debug to see what resources will be applied
-flux debug kustomization my-app -n flux-system | \
+# Build to see what resources will be applied
+flux build kustomization my-app -n flux-system --path ./apps/my-app | \
   yq eval '.kind + "/" + .metadata.name' -
 
 # Check the service account used by kustomize-controller
@@ -282,17 +284,17 @@ kubectl auth can-i create deployments \
 
 ## Advanced Debugging Techniques
 
-### Comparing Debug Output Over Time
+### Comparing Build Output Over Time
 
-Save debug output before and after changes to identify differences:
+Save build output before and after changes to identify differences:
 
 ```bash
 # Before making changes
-flux debug kustomization my-app -n flux-system > /tmp/before.yaml
+flux build kustomization my-app -n flux-system --path ./apps/my-app > /tmp/before.yaml
 
 # After making changes and waiting for reconciliation
 flux reconcile kustomization my-app -n flux-system
-flux debug kustomization my-app -n flux-system > /tmp/after.yaml
+flux build kustomization my-app -n flux-system --path ./apps/my-app > /tmp/after.yaml
 
 # Compare the differences
 diff /tmp/before.yaml /tmp/after.yaml
@@ -303,8 +305,8 @@ diff /tmp/before.yaml /tmp/after.yaml
 Compare what Flux wants to apply with what is currently in the cluster:
 
 ```bash
-# Get the debug output
-flux debug kustomization my-app -n flux-system > /tmp/desired.yaml
+# Get the build output
+flux build kustomization my-app -n flux-system --path ./apps/my-app > /tmp/desired.yaml
 
 # Split into individual resources and compare each one
 # Using yq to extract a specific resource
@@ -329,21 +331,20 @@ Automate Kustomization validation in CI:
 
 set -euo pipefail
 
-# Get all Kustomizations
-KUSTOMIZATIONS=$(flux get kustomizations --all-namespaces --no-header \
-  | awk '{print $1 "," $2}')
+# Get all Kustomizations and their source paths
+KUSTOMIZATIONS=$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o json \
+  | jq -r '.items[] | [.metadata.namespace, .metadata.name, .spec.path] | @tsv')
 
 ERRORS=0
 
-for ks in $KUSTOMIZATIONS; do
-  NAMESPACE=$(echo "$ks" | cut -d',' -f1)
-  NAME=$(echo "$ks" | cut -d',' -f2)
+while IFS=$'\t' read -r NAMESPACE NAME PATH; do
+  PATH="${PATH:-.}"
 
   echo "Validating Kustomization: $NAMESPACE/$NAME"
 
-  # Attempt to debug the kustomization
-  if ! flux debug kustomization "$NAME" -n "$NAMESPACE" > /tmp/ks-output.yaml 2>&1; then
-    echo "FAIL: Could not debug $NAMESPACE/$NAME"
+  # Attempt to build the kustomization from the local checkout
+  if ! flux build kustomization "$NAME" -n "$NAMESPACE" --path "$PATH" > /tmp/ks-output.yaml 2>&1; then
+    echo "FAIL: Could not build $NAMESPACE/$NAME"
     cat /tmp/ks-output.yaml
     ERRORS=$((ERRORS + 1))
     continue
@@ -357,7 +358,7 @@ for ks in $KUSTOMIZATIONS; do
   fi
 
   echo "PASS: $NAMESPACE/$NAME"
-done
+done <<< "$KUSTOMIZATIONS"
 
 if [ $ERRORS -gt 0 ]; then
   echo "Validation failed with $ERRORS errors"
@@ -380,25 +381,24 @@ echo "=== Source ==="
 flux get source git flux-system -n flux-system
 
 echo "=== Debug Output ==="
-flux debug kustomization my-app -n flux-system
+flux debug kustomization my-app -n flux-system --show-status --show-history
 
 echo "=== Events ==="
 flux events --for Kustomization/my-app -n flux-system
 
 echo "=== Controller Logs ==="
-kubectl logs -n flux-system deployment/kustomize-controller \
-  --since=10m --tail=50 | grep my-app
+flux logs --level=error --kind=Kustomization --name=my-app --namespace=flux-system
 ```
 
 ## Best Practices
 
-1. **Debug before and after changes** - Always compare debug output before and after modifying Kustomization specs.
-2. **Test variable substitution** - Use debug to verify all `${}` variables are correctly replaced.
+1. **Build before and after changes** - Always compare build output before and after modifying Kustomization specs.
+2. **Test variable substitution** - Use debug to verify the final variables and build output to verify the rendered manifests.
 3. **Validate locally first** - Run `kustomize build` locally before pushing to Git.
 4. **Check dependency chain** - Debug dependent Kustomizations to ensure they are ready before debugging the dependent one.
-5. **Use dry-run validation** - Pipe debug output to `kubectl apply --dry-run=server` for server-side validation.
-6. **Monitor build times** - If debug output takes too long, your kustomize build may be too complex.
+5. **Use dry-run validation** - Pipe build output to `kubectl apply --dry-run=server` for server-side validation.
+6. **Monitor build times** - If build output takes too long, your kustomize build may be too complex.
 
 ## Conclusion
 
-The `flux debug kustomization` command is an indispensable tool for understanding exactly what Flux will apply to your cluster. By revealing the fully built and substituted manifests, it eliminates guesswork and helps you quickly identify configuration issues. Integrate it into your debugging workflow alongside events, controller logs, and local testing for the most effective troubleshooting experience.
+The `flux debug kustomization` command is an indispensable tool for understanding the status, history, and final substitution variables of a Kustomization. Pair it with `flux build kustomization` when you need to inspect fully built and substituted manifests. Together, they eliminate guesswork and help you quickly identify configuration issues alongside events, controller logs, and local testing.
