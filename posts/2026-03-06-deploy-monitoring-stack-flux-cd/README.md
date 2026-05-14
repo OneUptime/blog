@@ -33,8 +33,7 @@ infrastructure/
       kustomization.yaml
       node-exporter-dashboard.yaml
       flux-dashboard.yaml
-    alertmanager/
-      alertmanager-config.yaml
+    alertmanager-notification-secret.yaml
     prometheus-rules/
       cluster-alerts.yaml
 ```
@@ -192,6 +191,9 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
+        # Mount notification credentials at /etc/alertmanager/secrets/alertmanager-notification-secrets/
+        secrets:
+          - alertmanager-notification-secrets
       # Alertmanager configuration for routing alerts
       config:
         global:
@@ -206,18 +208,18 @@ spec:
           repeat_interval: 4h
           routes:
             # Critical alerts go to PagerDuty
-            - match:
-                severity: critical
+            - matchers:
+                - severity="critical"
               receiver: "pagerduty-critical"
               repeat_interval: 1h
             # Warning alerts go to Slack
-            - match:
-                severity: warning
+            - matchers:
+                - severity="warning"
               receiver: "slack-notifications"
         receivers:
           - name: "slack-notifications"
             slack_configs:
-              - api_url_file: /etc/alertmanager/secrets/slack-webhook-url
+              - api_url_file: /etc/alertmanager/secrets/alertmanager-notification-secrets/slack-webhook-url
                 channel: "#alerts"
                 title: '{{ .GroupLabels.alertname }}'
                 text: >-
@@ -228,7 +230,7 @@ spec:
                   {{ end }}
           - name: "pagerduty-critical"
             pagerduty_configs:
-              - service_key_file: /etc/alertmanager/secrets/pagerduty-key
+              - routing_key_file: /etc/alertmanager/secrets/alertmanager-notification-secrets/pagerduty-key
 
     # ---- Node Exporter ----
     nodeExporter:
@@ -245,8 +247,12 @@ spec:
         alertmanager: true
         etcd: true
         general: true
-        k8s: true
-        kubeScheduler: true
+        kubernetesApps: true
+        kubernetesResources: true
+        kubernetesStorage: true
+        kubernetesSystem: true
+        kubeSchedulerAlerting: true
+        kubeSchedulerRecording: true
         node: true
         prometheus: true
 ```
@@ -269,6 +275,24 @@ stringData:
   admin-password: CHANGE_ME_USE_SOPS
 ```
 
+## Alertmanager Notification Secrets
+
+Store notification credentials securely using a sealed secret or SOPS-encrypted secret.
+
+```yaml
+# infrastructure/monitoring/alertmanager-notification-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-notification-secrets
+  namespace: monitoring
+type: Opaque
+stringData:
+  # In practice, encrypt these with SOPS or use SealedSecrets
+  slack-webhook-url: https://hooks.slack.com/services/CHANGE_ME
+  pagerduty-key: CHANGE_ME_PAGERDUTY_ROUTING_KEY
+```
+
 ## Custom Grafana Dashboard
 
 Add custom dashboards as ConfigMaps that the Grafana sidecar picks up automatically.
@@ -286,32 +310,31 @@ metadata:
 data:
   flux-cluster-stats.json: |
     {
-      "dashboard": {
-        "title": "Flux CD Cluster Stats",
-        "uid": "flux-cluster-stats",
-        "panels": [
-          {
-            "title": "Flux Reconciliation Duration",
-            "type": "timeseries",
-            "targets": [
-              {
-                "expr": "rate(gotk_reconcile_duration_seconds_sum[5m]) / rate(gotk_reconcile_duration_seconds_count[5m])",
-                "legendFormat": "{{ kind }}/{{ name }}"
-              }
-            ]
-          },
-          {
-            "title": "Flux Reconciliation Status",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "gotk_reconcile_condition{status='True',type='Ready'}",
-                "legendFormat": "{{ kind }}/{{ name }}"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "Flux CD Cluster Stats",
+      "uid": "flux-cluster-stats",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "title": "Flux Reconciliation Duration",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(gotk_reconcile_duration_seconds_sum[5m]) / rate(gotk_reconcile_duration_seconds_count[5m])",
+              "legendFormat": "{{ kind }}/{{ name }}"
+            }
+          ]
+        },
+        {
+          "title": "Flux Reconciliation Status",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "gotk_reconcile_condition{status='True',type='Ready'}",
+              "legendFormat": "{{ kind }}/{{ name }}"
+            }
+          ]
+        }
+      ]
     }
 ```
 
