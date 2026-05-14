@@ -111,7 +111,7 @@ roleRef:
 
 ## Cluster-Scoped Resources
 
-If your Helm chart creates cluster-scoped resources (like ClusterRoles, ClusterRoleBindings, or CRDs), you need a ClusterRole and ClusterRoleBinding instead of namespace-scoped ones.
+If your Helm chart creates cluster-scoped resources (like ClusterRoles, ClusterRoleBindings, or CRDs), you need a ClusterRole and ClusterRoleBinding in addition to namespace-scoped permissions, unless the ClusterRole also grants all namespaced permissions the chart requires.
 
 ```yaml
 # clusterrole.yaml - Cluster-scoped permissions
