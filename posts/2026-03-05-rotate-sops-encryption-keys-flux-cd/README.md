@@ -16,7 +16,7 @@ SOPS key rotation involves three phases:
 
 1. **Generate a new key** and add it alongside the existing key
 2. **Re-encrypt all secrets** with the new key using `sops updatekeys`
-3. **Remove the old key** from the cluster and repository configuration
+3. **Remove the old key** from the cluster and repository configuration, and rotate the SOPS data key
 
 During the transition, both keys should be available to the kustomize-controller so that secrets encrypted with either key can be decrypted.
 
@@ -69,10 +69,10 @@ Create a new Kubernetes secret that contains both Age keys, so Flux can decrypt 
 cat age-old.agekey age-new.agekey > age-combined.agekey
 
 # Update the Kubernetes secret
-kubectl delete secret sops-age -n flux-system
-cat age-combined.agekey | kubectl create secret generic sops-age \
+kubectl create secret generic sops-age \
   --namespace=flux-system \
-  --from-file=age.agekey=/dev/stdin
+  --from-file=age.agekey=age-combined.agekey \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ### Step 5: Commit the Re-encrypted Secrets
@@ -107,14 +107,15 @@ creation_rules:
 ```
 
 ```bash
-# Re-encrypt all secrets with only the new key
+# Re-encrypt all secrets with only the new key, then rotate each data key
 find . -name "*.enc.yaml" -exec sops updatekeys {} -y \;
+find . -name "*.enc.yaml" -exec sops rotate -i {} \;
 
 # Update the cluster secret to only contain the new key
-kubectl delete secret sops-age -n flux-system
-cat age-new.agekey | kubectl create secret generic sops-age \
+kubectl create secret generic sops-age \
   --namespace=flux-system \
-  --from-file=age.agekey=/dev/stdin
+  --from-file=age.agekey=age-new.agekey \
+  --dry-run=client -o yaml | kubectl apply -f -
 
 # Commit the final state
 git add -A '*.enc.yaml' .sops.yaml
@@ -175,7 +176,8 @@ find . -name "*.enc.yaml" -exec sops updatekeys {} -y \;
 For cloud KMS providers (AWS KMS, Azure Key Vault, GCP KMS), key rotation is managed by the cloud provider. Create a new key version or a new key and update the SOPS configuration.
 
 ```bash
-# AWS KMS - Enable automatic key rotation
+# AWS KMS - optional provider-managed key-material rotation
+# This does not change the key ARN in .sops.yaml
 aws kms enable-key-rotation --key-id <key-id>
 
 # Or create a new KMS key and update .sops.yaml
@@ -191,9 +193,12 @@ creation_rules:
 ```
 
 ```bash
-# Re-encrypt all secrets with the new key
+# Re-encrypt all secrets with the new key, then rotate each data key
 find . -name "*.enc.yaml" -exec sops updatekeys {} -y \;
+find . -name "*.enc.yaml" -exec sops rotate -i {} \;
 ```
+
+For GCP KMS, use the `gcp_kms` field with the full Resource ID. For Azure Key Vault, use the `azure_keyvault` field with the key URL.
 
 ## Automation Script for Key Rotation
 
@@ -205,18 +210,15 @@ Automate the re-encryption process with a script that handles all encrypted file
 
 set -euo pipefail
 
-# Find all encrypted files
-ENCRYPTED_FILES=$(find . -name "*.enc.yaml" -type f)
+# Count all encrypted files
+ENCRYPTED_FILE_COUNT=$(find . -name "*.enc.yaml" -type f | wc -l)
 
-echo "Found $(echo "$ENCRYPTED_FILES" | wc -l) encrypted files to update"
+echo "Found ${ENCRYPTED_FILE_COUNT} encrypted files to update"
 
-for file in $ENCRYPTED_FILES; do
+find . -name "*.enc.yaml" -type f -print0 | while IFS= read -r -d '' file; do
   echo "Updating keys for: $file"
   sops updatekeys "$file" -y
-  if [ $? -ne 0 ]; then
-    echo "ERROR: Failed to update keys for $file"
-    exit 1
-  fi
+  sops rotate -i "$file"
 done
 
 echo "All files updated successfully"
@@ -229,7 +231,11 @@ Always verify that Flux can decrypt all secrets after rotation.
 
 ```bash
 # Force reconciliation of all Kustomizations
-flux reconcile kustomization --all
+kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
+  while read -r namespace name; do
+    flux reconcile kustomization "$name" --namespace "$namespace" --with-source
+  done
 
 # Check for any failed Kustomizations
 flux get kustomizations | grep -v "True"
