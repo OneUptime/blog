@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Image Automation, Image Policies
 
-Description: Learn how to set up tenant-specific image policies in Flux CD to control which container image tags each tenant can deploy and enable automated image updates.
+Description: Learn how to set up tenant-specific image policies in Flux CD to control which container image tags Flux selects for each tenant and enable automated image updates.
 
 ---
 
-Flux CD's image automation controllers allow automatic deployment of new container images when they are pushed to a registry. In a multi-tenant setup, each tenant needs their own image policies to control which images and tags they can use. This guide covers how to configure per-tenant image automation.
+Flux CD's image automation controllers allow automatic Git updates when new matching container images are found in a registry. In a multi-tenant setup, each tenant needs their own image policies to control which images and tags Flux selects for automated updates. This guide covers how to configure per-tenant image automation.
 
 ## How Image Automation Works in Flux CD
 
@@ -159,7 +159,7 @@ The comment `{"$imagepolicy": "team-alpha:frontend"}` tells Flux to update this 
 
 ## Step 5: Restrict Image Sources per Tenant
 
-Use the ImageRepository to control which registries a tenant can pull from. Only create ImageRepository resources for approved registries.
+Use the ImageRepository to control which registries Flux scans and updates from. Only create ImageRepository resources for approved registries.
 
 ```yaml
 # tenants/team-alpha/approved-image-repos.yaml
@@ -172,6 +172,12 @@ metadata:
 spec:
   image: registry.example.com/team-alpha/frontend
   interval: 1m
+  accessFrom:
+    namespaceSelectors:
+      - matchLabels:
+          kubernetes.io/metadata.name: team-alpha-staging
+      - matchLabels:
+          kubernetes.io/metadata.name: team-alpha-production
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
@@ -181,9 +187,15 @@ metadata:
 spec:
   image: registry.example.com/team-alpha/backend
   interval: 1m
+  accessFrom:
+    namespaceSelectors:
+      - matchLabels:
+          kubernetes.io/metadata.name: team-alpha-staging
+      - matchLabels:
+          kubernetes.io/metadata.name: team-alpha-production
 ```
 
-To prevent tenants from creating their own ImageRepository resources pointing to unauthorized registries, remove image.toolkit.fluxcd.io permissions from the tenant's RBAC role.
+To prevent tenants from creating their own ImageRepository resources pointing to unauthorized registries, remove image.toolkit.fluxcd.io write permissions from the tenant's RBAC role. This limits Flux image automation; use admission policy if you also need to enforce which images workloads may run.
 
 ```yaml
 # Tenant RBAC should NOT include these permissions:
@@ -240,7 +252,7 @@ flux get image repository -n team-alpha
 flux get image policy -n team-alpha
 
 # Check the latest selected image
-kubectl get imagepolicy frontend -n team-alpha -o yaml | grep latestImage
+kubectl get imagepolicy frontend -n team-alpha -o yaml | grep -A4 latestRef
 
 # Check image update automation status
 flux get image update -n team-alpha
@@ -251,4 +263,4 @@ flux get image update -n team-alpha -o wide
 
 ## Summary
 
-Tenant-specific image policies in Flux CD enable automated image updates within the boundaries of each tenant's namespace. By creating ImageRepository, ImagePolicy, and ImageUpdateAutomation resources in tenant namespaces, each tenant gets independent control over their image deployment strategy. Platform administrators should restrict RBAC to prevent tenants from creating unauthorized ImageRepository resources, ensuring that only approved container registries are used.
+Tenant-specific image policies in Flux CD enable automated image updates within the boundaries of each tenant's namespace. By creating ImageRepository, ImagePolicy, and ImageUpdateAutomation resources in tenant namespaces, each tenant gets independent control over their automated image update strategy. Platform administrators should restrict RBAC to prevent tenants from creating unauthorized ImageRepository resources, ensuring that Flux image automation only uses approved container registries.
