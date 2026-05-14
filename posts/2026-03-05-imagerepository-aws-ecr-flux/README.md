@@ -146,11 +146,45 @@ spec:
 
 ## Step 5: Automate ECR Token Refresh with a CronJob
 
-To keep static credentials fresh, create a CronJob that refreshes the ECR token.
+To keep static credentials fresh, create a CronJob that refreshes the ECR token. The CronJob still needs AWS credentials for `aws ecr get-login-password`, such as a node IAM role, an IAM role on this ServiceAccount, or injected AWS access keys.
 
 ```yaml
 # ecr-token-refresh.yaml
 # CronJob to refresh ECR token every 6 hours
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["ecr-credentials"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+subjects:
+  - kind: ServiceAccount
+    name: ecr-token-refresh
+    namespace: flux-system
+roleRef:
+  kind: Role
+  name: ecr-token-refresh
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -165,19 +199,21 @@ spec:
           serviceAccountName: ecr-token-refresh
           containers:
             - name: ecr-login
-              image: amazon/aws-cli:latest
+              image: alpine:3.22
               command:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache aws-cli kubectl
+
                   # Get a new ECR token and update the Kubernetes secret
                   TOKEN=$(aws ecr get-login-password --region us-east-1)
-                  kubectl delete secret ecr-credentials -n flux-system --ignore-not-found
                   kubectl create secret docker-registry ecr-credentials \
                     --docker-server=123456789012.dkr.ecr.us-east-1.amazonaws.com \
                     --docker-username=AWS \
                     --docker-password="$TOKEN" \
-                    -n flux-system
+                    -n flux-system \
+                    --dry-run=client -o yaml | kubectl apply -f -
           restartPolicy: OnFailure
 ```
 
