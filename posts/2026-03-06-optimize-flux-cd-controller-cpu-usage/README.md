@@ -22,37 +22,20 @@ Before optimizing, understand which operations consume the most CPU:
 
 ## Profiling Current CPU Usage
 
-Enable profiling on Flux controllers to identify bottlenecks.
+Flux controllers expose pprof profiling data on their metrics endpoint by default. Port-forward the controller metrics port to collect a CPU profile.
 
-```yaml
-# Enable pprof profiling on source-controller for CPU analysis
+```bash
+# Terminal 1
+kubectl port-forward -n flux-system deploy/source-controller 8080:8080
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --storage-path=/data
-            - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
-            # Enable pprof endpoint for CPU profiling
-            - --enable-pprof=true
-            - --pprof-addr=:6060
-          ports:
-            - containerPort: 6060
-              name: pprof
-              protocol: TCP
+# Terminal 2
+curl -s http://localhost:8080/debug/pprof/profile?seconds=30 > source-controller.cpu.pprof
 ```
 
-Create a service to access the pprof endpoint:
+If you prefer a temporary service for profiling, expose the existing metrics port:
 
 ```yaml
-# Service to expose pprof endpoint for CPU profiling
+# Service to expose the metrics and pprof endpoint for CPU profiling
 apiVersion: v1
 kind: Service
 metadata:
@@ -62,8 +45,8 @@ spec:
   selector:
     app: source-controller
   ports:
-    - port: 6060
-      targetPort: pprof
+    - port: 8080
+      targetPort: http-prom
       protocol: TCP
 ```
 
@@ -172,12 +155,12 @@ spec:
     name: fleet-infra
 ```
 
-## Reducing Diff Computation Overhead
+## Reducing Reconciliation Overhead
 
-Server-side apply generates large diffs for complex resources. Use field managers and strategic merge patches to reduce computation.
+For resources that are intentionally changed by another controller after Flux creates them, use Flux server-side apply policies to avoid unnecessary repeated ownership changes. Do not use `force` as a CPU optimization; Flux uses it to recreate resources when immutable fields change, and it can cause downtime if left enabled.
 
 ```yaml
-# Use server-side apply with force to reduce diff complexity
+# Apply this resource only if it is not already present
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -190,20 +173,18 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-app
-  # Force server-side apply to avoid conflict detection overhead
-  force: true
-  # Use server-side apply for efficient diffing
   patches:
-    # Exclude frequently-changing fields from diff calculations
+    # Let another controller mutate this Secret after Flux creates it
     - target:
-        kind: Deployment
+        kind: Secret
+        name: webhook-cert
       patch: |
-        apiVersion: apps/v1
-        kind: Deployment
+        apiVersion: v1
+        kind: Secret
         metadata:
-          name: placeholder
+          name: webhook-cert
           annotations:
-            # Tell Flux to skip diffing on managed fields
+            # Flux creates it only when it is missing
             kustomize.toolkit.fluxcd.io/ssa: "IfNotPresent"
 ```
 
@@ -212,63 +193,47 @@ spec:
 Reduce the number of concurrent reconciliations to lower peak CPU usage.
 
 ```yaml
-# concurrency-patch.yaml
+# kustomization.yaml
 # Lower concurrency to reduce peak CPU usage across all controllers
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            # Default is 4; reduce to 2 for lower CPU usage
-            # Trade-off: reconciliations take longer to complete
-            - --concurrent=2
-            # Requeue dependency interval to avoid tight loops
-            - --requeue-dependency=10s
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            # Helm rendering is CPU-heavy; limit concurrency
-            - --concurrent=2
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --storage-path=/data
-            - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
-            # Reduce concurrent source fetches
-            - --concurrent=2
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: kustomize-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=2
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --requeue-dependency=10s
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=2
+  - target:
+      kind: Deployment
+      name: source-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=1
 ```
 
 ## Tuning Go Runtime for CPU Efficiency
 
-Configure the Go runtime to use fewer OS threads.
+Configure the Go runtime to limit the number of goroutines that execute Go code in parallel.
 
 ```yaml
 # go-cpu-tuning-patch.yaml
-# Limit Go runtime threads to match CPU allocation
+# Limit Go scheduler parallelism to match CPU allocation
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -280,13 +245,13 @@ spec:
       containers:
         - name: manager
           env:
-            # Limit the number of OS threads Go can use
-            # Set to match CPU limit (e.g., 1 core = 1 thread)
+            # Limit Go scheduler parallelism
+            # Set to match the CPU limit (e.g., 2 cores = 2)
             - name: GOMAXPROCS
               value: "2"
 ```
 
-For automatic GOMAXPROCS tuning based on container CPU limits, use the `automaxprocs` approach by adding a sidecar or init container that sets the value dynamically.
+For automatic GOMAXPROCS tuning based on container CPU limits, use a Flux controller image built with an `automaxprocs`-style library, or set `GOMAXPROCS` explicitly in the controller environment.
 
 ## Disabling Unnecessary Controllers
 
@@ -372,10 +337,15 @@ spec:
             rate(container_cpu_usage_seconds_total{
               namespace="flux-system",
               container="manager"
-            }[5m]) / container_spec_cpu_quota{
-              namespace="flux-system",
-              container="manager"
-            } * 100000 > 0.8
+            }[5m]) / (
+              container_spec_cpu_quota{
+                namespace="flux-system",
+                container="manager"
+              } / container_spec_cpu_period{
+                namespace="flux-system",
+                container="manager"
+              }
+            ) > 0.8
           for: 10m
           labels:
             severity: warning
@@ -390,7 +360,7 @@ Key strategies for optimizing Flux CD controller CPU usage:
 1. Profile controllers with pprof to identify CPU hotspots
 2. Increase reconciliation intervals for stable resources
 3. Reduce controller concurrency with the `--concurrent` flag
-4. Limit Go runtime threads with `GOMAXPROCS`
+4. Limit Go scheduler parallelism with `GOMAXPROCS`
 5. Disable unused controllers to eliminate unnecessary CPU consumption
 6. Set appropriate CPU requests and limits based on observed usage
 7. Monitor CPU throttling with Prometheus alerts
