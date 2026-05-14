@@ -36,13 +36,14 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 
 # Install gardenctl
 curl -sL https://github.com/gardener/gardenctl-v2/releases/latest/download/gardenctl_v2_linux_amd64 \
-  -o /usr/local/bin/gardenctl
-chmod +x /usr/local/bin/gardenctl
+  -o gardenctl_v2_linux_amd64
+sudo install -m 0755 gardenctl_v2_linux_amd64 /usr/local/bin/gardenctl
 
 # Install gardenlogin credential plugin
 curl -sL https://github.com/gardener/gardenlogin/releases/latest/download/gardenlogin_linux_amd64 \
-  -o /usr/local/bin/gardenlogin
-chmod +x /usr/local/bin/gardenlogin
+  -o gardenlogin_linux_amd64
+sudo install -m 0755 gardenlogin_linux_amd64 /usr/local/bin/gardenlogin
+sudo ln -sf /usr/local/bin/gardenlogin /usr/local/bin/kubectl-gardenlogin
 
 # Verify installations
 flux --version
@@ -61,9 +62,10 @@ metadata:
   name: flux-cluster
   namespace: garden-my-project
 spec:
-  cloudProfileName: aws
+  cloudProfile:
+    name: aws
   region: eu-west-1
-  secretBindingName: my-aws-credentials
+  credentialsBindingName: my-aws-credentials
   provider:
     type: aws
     infrastructureConfig:
@@ -97,8 +99,7 @@ spec:
           type: gp3
           size: 50Gi
   kubernetes:
-    version: "1.30.2"
-    enableStaticTokenKubeconfig: false
+    version: "1.35.0"
   networking:
     type: calico
     pods: 100.96.0.0/11
@@ -125,8 +126,7 @@ Apply the shoot cluster:
 kubectl apply -f shoot-cluster.yaml --kubeconfig=~/.kube/garden-kubeconfig
 
 # Monitor the shoot creation
-gardenctl target --garden my-garden --project my-project --shoot flux-cluster
-gardenctl get shoot
+kubectl get shoot flux-cluster -n garden-my-project --watch --kubeconfig=~/.kube/garden-kubeconfig
 ```
 
 ## Accessing the Shoot Cluster
@@ -138,7 +138,7 @@ Configure kubectl access to your shoot cluster:
 gardenctl target --garden my-garden --project my-project --shoot flux-cluster
 
 # Generate kubeconfig
-gardenctl kubeconfig --output ~/.kube/gardener-flux-config
+gardenctl kubeconfig --raw > ~/.kube/gardener-flux-config
 
 # Set KUBECONFIG
 export KUBECONFIG=~/.kube/gardener-flux-config
@@ -158,6 +158,7 @@ flux check --pre
 ```
 
 Gardener shoots are standard CNCF-conformant Kubernetes clusters, so all checks should pass.
+If your landscape enforces additional policies, resolve any reported warnings before bootstrapping Flux.
 
 ## Bootstrapping Flux CD
 
@@ -465,7 +466,7 @@ spec:
 Gardener supports cluster hibernation to save costs. Configure Flux to handle hibernation gracefully:
 
 ```yaml
-# clusters/gardener-aws/apps/hibernation-aware.yaml
+# clusters/gardener-aws/apps/web-service.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -473,6 +474,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  dependsOn:
+    - name: infrastructure
   path: ./apps/overlays/aws
   prune: true
   sourceRef:
@@ -531,7 +534,7 @@ Configure Flux alerts for your Gardener clusters:
 
 ```yaml
 # clusters/gardener-aws/apps/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -542,7 +545,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gardener-alerts
@@ -571,7 +574,7 @@ kubectl logs -n flux-system deploy/kustomize-controller
 flux reconcile kustomization flux-system --with-source
 
 # Check if the cluster is hibernating
-gardenctl get shoot
+kubectl get shoot flux-cluster -n garden-my-project --kubeconfig=~/.kube/garden-kubeconfig
 
 # View Flux events
 flux events
@@ -584,7 +587,7 @@ kubectl get dnsentries -A
 kubectl get certificates -A
 
 # Reconnect after hibernation wake-up
-gardenctl kubeconfig --output ~/.kube/gardener-flux-config
+gardenctl kubeconfig --raw > ~/.kube/gardener-flux-config
 export KUBECONFIG=~/.kube/gardener-flux-config
 ```
 
