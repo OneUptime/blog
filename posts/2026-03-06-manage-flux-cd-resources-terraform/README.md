@@ -12,7 +12,7 @@ Description: Learn how to create and manage Flux CD custom resources like GitRep
 
 After bootstrapping Flux CD, you need to define the resources that tell Flux what to deploy and where. While you can write YAML manifests by hand, managing Flux resources with Terraform gives you the same benefits you get for any other infrastructure: variables, modules, state tracking, and plan/apply workflows.
 
-This guide covers how to create and manage Flux CD custom resources using the Kubernetes Terraform provider.
+This guide covers how to create and manage Flux CD custom resources using the kubectl Terraform provider.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ This guide covers how to create and manage Flux CD custom resources using the Ku
 
 ## Project Setup
 
-Configure the Kubernetes provider to manage Flux resources.
+Configure the kubectl provider to manage Flux resources.
 
 ```hcl
 # versions.tf
@@ -32,21 +32,11 @@ terraform {
   required_version = ">= 1.5.0"
 
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = ">= 2.27.0"
-    }
     kubectl = {
       source  = "alekc/kubectl"
       version = ">= 2.0.0"
     }
   }
-}
-
-# Configure provider to connect to your cluster
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.cluster_context
 }
 
 provider "kubectl" {
@@ -255,10 +245,11 @@ resource "kubectl_manifest" "ingress_nginx" {
     kind       = "HelmRelease"
     metadata = {
       name      = "ingress-nginx"
-      namespace = "ingress-nginx"
+      namespace = "flux-system"
     }
     spec = {
       interval = "15m"
+      targetNamespace = "ingress-nginx"
       chart = {
         spec = {
           chart   = "ingress-nginx"
@@ -270,6 +261,10 @@ resource "kubectl_manifest" "ingress_nginx" {
             namespace = "flux-system"
           }
         }
+      }
+      # Create the target namespace if it does not exist
+      install = {
+        createNamespace = true
       }
       # Helm values for the chart
       values = {
@@ -300,10 +295,11 @@ resource "kubectl_manifest" "prometheus" {
     kind       = "HelmRelease"
     metadata = {
       name      = "kube-prometheus-stack"
-      namespace = "monitoring"
+      namespace = "flux-system"
     }
     spec = {
       interval = "30m"
+      targetNamespace = "monitoring"
       chart = {
         spec = {
           chart   = "kube-prometheus-stack"
@@ -382,28 +378,17 @@ variable "depends_on_releases" {
 ```hcl
 # modules/flux-helm-release/main.tf
 # Reusable module for creating Flux HelmRelease resources
-resource "kubectl_manifest" "namespace" {
-  yaml_body = yamlencode({
-    apiVersion = "v1"
-    kind       = "Namespace"
-    metadata = {
-      name = var.namespace
-    }
-  })
-}
-
 resource "kubectl_manifest" "helm_release" {
-  depends_on = [kubectl_manifest.namespace]
-
   yaml_body = yamlencode({
     apiVersion = "helm.toolkit.fluxcd.io/v2"
     kind       = "HelmRelease"
     metadata = {
       name      = var.name
-      namespace = var.namespace
+      namespace = "flux-system"
     }
     spec = {
       interval = "15m"
+      targetNamespace = var.namespace
       chart = {
         spec = {
           chart   = var.chart_name
@@ -414,6 +399,9 @@ resource "kubectl_manifest" "helm_release" {
             namespace = "flux-system"
           }
         }
+      }
+      install = {
+        createNamespace = true
       }
       dependsOn = [for name in var.depends_on_releases : { name = name }]
       values    = var.values
@@ -455,6 +443,7 @@ module "postgresql" {
   chart_name      = "postgresql"
   chart_version   = "15.x"
   repository_name = "bitnami"
+  depends_on_releases = ["redis"]
 
   values = {
     primary = {
@@ -475,7 +464,7 @@ Set up Flux notifications through Terraform.
 # Create a Slack notification provider
 resource "kubectl_manifest" "slack_provider" {
   yaml_body = yamlencode({
-    apiVersion = "notification.toolkit.fluxcd.io/v1"
+    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
     kind       = "Provider"
     metadata = {
       name      = "slack"
@@ -497,7 +486,7 @@ resource "kubectl_manifest" "reconciliation_alert" {
   depends_on = [kubectl_manifest.slack_provider]
 
   yaml_body = yamlencode({
-    apiVersion = "notification.toolkit.fluxcd.io/v1"
+    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
     kind       = "Alert"
     metadata = {
       name      = "reconciliation-failures"
