@@ -17,9 +17,9 @@ The Sealed Secrets controller manages multiple key pairs simultaneously:
 1. The controller generates a new key pair periodically (controlled by `--key-renew-period`)
 2. The latest key pair is used for sealing new secrets
 3. All previous key pairs are retained for decrypting old SealedSecrets
-4. Old SealedSecrets continue to work until they are re-sealed with the new key
+4. Old SealedSecrets continue to work until they are re-encrypted with the new key
 
-This means rotation is non-disruptive by default, but for security you should re-seal secrets with the new key.
+This means rotation is non-disruptive by default, but you should re-encrypt SealedSecrets with the new key before removing old keys.
 
 ## Step 1: Check Current Key Status
 
@@ -78,34 +78,26 @@ kubeseal --fetch-cert \
 diff pub-sealed-secrets-old.pem pub-sealed-secrets-new.pem
 ```
 
-## Step 4: Re-seal All Existing Secrets
+## Step 4: Re-encrypt All Existing Secrets
 
-Re-seal all existing SealedSecrets with the new key. This requires access to the original secret values.
+Re-encrypt all existing SealedSecrets with the new key. This does not require the plaintext secret values because `kubeseal --re-encrypt` asks the controller to decrypt and re-encrypt the existing SealedSecret data.
 
 ```bash
 #!/bin/bash
-# reseal-secrets.sh - Re-seal all secrets with the latest key
+# reencrypt-secrets.sh - Re-encrypt all SealedSecret manifests with the latest key
 
-# Fetch the latest certificate
-kubeseal --fetch-cert \
-  --controller-name=sealed-secrets-controller \
-  --controller-namespace=kube-system \
-  > pub-sealed-secrets.pem
-
-# For each SealedSecret in the cluster, re-seal it
-for ns in $(kubectl get sealedsecrets --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
-  for name in $(kubectl get sealedsecrets -n "$ns" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
-    echo "Re-sealing $ns/$name"
-
-    # Get the current decrypted secret
-    kubectl get secret "$name" -n "$ns" -o yaml | \
-      # Remove runtime fields
-      kubectl neat | \
-      # Re-seal with the new certificate
-      kubeseal --cert pub-sealed-secrets.pem --format yaml \
-      > "sealed-${ns}-${name}.yaml"
+# Run from the root of your GitOps repository.
+find apps infrastructure -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | \
+  while IFS= read -r -d '' file; do
+    if grep -q 'kind: SealedSecret' "$file"; then
+      echo "Re-encrypting $file"
+      tmp="$(mktemp)"
+      kubeseal --re-encrypt \
+        --controller-name=sealed-secrets-controller \
+        --controller-namespace=kube-system \
+        --format yaml < "$file" > "$tmp" && mv "$tmp" "$file"
+    fi
   done
-done
 ```
 
 Alternatively, if you have the original plaintext secrets, re-seal them directly.
@@ -124,21 +116,21 @@ kubectl create secret generic my-app-secret \
 
 ## Step 5: Update the Repository
 
-Replace the old SealedSecret files in Git with the re-sealed versions.
+Replace the old SealedSecret files in Git with the re-encrypted versions.
 
 ```bash
-# Copy re-sealed files to the appropriate locations in the repo
+# Copy re-encrypted files to the appropriate locations in the repo
 # (paths depend on your repository structure)
 
-# Commit the re-sealed secrets
+# Commit the re-encrypted secrets
 git add apps/
-git commit -m "Re-seal all secrets with rotated key"
+git commit -m "Re-encrypt all secrets with rotated key"
 git push
 ```
 
-## Step 6: Verify Re-sealed Secrets
+## Step 6: Verify Re-encrypted Secrets
 
-Confirm that Flux applies the re-sealed secrets and the controller decrypts them.
+Confirm that Flux applies the re-encrypted secrets and the controller decrypts them.
 
 ```bash
 # Force reconciliation
@@ -153,7 +145,7 @@ kubectl get events --all-namespaces --field-selector involvedObject.kind=SealedS
 
 ## Step 7: Remove Old Keys (Optional)
 
-After all secrets have been re-sealed, you can optionally remove old keys. Be cautious with this step.
+After all secrets have been re-encrypted, you can optionally remove old keys. Be cautious with this step.
 
 ```bash
 # List all sealing keys with their creation timestamps
@@ -166,8 +158,11 @@ kubectl get secret -n kube-system \
   -l sealedsecrets.bitnami.com/sealed-secrets-key \
   -o yaml > sealed-secrets-keys-backup.yaml
 
-# Remove a specific old key (only after all secrets are re-sealed)
+# Remove a specific old key (only after all secrets are re-encrypted)
 # kubectl delete secret <old-key-name> -n kube-system
+
+# Restart the controller so manually deleted keys are removed from its in-memory registry
+kubectl rollout restart deployment sealed-secrets-controller -n kube-system
 ```
 
 ## Manual Key Rotation
@@ -175,12 +170,23 @@ kubectl get secret -n kube-system \
 If you need to trigger an immediate key rotation rather than waiting for the automatic renewal.
 
 ```bash
-# Restart the controller to trigger immediate key generation
-# (only if the renewal period has elapsed since the last key was created)
-kubectl rollout restart deployment sealed-secrets-controller -n kube-system
+# Generate an RFC1123 cutoff timestamp
+date -R
+```
 
-# Alternatively, delete the controller pod to force regeneration
-kubectl delete pod -n kube-system -l app.kubernetes.io/name=sealed-secrets
+Add the cutoff timestamp to the Flux HelmRelease values. The controller will generate a new key when it starts with a cutoff time newer than the latest active key.
+
+```yaml
+# infrastructure/sealed-secrets/helmrelease.yaml
+values:
+  keycutofftime: "Thu, 05 Mar 2026 12:00:00 +0000"
+```
+
+Then reconcile the HelmRelease so Flux applies the change.
+
+```bash
+flux reconcile helmrelease sealed-secrets-controller -n flux-system --with-source
+kubectl rollout status deployment sealed-secrets-controller -n kube-system
 ```
 
 ## Disaster Recovery
@@ -202,7 +208,7 @@ kubectl apply -f sealed-secrets-backup-20260305.yaml
 
 ## Automating Rotation with CronJobs
 
-Set up a CronJob in your Flux repository to automate re-sealing.
+Set up a CronJob in your Flux repository to automate re-encryption reminders.
 
 ```yaml
 # infrastructure/sealed-secrets/reseal-cronjob.yaml
@@ -225,9 +231,9 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  echo "Key rotation reminder: Re-seal secrets with the latest key"
+                  echo "Key rotation reminder: Re-encrypt SealedSecrets with the latest key"
                   # In practice, this would trigger a CI/CD pipeline
-                  # to re-seal and commit updated SealedSecrets
+                  # to re-encrypt and commit updated SealedSecrets
           restartPolicy: OnFailure
 ```
 
@@ -242,9 +248,11 @@ kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-ke
 # Verify a SealedSecret can be decrypted
 kubectl logs -n kube-system deployment/sealed-secrets-controller | grep -i "unseal\|error\|decrypt"
 
-# Check the active key
-kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key \
-  --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}'
+# Check the certificate currently served for new sealing operations
+kubeseal --fetch-cert \
+  --controller-name=sealed-secrets-controller \
+  --controller-namespace=kube-system | \
+  openssl x509 -noout -subject -dates
 ```
 
-Regular key rotation combined with timely re-sealing of existing secrets ensures your Sealed Secrets deployment in Flux CD remains secure. The non-disruptive nature of the rotation means you can adopt a rolling approach, re-sealing secrets gradually without service interruption.
+Regular key rotation combined with timely re-encryption of existing SealedSecrets ensures your Sealed Secrets deployment in Flux CD remains secure. The non-disruptive nature of the rotation means you can adopt a rolling approach, re-encrypting secrets gradually without service interruption.
