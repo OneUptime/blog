@@ -60,7 +60,7 @@ flux get sources helm
 kubectl describe helmrepository -n flux-system my-repo
 ```
 
-If the HelmRepository shows `READY: False`, the problem is at the source level, not the chart level. Common HelmRepository issues include:
+If an HTTP/S HelmRepository shows `READY: False`, the problem is at the source level, not the chart level. OCI HelmRepository resources are data containers and do not report `READY` or `STATUS`; for OCI sources, validate the HelmChart and registry access instead. Common HelmRepository issues include:
 
 - **URL is incorrect** -- Typo in the repository URL
 - **Repository is down** -- The remote server is not responding
@@ -103,8 +103,8 @@ Common naming mistakes to watch for:
 | Mistake | Example | Should Be |
 |---------|---------|-----------|
 | Wrong case | `MyApp` | `my-app` |
-| Missing prefix | `nginx` | `bitnami-nginx` |
-| Extra prefix | `stable/nginx` | `nginx` |
+| Missing prefix | `prometheus` | `kube-prometheus-stack` |
+| Extra repo alias | `my-repo/nginx` | `nginx` |
 | Typo | `ngingx` | `nginx` |
 
 ## Step 4: Verify the Version Constraint
@@ -184,6 +184,7 @@ spec:
   type: oci
   # URL must use the oci:// scheme
   url: oci://ghcr.io/my-org/charts
+  # For OCI HelmRepository resources, interval is accepted but ignored
   interval: 30m
 ```
 
@@ -209,7 +210,8 @@ Authentication failures can manifest as "chart not found" instead of a clear aut
 kubectl get secret -n flux-system helm-repo-creds
 
 # Verify the secret has the expected keys
-kubectl get secret -n flux-system helm-repo-creds -o jsonpath='{.data}' | python3 -m json.tool
+kubectl get secret -n flux-system helm-repo-creds \
+  -o go-template='{{range $key, $_ := .data}}{{printf "%s\n" $key}}{{end}}'
 ```
 
 Test the credentials manually.
