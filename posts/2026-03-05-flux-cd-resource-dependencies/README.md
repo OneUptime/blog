@@ -12,11 +12,11 @@ Description: A practical guide to understanding and configuring resource depende
 
 In real-world Kubernetes deployments, resources often depend on each other. A web application needs its database to be running. Applications need their namespaces and RBAC policies to exist first. Helm charts that install CRDs must complete before workloads that use those CRDs can be deployed.
 
-Flux CD provides a dependency mechanism through the `spec.dependsOn` field on Kustomization and HelmRelease resources. This field lets you define explicit ordering between deployment units, ensuring prerequisites are healthy before dependent resources are reconciled.
+Flux CD provides a dependency mechanism through the `spec.dependsOn` field on Kustomization and HelmRelease resources. Kustomizations can depend on other Kustomizations, and HelmReleases can depend on other HelmReleases. This field lets you define explicit ordering between deployment units, ensuring prerequisites are healthy before dependent resources are reconciled.
 
 ## The dependsOn Field
 
-The `spec.dependsOn` field accepts a list of references to other Kustomization or HelmRelease resources in the same namespace. A resource with dependencies will not reconcile until all its dependencies report a `Ready: True` condition.
+The `spec.dependsOn` field accepts a list of references to resources of the same Flux kind: Kustomizations depend on Kustomizations, and HelmReleases depend on HelmReleases. A resource with dependencies will not reconcile until all its dependencies report a `Ready: True` condition.
 
 ```yaml
 # Infrastructure must be ready before apps are deployed
@@ -34,6 +34,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-infra
+    namespace: flux-system
   path: ./apps/production
   prune: true
 ```
@@ -73,6 +74,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-infra
+    namespace: flux-system
   path: ./infrastructure/crds
   prune: false              # Never prune CRDs automatically
   wait: true                # Wait for CRDs to be established
@@ -200,7 +202,7 @@ status:
 
 ## HelmRelease Dependencies
 
-HelmRelease resources support the same `dependsOn` mechanism. You can create dependencies between HelmReleases, or mix Kustomization and HelmRelease dependencies within the same namespace.
+HelmRelease resources support the same `dependsOn` mechanism for dependencies between HelmReleases. If you need to sequence HelmReleases with Kustomizations, put the HelmRelease manifests inside Kustomizations and express the ordering between those Kustomizations.
 
 ```yaml
 # A HelmRelease that depends on another HelmRelease
@@ -230,20 +232,21 @@ spec:
 
 ## Cross-Namespace Dependencies
 
-Dependencies must be in the same namespace as the dependent resource. This is a deliberate constraint that keeps the RBAC model simple. If you need to coordinate across namespaces, you can use a shared namespace (like `flux-system`) for all your Kustomization resources, even if the resources they deploy target different namespaces.
+Dependencies default to the same namespace as the dependent resource, but you can set `namespace` on a dependency reference when the dependency object lives elsewhere. In multi-tenant setups, you can also use a shared namespace (like `flux-system`) for all your Kustomization resources, even if the resources they deploy target different namespaces.
 
 ```yaml
-# Both Kustomizations live in flux-system but deploy to different namespaces
+# Kustomizations can live in different namespaces and deploy to different namespaces
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: database
-  namespace: flux-system        # Lives in flux-system
+  namespace: database-system    # Lives in database-system
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
     name: fleet-infra
+    namespace: flux-system
   path: ./database
   targetNamespace: database-ns  # Deploys to database-ns
   wait: true
@@ -252,14 +255,16 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: webapp
-  namespace: flux-system        # Lives in flux-system (same as database)
+  namespace: webapp-system      # Lives in webapp-system
 spec:
   interval: 10m
   dependsOn:
-    - name: database            # Can reference database because same namespace
+    - name: database            # Cross-namespace dependency reference
+      namespace: database-system
   sourceRef:
     kind: GitRepository
     name: fleet-infra
+    namespace: flux-system
   path: ./webapp
   targetNamespace: webapp-ns    # Deploys to webapp-ns
 ```
@@ -313,4 +318,4 @@ flux tree kustomization flux-system
 
 ## Summary
 
-Flux CD resource dependencies give you explicit control over deployment ordering. The `dependsOn` field on Kustomization and HelmRelease resources blocks reconciliation until all listed dependencies report a `Ready` condition. Combined with health checks (`wait: true`), this ensures that infrastructure is running before applications start, databases are available before services connect, and CRDs are established before custom resources are created. Dependencies must be within the same namespace, and the dependency graph must be acyclic to avoid deadlocks.
+Flux CD resource dependencies give you explicit control over deployment ordering. The `dependsOn` field on Kustomization and HelmRelease resources blocks reconciliation until all listed dependencies report a `Ready` condition. Combined with health checks (`wait: true`), this ensures that infrastructure is running before applications start, databases are available before services connect, and CRDs are established before custom resources are created. Dependencies default to the same namespace unless a dependency `namespace` is specified, and the dependency graph must be acyclic to avoid deadlocks.
