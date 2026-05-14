@@ -18,7 +18,7 @@ This guide walks through the complete setup of InfluxDB as a metrics provider fo
 
 - A Kubernetes cluster with Flux installed
 - Flagger deployed in the cluster
-- An InfluxDB instance (v1.x or v2.x) accessible from the cluster
+- An InfluxDB instance with the Flux query API enabled, such as InfluxDB v2.x, accessible from the cluster
 - An application instrumented to send metrics to InfluxDB
 - kubectl and flux CLI tools
 
@@ -61,7 +61,7 @@ spec:
     # Admin user configuration
     adminUser:
       organization: "myorg"
-      bucket: "default"
+      bucket: "metrics"
       retention_policy: "30d"
 ```
 
@@ -78,11 +78,9 @@ metadata:
   namespace: flagger-system
 type: Opaque
 stringData:
-  # For InfluxDB v2, use an API token
+  # Flagger expects an InfluxDB API token and organization
   token: "your-influxdb-api-token"
-  # For InfluxDB v1, use username and password
-  username: "admin"
-  password: "your-influxdb-password"
+  org: "myorg"
 ```
 
 Apply the secret:
@@ -142,25 +140,21 @@ spec:
       name: influxdb-credentials
   # Calculate error rate as percentage of 5xx responses
   query: |
-    total = from(bucket: "metrics")
+    from(bucket: "metrics")
       |> range(start: -1m)
       |> filter(fn: (r) => r["_measurement"] == "http_requests_total")
       |> filter(fn: (r) => r["app"] == "{{ target }}")
-      |> sum()
-      |> tableFind(fn: (key) => true)
-      |> getRecord(idx: 0)
-
-    errors = from(bucket: "metrics")
-      |> range(start: -1m)
-      |> filter(fn: (r) => r["_measurement"] == "http_requests_total")
-      |> filter(fn: (r) => r["app"] == "{{ target }}")
-      |> filter(fn: (r) => r["status_code"] =~ /5../)
-      |> sum()
-      |> tableFind(fn: (key) => true)
-      |> getRecord(idx: 0)
-
-    // Return error rate as a percentage
-    errors._value / total._value * 100.0
+      |> filter(fn: (r) => r["_field"] == "count")
+      |> increase()
+      |> group()
+      |> reduce(
+        identity: {total: 0.0, errors: 0.0},
+        fn: (r, accumulator) => ({
+          total: accumulator.total + r._value,
+          errors: accumulator.errors + (if r["status_code"] =~ /5../ then r._value else 0.0)
+        })
+      )
+      |> map(fn: (r) => ({_value: if r.total == 0.0 then 0.0 else r.errors / r.total * 100.0}))
 ```
 
 ## Step 5: Create MetricTemplate for Custom Business Metrics
@@ -182,7 +176,7 @@ spec:
       name: influxdb-credentials
   # Query a business metric like conversion rate
   query: |
-    from(bucket: "business_metrics")
+    from(bucket: "metrics")
       |> range(start: -5m)
       |> filter(fn: (r) => r["_measurement"] == "checkout_conversions")
       |> filter(fn: (r) => r["service"] == "{{ target }}")
@@ -191,16 +185,16 @@ spec:
       |> yield(name: "conversion_rate")
 ```
 
-## Step 6: Using InfluxDB v1 InfluxQL Queries
+## Step 6: Using InfluxDB 1.8 with Flux Enabled
 
-If you are running InfluxDB v1, use InfluxQL instead of Flux query language.
+Flagger's InfluxDB provider uses the Flux query API, so InfluxQL queries are not supported directly in MetricTemplate resources.
 
 ```yaml
-# influxdb-v1-request-duration.yaml
+# influxdb-flux-request-duration.yaml
 apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
-  name: influxdb-v1-request-duration
+  name: influxdb-flux-request-duration
   namespace: flagger-system
 spec:
   provider:
@@ -208,15 +202,14 @@ spec:
     address: http://influxdb.monitoring.svc.cluster.local:8086
     secretRef:
       name: influxdb-credentials
-  # InfluxQL query for v1 instances
+  # Flux query for InfluxDB instances with the Flux query API enabled
   query: |
-    SELECT mean("duration")
-    FROM "http_request_duration"
-    WHERE "app" = '{{ target }}'
-    AND time > now() - 1m
-    GROUP BY time(1m)
-    ORDER BY time DESC
-    LIMIT 1
+    from(bucket: "metrics")
+      |> range(start: -1m)
+      |> filter(fn: (r) => r["_measurement"] == "http_request_duration")
+      |> filter(fn: (r) => r["app"] == "{{ target }}")
+      |> filter(fn: (r) => r["_field"] == "duration")
+      |> mean()
 ```
 
 ## Step 7: Wire Up Metrics in the Canary Resource
@@ -282,7 +275,7 @@ spec:
 Configure data retention policies to manage storage for your canary metrics.
 
 ```bash
-# For InfluxDB v2, create a retention policy via the CLI
+# For InfluxDB v2, update bucket retention via the CLI
 influx bucket update \
   --id your-bucket-id \
   --retention 7d \
@@ -308,10 +301,12 @@ kubectl logs -n flagger-system deployment/flagger -f | grep influxdb
 
 # Test InfluxDB connectivity from the cluster
 kubectl run -n flagger-system test-influx --rm -it --image=curlimages/curl -- \
-  curl -s -H "Authorization: Token your-token" \
-  "http://influxdb.monitoring.svc.cluster.local:8086/api/v2/query" \
-  --data-urlencode 'org=myorg' \
-  --data-urlencode 'query=from(bucket:"metrics") |> range(start:-5m) |> limit(n:1)'
+  curl -s --request POST \
+  -H "Authorization: Token your-token" \
+  -H "Accept: application/csv" \
+  -H "Content-type: application/vnd.flux" \
+  "http://influxdb.monitoring.svc.cluster.local:8086/api/v2/query?org=myorg" \
+  --data 'from(bucket:"metrics") |> range(start:-5m) |> limit(n:1)'
 ```
 
 ## Step 10: Trigger and Observe a Canary Deployment
@@ -348,7 +343,7 @@ Common issues and their solutions:
 - **Connection timeout**: Verify the InfluxDB service address is reachable from the flagger-system namespace
 - **Authentication failed**: Ensure the token or credentials in the secret are valid
 - **Empty query result**: Check that your application is writing metrics to the correct bucket and measurement
-- **Query syntax error**: Validate your Flux or InfluxQL query against the InfluxDB UI before using it in the MetricTemplate
+- **Query syntax error**: Validate your Flux query against the InfluxDB UI before using it in the MetricTemplate
 
 ```bash
 # Check Flagger logs for detailed errors
@@ -357,4 +352,4 @@ kubectl logs -n flagger-system deployment/flagger --tail=100 | grep -i "error\|i
 
 ## Conclusion
 
-You have successfully configured Flagger to use InfluxDB for canary metrics analysis. Whether you use InfluxDB v1 with InfluxQL or InfluxDB v2 with Flux queries, Flagger can leverage your time-series data for automated progressive delivery decisions. This integration fits naturally into a Flux GitOps workflow, giving you a fully automated pipeline from code commit to production deployment.
+You have successfully configured Flagger to use InfluxDB for canary metrics analysis. With Flux queries, Flagger can leverage your time-series data for automated progressive delivery decisions. This integration fits naturally into a Flux GitOps workflow, giving you a fully automated pipeline from code commit to production deployment.
