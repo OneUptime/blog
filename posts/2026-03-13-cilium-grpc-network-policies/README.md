@@ -18,7 +18,7 @@ This guide demonstrates how to write Cilium policies that enforce gRPC method-le
 
 ## Prerequisites
 
-- Cilium v1.12+ with Envoy enabled
+- Cilium v1.12+ with L7 proxy support enabled
 - gRPC services deployed in Kubernetes
 - `grpcurl` or a gRPC client for testing
 - `hubble` CLI for observability
@@ -71,15 +71,15 @@ spec:
               # Deny: CreateUser, DeleteUser, UpdateUser
 ```
 
-## Step 3: Allow Full Service but Deny Dangerous Methods
+## Step 3: Allow Safe Methods Instead of Denying Dangerous Methods
 
-To allow all methods except specific ones, use Cilium's deny policy:
+Cilium deny policies do not support L7 URL or path denial, and Cilium HTTP path rules use extended POSIX regular expressions, which do not support negative lookahead. To exclude dangerous methods, explicitly allow only the safe methods:
 
 ```yaml
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: grpc-deny-admin
+  name: grpc-allow-safe-methods
   namespace: production
 spec:
   endpointSelector:
@@ -96,7 +96,7 @@ spec:
           rules:
             http:
               - method: POST
-                path: "/com.example.UserService/(?!Admin|Delete|Purge).*"
+                path: "/com.example.UserService/(GetUser|ListUsers|UpdateProfile)$"
 ```
 
 ## Step 4: Service-Level Isolation
@@ -146,10 +146,10 @@ kubectl exec -n production client-pod -- \
 kubectl exec -n production client-pod -- \
   grpcurl -plaintext user-service:50051 \
   com.example.UserService/DeleteUser
-# Expected: HTTP/2 error - PERMISSION_DENIED
+# Expected: gRPC status PERMISSION_DENIED
 
-# Observe gRPC policy in Hubble
-hubble observe --namespace production --protocol grpc --follow
+# Observe gRPC-over-HTTP/2 policy in Hubble
+hubble observe --namespace production --protocol http --http-path "/com.example.UserService/.*" --follow
 ```
 
 ## gRPC Policy Enforcement Architecture
@@ -160,7 +160,7 @@ flowchart LR
     B --> C[Envoy Proxy]
     C -->|Parse HTTP/2 path| D{Method Allowed?}
     D -->|Yes| E[gRPC Server]
-    D -->|No| F[PERMISSION_DENIED\nHTTP/2 403]
+    D -->|No| F[PERMISSION_DENIED\ngRPC status 7]
 ```
 
 ## Conclusion
