@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kluctl, Kubernetes, GitOps, Deployment, Templating
 
-Description: Learn how to integrate Kluctl with Flux CD to leverage advanced templating, multi-environment deployments, and diff-based deployment strategies.
+Description: Learn how to use Kluctl alongside Flux CD to leverage advanced templating, multi-environment deployments, and diff-based deployment strategies.
 
 ---
 
 ## Introduction
 
-Kluctl is a deployment tool for Kubernetes that combines the flexibility of Kustomize with Jinja2 templating and a powerful diff-based deployment approach. When integrated with Flux CD through the Kluctl Controller, you get the best of both worlds: Kluctl's advanced templating and multi-environment capabilities with Flux CD's GitOps reconciliation engine.
+Kluctl is a deployment tool for Kubernetes that combines the flexibility of Kustomize with Jinja2 templating and a powerful diff-based deployment approach. When used alongside Flux CD through the Kluctl Controller, you get the best of both worlds: Kluctl's advanced templating and multi-environment capabilities with GitOps-style reconciliation.
 
-This guide demonstrates how to set up the Kluctl Controller for Flux CD and build sophisticated deployment pipelines.
+This guide demonstrates how to set up the Kluctl Controller alongside Flux CD and build sophisticated deployment pipelines.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ kluctl version
 
 ## Installing the Kluctl Controller
 
-The Kluctl Controller integrates natively with Flux CD:
+The Kluctl Controller provides the GitOps reconciliation loop for Kluctl deployments:
 
 ```bash
 # Install the Kluctl controller into your cluster
@@ -50,36 +50,16 @@ kluctl controller install
 kubectl get pods -n kluctl-system
 ```
 
-Alternatively, install via Flux CD itself:
+Alternatively, manage the controller from a Kluctl deployment project:
 
 ```yaml
-# clusters/production/infrastructure/kluctl-controller.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: kluctl
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://kluctl.github.io/charts
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: kluctl-controller
-  namespace: kluctl-system
-spec:
-  interval: 1h
-  chart:
-    spec:
-      chart: kluctl-controller
-      version: ">=2.0.0"
-      sourceRef:
-        kind: HelmRepository
-        name: kluctl
-        namespace: flux-system
-  install:
-    createNamespace: true
+# deployment.yaml
+deployments:
+  - git:
+      url: https://github.com/kluctl/kluctl.git
+      subDir: install/controller
+      ref:
+        tag: v2.27.0
 ```
 
 ## Understanding Kluctl Project Structure
@@ -106,6 +86,11 @@ graph TD
 ```yaml
 # .kluctl.yaml
 # Main Kluctl project configuration
+args:
+  - name: environment
+  - name: replicas
+  - name: domain
+
 targets:
   # Staging environment target
   - name: staging
@@ -137,18 +122,20 @@ deployments:
 
   # Deploy infrastructure components
   - path: infrastructure
-    barrier: true  # Wait for infrastructure before proceeding
+
+  # Wait for infrastructure before proceeding
+  - barrier: true
 
   # Deploy application workloads
-  - path: apps
+  - include: apps
 
 # Common variables available to all deployments
 commonLabels:
   managed-by: kluctl
   environment: "{{ args.environment }}"
 
-# Override files for environment-specific values
-overrideVars:
+# Load files for environment-specific values
+vars:
   - file: "targets/{{ args.environment }}.yaml"
 ```
 
@@ -310,7 +297,7 @@ deployments:
 
 ### Create a KluctlDeployment Resource
 
-The KluctlDeployment CRD is the bridge between Kluctl and Flux CD:
+The KluctlDeployment CRD is the GitOps interface for Kluctl deployments:
 
 ```yaml
 # clusters/production/apps/kluctl-deployment.yaml
@@ -324,19 +311,19 @@ spec:
   interval: 10m
   # Source repository
   source:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
+    git:
+      url: https://github.com/example-org/my-application.git
+      path: "."
   # Target to deploy (maps to .kluctl.yaml targets)
   target: production
+  # Use the controller-generated kubeconfig context
+  context: default
   # Enable pruning of orphaned resources
   prune: true
-  # Enable dry-run validation before deploying
+  # Run without applying changes when set to true
   dryRun: false
   # Timeout for deployment
   timeout: 5m
-  # Deploy on changes only
-  deployOnChanges: true
 ```
 
 ### KluctlDeployment with Manual Approval
@@ -353,20 +340,16 @@ metadata:
 spec:
   interval: 10m
   source:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
+    git:
+      url: https://github.com/example-org/my-application.git
+      path: "."
   target: production
+  context: default
   prune: true
-  # Suspend automatic deployment - requires manual approval
-  suspend: true
-  # Only perform dry-run to show changes
-  dryRun: true
-  # Manual approval annotation
-  # Set to "true" to approve deployment
-  # kubectl annotate kluctldeployment my-application-manual \
-  #   -n kluctl-system \
-  #   kluctl.io/request-deploy=true
+  # Require manual approval before a real deployment
+  manual: true
+  # The Kluctl Webui can approve a deployment by setting manualObjectsHash
+  # to the rendered objects hash shown in status.lastObjectsHash.
 ```
 
 ## Using Kluctl Diff for Safe Deployments
@@ -375,13 +358,13 @@ Kluctl's diff feature lets you preview changes before they are applied:
 
 ```bash
 # Preview changes for staging
-kluctl diff --target staging
+kluctl diff -t staging
 
 # Preview changes for production
-kluctl diff --target production
+kluctl diff -t production
 
 # Deploy after reviewing the diff
-kluctl deploy --target production --yes
+kluctl deploy -t production --yes
 ```
 
 ## Multi-Cluster Deployment with Kluctl and Flux
@@ -398,13 +381,13 @@ metadata:
 spec:
   interval: 5m
   source:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
+    git:
+      url: https://github.com/example-org/my-application.git
+      path: "."
   # Deploy to staging target
   target: staging
+  context: default
   prune: true
-  deployOnChanges: true
 ```
 
 ```yaml
@@ -417,15 +400,15 @@ metadata:
 spec:
   interval: 10m
   source:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
+    git:
+      url: https://github.com/example-org/my-application.git
+      path: "."
   # Deploy to production target
   target: production
+  context: default
   prune: true
   # Longer timeout for production
   timeout: 10m
-  deployOnChanges: true
 ```
 
 ## Monitoring Kluctl Deployments
@@ -448,20 +431,20 @@ kubectl get kluctldeployment my-application -n kluctl-system \
 
 ```yaml
 # clusters/production/monitoring/kluctl-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: kluctl-deployments
   namespace: flux-system
 spec:
-  severity: info
+  eventSeverity: info
   providerRef:
     name: slack-notifications
   eventSources:
-    # Watch KluctlDeployment events
-    - kind: KluctlDeployment
-      name: "*"
-      namespace: kluctl-system
+    # Watch the Flux Kustomization that applies KluctlDeployment resources
+    - kind: Kustomization
+      name: kluctl-deployments
+      namespace: flux-system
 ```
 
 ## Troubleshooting
@@ -470,10 +453,10 @@ spec:
 
 ```bash
 # Validate templates locally
-kluctl render --target staging
+kluctl render -t staging
 
 # Check for undefined variables
-kluctl validate --target production
+kluctl render -t production --print-all
 ```
 
 ### KluctlDeployment Not Reconciling
@@ -483,19 +466,17 @@ kluctl validate --target production
 kubectl logs -n kluctl-system deployment/kluctl-controller
 
 # Force reconciliation
-kubectl annotate kluctldeployment my-application \
-  -n kluctl-system \
-  kluctl.io/request-deploy=true --overwrite
+kluctl gitops reconcile --namespace kluctl-system --name my-application
 ```
 
 ## Best Practices
 
 1. **Use targets for environments** - Define separate targets in `.kluctl.yaml` for each environment with appropriate variables.
-2. **Leverage barriers** - Use `barrier: true` in deployment descriptors to ensure dependencies are ready before deploying dependents.
+2. **Leverage barriers** - Add `barrier: true` deployment items to wait until previous deployment items have been applied before continuing.
 3. **Preview with diff** - Always run `kluctl diff` before deploying to production to review changes.
 4. **Use discriminators** - Set unique discriminators per target to prevent resource conflicts across environments.
 5. **Enable prune carefully** - Start with `prune: false` and enable it only after verifying your deployment configurations are correct.
 
 ## Conclusion
 
-Kluctl and Flux CD together provide a powerful deployment solution that combines Kluctl's advanced Jinja2 templating, multi-environment targets, and diff-based deployments with Flux CD's GitOps reconciliation. The KluctlDeployment CRD bridges both tools seamlessly, giving you a production-grade deployment pipeline with full visibility into changes before they hit your cluster.
+Kluctl and Flux CD together provide a powerful deployment solution that combines Kluctl's advanced Jinja2 templating, multi-environment targets, and diff-based deployments with GitOps workflows managed in-cluster. The KluctlDeployment CRD gives you a production-grade deployment pipeline with full visibility into changes before they hit your cluster.
