@@ -10,7 +10,7 @@ Description: A comprehensive checklist for verifying all Cilium requirements on 
 
 ## Introduction
 
-Installing Cilium on GKE has both advantages and considerations. The advantage is that GKE's Container-Optimized OS (COS) nodes ship with recent kernels that support the full Cilium feature set. The consideration is that GKE offers its own eBPF-based dataplane called "Dataplane V2" (which is powered by Cilium internally), so understanding whether you want to use GKE's managed Cilium integration or deploy Cilium independently is an important first decision.
+Installing Cilium on GKE has both advantages and considerations. The advantage is that GKE's Container-Optimized OS (COS) nodes ship with recent kernels that meet Cilium's baseline requirements. The consideration is that GKE offers its own eBPF-based dataplane called "Dataplane V2" (which is powered by Cilium internally), so understanding whether you want to use GKE's managed Cilium integration or deploy Cilium independently is an important first decision.
 
 This guide covers requirements for both approaches: using GKE Dataplane V2 (which uses Cilium under the hood but managed by GKE) and deploying Cilium independently on GKE standard clusters. The node image choices, cluster configuration flags, and networking requirements differ between these approaches.
 
@@ -48,8 +48,8 @@ gcloud container clusters describe my-cluster \
 # Check node kernel versions
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
-# GKE COS nodes typically run kernel 5.15+
-# GKE Ubuntu nodes run Ubuntu 22.04 with kernel 5.15
+# GKE COS and Ubuntu node images are supported Linux node images
+# Verify the actual kernel version; current Cilium releases require Linux kernel 5.10+
 
 # Check node image type
 gcloud container node-pools describe default-pool \
@@ -83,6 +83,7 @@ gcloud container clusters describe my-cluster \
 # Create GKE cluster with Dataplane V2 (Cilium managed by GKE)
 gcloud container clusters create cilium-gke \
   --enable-dataplane-v2 \
+  --enable-ip-alias \
   --cluster-version latest \
   --num-nodes 3 \
   --machine-type e2-standard-4 \
@@ -93,8 +94,9 @@ gcloud container clusters create cilium-gke \
 # Get credentials
 gcloud container clusters get-credentials cilium-gke --region us-central1
 
-# Verify Cilium is running
-kubectl get pods -n kube-system | grep cilium
+# Verify GKE Dataplane V2 is running
+kubectl -n kube-system get pods -l k8s-app=cilium -o wide
+# The Pods are named anetd-* because anetd is the GKE Dataplane V2 controller
 ```
 
 ## Step 5: Firewall Rule Requirements
@@ -124,7 +126,8 @@ gcloud compute firewall-rules create allow-cilium-health \
 ## Step 6: Workload Identity Requirements
 
 ```bash
-# If using Cilium with ENI/cloud-specific IPAM, Workload Identity may be needed
+# Workload Identity Federation is for workloads that need Google Cloud API access.
+# Cilium's default GKE install uses Kubernetes PodCIDR IPAM, not AWS ENI IPAM.
 gcloud container clusters describe my-cluster \
   --region my-region \
   --format="value(workloadIdentityConfig)"
@@ -139,9 +142,9 @@ gcloud container clusters update my-cluster \
 
 | Requirement | Dataplane V2 (managed) | Self-managed |
 |-------------|----------------------|--------------|
-| GKE version | 1.20+ | 1.24+ |
+| GKE version | 1.20.6-gke.700+ | Match your Cilium release's Kubernetes compatibility matrix |
 | Node image | COS or Ubuntu | COS or Ubuntu |
-| Kernel | 5.15 (COS default) | 5.10+ |
+| Kernel | GKE-managed supported node image | 5.10+ |
 | Network plugin | GKE manages | Manual |
 | NetworkPolicy controller | Included | Disable GKE NP |
 
