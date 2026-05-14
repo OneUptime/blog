@@ -94,8 +94,8 @@ During a major maintenance window, you may want to suspend all HelmRepositories 
 
 ```bash
 # Suspend all HelmRepositories in the flux-system namespace
-flux get sources helm -n flux-system -o json | \
-  jq -r '.[] | .name' | \
+kubectl get helmrepository -n flux-system \
+  -o custom-columns=NAME:.metadata.name --no-headers | \
   xargs -I {} flux suspend source helm {} -n flux-system
 ```
 
@@ -103,8 +103,8 @@ Resume all of them:
 
 ```bash
 # Resume all HelmRepositories in the flux-system namespace
-flux get sources helm -n flux-system -o json | \
-  jq -r '.[] | .name' | \
+kubectl get helmrepository -n flux-system \
+  -o custom-columns=NAME:.metadata.name --no-headers | \
   xargs -I {} flux resume source helm {} -n flux-system
 ```
 
@@ -256,7 +256,7 @@ You can also set up Flux notifications to alert your team when a source is suspe
 
 ```yaml
 # Alert on HelmRepository suspension changes
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helm-repo-suspension-alerts
