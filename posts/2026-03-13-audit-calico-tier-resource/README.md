@@ -17,6 +17,7 @@ A compromised tier hierarchy - where security policies are moved to lower-priori
 ## Prerequisites
 
 - `calicoctl` with cluster admin access
+- `kubectl` with RBAC read access
 - Version control access for policy baselines
 - Documentation of expected tier hierarchy and ownership
 
@@ -28,8 +29,8 @@ A compromised tier hierarchy - where security policies are moved to lower-priori
 calicoctl get tiers -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-tiers = sorted(data['items'], key=lambda t: t['spec'].get('order', 9999))
-expected = {'security': 100, 'platform': 500, 'default': 1000}
+tiers = sorted(data['items'], key=lambda t: t['spec'].get('order', float('inf')))
+expected = {'security': 100, 'platform': 500, 'default': 1000000}
 print('=== Tier Order Audit ===')
 for tier in tiers:
     name = tier['metadata']['name']
@@ -86,24 +87,27 @@ graph LR
 
 ```bash
 #!/bin/bash
-# Check that non-security-team service accounts cannot modify security tier policies
+# Check for RBAC rules that grant broad Calico tier or tiered-policy modification
 echo "=== RBAC Tier Access Audit ==="
 
-# Get all service accounts in application namespaces
-for sa in $(kubectl get serviceaccounts -A -o json | python3 -c '
+# kubectl auth can-i cannot validate Calico tiered policy RBAC; inspect Role and ClusterRole rules.
+kubectl get clusterroles,roles -A -o json | python3 -c '
 import json, sys
-for sa in json.load(sys.stdin)["items"]:
-    ns = sa["metadata"]["namespace"]
-    name = sa["metadata"]["name"]
-    if ns not in ["kube-system", "calico-system", "monitoring"]:
-        print(f"system:serviceaccount:{ns}:{name}")
-'); do
-  can_modify=$(kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org \
-    --as=$sa 2>/dev/null)
-  if [ "$can_modify" = "yes" ]; then
-    echo "WARNING: $sa can create GlobalNetworkPolicies (including security tier)"
-  fi
-done
+data = json.load(sys.stdin)
+write_verbs = {"create", "update", "patch", "delete", "*"}
+protected_resources = {"tiers", "tier.globalnetworkpolicies", "tier.networkpolicies"}
+for role in data["items"]:
+    role_name = role["metadata"]["name"]
+    namespace = role["metadata"].get("namespace", "<cluster>")
+    for rule in role.get("rules", []):
+        api_groups = set(rule.get("apiGroups", []))
+        resources = set(rule.get("resources", []))
+        verbs = set(rule.get("verbs", []))
+        resource_names = set(rule.get("resourceNames", []))
+        if "projectcalico.org" in api_groups and resources & protected_resources and verbs & write_verbs:
+            if not resource_names or any(name in {"security", "security.*"} for name in resource_names):
+                print(f"REVIEW: {namespace}/{role_name} can modify protected Calico tier resources")
+'
 ```
 
 ## Audit Report Template
@@ -114,10 +118,10 @@ done
 ### Summary
 | Check | Status | Details |
 |-------|--------|---------|
-| Tier order hierarchy | PASS | security=100, platform=500, default=1000 |
+| Tier order hierarchy | PASS | security=100, platform=500, default=1000000 |
 | Security policies in security tier | PASS | All 3 required policies in security tier |
 | Tier configuration drift | WARN | platform tier order changed from 500 to 400 |
-| RBAC unauthorized access | PASS | No app service accounts can modify policies |
+| RBAC unauthorized access | PASS | No broad Role or ClusterRole grants can modify protected tier resources |
 
 ### Findings
 1. [MEDIUM] platform tier order changed from 500 to 400 - investigate if intentional
