@@ -37,7 +37,7 @@ This guide shows you how to deploy Kyverno with Flux CD and create comprehensive
 #       require-image-digest.yaml
 #       verify-image-signatures.yaml
 #       block-latest-tag.yaml
-#       require-labels-on-images.yaml
+#       restrict-pull-policy.yaml
 ```
 
 ## Deploying Kyverno with Flux CD
@@ -87,8 +87,6 @@ spec:
         namespace: kyverno
       interval: 12h
   values:
-    # Run in high-availability mode
-    replicaCount: 3
     # Configure admission controller settings
     admissionController:
       replicas: 3
@@ -109,6 +107,10 @@ spec:
         requests:
           cpu: 100m
           memory: 128Mi
+    cleanupController:
+      replicas: 2
+    reportsController:
+      replicas: 2
     # Exclude system namespaces from policy enforcement
     config:
       excludeGroups:
@@ -138,7 +140,6 @@ metadata:
       Only allow container images from approved registries.
       This prevents pulling images from untrusted sources.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -156,15 +157,17 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: Enforce
         message: >-
           Images must come from an approved registry.
           Allowed registries: ghcr.io/myorg, docker.io/library, registry.k8s.io
         pattern:
           spec:
-            containers:
+            =(ephemeralContainers):
               - image: "ghcr.io/myorg/* | docker.io/library/* | registry.k8s.io/*"
-            # Also check init containers
             =(initContainers):
+              - image: "ghcr.io/myorg/* | docker.io/library/* | registry.k8s.io/*"
+            containers:
               - image: "ghcr.io/myorg/* | docker.io/library/* | registry.k8s.io/*"
 ```
 
@@ -186,7 +189,6 @@ metadata:
       Disallow the use of the 'latest' tag on container images.
       All images must use a specific version tag or digest.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: block-latest-tag
@@ -196,15 +198,20 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
           The 'latest' tag is not allowed. Use a specific version tag
           (e.g., v1.2.3) or an image digest instead.
-        pattern:
-          spec:
-            containers:
-              - image: "!*:latest"
-            =(initContainers):
-              - image: "!*:latest"
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:latest"
+          - list: "request.object.spec.initContainers"
+            pattern:
+              image: "!*:latest"
+          - list: "request.object.spec.ephemeralContainers"
+            pattern:
+              image: "!*:latest"
     - name: require-tag-present
       match:
         any:
@@ -212,15 +219,20 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >-
           Images must include a tag. Untagged images default to 'latest'
           which is not allowed.
-        pattern:
-          spec:
-            containers:
-              - image: "*:*"
-            =(initContainers):
-              - image: "*:*"
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "*:*"
+          - list: "request.object.spec.initContainers"
+            pattern:
+              image: "*:*"
+          - list: "request.object.spec.ephemeralContainers"
+            pattern:
+              image: "*:*"
 ```
 
 ## Image Policy: Require Image Digest
@@ -242,7 +254,6 @@ metadata:
       This ensures immutable image references.
 spec:
   # Start in Audit mode, switch to Enforce after validation
-  validationFailureAction: Audit
   background: true
   rules:
     - name: require-digest
@@ -257,14 +268,17 @@ spec:
               namespaces:
                 - kube-system
       validate:
+        failureAction: Audit
         message: >-
           Container images must use a digest (sha256) reference.
           Example: registry.example.com/image@sha256:abc123...
         pattern:
           spec:
-            containers:
+            =(ephemeralContainers):
               - image: "*@sha256:*"
             =(initContainers):
+              - image: "*@sha256:*"
+            containers:
               - image: "*@sha256:*"
 ```
 
@@ -286,7 +300,6 @@ metadata:
       Verify that container images from our organization registry
       are signed using cosign with our public key.
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: verify-cosign-signature
@@ -299,6 +312,7 @@ spec:
         - imageReferences:
             # Only verify images from our organization registry
             - "ghcr.io/myorg/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -315,7 +329,7 @@ spec:
 
 ## Image Policy: Restrict Image Pull Policy
 
-Ensure that imagePullPolicy is set correctly to avoid pulling unverified images.
+Ensure that imagePullPolicy is set correctly so production Pods check the registry whenever a container starts.
 
 ```yaml
 # clusters/my-cluster/image-policies/restrict-pull-policy.yaml
@@ -328,7 +342,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-always-pull
@@ -340,12 +353,15 @@ spec:
               namespaces:
                 - production
       validate:
+        failureAction: Enforce
         message: >-
           In production, imagePullPolicy must be set to 'Always'
-          to ensure the latest security patches are applied.
+          so the kubelet checks the registry whenever a container starts.
         pattern:
           spec:
             containers:
+              - imagePullPolicy: Always
+            =(initContainers):
               - imagePullPolicy: Always
 ```
 
@@ -414,22 +430,22 @@ kubectl run test-bad-registry --image=evil.registry.io/malware:v1
 kubectl run test-latest --image=ghcr.io/myorg/app:latest
 # Expected: Error - policy block-latest-tag blocked the request
 
-# Test: Deploy a valid image
+# Test: Deploy a valid, signed image
 kubectl run test-valid --image=ghcr.io/myorg/app:v1.2.3
-# Expected: Pod created successfully
+# Expected: Pod created successfully if the image is signed by the configured key
 
 # View policy reports for audit-mode policies
 kubectl get policyreports -A
 kubectl get clusterpolicyreports
 ```
 
-## Monitoring Policy Violations
+## Monitoring Flux Reconciliation Failures
 
-Set up alerts for policy violations using Flux CD notifications.
+Set up alerts for Flux reconciliation failures while applying Kyverno and policy manifests.
 
 ```yaml
 # clusters/my-cluster/image-policies/alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: policy-slack
@@ -442,7 +458,7 @@ spec:
 
 ---
 # clusters/my-cluster/image-policies/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: policy-violations
