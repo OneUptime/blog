@@ -18,7 +18,7 @@ This guide covers configuring OCIRepository with Google Artifact Registry, inclu
 
 Before you begin, ensure you have:
 
-- A GKE cluster (or any Kubernetes cluster with GCP access) running Flux CD v0.35 or later
+- A GKE cluster (or any Kubernetes cluster with GCP access) running Flux CD v2.6 or later
 - The `flux` CLI, `kubectl`, and `gcloud` CLI installed
 - A Google Artifact Registry repository created in Docker format
 - Permissions to manage IAM bindings and service accounts
@@ -64,6 +64,16 @@ Ensure Workload Identity is enabled on your GKE cluster.
 gcloud container clusters update my-gke-cluster \
   --zone=us-central1-a \
   --workload-pool=my-project.svc.id.goog
+```
+
+For existing Standard cluster node pools, also ensure the GKE metadata server is enabled.
+
+```bash
+# Enable the GKE metadata server on an existing node pool
+gcloud container node-pools update my-node-pool \
+  --cluster=my-gke-cluster \
+  --zone=us-central1-a \
+  --workload-metadata=GKE_METADATA
 ```
 
 ### Step 2: Create a Google Cloud Service Account
@@ -208,7 +218,7 @@ flux push artifact \
   oci://us-central1-docker.pkg.dev/my-project/my-flux-repo/my-app-manifests:1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="main@sha1:$(git rev-parse HEAD)"
 
 # Verify the push
 flux list artifacts \
