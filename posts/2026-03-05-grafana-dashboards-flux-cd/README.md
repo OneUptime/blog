@@ -8,60 +8,74 @@ Description: Learn how to build custom Grafana dashboards for Flux CD using Prom
 
 ---
 
-Flux CD exposes Prometheus metrics from each of its controllers, providing data on reconciliation status, duration, errors, and resource conditions. By building Grafana dashboards around these metrics, you gain real-time visibility into your GitOps pipeline health. This guide covers the key Flux metrics, how to create meaningful dashboard panels, and how to manage dashboards as code through Flux.
+Flux CD exposes Prometheus metrics from each of its controllers, providing data on reconciliation duration, errors, and controller activity. Resource readiness and suspension state can be exported with kube-state-metrics custom resource state metrics. By building Grafana dashboards around these metrics, you gain real-time visibility into your GitOps pipeline health. This guide covers the key Flux metrics, how to create meaningful dashboard panels, and how to manage dashboards as code through Flux.
 
 ## Flux CD Metrics Overview
 
 Flux controllers expose metrics on port 8080 at the `/metrics` endpoint. The primary metric families are:
 
-- **gotk_reconcile_condition**: Gauge indicating the condition status (Ready, Healthy, etc.) of each Flux resource.
 - **gotk_reconcile_duration_seconds**: Histogram of reconciliation durations per controller and resource.
-- **gotk_suspend_status**: Gauge indicating whether a resource is suspended (1) or active (0).
 - **controller_runtime_reconcile_total**: Counter of total reconciliation attempts.
 - **controller_runtime_reconcile_errors_total**: Counter of failed reconciliations.
 - **controller_runtime_reconcile_time_seconds**: Histogram of controller reconciliation time.
+- **gotk_resource_info**: kube-state-metrics custom resource metric with Flux resource metadata, including `ready` and `suspended` labels.
 
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD and Prometheus installed
+- kube-state-metrics configured to export Flux custom resource state metrics
 - Grafana instance (self-hosted or Grafana Cloud)
 - Prometheus configured to scrape Flux controller metrics
 
 ## Step 1: Configure Prometheus to Scrape Flux Metrics
 
-If using the Prometheus Operator, create ServiceMonitors for Flux controllers:
+If using the Prometheus Operator, create a PodMonitor for Flux controllers:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux-system
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: flux
+spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - helm-controller
+          - source-controller
+          - kustomize-controller
+          - notification-controller
+          - image-automation-controller
+          - image-reflector-controller
+  podMetricsEndpoints:
+    - port: http-prom
+      interval: 30s
+      path: /metrics
+```
+
+If you expose Flux controller metrics through Services, you can create a ServiceMonitor instead:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: flux-system
-  namespace: flux-system
-  labels:
-    app.kubernetes.io/part-of: flux
+  namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
   selector:
     matchLabels:
       app.kubernetes.io/part-of: flux
   endpoints:
-    - port: http-prom
-      interval: 30s
-      path: /metrics
-```
-
-If Flux services do not have the `http-prom` port named, create PodMonitors instead:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: flux-controllers
-  namespace: flux-system
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/part-of: flux
-  podMetricsEndpoints:
     - port: http-prom
       path: /metrics
       interval: 30s
@@ -73,24 +87,24 @@ Create a stat panel showing the overall reconciliation health:
 
 **Ready Resources Count:**
 ```promql
-count(gotk_reconcile_condition{type="Ready", status="True"})
+count(gotk_resource_info{ready="True"})
 ```
 
 **Not Ready Resources:**
 ```promql
-count(gotk_reconcile_condition{type="Ready", status="False"})
+count(gotk_resource_info{ready!="True"})
 ```
 
 **Suspended Resources:**
 ```promql
-count(gotk_suspend_status == 1)
+count(gotk_resource_info{suspended="True"})
 ```
 
 **Reconciliation Success Rate (%):**
 ```promql
-sum(gotk_reconcile_condition{type="Ready", status="True"})
+count(gotk_resource_info{ready="True"})
 /
-count(gotk_reconcile_condition{type="Ready"})
+count(gotk_resource_info)
 * 100
 ```
 
@@ -149,19 +163,19 @@ sum(rate(controller_runtime_reconcile_total[5m]))
 
 **All Kustomizations Status (Table):**
 ```promql
-gotk_reconcile_condition{type="Ready", kind="Kustomization"}
+gotk_resource_info{customresource_kind="Kustomization"}
 ```
 
-Display with columns: namespace, name, status, and use value mappings (1 = Ready, 0 = Not Ready) with color coding.
+Display with columns: exported_namespace, name, ready, and suspended, and use value mappings for the `ready` label with color coding.
 
 **All HelmReleases Status:**
 ```promql
-gotk_reconcile_condition{type="Ready", kind="HelmRelease"}
+gotk_resource_info{customresource_kind="HelmRelease"}
 ```
 
 **All Sources Status:**
 ```promql
-gotk_reconcile_condition{type="Ready", kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}
+gotk_resource_info{customresource_kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"}
 ```
 
 ## Step 6: Manage Dashboards as Code with Flux
@@ -181,32 +195,30 @@ metadata:
 data:
   flux-dashboard.json: |
     {
-      "dashboard": {
-        "title": "Flux CD Overview",
-        "uid": "flux-cd-custom",
-        "panels": [
-          {
-            "title": "Ready Resources",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "count(gotk_reconcile_condition{type=\"Ready\", status=\"True\"})"
-              }
-            ],
-            "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
-          },
-          {
-            "title": "Not Ready Resources",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "count(gotk_reconcile_condition{type=\"Ready\", status=\"False\"}) or vector(0)"
-              }
-            ],
-            "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
-          }
-        ]
-      }
+      "title": "Flux CD Overview",
+      "uid": "flux-cd-custom",
+      "panels": [
+        {
+          "title": "Ready Resources",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(gotk_resource_info{ready=\"True\"})"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
+        },
+        {
+          "title": "Not Ready Resources",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "count(gotk_resource_info{ready!=\"True\"}) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
+        }
+      ]
     }
 ```
 
@@ -232,7 +244,7 @@ spec:
 
 ## Step 7: Import the Community Dashboard
 
-The Flux community maintains a dashboard with ID **16714** on Grafana.com. Import it as a starting point:
+Grafana.com has a Flux dashboard with ID **16714** that can be imported as a starting point, but check its queries against the Flux and kube-state-metrics versions you run:
 
 ```bash
 # Download the dashboard JSON
@@ -245,7 +257,7 @@ Store it in a ConfigMap managed by Flux for automatic deployment.
 
 ## Step 8: Set Up Dashboard Alerts
 
-Add Grafana alert rules directly on dashboard panels:
+Use PrometheusRule resources for recording rules that dashboard panels and alerts can reuse:
 
 ```yaml
 # Recording rules for efficient alerting
@@ -261,8 +273,8 @@ spec:
       rules:
         - record: flux:reconcile_condition:ready_ratio
           expr: |
-            sum(gotk_reconcile_condition{type="Ready", status="True"})
-            / count(gotk_reconcile_condition{type="Ready"})
+            count(gotk_resource_info{ready="True"})
+            / count(gotk_resource_info)
         - record: flux:reconcile:error_rate_5m
           expr: |
             sum(rate(controller_runtime_reconcile_errors_total[5m])) by (controller)
@@ -270,4 +282,4 @@ spec:
 
 ## Summary
 
-Building Grafana dashboards for Flux CD involves scraping metrics from Flux controllers with Prometheus, creating panels for reconciliation health, duration, errors, and resource status, and managing the dashboard definitions as code through Flux. The key metrics are `gotk_reconcile_condition` for resource readiness, `gotk_reconcile_duration_seconds` for performance, and `controller_runtime_reconcile_errors_total` for error tracking. Start with the community dashboard (ID: 16714) and extend it with custom panels tailored to your environment.
+Building Grafana dashboards for Flux CD involves scraping metrics from Flux controllers with Prometheus, exporting Flux resource state with kube-state-metrics, creating panels for reconciliation health, duration, errors, and resource status, and managing the dashboard definitions as code through Flux. The key metrics are `gotk_resource_info` for resource readiness and suspension state, `gotk_reconcile_duration_seconds` for performance, and `controller_runtime_reconcile_errors_total` for error tracking. Start with an existing Flux dashboard such as Grafana.com dashboard ID 16714 and extend it with custom panels tailored to your environment.
