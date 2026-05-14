@@ -29,13 +29,13 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 | OneUptime | $0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Better Stack | $29/mo | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | UptimeRobot | $7/mo | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Datadog Synthetics | Custom | ✅ (limited) | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Checkly | $30/mo | ✅ | Partial | ❌ | ❌ | ❌ | ❌ |
-| Site24x7 | $9/mo | Trial only | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Datadog Synthetics | Usage-based | Trial only | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Checkly | $24/mo | ✅ | Partial | ❌ | Partial | ❌ | ❌ |
+| Site24x7 | $9/mo | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | StatusCake | $20/mo | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Updown.io | $2/mo | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| New Relic Synthetics | $0 (100GB free) | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Uptrends | $16/mo | Trial only | ❌ | ❌ | ❌ | ❌ | ❌ |
+| New Relic Synthetics | $0 (500 checks free) | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Uptrends | $210/mo | Trial only | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ## The Alternatives
 
@@ -55,7 +55,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 - On-call scheduling with escalation policies
 - OpenTelemetry-native for logs, metrics, and traces
 - AI agent that can analyze incidents and suggest fixes
-- Fully open source under MIT license, so you can self-host with zero licensing cost
+- Fully open source under the Apache 2.0 license, so you can self-host with zero licensing cost
 
 **Where Pingdom has an edge:**
 - Pingdom's Real User Monitoring (RUM) has more years of data collection refinement
@@ -72,7 +72,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 
 **Best for:** Teams that want a polished, modern alternative with great UX and do not need self-hosting.
 
-**Pricing:** Free tier available with limited monitors. Paid plans start at $29/month for the team plan.
+**Pricing:** Free tier available with limited monitors. Paid plans start at $29/month.
 
 **Why it stands out:**
 - Beautiful, modern interface
@@ -87,7 +87,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 - No self-hosted or open source option
 - Can get expensive as you scale (logs especially)
 - Smaller integration ecosystem than older players
-- No APM or distributed tracing
+- Distributed tracing is available, but Better Stack is not a full APM platform in the same sense as Datadog or New Relic
 
 **Good fit if:** You want a modern, consolidated tool and are comfortable with SaaS-only.
 
@@ -153,7 +153,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 
 **Best for:** Engineering teams that want to write monitoring checks in their IDE and manage them through CI/CD.
 
-**Pricing:** Free tier with limited checks. Paid plans start at $30/month.
+**Pricing:** Free tier with limited checks. Paid plans start at $24/month.
 
 **Why it stands out:**
 - Monitoring as code with the Checkly CLI
@@ -165,7 +165,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 
 **Where it falls short:**
 - Developer-focused means less accessible for ops or non-technical users
-- No incident management, on-call, or status pages
+- Status pages and basic incident communication are available, but full on-call scheduling is not
 - No logs, metrics, or APM
 - Requires coding knowledge to get the most out of it
 
@@ -179,14 +179,14 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 
 **Best for:** Teams that want broad monitoring coverage with server and cloud monitoring included.
 
-**Pricing:** Starts at $9/month for basic website monitoring. Full plans with server monitoring start at $35/month.
+**Pricing:** Starts at $9/month for website and all-in-one monitoring, including a small number of server monitors.
 
 **Why it stands out:**
 - Covers website, server, cloud, and application monitoring
 - Real User Monitoring (RUM) included
 - APM with transaction tracing
 - Network monitoring
-- 120+ global monitoring locations
+- 130+ global monitoring locations
 - Integrates with Zoho ecosystem
 
 **Where it falls short:**
@@ -244,7 +244,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 - Checks from multiple regions
 
 **Where it falls short:**
-- Very basic - HTTP(S) checks only
+- Very basic compared to full observability suites - HTTP(S), TCP, and ICMP checks only
 - No synthetic monitoring or transaction tests
 - No incident management
 - Minimal alerting options
@@ -260,7 +260,7 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 
 **Best for:** Teams that want enterprise-grade synthetics within a broader observability stack.
 
-**Pricing:** New Relic offers 100GB free per month across all data types. Beyond that, pricing is data-based. Synthetics checks consume data allocation.
+**Pricing:** New Relic offers 100GB of free data ingest per month and includes a limited number of synthetic checks on the free tier. Beyond that, data ingest and additional synthetic checks are billed separately.
 
 **Why it stands out:**
 - Scripted browser monitors with Selenium
@@ -287,14 +287,14 @@ This is not a hit piece on Pingdom. It still does basic uptime monitoring well. 
 
 **Best for:** Enterprises and agencies that need detailed performance monitoring and SLA reporting.
 
-**Pricing:** Starts at $16/month for basic monitoring. Enterprise plans with full features are custom-priced.
+**Pricing:** Paid plans currently start at $210/month for the Core plan, with higher tiers and enterprise plans available.
 
 **Why it stands out:**
 - Multi-step transaction monitoring
 - Real User Monitoring with detailed waterfall charts
 - 230+ checkpoint locations worldwide
 - Detailed SLA reporting
-- Multi-browser testing (Chrome, Firefox, Edge, PhantomJS)
+- Browser monitoring in current Chrome and Edge
 - API monitoring with assertions
 
 **Where it falls short:**
