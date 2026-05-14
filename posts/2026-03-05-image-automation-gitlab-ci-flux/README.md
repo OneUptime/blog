@@ -42,7 +42,7 @@ build-image:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
 ```
@@ -63,7 +63,7 @@ build-image:
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:build-$CI_PIPELINE_IID
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
 ```
@@ -82,7 +82,7 @@ build-image:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
   script:
     - export TAG=$(date -u +%Y%m%d%H%M%S)
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t $CI_REGISTRY_IMAGE:$TAG .
     - docker push $CI_REGISTRY_IMAGE:$TAG
 ```
@@ -244,7 +244,16 @@ spec:
 
 ## Using GitLab Webhooks for Faster Detection
 
-Instead of waiting for the Flux scan interval, configure a webhook to notify Flux immediately when a new image is pushed.
+Instead of waiting for the Flux scan interval, configure a webhook to notify Flux when a GitLab pipeline or tag event occurs after an image build.
+
+Create the webhook token secret:
+
+```bash
+TOKEN=$(head -c 12 /dev/urandom | shasum | cut -d ' ' -f1)
+kubectl create secret generic webhook-token \
+  --namespace flux-system \
+  --from-literal=token="${TOKEN}"
+```
 
 Create a Flux Receiver:
 
@@ -256,6 +265,9 @@ metadata:
   namespace: flux-system
 spec:
   type: gitlab
+  events:
+    - "Pipeline Hook"
+    - "Tag Push Hook"
   secretRef:
     name: webhook-token
   resources:
@@ -264,10 +276,10 @@ spec:
       name: my-app
 ```
 
-Get the webhook URL and configure it in your GitLab project under Settings > Webhooks.
+Get the webhook path, combine it with the public URL that exposes the Flux `webhook-receiver` service, and configure the full URL in your GitLab project under Settings > Webhooks. Use the same token value as the GitLab webhook secret token.
 
 ```bash
-# Get the receiver URL
+# Get the receiver path
 kubectl get receiver gitlab-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
 ```
 
