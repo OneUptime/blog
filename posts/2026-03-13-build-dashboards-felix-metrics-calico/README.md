@@ -31,6 +31,22 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http
 ## ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calico-felix-metrics
+  namespace: calico-system
+  labels:
+    app: calico-felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -39,7 +55,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
+      app: calico-felix-metrics
   endpoints:
     - port: http-metrics
       path: /metrics
