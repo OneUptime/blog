@@ -18,7 +18,7 @@ This guide walks you through setting up Score with Flux CD to streamline your de
 
 Before getting started, ensure you have the following:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster supported by your Flux CD version (for the latest Flux release, use a currently supported Kubernetes minor version)
 - Flux CD installed and bootstrapped
 - The Score CLI (`score-k8s`) installed
 - A Git repository connected to Flux CD
@@ -47,8 +47,8 @@ Install the Score CLI for Kubernetes target:
 brew install score-spec/tap/score-k8s
 
 # Or download directly for Linux
-wget https://github.com/score-spec/score-k8s/releases/latest/download/score-k8s_linux_amd64.tar.gz
-tar -xzf score-k8s_linux_amd64.tar.gz
+wget https://github.com/score-spec/score-k8s/releases/download/<x.y.z>/score-k8s_<x.y.z>_linux_amd64.tar.gz
+tar -xzf score-k8s_<x.y.z>_linux_amd64.tar.gz
 sudo mv score-k8s /usr/local/bin/
 
 # Verify installation
@@ -127,21 +127,12 @@ resources:
     metadata:
       annotations:
         score.dev/source: "external"
-    properties:
-      host:
-      port:
-      name:
-      username:
-      password:
   # Redis cache resource
   cache:
     type: redis
     metadata:
       annotations:
         score.dev/source: "external"
-    properties:
-      host:
-      port:
 ```
 
 ## Configuring Score Resource Provisioners
@@ -150,36 +141,32 @@ Set up resource provisioners so Score knows how to resolve resource references:
 
 ```yaml
 # apps/my-web-app/score-k8s-provisioners.yaml
-apiVersion: score.dev/v1b1
-kind: ResourceProvisioner
-
 # Provisioner for PostgreSQL resources
-provisioners:
-  - uri: template://postgres
-    type: postgres
-    # Map outputs to actual values from Kubernetes secrets
-    outputs:
-      host: "postgres-service.database.svc.cluster.local"
-      port: "5432"
-      name: "myapp"
-      username: "{{ .StateItem \"username\" }}"
-      password: "{{ .StateItem \"password\" }}"
-    state:
-      username:
-        secret:
-          name: postgres-credentials
-          key: username
-      password:
-        secret:
-          name: postgres-credentials
-          key: password
+- uri: template://postgres
+  type: postgres
+  # Map outputs to actual values from Kubernetes secrets
+  outputs: |
+    host: postgres-service.database.svc.cluster.local
+    port: "5432"
+    name: myapp
+    username: {{ encodeSecretRef "postgres-credentials" "username" }}
+    password: {{ encodeSecretRef "postgres-credentials" "password" }}
+  expected_outputs:
+    - host
+    - port
+    - name
+    - username
+    - password
 
-  # Provisioner for Redis resources
-  - uri: template://redis
-    type: redis
-    outputs:
-      host: "redis-service.cache.svc.cluster.local"
-      port: "6379"
+# Provisioner for Redis resources
+- uri: template://redis
+  type: redis
+  outputs: |
+    host: redis-service.cache.svc.cluster.local
+    port: "6379"
+  expected_outputs:
+    - host
+    - port
 ```
 
 ## Generating Kubernetes Manifests from Score
@@ -189,10 +176,7 @@ Use the Score CLI to generate Kubernetes-native manifests:
 ```bash
 # Initialize the score-k8s project
 cd apps/my-web-app
-score-k8s init
-
-# Load the provisioners
-score-k8s provisioners load score-k8s-provisioners.yaml
+score-k8s init --no-sample --provisioners ./score-k8s-provisioners.yaml
 
 # Generate Kubernetes manifests
 score-k8s generate score.yaml \
@@ -263,11 +247,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install score-k8s
-        run: |
-          # Download and install the Score CLI
-          wget https://github.com/score-spec/score-k8s/releases/latest/download/score-k8s_linux_amd64.tar.gz
-          tar -xzf score-k8s_linux_amd64.tar.gz
-          sudo mv score-k8s /usr/local/bin/
+        uses: score-spec/setup-score@v3
+        with:
+          file: score-k8s
+          version: latest
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate manifests for all apps
         run: |
@@ -277,10 +261,12 @@ jobs:
             if [ -f "$app_dir/score.yaml" ]; then
               echo "Generating manifests for $app_name"
               cd "$app_dir"
-              score-k8s init
               if [ -f "score-k8s-provisioners.yaml" ]; then
-                score-k8s provisioners load score-k8s-provisioners.yaml
+                score-k8s init --no-sample --provisioners ./score-k8s-provisioners.yaml
+              else
+                score-k8s init --no-sample
               fi
+              mkdir -p "../../generated/$app_name"
               score-k8s generate score.yaml \
                 --output "../../generated/$app_name/manifests.yaml"
               cd ../..
@@ -298,7 +284,7 @@ jobs:
 
 ## Advanced Score Workload with Multiple Containers
 
-Define a more complex workload with sidecars:
+Define a more complex workload with sidecars, assuming your platform provides a provisioner for the `elasticsearch` resource type:
 
 ```yaml
 # apps/api-service/score.yaml
@@ -310,7 +296,7 @@ metadata:
 containers:
   # Main API container
   api:
-    image: my-registry.io/api-service:v2.1.0
+    image: my-registry.io/api-service:v2.1.0 # {"$imagepolicy": "flux-system:api-service"}
     command:
       - ./api-server
     variables:
@@ -356,16 +342,8 @@ service:
 resources:
   db:
     type: postgres
-    properties:
-      host:
-      port:
-      name:
-      username:
-      password:
   logging:
     type: elasticsearch
-    properties:
-      host:
 ```
 
 ## Adding Flux CD Image Automation with Score
@@ -374,6 +352,15 @@ Combine Score with Flux image automation to automatically update workload images
 
 ```yaml
 # clusters/production/image-automation/image-policy.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: api-service
+  namespace: flux-system
+spec:
+  image: my-registry.io/api-service
+  interval: 5m
+---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -408,7 +395,7 @@ spec:
       author:
         name: flux-image-updater
         email: flux@example.com
-      messageTemplate: "chore: update image {{ .ImageName }} to {{ .NewTag }}"
+      messageTemplate: "chore: update images"
     push:
       branch: main
   update:
@@ -423,14 +410,14 @@ Set up alerts for your Score-generated deployments:
 
 ```yaml
 # clusters/production/monitoring/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: score-workloads
   namespace: flux-system
 spec:
-  # Send alerts for warning and error severity
-  severity: info
+  # Send alerts for all event severities
+  eventSeverity: info
   # Provider reference for notifications
   providerRef:
     name: slack-notifications
@@ -444,7 +431,7 @@ spec:
 
 ```yaml
 # clusters/production/monitoring/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-notifications
@@ -464,7 +451,7 @@ If Score fails to generate manifests, check your provisioners:
 
 ```bash
 # Validate the Score file
-score-k8s run --dry-run score.yaml
+score-k8s generate score.yaml --output /tmp/manifests.yaml
 
 # Check provisioner configuration
 score-k8s provisioners list
@@ -503,7 +490,7 @@ cat generated/my-web-app/manifests.yaml | grep -A5 "env:"
 2. **Version your provisioners** - Store provisioner configurations alongside Score specs for reproducibility.
 3. **Use CI for generation** - Never manually generate and commit manifests; automate it in your CI pipeline.
 4. **Separate environments** - Use different provisioner files for staging and production with different resource endpoints.
-5. **Validate before commit** - Run `score-k8s run --dry-run` in CI before committing generated manifests.
+5. **Validate before commit** - Run `score-k8s generate score.yaml --output /tmp/manifests.yaml` in CI before committing generated manifests.
 
 ## Conclusion
 
