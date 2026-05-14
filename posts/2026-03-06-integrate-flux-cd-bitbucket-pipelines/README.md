@@ -57,10 +57,6 @@ Create a `bitbucket-pipelines.yml` file in the root of your application reposito
 
 image: atlassian/default-image:4
 
-options:
-  # Enable Docker for building container images
-  docker: true
-
 definitions:
   # Reusable step for building and pushing images
   steps:
@@ -120,9 +116,6 @@ For production workflows using semantic versioning:
 
 image: atlassian/default-image:4
 
-options:
-  docker: true
-
 pipelines:
   branches:
     main:
@@ -175,9 +168,6 @@ If you are using AWS ECR as your container registry:
 # bitbucket-pipelines.yml for AWS ECR
 
 image: atlassian/default-image:4
-
-options:
-  docker: true
 
 definitions:
   steps:
@@ -247,7 +237,7 @@ kubectl create secret docker-registry registry-credentials \
 
 ## Step 6: Set Up Image Policy
 
-Configure Flux to select the right image tag from the registry.
+Configure Flux to select the right image tag from the registry. The SemVer policy below matches the versioned tags produced in Step 3.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
@@ -343,38 +333,46 @@ spec:
 
 ## Step 9: Parallel Pipelines for Multi-Architecture Builds
 
-Bitbucket Pipelines supports parallel steps for building multi-architecture images:
+Bitbucket Pipelines supports parallel steps for building multi-architecture images. On Bitbucket Cloud, Docker Buildx multi-architecture builds require Runtime v3 and a build image that includes the Docker CLI and Buildx plugin:
 
 ```yaml
 # bitbucket-pipelines.yml with multi-arch builds
 
-image: atlassian/default-image:4
+image: docker:28.1.1-cli
 
 options:
-  docker: true
+  runtime:
+    cloud:
+      version: "3"
 
 pipelines:
   branches:
     main:
       - parallel:
-          - step:
-              name: Build AMD64 Image
-              services:
-                - docker
-              script:
-                - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-                - export TAG=$(echo $BITBUCKET_COMMIT | cut -c1-7)
-                - docker build -t $DOCKER_USERNAME/my-app:${TAG}-amd64 .
-                - docker push $DOCKER_USERNAME/my-app:${TAG}-amd64
-          - step:
-              name: Build ARM64 Image
-              services:
-                - docker
-              script:
-                - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-                - export TAG=$(echo $BITBUCKET_COMMIT | cut -c1-7)
-                - docker buildx build --platform linux/arm64
-                    -t $DOCKER_USERNAME/my-app:${TAG}-arm64 --push .
+          steps:
+            - step:
+                name: Build AMD64 Image
+                services:
+                  - docker
+                script:
+                  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                  - export TAG=$(echo $BITBUCKET_COMMIT | cut -c1-7)
+                  - docker buildx create --name amd64-builder --driver docker-container --use
+                  - docker buildx inspect --bootstrap
+                  - docker buildx build --platform linux/amd64
+                      -t $DOCKER_USERNAME/my-app:${TAG}-amd64 --push .
+            - step:
+                name: Build ARM64 Image
+                services:
+                  - docker
+                script:
+                  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                  - export TAG=$(echo $BITBUCKET_COMMIT | cut -c1-7)
+                  - docker buildx create --name arm64-builder --driver docker-container --use
+                  - docker buildx inspect --bootstrap
+                  - docker run --rm --privileged tonistiigi/binfmt --install arm64
+                  - docker buildx build --platform linux/arm64
+                      -t $DOCKER_USERNAME/my-app:${TAG}-arm64 --push .
       - step:
           name: Create Multi-Arch Manifest
           services:
