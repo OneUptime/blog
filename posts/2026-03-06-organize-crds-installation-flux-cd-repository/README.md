@@ -20,7 +20,7 @@ When Flux tries to apply a set of manifests, it needs CRDs to exist before it ca
 
 Consider this failure scenario:
 
-```yaml
+```text
 # This will fail because the Certificate CR is applied
 
 # before the cert-manager CRDs are registered
@@ -151,22 +151,22 @@ resources:
 Many Helm charts include CRDs. Use the HelmRelease CRD install policy to manage them.
 
 ```yaml
-# infrastructure/controllers/cert-manager/helmrelease.yaml
+# infrastructure/controllers/my-operator/helmrelease.yaml
 # Let Helm manage CRD installation via the HelmRelease
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cert-manager
-  namespace: cert-manager
+  name: my-operator
+  namespace: my-operator
 spec:
   interval: 30m
   chart:
     spec:
-      chart: cert-manager
-      version: "1.14.x"
+      chart: my-operator
+      version: "1.0.x"
       sourceRef:
         kind: HelmRepository
-        name: jetstack
+        name: my-operator-repo
         namespace: flux-system
   install:
     # Create CRDs on install, replace if they already exist
@@ -178,9 +178,6 @@ spec:
     crds: CreateReplace
     remediation:
       retries: 3
-  values:
-    installCRDs: false
-    # Set to false because we handle CRDs via the crds policy above
 ```
 
 ## Managing CRDs Separately from Helm
@@ -189,11 +186,9 @@ For more control, extract CRDs from Helm charts and manage them independently.
 
 ```bash
 # Extract CRDs from a Helm chart for independent management
-helm template cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --include-crds \
-  --set installCRDs=true | \
-  kubectl split-yaml --output crds/cert-manager/
+helm show crds my-operator-repo/my-operator \
+  --version 1.0.0 \
+  > crds/my-operator/crds.yaml
 
 # Or download CRDs directly
 curl -sL https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml \
