@@ -8,14 +8,14 @@ Description: Looking for Atlassian Statuspage alternatives? Compare 10 status pa
 
 Atlassian Statuspage has been the default choice for public status pages since it launched in 2013. It does the job: you get a hosted page, component-based status, incident updates, and subscriber notifications.
 
-But it has problems. Pricing starts at $79/month for the business plan and scales to $399+/month for enterprise. There is no self-hosted option. Customization is limited. And perhaps most importantly, Atlassian itself suffered a 21-day outage in recent memory, which is not a great look for a status page provider.
+But it has problems. Public page pricing starts at $29/month for paid plans, with Business at $399/month and Enterprise at $1,499/month. There is no self-hosted option. Customization is limited. And perhaps most importantly, Atlassian itself suffered an outage of up to 14 days for some customers in recent memory, which is not a great look for a status page provider.
 
 If you are evaluating status page tools in 2026, here are the best alternatives worth considering.
 
 ## Why Teams Switch from Atlassian Statuspage
 
 **1. Cost Relative to Value**
-For what is essentially a single-purpose tool, $79-399/month feels steep. Many teams need status pages alongside monitoring, incident management, and on-call - Statuspage only handles one of those.
+For what is essentially a single-purpose tool, $29-1,499/month feels steep. Many teams need status pages alongside monitoring, incident management, and on-call - Statuspage only handles one of those.
 
 **2. No Self-Hosted Option**
 If your compliance requirements mandate data residency or on-premises hosting, Statuspage is a non-starter. Everything runs on Atlassian's infrastructure.
@@ -42,7 +42,7 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 **Pros:**
 - Status pages auto-update based on real monitor status
 - Includes uptime monitoring, incident management, and on-call
-- Truly open source (MIT license), self-host anywhere
+- Truly open source (Apache 2.0 license), self-host anywhere
 - Custom domains with SSL
 - Subscriber notifications (email, SMS, webhooks)
 - Replaces 3-5 separate tools
@@ -51,7 +51,7 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 - Smaller community than Atlassian products
 - UI is functional, not flashy
 
-**Why consider:** Statuspage charges $79+/month for a page that you manually update. OneUptime gives you automated status pages that reflect actual monitor health, plus monitoring, incidents, and on-call - all for less. And you can self-host it if compliance requires it.
+**Why consider:** Statuspage charges $29+/month for a page that you manually update. OneUptime gives you automated status pages that reflect actual monitor health, plus monitoring, incidents, and on-call - all for less. And you can self-host it if compliance requires it.
 
 [Try OneUptime free](https://oneuptime.com)
 
@@ -59,26 +59,26 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 
 ### 2. Instatus (Best Lightweight Hosted Option)
 
-**What it is:** Modern, fast status page service built for speed and simplicity.
+**What it is:** Modern, fast status page, monitoring, and incident response service built for speed and simplicity.
 
 **Best for:** Startups and small teams that want a clean status page without overhead.
 
-**Pricing:** Free plan available. Pro starts at $20/month. Business at $80/month.
+**Pricing:** Free plan available. Paid Pro and Business plans available.
 
 **Pros:**
 - Fast, modern UI that looks good out of the box
 - Quick setup (under 5 minutes)
-- Integrations with monitoring tools via webhooks
+- Built-in uptime monitoring plus integrations with monitoring tools via webhooks
 - Custom domains included
 - Maintenance windows and scheduled maintenance
 - Good API
 
 **Cons:**
-- No monitoring built in
+- Monitoring is lighter than dedicated observability platforms
 - Free plan has limitations
 - Smaller company, less enterprise track record
 
-**Why consider:** If you literally just need a status page and nothing else, Instatus is clean, fast, and cheaper than Statuspage for equivalent features.
+**Why consider:** If you need a straightforward status page with lightweight monitoring, Instatus is clean, fast, and cheaper than Statuspage for equivalent features.
 
 ---
 
@@ -114,7 +114,7 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 
 **Best for:** Teams wanting monitoring + status pages in one tool with a modern UI.
 
-**Pricing:** Free plan available. Starter at $24/month. Business at custom pricing.
+**Pricing:** Free plan available. Paid responder plans start at $29/user/month annually or $34/user/month monthly. Business at custom pricing.
 
 **Pros:**
 - Combined monitoring and status pages
@@ -167,7 +167,7 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 
 **Best for:** Teams where non-engineers manage the status page.
 
-**Pricing:** Starts at $29/month for the starter plan.
+**Pricing:** Starts at $99/month.
 
 **Pros:**
 - Extremely simple to set up and use
@@ -204,7 +204,7 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 - Decent customization
 
 **Cons:**
-- No monitoring
+- Monitoring exists, but limits depend on plan
 - More expensive for single-page use
 - Smaller community
 
@@ -226,7 +226,7 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 - Synthetic monitoring included
 - Clean, modern UI
 - Edge-based monitoring (checks from multiple regions)
-- Open source (MIT)
+- Open source (AGPL-3.0)
 
 **Cons:**
 - Newer project, less battle-tested
@@ -244,12 +244,12 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 
 **Best for:** Enterprises with strict compliance and customization requirements.
 
-**Pricing:** Custom pricing. Expect $100+/month.
+**Pricing:** Plans start at $79/month. Enterprise plans start at $999/month.
 
 **Pros:**
-- SOC 2 and enterprise security features
+- Enterprise-grade security features
 - Advanced customization
-- Multi-language support
+- Private mode with SSO and IP access controls
 - Private and public pages
 - Strong API
 - White-label options
@@ -294,17 +294,17 @@ Beyond basic branding (logo, colors, favicon), layout customization is limited. 
 
 | Tool | Open Source | Built-in Monitoring | Self-Hosted | Starting Price |
 |------|-----------|-------------------|------------|---------------|
-| **OneUptime** | Yes (MIT) | Yes | Yes | Free |
-| **Instatus** | No | No | No | Free / $20/mo |
+| **OneUptime** | Yes (Apache 2.0) | Yes | Yes | Free |
+| **Instatus** | No | Yes | No | Free / paid tiers |
 | **Cachet** | Yes | No | Yes | Free |
-| **Better Stack** | No | Yes | No | Free / $24/mo |
+| **Better Stack** | No | Yes | No | Free / $29/user/mo |
 | **Upptime** | Yes (MIT) | Yes (HTTP only) | Yes (GitHub) | Free |
-| **Sorry** | No | No | No | $29/mo |
-| **Statuspal** | No | No | No | $46/mo |
-| **Openstatus** | Yes (MIT) | Yes | Yes | Free / $30/mo |
-| **Statusio** | No | No | No | Custom |
+| **Sorry** | No | No | No | $99/mo |
+| **Statuspal** | No | Yes | No | $46/mo |
+| **Openstatus** | Yes (AGPL-3.0) | Yes | Yes | Free / $30/mo |
+| **Statusio** | No | No | No | $79/mo |
 | **Gatus** | Yes | Yes | Yes | Free |
-| **Atlassian Statuspage** | No | No | No | $79/mo |
+| **Atlassian Statuspage** | No | No | No | Free / $29/mo |
 
 ## How to Choose
 
