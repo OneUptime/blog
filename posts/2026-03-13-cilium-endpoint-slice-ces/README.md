@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, EndpointSlice
 
-Description: Learn how to configure, troubleshoot, validate, and monitor Cilium EndpointSlice (CES) for scalable Kubernetes service discovery and load balancing.
+Description: Learn how to configure, troubleshoot, validate, and monitor Cilium EndpointSlice (CES) for scalable Kubernetes endpoint propagation.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to configure, troubleshoot, validate, and monitor Cilium 
 
 Cilium EndpointSlice (CES) is a Cilium-native grouping mechanism that batches multiple Cilium Endpoints (CEPs) into a single Kubernetes custom resource. As clusters grow to thousands of pods, the per-endpoint reconciliation overhead becomes a bottleneck. CES addresses this by allowing the Cilium Operator to manage endpoints in configurable batches, dramatically reducing API server load and improving scalability.
 
-CES complements the standard Kubernetes EndpointSlice API by providing a Cilium-specific view of endpoints with enriched metadata such as security identity, encryption state, and eBPF datapath information. Understanding how CES works is essential for operating large-scale Cilium clusters efficiently.
+CiliumEndpointSlice is distinct from the standard Kubernetes EndpointSlice API. Kubernetes EndpointSlices help track Service backends for load balancing, while CiliumEndpointSlices batch CiliumEndpoint information used for routing and policy decisions, including endpoint identity, networking, encryption, named ports, and service account metadata. Understanding how CES works is essential for operating large-scale Cilium clusters efficiently.
 
 This guide walks through configuring CES, diagnosing common issues, validating correct operation, and setting up monitoring to ensure your endpoint management layer remains healthy.
 
@@ -34,21 +34,21 @@ Enable and configure CES via Helm values:
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set enableCiliumEndpointSlice=true
+  --set ciliumEndpointSlice.enabled=true
 
 # Configure batch size (default: 100 endpoints per CES)
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set enableCiliumEndpointSlice=true \
-  --set operator.endpointGCInterval=5m
+  --set ciliumEndpointSlice.enabled=true \
+  --set operator.extraArgs[0]=--ces-max-ciliumendpoints-per-ces=200
 ```
 
 Inspect the current CiliumEndpointSlice resources:
 
 ```bash
 # List all CES objects
-kubectl get ciliumendpointslices -A
+kubectl get ciliumendpointslices
 
 # Describe a specific CES
 kubectl describe ciliumendpointslice <ces-name>
@@ -61,19 +61,16 @@ apiVersion: cilium.io/v2alpha1
 kind: CiliumEndpointSlice
 metadata:
   name: ces-default-abc123
-namespace: default
-spec:
-  endpoints:
-    - id: 1234
-      identity:
-        id: 56789
-      networking:
-        addressing:
-          - ipv4: 10.244.1.5
-      named-ports:
-        - name: http
-          port: 8080
-          protocol: TCP
+endpoints:
+  - name: app-7b9d8f6c9d-xk2m5
+    id: 56789
+    networking:
+      addressing:
+        - ipv4: 10.244.1.5
+    named-ports:
+      - name: http
+        port: 8080
+        protocol: TCP
 ```
 
 ## Troubleshoot Cilium EndpointSlice
@@ -84,14 +81,15 @@ Diagnose CES reconciliation issues:
 # Check Cilium Operator logs for CES errors
 kubectl -n kube-system logs -l name=cilium-operator --tail=100 | grep -i "endpointslice\|CES"
 
-# Check for stale CES objects
-kubectl get ciliumendpointslices -A | grep -v Running
+# Inspect CES objects and their grouped endpoints
+kubectl get ciliumendpointslices
+kubectl describe ciliumendpointslice <ces-name>
 
 # Verify CES controller is active
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -i endpoint
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i endpoint
 
 # Inspect endpoint synchronization
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 ```
 
 Common issues and fixes:
@@ -99,14 +97,15 @@ Common issues and fixes:
 ```bash
 # Issue: CES not being created
 # Fix: Ensure feature gate is enabled
-kubectl -n kube-system get configmap cilium-config -o yaml | grep enableCiliumEndpointSlice
+kubectl -n kube-system get configmap cilium-config -o yaml | grep enable-cilium-endpoint-slice
 
 # Issue: Endpoints stuck in pending state
-kubectl get cep -A | grep -v Running
+kubectl get cep -A | grep -v ready
 kubectl describe cep <endpoint-name> -n <namespace>
 
-# Force endpoint regeneration
-kubectl -n kube-system exec ds/cilium -- cilium endpoint regenerate <endpoint-id>
+# Inspect endpoint details and status log
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get <endpoint-id>
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint log <endpoint-id>
 ```
 
 ## Validate Cilium EndpointSlice
@@ -123,7 +122,7 @@ kubectl get ciliumendpointslices --no-headers | wc -l
 
 # Validate endpoint count matches
 CEP_COUNT=$(kubectl get cep -A --no-headers | wc -l)
-CES_ENDPOINT_COUNT=$(kubectl get ciliumendpointslices -o json | jq '[.items[].spec.endpoints | length] | add')
+CES_ENDPOINT_COUNT=$(kubectl get ciliumendpointslices -o json | jq '[.items[].endpoints | length] | add')
 echo "CEPs: $CEP_COUNT, CES Endpoints: $CES_ENDPOINT_COUNT"
 
 # Run Cilium connectivity test
@@ -157,17 +156,17 @@ Set up monitoring with Prometheus:
 # Key metrics to monitor
 # cilium_operator_ces_sync_total - total CES sync operations
 # cilium_operator_ces_queueing_delay_seconds - CES queue latency
-# cilium_endpoint_count - total endpoints managed
+# cilium_endpoint - total endpoints managed by each agent
 
 # PromQL queries
 # CES sync rate
 rate(cilium_operator_ces_sync_total[5m])
 
-# Average CES batch fullness
-cilium_operator_ces_endpoint_count / cilium_operator_ces_count
+# Average CES batch size observed
+rate(cilium_operator_number_of_ceps_per_ces_sum[5m]) / rate(cilium_operator_number_of_ceps_per_ces_count[5m])
 
 # Endpoint to CES ratio
-sum(cilium_endpoint_count) / count(kube_customresource_info{resource="ciliumendpointslices"})
+sum(cilium_endpoint) / count(kube_customresource_info{customresource_group="cilium.io",customresource_version="v2alpha1",customresource_kind="CiliumEndpointSlice"})
 ```
 
 Alert on CES reconciliation failures:
