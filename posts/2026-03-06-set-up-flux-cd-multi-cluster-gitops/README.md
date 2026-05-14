@@ -57,6 +57,15 @@ fleet-repo/
         deployment.yaml
         service.yaml
         kustomization.yaml
+    staging/
+      namespace.yaml
+      kustomization.yaml
+    production-us/
+      namespace.yaml
+      kustomization.yaml
+    production-eu/
+      namespace.yaml
+      kustomization.yaml
   clusters/
     management/
       flux-system/
@@ -163,18 +172,28 @@ Create infrastructure resources that all clusters share.
 
 ```yaml
 # infrastructure/controllers/cert-manager.yaml
-# HelmRelease for cert-manager deployed on all clusters
+# HelmRepository and HelmRelease for cert-manager deployed on all clusters
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
-      version: "v1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -186,7 +205,8 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     prometheus:
       enabled: true
       servicemonitor:
@@ -195,18 +215,28 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress-nginx.yaml
-# Ingress controller deployed on all clusters
+# HelmRepository and ingress controller deployed on all clusters
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: ingress-nginx
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://kubernetes.github.io/ingress-nginx
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-system
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.9.x"
+      version: "4.x"
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
@@ -235,7 +265,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Referencing Shared Infrastructure from Each Cluster
@@ -349,11 +379,21 @@ resources:
 ```
 
 ```yaml
+# apps/staging/namespace.yaml
+# Create the namespace used by the application manifests
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+```
+
+```yaml
 # apps/staging/kustomization.yaml
 # Staging overlay for all applications
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - namespace.yaml
   - ../base/app-a
   - ../base/app-b
 patches:
@@ -373,6 +413,7 @@ patches:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - namespace.yaml
   - ../base/app-a
   - ../base/app-b
 patches:
@@ -394,12 +435,12 @@ patches:
 
 ## Setting Up Cross-Cluster Monitoring
 
-Configure Flux notifications to monitor all clusters from a central location.
+Configure Flux notifications in each cluster to send events to a central location.
 
 ```yaml
-# clusters/management/notification.yaml
-# Centralized notification provider for all cluster events
-apiVersion: notification.toolkit.fluxcd.io/v1
+# clusters/<cluster>/notification.yaml
+# Notification provider for this cluster's events
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: central-slack
@@ -410,7 +451,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-resources
@@ -485,7 +526,7 @@ spec:
 3. **Use dependency ordering**: Ensure infrastructure is deployed before applications using `dependsOn`.
 4. **Keep cluster directories thin**: Cluster directories should mostly reference shared resources, not duplicate them.
 5. **Standardize across clusters**: Use the same chart versions and base configurations, only varying environment-specific values.
-6. **Monitor all clusters centrally**: Set up notifications that aggregate events from all clusters.
+6. **Monitor all clusters centrally**: Set up notifications in each cluster that send events to the same external destination.
 
 ## Conclusion
 
