@@ -20,6 +20,7 @@ This guide covers configuring the Flux Bucket source for Google Cloud Storage, i
 - gcloud CLI installed and configured
 - kubectl and Flux CLI installed
 - A Google Cloud project with Cloud Storage API enabled
+- Workload Identity Federation for GKE enabled on the cluster
 
 ## Architecture Overview
 
@@ -55,13 +56,14 @@ gcloud storage buckets create "gs://${BUCKET_NAME}" \
 gcloud storage buckets update "gs://${BUCKET_NAME}" \
   --versioning
 
-# Set a lifecycle rule to clean up old versions after 30 days
+# Set a lifecycle rule to clean up old noncurrent versions after 30 days
 cat > lifecycle.json << 'EOF'
 {
   "rule": [
     {
       "action": {"type": "Delete"},
       "condition": {
+        "daysSinceNoncurrentTime": 30,
         "numNewerVersions": 5,
         "isLive": false
       }
@@ -84,8 +86,16 @@ Prepare and upload Kubernetes manifests to the GCS bucket.
 # Create a directory with Kubernetes manifests
 mkdir -p manifests/production
 
+# Create the target namespace
+cat > manifests/production/namespace.yaml << 'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+EOF
+
 # Create a sample deployment manifest
-cat > manifests/production/deployment.yaml << 'EOF'
+cat > manifests/production/deployment.yaml << EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -105,7 +115,7 @@ spec:
     spec:
       containers:
         - name: web-app
-          image: us-central1-docker.pkg.dev/PROJECT_ID/docker-images/web-app:v1.0.0
+          image: us-central1-docker.pkg.dev/${PROJECT_ID}/docker-images/web-app:v1.0.0
           ports:
             - containerPort: 8080
           resources:
@@ -138,6 +148,7 @@ cat > manifests/production/kustomization.yaml << 'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - namespace.yaml
   - deployment.yaml
   - service.yaml
 namespace: production
@@ -159,7 +170,11 @@ Set up Workload Identity to allow the Flux source-controller to read from the GC
 gcloud iam service-accounts create flux-gcs-reader \
   --display-name "Flux GCS Bucket Reader"
 
-# Grant Storage Object Viewer role on the bucket
+# Grant the bucket and object viewer roles required by Flux
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
+  --member="serviceAccount:flux-gcs-reader@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/storage.bucketViewer"
+
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
   --member="serviceAccount:flux-gcs-reader@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/storage.objectViewer"
@@ -270,7 +285,7 @@ spec:
   sourceRef:
     kind: Bucket
     name: gcs-manifests
-  path: ./
+  path: ./production
   prune: true
   wait: true
   timeout: 5m
@@ -379,7 +394,7 @@ spec:
   sourceRef:
     kind: Bucket
     name: gcs-staging
-  path: ./
+  path: ./staging
   prune: true
   targetNamespace: staging
 ---
@@ -394,14 +409,14 @@ spec:
   sourceRef:
     kind: Bucket
     name: gcs-production
-  path: ./
+  path: ./production
   prune: true
   targetNamespace: production
 ```
 
 ## Step 9: Configure Bucket Notifications for Faster Sync
 
-Set up GCS bucket notifications to trigger Flux reconciliation when objects are updated.
+Set up GCS bucket notifications and a Pub/Sub push subscription to trigger Flux reconciliation when objects are updated.
 
 ```bash
 # Create a Pub/Sub topic for bucket notifications
@@ -443,7 +458,15 @@ kubectl create secret generic gcs-webhook-token \
   --from-literal=token="$WEBHOOK_TOKEN"
 
 # Get the receiver webhook URL
-kubectl get receiver gcs-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
+WEBHOOK_PATH=$(kubectl get receiver gcs-receiver -n flux-system -o jsonpath='{.status.webhookPath}')
+
+# Set this to the externally reachable URL for the Flux webhook-receiver service
+export RECEIVER_URL="https://flux-webhook.example.com${WEBHOOK_PATH}"
+
+# Create a Pub/Sub push subscription that calls the Flux receiver
+gcloud pubsub subscriptions create gcs-flux-receiver \
+  --topic=gcs-flux-notifications \
+  --push-endpoint="${RECEIVER_URL}"
 ```
 
 ## Step 10: Set Up Bucket Access Logging and Monitoring
@@ -452,15 +475,33 @@ Configure monitoring for bucket access and Flux sync status.
 
 ```bash
 # Enable access logging for the bucket
+export LOG_BUCKET_NAME="${PROJECT_ID}-access-logs"
+
+gcloud storage buckets create "gs://${LOG_BUCKET_NAME}" \
+  --location=$REGION \
+  --uniform-bucket-level-access \
+  --public-access-prevention
+
+gcloud storage buckets add-iam-policy-binding "gs://${LOG_BUCKET_NAME}" \
+  --member=group:cloud-storage-analytics@google.com \
+  --role=roles/storage.objectCreator
+
 gcloud storage buckets update "gs://${BUCKET_NAME}" \
-  --log-bucket="${PROJECT_ID}-access-logs" \
+  --log-bucket="gs://${LOG_BUCKET_NAME}" \
   --log-object-prefix="flux-manifests/"
 
-# Create an alert policy for Flux bucket sync failures
+# Create a logs-based metric for Flux bucket sync failures
+gcloud logging metrics create flux_bucket_sync_errors \
+  --description="Flux bucket source reconciliation errors" \
+  --log-filter='resource.type="k8s_container" AND resource.labels.container_name="manager" AND textPayload:"Bucket/gcs-manifests" AND textPayload:"error"'
+
+# Create an alert policy for the logs-based metric
 gcloud alpha monitoring policies create \
   --display-name="Flux Bucket Sync Failure" \
   --condition-display-name="Bucket source not ready" \
-  --condition-filter='resource.type="k8s_container" AND resource.labels.container_name="manager" AND textPayload:"Bucket/gcs-manifests" AND textPayload:"error"' \
+  --condition-filter='resource.type="k8s_container" AND metric.type="logging.googleapis.com/user/flux_bucket_sync_errors"' \
+  --duration=60s \
+  --if='> 0' \
   --notification-channels="<channel-id>" \
   --combiner=OR
 ```
