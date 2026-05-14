@@ -16,9 +16,9 @@ This guide covers different TLS termination strategies in Kubernetes, all manage
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.24 or later)
+- A Kubernetes cluster (v1.31 or later for the ingress-nginx chart version shown below)
 - Flux CD installed and bootstrapped
-- An ingress controller deployed (nginx-ingress or similar)
+- An ingress controller deployed (nginx-ingress or similar; the community ingress-nginx project was retired in March 2026, so use an actively maintained controller for new production deployments)
 - cert-manager installed for certificate management
 - kubectl configured for your cluster
 
@@ -85,7 +85,7 @@ metadata:
     nginx.ingress.kubernetes.io/hsts-preload: "true"
     # SSL ciphers configuration
     nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
-    # Minimum TLS version
+    # Prefer server cipher order
     nginx.ingress.kubernetes.io/ssl-prefer-server-ciphers: "true"
 spec:
   ingressClassName: nginx
@@ -126,7 +126,7 @@ spec:
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.11.x"
+      version: "4.15.x"
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
@@ -158,8 +158,6 @@ metadata:
   annotations:
     # Enable SSL passthrough for this ingress
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    # Backend protocol is HTTPS since TLS is not terminated
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -228,8 +226,9 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-production
     # Tell NGINX to use HTTPS when connecting to the backend
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    # Verify the backend certificate (optional, for mTLS)
+    # Verify the backend certificate
     nginx.ingress.kubernetes.io/proxy-ssl-verify: "on"
+    # Secret must contain ca.crt, and tls.crt/tls.key if using client certificate authentication to the backend
     nginx.ingress.kubernetes.io/proxy-ssl-secret: "default/backend-ca-secret"
 spec:
   ingressClassName: nginx
