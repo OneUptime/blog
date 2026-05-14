@@ -10,7 +10,7 @@ Description: Learn how to safely operate ArgoCD and Flux CD in parallel during a
 
 ## Introduction
 
-The safest approach to migrating from ArgoCD to Flux CD is a gradual, parallel operation period where both tools run simultaneously in the same cluster but manage different applications. This allows teams to build confidence in Flux CD's behavior, establish runbooks, and validate configuration before the final cutover-without any risk of production outage.
+The safest approach to migrating from ArgoCD to Flux CD is a gradual, parallel operation period where both tools run simultaneously in the same cluster but manage different applications. This allows teams to build confidence in Flux CD's behavior, establish runbooks, and validate configuration before the final cutover-while reducing the risk of production outage.
 
 The critical rule is: ArgoCD and Flux must never manage the same Kubernetes resources simultaneously. This guide explains how to enforce that boundary safely.
 
@@ -32,8 +32,8 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
+# Add --personal only when --owner is a personal GitHub account, not an organization.
 
 # Verify both are running
 kubectl get pods -n flux-system
@@ -77,8 +77,9 @@ applications:
 ## Step 3: Safe Migration of a Single Application
 
 ```bash
-# Step 1: Create Flux resources for the application (but don't apply yet)
-cat > /tmp/myapp-flux.yaml << 'EOF'
+# Step 1: Create Flux resources for the application (but keep them suspended)
+mkdir -p clusters/production/apps
+cat > clusters/production/apps/myapp.yaml << 'EOF'
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -90,8 +91,8 @@ spec:
   prune: true
   sourceRef:
     kind: GitRepository
-    name: fleet-repo
-  targetNamespace: myapp
+    name: flux-system
+  targetNamespace: myapp  # namespace must already exist or be defined in ./apps/myapp
   suspend: true  # START SUSPENDED - don't reconcile yet
 EOF
 
@@ -104,9 +105,12 @@ git push
 argocd app set myapp --sync-policy none
 echo "ArgoCD auto-sync disabled for myapp"
 
-# Step 4: Enable Flux reconciliation (remove suspend)
-flux resume kustomization myapp -n flux-system
-# Or update the YAML: suspend: false
+# Step 4: Enable Flux reconciliation by removing suspend from Git
+# Edit clusters/production/apps/myapp.yaml and remove `suspend: true`, then:
+git add clusters/production/apps/myapp.yaml
+git commit -m "feat: enable Flux reconciliation for myapp"
+git push
+flux reconcile kustomization flux-system -n flux-system --with-source
 
 # Step 5: Watch Flux reconcile
 flux get kustomizations myapp -n flux-system --watch
@@ -129,15 +133,35 @@ The most dangerous scenario is both tools managing the same resource simultaneou
 
 echo "=== Checking for ownership conflicts ==="
 
-# Get all resources managed by Flux
-FLUX_RESOURCES=$(kubectl get all -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' \
-  -l 'kustomize.toolkit.fluxcd.io/name')
+# ArgoCD's default resource tracking label is app.kubernetes.io/instance.
+# If you configured a custom ArgoCD tracking label or annotation-based tracking,
+# adjust the selector below to match your installation.
+ARGOCD_SELECTOR='app.kubernetes.io/instance'
+FLUX_SELECTOR='kustomize.toolkit.fluxcd.io/name'
 
-# Get all resources managed by ArgoCD
-ARGOCD_RESOURCES=$(kubectl get all -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' \
-  -l 'argocd.argoproj.io/app-name')
+resource_keys() {
+  local selector="$1"
+  local namespaced="$2"
+
+  kubectl api-resources --verbs=list --namespaced="$namespaced" -o name | while read -r resource; do
+    if [ "$namespaced" = "true" ]; then
+      kubectl get "$resource" -A -l "$selector" \
+        -o jsonpath='{range .items[*]}{.apiVersion}{"/"}{.kind}{"\t"}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}' 2>/dev/null || true
+    else
+      kubectl get "$resource" -l "$selector" \
+        -o jsonpath='{range .items[*]}{.apiVersion}{"/"}{.kind}{"\t"}{.metadata.name}{"\n"}{end}' 2>/dev/null || true
+    fi
+  done
+}
+
+# Get resources managed by Flux and ArgoCD across namespaced and cluster-scoped kinds.
+FLUX_RESOURCES=$(printf "%s\n%s\n" \
+  "$(resource_keys "$FLUX_SELECTOR" true)" \
+  "$(resource_keys "$FLUX_SELECTOR" false)" | sort -u)
+
+ARGOCD_RESOURCES=$(printf "%s\n%s\n" \
+  "$(resource_keys "$ARGOCD_SELECTOR" true)" \
+  "$(resource_keys "$ARGOCD_SELECTOR" false)" | sort -u)
 
 # Find overlaps
 OVERLAP=$(comm -12 \
@@ -178,7 +202,7 @@ echo "Migration progress: $FLUX_COUNT/$TOTAL applications"
 
 ## Step 6: Rollback Procedure
 
-If a Flux migration goes wrong, roll back to ArgoCD:
+If a Flux migration goes wrong before deleting the ArgoCD Application, roll back to ArgoCD:
 
 ```bash
 # Suspend Flux reconciliation immediately
@@ -192,6 +216,8 @@ argocd app sync myapp
 
 # Verify ArgoCD has taken back control
 argocd app get myapp
+
+# If the ArgoCD Application was already deleted, restore its Application manifest first.
 ```
 
 ## Best Practices
