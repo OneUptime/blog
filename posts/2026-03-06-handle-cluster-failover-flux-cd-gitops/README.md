@@ -87,7 +87,7 @@ metadata:
   name: cluster-health
   namespace: kube-system
   annotations:
-    # ExternalDNS will create a health-checked DNS record
+    # ExternalDNS will create a DNS record for the health endpoint
     external-dns.alpha.kubernetes.io/hostname: "health.cluster-1.example.com"
 spec:
   type: LoadBalancer
@@ -117,16 +117,16 @@ spec:
         kind: HelmRepository
         name: external-dns
   values:
-    provider: aws
+    provider:
+      name: aws
     domainFilters:
       - example.com
     policy: sync
     registry: txt
     txtOwnerId: "${CLUSTER_NAME}"
-    # Set a low TTL so failover happens quickly
+    txtPrefix: _externaldns.
     extraArgs:
       - "--aws-prefer-cname"
-      - "--txt-prefix=_externaldns."
 ```
 
 ### Step 3: Configure Application Ingress with Failover Annotations
@@ -142,8 +142,10 @@ metadata:
   annotations:
     # Route53 failover routing policy
     external-dns.alpha.kubernetes.io/hostname: "app.example.com"
+    external-dns.alpha.kubernetes.io/ttl: "60"
     external-dns.alpha.kubernetes.io/aws-failover: "PRIMARY"
     external-dns.alpha.kubernetes.io/set-identifier: "primary-cluster"
+    # ExternalDNS associates this existing Route53 health check with the DNS record
     external-dns.alpha.kubernetes.io/aws-health-check-id: "${HEALTH_CHECK_ID}"
 spec:
   ingressClassName: nginx
@@ -174,6 +176,7 @@ metadata:
   namespace: production
   annotations:
     external-dns.alpha.kubernetes.io/hostname: "app.example.com"
+    external-dns.alpha.kubernetes.io/ttl: "60"
     external-dns.alpha.kubernetes.io/aws-failover: "SECONDARY"
     external-dns.alpha.kubernetes.io/set-identifier: "secondary-cluster"
 spec:
@@ -296,6 +299,9 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            app: cluster-health-monitor
         spec:
           serviceAccountName: failover-sa
           containers:
@@ -423,18 +429,17 @@ spec:
 ```yaml
 # infrastructure/notifications/failover-alerts.yaml
 # Notify the team when failover-related changes are reconciled
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
   namespace: flux-system
 spec:
-  type: generic
-  address: https://events.pagerduty.com/v2/enqueue
-  secretRef:
-    name: pagerduty-routing-key
+  type: pagerduty
+  address: https://events.pagerduty.com
+  channel: "${PAGERDUTY_ROUTING_KEY}"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: failover-alert
@@ -450,7 +455,8 @@ spec:
   # Only alert on specific events
   inclusionList:
     - ".*FAILOVER.*"
-  summary: "Cluster failover event detected"
+  eventMetadata:
+    summary: "Cluster failover event detected"
 ```
 
 ## Step 10: Test Your Failover Process
