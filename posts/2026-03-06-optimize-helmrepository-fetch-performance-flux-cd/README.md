@@ -35,6 +35,8 @@ Large Helm repositories with hundreds of charts produce massive index files that
 
 OCI-based Helm repositories eliminate the index download entirely. Instead of downloading a monolithic index, Flux fetches only the specific chart version needed.
 
+Note: Flux's `type: oci` HelmRepository support is in maintenance mode. For new OCI-based workflows, the `OCIRepository` API provides improved support, but `HelmRepository` with `type: oci` remains supported.
+
 ```yaml
 # OCI-based HelmRepository - no index download required
 
@@ -47,6 +49,7 @@ spec:
   type: oci
   # OCI registries serve charts directly without index files
   url: oci://registry-1.docker.io/bitnamicharts
+  # interval is ignored for type: oci HelmRepository resources
   interval: 60m
   provider: generic
 ---
@@ -66,7 +69,7 @@ spec:
         kind: HelmRepository
         name: bitnami-oci
         namespace: flux-system
-      # Flux fetches only this specific chart, not the entire index
+      # Flux fetches the matching chart, not a Helm repository index
       reconcileStrategy: ChartVersion
 ```
 
@@ -162,7 +165,7 @@ spec:
         kind: HelmRepository
         name: ingress-nginx
         namespace: flux-system
-      # Revision strategy checks chart content hash, which requires download
+      # Revision strategy is intended for GitRepository and Bucket sources
       reconcileStrategy: Revision
 ```
 
@@ -187,6 +190,7 @@ spec:
   type: oci
   # Single OCI registry hosting all internal charts
   url: oci://registry.internal.example.com/helm-charts
+  # interval is ignored for type: oci HelmRepository resources
   interval: 1h
   provider: generic
 ---
@@ -229,7 +233,7 @@ spec:
 Use efficient authentication methods to reduce connection overhead.
 
 ```yaml
-# HTTPS authentication with token (faster TLS negotiation)
+# HTTPS authentication with token or basic credentials
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -240,7 +244,7 @@ spec:
   url: https://charts.private.example.com
   secretRef:
     name: helm-repo-creds
-  # Pass credentials only in the header, not via query params
+  # Enable only when chart URLs in index.yaml use a different host
   passCredentials: true
 ---
 apiVersion: v1
@@ -266,6 +270,7 @@ metadata:
 spec:
   type: oci
   url: oci://123456789.dkr.ecr.us-east-1.amazonaws.com/charts
+  # interval is ignored for type: oci HelmRepository resources
   interval: 1h
   # Use cloud provider IRSA/workload identity for automatic token refresh
   provider: aws
@@ -296,9 +301,9 @@ spec:
             # Reduce artifact retention for Helm charts
             - --artifact-retention-ttl=60m
             - --artifact-retention-records=3
-            # Increase Helm index cache size
+            # Increase Helm index cache size, measured in cached indexes
             - --helm-cache-max-size=256
-            # Set timeouts for slow repositories
+            # Keep cached indexes available between HelmChart reconciliations
             - --helm-cache-ttl=30m
             - --helm-cache-purge-interval=10m
           resources:
@@ -310,7 +315,7 @@ spec:
               cpu: "1000m"
               memory: "1.5Gi"
           env:
-            # Reduce GC overhead during index parsing
+            # Bound heap growth during large index parsing
             - name: GOGC
               value: "75"
             - name: GOMEMLIMIT
@@ -336,7 +341,7 @@ spec:
       version: "7.0.17"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-oci
         namespace: flux-system
       # ChartVersion strategy only re-fetches when version changes
       # This is more efficient than Revision strategy
@@ -371,9 +376,14 @@ spec:
         # Alert on slow Helm index fetches
         - alert: FluxHelmRepoFetchSlow
           expr: |
-            gotk_reconcile_duration_seconds{
-              kind="HelmRepository"
-            } > 120
+            histogram_quantile(
+              0.95,
+              sum by (le, name, namespace) (
+                rate(gotk_reconcile_duration_seconds_bucket{
+                  kind="HelmRepository"
+                }[5m])
+              )
+            ) > 120
           for: 5m
           labels:
             severity: warning
