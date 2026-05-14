@@ -16,7 +16,7 @@ This guide shows you how to use `flux check` effectively for installation verifi
 
 ## Prerequisites
 
-- Flux CLI installed (v2.2.0 or later)
+- Flux CLI installed
 - A running Kubernetes cluster
 - kubectl configured with cluster access
 
@@ -59,16 +59,16 @@ Healthy output looks like this:
 
 ```text
 > checking prerequisites
-> Kubernetes 1.28.5 >=1.25.0-0
+> Kubernetes 1.34.1 >=1.34.1-0
 > checking controllers
 > helm-controller: deployment ready
-> helm-controller: ghcr.io/fluxcd/helm-controller:v0.37.4
+> helm-controller: ghcr.io/fluxcd/helm-controller:v1.5.4
 > kustomize-controller: deployment ready
-> kustomize-controller: ghcr.io/fluxcd/kustomize-controller:v1.2.2
+> kustomize-controller: ghcr.io/fluxcd/kustomize-controller:v1.8.5
 > notification-controller: deployment ready
-> notification-controller: ghcr.io/fluxcd/notification-controller:v1.2.4
+> notification-controller: ghcr.io/fluxcd/notification-controller:v1.8.4
 > source-controller: deployment ready
-> source-controller: ghcr.io/fluxcd/source-controller:v1.2.4
+> source-controller: ghcr.io/fluxcd/source-controller:v1.8.4
 > checking crds
 > alerts.notification.toolkit.fluxcd.io/v1
 > buckets.source.toolkit.fluxcd.io/v1
@@ -96,7 +96,7 @@ This is useful for pre-flight checks before running `flux bootstrap` or `flux in
 
 ```text
 > checking prerequisites
-> Kubernetes 1.28.5 >=1.25.0-0
+> Kubernetes 1.34.1 >=1.34.1-0
 > prerequisites checks passed
 ```
 
@@ -111,7 +111,7 @@ Each line in the output indicates a verification step:
 flux check
 
 # Kubernetes version verification
-# > Kubernetes 1.28.5 >=1.25.0-0
+# > Kubernetes 1.34.1 >=1.34.1-0
 # This confirms your cluster version meets the minimum requirement
 
 # Controller status
@@ -119,7 +119,7 @@ flux check
 # This confirms the controller pod is running and healthy
 
 # Controller image version
-# > helm-controller: ghcr.io/fluxcd/helm-controller:v0.37.4
+# > helm-controller: ghcr.io/fluxcd/helm-controller:v1.5.4
 # This shows the exact version of each controller
 
 # CRD availability
@@ -136,7 +136,7 @@ When issues are found, the output clearly indicates what went wrong:
 flux check
 
 # > checking prerequisites
-# > Kubernetes 1.28.5 >=1.25.0-0
+# > Kubernetes 1.34.1 >=1.34.1-0
 # > checking controllers
 # > helm-controller: deployment ready
 # > source-controller: deployment not ready
@@ -285,13 +285,18 @@ kill %1
 Flux controllers have built-in health endpoints. You can verify them directly:
 
 ```bash
-# Check the health endpoint of source-controller
-kubectl exec -n flux-system deployment/source-controller -- \
-  wget -qO- http://localhost:9440/healthz
+# Forward the health endpoint of source-controller
+kubectl port-forward -n flux-system \
+  deployment/source-controller 9440:9440 &
+
+# Check the health endpoint
+curl -s http://localhost:9440/healthz
 
 # Check the readiness endpoint
-kubectl exec -n flux-system deployment/source-controller -- \
-  wget -qO- http://localhost:9440/readyz
+curl -s http://localhost:9440/readyz
+
+# Kill the port-forward
+kill %1
 ```
 
 ## Automated Health Monitoring Script
@@ -307,18 +312,16 @@ set -euo pipefail
 
 NAMESPACE="flux-system"
 LOG_FILE="/var/log/flux-health.log"
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
 log() {
+  local TIMESTAMP
+  TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
   echo "[${TIMESTAMP}] $1" | tee -a "${LOG_FILE}"
 }
 
 # Run flux check
 log "Starting Flux health check..."
-CHECK_OUTPUT=$(flux check 2>&1)
-CHECK_EXIT=$?
-
-if [ $CHECK_EXIT -eq 0 ]; then
+if CHECK_OUTPUT=$(flux check 2>&1); then
   log "STATUS: HEALTHY"
   log "All Flux components are operational."
 else
@@ -345,15 +348,15 @@ fi
 log "Checking reconciliation status..."
 
 # Check for failed Kustomizations
-FAILED_KS=$(flux get kustomizations -A 2>/dev/null | grep -c "False" || echo "0")
+FAILED_KS=$(flux get kustomizations -A 2>/dev/null | grep -c "False" || true)
 log "Failed Kustomizations: ${FAILED_KS}"
 
 # Check for failed HelmReleases
-FAILED_HR=$(flux get helmreleases -A 2>/dev/null | grep -c "False" || echo "0")
+FAILED_HR=$(flux get helmreleases -A 2>/dev/null | grep -c "False" || true)
 log "Failed HelmReleases: ${FAILED_HR}"
 
 # Check for failed sources
-FAILED_SRC=$(flux get sources all -A 2>/dev/null | grep -c "False" || echo "0")
+FAILED_SRC=$(flux get sources all -A 2>/dev/null | grep -c "False" || true)
 log "Failed Sources: ${FAILED_SRC}"
 
 # Summary
