@@ -10,7 +10,7 @@ Description: Learn how to deploy and manage the AWS Load Balancer Controller usi
 
 ## Introduction
 
-The AWS Load Balancer Controller is a Kubernetes controller that provisions AWS Application Load Balancers (ALBs) and Network Load Balancers (NLBs) when Kubernetes Ingress or Service resources are created. Managing this controller through Flux CD ensures your load balancer infrastructure is version-controlled and automatically reconciled.
+The AWS Load Balancer Controller is a Kubernetes controller that provisions AWS Application Load Balancers (ALBs) and Network Load Balancers (NLBs) when Kubernetes Ingress or Service resources of type LoadBalancer are created. Managing this controller through Flux CD ensures your load balancer infrastructure is version-controlled and automatically reconciled.
 
 This guide covers deploying the AWS Load Balancer Controller via a Flux CD HelmRelease and configuring Ingress resources with the proper annotations.
 
@@ -18,7 +18,7 @@ This guide covers deploying the AWS Load Balancer Controller via a Flux CD HelmR
 
 Before starting, ensure you have:
 
-- An Amazon EKS cluster running Kubernetes 1.25 or later
+- An Amazon EKS cluster running a supported Kubernetes version
 - Flux CD installed and bootstrapped on the cluster
 - AWS CLI configured with appropriate permissions
 - An OIDC provider associated with your EKS cluster
@@ -47,7 +47,7 @@ Download and create the IAM policy required by the AWS Load Balancer Controller.
 
 ```bash
 # Download the recommended IAM policy
-curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.1/docs/install/iam_policy.json
+curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
 
 # Create the IAM policy
 aws iam create-policy \
@@ -135,7 +135,7 @@ spec:
   chart:
     spec:
       chart: aws-load-balancer-controller
-      version: "1.7.x"
+      version: "1.14.x"
       sourceRef:
         kind: HelmRepository
         name: eks-charts
@@ -168,6 +168,8 @@ spec:
     region: us-east-1
     # VPC ID (required for some configurations)
     vpcId: vpc-0123456789abcdef0
+    # Create the IngressClass resource used by ingressClassName: alb
+    createIngressClassResource: true
     # Enable WAFv2 integration
     enableWaf: true
     enableWafv2: true
@@ -218,8 +220,6 @@ metadata:
   name: my-app-ingress
   namespace: default
   annotations:
-    # Use the ALB ingress class
-    kubernetes.io/ingress.class: alb
     # Create an internet-facing ALB
     alb.ingress.kubernetes.io/scheme: internet-facing
     # Target type: ip for direct pod routing
@@ -228,12 +228,13 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
     # SSL configuration
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/abc-123
     # SSL redirect
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     # Security groups
     alb.ingress.kubernetes.io/security-groups: sg-0123456789abcdef0
+    alb.ingress.kubernetes.io/manage-backend-security-group-rules: "true"
     # WAFv2 ACL ARN
     alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-east-1:123456789012:regional/webacl/my-acl/abc-123
 spec:
@@ -296,7 +297,6 @@ metadata:
   name: api-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     # Group name - all Ingresses with same group share one ALB
@@ -324,7 +324,6 @@ metadata:
   name: web-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     # Same group name to share the ALB
