@@ -10,7 +10,7 @@ Description: Avoid the most common mistakes when using Calico service account-ba
 
 ## Introduction
 
-Service account-based Calico policies are more secure than label-based policies, but they come with their own set of failure modes. The most dangerous mistakes create the appearance of security while leaving gaps - for example, believing your database is protected by SA policy while the default service account can still reach it.
+Service account-based Calico policies can be harder to bypass than pod label-based policies, but they come with their own set of failure modes. The most dangerous mistakes create the appearance of security while leaving gaps - for example, believing your database is protected by SA policy while workloads still run under the default service account.
 
 ## Prerequisites
 
@@ -19,30 +19,41 @@ Service account-based Calico policies are more secure than label-based policies,
 
 ## Mistake 1: Not Restricting the Default Service Account
 
-Every pod that doesn't specify a service account runs as `default`. If your SA policy only allows `backend-sa`, but you forget to deny `default`, pods running as default can still reach your protected service.
+Every pod that doesn't specify a service account runs as `default`. If workloads accidentally run as `default`, they will not match policies that are intended to apply to or allow a dedicated service account. For Calico policies that select the protected pods, unmatched ingress is denied by default, but an explicit `Deny` can still be useful as a hard stop when other ordered policies or profiles might otherwise allow traffic.
 
 ```yaml
-# MISSING: explicit deny for default SA
-
-# Always add a catch-all deny after your allow rules:
+# Optional hard stop after your allow rules:
 spec:
+  selector: role == 'database'
+  types:
+    - Ingress
   ingress:
     - action: Allow
       source:
-        serviceAccountSelector: name == 'backend-sa'
-    - action: Deny  # This catches default SA and all others
+        serviceAccounts:
+          names:
+            - backend-sa
+    - action: Deny  # This catches default SA and all other sources
 ```
 
 ## Mistake 2: Confusing SA Labels with SA Name
 
-Calico's `serviceAccountSelector` matches on service account metadata labels, not the service account name. To match by name, you must use `name == 'my-sa'` which uses the special `name` key.
+In Calico rule sources and destinations, `serviceAccounts.selector` matches service account metadata labels, not the service account name. To match by name in a rule, use `serviceAccounts.names`. For a top-level `serviceAccountSelector`, match the name with Calico's automatic `projectcalico.org/name` label.
 
 ```yaml
 # Wrong - tries to match a label called 'serviceaccount'
-serviceAccountSelector: serviceaccount == 'backend-sa'
+source:
+  serviceAccounts:
+    selector: serviceaccount == 'backend-sa'
 
-# Correct - matches service account name
-serviceAccountSelector: name == 'backend-sa'
+# Correct - matches service account name in a rule
+source:
+  serviceAccounts:
+    names:
+      - backend-sa
+
+# Also valid - matches service account name in a top-level policy selector
+serviceAccountSelector: projectcalico.org/name == 'backend-sa'
 ```
 
 ## Mistake 3: Cross-Namespace SA References Without Namespace Selector
@@ -55,13 +66,15 @@ spec:
   ingress:
     - action: Allow
       source:
-        serviceAccountSelector: name == 'backend-sa'
-        namespaceSelector: environment == 'production'
+        serviceAccounts:
+          names:
+            - backend-sa
+        namespaceSelector: projectcalico.org/name == 'production'
 ```
 
 ## Mistake 4: Not Updating Deployment Templates
 
-Adding a service account to a running pod via `kubectl patch pod` only affects that pod instance. New pods from the Deployment will still use the old service account unless you update the Deployment template.
+Adding a service account to an existing pod via `kubectl patch pod` will be rejected because `spec.serviceAccountName` can only be set when the Pod is created. New pods from the Deployment will still use the old service account unless you update the Deployment template.
 
 ```bash
 # Always update the Deployment spec, not just the running pod
@@ -73,14 +86,14 @@ kubectl rollout status deployment/backend -n production
 
 ## Mistake 5: Forgetting SA Rotation Impact
 
-If a service account is deleted and recreated (common in GitOps workflows), the new SA is technically a different identity. Ensure your Deployment templates reference the SA by name and that the SA is created before the Deployment.
+If a service account is deleted and recreated (common in GitOps workflows), any existing bound tokens for the deleted object are invalidated. Calico name-based policy will still match a recreated service account with the same name, but ensure your Deployment templates reference the SA by name and that the SA is created before Pods are created.
 
 ## Common Mistakes Summary
 
 ```mermaid
 flowchart TD
-    A[SA Policy Applied] --> B{Default SA denied?}
-    B -->|No| C[Default SA bypasses policy]
+    A[SA Policy Applied] --> B{Default SA avoided?}
+    B -->|No| C[Default SA remains in use]
     B -->|Yes| D{SA name vs label?}
     D -->|Wrong syntax| E[No pods match]
     D -->|Correct| F{Deployment updated?}
@@ -90,4 +103,4 @@ flowchart TD
 
 ## Conclusion
 
-Service account policy mistakes usually fall into four categories: not denying the default service account, syntax errors in SA selectors, missing namespace scope, and not updating Deployment templates. Always include an explicit Deny rule after your allow rules, use `name == 'sa-name'` syntax, combine with namespace selectors for precision, and always update Deployment specs rather than running pods directly.
+Service account policy mistakes usually fall into four categories: relying on the default service account, syntax errors in SA selectors, missing namespace scope, and not updating Deployment templates. Use `serviceAccounts.names` for exact service account matches in rules, combine with namespace selectors for precision, add explicit `Deny` rules when you need a hard stop in ordered policy evaluation, and always update Deployment specs rather than running pods directly.
