@@ -24,14 +24,14 @@ spec:
     matchLabels:
       app: calico-felix  # Service doesn't have this label!
 
-# Check what labels Services actually have
+# Check what metadata labels Services actually have
 kubectl get svc -n calico-system --show-labels
 
 # CORRECT - use the actual labels from the Service
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node  # This is what the actual Service uses
+      app: felix-metrics  # This must match metadata.labels on the Service
 ```
 
 ## Mistake 2: Not Verifying Full Node Coverage
@@ -48,7 +48,8 @@ count(kube_node_info)
 
 # In kubectl:
 TOTAL=$(kubectl get nodes --no-headers | wc -l)
-SCRAPED=$(curl -s 'http://localhost:9090/api/v1/query?query=count(up{job="calico-felix-metrics"}=1)' | \
+SCRAPED=$(curl -sG 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=count(up{job="calico-felix-metrics"} == 1)' | \
   jq '.data.result[0].value[1]' -r)
 echo "Scraped: ${SCRAPED}/${TOTAL}"
 ```
@@ -77,8 +78,8 @@ kubectl apply -f felix-servicemonitor.yaml  # Prometheus will find no endpoints!
 # ...later...
 kubectl apply -f felix-metrics-service.yaml
 
-# Prometheus won't automatically discover the new Service for existing ServiceMonitors
-# You may need to wait for the next reconcile cycle
+# Prometheus discovers the new Service after the next reconcile/service-discovery cycle,
+# but applying the Service first avoids confusing empty target lists during rollout.
 
 # CORRECT - apply in order
 kubectl apply -f felix-metrics-service.yaml  # Service first
