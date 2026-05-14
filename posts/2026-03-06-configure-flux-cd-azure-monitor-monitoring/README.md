@@ -27,7 +27,7 @@ This guide covers enabling Azure Monitor for your AKS cluster, collecting Flux C
 graph TD
     A[Flux CD Controllers] -->|Expose /metrics| B[Prometheus Metrics]
     B -->|Scrape| C[Azure Monitor Agent]
-    C -->|Store| D[Azure Monitor / Log Analytics]
+    C -->|Store| D[Azure Monitor Workspace / Log Analytics]
     D --> E[Azure Dashboards]
     D --> F[Azure Alerts]
     D --> G[Azure Workbooks]
@@ -110,8 +110,8 @@ data:
       evaluation_interval: 30s
 
     scrape_configs:
-      # Scrape Flux source-controller metrics
-      - job_name: "flux-source-controller"
+      # Scrape Flux controller metrics
+      - job_name: "flux-controllers"
         kubernetes_sd_configs:
           - role: pod
             namespaces:
@@ -119,48 +119,10 @@ data:
                 - flux-system
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: source-controller
+            regex: (source-controller|kustomize-controller|helm-controller|notification-controller)
             action: keep
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            target_label: __address__
-            regex: (.+)
-            replacement: ${1}:8080
-
-      # Scrape Flux kustomize-controller metrics
-      - job_name: "flux-kustomize-controller"
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - flux-system
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: kustomize-controller
-            action: keep
-
-      # Scrape Flux helm-controller metrics
-      - job_name: "flux-helm-controller"
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - flux-system
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: helm-controller
-            action: keep
-
-      # Scrape Flux notification-controller metrics
-      - job_name: "flux-notification-controller"
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - flux-system
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: notification-controller
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: http-prom
             action: keep
 ```
 
@@ -262,6 +224,8 @@ az monitor scheduled-query create \
 
 ### Create Prometheus-Based Alert Rules
 
+If you are using the Prometheus Operator, you can create `PrometheusRule` resources for Flux metrics:
+
 ```yaml
 # File: monitoring/flux-alert-rules.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -339,11 +303,11 @@ KubePodInventory
 
 ```kusto
 // KQL query for Flux CD container logs with errors
-ContainerLog
-| where LogEntry contains "error" or LogEntry contains "failed"
-| where Namespace_s == "flux-system"
+ContainerLogV2
+| where PodNamespace == "flux-system"
+| where LogMessage has_any ("error", "failed")
 | where TimeGenerated > ago(1h)
-| project TimeGenerated, ContainerName_s, LogEntry
+| project TimeGenerated, PodName, ContainerName, LogMessage
 | order by TimeGenerated desc
 | take 100
 ```
@@ -376,12 +340,11 @@ az grafana data-source create \
   --definition '{
     "name": "Azure Monitor Prometheus",
     "type": "prometheus",
-    "url": "https://amw-fluxcd-xxxx.prometheus.monitor.azure.com",
+    "url": "https://<azure-monitor-workspace-name>.<region>.prometheus.monitor.azure.com",
     "access": "proxy",
     "jsonData": {
-      "azureCredentials": {
-        "authType": "msi"
-      }
+      "httpMethod": "POST",
+      "azureCredentials": { "authType": "msi" }
     }
   }'
 ```
@@ -392,18 +355,25 @@ Configure Flux notification controller to forward events:
 
 ```yaml
 # File: monitoring/flux-event-forwarder.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: azure-event-hub
   namespace: flux-system
 spec:
   type: azureeventhub
-  address: "https://<event-hub-namespace>.servicebus.windows.net/<event-hub-name>"
   secretRef:
     name: azure-event-hub-credentials
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azure-event-hub-credentials
+  namespace: flux-system
+stringData:
+  address: "Endpoint=sb://<event-hub-namespace>.servicebus.windows.net/;SharedAccessKeyName=<key-name>;SharedAccessKey=<key>;EntityPath=<event-hub-name>"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-events
