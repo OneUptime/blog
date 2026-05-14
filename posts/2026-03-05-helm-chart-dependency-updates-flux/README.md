@@ -66,7 +66,7 @@ spec:
       enabled: true
 ```
 
-When the chart author publishes version 1.3.0 with updated dependencies, Flux will automatically detect and deploy it (if the semver constraint matches).
+When the chart author publishes version 1.2.4 with updated dependencies, Flux will automatically detect and deploy it (if the semver constraint matches).
 
 ## Scenario 2: Charts Stored in Git
 
@@ -112,7 +112,7 @@ spec:
       enabled: true
 ```
 
-When Flux builds a chart from a GitRepository, the source controller automatically runs `helm dependency build` to resolve and download dependencies before packaging the chart. This means the dependencies declared in `Chart.yaml` are fetched at build time.
+When Flux builds a chart from a GitRepository, the source controller resolves missing dependencies before packaging the chart, using `Chart.lock` when present and `Chart.yaml` otherwise. This means the dependencies declared in `Chart.yaml` are fetched at build time unless they are already bundled in the chart.
 
 ### Adding HelmRepository Sources for Dependencies
 
@@ -154,31 +154,24 @@ spec:
 
 Renovate can automatically create pull requests when chart dependency versions are updated upstream.
 
-```yaml
-# renovate.json - Configure Renovate to update Helm chart dependencies
+```json
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "helmv3": {
+    "enabled": true
+  },
   "helm-values": {
     "enabled": true
   },
-  "helmChart": {
+  "lockFileMaintenance": {
     "enabled": true
-  },
-  "regexManagers": [
-    {
-      "fileMatch": ["charts/.*/Chart\\.yaml$"],
-      "matchStrings": [
-        "repository: (?<registryUrl>.*?)\\s+name: (?<depName>.*?)\\s+version: (?<currentValue>.*?)\\s"
-      ],
-      "datasourceTemplate": "helm"
-    }
-  ]
+  }
 }
 ```
 
 ### Using Flux Image Automation (for OCI Dependencies)
 
-If your dependencies are stored in OCI registries, you can use Flux image automation to detect new versions and update the `Chart.yaml` file in Git.
+Flux image automation is designed for container image references, not Helm chart dependency entries. If your Helm chart dependencies are stored in OCI registries, use Renovate or another Git update tool to update the `Chart.yaml` and `Chart.lock` files.
 
 ## Managing Dependency Conflicts
 
@@ -307,13 +300,13 @@ kubectl describe helmchart -n flux-system <chart-name>
 1. **"repository not found"**: The dependency repository URL in `Chart.yaml` is unreachable. Ensure the URL is correct and the source controller has network access.
 2. **"version not found"**: The specified dependency version does not exist. Check the version constraint in `Chart.yaml`.
 3. **"Chart.lock is out of date"**: The `Chart.lock` does not match `Chart.yaml`. Run `helm dependency update` locally and commit the updated lock file.
-4. **Timeout during dependency download**: Large dependencies or slow repositories may cause timeouts. Increase the source controller's resource limits.
+4. **Timeout during dependency download**: Large dependencies or slow repositories may cause timeouts. Increase the `spec.timeout` on the relevant `HelmRepository` or review source-controller resources if the controller is under pressure.
 
 ### Rebuild Dependencies Manually
 
 ```bash
-# Force the source controller to rebuild the chart
-flux reconcile source git my-app-repo -n flux-system
+# Force the source controller to reconcile the generated HelmChart
+flux reconcile source chart <chart-name> -n flux-system --with-source
 ```
 
 ## Best Practices
