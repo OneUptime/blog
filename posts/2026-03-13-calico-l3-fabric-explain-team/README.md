@@ -28,7 +28,7 @@ For any audience, start with this:
 
 Key distinctions from overlay:
 - **No tunnel**: The packet travels directly from Node 1 to Node 2 with the pod IPs visible to every router on the path
-- **Network awareness**: Your physical routers see and can optimize for pod-level routes
+- **Network awareness**: Your physical routers can see pod IPs and, when pod CIDRs are advertised to them, route based on those prefixes
 - **Native performance**: No encapsulation overhead
 
 ## Live Demonstration: Seeing BGP in Action
@@ -36,18 +36,21 @@ Key distinctions from overlay:
 Show the team the BGP routing table on a node:
 
 ```bash
+POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.name}')
+
 # View BGP sessions (who is this node peering with?)
 
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+kubectl exec -n calico-system "$POD" -c calico-node \
   -- birdcl show protocols
 # Expected: sessions to other nodes or route reflectors in "Established" state
 
 # View routes learned via BGP
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+kubectl exec -n calico-system "$POD" -c calico-node \
   -- birdcl show route
 # Expected: Pod CIDRs from all other nodes, each with a BGP next hop
 
-# View the Linux routing table programmed by Felix from BGP routes
+# Run on the node itself to view BGP-learned routes in the Linux routing table
 ip route show | grep "proto bird"
 # Expected: Routes for remote node pod CIDRs, via the remote node's IP
 ```
@@ -58,9 +61,9 @@ Show the routing table and say: "These routes are exactly the phone book entries
 
 Developers care about whether their application behavior changes. For BGP mode:
 
-> "Your pods have the same IP addresses as in overlay mode. The difference is how traffic gets between nodes. In BGP mode, there's no extra wrapping - the packet goes directly from Node 1 to Node 2 with your pod's IP as the source. This means your application gets a few microseconds less latency, and large file transfers are faster because there's no overhead reducing the effective packet size."
+> "Your pods have the same IP addresses as in overlay mode. The difference is how traffic gets between nodes. In BGP mode, there's no extra wrapping - the packet goes directly from Node 1 to Node 2 with your pod's IP as the source. This can reduce latency, and large file transfers avoid the encapsulation overhead that reduces the effective packet size."
 
-The key developer benefit: lower latency and full MTU available for application payloads.
+The key developer benefit: lower overhead and no tunnel header reducing the effective MTU for application payloads.
 
 ## What to Tell Network Engineers
 
@@ -83,11 +86,11 @@ Key points for network engineers:
 
 For SREs managing large clusters:
 
-> "In a small cluster, every node tells every other node about its pods. In a large cluster, this creates too many connections - 100 nodes × 100 peers = 10,000 BGP sessions. Route reflectors solve this. A few dedicated nodes ('reflectors') collect route announcements from all other nodes and re-announce them to everyone. The reflector is like a postal sorting center - it receives all mail and redistributes it."
+> "In a small cluster, every node tells every other node about its pods. In a large cluster, this creates too many connections - 100 nodes need 99 peers each, which is 4,950 unique BGP sessions. Route reflectors solve this. A few dedicated nodes ('reflectors') collect route announcements from all other nodes and re-announce them to everyone. The reflector is like a postal sorting center - it receives all mail and redistributes it."
 
 Identify route reflectors in the cluster:
 ```bash
-calicoctl get node -o yaml | grep -i "route-reflector"
+calicoctl get node -o yaml | grep -Ei "routeReflectorClusterID|route-reflector"
 kubectl get nodes --show-labels | grep "route-reflector"
 ```
 
