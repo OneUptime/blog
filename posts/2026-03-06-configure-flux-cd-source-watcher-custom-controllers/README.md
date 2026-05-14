@@ -52,15 +52,19 @@ Initialize a new controller project using kubebuilder:
 
 mkdir flux-source-watcher && cd flux-source-watcher
 
-# Initialize the Go module
-go mod init github.com/your-org/flux-source-watcher
-
-# Initialize kubebuilder project
+# Initialize the kubebuilder project and Go module
 kubebuilder init --domain your-org.com --repo github.com/your-org/flux-source-watcher
 
 # Add Flux CD dependencies
 go get github.com/fluxcd/pkg/runtime@latest
 go get github.com/fluxcd/source-controller/api@latest
+```
+
+In `main.go`, register the Flux source API with the manager scheme alongside
+the Kubernetes client-go scheme:
+
+```go
+utilruntime.Must(sourcev1.AddToScheme(scheme))
 ```
 
 ## Building the Source Watcher Controller
@@ -72,17 +76,22 @@ Here is the core controller implementation:
 package controller
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -143,7 +152,7 @@ func (r *SourceWatcherReconciler) Reconcile(
 
 // downloadArtifact fetches the artifact tarball and extracts it
 func (r *SourceWatcherReconciler) downloadArtifact(
-	artifact *sourcev1.Artifact,
+	artifact *meta.Artifact,
 ) (string, error) {
 	// Create a temporary directory for extraction
 	tmpDir, err := os.MkdirTemp("", "source-watcher-*")
@@ -152,29 +161,81 @@ func (r *SourceWatcherReconciler) downloadArtifact(
 	}
 
 	// Download the artifact from the source controller
-	resp, err := r.HttpClient.Get(artifact.URL)
+	httpClient := r.HttpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	resp, err := httpClient.Get(artifact.URL)
 	if err != nil {
+		os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("failed to download artifact: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	// Save the tarball
-	tarPath := filepath.Join(tmpDir, "artifact.tar.gz")
-	f, err := os.Create(tarPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
-	}
-	defer f.Close()
-
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return "", fmt.Errorf("failed to write artifact: %w", err)
+	if err := extractTarGz(resp.Body, tmpDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("failed to extract artifact: %w", err)
 	}
 
 	return tmpDir, nil
+}
+
+func extractTarGz(reader io.Reader, dest string) error {
+	gzipReader, err := gzip.NewReader(reader)
+	if err != nil {
+		return err
+	}
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Clean(filepath.Join(dest, header.Name))
+		cleanDest := filepath.Clean(dest)
+		if target != cleanDest &&
+			!strings.HasPrefix(target, cleanDest+string(os.PathSeparator)) {
+			return fmt.Errorf("artifact contains invalid path: %s", header.Name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			file, err := os.OpenFile(
+				target,
+				os.O_CREATE|os.O_TRUNC|os.O_WRONLY,
+				os.FileMode(header.Mode),
+			)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(file, tarReader); err != nil {
+				file.Close()
+				return err
+			}
+			if err := file.Close(); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // processArtifact contains your custom business logic
@@ -207,10 +268,32 @@ func (r *SourceWatcherReconciler) SetupWithManager(
 		// Watch GitRepository resources
 		For(&sourcev1.GitRepository{}).
 		// Only reconcile when the artifact revision changes
-		WithEventFilter(predicate.Or(
-			predicate.GenerationChangedPredicate{},
-			predicate.AnnotationChangedPredicate{},
-		)).
+		WithEventFilter(predicate.Funcs{
+			CreateFunc: func(e event.CreateEvent) bool {
+				return true
+			},
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldRepo, ok := e.ObjectOld.(*sourcev1.GitRepository)
+				if !ok {
+					return false
+				}
+				newRepo, ok := e.ObjectNew.(*sourcev1.GitRepository)
+				if !ok {
+					return false
+				}
+
+				oldArtifact := oldRepo.GetArtifact()
+				newArtifact := newRepo.GetArtifact()
+				if oldArtifact == nil || newArtifact == nil {
+					return oldArtifact != newArtifact
+				}
+
+				return oldArtifact.Revision != newArtifact.Revision
+			},
+			DeleteFunc: func(e event.DeleteEvent) bool {
+				return false
+			},
+		}).
 		Complete(r)
 }
 ```
@@ -460,8 +543,27 @@ func (r *SourceWatcherReconciler) validateManifests(
 			)
 			if found {
 				for i, c := range containers {
-					container := c.(map[string]interface{})
-					if _, ok := container["resources"]; !ok {
+					container, ok := c.(map[string]interface{})
+					if !ok {
+						violations = append(violations,
+							fmt.Sprintf(
+								"%s: container %d has invalid format",
+								path, i,
+							),
+						)
+						continue
+					}
+					resources, ok := container["resources"].(map[string]interface{})
+					if !ok {
+						violations = append(violations,
+							fmt.Sprintf(
+								"%s: container %d missing resource limits",
+								path, i,
+							),
+						)
+						continue
+					}
+					if _, ok := resources["limits"]; !ok {
 						violations = append(violations,
 							fmt.Sprintf(
 								"%s: container %d missing resource limits",
@@ -482,11 +584,13 @@ func (r *SourceWatcherReconciler) validateManifests(
 
 ## Configuring Notifications from the Watcher
 
-Send notifications from your custom controller to Flux notification system:
+Configure notification-controller alerts for Flux events emitted by your watcher,
+for example events sent with `fluxcd/pkg/runtime/events` against the
+`GitRepository` involved object:
 
 ```yaml
 # notifications/watcher-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: source-watcher-alerts
@@ -497,13 +601,13 @@ spec:
     - kind: GitRepository
       name: "*"
       namespace: flux-system
-  # Custom event metadata filter
+  # Custom metadata added to forwarded events
   eventMetadata:
     source: "source-watcher-controller"
   providerRef:
     name: slack-provider
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
