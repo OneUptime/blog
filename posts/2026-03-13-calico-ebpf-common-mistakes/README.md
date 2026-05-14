@@ -22,7 +22,7 @@ This post catalogs the most common eBPF mistakes, explains why they occur, and p
 
 ## Mistake 1: Not Disabling kube-proxy Before Enabling eBPF
 
-The most common mistake is enabling Calico eBPF while kube-proxy is still running. Both will attempt to manage service routing, causing duplicate DNAT entries and inconsistent behavior.
+The most common mistake is enabling Calico eBPF while kube-proxy is still running without configuring Calico to avoid conflicts. Both components can interact with service routing rules, causing iptables rule flapping and inconsistent behavior.
 
 **Symptom**: Services are intermittently accessible, or pods get inconsistent responses from a service's ClusterIP.
 
@@ -41,7 +41,7 @@ kubectl patch daemonset kube-proxy -n kube-system \
 
 ## Mistake 2: Running on an Unsupported Kernel Version
 
-eBPF programs use kernel features that are not available in older kernels. Running Calico eBPF on a kernel older than 5.3 will cause Felix to fail to load programs.
+eBPF programs use kernel features that are not available in older kernels. Running Calico eBPF on an unsupported kernel will cause Felix to fail to load programs or fall back to the standard Linux dataplane.
 
 **Symptom**: `calico-node` pods crash loop with errors like `failed to load BPF program`.
 
@@ -50,7 +50,7 @@ eBPF programs use kernel features that are not available in older kernels. Runni
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i "bpf\|ebpf\|kernel"
 ```
 
-**Fix**: Upgrade node kernel to 5.3+ before enabling eBPF mode. For cloud providers, this usually means updating the node pool's OS image.
+**Fix**: Upgrade node kernel to 5.10+ before enabling eBPF mode, or use a supported Red Hat 8.4 kernel with the required backports. For cloud providers, this usually means updating the node pool's OS image.
 
 ## Mistake 3: BPF Filesystem Not Mounted
 
@@ -61,15 +61,15 @@ Calico eBPF stores its maps and programs in the BPF filesystem at `/sys/fs/bpf`.
 **Diagnosis**:
 ```bash
 # On a node:
-mount | grep bpf
+mount | grep '/sys/fs/bpf'
 # If empty, BPF filesystem is not mounted
 ```
 
-**Fix**: Add a systemd mount unit for the BPF filesystem and ensure it runs before kubelet:
+**Fix**: Mount the BPF filesystem and make the mount persistent in your node image:
 ```bash
-sudo mount bpffs /sys/fs/bpf -t bpf
+sudo mount -t bpf bpffs /sys/fs/bpf
 # For persistence, add to /etc/fstab:
-echo 'none /sys/fs/bpf bpf defaults 0 0' | sudo tee -a /etc/fstab
+echo 'bpffs /sys/fs/bpf bpf defaults 0 0' | sudo tee -a /etc/fstab
 ```
 
 ## Mistake 4: Mixed eBPF and iptables Nodes
@@ -78,7 +78,7 @@ Enabling eBPF on some nodes but not others in the same cluster causes asymmetric
 
 **Symptom**: Intermittent policy enforcement failures that are node-specific.
 
-**Fix**: Ensure all nodes have the same kernel version and that the eBPF configuration is applied cluster-wide before rolling out. Use `kubectl get nodes` to verify uniform kernel versions.
+**Fix**: Ensure all nodes have supported kernel versions and that the eBPF configuration is applied cluster-wide before rolling out. Use `kubectl get nodes -o wide` to verify uniform kernel versions.
 
 ## Mistake 5: Forgetting to Update Monitoring After Enabling eBPF
 
@@ -86,14 +86,16 @@ iptables-based monitoring tools (scripts that parse `iptables -L` output) do not
 
 **Fix**: Update your monitoring to use Felix metrics via Prometheus:
 ```bash
-kubectl port-forward -n calico-system daemonset/calico-node 9091
+kubectl patch felixconfiguration default --type merge --patch '{"spec":{"prometheusMetricsEnabled": true}}'
+POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n calico-system "pod/$POD" 9091:9091
 curl http://localhost:9091/metrics | grep felix_
 ```
 
 ## Best Practices
 
 - Always perform a full kernel compatibility audit before enabling eBPF
-- Disable kube-proxy before enabling eBPF, never after
+- Disable kube-proxy before enabling eBPF, or configure Calico to avoid kube-proxy conflicts when your platform does not allow disabling it
 - Verify BPF filesystem mount persistence across reboots in your node image
 - Test your monitoring and alerting stack in a lab before enabling eBPF in production
 
