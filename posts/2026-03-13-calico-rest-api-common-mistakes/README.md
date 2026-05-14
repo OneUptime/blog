@@ -10,7 +10,7 @@ Description: Common mistakes when using Calico's REST API for automation - from 
 
 ## Introduction
 
-REST API mistakes in Calico automation range from resource conflicts caused by missing `resourceVersion` fields to security risks from overpermissioned service accounts. These mistakes tend to be discovered in production when the automation runs against real data, not in testing.
+REST API mistakes in Calico automation range from rejected updates caused by missing or stale `resourceVersion` fields to security risks from overpermissioned service accounts. These mistakes tend to be discovered in production when the automation runs against real data, not in testing.
 
 ## Prerequisites
 
@@ -20,15 +20,17 @@ REST API mistakes in Calico automation range from resource conflicts caused by m
 
 ## Mistake 1: Missing resourceVersion on Updates
 
-Kubernetes uses optimistic locking - when you update a resource, you must include the current `resourceVersion` in the metadata. Without it, the update is rejected with a 409 Conflict error.
+Kubernetes uses optimistic locking - when you update a resource with PUT, include the current `resourceVersion` in the metadata. Without it, the update can be rejected as invalid; if the value is stale, the update is rejected with a 409 Conflict error.
 
-**Symptom**: Update calls return `409 Conflict` even though you just read the resource.
+**Symptom**: Update calls are rejected, or return `409 Conflict` even though you just read the resource.
 
 **Wrong approach**:
 ```bash
-# Missing resourceVersion - will fail with 409
+# Missing resourceVersion - can fail validation or overwrite concurrent changes
 
-curl -s -X PUT -d '{"metadata":{"name":"my-policy"},"spec":{...}}' \
+curl -s -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{"apiVersion":"projectcalico.org/v3","kind":"GlobalNetworkPolicy","metadata":{"name":"my-policy"},"spec":{"selector":"all()","types":["Ingress"],"ingress":[{"action":"Allow"}]}}' \
   $APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies/my-policy
 ```
 
@@ -36,10 +38,11 @@ curl -s -X PUT -d '{"metadata":{"name":"my-policy"},"spec":{...}}' \
 ```bash
 # Always include resourceVersion from the current resource
 CURRENT=$(curl -s $APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies/my-policy)
-RESOURCE_VERSION=$(echo $CURRENT | jq -r '.metadata.resourceVersion')
+RESOURCE_VERSION=$(echo "$CURRENT" | jq -r '.metadata.resourceVersion')
 
 curl -s -X PUT \
-  -d "{\"metadata\":{\"name\":\"my-policy\",\"resourceVersion\":\"$RESOURCE_VERSION\"},\"spec\":{...}}" \
+  -H "Content-Type: application/json" \
+  -d "{\"apiVersion\":\"projectcalico.org/v3\",\"kind\":\"GlobalNetworkPolicy\",\"metadata\":{\"name\":\"my-policy\",\"resourceVersion\":\"$RESOURCE_VERSION\"},\"spec\":{\"selector\":\"all()\",\"types\":[\"Ingress\"],\"ingress\":[{\"action\":\"Allow\"}]}}" \
   $APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies/my-policy
 ```
 
@@ -50,6 +53,7 @@ When automation tries to create a resource that already exists, the API returns 
 **Fix**: Use create-or-update pattern:
 ```bash
 HTTP_CODE=$(curl -s -o /tmp/response.json -w "%{http_code}" -X POST \
+  -H "Content-Type: application/json" \
   -d @policy.json \
   $APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies)
 
@@ -70,8 +74,7 @@ Using the cluster admin kubeconfig or a service account with cluster-admin permi
 # Minimal permissions - only what the automation needs
 kubectl create clusterrole calico-policy-automation \
   --verb=get,list,watch,create,update,patch,delete \
-  --resource=networkpolicies.projectcalico.org \
-  --resource=globalnetworkpolicies.projectcalico.org
+  --resource=networkpolicies.projectcalico.org,globalnetworkpolicies.projectcalico.org
 
 # Bind to a dedicated service account (not cluster-admin)
 kubectl create clusterrolebinding calico-policy-automation \
@@ -81,18 +84,19 @@ kubectl create clusterrolebinding calico-policy-automation \
 
 ## Mistake 4: Not Implementing Retry Logic for 429 and 503
 
-API servers enforce rate limits. Automation that doesn't handle 429 (Too Many Requests) responses will fail silently or crash during high-load periods.
+API servers enforce rate limits and can be temporarily unavailable. Automation that doesn't handle 429 (Too Many Requests) and 503 (Service Unavailable) responses will fail silently or crash during high-load periods.
 
 **Fix**: Implement exponential backoff:
 ```python
 import time
 import requests
 
-def calico_api_call_with_retry(url, method="GET", data=None, max_retries=5):
+def calico_api_call_with_retry(url, method="GET", data=None, headers=None, max_retries=5):
     for attempt in range(max_retries):
-        response = requests.request(method, url, json=data, headers=auth_headers, verify=False)
-        if response.status_code == 429:
-            wait = 2 ** attempt  # Exponential backoff: 1, 2, 4, 8, 16 seconds
+        response = requests.request(method, url, json=data, headers=headers, timeout=30)
+        if response.status_code in (429, 503):
+            retry_after = response.headers.get("Retry-After")
+            wait = int(retry_after) if retry_after else 2 ** attempt
             time.sleep(wait)
             continue
         return response
@@ -114,18 +118,21 @@ done
 
 **Correct approach** - use watch:
 ```bash
-# Use watch for real-time change notification
-curl -s "$APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies?watch=true" | \
+# Use list-then-watch for real-time change notification
+RESOURCE_VERSION=$(curl -s "$APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies" | \
+  jq -r '.metadata.resourceVersion')
+
+curl -s "$APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies?watch=true&resourceVersion=$RESOURCE_VERSION" | \
   while read -r event; do
-    echo "Policy change detected: $(echo $event | jq -r '.type')"
+    echo "Policy change detected: $(echo "$event" | jq -r '.type')"
   done
 ```
 
 ## Mistake 6: Using Raw curl in Production Instead of Client Libraries
 
-Shell scripts with `curl` don't handle TLS verification, connection pooling, or automatic retries properly. Production automation should use proper Kubernetes client libraries.
+Shell scripts with `curl` make it easy to skip TLS verification and usually don't handle connection pooling, watch reconnects, or automatic retries properly. Production automation should use proper Kubernetes client libraries.
 
-**Fix**: Use `kubernetes-client` for Python, `controller-runtime` for Go, or `@kubernetes/client-node` for Node.js. These libraries handle authentication, retries, watches, and TLS correctly.
+**Fix**: Use the official Kubernetes Python client (`kubernetes`), `controller-runtime` for Go, or `@kubernetes/client-node` for Node.js. These libraries handle authentication, retries, watches, and TLS correctly.
 
 ## Best Practices
 
