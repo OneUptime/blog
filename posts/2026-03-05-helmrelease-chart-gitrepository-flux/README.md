@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, GitRepository, Chart Source
 
-Description: Learn how to configure a HelmRelease to source Helm charts directly from a GitRepository in Flux CD using the chartRef field.
+Description: Learn how to configure a HelmRelease to source Helm charts directly from a GitRepository in Flux CD using a chart template.
 
 ---
 
-Flux CD does not require Helm charts to be published in a Helm repository. You can source charts directly from a Git repository, which is useful when your charts live alongside your application code or when you maintain internal charts that are not published to a registry. Flux v2 provides two approaches for this: the legacy `spec.chart.spec.sourceRef` with a GitRepository and the newer `spec.chartRef` field.
+Flux CD does not require Helm charts to be published in a Helm repository. You can source charts directly from a Git repository, which is useful when your charts live alongside your application code or when you maintain internal charts that are not published to a registry. Flux v2 supports this with `spec.chart.spec.sourceRef` pointing to a GitRepository.
 
 ## Why Source Charts from Git?
 
@@ -112,7 +112,7 @@ spec:
         kind: GitRepository
         name: my-app-repo
         namespace: flux-system
-      # Reconcile the chart source at this interval
+      # Create a new chart artifact when the Git revision changes
       reconcileStrategy: Revision
   values:
     replicaCount: 3
@@ -125,7 +125,7 @@ The `chart` field is the relative path from the repository root to the directory
 
 ## Using spec.chartRef with GitRepository
 
-Flux v2 also supports referencing an OCIRepository or GitRepository via `spec.chartRef`. However, for GitRepository sources, the `spec.chart.spec` approach shown above is the standard method. The `spec.chartRef` field is primarily designed for OCIRepository references. When working with Git-hosted charts, use `spec.chart.spec.sourceRef` with `kind: GitRepository`.
+Flux v2 also supports referencing an OCIRepository, HelmChart, or feature-gated ExternalArtifact via `spec.chartRef`. However, for GitRepository sources, the `spec.chart.spec` approach shown above is the standard method. The `spec.chartRef` field is not used to reference GitRepository sources directly. When working with Git-hosted charts, use `spec.chart.spec.sourceRef` with `kind: GitRepository`.
 
 ## Pinning to a Git Tag
 
@@ -211,12 +211,12 @@ After applying both the GitRepository and the HelmRelease, verify they are worki
 
 ```bash
 # Check the GitRepository is synced
-flux get source git my-app-repo -n flux-system
+flux get sources git -n flux-system
 
 # Check the HelmRelease is reconciled
-flux get helmrelease my-app -n default
+flux get helmreleases -n default
 
-# View the chart artifact details
+# View the Git source artifact details
 kubectl describe gitrepository my-app-repo -n flux-system
 
 # Check if the Helm release was created
