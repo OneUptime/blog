@@ -197,7 +197,7 @@ Create separate policies for different environments using the same ImageReposito
 
 ```yaml
 # imagepolicy-multi-env.yaml
-# Production: latest build above 500
+# Production: latest production build
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
