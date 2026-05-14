@@ -62,7 +62,7 @@ vultr-cli container-registry create \
 
 # Get registry credentials
 export VCR_ID=$(vultr-cli container-registry list | grep my-registry | awk '{print $1}')
-vultr-cli container-registry docker-credentials ${VCR_ID} --expiry-seconds 0
+vultr-cli container-registry credentials docker ${VCR_ID} --expiry-seconds 0
 
 # Log in to the registry using Docker
 docker login https://ewr.vultrcr.com/my-registry \
@@ -73,12 +73,20 @@ docker login https://ewr.vultrcr.com/my-registry \
 ## Step 3: Create Registry Credentials in Kubernetes
 
 ```bash
-# Create the flux-system namespace if it does not exist
+# Create the namespaces if they do not exist
 kubectl create namespace flux-system 2>/dev/null || true
+kubectl create namespace my-app 2>/dev/null || true
 
-# Create a docker registry secret for VCR
+# Create a docker registry secret for Flux image automation
 kubectl create secret docker-registry vcr-credentials \
   --namespace=flux-system \
+  --docker-server=ewr.vultrcr.com/my-registry \
+  --docker-username=<vcr-username> \
+  --docker-password=<vcr-password>
+
+# Create the same secret in the application namespace for image pulls
+kubectl create secret docker-registry vcr-credentials \
+  --namespace=my-app \
   --docker-server=ewr.vultrcr.com/my-registry \
   --docker-username=<vcr-username> \
   --docker-password=<vcr-password>
@@ -100,6 +108,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/vultr-cluster \
+  --token-auth \
   --personal
 ```
 
@@ -179,9 +188,10 @@ spec:
           # Enable proxy protocol for real client IPs
           service.beta.kubernetes.io/vultr-loadbalancer-proxy-protocol: "true"
           # Health check configuration
-          service.beta.kubernetes.io/vultr-loadbalancer-health-check-protocol: "http"
-          service.beta.kubernetes.io/vultr-loadbalancer-health-check-path: "/healthz"
-          service.beta.kubernetes.io/vultr-loadbalancer-health-check-port: "80"
+          service.beta.kubernetes.io/vultr-loadbalancer-healthcheck-protocol: "http"
+          service.beta.kubernetes.io/vultr-loadbalancer-healthcheck-path: "/healthz"
+          service.beta.kubernetes.io/vultr-loadbalancer-healthcheck-port: "80"
+        externalTrafficPolicy: Local
       config:
         use-proxy-protocol: "true"
 ```
@@ -302,7 +312,7 @@ Configure Flux to watch Vultr Container Registry for new images.
 
 ```yaml
 # infrastructure/image-automation/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -314,7 +324,7 @@ spec:
     name: vcr-credentials
 ---
 # infrastructure/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -327,7 +337,7 @@ spec:
       range: ">=1.0.0"
 ---
 # infrastructure/image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system
@@ -374,6 +384,14 @@ volumeBindingMode: WaitForFirstConsumer
 
 ```yaml
 # infrastructure/notifications/provider.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook-url
+  namespace: flux-system
+stringData:
+  address: <slack-webhook-url>
+---
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
@@ -442,7 +460,7 @@ kubectl get secret vcr-credentials -n flux-system -o yaml
 docker pull ewr.vultrcr.com/my-registry/my-app:latest
 
 # Regenerate credentials if expired
-vultr-cli container-registry docker-credentials ${VCR_ID} --expiry-seconds 0
+vultr-cli container-registry credentials docker ${VCR_ID} --expiry-seconds 0
 ```
 
 ### Load Balancer Pending
