@@ -256,7 +256,7 @@ kubectl get cronjob ecommerce-report -n staging -o jsonpath='{.spec.jobTemplate.
 
 ## Using Images Transformer with Flux Image Automation
 
-The images transformer in `kustomization.yaml` works well as a manual approach. For fully automated image updates, Flux provides Image Automation controllers that can update the `images` field in your Git repository when new container images are pushed to a registry.
+The images transformer in `kustomization.yaml` works well as a manual approach. For fully automated image updates, Flux provides Image Automation controllers that can update marked fields in your Git repository, including the `images` field, when new container images are pushed to a registry.
 
 Here is a brief overview of how the two approaches complement each other.
 
@@ -264,12 +264,12 @@ Here is a brief overview of how the two approaches complement each other.
 graph LR
     A[Container Registry] -->|New image pushed| B[Flux Image Reflector]
     B -->|Detects new tag| C[Flux Image Automation]
-    C -->|Updates kustomization.yaml images field| D[Git Repository]
+    C -->|Updates marked kustomization.yaml images field| D[Git Repository]
     D -->|Git commit triggers| E[Flux Kustomization]
     E -->|Applies with images transformer| F[Kubernetes Cluster]
 ```
 
-The Image Automation controller writes the new tag directly into the `images` field of your `kustomization.yaml`, which the Kustomize images transformer then applies during reconciliation.
+When the `images` field is marked with Flux image policy setters, the Image Automation controller writes the new tag directly into your `kustomization.yaml`, which the Kustomize images transformer then applies during reconciliation.
 
 ## Images Transformer Reference
 
