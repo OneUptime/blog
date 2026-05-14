@@ -14,7 +14,7 @@ Layer 7 (L7) policies represent one of Cilium's most powerful differentiators. W
 
 The Star Wars demo illustrates this perfectly. Even after restricting the Death Star to Empire ships using an L3/L4 policy, a TIE fighter can still destroy the Death Star by hitting the `/v1/exhaust-port` endpoint. An L7 HTTP policy closes this gap by allowing only specific HTTP methods and paths.
 
-This post walks through Cilium's L7 policy capabilities in the Star Wars demo, explaining the eBPF-based HTTP inspection mechanism and how to apply it to real-world API security scenarios.
+This post walks through Cilium's L7 policy capabilities in the Star Wars demo, explaining how Cilium uses its datapath with Envoy proxy-based HTTP inspection and how to apply it to real-world API security scenarios.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ Show that the L3/L4 policy alone doesn't prevent access to dangerous endpoints.
 
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 
-# This returns: "Panic: deathstar exploded!"
+# This returns: "Panic: deathstar exploded"
 # With only L3/L4 policy, any HTTP method to any path is allowed
 ```
 
@@ -82,9 +82,9 @@ Test that the allowed path works while the dangerous path is now blocked.
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 # Expected: Ship landed
 
-# Blocked: PUT to /v1/exhaust-port - now returns 403 Forbidden
+# Blocked: PUT to /v1/exhaust-port - now returns an HTTP 403 response
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
-# Expected: 403 Forbidden (policy violation, not a connection drop)
+# Expected: Access denied (policy violation, not a connection drop)
 
 # Still blocked: X-wing (org=alliance) - dropped at L3
 kubectl exec xwing -- curl --max-time 5 -XPOST deathstar.default.svc.cluster.local/v1/request-landing
@@ -97,22 +97,23 @@ Hubble provides L7-level visibility, showing HTTP method, path, and response cod
 ```bash
 # Observe L7 HTTP flows with full request details
 hubble observe \
-  --to-pod default/deathstar \
+  --pod deathstar \
   --follow \
-  --type l7 \
+  --protocol http \
   --output json | jq '.flow | {source: .source.pod_name, http: .l7.http}'
 ```
 
 ## Step 5: Understand How L7 Proxy Works
 
-Cilium's L7 enforcement uses an embedded Envoy proxy transparently intercept traffic.
+Cilium's L7 enforcement uses Envoy to transparently intercept traffic. Depending on the installation, Envoy can run inside the Cilium agent pod or as the separate `cilium-envoy` DaemonSet.
 
 ```bash
-# Check that the Envoy proxy is running as part of the Cilium DaemonSet
-kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg proxy list
+# Check that Envoy is healthy and L7 redirects are active
+kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg status --verbose
 
-# View L7 proxy statistics
-kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg proxy stats
+# View Envoy listeners and proxy statistics
+kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg envoy admin listeners
+kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg envoy admin metrics
 ```
 
 ## Best Practices
@@ -125,4 +126,4 @@ kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg proxy stats
 
 ## Conclusion
 
-Cilium's L7 HTTP policy transforms network security from connection-level to API-level control. The Star Wars demo demonstrates how a single dangerous endpoint can be closed with a simple path and method rule, without deploying any additional proxies. This capability is directly applicable to production APIs where certain operations must be strictly limited to authorized callers using authorized methods.
+Cilium's L7 HTTP policy transforms network security from connection-level to API-level control. The Star Wars demo demonstrates how a single dangerous endpoint can be closed with a simple path and method rule, without deploying sidecar proxies. This capability is directly applicable to production APIs where certain operations must be strictly limited to authorized callers using authorized methods.
