@@ -19,6 +19,7 @@ This guide covers how to safely manage PVCs, StorageClasses, and related storage
 - A Kubernetes cluster (v1.26+) with a CSI driver installed
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux
+- For VolumeSnapshots, the CSI snapshot CRDs, snapshot controller, and a CSI driver with snapshot support
 
 ## Repository Structure
 
@@ -69,7 +70,7 @@ volumeBindingMode: WaitForFirstConsumer
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: standard-hdd
+  name: standard-gp2
   annotations:
     # Set as the default StorageClass
     storageclass.kubernetes.io/is-default-class: "true"
@@ -188,7 +189,7 @@ metadata:
   name: myapp
   namespace: myapp
 spec:
-  replicas: 1  # Single replica when using ReadWriteOnce PVC
+  replicas: 1  # Conservative default for single-node-attached block volumes such as EBS
   selector:
     matchLabels:
       app: myapp
@@ -280,7 +281,7 @@ spec:
 
 ## Volume Expansion with Flux
 
-To resize a PVC, update the storage request in your Git repository:
+To expand a PVC, update the storage request in your Git repository:
 
 ```yaml
 # apps/myapp/pvc.yaml (updated storage from 20Gi to 50Gi)
@@ -404,7 +405,7 @@ patches:
         value: 10Gi
       - op: replace
         path: /spec/storageClassName
-        value: standard-hdd
+        value: standard-gp2
 ```
 
 ## Monitoring PVC Usage
@@ -441,7 +442,7 @@ Managing PVCs with Flux CD requires careful handling to prevent data loss:
 - Always set `prune: false` or use the prune disabled annotation on PVCs
 - Use `reclaimPolicy: Retain` on StorageClasses to keep volumes after PVC deletion
 - Set `volumeBindingMode: WaitForFirstConsumer` for topology-aware provisioning
-- Enable `allowVolumeExpansion` on StorageClasses for easy resizing through Git
+- Enable `allowVolumeExpansion` on StorageClasses for easy expansion through Git
 - Use VolumeSnapshots for backup and restore workflows
 - Apply Kustomize overlays to differentiate storage requirements per environment
 - Monitor PVC usage to prevent capacity issues before they cause outages
