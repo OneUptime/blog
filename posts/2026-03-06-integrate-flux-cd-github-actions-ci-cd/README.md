@@ -67,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -96,10 +96,10 @@ jobs:
       image-tag: ${{ steps.meta.outputs.version }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -107,7 +107,7 @@ jobs:
 
       - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -119,7 +119,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -142,7 +142,7 @@ After building the container image, push Kubernetes manifests as an OCI artifact
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Flux CLI
         uses: fluxcd/flux2/action@main
@@ -153,7 +153,7 @@ After building the container image, push Kubernetes manifests as an OCI artifact
             oci://${{ env.REGISTRY }}/${{ github.repository }}-manifests:$(git rev-parse --short HEAD) \
             --path=./deploy \
             --source="$(git config --get remote.origin.url)" \
-            --revision="$(git branch --show-current)/$(git rev-parse HEAD)" \
+            --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)" \
             --creds ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
 
       - name: Tag the artifact as latest
@@ -284,7 +284,7 @@ Configure Flux to notify GitHub about deployment status:
 
 ```yaml
 # clusters/production/github-notification.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -297,7 +297,7 @@ spec:
     name: github-token
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-deploy-status
@@ -332,7 +332,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Flux config repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: my-org/flux-config
           token: ${{ secrets.FLUX_CONFIG_TOKEN }}
@@ -388,7 +388,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
 flux push artifact oci://ghcr.io/my-org/my-app-manifests:test \
   --path=./deploy \
   --source="local" \
-  --revision="test"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 ### Webhook Not Triggering
