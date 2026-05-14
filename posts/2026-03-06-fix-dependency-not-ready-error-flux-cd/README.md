@@ -10,7 +10,7 @@ Description: A practical guide to resolving 'dependency not ready' errors in Flu
 
 ## Introduction
 
-Flux CD supports dependency ordering between Kustomizations and HelmReleases using the `dependsOn` field. When an upstream dependency is not in a ready state, Flux reports a "dependency not ready" error on the downstream resource. This guide shows you how to diagnose the failing dependency and fix the ordering to get your deployments flowing again.
+Flux CD supports dependency ordering between Kustomizations and between HelmReleases using the `dependsOn` field. When an upstream dependency is not in a ready state, Flux reports a "dependency not ready" error on the downstream resource. This guide shows you how to diagnose the failing dependency and fix the ordering to get your deployments flowing again.
 
 ## Understanding the Error
 
@@ -54,6 +54,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -66,6 +67,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
   # Middleware waits for infrastructure
   dependsOn:
     - name: infrastructure
@@ -81,6 +83,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
   # Applications wait for middleware (which implicitly waits for infrastructure)
   dependsOn:
     - name: middleware
@@ -96,19 +99,12 @@ The key is to find the root dependency that is failing, not the downstream resou
 
 ```bash
 # List all Kustomizations with their dependencies
-kubectl get kustomizations -n flux-system -o custom-columns=\
-NAME:.metadata.name,\
-READY:.status.conditions[0].status,\
-DEPENDS:.spec.dependsOn[*].name,\
-MESSAGE:.status.conditions[0].message
+kubectl get kustomizations -n flux-system -o \
+  'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,DEPENDS:.spec.dependsOn[*].name,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
 
 # List all HelmReleases with their dependencies
-kubectl get helmreleases -A -o custom-columns=\
-NAME:.metadata.name,\
-NAMESPACE:.metadata.namespace,\
-READY:.status.conditions[0].status,\
-DEPENDS:.spec.dependsOn[*].name,\
-MESSAGE:.status.conditions[0].message
+kubectl get helmreleases -A -o \
+  'custom-columns=NAME:.metadata.name,NAMESPACE:.metadata.namespace,READY:.status.conditions[?(@.type=="Ready")].status,DEPENDS:.spec.dependsOn[*].name,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
 ```
 
 ### Step 2: Find the Failing Root Dependency
@@ -156,7 +152,7 @@ kubectl get pods -A | grep -v Running | grep -v Completed
 
 ```bash
 # Check why the HelmRelease is failing
-flux get helmrelease cert-manager -n flux-system
+flux get helmreleases -n flux-system | grep cert-manager
 kubectl describe helmrelease cert-manager -n flux-system
 
 # Fix the HelmRelease (values, chart version, etc.)
@@ -203,6 +199,12 @@ metadata:
   name: app-a
   namespace: flux-system
 spec:
+  interval: 10m
+  path: ./app-a
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
+  prune: true
   dependsOn:
     - name: app-b  # Creates a cycle
 ---
@@ -212,6 +214,12 @@ metadata:
   name: app-b
   namespace: flux-system
 spec:
+  interval: 10m
+  path: ./app-b
+  sourceRef:
+    kind: GitRepository
+    name: my-repo
+  prune: true
   dependsOn:
     - name: app-a  # Creates a cycle
 ```
@@ -229,6 +237,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -241,6 +250,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
   # Both depend on the shared layer instead of each other
   dependsOn:
     - name: shared-infrastructure
@@ -256,6 +266,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
   dependsOn:
     - name: shared-infrastructure
 ```
@@ -285,6 +296,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
   dependsOn:
     # Same namespace dependency (namespace can be omitted)
     - name: infrastructure
@@ -346,6 +358,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-repo
+  prune: true
   # Remove non-existent dependencies
   # dependsOn:
   #   - name: non-existent-resource
@@ -447,13 +460,13 @@ spec:
 ## Forcing Reconciliation of the Dependency Chain
 
 ```bash
+# If the Git source changed, reconcile the source first
+flux reconcile source git my-repo -n flux-system
+
 # Reconcile from the root dependency down
 flux reconcile kustomization infrastructure -n flux-system
 flux reconcile kustomization middleware -n flux-system
 flux reconcile kustomization applications -n flux-system
-
-# Or reconcile all at once (Flux will respect ordering)
-flux reconcile kustomization --all -n flux-system
 ```
 
 ## Monitoring Dependency Status
