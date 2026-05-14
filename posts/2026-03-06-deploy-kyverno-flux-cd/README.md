@@ -18,7 +18,7 @@ This guide covers deploying Kyverno with Flux CD, configuring the policy engine,
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster version supported by the Kyverno release you deploy (Kyverno v1.18 supports Kubernetes v1.33-v1.35)
 - Flux CD bootstrapped and connected to a Git repository
 - kubectl configured for cluster access
 - Sufficient cluster resources (Kyverno requires at least 256 MB memory)
@@ -71,7 +71,7 @@ spec:
   chart:
     spec:
       chart: kyverno
-      version: "3.3.x"
+      version: "3.8.x"
       sourceRef:
         kind: HelmRepository
         name: kyverno
@@ -99,6 +99,10 @@ spec:
       # Configure the admission webhook
       serviceMonitor:
         enabled: false
+      container:
+        extraArgs:
+          # Webhook timeout in seconds
+          webhookTimeout: 10
     # Background controller for generate and mutate existing policies
     backgroundController:
       replicas: 2
@@ -129,15 +133,13 @@ spec:
         limits:
           memory: "256Mi"
           cpu: "200m"
-    # Configure webhook failure policy
+    # Configure resource filters
     config:
       # Resources to exclude from policy enforcement
       resourceFiltersExcludeNamespaces:
         - kube-system
         - kyverno
         - flux-system
-      # Webhook timeout in seconds
-      webhookTimeout: 10
     # Feature flags
     features:
       policyExceptions:
@@ -205,8 +207,6 @@ metadata:
       Requires all Deployments and StatefulSets to have
       team and environment labels.
 spec:
-  # Start with audit mode before enforcing
-  validationFailureAction: Audit
   # Apply to existing resources
   background: true
   rules:
@@ -226,6 +226,8 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        # Start with audit mode before enforcing
+        failureAction: Audit
         message: "The label 'team' is required on all Deployments and StatefulSets."
         pattern:
           metadata:
@@ -247,6 +249,8 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        # Start with audit mode before enforcing
+        failureAction: Audit
         message: "The label 'environment' must be one of: production, staging, development."
         pattern:
           metadata:
@@ -273,7 +277,7 @@ metadata:
       Adds default resource requests and limits to containers
       that do not have them specified.
 spec:
-  # Apply in background to existing resources
+  # Only mutate admission requests
   background: false
   rules:
     - name: add-default-resources
@@ -348,7 +352,7 @@ spec:
         namespace: "{{request.object.metadata.name}}"
         data:
           spec:
-            # Deny all ingress and egress by default
+            # Deny ingress and allow only DNS egress
             podSelector: {}
             policyTypes:
               - Ingress
@@ -383,9 +387,8 @@ metadata:
     policies.kyverno.io/severity: high
     policies.kyverno.io/description: >-
       Enforces baseline container security settings including
-      non-root user, read-only root filesystem, and no privilege escalation.
+      non-root user and no privilege escalation.
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     # Disallow privileged containers
@@ -402,12 +405,19 @@ spec:
                 - kube-system
                 - kyverno
       validate:
+        failureAction: Audit
         message: "Privileged containers are not allowed."
         pattern:
           spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
             containers:
-              - securityContext:
-                  privileged: "false"
+              - =(securityContext):
+                  =(privileged): "false"
     # Require non-root user
     - name: require-run-as-non-root
       match:
@@ -422,18 +432,31 @@ spec:
                 - kube-system
                 - kyverno
       validate:
+        failureAction: Audit
         message: "Containers must run as non-root. Set runAsNonRoot to true."
         anyPattern:
           - spec:
               securityContext:
-                runAsNonRoot: true
+                runAsNonRoot: "true"
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): "true"
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): "true"
               containers:
                 - =(securityContext):
-                    =(runAsNonRoot): true
+                    =(runAsNonRoot): "true"
           - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: "true"
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: "true"
               containers:
                 - securityContext:
-                    runAsNonRoot: true
+                    runAsNonRoot: "true"
     # Disallow privilege escalation
     - name: disallow-privilege-escalation
       match:
@@ -448,12 +471,19 @@ spec:
                 - kube-system
                 - kyverno
       validate:
+        failureAction: Audit
         message: "Privilege escalation is not allowed. Set allowPrivilegeEscalation to false."
         pattern:
           spec:
+            =(ephemeralContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
+            =(initContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
             containers:
               - securityContext:
-                  allowPrivilegeEscalation: false
+                  allowPrivilegeEscalation: "false"
 ```
 
 ## Setting Up Policy Exceptions
@@ -535,7 +565,7 @@ kubectl get clusterpolicyreport
 kubectl get policyreport -n production -o yaml
 
 # Test a policy by creating a non-compliant resource
-kubectl run test-pod --image=nginx -n default --dry-run=server
+kubectl create deployment test-deployment --image=nginx -n default --dry-run=server
 
 # View webhook configurations
 kubectl get validatingwebhookconfigurations | grep kyverno
