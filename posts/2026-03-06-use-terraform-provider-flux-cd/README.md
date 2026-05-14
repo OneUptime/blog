@@ -160,6 +160,8 @@ variable "environment" {
 }
 ```
 
+Provide sensitive values such as `github_token` and `flux_ssh_private_key` through environment variables, a secure CI/CD variable store, or a protected `.tfvars` file that is not committed to Git.
+
 ## Bootstrapping Flux CD
 
 Use the flux_bootstrap_git resource to install Flux on the cluster.
@@ -353,39 +355,20 @@ Manage multiple clusters with separate Terraform workspaces.
 ```hcl
 # multi-cluster.tf
 
-# Define clusters as a map
-variable "clusters" {
-  description = "Map of cluster configurations"
-  type = map(object({
-    region      = string
-    environment = string
-    node_count  = number
-  }))
-  default = {
-    "prod-us-east" = {
-      region      = "us-east-1"
-      environment = "production"
-      node_count  = 5
-    }
-    "prod-eu-west" = {
-      region      = "eu-west-1"
-      environment = "production"
-      node_count  = 3
-    }
-    "staging" = {
-      region      = "us-east-1"
-      environment = "staging"
-      node_count  = 2
-    }
+# Map each Terraform workspace to a cluster path
+locals {
+  cluster_paths = {
+    production = "prod-us-east"
+    staging    = "staging"
   }
+
+  flux_cluster_path = lookup(local.cluster_paths, terraform.workspace, var.cluster_name)
 }
 
-# Bootstrap Flux on each cluster
-resource "flux_bootstrap_git" "clusters" {
-  for_each = var.clusters
-
+# Bootstrap Flux for the cluster represented by the selected workspace
+resource "flux_bootstrap_git" "this" {
   embedded_manifests = true
-  path               = "clusters/${each.key}"
+  path               = "clusters/${local.flux_cluster_path}"
   namespace          = "flux-system"
 
   components = [
@@ -426,11 +409,11 @@ Store Terraform state securely.
 # backend.tf
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "flux-clusters/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "my-terraform-state"
+    key          = "flux-clusters/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
@@ -447,8 +430,10 @@ terraform plan -var-file="production.tfvars"
 # Apply to create the cluster and bootstrap Flux
 terraform apply -var-file="production.tfvars"
 
+# Configure kubectl for the EKS cluster
+aws eks update-kubeconfig --region us-east-1 --name prod-cluster
+
 # Verify Flux is running
-export KUBECONFIG=$(terraform output -raw kubeconfig_path)
 flux check
 flux get all
 ```
