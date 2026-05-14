@@ -10,15 +10,15 @@ Description: Learn how to configure OCIRepository authentication in Flux CD usin
 
 ## Introduction
 
-When your OCI artifacts are stored in private container registries, the Flux source-controller needs credentials to pull them. Flux supports several authentication methods for OCIRepository resources, including Kubernetes secrets with Docker registry credentials, static credentials, and cloud provider-specific mechanisms.
+When your OCI artifacts are stored in private container registries, the Flux source-controller needs credentials to pull them. Flux supports several authentication methods for OCIRepository resources, including Kubernetes image pull secrets with Docker registry credentials and cloud provider-specific mechanisms.
 
-This guide covers all the authentication methods available for OCIRepository, from basic username/password to automated cloud provider authentication.
+This guide covers the common authentication methods available for OCIRepository, from basic username/password to automated cloud provider authentication.
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed and the `source.toolkit.fluxcd.io/v1` OCIRepository API available
 - The `flux` CLI and `kubectl` installed
 - Access to a private OCI-compliant container registry
 - Registry credentials (username, password, or token)
@@ -30,7 +30,7 @@ Flux supports the following authentication methods for OCIRepository resources.
 ```mermaid
 graph TD
     A[OCIRepository Authentication] --> B[Docker Config Secret]
-    A --> C[Generic Secret with Credentials]
+    A --> C[Docker Config Secret from Existing Config]
     A --> D[Cloud Provider IAM]
     B --> E[spec.secretRef]
     C --> E
@@ -249,7 +249,7 @@ flux pull artifact oci://ghcr.io/my-org/my-app-manifests:latest \
   --output=/tmp/test-pull
 ```
 
-If these commands succeed locally, the same credentials should work in-cluster.
+If these commands succeed locally, the same credentials should work in-cluster when you configure them with `secretRef`, `serviceAccountName`, or the matching cloud provider authentication method.
 
 ## Summary
 
