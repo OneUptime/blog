@@ -8,11 +8,11 @@ Description: An in-depth guide to progressive delivery with Flux CD and Flagger,
 
 ---
 
-Progressive delivery extends continuous delivery by gradually shifting traffic to a new version while monitoring key metrics. If something goes wrong, the rollout is automatically halted and rolled back. Flagger is the progressive delivery operator that integrates natively with Flux CD to provide canary releases, blue-green deployments, and A/B testing on Kubernetes.
+Progressive delivery extends continuous delivery by gradually shifting traffic to a new version while monitoring key metrics. If something goes wrong, the rollout is automatically halted and rolled back. Flagger is the progressive delivery operator that works with Flux CD to provide canary releases, blue-green deployments, and A/B testing on Kubernetes.
 
 ## How Flagger Fits into the Flux CD Ecosystem
 
-Flagger is a CNCF project that works alongside Flux CD. While Flux ensures the desired state from Git is applied to the cluster, Flagger takes over the deployment rollout process. Instead of Kubernetes performing a standard rolling update, Flagger intercepts the deployment, creates a copy (the canary), and gradually shifts traffic to it.
+Flagger is a CNCF project that works alongside Flux CD. While Flux ensures the desired state from Git is applied to the cluster, Flagger takes over the deployment rollout process. Instead of Kubernetes performing a standard rolling update, Flagger creates a primary copy of the target workload, treats the target workload as the canary, and gradually shifts traffic to it.
 
 Flagger supports multiple service meshes and ingress controllers for traffic shifting, including Istio, Linkerd, NGINX, Contour, and Gateway API.
 
@@ -21,7 +21,7 @@ flowchart LR
     A[Git Repository] --> B[Flux CD]
     B --> C[Deployment updated]
     C --> D[Flagger detects change]
-    D --> E[Canary created]
+    D --> E[Primary and canary services managed]
     E --> F[Traffic gradually shifted]
     F --> G{Metrics OK?}
     G -->|Yes| H[Promote to primary]
@@ -33,32 +33,41 @@ flowchart LR
 Flagger can be installed as a Flux HelmRelease. This keeps Flagger itself managed via GitOps.
 
 ```yaml
-# HelmRepository source for Flagger's Helm chart
-
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flagger-system
+---
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: flagger
-  namespace: flux-system
+  namespace: flagger-system
 spec:
   interval: 1h
-  url: https://flagger.app
+  url: oci://ghcr.io/fluxcd/charts/flagger
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    semver: "1.x"
 ---
 # HelmRelease to install Flagger with Prometheus metrics
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
-  namespace: flux-system
+  namespace: flagger-system
 spec:
   interval: 1h
-  chart:
-    spec:
-      chart: flagger
-      version: "1.x"
-      sourceRef:
-        kind: HelmRepository
-        name: flagger
+  releaseName: flagger
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
+  chartRef:
+    kind: OCIRepository
+    name: flagger
   values:
     metricsServer: http://prometheus.monitoring:9090
     meshProvider: istio
@@ -94,9 +103,7 @@ spec:
   analysis:
     # Schedule a new analysis every 30 seconds
     interval: 30s
-    # Maximum number of analysis iterations before promotion
-    iterations: 10
-    # Percentage threshold for failed checks to trigger rollback
+    # Maximum number of failed checks before rollback
     threshold: 5
     # Traffic weight increment per successful iteration
     stepWeight: 10
@@ -150,11 +157,11 @@ spec:
         interval: 1m
 ```
 
-The key difference from the canary pattern is the absence of `stepWeight` and `maxWeight`. Without these, Flagger uses blue-green mode: it mirrors or routes test traffic to the new version, validates it, and then cuts over all traffic at once after the required number of successful iterations.
+The key difference from the canary pattern is the absence of `stepWeight` and `maxWeight` and the use of `iterations`. With this configuration, Flagger uses blue-green mode: it validates the new version for the required number of successful iterations, then switches live traffic when the canary is promoted. Traffic mirroring is a separate blue-green option that requires `mirror: true`.
 
 ## A/B Testing Pattern
 
-A/B testing routes traffic based on HTTP headers, cookies, or query parameters. Only matching requests go to the canary, making it useful for testing features with specific user segments.
+A/B testing routes traffic based on HTTP headers or cookies. Only matching requests go to the canary, making it useful for testing features with specific user segments.
 
 ```yaml
 # A/B testing Canary resource using header-based routing
@@ -246,7 +253,7 @@ analysis:
       metadata:
         type: bash
         cmd: "curl -s http://my-app-canary.production/health"
-    # Send a Slack notification when rollout completes
+    # Send rollout events to a notification service
     - name: notify-slack
       type: event
       url: http://slack-notifier.flux-system/notify
@@ -260,7 +267,7 @@ The workflow is straightforward:
 2. Flux image automation (or a direct Git commit) updates the Deployment manifest in Git.
 3. Flux reconciles the cluster state, updating the Deployment spec.
 4. Flagger detects the Deployment change (specifically, a change in the pod template spec).
-5. Flagger creates a canary replica set and begins the progressive rollout.
+5. Flagger updates the canary workload and begins the progressive rollout.
 6. Based on metrics, Flagger either promotes or rolls back.
 7. The Git repository remains the source of truth. If Flagger rolls back, the Deployment in the cluster reverts, but the Git state still shows the new version. The next reconciliation will trigger Flagger again unless the Git commit is reverted.
 
@@ -272,7 +279,7 @@ You can check the status of a Flagger rollout using kubectl.
 # Check the current status of a canary rollout
 kubectl get canary my-app -n production
 
-# Watch the canary events in real time
+# Show the canary details and recent events
 kubectl describe canary my-app -n production
 
 # Check Flagger logs for detailed analysis information
