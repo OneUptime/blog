@@ -4,19 +4,28 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRepository, Grafana, Loki, Tempo, Monitoring
 
-Description: Step-by-step guide to configuring a Flux CD HelmRepository for Grafana's official Helm charts and deploying Grafana, Loki, and Tempo.
+Description: Step-by-step guide to configuring Flux CD HelmRepository resources for Grafana's Helm charts and deploying Grafana, Loki, and Tempo.
 
 ---
 
-Grafana Labs publishes Helm charts for its entire observability stack, including Grafana dashboards, Loki for log aggregation, Tempo for distributed tracing, and Mimir for metrics. All of these charts are available from the official Grafana Helm repository. This guide shows you how to configure Flux CD to use the Grafana Helm repository and deploy key components of the Grafana observability stack.
+Grafana Labs and the Grafana community publish Helm charts for the observability stack, including Grafana dashboards, Loki for log aggregation, Tempo for distributed tracing, and Mimir for metrics. Active community-maintained charts such as Grafana, Loki, and Tempo are available from the Grafana Community Helm repository, while the Alloy chart is available from the Grafana Helm repository. This guide shows you how to configure Flux CD to use these Grafana Helm repositories and deploy key components of the Grafana observability stack.
 
 ## Creating the Grafana HelmRepository
 
-The Grafana Helm repository is a standard HTTPS repository. Create the HelmRepository resource:
+The Grafana Helm repositories are standard HTTPS repositories. Create the HelmRepository resources:
 
 ```yaml
-# HelmRepository for Grafana's official Helm charts
-
+# HelmRepository for Grafana community-maintained Helm charts
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana-community
+  namespace: flux-system
+spec:
+  interval: 60m
+  url: https://grafana-community.github.io/helm-charts
+---
+# HelmRepository for Grafana Helm charts such as Alloy
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -27,24 +36,24 @@ spec:
   url: https://grafana.github.io/helm-charts
 ```
 
-Apply it to your cluster:
+Apply them to your cluster:
 
 ```bash
-# Apply the Grafana HelmRepository
-kubectl apply -f grafana-helmrepository.yaml
+# Apply the Grafana HelmRepository resources
+kubectl apply -f grafana-helmrepositories.yaml
 
-# Verify the repository is ready
+# Verify the repositories are ready
 flux get sources helm -n flux-system
 ```
 
-You should see the `grafana` source with `Ready: True` and a stored artifact revision.
+You should see the `grafana-community` and `grafana` sources with `Ready: True` and stored artifact revisions.
 
 ## Deploying Grafana
 
 Deploy the Grafana dashboard application with a HelmRelease:
 
 ```yaml
-# HelmRelease to deploy Grafana from the official Helm repository
+# HelmRelease to deploy Grafana from the Grafana Community Helm repository
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -55,10 +64,10 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: "8.*"
+      version: "12.*"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
       interval: 10m
   values:
@@ -96,7 +105,7 @@ spec:
 Loki is Grafana's log aggregation system. Deploy it using the `loki` chart:
 
 ```yaml
-# HelmRelease to deploy Loki in single-binary mode
+# HelmRelease to deploy Loki in monolithic mode
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -107,36 +116,43 @@ spec:
   chart:
     spec:
       chart: loki
-      version: "6.*"
+      version: "14.*"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
       interval: 10m
   values:
-    # Deploy Loki in single-binary mode for simplicity
-    deploymentMode: SingleBinary
+    # Deploy Loki in monolithic mode for simplicity
+    deploymentMode: Monolithic
     loki:
       auth_enabled: false
       commonConfig:
         replication_factor: 1
-      storage:
-        type: filesystem
       schemaConfig:
         configs:
-          - from: "2024-01-01"
+          - from: "2024-04-01"
             store: tsdb
-            object_store: filesystem
+            object_store: s3
             schema: v13
             index:
               prefix: loki_index_
               period: 24h
+      pattern_ingester:
+        enabled: true
+      limits_config:
+        allow_structured_metadata: true
+        volume_enabled: true
+      ruler:
+        enable_api: true
+    minio:
+      enabled: true
     singleBinary:
       replicas: 1
       persistence:
         enabled: true
         size: 20Gi
-    # Disable components not needed in single-binary mode
+    # Disable components not needed in monolithic mode
     backend:
       replicas: 0
     read:
@@ -145,33 +161,53 @@ spec:
       replicas: 0
 ```
 
-## Deploying Promtail for Log Collection
+## Deploying Alloy for Log Collection
 
-Promtail ships logs from your cluster nodes to Loki:
+Grafana Alloy ships logs from your cluster pods to Loki:
 
 ```yaml
-# HelmRelease to deploy Promtail for collecting logs and sending to Loki
+# HelmRelease to deploy Alloy for collecting logs and sending to Loki
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: promtail
+  name: alloy
   namespace: monitoring
 spec:
   interval: 30m
   chart:
     spec:
-      chart: promtail
-      version: "6.*"
+      chart: alloy
+      version: "1.*"
       sourceRef:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
       interval: 10m
   values:
-    config:
-      clients:
-        # Point Promtail to the Loki gateway
-        - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+    alloy:
+      mounts:
+        varlog: true
+      configMap:
+        content: |
+          logging {
+            level  = "info"
+            format = "logfmt"
+          }
+
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          loki.source.kubernetes "pods" {
+            targets    = discovery.kubernetes.pods.targets
+            forward_to = [loki.write.endpoint.receiver]
+          }
+
+          loki.write "endpoint" {
+            endpoint {
+              url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+            }
+          }
 ```
 
 ## Deploying Tempo for Distributed Tracing
@@ -190,10 +226,10 @@ spec:
   chart:
     spec:
       chart: tempo
-      version: "1.*"
+      version: "2.*"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
       interval: 10m
   values:
@@ -215,7 +251,7 @@ Here is how the components connect together:
 
 ```mermaid
 flowchart LR
-    A[Applications] -->|logs| B[Promtail]
+    A[Applications] -->|logs| B[Alloy]
     A -->|traces| E[Tempo]
     B -->|push| C[Loki]
     C -->|query| D[Grafana]
@@ -238,7 +274,7 @@ metadata:
 
 ## Dependency Management
 
-Grafana depends on Loki and Prometheus being available. Use Flux dependencies to control the deployment order:
+Grafana's data sources assume Loki and Prometheus are available. Use Flux dependencies to control the deployment order for the HelmReleases you manage with Flux:
 
 ```yaml
 # HelmRelease for Grafana with dependencies on Loki
@@ -256,10 +292,10 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: "8.*"
+      version: "12.*"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
       interval: 10m
   values:
@@ -290,4 +326,4 @@ Access Grafana at the configured ingress URL or via port-forward:
 kubectl port-forward -n monitoring svc/grafana 3000:80
 ```
 
-The Grafana Helm repository provides a complete observability toolkit. By managing all these components through Flux CD, you get reproducible deployments, version-controlled configuration, and automated updates through your GitOps workflow.
+The Grafana Helm repositories provide a complete observability toolkit. By managing all these components through Flux CD, you get reproducible deployments, version-controlled configuration, and automated updates through your GitOps workflow.
