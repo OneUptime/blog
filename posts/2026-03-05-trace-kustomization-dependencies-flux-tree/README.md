@@ -1,18 +1,18 @@
-# How to Trace Kustomization Dependencies with flux tree in Flux
+# How to Trace Kustomization Resource Trees with flux tree in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Troubleshooting, Dependencies, CLI
 
-Description: Learn how to use the flux tree command to visualize and trace Kustomization dependency chains in your Flux CD managed clusters.
+Description: Learn how to use the flux tree command to visualize and trace Kustomization resource trees in your Flux CD managed clusters.
 
 ---
 
-When managing complex Kubernetes deployments with Flux CD, understanding the relationships between your Kustomizations, HelmReleases, and other Flux resources becomes critical. The `flux tree` command provides a powerful way to visualize these dependency hierarchies directly from the command line. In this guide, you will learn how to use `flux tree ks` to trace dependencies, troubleshoot reconciliation issues, and understand your deployment topology.
+When managing complex Kubernetes deployments with Flux CD, understanding the relationships between your Kustomizations, HelmReleases, and other Flux resources becomes critical. The `flux tree` command provides a powerful way to visualize these resource hierarchies directly from the command line. In this guide, you will learn how to use `flux tree ks` to trace the resources reconciled by a Kustomization, troubleshoot reconciliation issues, and understand your deployment topology.
 
 ## What Is flux tree?
 
-The `flux tree` command displays a tree view of Flux resources and their dependencies. When used with the `ks` (short for `kustomization`) subcommand, it shows all the child resources that a given Kustomization manages, including nested Kustomizations, HelmReleases, and the Kubernetes objects they create.
+The `flux tree` command displays a tree view of resources reconciled by Flux. When used with the `ks` (alias for `kustomization`) subcommand, it shows the resource inventory that a given Kustomization manages, including nested Kustomizations, HelmReleases, and Kubernetes objects recorded in the Kustomization and Helm release inventories.
 
 This is especially useful when you have a multi-layered GitOps structure where a root Kustomization references other Kustomizations, which in turn deploy workloads via HelmReleases or plain manifests.
 
@@ -21,20 +21,23 @@ This is especially useful when you have a multi-layered GitOps structure where a
 The simplest invocation lists the resource tree for a specific Kustomization.
 
 ```bash
-# Show the dependency tree for a Kustomization named "infrastructure"
+# Show the resource tree for a Kustomization named "infrastructure"
 
 flux tree ks infrastructure
 ```
 
-This outputs a tree structure showing all resources owned by the `infrastructure` Kustomization, including their kind, namespace, name, and readiness status.
+This outputs a tree structure showing the resources recorded for the `infrastructure` Kustomization, including their kind, namespace, and name.
 
 ## Viewing the Full Cluster Tree
 
-If you want to see the tree for all Kustomizations in the `flux-system` namespace, you can use the following command.
+If you want to inspect the trees for Kustomizations in the `flux-system` namespace, first list the Kustomizations and then run `flux tree ks` for the root or individual Kustomization you want to inspect.
 
 ```bash
-# Show the dependency tree for all Kustomizations in flux-system namespace
-flux tree ks --namespace flux-system
+# List Kustomizations in flux-system namespace
+flux get ks --namespace flux-system
+
+# Show the resource tree for a specific Kustomization
+flux tree ks infrastructure --namespace flux-system
 ```
 
 ## Understanding the Output
@@ -61,7 +64,7 @@ flux tree ks infrastructure --namespace flux-system
 # └── Kustomization/flux-system/monitoring
 ```
 
-Each level of indentation represents a parent-child ownership relationship. The root is your target Kustomization, and all items beneath it are resources it manages.
+Each level of indentation represents resources found in the reconciled inventory. The root is your target Kustomization, and all items beneath it are resources it manages.
 
 ## Using the --compact Flag
 
@@ -72,9 +75,9 @@ For large deployments, the full tree can be overwhelming. Use `--compact` to sho
 flux tree ks infrastructure --compact
 ```
 
-## Tracing a Specific Dependency Chain
+## Tracing a Specific Resource Chain
 
-When debugging why a particular workload is not reconciling, you can trace back through the dependency chain. Here is a typical multi-layer Kustomization setup that you might want to trace.
+When debugging why a particular workload is not reconciling, you can trace through the resource tree and then inspect any explicit Kustomization dependencies separately. Here is a typical multi-layer Kustomization setup that you might want to inspect.
 
 ```yaml
 # Root Kustomization: clusters/production/infrastructure.yaml
@@ -90,8 +93,6 @@ spec:
     name: flux-system
   path: ./infrastructure
   prune: true
-  # dependsOn creates an explicit ordering dependency
-  dependsOn: []
 ```
 
 ```yaml
@@ -108,15 +109,13 @@ spec:
     name: flux-system
   path: ./infrastructure/cert-manager
   prune: true
-  # This Kustomization depends on infrastructure being ready
-  dependsOn:
-    - name: infrastructure
+  # This Kustomization is managed by the infrastructure Kustomization
 ```
 
 To see how these relate at runtime, run the tree command.
 
 ```bash
-# Trace the full tree including readiness status
+# Trace the full resource tree
 flux tree ks infrastructure --namespace flux-system
 ```
 
@@ -125,7 +124,7 @@ flux tree ks infrastructure --namespace flux-system
 The `flux tree` command works well in combination with other Flux CLI commands for a complete debugging workflow.
 
 ```bash
-# Step 1: See the full dependency tree
+# Step 1: See the full resource tree
 flux tree ks apps --namespace flux-system
 
 # Step 2: Check events for a specific Kustomization that appears unhealthy
@@ -140,7 +139,7 @@ flux reconcile ks apps --namespace flux-system --with-source
 
 ## Visualizing the Dependency Graph
 
-For documentation or team discussions, you can conceptualize your Flux dependency tree as a directed graph.
+For documentation or team discussions, you can conceptualize your Flux resource tree as a directed graph.
 
 ```mermaid
 graph TD
@@ -155,7 +154,7 @@ graph TD
     H -.->|dependsOn| B
 ```
 
-Dotted lines represent `dependsOn` relationships, while solid lines represent ownership (parent manages child).
+Solid lines represent inventory relationships (parent Kustomization manages child resources). Dotted lines represent `dependsOn` relationships that you define in the Kustomization specs; `flux tree` does not draw those edges directly.
 
 ## Common Issues and Tips
 
@@ -166,10 +165,11 @@ Dotted lines represent `dependsOn` relationships, while solid lines represent ow
 **Cross-namespace ownership**: `flux tree` follows ownership references across namespaces, so a Kustomization in `flux-system` that deploys resources to `production` will still show those resources in the tree.
 
 ```bash
-# List trees across all namespaces
-flux tree ks --all-namespaces
+# List Kustomizations across all namespaces, then inspect the one you need
+flux get ks --all-namespaces
+flux tree ks infrastructure --namespace flux-system
 ```
 
 ## Summary
 
-The `flux tree ks` command is an essential tool for understanding and debugging Flux CD deployments. It provides immediate visibility into the dependency hierarchy of your Kustomizations, making it easier to trace reconciliation chains, identify broken dependencies, and communicate your deployment architecture to team members. Pair it with `flux events` and `flux get` for a complete observability workflow over your GitOps pipeline.
+The `flux tree ks` command is an essential tool for understanding and debugging Flux CD deployments. It provides immediate visibility into the resource inventory of your Kustomizations, making it easier to trace reconciliation chains, identify unhealthy resources, and communicate your deployment architecture to team members. Pair it with `flux events` and `flux get` for a complete observability workflow over your GitOps pipeline.
