@@ -16,11 +16,11 @@ This guide covers deploying Harbor on Kubernetes using Flux CD's HelmRelease res
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.26 or later recommended)
+- A Kubernetes cluster that meets the supported Kubernetes version for your Flux version and the Harbor Helm chart
 - Flux CD installed and bootstrapped on your cluster
 - kubectl configured for your cluster
 - A Git repository connected to Flux
-- An Ingress controller installed (Harbor requires Ingress for external access)
+- An Ingress controller installed for the ingress-based configuration shown in this guide
 - A StorageClass that supports dynamic provisioning
 
 Harbor is a multi-component system that includes a core service, registry, job service, database, Redis, and optional components like Trivy for vulnerability scanning. Plan for adequate resources.
@@ -74,9 +74,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: harbor
-  namespace: harbor
+  namespace: flux-system
 spec:
   interval: 30m  # Reconciliation interval
+  targetNamespace: harbor
   chart:
     spec:
       chart: harbor
@@ -220,7 +221,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: harbor-credentials
-  namespace: harbor
+  namespace: flux-system
 type: Opaque
 stringData:
   harbor-admin-password: "your-secure-admin-password"
@@ -257,7 +258,7 @@ Monitor the deployment:
 
 ```bash
 # Check HelmRelease status
-flux get helmreleases -n harbor
+flux get helmreleases -n flux-system
 
 # Watch Harbor pods (there are many components)
 kubectl get pods -n harbor -w
