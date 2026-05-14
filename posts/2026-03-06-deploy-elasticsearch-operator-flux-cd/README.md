@@ -32,18 +32,24 @@ clusters/
   my-cluster/
     databases/
       elasticsearch/
-        namespace.yaml
-        helmrepository.yaml
-        helmrelease.yaml
-        elasticsearch.yaml
-        kibana.yaml
-        kustomization.yaml
+        operator/
+          namespace.yaml
+          helmrepository.yaml
+          helmrelease.yaml
+          kustomization.yaml
+        stack/
+          elasticsearch.yaml
+          kibana.yaml
+          ilm-policy.yaml
+          kustomization.yaml
+    elasticsearch-operator-kustomization.yaml
+    elasticsearch-stack-kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/namespace.yaml
+# clusters/my-cluster/databases/elasticsearch/operator/namespace.yaml
 
 apiVersion: v1
 kind: Namespace
@@ -57,7 +63,7 @@ metadata:
 ## Step 2: Add the Elastic Helm Repository
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/helmrepository.yaml
+# clusters/my-cluster/databases/elasticsearch/operator/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -72,7 +78,7 @@ spec:
 ## Step 3: Deploy the ECK Operator
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/helmrelease.yaml
+# clusters/my-cluster/databases/elasticsearch/operator/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -110,12 +116,22 @@ spec:
     installCRDs: true
 ```
 
+```yaml
+# clusters/my-cluster/databases/elasticsearch/operator/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+```
+
 ## Step 4: Deploy an Elasticsearch Cluster
 
 This configuration creates a production-grade Elasticsearch cluster with dedicated master, data, and coordinating nodes.
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/elasticsearch.yaml
+# clusters/my-cluster/databases/elasticsearch/stack/elasticsearch.yaml
 apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
 metadata:
@@ -123,7 +139,7 @@ metadata:
   namespace: elastic-system
 spec:
   # Elasticsearch version
-  version: 8.13.0
+  version: 8.13.4
 
   # Node sets define groups of nodes with specific roles
   nodeSets:
@@ -133,8 +149,6 @@ spec:
       config:
         # Node roles
         node.roles: ["master"]
-        # Heap size (set to half of available memory, max 31g)
-        node.store.allow_mmap: false
       podTemplate:
         spec:
           containers:
@@ -159,7 +173,7 @@ spec:
                       elasticsearch.k8s.elastic.co/cluster-name: es-cluster
                       elasticsearch.k8s.elastic.co/statefulset-name: es-cluster-es-master
                   topologyKey: kubernetes.io/hostname
-          # Init container to increase vm.max_map_count
+          # Init container to increase vm.max_map_count for Elasticsearch 8.15 and earlier
           initContainers:
             - name: sysctl
               securityContext:
@@ -182,8 +196,7 @@ spec:
     - name: data
       count: 3
       config:
-        node.roles: ["data", "data_content", "data_hot", "data_warm", "ingest", "transform"]
-        node.store.allow_mmap: false
+        node.roles: ["data_content", "data_hot", "data_warm", "ingest", "transform"]
       podTemplate:
         spec:
           containers:
@@ -230,8 +243,7 @@ spec:
     - name: coordinating
       count: 2
       config:
-        node.roles: ["remote_cluster_client"]
-        node.store.allow_mmap: false
+        node.roles: []
       podTemplate:
         spec:
           containers:
@@ -276,7 +288,7 @@ spec:
 ## Step 5: Deploy Kibana
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/kibana.yaml
+# clusters/my-cluster/databases/elasticsearch/stack/kibana.yaml
 apiVersion: kibana.k8s.elastic.co/v1
 kind: Kibana
 metadata:
@@ -284,7 +296,7 @@ metadata:
   namespace: elastic-system
 spec:
   # Match Elasticsearch version
-  version: 8.13.0
+  version: 8.13.4
   count: 2
   # Reference to the Elasticsearch cluster
   elasticsearchRef:
@@ -313,62 +325,69 @@ spec:
 ## Step 6: Configure Index Lifecycle Management
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/ilm-policy.yaml
-apiVersion: v1
-kind: ConfigMap
+# clusters/my-cluster/databases/elasticsearch/stack/ilm-policy.yaml
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: es-ilm-setup
   namespace: elastic-system
-data:
-  # Script to create ILM policies
-  setup.sh: |
-    #!/bin/bash
-    # Wait for Elasticsearch to be ready
-    until curl -s -k -u "elastic:${ELASTIC_PASSWORD}" \
-      "https://es-cluster-es-http:9200/_cluster/health" | grep -q '"status":"green"\|"status":"yellow"'; do
-      sleep 10
-    done
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: curlimages/curl:8.8.0
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: es-cluster-es-elastic-user
+                  key: elastic
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until curl -s -k -u "elastic:${ELASTIC_PASSWORD}" \
+                "https://es-cluster-es-http:9200/_cluster/health" | grep -q '"status":"green"\|"status":"yellow"'; do
+                sleep 10
+              done
 
-    # Create ILM policy for logs
-    curl -s -k -X PUT -u "elastic:${ELASTIC_PASSWORD}" \
-      "https://es-cluster-es-http:9200/_ilm/policy/logs-policy" \
-      -H "Content-Type: application/json" -d '{
-      "policy": {
-        "phases": {
-          "hot": {
-            "actions": {
-              "rollover": {
-                "max_size": "50GB",
-                "max_age": "1d"
-              }
-            }
-          },
-          "warm": {
-            "min_age": "7d",
-            "actions": {
-              "shrink": { "number_of_shards": 1 },
-              "forcemerge": { "max_num_segments": 1 }
-            }
-          },
-          "delete": {
-            "min_age": "30d",
-            "actions": { "delete": {} }
-          }
-        }
-      }
-    }'
+              curl -f -s -k -X PUT -u "elastic:${ELASTIC_PASSWORD}" \
+                "https://es-cluster-es-http:9200/_ilm/policy/logs-policy" \
+                -H "Content-Type: application/json" -d '{
+                "policy": {
+                  "phases": {
+                    "hot": {
+                      "actions": {
+                        "rollover": {
+                          "max_primary_shard_size": "50gb",
+                          "max_age": "1d"
+                        }
+                      }
+                    },
+                    "warm": {
+                      "min_age": "7d",
+                      "actions": {
+                        "shrink": { "number_of_shards": 1 },
+                        "forcemerge": { "max_num_segments": 1 }
+                      }
+                    },
+                    "delete": {
+                      "min_age": "30d",
+                      "actions": { "delete": {} }
+                    }
+                  }
+                }
+              }'
 ```
 
 ## Step 7: Create the Kustomization
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/kustomization.yaml
+# clusters/my-cluster/databases/elasticsearch/stack/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - namespace.yaml
-  - helmrepository.yaml
-  - helmrelease.yaml
   - elasticsearch.yaml
   - kibana.yaml
   - ilm-policy.yaml
@@ -377,15 +396,15 @@ resources:
 ## Step 8: Create the Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/databases/elasticsearch-kustomization.yaml
+# clusters/my-cluster/databases/elasticsearch-operator-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: elasticsearch
+  name: elasticsearch-operator
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./clusters/my-cluster/databases/elasticsearch
+  path: ./clusters/my-cluster/databases/elasticsearch/operator
   prune: true
   sourceRef:
     kind: GitRepository
@@ -396,13 +415,39 @@ spec:
       name: eck-operator
       namespace: elastic-system
   timeout: 30m
+---
+# clusters/my-cluster/databases/elasticsearch-stack-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: elasticsearch-stack
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/my-cluster/databases/elasticsearch/stack
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: elasticsearch-operator
+  healthChecks:
+    - apiVersion: elasticsearch.k8s.elastic.co/v1
+      kind: Elasticsearch
+      name: es-cluster
+      namespace: elastic-system
+    - apiVersion: kibana.k8s.elastic.co/v1
+      kind: Kibana
+      name: kibana
+      namespace: elastic-system
+  timeout: 30m
 ```
 
 ## Verify the Deployment
 
 ```bash
 # Check Flux reconciliation
-flux get kustomizations elasticsearch
+flux get kustomizations elasticsearch-operator elasticsearch-stack
 
 # Verify the ECK operator
 kubectl get pods -n elastic-system -l control-plane=elastic-operator
@@ -430,46 +475,59 @@ kubectl port-forward svc/kibana-kb-http -n elastic-system 5601:5601 &
 
 ## Snapshot and Backup Configuration
 
+This example assumes S3 credentials are available through Kubernetes service account-based authentication, node IAM credentials, or ECK secure settings.
+
 ```yaml
-# clusters/my-cluster/databases/elasticsearch/snapshot-repo.yaml
-apiVersion: v1
-kind: ConfigMap
+# clusters/my-cluster/databases/elasticsearch/stack/snapshot-repo.yaml
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: es-snapshot-setup
   namespace: elastic-system
-data:
-  setup.sh: |
-    #!/bin/bash
-    # Register an S3 snapshot repository
-    curl -s -k -X PUT -u "elastic:${ELASTIC_PASSWORD}" \
-      "https://es-cluster-es-http:9200/_snapshot/s3-backup" \
-      -H "Content-Type: application/json" -d '{
-      "type": "s3",
-      "settings": {
-        "bucket": "es-snapshots",
-        "region": "us-east-1",
-        "base_path": "es-cluster"
-      }
-    }'
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: curlimages/curl:8.8.0
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: es-cluster-es-elastic-user
+                  key: elastic
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              curl -f -s -k -X PUT -u "elastic:${ELASTIC_PASSWORD}" \
+                "https://es-cluster-es-http:9200/_snapshot/s3-backup" \
+                -H "Content-Type: application/json" -d '{
+                "type": "s3",
+                "settings": {
+                  "bucket": "es-snapshots",
+                  "region": "us-east-1",
+                  "base_path": "es-cluster"
+                }
+              }'
 
-    # Create a snapshot lifecycle policy
-    curl -s -k -X PUT -u "elastic:${ELASTIC_PASSWORD}" \
-      "https://es-cluster-es-http:9200/_slm/policy/daily-snapshots" \
-      -H "Content-Type: application/json" -d '{
-      "schedule": "0 0 2 * * ?",
-      "name": "<daily-snap-{now/d}>",
-      "repository": "s3-backup",
-      "config": {
-        "indices": ["*"],
-        "ignore_unavailable": true,
-        "include_global_state": false
-      },
-      "retention": {
-        "expire_after": "30d",
-        "min_count": 5,
-        "max_count": 30
-      }
-    }'
+              curl -f -s -k -X PUT -u "elastic:${ELASTIC_PASSWORD}" \
+                "https://es-cluster-es-http:9200/_slm/policy/daily-snapshots" \
+                -H "Content-Type: application/json" -d '{
+                "schedule": "0 0 2 * * ?",
+                "name": "<daily-snap-{now/d}>",
+                "repository": "s3-backup",
+                "config": {
+                  "indices": ["*"],
+                  "ignore_unavailable": true,
+                  "include_global_state": false
+                },
+                "retention": {
+                  "expire_after": "30d",
+                  "min_count": 5,
+                  "max_count": 30
+                }
+              }'
 ```
 
 ## Troubleshooting
@@ -488,8 +546,10 @@ kubectl logs -n elastic-system -l control-plane=elastic-operator --tail=100
 kubectl logs -n elastic-system es-cluster-es-data-0 --tail=100
 
 # Check cluster allocation issues
+PASSWORD=$(kubectl get secret es-cluster-es-elastic-user -n elastic-system \
+  -o jsonpath='{.data.elastic}' | base64 --decode)
 kubectl exec -it es-cluster-es-master-0 -n elastic-system -- \
-  curl -s -k -u "elastic:${ELASTIC_PASSWORD}" \
+  curl -s -k -u "elastic:${PASSWORD}" \
   "https://localhost:9200/_cluster/allocation/explain?pretty"
 ```
 
