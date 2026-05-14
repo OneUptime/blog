@@ -49,9 +49,6 @@ metadata:
 spec:
   # Harbor webhook type
   type: harbor
-  # Harbor push artifact events
-  events:
-    - "PUSH_ARTIFACT"
   # Secret for webhook authentication
   secretRef:
     name: harbor-webhook-secret
@@ -102,7 +99,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -138,8 +135,6 @@ metadata:
   namespace: flux-system
 spec:
   type: harbor
-  events:
-    - "PUSH_ARTIFACT"
   secretRef:
     name: harbor-webhook-secret
   resources:
