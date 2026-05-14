@@ -40,7 +40,7 @@ spec:
     replicaCount: 2
 ```
 
-In this example, the HelmRelease resource itself lives in `flux-system`, but all templated resources (Deployments, Services, ConfigMaps, etc.) are created in the `apps` namespace.
+In this example, the HelmRelease resource itself lives in `flux-system`, but namespace-scoped chart resources without an explicit `metadata.namespace` are created in the `apps` namespace.
 
 ## Default Behavior Without targetNamespace
 
@@ -65,7 +65,7 @@ spec:
         namespace: flux-system
 ```
 
-Here, all chart resources are deployed into the `default` namespace.
+Here, namespace-scoped chart resources without an explicit `metadata.namespace` are deployed into the `default` namespace.
 
 ## Why Separate HelmRelease From Target Namespace
 
@@ -112,7 +112,7 @@ spec:
 
 **RBAC isolation.** Application teams can view resources in their namespace but cannot modify HelmRelease resources in the management namespace.
 
-**Cross-namespace source references.** When using `spec.chart.spec.sourceRef` with a cross-namespace reference, the HelmRelease must be in the namespace allowed by the source's access policy.
+**Cross-namespace source references.** When using `spec.chart.spec.sourceRef` with a cross-namespace reference, make sure your Flux installation allows cross-namespace references. Platform admins can disable them with the helm-controller `--no-cross-namespace-refs=true` flag.
 
 ## Creating the Target Namespace
 
@@ -149,7 +149,7 @@ The `spec.install.createNamespace` field only affects the install action. The na
 
 ## targetNamespace with storageNamespace
 
-When using `targetNamespace`, Helm release metadata (Secrets storing release history) is stored in the target namespace by default. You can override this with `spec.storageNamespace`.
+When using `targetNamespace`, Helm release metadata (Secrets storing release history) is stored in the HelmRelease namespace by default. You can override this with `spec.storageNamespace`.
 
 ```yaml
 # helmrelease.yaml - Separate target and storage namespaces
@@ -235,16 +235,16 @@ spec:
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease my-app -n flux-system
+flux get helmreleases -n flux-system
 
 # Verify resources are in the target namespace
 kubectl get all -n apps
 
-# Check where Helm release metadata is stored
-kubectl get secrets -n apps -l owner=helm
+# Check where Helm release metadata is stored by default
+kubectl get secrets -n flux-system -l owner=helm
 
-# Confirm the release namespace
-helm list -n apps
+# List the release from the Helm storage namespace
+helm list -n flux-system
 ```
 
 ## Summary
