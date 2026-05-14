@@ -16,7 +16,7 @@ This guide walks through installing Crossplane with Flux, configuring cloud prov
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28+)
+- An actively supported Kubernetes cluster
 - Flux CD installed and bootstrapped
 - An AWS account (examples use AWS, adaptable to GCP/Azure)
 - kubectl and flux CLI installed
@@ -78,7 +78,7 @@ spec:
   chart:
     spec:
       chart: crossplane
-      version: "1.17.x"
+      version: "2.2.x"
       sourceRef:
         kind: HelmRepository
         name: crossplane
@@ -93,9 +93,6 @@ spec:
       requests:
         cpu: 50m
         memory: 128Mi
-    # Enable external secret stores for credential management
-    args:
-      - --enable-external-secret-stores
 ```
 
 ## Installing the AWS Provider
@@ -108,10 +105,10 @@ Configure Crossplane to manage AWS resources.
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-s3
+  name: crossplane-contrib-provider-aws-s3
 spec:
-  # Use the official Upbound AWS S3 provider
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.14.0
+  # Use the community AWS S3 provider
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-s3:v2.0.0
   runtimeConfigRef:
     name: default
 ---
@@ -119,17 +116,17 @@ spec:
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-ec2
+  name: crossplane-contrib-provider-aws-ec2
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.14.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-ec2:v2.0.0
 ---
 # Install the AWS provider for RDS resources
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws-rds
+  name: crossplane-contrib-provider-aws-rds
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-rds:v1.14.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-rds:v2.0.0
 ```
 
 ## Configuring AWS Credentials
@@ -147,10 +144,11 @@ kubectl create secret generic aws-creds \
 ```yaml
 # infrastructure/crossplane/providers/aws-provider-config.yaml
 # Configure how Crossplane authenticates with AWS
-apiVersion: aws.upbound.io/v1beta1
+apiVersion: aws.m.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
+  namespace: default
 spec:
   credentials:
     source: Secret
@@ -221,10 +219,11 @@ Now define cloud resources as Kubernetes manifests in Git. Flux syncs them, Cros
 ```yaml
 # infrastructure/cloud-resources/s3-bucket.yaml
 # Create an S3 bucket for application data
-apiVersion: s3.aws.upbound.io/v1beta2
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: my-app-data-bucket
+  namespace: default
   labels:
     environment: production
     managed-by: crossplane
@@ -238,12 +237,14 @@ spec:
       ManagedBy: crossplane-flux
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ---
 # Configure bucket versioning
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketVersioning
 metadata:
   name: my-app-data-versioning
+  namespace: default
 spec:
   forProvider:
     bucketRef:
@@ -253,12 +254,14 @@ spec:
       - status: Enabled
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ---
 # Configure server-side encryption
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketServerSideEncryptionConfiguration
 metadata:
   name: my-app-data-encryption
+  namespace: default
 spec:
   forProvider:
     bucketRef:
@@ -269,6 +272,7 @@ spec:
           - sseAlgorithm: aws:kms
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ```
 
 ## Provisioning a VPC
@@ -278,10 +282,11 @@ Define a complete VPC setup in Git.
 ```yaml
 # infrastructure/cloud-resources/vpc.yaml
 # Create a VPC for the application workloads
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: VPC
 metadata:
   name: production-vpc
+  namespace: default
   labels:
     network: production
 spec:
@@ -295,12 +300,14 @@ spec:
       Environment: production
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ---
 # Create public subnets across availability zones
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: Subnet
 metadata:
   name: public-subnet-1a
+  namespace: default
 spec:
   forProvider:
     region: us-east-1
@@ -314,11 +321,13 @@ spec:
       Type: public
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ---
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: Subnet
 metadata:
   name: public-subnet-1b
+  namespace: default
 spec:
   forProvider:
     region: us-east-1
@@ -332,6 +341,7 @@ spec:
       Type: public
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ```
 
 ## Provisioning an RDS Database
@@ -340,11 +350,32 @@ Define a managed database through Git.
 
 ```yaml
 # infrastructure/cloud-resources/rds.yaml
+# Create a subnet group for the database
+apiVersion: rds.aws.m.upbound.io/v1beta1
+kind: SubnetGroup
+metadata:
+  name: production-db-subnet-group
+  namespace: default
+spec:
+  forProvider:
+    region: us-east-1
+    description: "Subnet group for production database"
+    subnetIdRefs:
+      - name: public-subnet-1a
+      - name: public-subnet-1b
+    tags:
+      Name: production-db-subnet-group
+      Environment: production
+  providerConfigRef:
+    name: default
+    kind: ProviderConfig
+---
 # Create an RDS PostgreSQL instance
-apiVersion: rds.aws.upbound.io/v1beta2
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: app-database
+  namespace: default
   labels:
     database: production
 spec:
@@ -354,10 +385,9 @@ spec:
     engineVersion: "16"
     instanceClass: db.t3.medium
     allocatedStorage: 50
-    # Reference the database password from a Kubernetes Secret
+    # Reference the database password from a Kubernetes Secret in the same namespace
     passwordSecretRef:
       name: db-credentials
-      namespace: crossplane-system
       key: password
     username: appadmin
     # Place in the production VPC subnets
@@ -372,10 +402,10 @@ spec:
       ManagedBy: crossplane
   providerConfigRef:
     name: default
+    kind: ProviderConfig
   # Write connection details to a Kubernetes Secret
   writeConnectionSecretToRef:
     name: app-database-connection
-    namespace: default
 ```
 
 ## Syncing Cloud Resources with Flux
@@ -413,12 +443,12 @@ Check the status of your cloud resources.
 kubectl get managed
 
 # Check specific resource types
-kubectl get buckets.s3.aws.upbound.io
-kubectl get vpcs.ec2.aws.upbound.io
-kubectl get instances.rds.aws.upbound.io
+kubectl get buckets.s3.aws.m.upbound.io
+kubectl get vpcs.ec2.aws.m.upbound.io
+kubectl get instances.rds.aws.m.upbound.io
 
 # Get detailed status of a resource
-kubectl describe bucket my-app-data-bucket
+kubectl describe bucket.s3.aws.m.upbound.io my-app-data-bucket
 
 # Check Flux reconciliation status
 flux get kustomizations
@@ -431,10 +461,11 @@ Use Crossplane references to manage dependencies between cloud resources.
 ```yaml
 # infrastructure/cloud-resources/security-group.yaml
 # Security group that references the VPC
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: SecurityGroup
 metadata:
   name: app-database-sg
+  namespace: default
 spec:
   forProvider:
     region: us-east-1
@@ -446,6 +477,7 @@ spec:
       Name: app-database-sg
   providerConfigRef:
     name: default
+    kind: ProviderConfig
 ```
 
 ## Conclusion
