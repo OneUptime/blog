@@ -8,7 +8,7 @@ Description: Learn how to configure Flux CD's notification controller to send de
 
 ---
 
-Datadog is a comprehensive monitoring and observability platform. Integrating Flux CD with Datadog allows you to send deployment events directly into your Datadog event stream, where they can be correlated with metrics, traces, and logs. This makes it easier to understand the impact of deployments on application performance.
+Datadog is a comprehensive monitoring and observability platform. Integrating Flux CD with Datadog allows you to send deployment events directly into Datadog Events Explorer, where they can be correlated with metrics, traces, and logs. This makes it easier to understand the impact of deployments on application performance.
 
 This guide walks through configuring a Flux notification Provider for Datadog, from obtaining an API key to verifying that events appear in your Datadog dashboard.
 
@@ -42,7 +42,7 @@ Define a Provider resource for Datadog. The `address` field should point to your
 ```yaml
 # provider-datadog.yaml
 # Configures Flux to send notifications to Datadog
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: datadog-provider
@@ -76,7 +76,7 @@ Create an Alert that sends Flux events to Datadog.
 ```yaml
 # alert-datadog.yaml
 # Routes Flux events to Datadog
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: datadog-alert
@@ -129,15 +129,15 @@ Navigate to the Datadog **Events** page to see the Flux event.
 graph LR
     A[Flux Controllers] -->|emit events| B[Notification Controller]
     B -->|matches Alert rules| C[Provider: datadog]
-    C -->|Datadog Events API| D[Datadog Event Stream]
+    C -->|Datadog Events API| D[Datadog Events Explorer]
     D -->|correlates with| E[Metrics & Dashboards]
 ```
 
-The notification controller sends Flux events to the Datadog Events API. These events appear in the Datadog event stream and can be overlaid on dashboards, used in monitors, and correlated with application metrics.
+The notification controller sends Flux events to the Datadog Events API. These events appear in Datadog Events Explorer and can be overlaid on dashboards, used in monitors, and correlated with application metrics.
 
 ## Overlaying Events on Dashboards
 
-Once Flux events flow into Datadog, you can overlay them on metric dashboards. In any Datadog dashboard, add an **Event Overlay** widget and filter by the Flux event source. This allows you to visually correlate deployment events with metric changes such as error rates, latency, and resource utilization.
+Once Flux events flow into Datadog, you can overlay them on metric dashboards. In a Datadog timeseries widget, use the **Event Overlays** section and filter by the Flux event source. This allows you to visually correlate deployment events with metric changes such as error rates, latency, and resource utilization.
 
 ## Creating Datadog Monitors from Flux Events
 
@@ -156,7 +156,7 @@ Make sure to use the correct Datadog API endpoint for your region:
 
 ```yaml
 # Example for EU region
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: datadog-eu-provider
@@ -173,7 +173,7 @@ spec:
 If you prefer to send only errors to Datadog:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: datadog-errors
@@ -198,7 +198,7 @@ If events are not appearing in Datadog:
 3. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
 4. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for HTTP errors (look for 403 or 401 responses).
 5. **Network access**: The cluster must be able to reach the Datadog API endpoint on port 443.
-6. **Event stream**: Datadog events can take a few seconds to appear. Check the Events page with the correct time range.
+6. **Events Explorer**: Datadog events can take a few seconds to appear. Check the Events page with the correct time range.
 7. **API key permissions**: Ensure the API key has permission to post events.
 
 ## Conclusion
