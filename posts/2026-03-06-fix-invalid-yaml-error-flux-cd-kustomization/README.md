@@ -119,11 +119,17 @@ cat -A deployment.yaml | grep "\\^I"
 ### Fix: Convert Tabs to Spaces
 
 ```bash
-# Replace tabs with 2 spaces in a single file
+# Replace tabs with 2 spaces in a single file on macOS/BSD sed
 sed -i '' 's/\t/  /g' deployment.yaml
 
-# Replace tabs in all YAML files recursively
-find . -name "*.yaml" -o -name "*.yml" | xargs sed -i '' 's/\t/  /g'
+# Replace tabs with 2 spaces in a single file on Linux/GNU sed
+sed -i 's/\t/  /g' deployment.yaml
+
+# Replace tabs in all YAML files recursively on macOS/BSD sed
+find . \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i '' 's/\t/  /g' {} +
+
+# Replace tabs in all YAML files recursively on Linux/GNU sed
+find . \( -name "*.yaml" -o -name "*.yml" \) -print0 | xargs -0 -r sed -i 's/\t/  /g'
 ```
 
 ### Fix: Configure Your Editor
@@ -261,10 +267,15 @@ values_that_are_false:
   - false
   - False
   - FALSE
-  - "no"   # Must quote "no" if you mean the string
-  - "No"
-  - "off"
+  - no
+  - No
+  - NO
+  - off
+  - Off
+  - OFF
 ```
+
+Quote values such as `"yes"`, `"no"`, `"on"`, and `"off"` when you mean strings.
 
 ## Cause 5: Duplicate Keys
 
@@ -404,10 +415,13 @@ repos:
       - id: yamllint
         args: [-d, relaxed]
 
-  - repo: https://github.com/yannh/kubeconform
-    rev: v0.6.4
+  - repo: local
     hooks:
       - id: kubeconform
+        name: kubeconform
+        entry: kubeconform
+        language: system
+        types_or: [yaml]
         args: [-strict, -summary]
 ```
 
@@ -453,15 +467,15 @@ jobs:
 
       - name: Validate Kubernetes manifests
         run: |
-          find . -name "*.yaml" -not -path "./.github/*" | \
-            xargs kubeconform -strict -summary
+          find . \( -name "*.yaml" -o -name "*.yml" \) -not -path "./.github/*" -print0 | \
+            xargs -0 -r kubeconform -strict -summary
 ```
 
 ## Quick Troubleshooting Commands
 
 ```bash
 # 1. Validate YAML syntax
-python3 -c "import yaml; yaml.safe_load(open('file.yaml'))"
+python3 -c "import yaml; list(yaml.safe_load_all(open('file.yaml')))"
 
 # 2. Find tabs in YAML files
 grep -rPn '\t' --include="*.yaml" .
