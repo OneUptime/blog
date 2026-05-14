@@ -22,6 +22,7 @@ Before starting, ensure you have:
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A Git repository connected to Flux CD
+- Prometheus Operator CRDs installed if you enable the ServiceMonitor example
 
 ## Architecture Overview
 
@@ -69,7 +70,7 @@ metadata:
   namespace: redis-system
 spec:
   interval: 1h
-  # Bitnami OCI registry for Helm charts
+  # Bitnami Helm chart repository
   url: https://charts.bitnami.com/bitnami
 ```
 
@@ -115,11 +116,17 @@ spec:
         namespace: redis-system
       interval: 12h
   values:
+    architecture: replication
+
     # Use the existing password secret
     auth:
       enabled: true
       existingSecret: redis-password
       existingSecretPasswordKey: redis-password
+
+    # Required when Sentinel manages the optional current-master service
+    rbac:
+      create: true
 
     # Master node configuration
     master:
@@ -142,7 +149,8 @@ spec:
         maxmemory-policy noeviction
 
         # Streams-specific settings
-        # Maximum length of stream entries before trimming
+        # Tune the size of stream macro nodes. Use XADD MAXLEN or XTRIM
+        # when you need to enforce an application-level stream length.
         stream-node-max-bytes 4096
         stream-node-max-entries 100
 
@@ -183,6 +191,8 @@ spec:
     # Redis Sentinel for high availability
     sentinel:
       enabled: true
+      masterService:
+        enabled: true
       resources:
         requests:
           cpu: 100m
@@ -233,9 +243,12 @@ spec:
             - /bin/sh
             - -c
             - |
+              set -e
+              export REDISCLI_AUTH="$REDIS_PASSWORD"
+
               # Wait for Redis to be ready
               until redis-cli -h redis-master.redis-system.svc \
-                -a "$REDIS_PASSWORD" ping | grep PONG; do
+                ping | grep PONG; do
                 echo "Waiting for Redis..."
                 sleep 5
               done
@@ -243,26 +256,21 @@ spec:
               # Create streams with initial entries
               # Events stream for application events
               redis-cli -h redis-master.redis-system.svc \
-                -a "$REDIS_PASSWORD" \
                 XADD events:app '*' type init message "Stream initialized"
 
               # Create consumer groups for the events stream
               redis-cli -h redis-master.redis-system.svc \
-                -a "$REDIS_PASSWORD" \
-                XGROUP CREATE events:app processors '$' MKSTREAM
+                XGROUP CREATE events:app processors '$' MKSTREAM || true
 
               redis-cli -h redis-master.redis-system.svc \
-                -a "$REDIS_PASSWORD" \
-                XGROUP CREATE events:app analytics '$' MKSTREAM
+                XGROUP CREATE events:app analytics '$' MKSTREAM || true
 
               # Notifications stream
               redis-cli -h redis-master.redis-system.svc \
-                -a "$REDIS_PASSWORD" \
                 XADD notifications '*' type init message "Stream initialized"
 
               redis-cli -h redis-master.redis-system.svc \
-                -a "$REDIS_PASSWORD" \
-                XGROUP CREATE notifications handlers '$' MKSTREAM
+                XGROUP CREATE notifications handlers '$' MKSTREAM || true
 
               echo "Streams and consumer groups created successfully"
           env:
@@ -313,10 +321,20 @@ spec:
           port: 6379
         - protocol: TCP
           port: 26379
+    # Allow Prometheus scraping from labeled namespaces
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              monitoring: "true"
+      ports:
+        - protocol: TCP
+          port: 9121
   egress:
     # Allow DNS
     - ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
     # Allow Redis replication traffic
     - to:
@@ -351,13 +369,9 @@ spec:
   path: ./clusters/my-cluster/redis
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: redis-master
-      namespace: redis-system
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: redis-replicas
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: redis
       namespace: redis-system
   timeout: 10m
 ```
@@ -373,31 +387,39 @@ flux get helmreleases -n redis-system
 # Verify all Redis pods are running
 kubectl get pods -n redis-system
 
+# Export the password for redis-cli commands
+export REDIS_PASSWORD=$(kubectl get secret redis-password -n redis-system \
+  -o jsonpath='{.data.redis-password}' | base64 -d)
+
 # Test Redis connectivity
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" ping
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc -a "$REDIS_PASSWORD" ping
 
 # Verify streams exist
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" XINFO STREAM events:app
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc \
+  -a "$REDIS_PASSWORD" XINFO STREAM events:app
 
 # List consumer groups
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" XINFO GROUPS events:app
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc \
+  -a "$REDIS_PASSWORD" XINFO GROUPS events:app
 
 # Publish a test message
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" \
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc \
+  -a "$REDIS_PASSWORD" \
   XADD events:app '*' source test action "flux-cd-verification"
 
 # Read messages from the stream
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" \
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc \
+  -a "$REDIS_PASSWORD" \
   XRANGE events:app - +
 
 # Check Sentinel status
-kubectl exec -n redis-system redis-node-0 -- \
-  redis-cli -p 26379 SENTINEL masters
+kubectl exec -n redis-system redis-node-0 -c sentinel -- \
+  redis-cli -p 26379 -a "$REDIS_PASSWORD" SENTINEL masters
 ```
 
 ## Troubleshooting
@@ -408,22 +430,24 @@ Common issues and fixes:
 # Check Flux HelmRelease errors
 kubectl describe helmrelease redis -n redis-system
 
-# View Redis master logs
-kubectl logs -n redis-system redis-master-0
+# View Redis logs
+kubectl logs -n redis-system redis-node-0 -c redis
 
 # Check memory usage
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" INFO memory
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc \
+  -a "$REDIS_PASSWORD" INFO memory
 
 # Check replication status
-kubectl exec -n redis-system redis-master-0 -- \
-  redis-cli -a "$REDIS_PASSWORD" INFO replication
+kubectl exec -n redis-system redis-node-0 -c redis -- \
+  redis-cli -h redis-master.redis-system.svc \
+  -a "$REDIS_PASSWORD" INFO replication
 
 # Verify persistent volumes
 kubectl get pvc -n redis-system
 
 # Check Sentinel failover logs
-kubectl logs -n redis-system -l app.kubernetes.io/component=sentinel
+kubectl logs -n redis-system redis-node-0 -c sentinel
 ```
 
 ## Conclusion

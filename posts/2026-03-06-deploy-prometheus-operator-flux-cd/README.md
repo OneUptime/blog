@@ -72,7 +72,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "60.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -123,6 +123,8 @@ spec:
     # Alertmanager configuration
     alertmanager:
       alertmanagerSpec:
+        secrets:
+          - alertmanager-secrets
         storage:
           volumeClaimTemplate:
             spec:
@@ -162,7 +164,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: monitoring
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -175,6 +176,10 @@ spec:
       kind: Deployment
       name: kube-prometheus-stack-operator
       namespace: monitoring
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
 ```
 
 ## Creating Custom ServiceMonitors
@@ -290,25 +295,25 @@ alertmanager:
         # Route critical alerts to PagerDuty
         - receiver: "pagerduty-critical"
           matchers:
-            - severity = critical
+            - severity="critical"
           continue: false
         # Route warning alerts to Slack
         - receiver: "slack-notifications"
           matchers:
-            - severity = warning
+            - severity="warning"
 
     receivers:
       - name: "slack-notifications"
         slack_configs:
-          - api_url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+          - api_url_file: "/etc/alertmanager/secrets/alertmanager-secrets/slack-webhook"
             channel: "#alerts"
             send_resolved: true
-            title: '{{ template "slack.title" . }}'
-            text: '{{ template "slack.text" . }}'
+            title: '{{ template "slack.default.title" . }}'
+            text: '{{ template "slack.default.text" . }}'
 
       - name: "pagerduty-critical"
         pagerduty_configs:
-          - service_key: "YOUR_PAGERDUTY_SERVICE_KEY"
+          - service_key_file: "/etc/alertmanager/secrets/alertmanager-secrets/pagerduty-key"
             severity: '{{ .CommonLabels.severity }}'
 ```
 
@@ -338,6 +343,8 @@ sops --encrypt \
   --encrypted-regex '^(data|stringData)$' \
   --in-place clusters/my-cluster/monitoring/alertmanager-secrets.yaml
 ```
+
+Make sure the Flux Kustomization includes `decryption.provider: sops` and references a SOPS age key Secret, as shown earlier.
 
 ## Verifying the Deployment
 
@@ -372,8 +379,8 @@ To upgrade, simply update the chart version in your HelmRelease and push to Git.
 spec:
   chart:
     spec:
-      # Update to the new version
-      version: "61.x"
+      # For example, update an older 84.x pin to the current 85.x series
+      version: "85.x"
 ```
 
 Flux CD will detect the change and perform a rolling upgrade automatically.
