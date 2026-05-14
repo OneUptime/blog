@@ -18,16 +18,16 @@ Semantic versioning (SemVer) is the most widely used tagging convention for cont
 
 ## Understanding SemVer in Flux
 
-SemVer tags follow the format `MAJOR.MINOR.PATCH` (e.g., `1.2.3`). Optional pre-release identifiers (`1.2.3-beta.1`) and build metadata (`1.2.3+build.456`) are also supported. Flux uses the Masterminds/semver library for version parsing and range evaluation.
+SemVer tags follow the format `MAJOR.MINOR.PATCH` (e.g., `1.2.3`). Optional pre-release identifiers (`1.2.3-beta.1`) are also supported. SemVer build metadata uses a `+` character, which is not valid in Docker/OCI image tags, so prefer pre-release identifiers or another tag pattern for image metadata. Flux uses the Masterminds/semver library for version parsing and range evaluation.
 
 ## Step 1: Select the Latest Version in Any Range
 
-The broadest range selects the latest available version.
+The broadest stable range selects the latest available stable version.
 
 ```yaml
 # imagepolicy-semver-any.yaml
 
-# Select the latest semver tag regardless of major version
+# Select the latest stable semver tag regardless of major version
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -38,7 +38,7 @@ spec:
     name: my-app
   policy:
     semver:
-      # Match any version 0.0.0 and above
+      # Match any stable version 0.0.0 and above
       range: ">=0.0.0"
 ```
 
@@ -130,7 +130,7 @@ spec:
 
 ## Step 6: Handle Tags with a 'v' Prefix
 
-Many projects use tags like `v1.2.3`. Use `filterTags` to strip the prefix before SemVer evaluation.
+Many projects use tags like `v1.2.3`. Flux accepts a leading `v` prefix, but you can use `filterTags` to normalize the value before SemVer evaluation or to restrict which tags are considered.
 
 ```yaml
 # imagepolicy-semver-vprefix.yaml
@@ -202,12 +202,12 @@ spec:
 
 | Range | Matches | Use Case |
 |---|---|---|
-| `*` | Any version | Latest available |
+| `*` | Any stable version | Latest available stable version |
 | `1.x` | 1.0.0 to <2.0.0 | Lock to major |
 | `~1.2.0` | 1.2.0 to <1.3.0 | Patch updates only |
 | `^1.2.0` | 1.2.0 to <2.0.0 | Minor+patch updates |
 | `>=1.5.0 <2.0.0` | 1.5.0 to <2.0.0 | Explicit range |
-| `>=1.0.0-0` | All including pre-release | Include betas |
+| `>=1.0.0-0` | Versions >=1.0.0 including pre-release | Include betas |
 
 ## Step 9: Verify the Selected Tag
 
@@ -223,7 +223,7 @@ kubectl describe imagepolicy my-app -n flux-system
 
 - **No matching version**: Ensure your image tags are valid SemVer. Tags like `1.0` (missing patch) are not standard SemVer.
 - **Pre-release tags not selected**: Add `-0` to your range to include pre-releases.
-- **'v' prefix causing issues**: Use `filterTags` to strip the prefix.
+- **Custom prefixes causing issues**: Use `filterTags` to extract the SemVer part of the tag.
 
 ```bash
 # Check what tags are available from the ImageRepository
