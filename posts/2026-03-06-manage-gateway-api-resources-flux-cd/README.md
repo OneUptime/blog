@@ -10,7 +10,7 @@ Description: Learn how to deploy and manage Kubernetes Gateway API resources usi
 
 ## Introduction
 
-The Kubernetes Gateway API is the next-generation replacement for Ingress, offering a more expressive, extensible, and role-oriented approach to managing network traffic. It introduces resources like Gateway, HTTPRoute, GRPCRoute, and TCPRoute that provide fine-grained control over traffic routing. Managing Gateway API resources through Flux CD brings GitOps best practices to your networking layer.
+The Kubernetes Gateway API is the next-generation successor to the Ingress model, offering a more expressive, extensible, and role-oriented approach to managing network traffic. It introduces resources like Gateway, HTTPRoute, GRPCRoute, and TCPRoute that provide fine-grained control over traffic routing. Managing Gateway API resources through Flux CD brings GitOps best practices to your networking layer.
 
 This guide covers installing Gateway API CRDs, deploying gateway controllers, and configuring routes with Flux CD.
 
@@ -48,21 +48,26 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   # Install the standard Gateway API CRDs
-  - https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+  - https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
 ```
 
 ## Installing Envoy Gateway with Flux
 
 ```yaml
-# infrastructure/gateway-api/envoy-gateway-helmrepo.yaml
+# infrastructure/gateway-api/envoy-gateway-source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: envoy-gateway
+  name: gateway-helm
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://charts.envoyproxy.io
+  url: oci://docker.io/envoyproxy/gateway-helm
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    tag: v1.7.2
 ```
 
 ```yaml
@@ -71,26 +76,25 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: envoy-gateway
-  namespace: envoy-gateway-system
+  namespace: flux-system
 spec:
-  interval: 30m
-  chart:
-    spec:
-      chart: gateway-helm
-      version: "1.x"
-      sourceRef:
-        kind: HelmRepository
-        name: envoy-gateway
-        namespace: flux-system
+  interval: 5m
+  releaseName: eg
+  targetNamespace: envoy-gateway-system
+  chartRef:
+    kind: OCIRepository
+    name: gateway-helm
+    namespace: flux-system
   install:
     createNamespace: true
   values:
     deployment:
       replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
+      envoyGateway:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
 ```
 
 ## Defining a GatewayClass
@@ -121,7 +125,7 @@ metadata:
 spec:
   gatewayClassName: envoy-gateway
   listeners:
-    # HTTP listener that redirects to HTTPS
+    # HTTP listener for same-namespace routes
     - name: http
       protocol: HTTP
       port: 80
