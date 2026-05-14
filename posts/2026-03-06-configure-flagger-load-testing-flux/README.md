@@ -12,7 +12,7 @@ Description: Learn how to set up automated load testing for Flagger canary deplo
 
 Load testing is a critical component of canary analysis. Without sufficient traffic to the canary version, metrics analysis becomes unreliable. Flagger provides built-in support for load testing through webhooks, allowing you to generate synthetic traffic during canary deployments. This ensures that your canary always receives enough requests to produce meaningful metrics.
 
-This guide covers how to configure Flagger load testing using various tools including the Flagger load tester, hey, and Fortio, all managed through Flux GitOps workflows.
+This guide covers how to configure Flagger load testing using various tools including the Flagger load tester, hey, and wrk, all managed through Flux GitOps workflows.
 
 ## Prerequisites
 
@@ -23,72 +23,44 @@ This guide covers how to configure Flagger load testing using various tools incl
 
 ## Step 1: Deploy the Flagger Load Tester
 
-Flagger provides a built-in load testing service that can generate HTTP and gRPC traffic. Deploy it using Flux.
+Flagger provides a built-in load testing service that can generate HTTP and gRPC traffic. Deploy it using Flux. If your workloads use a service mesh, deploy the load tester in a namespace with sidecar injection enabled.
 
 ```yaml
-# load-tester-deployment.yaml
-
-apiVersion: apps/v1
-kind: Deployment
+# flagger-loadtester.yaml
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
 metadata:
   name: flagger-loadtester
   namespace: flagger-system
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: flagger-loadtester
-  template:
-    metadata:
-      labels:
-        app: flagger-loadtester
-    spec:
-      containers:
-        - name: loadtester
-          # Official Flagger load tester image
-          image: ghcr.io/fluxcd/flagger-loadtester:0.31.0
-          ports:
-            - containerPort: 8080
-              name: http
-          # Command-line flags for the load tester
-          command:
-            - ./loadtester
-            - -port=8080
-            - -log-level=info
-            - -timeout=1h
-          resources:
-            requests:
-              cpu: 100m
-              memory: 64Mi
-            limits:
-              cpu: 1000m
-              memory: 512Mi
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 8080
-          readinessProbe:
-            httpGet:
-              path: /healthz
-              port: 8080
+  interval: 6h
+  url: oci://ghcr.io/fluxcd/flagger-manifests
+  ref:
+    semver: 1.x
+  verify:
+    provider: cosign
 ---
-apiVersion: v1
-kind: Service
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+kind: Kustomization
 metadata:
   name: flagger-loadtester
   namespace: flagger-system
 spec:
-  selector:
-    app: flagger-loadtester
-  ports:
-    - port: 80
-      targetPort: 8080
+  interval: 6h
+  wait: true
+  timeout: 5m
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: flagger-loadtester
+  path: ./tester
+  targetNamespace: flagger-system
 ```
 
-Apply the deployment:
+Commit this manifest to the Git repository bootstrapped with Flux, then verify that Flux applied it:
 
 ```bash
-kubectl apply -f load-tester-deployment.yaml
+flux -n flagger-system get kustomization flagger-loadtester
 ```
 
 ## Step 2: Configure Basic HTTP Load Testing
@@ -227,12 +199,12 @@ spec:
             http://my-api-canary.default.svc.cluster.local:80/api/v1/events
 ```
 
-## Step 5: Configure Load Testing with Fortio
+## Step 5: Configure Load Testing with wrk
 
-Fortio is another load testing tool supported by the Flagger load tester. It provides more detailed histograms and percentile reporting.
+wrk is another load testing tool included in the Flagger load tester image. It provides latency and throughput reporting for HTTP services.
 
 ```yaml
-# canary-with-fortio.yaml
+# canary-with-wrk.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -257,20 +229,19 @@ spec:
           min: 99
         interval: 1m
     webhooks:
-      # Fortio-based load testing
-      - name: load-test-fortio
+      # wrk-based load testing
+      - name: load-test-wrk
         type: rollout
         url: http://flagger-loadtester.flagger-system.svc.cluster.local/
         timeout: 5s
         metadata:
           type: cmd
-          # Fortio load test command
-          # -qps: queries per second
-          # -c: concurrent connections
-          # -t: duration
-          # -loglevel: reduce output noise
+          # wrk load test command
+          # -t: number of threads
+          # -c: number of connections
+          # -d: duration
           cmd: >-
-            fortio load -qps 20 -c 4 -t 60s -loglevel Warning
+            wrk -t2 -c20 -d60s
             http://my-app-canary.default.svc.cluster.local:80/
 ```
 
@@ -451,4 +422,4 @@ kubectl logs -n flagger-system deployment/flagger --tail=50 | grep -i "load\|web
 
 ## Conclusion
 
-Load testing is essential for reliable canary analysis. By deploying the Flagger load tester and configuring webhooks, you ensure that every canary deployment receives sufficient traffic to produce meaningful metrics. Whether you use simple HTTP load testing with hey, advanced load testing with Fortio, gRPC benchmarking with ghz, or custom scripts, Flagger's webhook system provides the flexibility to match your testing needs. Combined with Flux GitOps, your load testing configuration is version-controlled and reproducible.
+Load testing is essential for reliable canary analysis. By deploying the Flagger load tester and configuring webhooks, you ensure that every canary deployment receives sufficient traffic to produce meaningful metrics. Whether you use simple HTTP load testing with hey, advanced load testing with wrk, gRPC benchmarking with ghz, or custom scripts, Flagger's webhook system provides the flexibility to match your testing needs. Combined with Flux GitOps, your load testing configuration is version-controlled and reproducible.
