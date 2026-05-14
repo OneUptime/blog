@@ -18,7 +18,7 @@ This guide covers two authentication methods: IAM Roles for Service Accounts (IR
 
 Before you begin, ensure you have:
 
-- An EKS cluster (or any Kubernetes cluster with AWS access) running Flux CD v0.35 or later
+- An EKS cluster (or any Kubernetes cluster with AWS access) running Flux CD v2.6 or later
 - The `flux` CLI, `kubectl`, and `aws` CLI installed
 - An ECR repository with OCI artifacts pushed
 - IAM permissions to create roles and policies
@@ -72,7 +72,7 @@ Associate the IAM role with the Flux source-controller service account.
 
 ```bash
 # Create the IRSA role for the source-controller
-# Replace ACCOUNT_ID, OIDC_ID, and REGION with your values
+# Replace ACCOUNT_ID and my-cluster with your values
 eksctl create iamserviceaccount \
   --name=source-controller \
   --namespace=flux-system \
@@ -150,6 +150,13 @@ kubectl create secret docker-registry ecr-credentials \
   --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
   --docker-password="$(aws ecr get-login-password --region us-east-1)"
+
+# Store AWS credentials for the refresh CronJob
+kubectl create secret generic ecr-token-refresh-aws \
+  --namespace=flux-system \
+  --from-literal=AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY_ID \
+  --from-literal=AWS_SECRET_ACCESS_KEY=YOUR_SECRET_ACCESS_KEY \
+  --from-literal=AWS_REGION=us-east-1
 ```
 
 ### Step 2: Create a CronJob to Refresh the Token
@@ -159,6 +166,36 @@ ECR tokens expire after 12 hours. Set up a CronJob to refresh the secret automat
 ```yaml
 # ecr-token-refresh.yaml
 # CronJob that refreshes ECR credentials every 6 hours
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+subjects:
+  - kind: ServiceAccount
+    name: ecr-token-refresh
+    namespace: flux-system
+roleRef:
+  kind: Role
+  name: ecr-token-refresh
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -174,22 +211,42 @@ spec:
       template:
         spec:
           serviceAccountName: ecr-token-refresh
-          containers:
-            - name: refresh
-              image: amazon/aws-cli:latest
+          volumes:
+            - name: ecr-token
+              emptyDir: {}
+          initContainers:
+            - name: get-token
+              image: public.ecr.aws/aws-cli/aws-cli:2
+              envFrom:
+                - secretRef:
+                    name: ecr-token-refresh-aws
               command:
                 - /bin/sh
                 - -c
                 - |
                   # Get a fresh ECR token
-                  TOKEN=$(aws ecr get-login-password --region us-east-1)
+                  aws ecr get-login-password --region "$AWS_REGION" > /token/password
+              volumeMounts:
+                - name: ecr-token
+                  mountPath: /token
+          containers:
+            - name: refresh
+              image: registry.k8s.io/kubectl:v1.34.1
+              command:
+                - /bin/sh
+                - -c
+                - |
                   # Update the Kubernetes secret
                   kubectl create secret docker-registry ecr-credentials \
                     --namespace=flux-system \
                     --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
                     --docker-username=AWS \
-                    --docker-password="$TOKEN" \
+                    --docker-password="$(cat /token/password)" \
                     --dry-run=client -o yaml | kubectl apply -f -
+              volumeMounts:
+                - name: ecr-token
+                  mountPath: /token
+                  readOnly: true
           restartPolicy: OnFailure
 ```
 
@@ -230,7 +287,7 @@ aws ecr create-repository \
 flux push artifact oci://123456789.dkr.ecr.us-east-1.amazonaws.com/my-app-manifests:1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 ## Verifying the Setup
