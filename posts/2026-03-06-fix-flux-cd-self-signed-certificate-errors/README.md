@@ -41,31 +41,31 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "x509\|certif
 
 ## Step 2: Obtain Your CA Certificate
 
-Before configuring Flux, you need the CA certificate that signed the server's certificate.
+Before configuring Flux, you need the CA certificate that signed the server's certificate. Get this from the service owner or your PKI team. You can use `openssl` to inspect what the server presents, but the first certificate in the output is usually the leaf server certificate, not the CA certificate you should trust.
 
 ```bash
-# Extract the CA certificate from a running server
+# Inspect the leaf certificate from a running server
 openssl s_client -showcerts -connect gitlab.mycompany.com:443 </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > ca-cert.pem
+  openssl x509 -outform PEM > server-cert.pem
 
 # View the certificate details
-openssl x509 -in ca-cert.pem -text -noout
+openssl x509 -in server-cert.pem -text -noout
 
-# If there is a certificate chain, extract all certificates
+# Extract the presented certificate chain for inspection
 openssl s_client -showcerts -connect gitlab.mycompany.com:443 </dev/null 2>/dev/null | \
   awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ print }' > ca-chain.pem
 ```
 
 ## Step 3: Configure GitRepository with Custom CA
 
-Flux CD supports custom CA certificates directly on source resources via a secret reference.
+For GitRepository resources, Flux reads the CA certificate from the referenced Git secret. If you already use a username/password or token secret, add the CA certificate to that same secret.
 
 ```yaml
-# Create a secret with the CA certificate
+# Git credentials secret with the CA certificate
 apiVersion: v1
 kind: Secret
 metadata:
-  name: gitlab-ca-cert
+  name: git-credentials
   namespace: flux-system
 type: Opaque
 stringData:
@@ -76,13 +76,18 @@ stringData:
     BQAwRTELMAkGA1UEBhMCVVMxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
     ... (your CA certificate content) ...
     -----END CERTIFICATE-----
+  username: git
+  password: your-token
 ```
 
 ```bash
-# Create the secret from a file
-kubectl create secret generic gitlab-ca-cert \
+# Create a Git secret with credentials and a CA certificate
+flux create secret git git-credentials \
   --namespace=flux-system \
-  --from-file=ca.crt=./ca-cert.pem
+  --url=https://gitlab.mycompany.com/myorg/fleet-infra.git \
+  --username=git \
+  --password="$GITLAB_TOKEN" \
+  --ca-crt-file=./ca-cert.pem
 ```
 
 Reference the CA certificate in the GitRepository:
@@ -100,11 +105,8 @@ spec:
   ref:
     branch: main
   secretRef:
-    # Authentication secret (username/password or token)
+    # Authentication secret containing username/password or token, plus ca.crt
     name: git-credentials
-  certSecretRef:
-    # Secret containing the CA certificate
-    name: gitlab-ca-cert
 ```
 
 ## Step 4: Configure HelmRepository with Custom CA
@@ -153,11 +155,19 @@ spec:
     name: registry-ca-cert
 ```
 
+Create the CA secret:
+
+```bash
+kubectl create secret generic registry-ca-cert \
+  --namespace=flux-system \
+  --from-file=ca.crt=./ca-cert.pem
+```
+
 ## Step 6: Configure Global CA Trust for All Controllers
 
 If multiple resources need the same CA certificate, configure it globally on the controllers instead of per-resource.
 
-### Method 1: Mount CA Certificate as a Volume
+### Method 1: Mount a CA Bundle as a Volume
 
 ```yaml
 # ca-volume-patch.yaml
@@ -172,15 +182,15 @@ spec:
       containers:
         - name: manager
           volumeMounts:
-            # Mount the CA certificate into the trust store
+            # Mount a full CA bundle over the default CA bundle path
             - name: custom-ca
-              mountPath: /etc/ssl/certs/custom-ca.crt
-              subPath: ca.crt
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              subPath: ca-bundle.crt
               readOnly: true
       volumes:
         - name: custom-ca
-          secret:
-            secretName: custom-ca-cert
+          configMap:
+            name: custom-ca-bundle
 ```
 
 Apply via Kustomize:
@@ -256,15 +266,18 @@ kubectl create configmap custom-ca-bundle \
 Corporate proxies that perform TLS inspection (MITM) present their own certificate for all HTTPS connections. You need to trust the proxy's CA certificate.
 
 ```bash
-# Extract the proxy's CA certificate
+# Inspect the certificate presented through the proxy
 openssl s_client -showcerts -proxy proxy.example.com:8080 \
   -connect github.com:443 </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > proxy-ca.pem
+  openssl x509 -outform PEM > proxy-presented-cert.pem
 
-# Create a secret with the proxy CA
-kubectl create secret generic proxy-ca-cert \
+# Combine system CAs with the proxy CA you received from your network team
+cat /etc/ssl/certs/ca-certificates.crt proxy-ca.pem > proxy-ca-bundle.crt
+
+# Create a ConfigMap with the combined CA bundle
+kubectl create configmap proxy-ca-bundle \
   --namespace=flux-system \
-  --from-file=ca.crt=./proxy-ca.pem
+  --from-file=ca-bundle.crt=./proxy-ca-bundle.crt
 ```
 
 Then configure both proxy environment variables and the CA certificate:
@@ -285,16 +298,18 @@ spec:
             - name: HTTPS_PROXY
               value: "http://proxy.example.com:8080"
             - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8"
+              value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8"
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/proxy-ca-bundle.crt
           volumeMounts:
             - name: proxy-ca
-              mountPath: /etc/ssl/certs/proxy-ca.crt
-              subPath: ca.crt
+              mountPath: /etc/ssl/certs/proxy-ca-bundle.crt
+              subPath: ca-bundle.crt
               readOnly: true
       volumes:
         - name: proxy-ca
-          secret:
-            secretName: proxy-ca-cert
+          configMap:
+            name: proxy-ca-bundle
 ```
 
 ## Step 8: Configure Bootstrap with Custom CA
@@ -348,7 +363,7 @@ Export the CA certificate from cert-manager:
 ```bash
 # Extract the CA cert from cert-manager's secret
 kubectl get secret internal-ca-key-pair -n cert-manager \
-  -o jsonpath='{.data.ca\.crt}' | base64 -d > internal-ca.crt
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > internal-ca.crt
 
 # Create a Flux-compatible secret
 kubectl create secret generic internal-ca-cert \
@@ -368,10 +383,10 @@ flux reconcile source git flux-system
 kubectl get gitrepositories -n flux-system
 
 # Verify from a debug pod
-kubectl run -n flux-system tls-test --rm -it --restart=Never \
+kubectl run -n flux-system tls-test --rm -i --restart=Never \
   --image=curlimages/curl -- \
   curl --cacert /dev/stdin -s -o /dev/null -w "%{http_code}" \
-  https://gitlab.mycompany.com < <(kubectl get secret gitlab-ca-cert -n flux-system -o jsonpath='{.data.ca\.crt}' | base64 -d)
+  https://gitlab.mycompany.com < <(kubectl get secret git-credentials -n flux-system -o jsonpath='{.data.ca\.crt}' | base64 -d)
 ```
 
 ## Step 11: Full Debugging Checklist
@@ -385,15 +400,15 @@ openssl s_client -showcerts -connect gitlab.mycompany.com:443 </dev/null 2>/dev/
   openssl x509 -text -noout | grep -A2 "Issuer"
 
 # 3. Verify the CA secret exists and has content
-kubectl get secret gitlab-ca-cert -n flux-system \
+kubectl get secret git-credentials -n flux-system \
   -o jsonpath='{.data.ca\.crt}' | base64 -d | head -5
 
-# 4. Verify certSecretRef is set on the source
+# 4. Verify secretRef is set on the source
 kubectl get gitrepository my-repo -n flux-system \
-  -o jsonpath='{.spec.certSecretRef}'
+  -o jsonpath='{.spec.secretRef}'
 
 # 5. Check certificate expiry
-kubectl get secret gitlab-ca-cert -n flux-system \
+kubectl get secret git-credentials -n flux-system \
   -o jsonpath='{.data.ca\.crt}' | base64 -d | \
   openssl x509 -noout -dates
 
@@ -408,10 +423,10 @@ kubectl logs -n flux-system deployment/source-controller --tail=20
 
 Fixing Flux CD self-signed certificate errors involves:
 
-- **Creating a secret with the CA certificate** and referencing it via `certSecretRef` on source resources
+- **Creating a secret with the CA certificate** and referencing it from Flux source resources
 - **Using volume mounts** for global CA trust across all controllers
-- **Extracting proxy CA certificates** when behind TLS-intercepting proxies
+- **Trusting proxy CA certificates** when behind TLS-intercepting proxies
 - **Using --ca-file** during bootstrap for initial setup
 - **Keeping CA certificates updated** especially when they are rotated
 
-The key insight is that each Flux source resource (GitRepository, HelmRepository, OCIRepository) supports `certSecretRef` for per-resource CA configuration, while global trust requires volume mounts on the controller deployments.
+The key insight is that HelmRepository and OCIRepository support `certSecretRef` for per-resource CA configuration, while GitRepository expects the CA data in the referenced Git secret. Global trust requires mounting a CA bundle on the controller deployments.
