@@ -21,6 +21,7 @@ Before starting, ensure you have:
 - A local Kubernetes cluster (minikube, kind, or Docker Desktop)
 - Flux CD installed and bootstrapped on your production cluster
 - Skaffold CLI installed
+- Kustomize CLI installed
 - Docker installed for building container images
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
@@ -58,8 +59,10 @@ repo/
           kustomization.yaml
         overlays/
           dev/
+            namespace.yaml
             kustomization.yaml  # Dev-specific overrides
           production/
+            namespace.yaml
             kustomization.yaml  # Production overrides
   clusters/
     production/
@@ -150,11 +153,20 @@ resources:
 ### Development Overlay
 
 ```yaml
+# apps/web-api/k8s/overlays/dev/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+```
+
+```yaml
 # apps/web-api/k8s/overlays/dev/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: development
 resources:
+  - namespace.yaml
   - ../../base
 patches:
   # Enable debug logging in development
@@ -182,11 +194,20 @@ patches:
 ### Production Overlay
 
 ```yaml
+# apps/web-api/k8s/overlays/production/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+```
+
+```yaml
 # apps/web-api/k8s/overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: production
 resources:
+  - namespace.yaml
   - ../../base
 patches:
   # Production configuration with higher replicas and secrets
@@ -227,7 +248,7 @@ Create the Skaffold configuration file:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta11
+apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
   name: my-application
@@ -256,13 +277,19 @@ build:
     concurrency: 2
 
 # ============================================================
-# Deploy configuration
+# Render configuration
 # ============================================================
-deploy:
+manifests:
   kustomize:
     # Use the dev overlay for local development
     paths:
       - apps/web-api/k8s/overlays/dev
+
+# ============================================================
+# Deploy configuration
+# ============================================================
+deploy:
+  kubectl: {}
 
 # ============================================================
 # Port forwarding for local access
@@ -287,14 +314,10 @@ profiles:
             dockerfile: Dockerfile
       local:
         push: true
-    deploy:
-      kustomize:
-        paths:
-          - apps/web-api/k8s/overlays/dev
 
   # Render-only profile for generating manifests
   - name: render
-    deploy:
+    manifests:
       kustomize:
         paths:
           - apps/web-api/k8s/overlays/production
@@ -361,11 +384,6 @@ spec:
   # Wait for resources to be ready
   wait: true
   timeout: 3m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: web-api
-      namespace: production
 ```
 
 ## CI Pipeline Integration
@@ -394,6 +412,11 @@ jobs:
           curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
           chmod +x skaffold
           sudo mv skaffold /usr/local/bin/
+
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
 
       - name: Login to registry
         run: |
@@ -439,7 +462,7 @@ Extend the Skaffold configuration for a multi-service application:
 
 ```yaml
 # skaffold.yaml - Multi-service configuration
-apiVersion: skaffold/v4beta11
+apiVersion: skaffold/v4beta14
 kind: Config
 metadata:
   name: microservices
@@ -474,12 +497,15 @@ build:
     # Build up to 3 images in parallel
     concurrency: 3
 
-deploy:
+manifests:
   kustomize:
     paths:
       - apps/frontend/k8s/overlays/dev
       - apps/backend/k8s/overlays/dev
       - apps/worker/k8s/overlays/dev
+
+deploy:
+  kubectl: {}
 
 portForward:
   - resourceType: service
