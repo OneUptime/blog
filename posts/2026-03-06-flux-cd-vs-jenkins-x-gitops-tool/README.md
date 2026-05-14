@@ -10,7 +10,7 @@ Description: A detailed comparison of Flux CD and Jenkins X as GitOps tools, cov
 
 ## Introduction
 
-Flux CD and Jenkins X represent two different philosophies for implementing GitOps on Kubernetes. Flux CD is a focused GitOps operator that handles continuous delivery from Git to cluster. Jenkins X is a comprehensive platform that provides the entire CI/CD pipeline, including building, testing, and deploying applications. This guide compares these tools across key dimensions to help you choose the right one for your team.
+Flux CD and Jenkins X represent two different philosophies for implementing GitOps on Kubernetes. Flux CD is a focused GitOps operator that handles continuous delivery from Git to cluster. Jenkins X, now being renamed to JayeX, is a comprehensive platform that provides the entire CI/CD pipeline, including building, testing, and deploying applications. This guide compares these tools across key dimensions to help you choose the right one for your team.
 
 ## Fundamental Differences
 
@@ -24,7 +24,7 @@ Flux CD and Jenkins X solve overlapping but different problems. Understanding th
 | Feature | Flux CD | Jenkins X |
 |---|---|---|
 | Primary Focus | GitOps continuous delivery | Full CI/CD platform |
-| CNCF Status | Graduated | Sandbox (via CD Foundation, now archived) |
+| Project Status | CNCF Graduated | CD Foundation project, renaming to JayeX |
 | CI Pipeline | No (not in scope) | Yes (Tekton-based) |
 | CD Pipeline | Yes (Git reconciliation) | Yes (GitOps-based promotion) |
 | Container Building | No | Yes (Kaniko, BuildPacks) |
@@ -34,15 +34,15 @@ Flux CD and Jenkins X solve overlapping but different problems. Understanding th
 | Helm Support | Native (Helm Controller) | Yes (Helm charts per app) |
 | Kustomize Support | Native (Kustomize Controller) | Limited |
 | Multi-Cluster | Yes (per-cluster install) | Yes (multi-cluster promotion) |
-| UI Dashboard | None built-in | Web UI (jx-ui) |
+| UI Dashboard | None built-in | Read-only pipeline dashboard |
 | CLI Tool | flux CLI | jx CLI |
-| Resource Footprint | Lightweight (~200MB) | Heavy (~2GB+) |
+| Resource Footprint | Lightweight controllers | Higher footprint due to platform components |
 | Learning Curve | Moderate | Steep |
 | Opinionated Workflows | Minimal | Highly opinionated |
 | Git Provider Integration | GitHub, GitLab, Bitbucket | GitHub, GitLab, Bitbucket |
 | Secret Management | SOPS, Sealed Secrets | Vault integration |
 | Progressive Delivery | Via Flagger | Via Flagger integration |
-| Maintenance Status | Actively maintained | Limited maintenance |
+| Maintenance Status | Actively maintained | Actively maintained under the JayeX rename |
 
 ## Architecture Comparison
 
@@ -102,9 +102,9 @@ Jenkins X installs a comprehensive CI/CD platform on your cluster:
 # - Tekton (CI pipeline engine)
 # - Lighthouse (webhook handler and ChatOps)
 # - jx-git-operator (GitOps operator)
-# - Vault or external secrets (secret management)
-# - Nexus/Bucketrepo (artifact storage)
-# - ChartMuseum (Helm chart repository)
+# - Vault or cloud secret stores via External Secrets (secret management)
+# - Bucketrepo or Nexus (artifact storage, optional)
+# - ChartMuseum (Helm chart repository, optional)
 # - Container registry integration
 
 # Jenkins X project configuration (jx-requirements.yml)
@@ -141,8 +141,9 @@ spec:
       enabled: true
       url: gs://my-reports-bucket
   # Vault for secrets
-  vault:
-    url: https://vault.example.com
+  secretStorage: vault
+  webhook: lighthouse
+  kaniko: true
 ```
 
 ## CI/CD Workflow Comparison
@@ -220,46 +221,27 @@ spec:
         - main
 ---
 # Release pipeline (.lighthouse/jenkins-x/release.yaml)
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: release
 spec:
   pipelineSpec:
     tasks:
-      # Build the container image
-      - name: build
-        taskRef:
-          name: jx-build-pack
-        params:
-          - name: BUILD_PACK
-            value: go
-      # Run tests
-      - name: test
-        taskRef:
-          name: jx-test
-        runAfter:
-          - build
-      # Promote to staging automatically
-      - name: promote-staging
-        taskRef:
-          name: jx-promote
-        params:
-          - name: ENVIRONMENT
-            value: staging
-        runAfter:
-          - test
-      # Manual promotion to production
-      - name: promote-production
-        taskRef:
-          name: jx-promote
-        params:
-          - name: ENVIRONMENT
-            value: production
-          - name: STRATEGY
-            value: manual
-        runAfter:
-          - promote-staging
+      - name: from-build-pack
+        taskSpec:
+          stepTemplate:
+            image: uses:jenkins-x/jx3-pipeline-catalog/tasks/go/release.yaml@versionStream
+          steps:
+            # Jenkins X expands these named steps from the pipeline catalog
+            - name: git-clone
+            - name: next-version
+            - name: jx-variables
+            - name: build-make-build
+            - name: build-container-build
+            - name: promote-changelog
+            - name: promote-helm-release
+            - name: promote-jx-promote
 ```
 
 ## Environment Management
@@ -314,14 +296,14 @@ spec:
     kind: GitRepository
     name: fleet-repo
   # Suspend for manual approval
-  # Set to false after review: flux resume kustomization apps
-  suspend: false
+  # Resume after review: flux resume kustomization apps
+  suspend: true
 ```
 
 ### Jenkins X: Automated Environment Promotion
 
 ```yaml
-# Jenkins X automatically creates environment repositories
+# Jenkins X can use environment repositories
 # and manages promotion between them
 
 # Environment configuration in jx-requirements.yml
@@ -378,7 +360,7 @@ jx project quickstart \
   --pack=go
 
 # View pipeline activity
-jx get activities
+jx get activity
 
 # View build logs
 jx get build logs
@@ -397,10 +379,10 @@ Resource Requirements
 
 | Component | Flux CD | Jenkins X |
 |---|---|---|
-| Controllers/Operators | ~200 MB RAM | ~2 GB+ RAM |
-| Additional Services | None | Tekton, Lighthouse, Vault, ChartMuseum |
+| Controllers/Operators | Lightweight controller set | Larger platform controller set |
+| Additional Services | None required | Tekton, Lighthouse, Vault or cloud secrets, optional artifact/chart services |
 | Storage | Minimal (CRDs only) | Significant (logs, artifacts, charts) |
-| CPU (idle) | ~0.1 cores | ~1+ cores |
+| CPU (idle) | Low | Higher than Flux due to CI services |
 | Cluster Size Minimum | Any size | 3+ nodes recommended |
 | Installation Time | ~2 minutes | ~15-30 minutes |
 
@@ -438,4 +420,4 @@ If you are currently using Jenkins X and considering a move to Flux CD, the key 
 
 ## Conclusion
 
-Flux CD and Jenkins X serve different needs in the GitOps space. Flux CD is a focused, lightweight GitOps operator that excels at continuous delivery when paired with an external CI system. Jenkins X provides a complete CI/CD platform but comes with significantly higher complexity and resource requirements. For most teams that already have a CI system in place, Flux CD offers a cleaner, more maintainable approach to GitOps. For teams starting from scratch who want an all-in-one solution, Jenkins X provides comprehensive coverage but requires a larger investment in learning and infrastructure. Note that Jenkins X has seen reduced community activity in recent years, which should factor into your long-term planning.
+Flux CD and Jenkins X serve different needs in the GitOps space. Flux CD is a focused, lightweight GitOps operator that excels at continuous delivery when paired with an external CI system. Jenkins X provides a complete CI/CD platform but comes with significantly higher complexity and resource requirements. For most teams that already have a CI system in place, Flux CD offers a cleaner, more maintainable approach to GitOps. For teams starting from scratch who want an all-in-one solution, Jenkins X provides comprehensive coverage but requires a larger investment in learning and infrastructure. Note that Jenkins X is currently being renamed to JayeX, which should factor into your long-term planning and documentation searches.
