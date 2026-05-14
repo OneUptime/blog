@@ -75,15 +75,15 @@ flux suspend kustomization my-app
 Expected output:
 
 ```text
-> suspending kustomization my-app in flux-system namespace
-> kustomization suspended
+suspending kustomization my-app in flux-system namespace
+kustomization suspended
 ```
 
 You can verify the suspension:
 
 ```bash
 # Check the status of the kustomization
-flux get kustomization my-app
+flux get kustomizations
 ```
 
 The output will show `True` in the `SUSPENDED` column:
@@ -164,11 +164,11 @@ You can suspend all resources of a given type using the `--all` flag:
 # Suspend all kustomizations in the flux-system namespace
 flux suspend kustomization --all
 
-# Suspend all Helm releases across all namespaces
-flux suspend helmrelease --all --all-namespaces
+# Suspend all Helm releases in the production namespace
+flux suspend helmrelease --all --namespace production
 ```
 
-This is particularly useful during cluster-wide maintenance windows.
+This is particularly useful during maintenance windows.
 
 ## Practical Use Cases
 
@@ -195,19 +195,21 @@ flux resume kustomization my-app
 Before performing cluster maintenance:
 
 ```bash
-# Suspend all reconciliation to prevent interference
-flux suspend kustomization --all --all-namespaces
-flux suspend helmrelease --all --all-namespaces
+# Suspend reconciliation in the flux-system namespace to prevent interference
+flux suspend kustomization --all
+flux suspend helmrelease --all
 flux suspend source git --all
 
 # Perform maintenance tasks
 # ...
 
 # Resume after maintenance
-flux resume kustomization --all --all-namespaces
-flux resume helmrelease --all --all-namespaces
+flux resume kustomization --all
+flux resume helmrelease --all
 flux resume source git --all
 ```
+
+Repeat these commands with `--namespace` for any additional namespaces that contain Flux-managed resources.
 
 ### Use Case 3: Preventing Automatic Image Updates
 
@@ -218,7 +220,7 @@ When you want to freeze the current image version:
 flux suspend image update my-app-update
 
 # The current image tag will remain pinned until resumed
-flux get image update my-app-update
+flux get images update
 ```
 
 ## Verifying Suspended Resources
@@ -242,7 +244,7 @@ When a Flux resource is suspended:
 
 1. The reconciliation loop stops for that resource
 2. No new changes from Git or Helm repos are applied
-3. The resource's status is updated to show `suspended: true`
+3. The resource's spec is updated to set `suspend: true`
 4. Health checks for the resource continue to report the last known state
 5. Dependent resources are not automatically suspended
 
@@ -254,7 +256,6 @@ It is important to note that suspending a resource does not roll back any previo
 |------|-------------|
 | `--namespace` | Target namespace for the resource |
 | `--all` | Suspend all resources of the specified type |
-| `--all-namespaces` | Operate across all namespaces |
 
 ## Troubleshooting
 
