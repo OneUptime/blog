@@ -8,13 +8,13 @@ Description: Learn how to use the flux check command to verify your Flux CD inst
 
 ---
 
-After installing Flux CD on a Kubernetes cluster, verifying that everything is working correctly is a critical step. The `flux check` command is a built-in diagnostic tool that validates the Flux CLI version, Kubernetes cluster compatibility, and the health of all installed Flux components. This guide covers everything you need to know about using `flux check` effectively.
+After installing Flux CD on a Kubernetes cluster, verifying that everything is working correctly is a critical step. The `flux check` command is a built-in diagnostic tool that validates that your local environment can connect to the cluster, checks Kubernetes cluster compatibility, and checks the health of installed Flux components. This guide covers everything you need to know about using `flux check` effectively.
 
 ## What Does flux check Do?
 
 The `flux check` command performs a series of health checks against your Kubernetes cluster. It validates:
 
-1. The Flux CLI version and whether updates are available
+1. Local environment and cluster connectivity
 2. Kubernetes cluster version compatibility
 3. The presence and health of Flux custom resource definitions (CRDs)
 4. The status of all Flux controller deployments
@@ -34,13 +34,13 @@ Typical successful output:
 
 ```text
 ► checking prerequisites
-✔ Kubernetes 1.28.2 >=1.25.0-0
+✔ Kubernetes 1.34.1 >=1.34.1-0
 ✔ prerequisites checks passed
 ```
 
 The pre-flight check validates:
 
-- **Kubernetes version**: Flux requires Kubernetes 1.25 or later
+- **Kubernetes version**: Flux checks that the cluster is running a supported Kubernetes version for the Flux release you are installing
 - **API resources**: Checks that the cluster API server is reachable
 - **RBAC**: Verifies the current user has sufficient permissions
 
@@ -48,7 +48,7 @@ If the pre-flight check fails, you will see error messages indicating what needs
 
 ```bash
 # Example of a failed pre-flight check on an old cluster
-# ✗ Kubernetes 1.23.0 <1.25.0-0
+# ✗ Kubernetes 1.32.0 <1.33.0-0
 # ✗ prerequisites checks failed
 ```
 
@@ -65,16 +65,16 @@ Successful output looks like this:
 
 ```text
 ► checking prerequisites
-✔ Kubernetes 1.28.2 >=1.25.0-0
+✔ Kubernetes 1.34.1 >=1.34.1-0
 ► checking controllers
 ✔ helm-controller: deployment ready
-ℹ ghcr.io/fluxcd/helm-controller:v1.1.0
+ℹ ghcr.io/fluxcd/helm-controller:<version>
 ✔ kustomize-controller: deployment ready
-ℹ ghcr.io/fluxcd/kustomize-controller:v1.4.0
+ℹ ghcr.io/fluxcd/kustomize-controller:<version>
 ✔ notification-controller: deployment ready
-ℹ ghcr.io/fluxcd/notification-controller:v1.4.0
+ℹ ghcr.io/fluxcd/notification-controller:<version>
 ✔ source-controller: deployment ready
-ℹ ghcr.io/fluxcd/source-controller:v1.4.1
+ℹ ghcr.io/fluxcd/source-controller:<version>
 ✔ all checks passed
 ```
 
@@ -88,7 +88,7 @@ The prerequisites section confirms cluster compatibility.
 
 ```text
 ► checking prerequisites
-✔ Kubernetes 1.28.2 >=1.25.0-0
+✔ Kubernetes 1.34.1 >=1.34.1-0
 ```
 
 A checkmark means the check passed. A cross means it failed.
@@ -100,7 +100,7 @@ The controllers section validates each Flux component.
 ```text
 ► checking controllers
 ✔ helm-controller: deployment ready
-ℹ ghcr.io/fluxcd/helm-controller:v1.1.0
+ℹ ghcr.io/fluxcd/helm-controller:<version>
 ```
 
 For each controller, the check verifies:
@@ -168,9 +168,8 @@ flux install
 The `flux check` command reports the version of each controller. If you see unexpected versions, it may indicate a partial upgrade.
 
 ```bash
-# Check if the CLI version matches the installed controllers
-flux --version
-flux check
+# Check the CLI and installed controller versions
+flux version
 ```
 
 If versions are mismatched, re-run bootstrap to align them.
@@ -306,8 +305,8 @@ flux resume kustomization my-app
 To trigger an immediate reconciliation instead of waiting for the interval, use the reconcile command.
 
 ```bash
-# Force reconciliation of a Git source and its downstream kustomizations
-flux reconcile source git flux-system --with-source
+# Force reconciliation of a kustomization and its source
+flux reconcile kustomization flux-system --with-source
 
 # Force reconciliation of a specific kustomization
 flux reconcile kustomization my-app
