@@ -44,18 +44,18 @@ Flux understands the readiness semantics of common Kubernetes resource types. Fo
 | Deployment | All replicas available, updated, and ready |
 | StatefulSet | All replicas ready, updated to current revision |
 | DaemonSet | Desired number of pods scheduled and ready |
-| Service | Exists (Services are considered ready when created) |
+| Service | Current according to kstatus; simple Services are usually current once created |
 | Pod | All containers ready, not in CrashLoopBackOff |
 | Job | Completed successfully |
 | HelmRelease | Release reconciled and ready |
 | Kustomization | All resources reconciled and healthy |
-| Custom Resources | Status condition `Ready` is `True` |
+| Custom Resources | kstatus-compatible status, commonly a `Ready` condition set to `True` |
 
-For custom resources, Flux follows the Kubernetes convention of checking the `status.conditions` array for a condition of type `Ready` with status `True`.
+For custom resources, Flux supports resources that are compatible with kstatus. For resources that do not have type-specific rules, kstatus can use the `status.conditions` array when it contains a condition of type `Ready`.
 
 ## The Health Assessment System
 
-Health assessment is a more comprehensive check that runs after resources are applied and waited on. Flux can perform health checks on specific resources referenced in `spec.healthChecks`.
+Health assessment is the readiness check Flux runs after resources are applied. Flux can perform health checks on specific resources referenced in `spec.healthChecks`.
 
 ```yaml
 # Kustomization with explicit health checks
@@ -68,7 +68,7 @@ spec:
   interval: 10m
   path: ./deploy
   prune: true
-  wait: true
+  wait: false
   timeout: 5m
   healthChecks:
     # Check that the deployment is healthy
@@ -76,9 +76,9 @@ spec:
       kind: Deployment
       name: my-app
       namespace: production
-    # Check that an Ingress has been assigned an address
-    - apiVersion: networking.k8s.io/v1
-      kind: Ingress
+    # Check that a HelmRelease applied by this Kustomization is ready
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: my-app
       namespace: production
   sourceRef:
@@ -86,7 +86,7 @@ spec:
     name: flux-system
 ```
 
-When both `wait` and `healthChecks` are configured, Flux first waits for all applied resources, then additionally checks the health of the explicitly listed resources. The `healthChecks` field is useful for checking resources that are created indirectly (for example, a Service created by a Helm chart).
+When `healthChecks` is configured without `wait`, Flux applies the resources and checks the health of the explicitly listed resources. If `wait: true` is set, Flux checks all reconciled resources and ignores `spec.healthChecks`. The `healthChecks` field is useful when you only want to gate readiness on selected resources, such as a Deployment or HelmRelease.
 
 ## Timeout Configuration
 
@@ -206,10 +206,12 @@ spec:
         name: my-repo
   install:
     # Wait for all resources created by the chart to become ready
+    disableWait: false
     remediation:
       retries: 3
   upgrade:
     # Wait for all resources to become ready after upgrade
+    disableWait: false
     remediation:
       retries: 3
       # Automatically rollback if the upgrade fails health checks
@@ -225,8 +227,8 @@ When `remediation.remediateLastFailure` is set to `true`, Flux automatically rol
 When a Kustomization or HelmRelease reports unhealthy, you can investigate using the Flux CLI and kubectl.
 
 ```bash
-# Check the status of a Kustomization, including health check results
-flux get kustomization app -o wide
+# Check the status of Kustomizations
+flux get kustomizations --namespace flux-system
 
 # View detailed events for a Kustomization
 kubectl describe kustomization app -n flux-system
