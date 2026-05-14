@@ -15,15 +15,15 @@ In a typical GitOps workflow, Flux polls for changes on a schedule. When your CI
 - A Kubernetes cluster with Flux CD installed, including the notification controller
 - A CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.)
 - An ingress controller or load balancer to expose the receiver endpoint
-- Flux resources (GitRepository, Kustomization, HelmRelease) configured
+- Flux source or image resources (GitRepository, OCIRepository, ImageRepository) configured
 
 ## How It Works
 
-The Flux Receiver creates an HTTP endpoint that accepts incoming webhook calls. When your CI/CD pipeline finishes building and pushing artifacts, it sends a POST request to the Receiver endpoint. The Receiver then triggers reconciliation of the specified Flux resources, causing an immediate sync. This pattern works with any CI/CD system that can make HTTP requests.
+The Flux Receiver creates an HTTP endpoint that accepts incoming webhook calls. When your CI/CD pipeline finishes building and pushing artifacts, it sends a POST request to the Receiver endpoint. The Receiver then triggers reconciliation of the specified Flux source or image resources, causing an immediate source sync. Downstream Kustomizations, HelmReleases, or ImageUpdateAutomations are notified automatically when Flux detects a new artifact revision. This pattern works with any CI/CD system that can make HTTP requests.
 
 ## Step 1: Create the Webhook Secret
 
-Create a Kubernetes secret for authenticating webhook requests from your CI/CD pipeline.
+Create a Kubernetes secret for generating the webhook path. With the `generic` receiver type, Flux uses this token to salt the generated URL path but does not validate the incoming request body or headers. Use `generic-hmac` or a platform-specific receiver type if you need request authentication.
 
 ```bash
 # Generate a random token
@@ -53,7 +53,7 @@ metadata:
 spec:
   # Generic type works with any HTTP client
   type: generic
-  # Secret for authentication
+  # Secret used to generate the webhook path
   secretRef:
     name: cicd-webhook-secret
   # Resources to reconcile when triggered
@@ -61,9 +61,6 @@ spec:
     # Refresh the Git source
     - kind: GitRepository
       name: flux-system
-    # Trigger deployment
-    - kind: Kustomization
-      name: apps
 ```
 
 Apply the receiver.
@@ -98,7 +95,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -206,8 +203,6 @@ spec:
   resources:
     - kind: GitRepository
       name: frontend-source
-    - kind: Kustomization
-      name: frontend-app
 ---
 # Receiver for backend pipeline
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -222,8 +217,6 @@ spec:
   resources:
     - kind: GitRepository
       name: backend-source
-    - kind: HelmRelease
-      name: backend-api
 ---
 # Receiver for infrastructure pipeline
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -238,8 +231,6 @@ spec:
   resources:
     - kind: GitRepository
       name: infra-source
-    - kind: Kustomization
-      name: infra-controllers
 ```
 
 ## Step 8: Trigger Image-Related Resources
@@ -292,7 +283,7 @@ kubectl logs -n flux-system deploy/notification-controller --tail=20
 
 ## Step 10: Add Reconciliation Status Check
 
-After triggering Flux, you can wait for reconciliation to complete in your CI/CD pipeline.
+After triggering Flux, you can explicitly reconcile and wait for the downstream Kustomization in your CI/CD pipeline if the job has kubeconfig access.
 
 ```bash
 # Trigger reconciliation and wait for completion
@@ -301,7 +292,7 @@ curl -X POST "https://flux-webhook.example.com${FLUX_WEBHOOK_PATH}" \
   -H "Content-Type: application/json" \
   -d '{}' --fail
 
-# Step 2: Use flux CLI to wait for reconciliation (requires kubeconfig access)
+# Step 2: Use flux CLI to reconcile and wait (requires kubeconfig access)
 flux reconcile kustomization apps --with-source --timeout=5m
 ```
 
@@ -328,4 +319,4 @@ curl -X POST "https://flux-webhook.example.com/<webhook-path>" -v
 
 ## Summary
 
-Using Flux Receivers to trigger reconciliation from CI/CD pipelines creates a seamless build-to-deploy workflow. The generic receiver type works with any CI/CD platform that can make HTTP POST requests, including GitHub Actions, GitLab CI, Jenkins, and others. Create separate receivers for different pipelines, use distinct secrets for each, and target specific resources for reconciliation. This approach eliminates the polling delay and ensures your cluster is updated immediately after a successful build.
+Using Flux Receivers to trigger reconciliation from CI/CD pipelines creates a seamless build-to-deploy workflow. The generic receiver type works with any CI/CD platform that can make HTTP POST requests, including GitHub Actions, GitLab CI, Jenkins, and others. Create separate receivers for different pipelines, use distinct secrets for each, and target specific source or image resources for reconciliation. Use `generic-hmac` or a platform-specific receiver type when request authentication is required. This approach eliminates the polling delay and ensures your cluster is updated immediately after a successful build.
