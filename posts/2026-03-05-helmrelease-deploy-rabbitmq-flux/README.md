@@ -40,6 +40,11 @@ The following HelmRelease deploys a RabbitMQ cluster with three nodes, persisten
 
 ```yaml
 # helmrelease-rabbitmq.yaml - RabbitMQ cluster deployment via Flux using Bitnami chart
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rabbitmq
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -96,8 +101,8 @@ spec:
       accessModes:
         - ReadWriteOnce
 
-    # RabbitMQ plugins to enable
-    plugins: "rabbitmq_management rabbitmq_peer_discovery_k8s rabbitmq_prometheus rabbitmq_shovel rabbitmq_shovel_management"
+    # Additional RabbitMQ plugins to enable
+    extraPlugins: "rabbitmq_shovel rabbitmq_shovel_management"
 
     # Community plugins to install
     communityPlugins: ""
@@ -108,7 +113,7 @@ spec:
       consumer_timeout = 1800000
       ## Default virtual host
       default_vhost = /
-      ## Default permissions for the guest user
+      ## Default permissions for the default user
       default_permissions.configure = .*
       default_permissions.read = .*
       default_permissions.write = .*
@@ -116,7 +121,7 @@ spec:
       vm_memory_high_watermark.relative = 0.6
       ## Disk free space limit
       disk_free_limit.absolute = 2GB
-      ## Queue mirroring policy
+      ## Kubernetes peer discovery
       cluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s
       cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
       cluster_formation.k8s.address_type = hostname
@@ -145,8 +150,9 @@ spec:
     metrics:
       enabled: true
       serviceMonitor:
-        enabled: true
         namespace: rabbitmq
+        default:
+          enabled: true
 
     # Pod disruption budget
     pdb:
@@ -247,18 +253,21 @@ You can pre-configure RabbitMQ queues and exchanges using the management API or 
 
 ```yaml
 # Snippet: Load definitions on startup via extraConfiguration
+extraSecrets:
+  load-definition:
+    load_definition.json: |
+      {
+        "vhosts": [
+          {
+            "name": "/"
+          }
+        ]
+      }
+loadDefinition:
+  enabled: true
+  existingSecret: load-definition
 extraConfiguration: |
-  load_definitions = /app/definitions.json
-
-# Mount a ConfigMap with queue definitions
-extraVolumes:
-  - name: definitions
-    configMap:
-      name: rabbitmq-definitions
-extraVolumeMounts:
-  - name: definitions
-    mountPath: /app/definitions.json
-    subPath: definitions.json
+  load_definitions = /app/load_definition.json
 ```
 
 ## Summary
