@@ -21,6 +21,7 @@ Before starting, ensure you have:
 - A Kubernetes cluster (v1.26 or later)
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
+- Kubescape CLI installed for manual scans
 - A Git repository connected to Flux CD
 
 ## Architecture Overview
@@ -31,13 +32,13 @@ graph TD
     B -->|Reconcile| C[HelmRelease]
     C -->|Deploy| D[Kubescape Operator]
     C -->|Deploy| E[Kubescape Storage]
-    C -->|Deploy| F[KubevulnScan]
+    C -->|Deploy| F[Kubevuln]
     D -->|Scan| G[NSA-CISA Framework]
     D -->|Scan| H[MITRE ATT&CK]
     D -->|Scan| I[CIS Benchmarks]
     F -->|Scan| J[Image Vulnerabilities]
     D -->|Store Results| E
-    E -->|Expose| K[Dashboard / API]
+    E -->|Expose| K[In-cluster API / UI integrations]
 ```
 
 ## Step 1: Create the Namespace
@@ -100,10 +101,24 @@ spec:
   values:
     # Cluster name for identification
     clusterName: production-cluster
+    certificates:
+      # Runtime certificate generation is safer for GitOps controllers
+      strategy: hook
+
+    # Enable Kubescape capabilities
+    capabilities:
+      operator: enable
+      configurationScan: enable
+      continuousScan: enable
+      vulnerabilityScan: enable
+      runtimeObservability: enable
+      prometheusExporter: enable
+
+    # Skip scanning specific namespaces
+    excludeNamespaces: "kubescape,kube-system,kube-public"
 
     # Kubescape operator configuration
     kubescape:
-      enabled: true
       resources:
         requests:
           cpu: 100m
@@ -111,18 +126,28 @@ spec:
         limits:
           cpu: 500m
           memory: 512Mi
-      # Enable scheduled scanning
+      # Create a ServiceMonitor for scan-result metrics
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: prometheus
+
+    # Scheduled configuration scanning
+    kubescapeScheduler:
       scanSchedule: "0 */6 * * *"
-      # Frameworks to scan against
-      submit: true
-      # Skip scanning specific namespaces
-      skipNamespaces:
-        - kube-system
-        - kube-public
+      requestBody:
+        commands:
+          - CommandName: "kubescapeScan"
+            args:
+              scanV1:
+                targetType: "framework"
+                targetNames:
+                  - "nsa"
+                  - "mitre"
+                  - "cis-v1.23"
 
     # Vulnerability scanning component
     kubevuln:
-      enabled: true
       resources:
         requests:
           cpu: 100m
@@ -130,12 +155,13 @@ spec:
         limits:
           cpu: 500m
           memory: 1Gi
-      # Scan schedule for vulnerability scanning
+
+    # Scan schedule for vulnerability scanning
+    kubevulnScheduler:
       scanSchedule: "0 */12 * * *"
 
     # Storage backend for scan results
     storage:
-      enabled: true
       resources:
         requests:
           cpu: 50m
@@ -143,14 +169,22 @@ spec:
         limits:
           cpu: 200m
           memory: 256Mi
-      persistence:
-        enabled: true
-        size: 10Gi
-        storageClass: standard
+
+    # Persistent volumes used by storage and kubevuln
+    persistence:
+      storageClass: standard
+      size:
+        backingStorage: 10Gi
+        kubevuln: 10Gi
 
     # Node agent for runtime monitoring
     nodeAgent:
-      enabled: true
+      config:
+        prometheusExporter: enable
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: prometheus
       resources:
         requests:
           cpu: 50m
@@ -159,20 +193,8 @@ spec:
           cpu: 250m
           memory: 256Mi
 
-    # Kollector for cluster data collection
-    kollector:
-      enabled: true
-      resources:
-        requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
-          cpu: 200m
-          memory: 256Mi
-
-    # Gateway component
-    gateway:
-      enabled: true
+    # Prometheus exporter for Kubescape CRD data
+    prometheusExporter:
       resources:
         requests:
           cpu: 50m
@@ -180,107 +202,32 @@ spec:
         limits:
           cpu: 100m
           memory: 128Mi
-
-    # Global configuration
-    global:
-      # Override image registry if using a mirror
-      overrideImageRegistry: ""
 ```
 
 ## Step 4: Configure Scan Frameworks
 
-Create a ConfigMap to specify which security frameworks to use.
+Configure the scheduled configuration scan to target the frameworks you want.
 
 ```yaml
-# kubescape-frameworks.yaml
-# ConfigMap specifying scanning frameworks and exceptions
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubescape-scan-config
-  namespace: kubescape
-  labels:
-    app.kubernetes.io/managed-by: flux
-data:
-  # Frameworks to scan against
-  frameworks.json: |
-    {
-      "frameworks": [
-        "NSA",
-        "MITRE",
-        "CIS-V1.23",
-        "DevOpsBest",
-        "ArmoBest"
-      ]
-    }
-
-  # Exception configuration for known acceptable risks
-  exceptions.json: |
-    {
-      "exceptions": [
-        {
-          "name": "allow-kube-system-privileged",
-          "policyType": "postureExceptionPolicy",
-          "actions": ["alertOnly"],
-          "resources": [
-            {
-              "designatorType": "Attributes",
-              "attributes": {
-                "namespace": "kube-system"
-              }
-            }
-          ],
-          "posturePolicies": [
-            {
-              "controlName": "Privileged container"
-            }
-          ]
-        },
-        {
-          "name": "allow-monitoring-host-network",
-          "policyType": "postureExceptionPolicy",
-          "actions": ["alertOnly"],
-          "resources": [
-            {
-              "designatorType": "Attributes",
-              "attributes": {
-                "namespace": "monitoring"
-              }
-            }
-          ],
-          "posturePolicies": [
-            {
-              "controlName": "HostNetwork access"
-            }
-          ]
-        }
-      ]
-    }
+# Add under spec.values in kubescape-helmrelease.yaml
+kubescapeScheduler:
+  requestBody:
+    commands:
+      - CommandName: "kubescapeScan"
+        args:
+          scanV1:
+            targetType: "framework"
+            targetNames:
+              - "nsa"
+              - "mitre"
+              - "cis-v1.23"
 ```
 
 ## Step 5: Set Up Prometheus Monitoring
 
-Create monitoring resources for Kubescape metrics.
+Enable ServiceMonitor resources through the HelmRelease values and create alert rules for Kubescape metrics.
 
 ```yaml
-# kubescape-servicemonitor.yaml
-# Prometheus ServiceMonitor for Kubescape metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: kubescape-monitor
-  namespace: kubescape
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: kubescape
-  endpoints:
-    - port: metrics
-      interval: 60s
-      path: /metrics
----
 # Alert rules for Kubescape findings
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -296,7 +243,7 @@ spec:
         # Alert when compliance score drops below threshold
         - alert: LowComplianceScore
           expr: >
-            kubescape_framework_score{framework="NSA"} < 70
+            kubescape_framework_complianceScore{name="NSA"} < 70
           for: 15m
           labels:
             severity: warning
@@ -309,19 +256,19 @@ spec:
         # Alert on critical control failures
         - alert: CriticalControlFailed
           expr: >
-            kubescape_control_failed{severity="critical"} > 0
+            kubescape_controls_total_cluster_critical > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Critical security control failed: {{ $labels.control }}"
+            summary: "Critical Kubescape controls detected"
             description: >
-              Control {{ $labels.control }} has {{ $value }} failing resources.
+              Kubescape detected {{ $value }} critical control findings.
 
         # Alert on new high vulnerabilities
         - alert: HighVulnerabilityDetected
           expr: >
-            increase(kubescape_vulnerabilities{severity="high"}[1h]) > 0
+            kubescape_vulnerabilities_total_cluster_high > 0
           for: 5m
           labels:
             severity: warning
@@ -344,8 +291,16 @@ metadata:
   namespace: kubescape
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/name: kubescape
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - kubescape
+          - operator
+          - kubevuln
+          - storage
+          - node-agent
+          - prometheus-exporter
   policyTypes:
     - Ingress
     - Egress
@@ -354,7 +309,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: monitoring
+              kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
           port: 8080
@@ -366,10 +321,18 @@ spec:
           port: 8080
         - protocol: TCP
           port: 4002
+        - protocol: TCP
+          port: 8089
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 443
   egress:
     # Allow DNS
     - ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
     # Allow HTTPS for downloading frameworks and vulnerability data
     - ports:
@@ -405,17 +368,9 @@ spec:
   path: ./clusters/my-cluster/kubescape
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: kubescape
-      namespace: kubescape
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: kubevuln
-      namespace: kubescape
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: storage
       namespace: kubescape
   timeout: 10m
 ```
@@ -431,13 +386,14 @@ flux get helmreleases -n kubescape
 # Verify all Kubescape pods are running
 kubectl get pods -n kubescape
 
-# Trigger a manual scan
-kubectl exec -n kubescape deploy/kubescape -- \
-  kubescape scan framework nsa --submit
+# Verify Kubescape deployments
+kubectl get deployments -n kubescape
 
-# View scan results
-kubectl exec -n kubescape deploy/kubescape -- \
-  kubescape scan framework nsa --format json | jq '.summaryDetails.frameworkScore'
+# Trigger a configuration scan through the operator
+kubescape operator scan configurations --namespace kubescape
+
+# Trigger a vulnerability scan through the operator
+kubescape operator scan vulnerabilities --namespace kubescape
 
 # Check vulnerability scan results
 kubectl get vulnerabilitymanifestsummaries -A
@@ -455,20 +411,16 @@ Check compliance against various frameworks.
 
 ```bash
 # Run NSA framework scan
-kubectl exec -n kubescape deploy/kubescape -- \
-  kubescape scan framework nsa --format pretty-printer
+kubescape scan framework nsa --format pretty-printer
 
 # Run MITRE ATT&CK scan
-kubectl exec -n kubescape deploy/kubescape -- \
-  kubescape scan framework mitre --format pretty-printer
+kubescape scan framework mitre --format pretty-printer
 
 # Run CIS Benchmark scan
-kubectl exec -n kubescape deploy/kubescape -- \
-  kubescape scan framework cis-v1.23 --format pretty-printer
+kubescape scan framework cis-v1.23 --format pretty-printer
 
 # Scan a specific namespace
-kubectl exec -n kubescape deploy/kubescape -- \
-  kubescape scan framework nsa --include-namespaces default,production
+kubescape scan framework nsa --include-namespaces default,production
 ```
 
 ## Troubleshooting
@@ -477,7 +429,7 @@ Common issues and solutions:
 
 ```bash
 # Check operator logs
-kubectl logs -n kubescape deploy/kubescape --tail=100
+kubectl logs -n kubescape deploy/operator --tail=100
 
 # Verify CRDs are installed
 kubectl get crds | grep kubescape
