@@ -23,9 +23,8 @@ Before scaling, identify where Flux CD is struggling. Common symptoms include:
 Check these metrics first:
 
 ```promql
-# Queue depth per controller - should stay near 0
-
-workqueue_depth{namespace="flux-system"}
+# Queue pressure per controller - should stay low
+workqueue_longest_running_processor_seconds{namespace="flux-system"}
 
 # Reconciliation duration - 95th percentile
 histogram_quantile(0.95,
@@ -56,7 +55,9 @@ spec:
   ignore: |
     # Only include the cluster-specific directory
     /*
+    !/clusters/
     !/clusters/production/
+    !/clusters/production/**
 ---
 # Team A application repository
 # Repo: github.com/org/team-a-apps
@@ -110,7 +111,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-a
-  namespace: flux-system
+  namespace: team-a
 spec:
   interval: 10m
   path: ./apps/team-a
@@ -128,7 +129,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-b
-  namespace: flux-system
+  namespace: team-b
 spec:
   interval: 10m
   path: ./apps/team-b
@@ -162,8 +163,6 @@ spec:
             - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
             # High concurrency for many sources
             - --concurrent=10
-            - --kube-api-qps=100
-            - --kube-api-burst=200
             # Limit artifact retention to save disk and memory
             - --artifact-retention-ttl=30m
             - --artifact-retention-records=2
@@ -194,8 +193,6 @@ spec:
           args:
             # High concurrency for parallel manifest processing
             - --concurrent=16
-            - --kube-api-qps=200
-            - --kube-api-burst=400
             - --requeue-dependency=5s
           resources:
             requests:
@@ -222,8 +219,6 @@ spec:
         - name: manager
           args:
             - --concurrent=10
-            - --kube-api-qps=100
-            - --kube-api-burst=200
           resources:
             requests:
               cpu: "500m"
@@ -243,7 +238,9 @@ spec:
 For very large clusters, run multiple instances of a controller, each responsible for a subset of resources. Sharding is done via label selectors.
 
 ```yaml
-# Shard 1: Handles resources labeled with shard=shard1
+# Shard 1: Handles Flux resources labeled with sharding.fluxcd.io/key=shard1.
+# In production, patch the generated source-controller, kustomize-controller,
+# and helm-controller deployments for each shard.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -261,12 +258,10 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
           args:
             - --concurrent=8
             - --watch-label-selector=sharding.fluxcd.io/key=shard1
-            - --kube-api-qps=100
-            - --kube-api-burst=200
           resources:
             requests:
               cpu: "500m"
@@ -275,7 +270,7 @@ spec:
               cpu: "2000m"
               memory: "2Gi"
 ---
-# Shard 2: Handles resources labeled with shard=shard2
+# Shard 2: Handles Flux resources labeled with sharding.fluxcd.io/key=shard2
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -293,12 +288,10 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
           args:
             - --concurrent=8
             - --watch-label-selector=sharding.fluxcd.io/key=shard2
-            - --kube-api-qps=100
-            - --kube-api-burst=200
           resources:
             requests:
               cpu: "500m"
@@ -308,10 +301,23 @@ spec:
               memory: "2Gi"
 ```
 
-Label your Kustomizations to route them to the correct shard:
+Label each Flux source and the Kustomizations that consume it to route them to the correct shard:
 
 ```yaml
-# Kustomization assigned to shard1
+# Source and Kustomization assigned to shard1
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: team-a-apps
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: shard1
+spec:
+  interval: 10m
+  url: https://github.com/org/team-a-apps
+  ref:
+    branch: main
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -328,7 +334,20 @@ spec:
     kind: GitRepository
     name: team-a-apps
 ---
-# Kustomization assigned to shard2
+# Source and Kustomization assigned to shard2
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: team-b-apps
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: shard2
+spec:
+  interval: 10m
+  url: https://github.com/org/team-b-apps
+  ref:
+    branch: main
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
