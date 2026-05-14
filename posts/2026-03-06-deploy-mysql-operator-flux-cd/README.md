@@ -37,6 +37,7 @@ clusters/
         credentials.yaml
         innodbcluster.yaml
         backup.yaml
+        service.yaml
         kustomization.yaml
 ```
 
@@ -90,16 +91,6 @@ spec:
         namespace: mysql
   timeout: 10m
   values:
-    # Resource limits for the operator pod
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-    # Number of operator replicas for high availability
-    replicas: 1
     # Image pull policy
     image:
       pullPolicy: IfNotPresent
@@ -128,10 +119,9 @@ metadata:
   namespace: mysql
 type: Opaque
 stringData:
-  # Application user credentials
-  rootUser: app_user
-  rootHost: "%"
-  rootPassword: "change-me-app-password"
+  # Application user credentials for your workloads
+  username: app_user
+  password: "change-me-app-password"
 ```
 
 ## Step 5: Deploy a MySQL InnoDB Cluster
@@ -159,13 +149,14 @@ spec:
   router:
     instances: 2
     # Resource limits for MySQL Router
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    podSpec:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
 
   # Data storage configuration
   datadirVolumeClaimTemplate:
@@ -242,7 +233,7 @@ stringData:
     aws_access_key_id=your-access-key
     aws_secret_access_key=your-secret-key
 ---
-# Backup profile configuration
+# One-off backup request
 apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
@@ -251,9 +242,8 @@ metadata:
 spec:
   # Reference to the InnoDB Cluster
   clusterName: mysql-cluster
-  # Backup profile to use
+  # Inline backup profile to use for this backup
   backupProfile:
-    name: full-s3-backup
     dumpInstance:
       storage:
         s3:
@@ -299,7 +289,6 @@ spec:
                   spec:
                     clusterName: mysql-cluster
                     backupProfile:
-                      name: scheduled-backup
                       dumpInstance:
                         storage:
                           s3:
@@ -328,6 +317,7 @@ spec:
   selector:
     component: mysqlrouter
     mysql.oracle.com/cluster: mysql-cluster
+    tier: mysql
   ports:
     - name: mysql
       port: 3306
