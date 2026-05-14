@@ -16,7 +16,7 @@ This guide covers deploying the Cluster Autoscaler with Flux CD and configuring 
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25+) on a supported cloud provider
+- A Kubernetes cluster on a supported cloud provider with a Cluster Autoscaler image version that matches the Kubernetes minor version (chart `9.43.x` uses Cluster Autoscaler `1.31.x` for Kubernetes `1.31.x`)
 - Flux CD installed and bootstrapped
 - Cloud provider IAM permissions for node group management
 - kubectl and flux CLI tools installed
@@ -42,6 +42,8 @@ graph TB
 ```text
 clusters/
   my-cluster/
+    flux-system/
+      cluster-autoscaler-kustomization.yaml
     cluster-autoscaler/
       namespace.yaml
       helmrepository.yaml
@@ -131,12 +133,10 @@ spec:
     # Replica count
     replicaCount: 2
 
-    # Leader election for HA
-    leaderElection:
-      enabled: true
-
     # Scaling behavior configuration
     extraArgs:
+      # Enable leader election for HA when replicaCount > 1
+      leader-elect: "true"
       # How long to wait before scaling down a node (default: 10m)
       scale-down-delay-after-add: "10m"
       # How long to wait after a scale-down failure
@@ -145,7 +145,7 @@ spec:
       scale-down-unneeded-time: "10m"
       # Utilization threshold below which a node is considered underutilized
       scale-down-utilization-threshold: "0.5"
-      # Maximum number of nodes that can be scaled down simultaneously
+      # Maximum number of seconds CA waits for pod termination during scale-down
       max-graceful-termination-sec: "600"
       # Balance similar node groups
       balance-similar-node-groups: "true"
@@ -153,8 +153,8 @@ spec:
       skip-nodes-with-system-pods: "true"
       # Skip nodes with local storage
       skip-nodes-with-local-storage: "false"
-      # Expander strategy: random, most-pods, least-waste, price, priority
-      expander: least-waste
+      # Expander strategy: random, most-pods, least-waste, least-nodes, price, priority, grpc
+      expander: priority,least-waste
       # Maximum number of empty nodes to scale down simultaneously
       max-empty-bulk-delete: "10"
       # New pods scale-up delay
@@ -166,15 +166,14 @@ spec:
 
     # Pod disruption budget
     podDisruptionBudget:
-      minAvailable: 1
+      maxUnavailable: 1
 
     # Priority expander configuration
-    priorityConfigMapAnnotations:
-      cluster-autoscaler.kubernetes.io/priority-expander-config: |
-        10:
-          - .*spot.*
-        50:
-          - .*on-demand.*
+    expanderPriorities:
+      100:
+        - .*spot.*
+      50:
+        - .*on-demand.*
 
     # Prometheus monitoring
     serviceMonitor:
@@ -212,20 +211,18 @@ spec:
     cloudProvider: gce
     # GCP-specific configuration
     extraArgs:
-      # GCP project ID
-      gcp-project-id: my-gcp-project
       # Balance similar node groups for even distribution
       balance-similar-node-groups: "true"
       scale-down-utilization-threshold: "0.5"
       scale-down-unneeded-time: "10m"
       expander: least-waste
 
-    # Node groups to manage
-    autoscalingGroups:
-      - name: gke-my-cluster-default-pool
+    # Managed instance group prefixes to manage
+    autoscalingGroupsnamePrefix:
+      - name: gke-my-cluster-default-pool-
         minSize: 1
         maxSize: 10
-      - name: gke-my-cluster-high-mem-pool
+      - name: gke-my-cluster-high-mem-pool-
         minSize: 0
         maxSize: 5
 
@@ -266,7 +263,7 @@ spec:
     azureSubscriptionID: "your-subscription-id"
     azureTenantID: "your-tenant-id"
     azureResourceGroup: "my-resource-group"
-    azureVMType: AKS
+    azureVMType: "vmss"
 
     # Node pools to manage
     autoscalingGroups:
@@ -342,6 +339,8 @@ spec:
 
 ## Step 7: Priority-Based Scaling Configuration
 
+If you manage the priority ConfigMap yourself instead of using the Helm chart's `expanderPriorities` value, include this manifest and set `extraArgs.expander` to `priority,least-waste`.
+
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/priority-config.yaml
 apiVersion: v1
@@ -371,6 +370,16 @@ data:
 
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+```
+
+```yaml
+# clusters/my-cluster/flux-system/cluster-autoscaler-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -439,7 +448,7 @@ kubectl logs -n cluster-autoscaler -l app.kubernetes.io/name=aws-cluster-autosca
 ## Tuning Recommendations
 
 - Set `scale-down-utilization-threshold` to 0.5 for balanced cost and availability
-- Use `least-waste` expander for cost-optimized instance selection
+- Use `least-waste` or `priority,least-waste` expander behavior for cost-optimized instance selection
 - Enable `balance-similar-node-groups` for even distribution across AZs
 - Set `max-node-provision-time` based on your cloud provider's instance launch time
 - Use PodDisruptionBudgets to protect critical workloads during scale-down
