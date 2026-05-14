@@ -8,7 +8,7 @@ Description: Learn how to use the --no-cross-namespace-refs flag in Flux CD to p
 
 ---
 
-In multi-tenant Kubernetes clusters, namespace boundaries serve as security perimeters. By default, Flux CD allows resources like Kustomizations and HelmReleases to reference sources, secrets, and other objects in different namespaces. This can break tenant isolation if one team references another team's resources. The `--no-cross-namespace-refs` flag prevents this behavior.
+In multi-tenant Kubernetes clusters, namespace boundaries serve as security perimeters. By default, Flux CD allows resources like Kustomizations and HelmReleases to reference sources and event sources in different namespaces. This can break tenant isolation if one team references another team's resources. The `--no-cross-namespace-refs` flag prevents this behavior.
 
 This guide explains how to enable and enforce cross-namespace reference restrictions in Flux CD.
 
@@ -32,12 +32,13 @@ spec:
     namespace: flux-system  # Cross-namespace reference
   interval: 10m
   path: ./apps
+  prune: true
 ```
 
 This means a tenant could:
 
 - Reference a GitRepository containing sensitive configurations.
-- Reference a Secret in another namespace for decryption keys.
+- Subscribe to events from another namespace.
 - Reference a HelmRepository belonging to another team.
 
 ## Enabling --no-cross-namespace-refs
@@ -122,14 +123,12 @@ When `--no-cross-namespace-refs=true` is enabled, the following cross-namespace 
 
 For **kustomize-controller**:
 - Kustomization `spec.sourceRef` cannot reference a source in a different namespace.
-- Kustomization `spec.decryption.secretRef` must be in the same namespace.
 
 For **helm-controller**:
-- HelmRelease `spec.chart.spec.sourceRef` cannot reference a HelmRepository in a different namespace.
-- HelmRelease `spec.valuesFrom` cannot reference ConfigMaps or Secrets in a different namespace.
+- HelmRelease `spec.chart.spec.sourceRef` cannot reference a source in a different namespace.
 
 For **notification-controller**:
-- Alert `spec.providerRef` must be in the same namespace as the Alert.
+- Alert `spec.eventSources` must reference event sources in the same namespace.
 - Receiver `spec.resources` must reference objects in the same namespace.
 
 ## Restructuring for Namespace Isolation
@@ -214,6 +213,7 @@ spec:
     name: flux-system
     namespace: flux-system
   path: ./test
+  prune: true
 EOF
 
 # Check the status - it should show a cross-namespace reference error
