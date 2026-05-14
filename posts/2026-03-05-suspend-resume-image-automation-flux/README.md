@@ -130,7 +130,7 @@ Verify which resources are currently suspended.
 
 ```bash
 # Check suspension status of all image automation resources
-flux get image all -n flux-system
+flux get images all -n flux-system
 
 # Check a specific resource
 kubectl get imageupdateautomation flux-system -n flux-system \
@@ -143,7 +143,7 @@ Suspended resources are marked with `SUSPENDED` in the Flux CLI output.
 
 ### Maintenance Window
 
-During a planned maintenance window, suspend all image automation to prevent deployments.
+During a planned maintenance window, suspend image automation to prevent new automated image update commits.
 
 ```bash
 # Suspend all image automation before maintenance
@@ -206,7 +206,7 @@ You can suspend individual images while leaving others active. For example, free
 flux suspend image policy db-migrator -n flux-system
 
 # The application image policy continues to work normally
-flux get image policy --all-namespaces
+flux get images policy --all-namespaces
 ```
 
 ## Choosing What to Suspend
