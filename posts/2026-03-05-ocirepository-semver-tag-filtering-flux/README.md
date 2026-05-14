@@ -16,7 +16,7 @@ This guide covers how SemVer filtering works in OCIRepository, the supported con
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later for the `source.toolkit.fluxcd.io/v1` OCIRepository API)
 - The `flux` CLI installed
 - An OCI-compatible container registry with multiple tagged artifacts
 - `kubectl` configured to access your cluster
@@ -271,7 +271,7 @@ spec:
 
 ## Troubleshooting
 
-- **No matching version found**: Verify that your pushed artifacts use valid SemVer tags (e.g., `1.0.0`, not `v1.0.0`). Flux strips the `v` prefix when parsing, but the tag itself must be parseable as SemVer.
+- **No matching version found**: Verify that your pushed artifacts use tags that Flux can parse as SemVer (e.g., `1.0.0` or `v1.0.0`, not `release-1.0.0`). Flux strips the `v` prefix when parsing, but the tag itself must be parseable as SemVer.
 - **Wrong version selected**: Use `flux list artifacts` to see all available tags and verify which ones match your constraint. Remember that Flux always selects the highest matching version.
 - **Artifact not updating**: Check the `interval` value. If you need immediate updates, run `flux reconcile source oci app-manifests`.
 
