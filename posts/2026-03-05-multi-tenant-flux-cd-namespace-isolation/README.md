@@ -20,8 +20,8 @@ The key principle is separation of concerns: the platform team manages cluster-w
 
 Before you begin, ensure you have the following:
 
-- A Kubernetes cluster (v1.20 or later)
-- Flux CD installed in the `flux-system` namespace
+- A Kubernetes cluster supported by your Flux release (current Flux releases require Kubernetes v1.33 or later)
+- Flux CD installed in the `flux-system` namespace with multi-tenancy lockdown enabled
 - `kubectl` and `flux` CLI tools installed
 - Cluster admin access
 
@@ -33,7 +33,7 @@ Start by creating a directory structure in your fleet repository that separates 
 # Create the directory structure for multi-tenant management
 
 mkdir -p clusters/my-cluster/tenants
-mkdir -p tenants/base
+mkdir -p tenants/base/team-alpha
 mkdir -p tenants/production
 ```
 
@@ -91,7 +91,7 @@ This RoleBinding gives the tenant service account full control within the `team-
 
 ## Step 5: Assign a Git Repository to the Tenant
 
-Define a GitRepository source that points to the tenant's application repository. The `serviceAccountName` field ensures the reconciliation happens under the tenant's identity.
+Define a GitRepository source that points to the tenant's application repository. For a public repository, no credentials are required; for a private repository, add a `secretRef` in the same namespace.
 
 ```yaml
 # tenants/base/team-alpha/git-repo.yaml
@@ -159,6 +159,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  serviceAccountName: kustomize-controller
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -198,6 +199,7 @@ To add another tenant, replicate the directory structure under `tenants/base/` w
 When running multi-tenant Flux CD, keep these points in mind:
 
 - Always use `serviceAccountName` in tenant Kustomizations to enforce RBAC boundaries
+- Enable Flux multi-tenancy lockdown so tenants cannot reference Flux resources from other namespaces
 - Consider adding NetworkPolicies to prevent cross-tenant network traffic
 - Apply ResourceQuotas to prevent any single tenant from consuming excessive cluster resources
 - Regularly audit tenant permissions with `kubectl auth can-i`
