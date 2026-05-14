@@ -36,11 +36,11 @@ helm repo update
 
 # Install Cilium with Operator identity management
 helm install cilium cilium/cilium \
-  --version 1.15.6 \
+  --version 1.19.3 \
   --namespace kube-system \
   --create-namespace \
   --set identityAllocationMode=crd \
-  --set operator.identityManagementEnabled=true \
+  --set identityManagementMode=operator \
   --set operator.identityGCInterval=15m \
   --set operator.identityHeartbeatTimeout=30m \
   --set ipam.mode=cluster-pool \
@@ -59,15 +59,15 @@ kubectl -n kube-system rollout status ds/cilium --timeout=10m
 Verify Operator is managing identities before scheduling workloads:
 
 ```bash
-# Confirm Operator identity management is active
-kubectl -n kube-system logs -l name=cilium-operator | grep "identity management"
+# Confirm Operator identity management is configured
+kubectl -n kube-system get configmap cilium-config \
+  -o jsonpath='{.data.identity-management-mode}'
 
 # Check Operator RBAC is correct
 kubectl get clusterrole cilium-operator -o yaml | grep ciliumidentities
 
-# Initial state: should have no identities yet (empty cluster)
+# Initial state: only system workload identities should exist
 kubectl get ciliumidentities
-# Expected: No resources found
 
 # Verify configmap has correct settings
 kubectl -n kube-system get configmap cilium-config \
@@ -79,12 +79,12 @@ kubectl -n kube-system get configmap cilium-config \
 Diagnose issues during initial setup:
 
 ```bash
-# Issue: Cilium agents starting before Operator is ready
-# Symptom: No identities being created for initial workloads
+# Issue: Initial workloads scheduled before Operator is ready
+# Symptom: Pods waiting for identities
 kubectl -n kube-system get pods
 kubectl -n kube-system logs ds/cilium | grep -i "waiting\|identity\|operator"
 
-# Fix: Ensure Operator is deployed and ready before agents
+# Fix: Ensure Operator is deployed and ready before scheduling workloads
 kubectl -n kube-system rollout status deploy/cilium-operator
 
 # Issue: RBAC insufficient for identity management
@@ -147,7 +147,7 @@ spec:
 EOF
 
 # Wait for pods
-kubectl wait deployment frontend backend --for=condition=Available --timeout=60s
+kubectl wait --for=condition=Available --timeout=60s deployment/frontend deployment/backend
 
 # Verify Operator created identities
 kubectl get ciliumidentities
@@ -158,7 +158,7 @@ kubectl get ciliumidentities -o json | \
   jq '.items[] | {id: .metadata.name, app: .["security-labels"]["k8s:app"]}'
 
 # Verify all pods have endpoints with correct identities
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 
 # Run connectivity test
 cilium connectivity test
@@ -175,7 +175,6 @@ sequenceDiagram
     H->>O: Deploy Operator with identity management
     O->>O: Initialize identity manager
     H->>A: Deploy Cilium Agents
-    A->>O: Register as identity consumers
     P->>O: Pod created event
     O->>O: Compute identity
     O->>K8s: Create CiliumIdentity CRD
@@ -190,10 +189,10 @@ Set up monitoring from day one:
 kubectl get ciliumidentities --no-headers | wc -l
 
 # Set up initial Prometheus queries
-kubectl -n kube-system port-forward svc/cilium-operator 9963:9963 &
+kubectl -n kube-system port-forward deploy/cilium-operator 9963:9963 &
 
 # Identity management health check
-curl -s http://localhost:9963/metrics | grep -E "identity_gc|identity_count"
+curl -s http://localhost:9963/metrics | grep "cid_controller_work_queue"
 
 # Set up regular identity count tracking
 cat > /tmp/identity-baseline.sh <<'EOF'
@@ -202,7 +201,7 @@ echo "$(date): $(kubectl get ciliumidentities --no-headers | wc -l) identities"
 kubectl get ciliumidentities --no-headers | awk '{print $1}' | sort > /tmp/identity-list-$(date +%Y%m%d).txt
 EOF
 
-# Create initial Prometheus alert for identity management
+# Create initial Prometheus alert for identity management if Prometheus Operator is installed
 kubectl apply -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -214,7 +213,7 @@ spec:
   - name: cilium-operator-identity
     rules:
     - alert: CiliumOperatorIdentityManagementDown
-      expr: absent(cilium_operator_identity_count)
+      expr: absent(cilium_operator_cid_controller_work_queue_event_count)
       for: 5m
       labels:
         severity: critical
