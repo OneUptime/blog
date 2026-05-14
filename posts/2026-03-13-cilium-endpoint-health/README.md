@@ -21,43 +21,55 @@ This guide covers the endpoint lifecycle, how to monitor endpoint health, how to
 - Cilium installed
 - `kubectl` installed
 - `cilium` CLI installed
+- Access to a Cilium agent pod with `cilium-dbg` available
+- `jq` installed for JSON parsing
 
 ## Step 1: Check Endpoint Health Overview
 
 ```bash
-# List all endpoints and their states
+# Select a Cilium agent pod to inspect
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
 
-cilium endpoint list
+# List all endpoints and their states
+kubectl exec -n kube-system "${CILIUM_POD}" -c cilium-agent -- \
+  cilium-dbg endpoint list
 
 # Count endpoints by state
-cilium endpoint list | awk '{print $6}' | sort | uniq -c
+kubectl exec -n kube-system "${CILIUM_POD}" -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | \
+  jq -r '.[].status.state' | sort | uniq -c
 
 # Expected healthy output:
 # 45 ready
-# 0 regenerating
-# 0 waiting-for-identity
-# 0 not-ready
 ```
 
 ## Step 2: Endpoint State Reference
 
 | State | Meaning | Action |
 |-------|---------|--------|
+| `restoring` | Cilium is restoring endpoint state after agent restart | Normal during startup; inspect logs if it persists |
+| `waiting-for-identity` | Cilium is allocating an identity | Check Kubernetes API or kvstore connectivity if it persists |
+| `waiting-to-regenerate` | Identity is assigned and regeneration is queued | Normal, wait |
+| `regenerating` | Network configuration and eBPF datapath are being regenerated | Normal, wait |
 | `ready` | Fully configured | None needed |
-| `regenerating` | Policy being compiled | Normal, wait |
-| `waiting-for-identity` | Identity from kvstore pending | Check kvstore connectivity |
-| `not-ready` | Configuration failed | Inspect with `endpoint get` |
+| `invalid` | Endpoint creation or regeneration failed | Inspect with `endpoint get` and endpoint logs |
 | `disconnecting` | Pod terminating | Normal |
+| `disconnected` | Endpoint deleted | Normal after deletion |
 
 ## Step 3: Inspect a Non-Ready Endpoint
 
 ```bash
 # Get detailed endpoint information
-ENDPOINT_ID=$(cilium endpoint list | grep my-pod-name | awk '{print $1}')
-cilium endpoint get ${ENDPOINT_ID}
+ENDPOINT_ID=$(kubectl exec -n kube-system "${CILIUM_POD}" -c cilium-agent -- \
+  cilium-dbg endpoint list | grep my-pod-name | awk '{print $1}')
+
+kubectl exec -n kube-system "${CILIUM_POD}" -c cilium-agent -- \
+  cilium-dbg endpoint get ${ENDPOINT_ID}
 
 # Check endpoint log for errors
-cilium endpoint log ${ENDPOINT_ID}
+kubectl exec -n kube-system "${CILIUM_POD}" -c cilium-agent -- \
+  cilium-dbg endpoint log ${ENDPOINT_ID}
 
 # Sample error output:
 # [ERROR] Failed to regenerate endpoint: policy import error
@@ -68,34 +80,36 @@ cilium endpoint log ${ENDPOINT_ID}
 
 ```bash
 # Watch endpoint state changes in real-time
-watch -n 2 "cilium endpoint list | grep -v ready"
+watch -n 2 "kubectl exec -n kube-system ${CILIUM_POD} -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | jq -r '.[] | select(.status.state != \"ready\") | [.id, .status.state] | @tsv'"
 
-# Check regeneration time (slow = policy complexity issue)
-cilium endpoint list --output json | \
-  jq '.[] | {id: .id, state: .status.state, regeneration_time: .status["external-identifiers"]}'
+# Check detailed endpoint status
+kubectl exec -n kube-system "${CILIUM_POD}" -c cilium-agent -- \
+  cilium-dbg endpoint get ${ENDPOINT_ID} -o json | \
+  jq '{id: .id, state: .status.state, health: .status.health, policy: .status.policy}'
 
 # Monitor Cilium metrics for endpoint health
-kubectl port-forward -n kube-system ds/cilium 9962:9962
-curl -s http://localhost:9962/metrics | grep "cilium_endpoint_state"
+kubectl port-forward -n kube-system "pod/${CILIUM_POD}" 9962:9962
+curl -s http://localhost:9962/metrics | grep -E "cilium_endpoint_state|cilium_endpoint_regeneration_time_stats_seconds"
 ```
 
-## Step 5: Force Endpoint Regeneration
+## Step 5: Troubleshoot Failed Regeneration
 
-If an endpoint is stuck, force regeneration:
+If an endpoint is stuck, inspect the regeneration failure and fix the underlying policy, identity, or datapath error:
 
 ```bash
-# Force endpoint policy regeneration
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint regenerate ${ENDPOINT_ID}
-
 # If regeneration fails consistently, debug at higher verbosity
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium config set debug-verbose policy
+kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data.debug-verbose}'
 
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint regenerate ${ENDPOINT_ID}
+# Enable policy debug logging with the Cilium CLI, then restart Cilium agents
+cilium config set debug-verbose policy --restart=true
 
-kubectl logs -n kube-system cilium-xxxxx | grep -i "regenerat" | tail -20
+# Watch regeneration-related logs on the affected agent
+kubectl logs -n kube-system "${CILIUM_POD}" -c cilium-agent | \
+  grep -i "regenerat" | tail -20
+
+# After correcting the root cause, restart the affected workload if the endpoint does not recover
+kubectl delete pod -n <workload-namespace> <pod-name>
 ```
 
 ## Step 6: Alert on Endpoint Health
@@ -112,7 +126,7 @@ spec:
       rules:
         - alert: CiliumEndpointNotReady
           expr: |
-            cilium_endpoint_state{state!="ready"} > 0
+            cilium_endpoint_state{endpoint_state!="ready"} > 0
           for: 5m
           labels:
             severity: warning
@@ -122,7 +136,7 @@ spec:
         - alert: CiliumEndpointRegenerationSlow
           expr: |
             histogram_quantile(0.99,
-              rate(cilium_endpoint_regeneration_time_seconds_bucket[5m])
+              rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m])
             ) > 30
           for: 5m
           labels:
@@ -134,15 +148,15 @@ spec:
 ```mermaid
 stateDiagram-v2
     [*] --> WaitingForIdentity: Pod created
-    WaitingForIdentity --> Regenerating: Identity assigned
+    WaitingForIdentity --> WaitingToRegenerate: Identity assigned
+    WaitingToRegenerate --> Regenerating: Regeneration queued
     Regenerating --> Ready: Policy compiled\nBPF maps programmed
-    Ready --> Regenerating: Policy change
-    Regenerating --> NotReady: Compilation error
-    NotReady --> Regenerating: Manual regenerate
+    Ready --> WaitingToRegenerate: Policy change
+    Regenerating --> Invalid: Compilation error
     Ready --> Disconnecting: Pod terminating
     Disconnecting --> [*]: Pod deleted
 ```
 
 ## Conclusion
 
-Cilium endpoint health is the ground-truth indicator of whether pod networking is correctly configured. The endpoint state machine - waiting-for-identity → regenerating → ready - must complete successfully for every pod. Monitor the ratio of ready endpoints to total endpoints via Prometheus alerts, and investigate any endpoint stuck in `not-ready` or `waiting-for-identity` states immediately. The `cilium endpoint log` command gives you the detailed error history for any endpoint, which almost always points directly to the root cause, whether a kvstore connectivity issue, a policy compilation error, or a BPF map programming failure.
+Cilium endpoint health is the ground-truth indicator of whether pod networking is correctly configured. The endpoint state machine - waiting-for-identity → waiting-to-regenerate → regenerating → ready - must complete successfully for every pod. Monitor the ratio of ready endpoints to total endpoints via Prometheus alerts, and investigate any endpoint stuck in `invalid` or `waiting-for-identity` states immediately. The `cilium-dbg endpoint log` command gives you the detailed error history for any endpoint, which almost always points directly to the root cause, whether a kvstore connectivity issue, a policy compilation error, or a BPF map programming failure.
