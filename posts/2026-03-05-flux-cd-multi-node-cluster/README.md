@@ -12,8 +12,8 @@ Description: Learn how to deploy and configure Flux CD on a multi-node Kubernete
 
 Flux CD works on any Kubernetes cluster, whether single-node or multi-node. However, on multi-node clusters, you need to consider:
 
-- **Pod scheduling**: Ensure Flux controllers are spread across nodes for resilience.
-- **High availability**: Prevent a single node failure from taking down all Flux controllers.
+- **Pod scheduling**: Prefer spreading Flux controllers across nodes for resilience.
+- **Resilience**: Reduce the chance that a single node failure takes down all Flux controllers at once.
 - **Resource contention**: Avoid scheduling Flux on nodes that are already resource-constrained.
 - **Node affinity**: Place Flux controllers on appropriate node types (e.g., system nodes vs. application nodes).
 
@@ -21,7 +21,7 @@ This guide covers best practices for running Flux CD on multi-node clusters.
 
 ## Prerequisites
 
-- A multi-node Kubernetes cluster (v1.20+, minimum 3 nodes recommended)
+- A multi-node Kubernetes cluster running a Kubernetes version supported by your Flux release (minimum 3 nodes recommended)
 - `flux` CLI installed (v2.0+)
 - `kubectl` configured to access your cluster
 - Nodes labeled appropriately for workload scheduling
@@ -58,7 +58,7 @@ kubectl get nodes --show-labels | grep platform
 
 ## Step 3: Configure Pod Anti-Affinity
 
-Spread Flux controller replicas across different nodes to survive node failures. While Flux controllers run as single replicas by default, you can still ensure that the different controllers do not all land on the same node:
+Spread Flux controllers across different nodes to reduce the impact of node failures. Flux controllers run as single replicas by default, so this does not make each individual controller highly available, but it does help avoid placing all controllers on the same node:
 
 ```yaml
 # kustomization.yaml
@@ -91,7 +91,7 @@ patches:
                         - key: node-role.kubernetes.io/platform
                           operator: In
                           values: ["true"]
-              # Try to spread Flux controllers across different nodes
+              # Prefer spreading Flux controllers across different nodes
               podAntiAffinity:
                 preferredDuringSchedulingIgnoredDuringExecution:
                   - weight: 100
@@ -280,7 +280,7 @@ patches:
 
 ## Step 6: Configure Topology Spread Constraints
 
-For clusters with multiple availability zones, use topology spread constraints to distribute Flux controllers across zones:
+For clusters with multiple availability zones, use topology spread constraints to prefer distributing Flux controllers across zones:
 
 ```yaml
 # Spread Flux controllers across availability zones
@@ -304,14 +304,14 @@ patches:
                 whenUnsatisfiable: ScheduleAnyway
                 labelSelector:
                   matchLabels:
-                    app: source-controller
+                    app.kubernetes.io/part-of: flux
               # Spread across nodes within a zone
               - maxSkew: 1
                 topologyKey: kubernetes.io/hostname
                 whenUnsatisfiable: ScheduleAnyway
                 labelSelector:
                   matchLabels:
-                    app: source-controller
+                    app.kubernetes.io/part-of: flux
 ```
 
 ## Step 7: Verify Pod Distribution
@@ -327,7 +327,7 @@ kubectl get pods -n flux-system -o custom-columns=\
 'POD:metadata.name,NODE:spec.nodeName,STATUS:status.phase'
 ```
 
-Expected output shows controllers distributed across different nodes:
+Expected output should show controllers distributed across different nodes when the scheduler can satisfy the preferences:
 
 ```text
 POD                                        NODE     STATUS
@@ -394,4 +394,4 @@ spec:
 
 ## Summary
 
-Running Flux CD on a multi-node cluster requires thoughtful scheduling configuration to ensure resilience and performance. Use node affinity to place controllers on designated platform nodes, pod anti-affinity to spread them across nodes, tolerations to work with node taints, and topology spread constraints for multi-zone distribution. Set appropriate resource requests and priority classes to ensure the Kubernetes scheduler makes good placement decisions. These configurations should be managed as Kustomize patches in your Flux bootstrap repository so they persist across upgrades.
+Running Flux CD on a multi-node cluster requires thoughtful scheduling configuration to improve resilience and performance. Use node affinity to place controllers on designated platform nodes, pod anti-affinity to prefer spreading them across nodes, tolerations to work with node taints, and topology spread constraints for multi-zone distribution. Set appropriate resource requests and priority classes so the Kubernetes scheduler makes good placement decisions. These configurations should be managed as Kustomize patches in your Flux bootstrap repository so they persist across upgrades.
