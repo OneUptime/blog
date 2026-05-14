@@ -37,15 +37,7 @@ flowchart TD
     H -->|Yes| I[Mark Ready=False with health check error]
 ```
 
-Flux knows how to check readiness for standard Kubernetes resource types:
-
-- **Deployments**: All replicas available
-- **StatefulSets**: All replicas ready
-- **DaemonSets**: All desired pods scheduled and ready
-- **Services**: Endpoints available
-- **Pods**: Running and passing readiness probes
-- **Jobs**: Completed successfully
-- **Custom Resources**: Conditions with `type: Ready` and `status: "True"`
+Flux uses kstatus-compatible health checks for deployed workloads and ready conditions. Health checks can reference Kubernetes built-in kinds such as Deployments, StatefulSets, DaemonSets, PersistentVolumeClaims, Pods, PodDisruptionBudgets, Jobs, CronJobs, Services, Secrets, ConfigMaps, and CustomResourceDefinitions, Flux resources such as HelmReleases and GitRepositories, and custom resources that are compatible with kstatus. For custom readiness logic, Flux also supports CEL-based health check expressions.
 
 ## Enabling Wait for Ready
 
@@ -97,7 +89,7 @@ spec:
   timeout: 10m
 ```
 
-If no timeout is specified, the default is 5 minutes (`5m`). The timeout applies to the entire reconciliation process, including the apply phase and the health check phase.
+If no timeout is specified, Flux defaults to the Kustomization's `spec.interval` duration. The timeout applies to the entire reconciliation process, including the apply phase and the health check phase.
 
 ## Using healthChecks for Selective Monitoring
 
@@ -280,14 +272,14 @@ kubectl get pods -l app=my-app -n production -o jsonpath='{.items[0].status.cond
 If health checks are blocking a critical fix, you can temporarily disable waiting:
 
 ```bash
-# Suspend the Kustomization
-flux suspend ks my-app
+# Disable wait on the Kustomization
+kubectl patch kustomization my-app -n flux-system --type=merge -p '{"spec":{"wait":false}}'
 
-# Apply the fix manually
-kubectl apply -f fix.yaml
+# Reconcile the Kustomization
+flux reconcile kustomization my-app
 
-# Resume with the fix in place
-flux resume ks my-app
+# Re-enable wait after the fix is healthy
+kubectl patch kustomization my-app -n flux-system --type=merge -p '{"spec":{"wait":true}}'
 ```
 
 ## Conclusion
