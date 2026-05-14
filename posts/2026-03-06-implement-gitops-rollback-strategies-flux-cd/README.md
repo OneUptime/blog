@@ -51,8 +51,8 @@ flux reconcile kustomization apps -n flux-system
 # rollback-revert.sh - Revert a commit and trigger Flux reconciliation
 set -euo pipefail
 
-COMMIT_TO_REVERT=$1
-REPO_PATH=$2
+COMMIT_TO_REVERT=${1:-}
+REPO_PATH=${2:-}
 
 if [ -z "$COMMIT_TO_REVERT" ] || [ -z "$REPO_PATH" ]; then
   echo "Usage: $0 <commit-sha> <repo-path>"
@@ -62,7 +62,7 @@ fi
 cd "$REPO_PATH"
 
 # Verify the commit exists
-if ! git cat-file -t "$COMMIT_TO_REVERT" > /dev/null 2>&1; then
+if ! git cat-file -e "$COMMIT_TO_REVERT^{commit}" > /dev/null 2>&1; then
   echo "Error: Commit $COMMIT_TO_REVERT does not exist"
   exit 1
 fi
@@ -79,12 +79,12 @@ flux reconcile source git flux-system -n flux-system
 flux reconcile kustomization flux-system -n flux-system
 
 echo "Waiting for reconciliation..."
-flux get kustomization flux-system -n flux-system --watch
+flux get kustomizations -n flux-system --watch
 ```
 
-## Strategy 2: Git Reset to a Known-Good Tag
+## Strategy 2: Restore from a Known-Good Tag
 
-For larger rollbacks involving multiple commits, reset to a tagged release.
+For larger rollbacks involving multiple commits, restore the affected manifests from a tagged release and commit that rollback to Git.
 
 ### Tagging Releases for Rollback Points
 
@@ -120,12 +120,11 @@ jobs:
 # List available release tags
 git tag -l "release-*" --sort=-creatordate | head -10
 
-# Create a new branch from the good tag
-git checkout -b rollback-branch release-20260305-143022
-
-# Merge the rollback branch into main
+# Restore the production manifests from the good tag
 git checkout main
-git merge rollback-branch -m "Rollback to release-20260305-143022"
+git pull --ff-only
+git restore --source release-20260305-143022 -- clusters/production
+git commit -m "Rollback production to release-20260305-143022"
 git push origin main
 ```
 
@@ -153,9 +152,9 @@ flux resume helmrelease --all -A
 flux reconcile source git flux-system -n flux-system
 ```
 
-## Strategy 4: Automated Rollback on Health Check Failure
+## Strategy 4: Health Check Failure Detection
 
-Configure Flux Kustomizations to automatically roll back when health checks fail.
+Configure Flux Kustomizations to fail and retry reconciliation when health checks fail. Kustomization health checks do not roll back Git automatically; use them to block a bad revision from being marked ready and trigger an alert or Git revert workflow.
 
 ```yaml
 # clusters/production/apps.yaml
@@ -185,7 +184,7 @@ spec:
       kind: Deployment
       name: api-server
       namespace: default
-  # Retry on failure before giving up
+  # Retry failed reconciliations at this interval
   retryInterval: 2m
 ```
 
@@ -210,7 +209,7 @@ spec:
         namespace: flux-system
   # Install configuration
   install:
-    # Automatically roll back if install fails
+    # Automatically uninstall failed installs before retrying
     remediation:
       retries: 3
   # Upgrade configuration
@@ -227,7 +226,7 @@ spec:
     timeout: 5m
     # Re-enable hooks during rollback
     disableHooks: false
-    # Clean up new resources created during the failed upgrade
+    # Clean up new resources created during a failed rollback
     cleanupOnFail: true
   # Health checks for the release
   test:
@@ -380,7 +379,7 @@ spec:
 
 ```yaml
 # alerts/rollback-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rollback-alert
@@ -408,7 +407,7 @@ Flux CD supports multiple rollback strategies:
 | Strategy | Speed | Complexity | Use Case |
 |----------|-------|------------|----------|
 | Git Revert | Fast | Low | Single bad commit |
-| Tag Reset | Medium | Low | Multi-commit rollback |
+| Tag Restore | Medium | Low | Multi-commit rollback |
 | Suspend + Fix | Immediate | Medium | Emergency stop |
 | Auto Remediation | Automatic | Medium | Helm upgrade failures |
 | Canary + Flagger | Automatic | High | Gradual rollouts |
