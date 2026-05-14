@@ -4,27 +4,27 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Image Automation, ResourceSets, Templating
 
-Description: Learn how to use Flux CD ResourceSets to template and manage image update automation resources across multiple applications and environments.
+Description: Learn how to use Flux Operator ResourceSets to template and manage Flux image update automation resources across multiple applications and environments.
 
 ---
 
 ## Introduction
 
-Flux CD ResourceSets provide a way to generate multiple Kubernetes resources from a single template with variable inputs. When managing image update automation across many applications, you often end up creating repetitive ImageRepository, ImagePolicy, and ImageUpdateAutomation resources. ResourceSets let you define these once as a template and instantiate them for each application, reducing boilerplate and making it easier to maintain consistency. This guide covers how to use ResourceSets to manage image automation at scale.
+Flux Operator ResourceSets provide a way to generate multiple Kubernetes resources from a single template with variable inputs. When managing image update automation across many applications, you often end up creating repetitive ImageRepository and ImagePolicy resources, along with ImageUpdateAutomation resources for the Git repositories you want Flux to update. ResourceSets let you define the repeated resources once as a template and instantiate them for each application, reducing boilerplate and making it easier to maintain consistency. This guide covers how to use ResourceSets to manage image automation at scale.
 
 ## Prerequisites
 
-- Flux CD v2.3 or later installed on your Kubernetes cluster (ResourceSets require recent Flux versions)
+- Flux Operator installed on your Kubernetes cluster
 - Flux image-reflector-controller and image-automation-controller installed
 - `kubectl` and `flux` CLI access to your cluster
 
 ## The Problem: Repetitive Image Automation Resources
 
-For each application managed by Flux image automation, you typically need three resources: an ImageRepository, an ImagePolicy, and an ImageUpdateAutomation. With ten applications, that means thirty nearly identical YAML files. ResourceSets solve this by letting you define the pattern once.
+For each application managed by Flux image automation, you typically need an ImageRepository and an ImagePolicy, plus at least one ImageUpdateAutomation for the Git repository that Flux should update. With ten applications, that means many nearly identical YAML files. ResourceSets solve this by letting you define the repeated pattern once.
 
 ## Understanding ResourceSets
 
-A ResourceSet is a Flux resource that takes a list of inputs and a set of resource templates. For each input entry, Flux renders the templates with the input values substituted. The result is a set of generated Kubernetes resources that Flux manages.
+A ResourceSet is a Flux Operator resource that takes a list of inputs and a set of resource templates. For each input entry, Flux Operator renders the templates with the input values substituted. The result is a set of generated Kubernetes resources that Flux Operator manages.
 
 ## Creating a ResourceSet for Image Automation
 
@@ -53,22 +53,22 @@ spec:
     - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       metadata:
-        name: << .app >>
+        name: << inputs.app >>
         namespace: flux-system
       spec:
-        image: << .image >>
+        image: << inputs.image >>
         interval: 5m
     - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImagePolicy
       metadata:
-        name: << .app >>
+        name: << inputs.app >>
         namespace: flux-system
       spec:
         imageRepositoryRef:
-          name: << .app >>
+          name: << inputs.app >>
         policy:
           semver:
-            range: << .semverRange >>
+            range: << inputs.semverRange | quote >>
 ```
 
 Note that ResourceSets use `<< >>` delimiters for template expressions to avoid conflicts with other templating systems.
@@ -97,22 +97,22 @@ spec:
     - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       metadata:
-        name: << .app >>
+        name: << inputs.app >>
         namespace: flux-system
       spec:
-        image: << .image >>
+        image: << inputs.image >>
         interval: 5m
     - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImagePolicy
       metadata:
-        name: << .app >>
+        name: << inputs.app >>
         namespace: flux-system
       spec:
         imageRepositoryRef:
-          name: << .app >>
+          name: << inputs.app >>
         filterTags:
-          pattern: << .tagPattern >>
-          extract: << .tagExtract >>
+          pattern: << inputs.tagPattern | quote >>
+          extract: << inputs.tagExtract | quote >>
         policy:
           numerical:
             order: asc
@@ -180,13 +180,13 @@ spec:
     - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       metadata:
-        name: << .app >>
+        name: << inputs.app >>
         namespace: flux-system
       spec:
-        image: << .image >>
+        image: << inputs.image >>
         interval: 5m
         secretRef:
-          name: << .secretName >>
+          name: << inputs.secretName >>
 ```
 
 ## Marking Deployment Manifests
@@ -248,7 +248,7 @@ spec:
 
 ## Troubleshooting
 
-**ResourceSet not generating resources.** Verify the ResourceSet API version and that your Flux version supports ResourceSets. Check status with `kubectl describe resourceset -n flux-system`.
+**ResourceSet not generating resources.** Verify the ResourceSet API version and that Flux Operator is installed. Check status with `kubectl describe resourceset -n flux-system`.
 
 **Template rendering errors.** Ensure all input fields referenced in templates are present in every input entry. Missing fields will cause rendering failures.
 
