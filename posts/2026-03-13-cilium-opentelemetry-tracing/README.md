@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, OpenTelemetry, Tracing, Observability
 
-Description: Export Cilium Hubble flow data to OpenTelemetry collectors to correlate network-level events with distributed traces, enabling end-to-end visibility from eBPF to application spans.
+Description: Export Cilium Hubble flow data with the experimental Hubble OpenTelemetry adapter to correlate network-level events with distributed traces, enabling end-to-end visibility from eBPF to application spans.
 
 ---
 
@@ -12,13 +12,13 @@ Description: Export Cilium Hubble flow data to OpenTelemetry collectors to corre
 
 OpenTelemetry has become the standard for distributed tracing in cloud-native environments, but traditional application tracing captures only the parts of a request that touch application code. Network delays, DNS resolution failures, and connection-level errors that happen outside application threads are invisible to application traces. Cilium's Hubble provides exactly the network-level telemetry that fills this gap.
 
-Cilium can export Hubble flow data in OpenTelemetry format, allowing you to correlate network events with application traces in the same tracing backend (Jaeger, Tempo, Honeycomb). When a user reports slow API responses, you can look at both the application spans and the Cilium network flows in the same timeline to determine whether the latency is in the application code or the network path. This correlation is particularly powerful for debugging intermittent connectivity issues that are difficult to reproduce and investigate with traditional tools.
+The experimental Hubble OpenTelemetry adapter can export Hubble flow data in OpenTelemetry format, allowing you to correlate network events with application traces in the same tracing backend (Jaeger, Tempo, Honeycomb). The adapter project is archived and unmaintained, so treat this as an experimental pattern rather than a supported Cilium feature. When a user reports slow API responses, you can look at both the application spans and the Cilium network flows in the same timeline to determine whether the latency is in the application code or the network path. This correlation is particularly powerful for debugging intermittent connectivity issues that are difficult to reproduce and investigate with traditional tools.
 
-This guide covers configuring Cilium to export Hubble flows to an OpenTelemetry collector and correlating network events with application traces.
+This guide covers configuring the Hubble OpenTelemetry adapter to read Hubble flows and export them to an OpenTelemetry collector for correlation with application traces.
 
 ## Prerequisites
 
-- Cilium with Hubble relay enabled
+- Cilium with Hubble enabled
 - OpenTelemetry Collector deployed in the cluster
 - Tracing backend (Jaeger, Grafana Tempo, or similar)
 - `kubectl` installed
@@ -47,6 +47,9 @@ spec:
           ports:
             - containerPort: 4317  # gRPC OTLP
             - containerPort: 4318  # HTTP OTLP
+            - containerPort: 55679 # zPages
+          args:
+            - "--config=/etc/otel/config.yaml"
           volumeMounts:
             - name: config
               mountPath: /etc/otel
@@ -78,37 +81,54 @@ data:
       batch:
         timeout: 10s
 
-      attributes/cilium:
-        actions:
-          - key: service.name
-            from_attribute: source.workload
-            action: insert
-
     exporters:
       otlp/tempo:
-        endpoint: http://tempo:4317
+        endpoint: tempo.monitoring.svc.cluster.local:4317
         tls:
           insecure: true
 
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
+
+    extensions:
+      zpages:
+        endpoint: 0.0.0.0:55679
 
     service:
+      extensions: [zpages]
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [batch, attributes/cilium]
-          exporters: [otlp/tempo, logging]
+          processors: [batch]
+          exporters: [otlp/tempo, debug]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: zpages
+      port: 55679
+      targetPort: 55679
 ```
 
-## Step 3: Configure Hubble to Export to OTel
+## Step 3: Configure Hubble and Export to OTel
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set hubble.export.target.type=file \
-  --set hubble.export.target.filePath=/var/run/cilium/hubble/events.log
+  --set hubble.enabled=true
 ```
 
 Deploy Hubble OTel exporter (hubble-otel):
@@ -124,13 +144,18 @@ spec:
     matchLabels:
       app: hubble-otel
   template:
+    metadata:
+      labels:
+        app: hubble-otel
     spec:
       containers:
         - name: hubble-otel
-          image: ghcr.io/cilium/hubble-otel:latest
+          image: ghcr.io/cilium/hubble-otel:v0.1.1
           args:
-            - "--hubble-target=unix:///var/run/cilium/hubble.sock"
-            - "--otel-target=otel-collector.monitoring:4317"
+            - "--hubble.address=unix:///var/run/cilium/hubble.sock"
+            - "--otlp.address=otel-collector.monitoring.svc.cluster.local:4317"
+            - "--logs.export=false"
+            - "--trace.export=true"
           volumeMounts:
             - name: cilium-run
               mountPath: /var/run/cilium
@@ -143,12 +168,12 @@ spec:
 ## Step 4: Correlate Network and Application Traces
 
 ```bash
-# In Jaeger/Tempo UI, search for traces that include Cilium spans
+# In Jaeger/Tempo UI, search for traces that include Hubble-generated spans
 
-# Look for spans with service.name = "cilium" or "hubble"
+# Look for services and spans generated from Hubble flow metadata
 
 # Check OTel collector is receiving Hubble events
-kubectl logs -n monitoring deployment/otel-collector | grep -i "hubble\|cilium"
+kubectl logs -n monitoring deployment/otel-collector | grep -i "hubble\\|cilium"
 ```
 
 ## Step 5: Validate OTel Export
@@ -171,4 +196,4 @@ flowchart LR
 
 ## Conclusion
 
-Exporting Hubble flows to OpenTelemetry enables the correlation of network-level events with application traces, filling the observability gap between what application code sees and what actually happens in the network. When debugging latency issues or connectivity problems, having network flows alongside application spans in the same trace timeline dramatically reduces the investigation time. The Hubble OTel exporter is the bridge component that translates Hubble's flow format into OTLP spans, and once configured it runs transparently without any application changes.
+Exporting Hubble flows to OpenTelemetry enables the correlation of network-level events with application traces, filling the observability gap between what application code sees and what actually happens in the network. When debugging latency issues or connectivity problems, having network flows alongside application spans in the same trace timeline dramatically reduces the investigation time. The Hubble OTel adapter is the bridge component that translates Hubble's flow format into OTLP spans, and once configured it runs transparently without any application changes. Because the adapter is archived and unmaintained, validate it carefully before using it in production.
