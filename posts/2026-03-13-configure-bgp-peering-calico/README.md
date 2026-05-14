@@ -52,7 +52,7 @@ calicoctl apply -f bgp-default.yaml
 
 ## Configure Node-to-Node Full Mesh (Small Clusters)
 
-For clusters with fewer than 50 nodes, the default full-mesh BGP topology works well. Verify that all nodes are peering:
+For small and medium-size clusters, such as around 100 nodes or less, the default full-mesh BGP topology works well. Verify that all nodes are peering:
 
 ```bash
 calicoctl node status
@@ -117,7 +117,7 @@ kubectl get bgppeers -o wide
 You can also check BGP peer status via the Calico node pod:
 
 ```bash
-kubectl exec -n calico-system ds/calico-node -- birdcl show protocols
+kubectl exec -n calico-system <calico-node-pod> -- birdcl show protocols
 ```
 
 ## BGP Peering Architecture
