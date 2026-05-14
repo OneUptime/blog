@@ -193,7 +193,7 @@ resources:
   - service.yaml
 ```
 
-Create the Flux Kustomization to manage the team:
+Create the Kustomize overlay and a Flux Kustomization in the dev cluster path to reconcile it:
 
 ```yaml
 # apps/dev/payments/kustomization.yaml
@@ -201,6 +201,20 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base/payments/payment-service
+---
+# clusters/dev/payments-apps.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: payments-apps
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/dev/payments
+  prune: true
 ```
 
 ### Step 4: Disable Legacy Deployments for the Pilot
@@ -292,7 +306,6 @@ metadata:
     policies.kyverno.io/description: >
       Ensure all production deployments are managed by Flux CD
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: check-flux-labels
@@ -304,6 +317,7 @@ spec:
               namespaces:
                 - "prod-*"
       validate:
+        failureAction: Audit
         message: >
           All production deployments must be managed by Flux CD.
           This resource is missing the Flux CD management labels.
@@ -348,7 +362,7 @@ spec:
     name: flux-system
   path: ./apps/production/TEAM_NAME
   prune: true
-  # Restrict to team namespace only
+  # Set or override the namespace for namespaced resources
   targetNamespace: TEAM_NAMESPACE
   # Service account with limited permissions
   serviceAccountName: TEAM_NAME-deployer
@@ -479,8 +493,6 @@ kind: ClusterPolicy
 metadata:
   name: require-flux-management
 spec:
-  # Change from Audit to Enforce
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-flux-labels
@@ -492,6 +504,8 @@ spec:
               namespaces:
                 - "prod-*"
       validate:
+        # Change from Audit to Enforce
+        failureAction: Enforce
         message: >
           All production deployments must be managed by Flux CD.
           Deploy via the fleet-infra Git repository.
@@ -543,7 +557,7 @@ data:
             "type": "gauge",
             "targets": [
               {
-                "expr": "sum(rate(gotk_reconcile_condition{status='True'}[1h])) / sum(rate(gotk_reconcile_condition[1h])) * 100"
+                "expr": "sum(gotk_reconcile_condition{type='Ready',status='True'}) / sum(gotk_reconcile_condition{type='Ready'}) * 100"
               }
             ]
           }
@@ -567,7 +581,7 @@ communication_plan:
 
   weekly_updates:
     audience: team-leads
-    channel: slack #gitops-migration
+    channel: "slack #gitops-migration"
     content:
       - teams migrated this week
       - upcoming migrations
