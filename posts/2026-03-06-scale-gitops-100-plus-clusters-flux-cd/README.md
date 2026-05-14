@@ -91,6 +91,7 @@ Use templates to onboard new clusters quickly.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - cluster-config.yaml
   - flux-system.yaml
   - platform.yaml
   - apps.yaml
@@ -255,9 +256,6 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: "--concurrent=10"
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: "--requeue-dependency=15s"
   # Increase kustomize-controller concurrency
   - target:
       kind: Deployment
@@ -347,7 +345,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: "0.9.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -355,7 +353,7 @@ spec:
     installCRDs: true
 ---
 # ClusterSecretStore connecting to AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -371,7 +369,7 @@ spec:
             namespace: external-secrets
 ---
 # ExternalSecret that pulls credentials from the central store
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: git-credentials
@@ -397,7 +395,7 @@ spec:
 
 ## Strategy 5: Fleet-Wide Observability
 
-### Step 7: Centralized Monitoring with Prometheus Federation
+### Step 7: Centralized Monitoring with Prometheus Remote Write
 
 ```yaml
 # addons/monitoring/prometheus-values.yaml
@@ -412,7 +410,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "56.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -493,7 +491,7 @@ data:
 # Group 2: Staging clusters (deployed second)
 # Group 3: Production clusters (deployed last)
 
-# Canary cluster references a specific branch
+# Canary cluster deploys a release-candidate application version
 # fleet-clusters/clusters/canary-001/apps.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -507,12 +505,12 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-apps
-  # Canary clusters track the release-candidate branch
+  # Canary clusters deploy the release-candidate version
   postBuild:
     substitute:
       APP_VERSION: "v2.1.0-rc1"
 ---
-# Production cluster references the stable tag
+# Production cluster deploys the stable application version
 # fleet-clusters/clusters/prod-001/apps.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -526,7 +524,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-apps
-  # Production clusters track the stable branch
+  # Production clusters deploy the stable version
   postBuild:
     substitute:
       APP_VERSION: "v2.0.5"
@@ -607,13 +605,13 @@ spec:
 for cluster in $(kubectl config get-contexts -o name | grep prod); do
   echo "--- $cluster ---"
   flux get kustomizations --context=$cluster --no-header | \
-    awk '{printf "%-40s %s\n", $1, $3}'
+    awk '{printf "%-40s %s\n", $1, $4}'
 done
 
 # Count clusters with issues
 kubectl config get-contexts -o name | while read ctx; do
-  failed=$(flux get kustomizations --context=$ctx --no-header 2>/dev/null | \
-    grep -c "False" || true)
+  failed=$(flux get kustomizations --context=$ctx --status-selector ready=false --no-header 2>/dev/null | \
+    wc -l | tr -d ' ')
   if [ "$failed" -gt 0 ]; then
     echo "ALERT: $ctx has $failed failed kustomizations"
   fi
