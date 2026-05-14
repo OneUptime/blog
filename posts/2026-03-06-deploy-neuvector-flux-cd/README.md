@@ -96,14 +96,14 @@ stringData:
   # Initial admin user configuration
   userinitcfg.yaml: |
     users:
-      - username: admin
-        password: your-secure-admin-password
-        role: admin
-        email: admin@example.com
-      - username: reader
-        password: your-reader-password
-        role: reader
-        email: reader@example.com
+      - Fullname: admin
+        Password: your-secure-admin-password
+        Role: admin
+        EMail: admin@example.com
+      - Fullname: reader
+        Password: your-reader-password
+        Role: reader
+        EMail: reader@example.com
 ```
 
 ## Step 4: Create the HelmRelease
@@ -123,7 +123,7 @@ spec:
   chart:
     spec:
       chart: core
-      version: "2.7.x"
+      version: "2.8.x"
       sourceRef:
         kind: HelmRepository
         name: neuvector
@@ -131,7 +131,7 @@ spec:
       interval: 12h
   values:
     # Global settings
-    tag: "5.3"
+    tag: "5.5.1"
     registry: docker.io
 
     # Controller configuration - manages security policies
@@ -149,16 +149,6 @@ spec:
         enabled: true
         capacity: 10Gi
         storageClass: standard
-      # Controller configuration
-      configmap:
-        enabled: true
-        data:
-          # Auto-learn network policies for new services
-          auto_profile: "true"
-          # Set new services to Monitor mode by default
-          new_service_policy_mode: "Monitor"
-          # Admission control webhook
-          admission_control: "true"
 
     # Enforcer configuration - DaemonSet on every node
     enforcer:
@@ -180,7 +170,6 @@ spec:
     # Manager (Web UI) configuration
     manager:
       enabled: true
-      replicas: 1
       resources:
         requests:
           cpu: 100m
@@ -199,42 +188,35 @@ spec:
         # secretName: neuvector-tls
 
     # Scanner configuration for image vulnerability scanning
-    scanner:
-      enabled: true
-      replicas: 2
-      resources:
-        requests:
-          cpu: 200m
-          memory: 512Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
-      # Auto-scale scanner pods based on workload
-      autoscaling:
+    cve:
+      updater:
         enabled: true
-        minReplicas: 2
-        maxReplicas: 5
-        targetCPUUtilizationPercentage: 80
+        schedule: "0 */4 * * *"
+      scanner:
+        enabled: true
+        replicas: 2
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+
+      # Registry adapter for registry vulnerability scanning
+      adapter:
+        enabled: true
 
     # CRD support for security policies as code
     crdwebhook:
       enabled: true
-      resources:
-        requests:
-          cpu: 50m
-          memory: 64Mi
-        limits:
-          cpu: 200m
-          memory: 256Mi
 
     # Admission control for blocking insecure workloads
     admissionwebhook:
       type: ClusterIP
 
-    # Use the pre-configured admin secret
-    containerd:
-      enabled: true
-      path: /var/run/containerd/containerd.sock
+    # Optional: set only when the container runtime socket is not at its default path
+    runtimePath: /var/run/containerd/containerd.sock
 ```
 
 ## Step 5: Define Security Policies as CRDs
@@ -250,47 +232,62 @@ metadata:
   name: production-network-rules
   namespace: neuvector
 spec:
-  version: v1
   target:
     policymode: Protect
     selector:
-      name: nv.production-app
+      name: nv.production-app.production
       criteria:
-        - key: namespace
+        - key: service
+          value: production-app.production
+          op: "="
+        - key: domain
           value: production
           op: "="
   # Ingress rules - allowed inbound connections
   ingress:
-    - selector:
+    - name: allow-api-gateway
+      selector:
         name: nv.api-gateway
         criteria:
-          - key: namespace
+          - key: service
+            value: api-gateway.production
+            op: "="
+          - key: domain
             value: production
             op: "="
       ports: tcp/8080
       action: allow
       applications:
         - HTTP
-    - selector:
+    - name: deny-external
+      selector:
         name: external
       action: deny
 
   # Egress rules - allowed outbound connections
   egress:
-    - selector:
+    - name: allow-database
+      selector:
         name: nv.database
         criteria:
-          - key: namespace
+          - key: service
+            value: database.production
+            op: "="
+          - key: domain
             value: production
             op: "="
       ports: tcp/5432
       action: allow
       applications:
         - PostgreSQL
-    - selector:
+    - name: allow-redis
+      selector:
         name: nv.redis
         criteria:
-          - key: namespace
+          - key: service
+            value: redis.production
+            op: "="
+          - key: domain
             value: production
             op: "="
       ports: tcp/6379
@@ -301,8 +298,11 @@ apiVersion: neuvector.com/v1
 kind: NvAdmissionControlSecurityRule
 metadata:
   name: block-privileged-containers
-  namespace: neuvector
 spec:
+  config:
+    enable: true
+    mode: protect
+    client_mode: service
   rules:
     - id: 1
       comment: "Block privileged containers in production"
@@ -313,8 +313,9 @@ spec:
         - name: runAsPrivileged
           value: "true"
           op: "="
-      disable: false
-      rule_type: deny
+      disabled: false
+      action: deny
+      rule_mode: protect
     - id: 2
       comment: "Block containers running as root"
       criteria:
@@ -324,19 +325,9 @@ spec:
         - name: runAsRoot
           value: "true"
           op: "="
-      disable: false
-      rule_type: deny
-    - id: 3
-      comment: "Block images without scan results"
-      criteria:
-        - name: namespace
-          value: production
-          op: containsAny
-        - name: imageScanned
-          value: "false"
-          op: "="
-      disable: false
-      rule_type: deny
+      disabled: false
+      action: deny
+      rule_mode: protect
 ```
 
 ## Step 6: Configure Vulnerability Scanning Policy
@@ -345,34 +336,24 @@ Set up automated vulnerability scanning for container images.
 
 ```yaml
 # neuvector-scan-policy.yaml
-# ConfigMap for vulnerability scan configuration
+# Supported NeuVector system configuration
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: neuvector-scan-config
+  name: neuvector-init
   namespace: neuvector
 data:
-  scan-config.yaml: |
+  sysinitcfg.yaml: |
     # Auto-scan new images when deployed
-    auto_scan: true
-    # Scan schedule for registry scanning
-    scan_schedule: "0 */4 * * *"
-    # Vulnerability severity threshold
-    vulnerability_threshold:
-      high: 0
-      medium: 10
-    # Registries to scan
-    registries:
-      - name: docker-hub
-        type: docker
-        url: https://registry.hub.docker.com
-        filter:
-          - "company/*"
-      - name: ecr-production
-        type: ecr
-        url: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
-        filter:
-          - "*"
+    Scan_Config:
+      Auto_Scan: true
+    # Set new services to Monitor mode by default
+    New_Service_Policy_Mode: Monitor
+    New_Service_Profile_Baseline: zero-drift
+    Scanner_Autoscale:
+      Strategy: immediate
+      Min_Pods: 2
+      Max_Pods: 5
 ```
 
 ## Step 7: Set Up Monitoring
@@ -380,26 +361,34 @@ data:
 Create monitoring resources for NeuVector metrics.
 
 ```yaml
-# neuvector-servicemonitor.yaml
-# Prometheus ServiceMonitor for NeuVector metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+# neuvector-monitor-helmrelease.yaml
+# Deploys NeuVector Prometheus exporter and ServiceMonitor
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
   name: neuvector-monitor
   namespace: neuvector
-  labels:
-    release: prometheus
 spec:
-  selector:
-    matchLabels:
-      app: neuvector-controller-pod
-  endpoints:
-    - port: api
-      interval: 30s
-      path: /v1/internal/metrics
-      scheme: https
-      tlsConfig:
-        insecureSkipVerify: true
+  interval: 30m
+  chart:
+    spec:
+      chart: monitor
+      version: "2.8.x"
+      sourceRef:
+        kind: HelmRepository
+        name: neuvector
+        namespace: neuvector
+      interval: 12h
+  values:
+    exporter:
+      enabled: true
+      CTRL_USERNAME: reader
+      CTRL_PASSWORD: your-reader-password
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: prometheus
+        interval: 30s
 ---
 # Alert rules for NeuVector security events
 apiVersion: monitoring.coreos.com/v1
@@ -414,22 +403,22 @@ spec:
     - name: neuvector-security
       rules:
         - alert: NeuVectorThreatDetected
-          expr: increase(neuvector_threats_total[5m]) > 0
+          expr: count(nv_log_events{log=~"threat|incident"}) > 0
           for: 1m
           labels:
             severity: critical
           annotations:
             summary: "NeuVector detected a security threat"
-            description: "{{ $value }} new threats detected in the last 5 minutes."
+            description: "{{ $value }} threat or incident log entries are currently exported by NeuVector."
 
         - alert: NeuVectorPolicyViolation
-          expr: increase(neuvector_violations_total[5m]) > 0
+          expr: count(nv_log_events{log="violation"}) > 0
           for: 1m
           labels:
             severity: warning
           annotations:
             summary: "NeuVector policy violation detected"
-            description: "{{ $value }} policy violations in the last 5 minutes."
+            description: "{{ $value }} policy violation log entries are currently exported by NeuVector."
 ```
 
 ## Step 8: Set Up the Flux Kustomization
