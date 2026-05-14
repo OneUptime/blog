@@ -16,7 +16,7 @@ This guide covers the end-to-end process of setting up OCI-based Flux deployment
 
 ## Prerequisites
 
-- Flux CLI v2.1.0 or later installed on a workstation with internet access
+- Flux v2.6.0 or later, with the Flux CLI installed on a workstation with internet access
 - An internal OCI-compatible registry accessible from the air-gapped cluster (e.g., Harbor, Artifactory, Zot)
 - A mechanism to transfer data into the air-gapped environment (USB, data diode, sneakernet)
 - `kubectl` access to the air-gapped cluster
@@ -64,6 +64,7 @@ tar czf my-app-manifests-v1.2.0.tar.gz -C ./artifacts/my-app-manifests .
 
 # Also export any container images needed by the manifests
 # This is separate from the manifest artifact
+docker pull my-app:v1.2.0
 docker save my-app:v1.2.0 -o my-app-image-v1.2.0.tar
 ```
 
@@ -81,16 +82,19 @@ mkdir -p ./import/my-app-manifests
 tar xzf my-app-manifests-v1.2.0.tar.gz -C ./import/my-app-manifests
 
 # Login to the internal registry
-flux oci login registry.internal.example.com \
+echo "${REGISTRY_PASSWORD}" | docker login registry.internal.example.com \
   --username admin \
-  --password "${REGISTRY_PASSWORD}"
+  --password-stdin
+
+# Set this to the Git revision that produced the artifact
+SOURCE_COMMIT_SHA="<git-commit-sha-for-v1.2.0>"
 
 # Push the artifact to the internal registry
 flux push artifact \
   oci://registry.internal.example.com/flux-artifacts/my-app-manifests:v1.2.0 \
   --path ./import/my-app-manifests \
   --source="https://github.com/my-org/my-app" \
-  --revision="v1.2.0"
+  --revision="v1.2.0@sha1:${SOURCE_COMMIT_SHA}"
 
 # Tag as latest for convenience
 flux tag artifact \
@@ -226,8 +230,12 @@ IMPORT_DIR="./import-$(date +%Y%m%d)"
 mkdir -p "${IMPORT_DIR}"
 tar xzf "$1" -C "${IMPORT_DIR}"
 
-flux oci login registry.internal.example.com \
-  --username admin --password "${REGISTRY_PASSWORD}"
+echo "${REGISTRY_PASSWORD}" | docker login registry.internal.example.com \
+  --username admin \
+  --password-stdin
+
+# Replace this with the Git revision that produced the exported artifacts.
+SOURCE_REVISION="${SOURCE_REVISION:-main@sha1:0000000000000000000000000000000000000000}"
 
 # Push each artifact directory to the internal registry
 for dir in "${IMPORT_DIR}"/*/; do
@@ -235,7 +243,7 @@ for dir in "${IMPORT_DIR}"/*/; do
   flux push artifact "oci://${INTERNAL_REGISTRY}/${name}" \
     --path "${dir}" \
     --source="air-gapped-import" \
-    --revision="$(date +%Y%m%d)"
+    --revision="${SOURCE_REVISION}"
 done
 
 echo "Import complete."
