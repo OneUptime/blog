@@ -169,6 +169,7 @@ mkdir -p clusters/tkg-workload/infrastructure
 mkdir -p clusters/tkg-workload/apps
 mkdir -p infrastructure/sources
 mkdir -p infrastructure/controllers
+mkdir -p infrastructure/storage
 mkdir -p infrastructure/rbac
 mkdir -p apps/base
 mkdir -p apps/staging
@@ -278,7 +279,8 @@ spec:
     createNamespace: true
     crds: CreateReplace
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     resources:
       requests:
         cpu: 50m
@@ -298,6 +300,7 @@ resources:
   - ../../../infrastructure/sources/helm-repos.yaml
   - ../../../infrastructure/controllers/ingress.yaml
   - ../../../infrastructure/controllers/cert-manager.yaml
+  - ../../../infrastructure/storage/vsphere-sc.yaml
 ```
 
 ```yaml
@@ -352,7 +355,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:1.27-alpine
+          image: harbor.example.com/apps/tanzu-app:1.0.0 # {"$imagepolicy": "flux-system:tanzu-app"}
           ports:
             - containerPort: 80
           resources:
@@ -499,7 +502,7 @@ spec:
       author:
         name: flux-automation
         email: flux@example.com
-      messageTemplate: "chore: update tanzu-app to {{.NewValue}}"
+      messageTemplate: "chore: update tanzu-app image"
     push:
       branch: main
   update:
