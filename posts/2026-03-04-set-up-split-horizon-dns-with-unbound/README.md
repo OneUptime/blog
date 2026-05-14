@@ -8,7 +8,7 @@ Description: Learn how to set Up Split-Horizon DNS with Unbound on RHEL with ste
 
 ---
 
-Split-horizon DNS returns different answers for the same domain deRHELg on where the query originates. This is useful when internal clients shoRHELsolve to private IP addresses while external clients get public addresses.
+Split-horizon DNS returns different answers for the same domain depending on where the query originates. This is useful when internal clients should resolve to private IP addresses while external clients get public addresses.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Split-horizon DNS returns different answers for the same domain deRHELg on where
 sudo vi /etc/unbound/unbound.conf
 ```
 
-```yaml
+```unbound
 server:
     interface: 0.0.0.0
     access-control: 10.0.0.0/8 allow
@@ -47,9 +47,16 @@ server:
 
 For more complex scenarios, use Unbound's `view` feature:
 
-```yaml
+```unbound
 server:
     interface: 0.0.0.0
+    access-control: 10.0.0.0/8 allow
+    access-control: 192.168.0.0/16 allow
+    access-control: 203.0.113.0/24 refuse_non_local
+    access-control: 127.0.0.0/8 allow
+    access-control-view: 10.0.0.0/8 "internal"
+    access-control-view: 192.168.0.0/16 "internal"
+    access-control-view: 203.0.113.0/24 "external"
     module-config: "validator iterator"
 
 view:
@@ -61,17 +68,22 @@ view:
 view:
     name: "external"
     view-first: yes
-    local-zone: "example.com." transparent
+    local-zone: "example.com." static
+    local-data: "web.example.com. IN A 203.0.113.10"
 ```
 
 ## Step 3: Use Access Control Lists
 
 Restrict which clients get internal answers:
 
-```yaml
+```unbound
 server:
+    access-control: 10.0.0.0/8 allow
+    access-control: 192.168.0.0/16 allow
+    access-control: 203.0.113.0/24 refuse_non_local
     access-control-view: 10.0.0.0/8 "internal"
     access-control-view: 192.168.0.0/16 "internal"
+    access-control-view: 203.0.113.0/24 "external"
 ```
 
 ## Step 4: Test from Different Networks
@@ -88,17 +100,18 @@ From an external client:
 
 ```bash
 dig @10.0.1.1 web.example.com
-# Should return the public IP or forward to upstream
+# Should return 203.0.113.10
 ```
 
 ## Step 5: Restart and Verify
 
 ```bash
 sudo unbound-checkconf
+sudo firewall-cmd --permanent --add-service=dns
+sudo firewall-cmd --reload
 sudo systemctl restart unbound
 ```
 
 ## Conclusion
 
 Split-horizon DNS with Unbound on RHEL 9 lets you serve different DNS answers to internal and external clients. This is essential for networks where internal services use private addresses but the same domain names resolve to public addresses for external users.
-RHEL
