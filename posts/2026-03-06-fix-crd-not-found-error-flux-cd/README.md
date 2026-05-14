@@ -344,8 +344,8 @@ kubectl get crd | grep <expected-crd-group>
 # Step 3: Check the status of the Kustomization that should install the CRD
 kubectl get kustomization -n flux-system <crd-kustomization> -o yaml
 
-# Step 4: Check the dependency chain
-flux tree kustomization my-app -n flux-system
+# Step 4: Check the Kustomization's declared dependencies
+kubectl get kustomization -n flux-system my-app -o jsonpath='{.spec.dependsOn[*].name}{"\n"}'
 
 # Step 5: Force reconciliation of the CRD Kustomization first
 flux reconcile kustomization crds -n flux-system
