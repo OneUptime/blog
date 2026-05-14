@@ -10,25 +10,25 @@ Description: Learn how to configure Flux HelmRepository resources to pull Helm c
 
 ## Introduction
 
-Harbor is a popular open-source container registry that supports storing Helm charts in two ways: through its built-in ChartMuseum integration (legacy) and as OCI artifacts (recommended). Flux CD works with both approaches. The ChartMuseum mode uses a standard HTTP HelmRepository, while the OCI mode uses an OCI-type HelmRepository.
+Harbor is a popular open-source container registry that supports storing Helm charts as OCI artifacts (recommended). Older Harbor versions also supported a built-in ChartMuseum integration (legacy). Flux CD works with both approaches when the corresponding Harbor backend is available. The ChartMuseum mode uses a standard HTTP HelmRepository, while the OCI mode uses an OCI-type HelmRepository.
 
-This guide covers configuring Flux to pull Helm charts from Harbor using both methods, with a focus on the recommended OCI approach.
+This guide covers configuring Flux to pull Helm charts from Harbor using both methods, with a focus on the recommended OCI storage approach.
 
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD v2.x installed
 - A Harbor registry instance (v2.0+ for OCI support)
-- The `flux` CLI, `kubectl`, and `helm` CLI installed
+- The `flux` CLI, `kubectl`, and Helm v3.8.0+ installed
 - A Harbor project with at least one Helm chart
 
 ## Harbor Chart Storage Modes
 
-Harbor v2.0 and later supports two chart storage backends:
+Harbor v2.0 through v2.7 supports two chart storage backends:
 
-1. **OCI-based (recommended)**: Charts are stored as OCI artifacts alongside container images. This is the default in Harbor v2.6+.
-2. **ChartMuseum-based (legacy)**: Charts are stored using the embedded ChartMuseum service. This must be explicitly enabled in Harbor v2.6+.
+1. **OCI-based (recommended)**: Charts are stored as OCI artifacts alongside container images. This is the supported approach in current Harbor releases.
+2. **ChartMuseum-based (legacy)**: Charts are stored using the embedded ChartMuseum service. ChartMuseum was deprecated in Harbor v2.6 and removed in Harbor v2.8.
 
-## Method 1: OCI-Based HelmRepository (Recommended)
+## Method 1: OCI-Based HelmRepository
 
 ### Push a Helm Chart to Harbor via OCI
 
@@ -77,9 +77,11 @@ spec:
 # Apply the HelmRepository
 kubectl apply -f helmrepository-harbor-oci.yaml
 
-# Verify the status
+# Verify the source object
 flux get sources helm -n flux-system
 ```
+
+For OCI-type HelmRepository resources, Flux treats the object as a data container for HelmChart resources. The `READY` and `STATUS` columns may be empty, and `spec.interval` is ignored for the HelmRepository itself.
 
 ### Create a HelmRelease
 
@@ -113,7 +115,7 @@ kubectl apply -f helmrelease-my-app.yaml
 
 ## Method 2: ChartMuseum-Based HelmRepository (Legacy)
 
-If your Harbor instance uses the ChartMuseum backend, configure a standard HTTP HelmRepository.
+If your Harbor instance uses the ChartMuseum backend, configure a standard HTTP HelmRepository. This applies to older Harbor installations that still include ChartMuseum.
 
 ### Create Authentication Secret
 
@@ -211,11 +213,13 @@ Use the robot account credentials in the Kubernetes secret.
 
 ```bash
 # Create a secret with robot account credentials
-# Robot account names are prefixed with "robot$" in Harbor
+# Use the full robot account name returned by Harbor.
+# With the default prefix, a project robot account is usually
+# formatted as "robot$<project-name>+<account-name>".
 kubectl create secret docker-registry harbor-robot-creds \
   --namespace=flux-system \
   --docker-server=harbor.example.com \
-  --docker-username='robot$flux-reader' \
+  --docker-username='robot$my-project+flux-reader' \
   --docker-password=<robot-secret>
 ```
 
@@ -255,9 +259,9 @@ kubectl logs -n flux-system deploy/source-controller --since=10m | grep -i "harb
 ### Common Issues
 
 1. **Certificate errors**: Self-signed certificates require a `certSecretRef`. Without it, pulls will fail with TLS verification errors.
-2. **Robot account prefix**: Harbor robot account usernames must include the `robot$` prefix.
+2. **Robot account name**: Use the full robot account name returned by Harbor, including the configured prefix. With the default prefix, system robot accounts look like `robot$<account-name>` and project robot accounts look like `robot$<project-name>+<account-name>`.
 3. **Project visibility**: Even public projects may require authentication for OCI pulls in some Harbor configurations.
-4. **ChartMuseum disabled**: Harbor v2.6+ disables ChartMuseum by default. Enable it in Harbor configuration or switch to OCI mode.
+4. **ChartMuseum unavailable**: Harbor v2.6 deprecated ChartMuseum and Harbor v2.8 removed it. Use OCI mode for current Harbor releases.
 
 ## Conclusion
 
