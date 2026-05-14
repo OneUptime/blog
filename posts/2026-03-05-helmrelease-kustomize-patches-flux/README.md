@@ -79,7 +79,7 @@ spec:
               apiVersion: apps/v1
               kind: Deployment
               metadata:
-                name: all
+                name: not-used
                 labels:
                   app.kubernetes.io/managed-by: flux
                   app.kubernetes.io/part-of: my-application
@@ -233,9 +233,10 @@ postRenderers:
               name: my-application
               annotations:
                 # Configure AWS Network Load Balancer
-                service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+                service.beta.kubernetes.io/aws-load-balancer-type: "external"
+                service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
                 service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-                service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+                service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 ```
 
 ### Patching ConfigMaps
@@ -370,7 +371,7 @@ flux get helmrelease my-application -n production
 
 ## Common Pitfalls
 
-1. **Patch name mismatch**: The `name` in a strategic merge patch must match the actual resource name rendered by the Helm chart. If the chart uses a name template (e.g., `release-name-chart-name`), you must use that exact name.
+1. **Patch target mismatch**: When a patch uses `target.name`, the target must match the actual resource name rendered by the Helm chart. If the chart uses a name template (e.g., `release-name-chart-name`), you must use that exact name. For patches that target resources by kind or label selector, the `metadata.name` inside a strategic merge patch can be a placeholder because the `target` selector identifies the resources.
 
 2. **Container name mismatch**: When patching container-level fields, the container name in your patch must match the container name in the Helm chart output.
 
