@@ -16,6 +16,7 @@ Multi-tenancy in Flux CD allows multiple teams or applications to share a single
 - Understanding of Kubernetes RBAC and namespaces
 - Flux CLI v2.0 or later
 - kubectl configured for your cluster
+- jq for parsing Kubernetes API output in the test scripts
 
 ## Multi-Tenancy Architecture Overview
 
@@ -97,20 +98,18 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: tenant-a
-  namespace: flux-system
+  namespace: tenant-a
 spec:
   interval: 5m
   path: ./tenants/base/tenant-a
   prune: true
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: tenant-a
   # Run reconciliation as the tenant's service account
   serviceAccountName: tenant-a
   # Restrict to tenant's namespace only
   targetNamespace: tenant-a
-  # Prevent cross-namespace references
-  validation: client
 ```
 
 ### Network Policy for Isolation
@@ -250,19 +249,17 @@ ERRORS=0
 echo "Testing namespace boundary enforcement..."
 
 # Find all tenant Kustomizations
-kubectl get kustomizations -n flux-system -o json | \
-  jq -r '.items[] | select(.spec.serviceAccountName != null) | .metadata.name' | \
-  while read -r ks_name; do
+while IFS=$'\t' read -r ks_ns ks_name; do
 
   echo ""
-  echo "--- Kustomization: $ks_name ---"
+  echo "--- Kustomization: $ks_ns/$ks_name ---"
 
   # Get the target namespace
-  TARGET_NS=$(kubectl get kustomization "$ks_name" -n flux-system \
+  TARGET_NS=$(kubectl get kustomization "$ks_name" -n "$ks_ns" \
     -o jsonpath='{.spec.targetNamespace}')
 
   # Get the service account
-  SA_NAME=$(kubectl get kustomization "$ks_name" -n flux-system \
+  SA_NAME=$(kubectl get kustomization "$ks_name" -n "$ks_ns" \
     -o jsonpath='{.spec.serviceAccountName}')
 
   echo "  Target namespace: $TARGET_NS"
@@ -276,29 +273,34 @@ kubectl get kustomizations -n flux-system -o json | \
   fi
 
   # Check the last applied resources
-  READY=$(kubectl get kustomization "$ks_name" -n flux-system \
+  READY=$(kubectl get kustomization "$ks_name" -n "$ks_ns" \
     -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
 
   if [ "$READY" = "True" ]; then
     # Get the inventory of applied resources
-    INVENTORY=$(kubectl get kustomization "$ks_name" -n flux-system \
+    INVENTORY=$(kubectl get kustomization "$ks_name" -n "$ks_ns" \
       -o jsonpath='{.status.inventory.entries[*].id}')
 
+    RESOURCE_ERRORS=0
     for entry in $INVENTORY; do
       # Extract the namespace from the inventory entry
       RESOURCE_NS=$(echo "$entry" | cut -d_ -f1)
 
       if [ "$RESOURCE_NS" != "$TARGET_NS" ] && [ -n "$TARGET_NS" ]; then
         echo "  FAIL: Resource deployed outside target namespace: $entry"
+        RESOURCE_ERRORS=$((RESOURCE_ERRORS + 1))
         ERRORS=$((ERRORS + 1))
       fi
     done
 
-    echo "  OK: All resources within target namespace"
+    if [ "$RESOURCE_ERRORS" -eq 0 ]; then
+      echo "  OK: All resources within target namespace"
+    fi
   else
     echo "  SKIP: Kustomization not ready"
   fi
-done
+done < <(kubectl get kustomizations -A -o json | \
+  jq -r '.items[] | select(.spec.serviceAccountName != null) | [.metadata.namespace, .metadata.name] | @tsv')
 
 echo ""
 if [ "$ERRORS" -gt 0 ]; then
@@ -314,17 +316,30 @@ Test that network policies block cross-tenant traffic.
 
 ```yaml
 # tests/network-policy-test.yaml
-# Temporary pod for testing network connectivity
+# Temporary pods for testing network connectivity
 apiVersion: v1
 kind: Pod
 metadata:
-  name: nettest
+  name: netserver
   namespace: tenant-a
   labels:
-    app: nettest
+    app: netserver
 spec:
   containers:
-    - name: nettest
+    - name: nginx
+      image: nginx:1.25-alpine
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: netclient
+  namespace: tenant-a
+  labels:
+    app: netclient
+spec:
+  containers:
+    - name: busybox
       image: busybox:1.36
       command: ["sleep", "3600"]
   restartPolicy: Never
@@ -341,23 +356,33 @@ ERRORS=0
 
 echo "Testing network isolation..."
 
-# Deploy test pods in each tenant namespace
+# Deploy test servers and clients in each tenant namespace
 for tenant in tenant-a tenant-b; do
-  kubectl run nettest-$tenant \
+  kubectl run netserver-$tenant \
+    --namespace "$tenant" \
+    --image=nginx:1.25-alpine \
+    --restart=Never 2>/dev/null || true
+
+  kubectl run netclient-$tenant \
     --namespace "$tenant" \
     --image=busybox:1.36 \
     --restart=Never \
     --command -- sleep 3600 2>/dev/null || true
 
-  # Wait for the pod to be ready
+  # Wait for the pods to be ready
   kubectl wait --for=condition=Ready \
-    pod/nettest-$tenant \
+    pod/netserver-$tenant \
+    --namespace "$tenant" \
+    --timeout=60s 2>/dev/null
+
+  kubectl wait --for=condition=Ready \
+    pod/netclient-$tenant \
     --namespace "$tenant" \
     --timeout=60s 2>/dev/null
 done
 
-# Get the IP of the test pod in tenant-b
-TENANT_B_IP=$(kubectl get pod nettest-tenant-b \
+# Get the IP of the test server in tenant-b
+TENANT_B_IP=$(kubectl get pod netserver-tenant-b \
   -n tenant-b \
   -o jsonpath='{.status.podIP}')
 
@@ -365,7 +390,7 @@ echo "Tenant B pod IP: $TENANT_B_IP"
 
 # Test: Pod in tenant-a should NOT reach pod in tenant-b
 echo "Testing cross-tenant connectivity (should fail)..."
-if kubectl exec nettest-tenant-a -n tenant-a -- \
+if kubectl exec netclient-tenant-a -n tenant-a -- \
   wget -q -O- --timeout=5 "http://${TENANT_B_IP}:80" 2>/dev/null; then
   echo "FAIL: tenant-a CAN reach tenant-b (network policy not enforced)"
   ERRORS=$((ERRORS + 1))
@@ -375,13 +400,21 @@ fi
 
 # Test: Pod in tenant-a should reach pods in its own namespace
 echo "Testing same-namespace connectivity (should succeed)..."
-TENANT_A_IP=$(kubectl get pod nettest-tenant-a \
+TENANT_A_IP=$(kubectl get pod netserver-tenant-a \
   -n tenant-a \
   -o jsonpath='{.status.podIP}')
 
+if kubectl exec netclient-tenant-a -n tenant-a -- \
+  wget -q -O- --timeout=5 "http://${TENANT_A_IP}:80" >/dev/null; then
+  echo "OK: tenant-a can reach pods in its own namespace"
+else
+  echo "FAIL: tenant-a cannot reach pods in its own namespace"
+  ERRORS=$((ERRORS + 1))
+fi
+
 # Clean up test pods
 for tenant in tenant-a tenant-b; do
-  kubectl delete pod nettest-$tenant -n "$tenant" --ignore-not-found
+  kubectl delete pod netserver-$tenant netclient-$tenant -n "$tenant" --ignore-not-found
 done
 
 echo ""
@@ -485,6 +518,7 @@ echo "============================================"
 for test_script in \
   "$REPO_ROOT/scripts/test-rbac-isolation.sh" \
   "$REPO_ROOT/scripts/test-namespace-boundaries.sh" \
+  "$REPO_ROOT/scripts/test-network-isolation.sh" \
   "$REPO_ROOT/scripts/test-resource-quotas.sh"; do
 
   echo ""
