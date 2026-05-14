@@ -18,8 +18,8 @@ Different registries enforce different limits:
 
 - **Docker Hub (anonymous)**: 100 pulls per 6 hours per IP
 - **Docker Hub (authenticated)**: 200 pulls per 6 hours per user
-- **Docker Hub (paid)**: 5,000+ pulls per day
-- **GitHub Container Registry**: 5,000 requests per hour (authenticated)
+- **Docker Hub (paid)**: Unlimited pulls for Pro, Team, and Business accounts, subject to fair use
+- **GitHub Container Registry**: Public container image storage and bandwidth are currently free; GitHub still applies service rate and abuse limits
 - **AWS ECR**: No hard pull limit, but API rate limits apply
 - **Google Artifact Registry**: Quota-based, configurable per project
 
@@ -135,7 +135,6 @@ metadata:
 spec:
   image: us-docker.pkg.dev/my-project/my-repo/my-app
   interval: 5m
-  provider: gcp
   secretRef:
     name: gar-credentials
 ```
@@ -153,7 +152,7 @@ metadata:
   namespace: flux-system
 spec:
   image: docker.io/myorg/my-app
-  # Increase from default 1m to reduce registry API calls
+  # Increase the scan interval to reduce registry API calls
   # Production images typically update infrequently
   interval: 10m
   secretRef:
@@ -167,7 +166,7 @@ spec:
     - "^dev-"
 ```
 
-### Use Tag Filtering to Reduce Scans
+### Use Tag Filtering to Reduce Policy Scope
 
 ```yaml
 # image-policy-filtered.yaml
@@ -179,7 +178,7 @@ metadata:
 spec:
   imageRepositoryRef:
     name: my-app
-  # Only consider semver tags, reducing the number of tags to evaluate
+  # Only consider semver tags when selecting the latest deployable image
   policy:
     semver:
       # Only match stable release tags
@@ -194,52 +193,14 @@ spec:
 
 ### Deploy a Pull-Through Cache with Harbor
 
-```yaml
-# harbor-cache-deployment.yaml
-# Harbor acts as a pull-through cache for upstream registries
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: harbor-proxy
-  namespace: registry-cache
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: harbor-proxy
-  template:
-    metadata:
-      labels:
-        app: harbor-proxy
-    spec:
-      containers:
-        - name: harbor
-          image: goharbor/harbor-core:v2.10.0
-          ports:
-            - containerPort: 8080
-          env:
-            # Configure as pull-through cache for Docker Hub
-            - name: REGISTRY_PROXY_REMOTEURL
-              value: "https://registry-1.docker.io"
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: harbor-proxy
-  namespace: registry-cache
-spec:
-  selector:
-    app: harbor-proxy
-  ports:
-    - port: 443
-      targetPort: 8080
+```text
+# Harbor proxy cache setup
+# 1. Deploy Harbor using its supported installer or Helm chart.
+# 2. In Harbor, create a registry endpoint for https://registry-1.docker.io.
+# 3. Create a project, enable Proxy Cache, and select the Docker Hub endpoint.
+# 4. Pull cached images by prefixing them with the Harbor host and proxy project:
+#
+#    harbor.example.com/dockerhub-cache/myorg/my-app:tag
 ```
 
 ### Point Flux ImageRepository to the Cache
@@ -253,7 +214,7 @@ metadata:
   namespace: flux-system
 spec:
   # Point to your internal cache instead of Docker Hub directly
-  image: harbor-proxy.registry-cache.svc.cluster.local/dockerhub-cache/myorg/my-app
+  image: harbor.example.com/dockerhub-cache/myorg/my-app
   interval: 5m
   # Use cert for the internal registry
   certSecretRef:
@@ -274,7 +235,7 @@ metadata:
 spec:
   type: oci
   url: oci://registry-1.docker.io/myorg
-  # Increase interval to reduce registry calls
+  # interval is required by the API, but is ineffectual for OCI Helm repositories
   interval: 10m
   secretRef:
     name: dockerhub-credentials
@@ -333,11 +294,11 @@ spec:
         # Alert when image scan failures increase
         - alert: FluxImageScanFailures
           expr: |
-            rate(gotk_reconcile_condition{
+            max_over_time(gotk_reconcile_condition{
               type="Ready",
               status="False",
               kind="ImageRepository"
-            }[10m]) > 0.05
+            }[15m]) > 0
           for: 15m
           labels:
             severity: warning
@@ -347,7 +308,11 @@ spec:
         # Alert on scan duration increases (sign of throttling)
         - alert: FluxImageScanSlow
           expr: |
-            gotk_reconcile_duration_seconds{kind="ImageRepository"} > 30
+            histogram_quantile(0.95,
+              sum by (le, name, namespace) (
+                rate(gotk_reconcile_duration_seconds_bucket{kind="ImageRepository"}[5m])
+              )
+            ) > 30
           for: 10m
           labels:
             severity: info
@@ -375,7 +340,7 @@ data:
           "title": "Image Repository Scan Duration",
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, rate(gotk_reconcile_duration_seconds_bucket{kind='ImageRepository'}[5m]))"
+              "expr": "histogram_quantile(0.95, sum by (le, name, namespace) (rate(gotk_reconcile_duration_seconds_bucket{kind=\"ImageRepository\"}[5m])))"
             }
           ]
         },
@@ -383,7 +348,7 @@ data:
           "title": "Image Repository Failures",
           "targets": [
             {
-              "expr": "sum(rate(gotk_reconcile_condition{kind='ImageRepository',status='False'}[5m])) by (name)"
+              "expr": "sum by (name, namespace) (max_over_time(gotk_reconcile_condition{kind=\"ImageRepository\",status=\"False\"}[5m]))"
             }
           ]
         }
@@ -397,11 +362,14 @@ data:
 
 ```bash
 # Immediately stop all image scanning to recover from rate limiting
-flux suspend image repository --all
+kubectl patch imagerepositories.image.toolkit.fluxcd.io -A \
+  --type=merge \
+  -p '{"spec":{"suspend":true}}'
 
 # Resume one at a time with staggered timing
-for repo in $(flux get image repository -A --no-header | awk '{print $2}'); do
-  flux resume image repository "$repo"
+flux get images repository -A --no-header | awk '{print $1, $2}' | \
+while read -r namespace repo; do
+  flux resume image repository "$repo" -n "$namespace"
   # Wait between resuming each repository
   sleep 60
 done
@@ -411,12 +379,16 @@ done
 
 ```yaml
 # suspend-all-image-repos.yaml
-# Apply this to suspend all ImageRepository objects in an emergency
+# Add your ImageRepository manifests under resources, then apply this
+# Kustomization to suspend them declaratively.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: []
+resources:
+  - ./image-repositories
 patches:
   - target:
+      group: image.toolkit.fluxcd.io
+      version: v1
       kind: ImageRepository
     patch: |
       - op: add
