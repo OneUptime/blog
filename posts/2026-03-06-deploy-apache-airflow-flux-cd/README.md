@@ -16,7 +16,7 @@ This guide covers deploying Airflow with the KubernetesExecutor, Git-sync for DA
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster (v1.30 or later)
 - Flux CD installed and bootstrapped
 - A PostgreSQL database (or deploy one alongside Airflow)
 - A Git repository containing your Airflow DAGs
@@ -32,8 +32,11 @@ clusters/
       source.yaml
       release.yaml
       secrets.yaml
-      dag-sync-config.yaml
+      ingress.yaml
+      connections.yaml
       kustomization.yaml
+    airflow-kustomization.yaml
+Dockerfile
 ```
 
 ## Step 1: Create the Namespace
@@ -115,7 +118,7 @@ spec:
   chart:
     spec:
       chart: airflow
-      version: "1.x"
+      version: "1.21.0"
       sourceRef:
         kind: HelmRepository
         name: apache-airflow
@@ -132,14 +135,16 @@ spec:
       retries: 3
     timeout: 15m
   values:
+    airflowVersion: "2.11.2"
+
     # Use KubernetesExecutor for dynamic pod-based task execution
     executor: KubernetesExecutor
 
     # Airflow Docker image configuration
     images:
       airflow:
-        repository: apache/airflow
-        tag: "2.8.1-python3.11"
+        repository: ghcr.io/your-org/airflow
+        tag: "2.11.2-python3.12"
 
     # Webserver configuration
     webserver:
@@ -151,7 +156,13 @@ spec:
         limits:
           cpu: 1000m
           memory: 1Gi
-      # Default user for initial login
+
+      service:
+        type: ClusterIP
+
+    # Default user for initial login
+    createUserJob:
+      enabled: true
       defaultUser:
         enabled: true
         role: Admin
@@ -160,8 +171,6 @@ spec:
         firstName: Admin
         lastName: User
         password: change-me-immediately
-      service:
-        type: ClusterIP
 
     # Scheduler configuration
     scheduler:
@@ -187,6 +196,9 @@ spec:
           memory: 512Mi
 
     # Database configuration using external PostgreSQL
+    postgresql:
+      enabled: false
+
     data:
       metadataSecretName: airflow-secrets
 
@@ -205,9 +217,17 @@ spec:
         branch: main
         subPath: "dags"
         # Sync interval in seconds
-        wait: 60
+        period: 60s
         # SSH key for private repositories
         sshKeySecret: airflow-git-ssh
+        # Verify the current GitHub host key against GitHub's published fingerprints before using it
+        knownHosts: |
+          github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+
+    # Load Airflow connection secrets into all Airflow containers
+    extraEnvFrom: |
+      - secretRef:
+          name: airflow-connections
 
     # Persistent logging
     logs:
@@ -323,29 +343,38 @@ stringData:
 
 ## Step 7: Add Extra Python Packages
 
-Configure additional Python packages for your DAGs.
+Build a custom Airflow image with additional Python packages for your DAGs.
 
-```yaml
-# clusters/production/airflow/extra-packages.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: airflow-requirements
-  namespace: airflow
-data:
-  # Extra pip packages for Airflow workers and scheduler
-  requirements.txt: |
-    apache-airflow-providers-amazon==8.0.0
-    apache-airflow-providers-slack==8.0.0
-    apache-airflow-providers-postgres==5.0.0
-    pandas==2.1.0
-    boto3==1.34.0
+```dockerfile
+# Dockerfile
+FROM apache/airflow:2.11.2-python3.12
+
+RUN pip install --no-cache-dir \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.11.2/constraints-3.12.txt" \
+    apache-airflow-providers-amazon \
+    apache-airflow-providers-slack \
+    apache-airflow-providers-postgres \
+    pandas \
+    boto3
 ```
 
 ## Step 8: Create the Flux Kustomization
 
 ```yaml
 # clusters/production/airflow/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - source.yaml
+  - secrets.yaml
+  - release.yaml
+  - ingress.yaml
+  - connections.yaml
+```
+
+```yaml
+# clusters/production/airflow-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
