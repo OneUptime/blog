@@ -44,6 +44,9 @@ Create a Kubernetes secret with the SSH private key and known hosts:
 # Scan the SSH host key from your self-hosted Git server
 ssh-keyscan your-git-server.example.com > known_hosts
 
+# If your Git server uses a non-standard SSH port, include it with -p
+ssh-keyscan -p 3022 your-git-server.example.com > known_hosts
+
 # Create the secret in the flux-system namespace
 kubectl create secret generic self-hosted-git-ssh \
   --from-file=identity=./flux-git-key \
@@ -135,7 +138,7 @@ stringData:
   username: flux-bot
   password: your-personal-access-token
   # Include your internal CA certificate bundle
-  caFile: |
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     MIIDXTCCAkWgAwIBAgIJALa...
     (your CA certificate content here)
@@ -213,12 +216,12 @@ A healthy GitRepository will show `Ready: True` and display the latest fetched r
 **Connection refused or timeout:** Verify network connectivity from inside the cluster. Create a debug pod and attempt to reach the Git server:
 
 ```bash
-# Test connectivity from within the cluster
-kubectl run -it --rm debug --image=alpine/git -n flux-system -- \
-  git ls-remote ssh://git@your-git-server.example.com:22/org/my-app.git
+# Test SSH port reachability from within the cluster
+kubectl run -it --rm debug --image=alpine:3.20 --restart=Never -n flux-system -- \
+  sh -c 'apk add --no-cache netcat-openbsd >/dev/null && nc -vz your-git-server.example.com 22'
 ```
 
-**TLS certificate errors over HTTPS:** Make sure the `caFile` field in your secret contains the full certificate chain, including any intermediate certificates.
+**TLS certificate errors over HTTPS:** Make sure the `ca.crt` field in your secret contains the full certificate chain, including any intermediate certificates.
 
 **Authentication failures:** Double-check that the deploy key has been added to the correct repository or organization on your Git server, and that it has at least read permissions.
 
