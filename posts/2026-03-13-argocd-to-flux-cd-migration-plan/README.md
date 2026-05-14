@@ -39,9 +39,9 @@ kubectl get applications -n argocd \
 kubectl get applications -n argocd \
   -o jsonpath='{range .items[*]}{.spec.source.repoURL}{"\n"}{end}' | sort -u
 
-# Identify Helm vs Kustomize vs plain YAML applications
+# Identify Git path-based vs Helm chart applications
 kubectl get applications -n argocd \
-  -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.source.helm.chart}{"\n"}{end}'
+  -o custom-columns='NAME:.metadata.name,PATH:.spec.source.path,CHART:.spec.source.chart'
 
 # List all AppProjects
 kubectl get appprojects -n argocd -o yaml > argocd-projects-backup.yaml
@@ -73,8 +73,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 
 # Verify Flux is running
 flux check
@@ -83,7 +82,7 @@ kubectl get pods -n flux-system
 
 ## Step 4: Migrate Applications in Waves
 
-Create a migration script to convert ArgoCD Applications to Flux Kustomizations:
+Create a migration script to convert simple Git path-based ArgoCD Applications to Flux Kustomizations. Helm chart applications should be converted to Flux `HelmRepository` and `HelmRelease` resources instead:
 
 ```bash
 #!/bin/bash
@@ -93,7 +92,12 @@ APP_NAME=$1
 NAMESPACE=$(kubectl get application $APP_NAME -n argocd -o jsonpath='{.spec.destination.namespace}')
 SOURCE_PATH=$(kubectl get application $APP_NAME -n argocd -o jsonpath='{.spec.source.path}')
 REPO_URL=$(kubectl get application $APP_NAME -n argocd -o jsonpath='{.spec.source.repoURL}')
-BRANCH=$(kubectl get application $APP_NAME -n argocd -o jsonpath='{.spec.source.targetRevision}')
+TARGET_REVISION=$(kubectl get application $APP_NAME -n argocd -o jsonpath='{.spec.source.targetRevision}')
+
+if [[ -z "$TARGET_REVISION" || "$TARGET_REVISION" == "HEAD" ]]; then
+  echo "ArgoCD targetRevision is HEAD. Set the repository's concrete branch name before generating Flux resources." >&2
+  exit 1
+fi
 
 # Generate Flux Kustomization
 cat > clusters/production/apps/${APP_NAME}.yaml << EOF
@@ -106,7 +110,7 @@ spec:
   interval: 1m
   url: ${REPO_URL}
   ref:
-    branch: ${BRANCH}
+    branch: ${TARGET_REVISION}
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -134,7 +138,7 @@ For each application migration:
 2. Disable ArgoCD auto-sync for the application
 3. Verify Flux is reconciling the same resources
 4. Compare resource states between ArgoCD and Flux
-5. Delete the ArgoCD Application (resources persist, now managed by Flux)
+5. Delete the ArgoCD Application without cascading deletion (resources persist, now managed by Flux)
 
 ```bash
 # Step 1: Commit Flux resources
@@ -151,8 +155,8 @@ flux get kustomizations myapp -n flux-system
 # Step 4: Compare states
 kubectl get all -n myapp
 
-# Step 5: Remove ArgoCD Application
-kubectl delete application myapp -n argocd
+# Step 5: Remove ArgoCD Application without deleting its managed resources
+argocd app delete myapp --cascade=false
 
 # Verify resources still exist (managed by Flux now)
 kubectl get all -n myapp
@@ -180,7 +184,7 @@ kubectl get pods -n flux-system
 ## Best Practices
 
 - Migrate in waves: start with low-complexity, low-traffic applications in staging before touching production.
-- Never let ArgoCD and Flux manage the same resources simultaneously; suspend ArgoCD before Flux takes over.
+- Never let ArgoCD and Flux actively manage the same resources simultaneously; disable ArgoCD automated sync and avoid manual syncs before Flux takes over.
 - Keep the ArgoCD installation running and healthy during the migration; don't uninstall it until all applications are migrated.
 - Document each application's migration status in a shared tracking document.
 - Test rollback procedures: if Flux migration fails, you should be able to re-enable ArgoCD auto-sync.
