@@ -115,27 +115,21 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-a-apps
-  namespace: flux-system
+  namespace: team-a
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: team-a-repo
   path: ./tenants/team-a/apps
   prune: true
   # Key: impersonate the tenant service account
   # This ensures Flux applies resources with tenant permissions only
   serviceAccountName: team-a-reconciler
   targetNamespace: team-a
-  # Prevent cross-namespace references
-  # Tenant cannot reference resources outside their namespace
-  validation: client
-  # Health checks scoped to tenant namespace
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: "*"
-      namespace: team-a
+  # Cross-namespace Flux references should be blocked at the controller level
+  # with --no-cross-namespace-refs=true
+  wait: true
 ```
 
 ### Step 4: Enforce Resource Quotas per Tenant
@@ -240,7 +234,7 @@ apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: team-a-repo
-  namespace: flux-system
+  namespace: team-a
 spec:
   interval: 5m
   url: https://github.com/org/team-a-deployments
@@ -256,13 +250,13 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-a-from-monorepo
-  namespace: flux-system
+  namespace: team-a
 spec:
   interval: 10m
   sourceRef:
     kind: GitRepository
     name: fleet-repo
-  # Each team only has access to their directory
+  # Flux reconciles only this directory; enforce write access in Git
   path: ./teams/team-a
   prune: true
   serviceAccountName: team-a-reconciler
@@ -457,19 +451,19 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: tenant-apps
-  namespace: flux-system
+  namespace: tenant-ns
 spec:
   # This is the key multi-tenancy mechanism in Flux
   serviceAccountName: tenant-reconciler
   # Combined with targetNamespace, this creates a security boundary
   targetNamespace: tenant-ns
-  # Cross-namespace references are blocked
+  # Block cross-namespace Flux references with --no-cross-namespace-refs=true
   path: ./tenant/apps
   prune: true
   interval: 10m
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: tenant-repo
 ```
 
 ```yaml
