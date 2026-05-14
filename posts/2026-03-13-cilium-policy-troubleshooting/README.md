@@ -10,7 +10,7 @@ Description: Diagnose and resolve Cilium network policy issues including unexpec
 
 ## Introduction
 
-Network policy troubleshooting in Cilium differs significantly from debugging iptables-based policies. You can't rely on `iptables -L` or parsing iptables rules - instead, Cilium policies are stored as compiled eBPF programs loaded into the kernel and keyed to endpoint identities. The good news is that Cilium provides much richer tooling for policy debugging: Hubble shows you policy verdicts for every flow, `cilium endpoint get` shows the computed policy for each pod, and `cilium monitor` captures detailed policy drop events with reason codes.
+Network policy troubleshooting in Cilium differs significantly from debugging iptables-based policies. You can't rely on `iptables -L` or parsing iptables rules - instead, Cilium policy is resolved by the agent and enforced with eBPF programs and policy maps keyed to endpoint identities. The good news is that Cilium provides much richer tooling for policy debugging: Hubble shows you policy verdicts for every flow, `cilium-dbg endpoint get` shows the computed policy for each pod, and `cilium-dbg monitor` captures detailed policy drop events with reason codes.
 
 The most common policy troubleshooting scenarios are: pods that should be able to communicate but can't (missing allow rule), pods that can communicate when they shouldn't (overly broad allow rule), L7 rules that aren't applying (proxy not intercepting the traffic), and policy changes that aren't taking effect (stale endpoint state or policy revision mismatch). Each scenario requires a different diagnostic approach.
 
@@ -38,8 +38,8 @@ hubble observe \
   --follow
 
 # Check drop reason in output
-# "policy-denied" = a policy rule explicitly blocks this
-# "auth-required" = mTLS required but not established
+# "policy-denied" / "POLICY_DENIED" = no matching allow rule or a matching deny rule
+# "auth-required" / "AUTH_REQUIRED" = Cilium mutual authentication is required
 ```
 
 ## Step 2: Check Endpoint Policy State
@@ -47,12 +47,12 @@ hubble observe \
 ```bash
 # Get the endpoint ID for the destination pod
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint list | grep backend-pod-name
+  cilium-dbg endpoint list | grep backend-pod-name
 
 # Get the computed ingress policy for that endpoint
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint get <id> --output json | \
-  jq '.status.policy.realized.ingress'
+  cilium-dbg endpoint get <id> --output json | \
+  jq '.status.policy.realized.l4.ingress'
 ```
 
 ## Step 3: Verify Policy Import
@@ -62,14 +62,14 @@ kubectl exec -n kube-system cilium-xxxxx -- \
 kubectl get ciliumnetworkpolicy -n production
 
 # Check policy import errors
-kubectl describe ciliumnetworkpolicy allow-frontend
+kubectl describe ciliumnetworkpolicy allow-frontend -n production
 
 # Check Cilium agent logs for policy errors
-kubectl logs -n kube-system cilium-xxxxx | grep -i "policy.*error\|import.*fail"
+kubectl logs -n kube-system cilium-xxxxx -c cilium-agent | grep -i "policy.*error\|import.*fail"
 
-# Verify policy revision is up to date
+# Check the policy revision loaded by the local agent
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium policy get --revision
+  cilium-dbg policy get | grep '^Revision:'
 ```
 
 ## Step 4: Check Label Selectors
@@ -83,27 +83,33 @@ kubectl get pod backend-xxx -n production --show-labels
 
 # Simulate policy label matching
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium endpoint list | grep -E "frontend|backend"
+  cilium-dbg endpoint list | grep -E "frontend|backend"
 
 # Check Cilium endpoint identity labels
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium identity get <identity-id>
+  cilium-dbg identity get <identity-id>
 ```
 
 ## Step 5: Debug L7 Policy Issues
 
 ```bash
-# Verify Envoy proxy is running
+# Verify Envoy proxy support. By default, Envoy runs inside cilium-agent.
+kubectl get pods -n kube-system -l k8s-app=cilium
+
+# If standalone Envoy is enabled, verify the cilium-envoy DaemonSet pods
 kubectl get pods -n kube-system -l app.kubernetes.io/name=cilium-envoy
 
-# Check if proxy is intercepting traffic
+# Check if Envoy has configured listeners for proxied traffic
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium proxy list
+  cilium-dbg envoy admin listeners
 
-# Check Envoy proxy logs for L7 errors
+# Check Cilium agent logs for L7/Envoy errors
+kubectl logs -n kube-system cilium-xxxxx -c cilium-agent | grep -i "envoy\|proxy"
+
+# If standalone Envoy is enabled, check Envoy proxy logs directly
 kubectl logs -n kube-system cilium-envoy-xxxxx | tail -50
 
-# Verify L7 policy annotation is set
+# For annotation-based L7 visibility, verify the proxy visibility annotation is set
 kubectl get pod backend-xxx -n production -o yaml | grep -i proxy-visibility
 ```
 
@@ -132,8 +138,8 @@ flowchart TD
     A[Policy Not Working] --> B[hubble observe\nDROPPED verdict?]
     B -->|Yes - drops seen| C[hubble observe --verbose\nCheck drop reason]
     B -->|No drops - L7?| D[Check Envoy proxy logs\nIs proxy intercepting?]
-    C -->|policy-denied| E[cilium endpoint get\nCheck computed policy]
-    C -->|auth-required| F[Check mTLS\ncertificate state]
+    C -->|policy-denied| E[cilium-dbg endpoint get\nCheck computed policy]
+    C -->|auth-required| F[Check mutual auth\ncertificate state]
     E -->|Wrong policy| G[Check label selectors\nkubectl get pod --show-labels]
     E -->|Policy missing| H[Check policy import\nkubectl get cnp]
     D -->|Proxy not active| I[Check L7 rules syntax\nand port match]
