@@ -90,9 +90,10 @@ Some Helm repositories require TLS client certificates for mutual TLS (mTLS) aut
 # Create a TLS secret with client certificate, key, and CA certificate
 kubectl create secret generic helm-repo-tls \
   --namespace flux-system \
-  --from-file=certFile=client.crt \
-  --from-file=keyFile=client.key \
-  --from-file=caFile=ca.crt
+  --type=kubernetes.io/tls \
+  --from-file=tls.crt=client.crt \
+  --from-file=tls.key=client.key \
+  --from-file=ca.crt=ca.crt
 ```
 
 Reference this secret in your HelmRepository.
@@ -109,7 +110,7 @@ spec:
   url: https://charts.secure-example.com
   interval: 30m
   # Reference the TLS secret containing client cert, key, and CA
-  secretRef:
+  certSecretRef:
     name: helm-repo-tls
 ```
 
@@ -117,11 +118,9 @@ The secret must contain these specific keys for TLS authentication:
 
 | Key | Description | Required |
 |-----|-------------|----------|
-| `certFile` | TLS client certificate (PEM format) | Yes (for mTLS) |
-| `keyFile` | TLS client private key (PEM format) | Yes (for mTLS) |
-| `caFile` | CA certificate for verifying the server (PEM format) | No |
-| `username` | Basic auth username | No |
-| `password` | Basic auth password | No |
+| `tls.crt` | TLS client certificate (PEM format) | Yes (for mTLS) |
+| `tls.key` | TLS client private key (PEM format) | Yes (for mTLS) |
+| `ca.crt` | CA certificate for verifying the server (PEM format) | No |
 
 ## Cloud Provider Authentication
 
@@ -222,7 +221,7 @@ kubectl get secret -n flux-system helm-repo-creds -o jsonpath='{.data.username}'
 
 ```bash
 # Verify the certificate is valid
-kubectl get secret -n flux-system helm-repo-tls -o jsonpath='{.data.certFile}' | base64 -d | openssl x509 -text -noout
+kubectl get secret -n flux-system helm-repo-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
 ```
 
 ## Rotating Credentials
