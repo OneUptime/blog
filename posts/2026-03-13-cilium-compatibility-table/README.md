@@ -10,9 +10,9 @@ Description: A practical guide to using the Cilium compatibility table to select
 
 ## Introduction
 
-The Cilium compatibility table is the authoritative reference for determining which Cilium version works with which Kubernetes version, Linux kernel version, and container runtime. Ignoring this table before an installation or upgrade is one of the most common causes of Cilium deployment failures. The table is published with each Cilium release and updated when new Kubernetes versions are tested and validated.
+The Cilium compatibility table is the authoritative reference for determining which Cilium version is tested with which Kubernetes version, alongside the system requirements for Linux kernel support. Ignoring this table before an installation or upgrade is one of the most common causes of Cilium deployment failures. The table is published with each Cilium release and updated when new Kubernetes versions are tested and validated.
 
-Beyond simple version matching, the compatibility table also documents feature availability per kernel version, CNI chaining support, cloud provider integrations, and platform-specific considerations. Some features like BPF NodePort require kernel 4.17+, WireGuard encryption requires 5.6+, and the bandwidth manager requires 5.1+. Understanding these requirements helps you plan infrastructure upgrades alongside Cilium upgrades.
+Beyond simple version matching, the Cilium requirements and compatibility documentation also documents feature availability per kernel version, CNI chaining support, cloud provider integrations, and platform-specific considerations. For example, current Cilium releases require Linux kernel 5.10+ or an equivalent distribution kernel, while advanced features such as IPv6 BIG TCP and IPv4 BIG TCP require newer kernels. Understanding these requirements helps you plan infrastructure upgrades alongside Cilium upgrades.
 
 This guide walks through how to use the compatibility table effectively, configure your environment to match compatibility requirements, troubleshoot version conflicts, and validate that your deployment is within supported parameters.
 
@@ -36,14 +36,14 @@ kubectl version -o json | jq -r '.serverVersion | "\(.major).\(.minor)"'
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
 # Step 3: Identify the Cilium version range for your K8s version
-# Kubernetes 1.30 -> Cilium 1.15.x, 1.16.x
-# Kubernetes 1.29 -> Cilium 1.14.x, 1.15.x, 1.16.x
-# Kubernetes 1.28 -> Cilium 1.13.x, 1.14.x, 1.15.x
-# Kubernetes 1.27 -> Cilium 1.12.x, 1.13.x, 1.14.x
+# Kubernetes 1.34 -> Cilium 1.19.x
+# Kubernetes 1.33 -> Cilium 1.18.x, 1.19.x
+# Kubernetes 1.32 -> Cilium 1.17.x, 1.18.x, 1.19.x
+# Kubernetes 1.31 -> Cilium 1.17.x, 1.18.x, 1.19.x
 
 # Step 4: Install the latest compatible version
-K8S_VERSION="1.29"
-CILIUM_VERSION="1.15.6"  # Latest for K8s 1.29
+K8S_VERSION="1.32"
+CILIUM_VERSION="1.19.4"  # Example compatible patch release for K8s 1.32
 
 helm install cilium cilium/cilium \
   --version $CILIUM_VERSION \
@@ -53,12 +53,9 @@ helm install cilium cilium/cilium \
 Feature compatibility by kernel version:
 
 ```bash
-# Kernel 4.19.57+ - Basic Cilium connectivity
-# Kernel 5.1+     - Bandwidth Manager, DSR
-# Kernel 5.3+     - Full kube-proxy replacement
-# Kernel 5.6+     - WireGuard encryption
-# Kernel 5.10+    - Recommended minimum
-# Kernel 5.15+    - All features including BPF Host Routing
+# Kernel 5.10+    - Minimum for current Cilium releases
+# Kernel 5.19+    - IPv6 BIG TCP support
+# Kernel 6.3+     - IPv4 BIG TCP support
 
 # Check which features to enable based on your kernel
 KERNEL_VERSION=$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kernelVersion}')
@@ -68,7 +65,7 @@ echo "Kernel: $KERNEL_VERSION"
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set bandwidthManager.enabled=true   # Requires kernel 5.1+
+  --set bandwidthManager.enabled=true   # Requires a supported kernel and CONFIG_NET_SCH_FQ
 ```
 
 ## Troubleshoot Compatibility Mismatches
@@ -86,7 +83,7 @@ echo "K8s: 1.$K8S_MINOR, Cilium: $CILIUM_VER"
 kubectl -n kube-system logs ds/cilium | grep -i "deprecated\|removed api\|no longer"
 
 # Check for beta API migration issues (e.g., CRD v1beta1 -> v1)
-kubectl get crd ciliumnetworkpolicies.cilium.io -o jsonpath='{.apiVersion}'
+kubectl get crd ciliumnetworkpolicies.cilium.io -o jsonpath='{.spec.versions[*].name}'
 
 # Identify Kubernetes feature gates that Cilium depends on
 kubectl -n kube-system logs ds/cilium | grep -i "feature gate\|featuregate"
@@ -95,13 +92,13 @@ kubectl -n kube-system logs ds/cilium | grep -i "feature gate\|featuregate"
 Handle common compatibility errors:
 
 ```bash
-# Issue: EndpointSlice v1 not available (K8s < 1.21)
-kubectl api-versions | grep "discovery.k8s.io/v1$"
-# If missing, disable in Cilium
+# Issue: Kubernetes version below the supported range for your Cilium release
+kubectl version -o json | jq -r '.serverVersion.gitVersion'
+# Solution: select a Cilium release branch that lists your Kubernetes version
 helm upgrade cilium cilium/cilium \
+  --version 1.14.19 \
   --namespace kube-system \
-  --reuse-values \
-  --set endpointSlice.enabled=false
+  --values cilium-values.yaml
 
 # Issue: CRD v1 not supported (K8s < 1.16)
 # This requires a Cilium version that still uses v1beta1 CRDs (very old)
@@ -123,7 +120,7 @@ Confirm your environment is within the supported compatibility matrix:
 ```bash
 # Comprehensive compatibility check script
 K8S_VERSION=$(kubectl version -o json | jq -r '.serverVersion | "\(.major).\(.minor)"')
-CILIUM_VERSION=$(kubectl -n kube-system exec ds/cilium -- cilium version 2>/dev/null | head -1)
+CILIUM_VERSION=$(kubectl -n kube-system exec ds/cilium -- cilium-dbg version 2>/dev/null | head -1)
 KERNEL_VERSION=$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kernelVersion}')
 
 echo "=== Cilium Compatibility Check ==="
@@ -167,7 +164,7 @@ kubectl -n kube-system logs ds/cilium --since=24h | grep -i deprecat | sort -u
 cat > /tmp/compat-check.sh <<'EOF'
 #!/bin/bash
 echo "Date: $(date)"
-echo "K8s: $(kubectl version --short 2>/dev/null | grep Server)"
+echo "K8s: $(kubectl version -o json 2>/dev/null | jq -r '.serverVersion.gitVersion')"
 echo "Cilium: $(cilium version 2>/dev/null | head -1)"
 echo "Kernels:"
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
