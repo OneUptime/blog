@@ -29,7 +29,7 @@ This guide walks you through creating a DOKS cluster, setting up DOCR, bootstrap
 
 doctl kubernetes cluster create flux-cluster \
   --region nyc1 \
-  --version 1.29.1-do.0 \
+  --version latest \
   --node-pool "name=default-pool;size=s-2vcpu-4gb;count=3" \
   --wait
 
@@ -83,6 +83,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/doks-cluster \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --personal
 ```
 
@@ -104,10 +105,10 @@ flux get sources git
 Flux needs credentials to pull images from DOCR for image automation.
 
 ```bash
-# Generate a read-only API token for DOCR
+# Generate read-only credentials for DOCR
 # Go to DigitalOcean API settings and create a token,
 # or use doctl to generate registry credentials
-doctl registry docker-config --read-write > /tmp/docr-config.json
+doctl registry docker-config > /tmp/docr-config.json
 ```
 
 Create a Kubernetes secret with the registry credentials.
@@ -123,19 +124,18 @@ metadata:
 type: kubernetes.io/dockerconfigjson
 data:
   # Base64 encoded docker config JSON
-  # Generate with: cat /tmp/docr-config.json | base64
+  # Generate with: base64 -w 0 /tmp/docr-config.json
   .dockerconfigjson: <base64-encoded-docker-config>
 ```
 
 Alternatively, create the secret using kubectl.
 
 ```bash
-# Create the secret directly from the docker config
-kubectl create secret docker-registry docr-credentials \
+# Create the secret directly from the Docker config
+kubectl create secret generic docr-credentials \
   --namespace flux-system \
-  --docker-server=registry.digitalocean.com \
-  --docker-username=<do-api-token> \
-  --docker-password=<do-api-token>
+  --from-file=.dockerconfigjson=/tmp/docr-config.json \
+  --type=kubernetes.io/dockerconfigjson
 ```
 
 ## Step 5: Deploy an Application with Flux
@@ -206,9 +206,6 @@ kind: Ingress
 metadata:
   name: demo-app
   namespace: demo-app
-  annotations:
-    # DigitalOcean-specific load balancer annotations
-    kubernetes.digitalocean.com/load-balancer-id: ""
 spec:
   ingressClassName: nginx
   rules:
@@ -405,16 +402,16 @@ kubectl get svc -n ingress-nginx
 
 ## Step 10: Set Up DigitalOcean Monitoring
 
-Enable monitoring for your DOKS cluster alongside Flux.
+Basic monitoring is enabled by default for DOKS clusters. Install `kube-state-metrics` if you need advanced Kubernetes object metrics alongside Flux.
 
 ```bash
-# Install the DigitalOcean monitoring agent if not already present
+# Verify the cluster is running
 doctl kubernetes cluster get flux-cluster \
   --format ID,Name,Status
 
-# Enable monitoring via 1-click app
-doctl kubernetes 1-click install flux-cluster \
-  --1-clicks monitoring
+# Install kube-state-metrics for advanced Kubernetes metrics
+git clone https://github.com/kubernetes/kube-state-metrics.git
+kubectl create -k kube-state-metrics/examples/standard/
 ```
 
 ## Troubleshooting
@@ -430,7 +427,7 @@ kubectl get secrets -n demo-app | grep registry
 
 # If needed, patch the default service account
 kubectl patch serviceaccount default -n demo-app \
-  -p '{"imagePullSecrets": [{"name": "docr-credentials"}]}'
+  -p '{"imagePullSecrets": [{"name": "my-registry"}]}'
 ```
 
 ### Flux Reconciliation Failures
