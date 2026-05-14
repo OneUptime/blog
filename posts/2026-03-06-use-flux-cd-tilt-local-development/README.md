@@ -30,7 +30,7 @@ Before getting started, ensure you have:
 ```bash
 # Install on macOS
 
-brew install tilt-dev/tap/tilt
+brew install tilt
 
 # Install on Linux
 curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
@@ -177,7 +177,7 @@ The Tiltfile configures Tilt to use the same manifests Flux CD uses in productio
 # Allow deploying to the local kind cluster
 allow_k8s_contexts('kind-dev')
 
-# Set default registry for local development images
+# Set default registry for local development images if you have configured one
 default_registry('localhost:5000')
 
 # ============================================================
@@ -193,6 +193,8 @@ docker_build(
     live_update=[
         # Sync source files into the running container
         sync('./apps/frontend/src', '/app/src'),
+        # Sync package metadata before running npm install
+        sync('./apps/frontend/package.json', '/app/package.json'),
         # Restart the process when package.json changes
         run('npm install', trigger=['./apps/frontend/package.json']),
     ],
@@ -451,8 +453,11 @@ spec:
 ### Starting Tilt
 
 ```bash
-# Create a local kind cluster with a registry
+# Create a local kind cluster
 kind create cluster --name dev
+
+# If you use default_registry('localhost:5000'), configure a local
+# registry for kind separately before starting Tilt.
 
 # Start Tilt - it watches files and auto-updates
 tilt up
@@ -579,8 +584,8 @@ kind delete cluster --name dev && kind create cluster --name dev
 ### Image Build Failures
 
 ```bash
-# Check Tilt logs for build errors
-tilt logs --level=debug
+# Check Tilt build logs for errors
+tilt logs --source=build
 
 # Manually build the image to diagnose
 docker build -t myregistry.io/frontend ./apps/frontend/
@@ -593,7 +598,7 @@ docker build -t myregistry.io/frontend ./apps/frontend/
 # Check the Tiltfile sync() paths against the Dockerfile WORKDIR
 
 # Force a full rebuild if live update is stuck
-tilt trigger --build frontend
+tilt trigger frontend
 ```
 
 ## Best Practices
