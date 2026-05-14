@@ -107,7 +107,11 @@ else:
 EOF
 
 # Check pod CIDR overlaps with service CIDR
-SERVICE_CIDR=$(kubectl cluster-info dump | grep service-cluster-ip-range | head -1 | grep -oP '[\d.]+/\d+')
+SERVICE_CIDR=$(kubectl get servicecidr kubernetes -o jsonpath='{.spec.cidrs[*]}' 2>/dev/null || true)
+if [ -z "$SERVICE_CIDR" ]; then
+  SERVICE_CIDR=$(kubectl -n kube-system get pods -l component=kube-apiserver -o yaml | \
+    grep -oE -- '--service-cluster-ip-range=[^", ]+' | head -1 | cut -d= -f2)
+fi
 POD_CIDRS=$(kubectl get ciliumnodes -o jsonpath='{.items[*].spec.ipam.podCIDRs[0]}')
 echo "Service CIDR: $SERVICE_CIDR"
 echo "Pod CIDRs: $POD_CIDRS"
@@ -125,7 +129,7 @@ kubectl exec test-1 -- traceroute $POD2_IP
 
 # If traceroute shows unexpected hops, there may be a routing conflict
 # Check routing tables on nodes
-kubectl debug node/<node-name> -it --image=ubuntu -- \
+kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
   ip route show table main | grep 10.244
 
 kubectl delete pod test-1 test-2
@@ -142,7 +146,8 @@ kubectl get nodes -o json | \
   jq '.items[] | {node: .metadata.name, ip: .status.addresses[] | select(.type=="InternalIP") | .address}'
 
 echo "=== Service CIDR ==="
-kubectl -n kube-system describe pod -l component=kube-controller-manager | \
+kubectl get servicecidr kubernetes -o jsonpath='{.spec.cidrs[*]}' 2>/dev/null || \
+kubectl -n kube-system get pods -l component=kube-apiserver -o yaml | \
   grep service-cluster-ip-range
 
 echo "=== Node Pod CIDRs ==="
@@ -153,20 +158,39 @@ echo "=== Checking for overlaps ==="
 python3 - <<'PYEOF'
 import json, ipaddress, subprocess
 
-def get_json(cmd): return json.loads(subprocess.run(cmd, capture_output=True, text=True).stdout)
+def get_json(cmd):
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return json.loads(result.stdout)
 
 nodes_data = get_json(["kubectl", "get", "nodes", "-o", "json"])
 cn_data = get_json(["kubectl", "get", "ciliumnodes", "-o", "json"])
+svc_data = get_json(["kubectl", "get", "servicecidr", "kubernetes", "-o", "json"])
 
-node_ips = [n["status"]["addresses"] for n in nodes_data["items"]]
+node_ips = []
+for n in nodes_data["items"]:
+    for a in n["status"]["addresses"]:
+        if a["type"] == "InternalIP":
+            ip = ipaddress.ip_address(a["address"])
+            mask = 32 if ip.version == 4 else 128
+            node_ips.append((n["metadata"]["name"], ipaddress.ip_network(f"{ip}/{mask}", strict=False)))
 pod_cidrs = [(i["metadata"]["name"], ipaddress.ip_network(c))
              for i in cn_data["items"]
              for c in i.get("spec", {}).get("ipam", {}).get("podCIDRs", [])]
+service_cidrs = []
+if svc_data:
+    service_cidrs = [("services", ipaddress.ip_network(c))
+                     for c in svc_data.get("spec", {}).get("cidrs", [])]
 
 print(f"Total nodes with CIDRs: {len(pod_cidrs)}")
 conflicts = sum(1 for i, (n1, c1) in enumerate(pod_cidrs)
                 for n2, c2 in pod_cidrs[i+1:] if c1.overlaps(c2))
-print(f"CIDR conflicts: {conflicts}")
+node_conflicts = sum(1 for n1, c1 in node_ips for n2, c2 in pod_cidrs if c1.overlaps(c2))
+service_conflicts = sum(1 for n1, c1 in service_cidrs for n2, c2 in pod_cidrs if c1.overlaps(c2))
+print(f"Node CIDR conflicts: {conflicts}")
+print(f"Pod CIDRs overlapping node IPs: {node_conflicts}")
+print(f"Pod CIDRs overlapping service CIDRs: {service_conflicts}")
 PYEOF
 ```
 
@@ -190,17 +214,17 @@ Monitor for CIDR conflict symptoms:
 # Watch for routing-related drop events in Hubble
 cilium hubble port-forward &
 hubble observe --verdict DROPPED --json | \
-  jq 'select(.flow.drop_reason_desc | contains("UNKNOWN_CONNECTION"))' -f
+  jq 'select((.flow.drop_reason_desc? // "") | contains("UNKNOWN_CONNECTION"))'
 
 # Monitor for unexpected ARP broadcasts (sign of IP conflicts)
-kubectl debug node/<node-name> -it --image=ubuntu -- \
+kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
   tcpdump -i any arp -n 2>/dev/null | grep -i duplicate
 
 # Check for Cilium routing errors
 kubectl -n kube-system exec ds/cilium -- \
-  cilium monitor --type drop -f | grep -i "no route\|routing"
+  cilium-dbg monitor --type drop | grep -i "no route\|routing"
 
-# Weekly CIDR audit as a CronJob
+# Weekly CIDR inventory as a CronJob
 kubectl apply -f - <<EOF
 apiVersion: batch/v1
 kind: CronJob
