@@ -90,8 +90,12 @@ az policy assignment create \
   --policy "febd0533-8e55-448f-b837-bd0e06f16469" \
   --scope $CLUSTER_ID \
   --params '{
-    "allowedContainerImagesRegex": "^(acrfluxcddemo\\.azurecr\\.io|mcr\\.microsoft\\.com|docker\\.io\\/library)\\/.+$",
-    "effect": "deny"
+    "allowedContainerImagesRegex": {
+      "value": "^(acrfluxcddemo\\.azurecr\\.io|mcr\\.microsoft\\.com|docker\\.io\\/library)\\/.+$"
+    },
+    "effect": {
+      "value": "Deny"
+    }
   }'
 
 # Policy: Kubernetes cluster pods should only use approved host network and port range
@@ -101,8 +105,12 @@ az policy assignment create \
   --policy "82985f06-dc18-4a48-bc1c-b9f4f0098cfe" \
   --scope $CLUSTER_ID \
   --params '{
-    "allowHostNetwork": false,
-    "effect": "deny"
+    "allowHostNetwork": {
+      "value": false
+    },
+    "effect": {
+      "value": "Deny"
+    }
   }'
 
 # Policy: Kubernetes cluster should not allow privileged containers
@@ -112,7 +120,9 @@ az policy assignment create \
   --policy "95edb821-ddaf-4404-9732-666045e056b4" \
   --scope $CLUSTER_ID \
   --params '{
-    "effect": "deny"
+    "effect": {
+      "value": "Deny"
+    }
   }'
 
 # Policy: Kubernetes clusters should not allow container privilege escalation
@@ -122,7 +132,9 @@ az policy assignment create \
   --policy "1c6e92c9-99f0-4e55-9cf2-0c234dc48f99" \
   --scope $CLUSTER_ID \
   --params '{
-    "effect": "deny"
+    "effect": {
+      "value": "Deny"
+    }
   }'
 ```
 
@@ -226,13 +238,7 @@ spec:
       validation:
         openAPIV3Schema:
           type: object
-          properties:
-            cpu:
-              type: string
-              description: "Maximum CPU limit"
-            memory:
-              type: string
-              description: "Maximum memory limit"
+          properties: {}
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -268,9 +274,6 @@ spec:
       - kube-system
       - flux-system
       - gatekeeper-system
-  parameters:
-    cpu: "2"
-    memory: "4Gi"
 ```
 
 ## Step 4: Organize Policies in the GitOps Repository
@@ -304,7 +307,7 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/policies
   prune: true
-  # Apply policies before applications
+  # Check policy templates after applying them
   healthChecks:
     - apiVersion: templates.gatekeeper.sh/v1
       kind: ConstraintTemplate
@@ -404,7 +407,9 @@ az policy assignment create \
   --policy "e345eecc-fa47-480f-9e88-67dcc122b164" \
   --scope $CLUSTER_ID \
   --params '{
-    "effect": "audit"
+    "effect": {
+      "value": "Audit"
+    }
   }'
 
 # Check compliance results
@@ -444,10 +449,14 @@ Azure Policy can also ensure that all AKS clusters have Flux CD configured:
 az policy assignment create \
   --name "require-flux-extension" \
   --display-name "Require Flux CD GitOps extension" \
-  --policy "6b2122c1-8120-8a5d-7b9c-abfc13108f3a" \
+  --policy "f9175d5f-abc8-1dc3-bd3c-5d7476ada3d1" \
   --scope "/subscriptions/<subscription-id>/resourceGroups/${RESOURCE_GROUP}" \
+  --mi-system-assigned \
+  --location "eastus" \
   --params '{
-    "effect": "audit"
+    "effect": {
+      "value": "DeployIfNotExists"
+    }
   }'
 ```
 
