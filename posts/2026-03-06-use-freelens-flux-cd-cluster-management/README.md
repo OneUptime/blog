@@ -40,21 +40,22 @@ flux check
 
 ```bash
 # Install via Homebrew
-brew install freelens
+brew install --cask freelens
 ```
 
 ### Linux
 
 ```bash
-# Download the AppImage from the official releases
-curl -L -o Freelens.AppImage \
-  https://github.com/freelensapp/freelens/releases/latest/download/Freelens-linux-x86_64.AppImage
+# Download the AppImage from the official releases page:
+# https://github.com/freelensapp/freelens/releases
+# For amd64 Linux, choose the asset named:
+# Freelens-<version>-linux-amd64.AppImage
 
 # Make it executable
-chmod +x Freelens.AppImage
+chmod +x Freelens-*-linux-amd64.AppImage
 
 # Run Freelens
-./Freelens.AppImage
+./Freelens-*-linux-amd64.AppImage --no-sandbox --ozone-platform-hint=auto
 ```
 
 ### Windows
@@ -62,7 +63,7 @@ chmod +x Freelens.AppImage
 Download the installer from the Freelens GitHub releases page or use winget:
 
 ```bash
-winget install Freelens
+winget install Freelensapp.Freelens
 ```
 
 ### Verify Installation
@@ -94,6 +95,7 @@ export KUBECONFIG=~/.kube/config:~/.kube/staging-config:~/.kube/prod-config
 ```
 
 Freelens will detect all clusters from all listed files.
+On Windows, separate multiple kubeconfig paths with semicolons instead of colons.
 
 ## Navigating Flux Resources in Freelens
 
@@ -229,7 +231,7 @@ Navigate to **Events** and filter by namespace `flux-system` to see all Flux-rel
 
 ## Using Freelens Terminal
 
-Freelens includes an integrated terminal. Open it from the bottom panel to run Flux commands:
+Freelens includes an integrated terminal. Open it from the bottom panel to run Flux commands. Make sure the Flux CLI is available in the terminal's `PATH`; sandboxed installations such as Flatpak may need additional configuration to access host tools.
 
 ```bash
 # Get a summary of all Flux resources
@@ -249,22 +251,22 @@ flux events --for Kustomization/apps
 
 Freelens supports extensions that can enhance your Flux CD workflow.
 
-### Node and Pod Menu Extensions
+### Flux CD Extension
 
 ```bash
-# Extensions can be installed through the Freelens UI
-# Navigate to Extensions in the menu bar
-# Search for available extensions in the catalog
+# Extensions can be installed through the Freelens UI.
+# Open Extensions and install:
+@freelensapp/fluxcd-extension
 ```
 
 ### Custom Resource Viewing Extensions
 
-Some extensions improve the display of custom resources like Flux CRDs:
+The Freelens FluxCD extension improves the display and management of Flux resources:
 
 1. Open Freelens Preferences
 2. Navigate to the Extensions tab
-3. Browse or search for Kubernetes CRD viewer extensions
-4. Install and restart Freelens
+3. Install `@freelensapp/fluxcd-extension`
+4. Restart Freelens
 
 ## Setting Up Resource Bookmarks
 
