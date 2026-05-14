@@ -14,9 +14,11 @@ The Flux CLI is the primary tool for interacting with Flux CD, the GitOps toolki
 
 Before installing the Flux CLI, ensure you have the following:
 
-- macOS 10.15 (Catalina) or later
+- macOS 14 (Sonoma) or later for a supported Homebrew installation
 - Homebrew installed on your system
 - A terminal application (Terminal.app, iTerm2, or similar)
+
+Homebrew officially supports macOS 14 (Sonoma) or later. Older releases from macOS 10.15 (Catalina) through macOS 13 (Ventura) are unsupported by Homebrew but may still work.
 
 If you do not have Homebrew installed, you can install it with the following command.
 
@@ -35,7 +37,7 @@ brew --version
 
 ## Step 1: Add the Flux CD Tap
 
-Flux CD maintains its own Homebrew tap (a third-party repository of formulae). You need to add this tap before installing the CLI.
+Flux CD maintains its own Homebrew tap (a third-party repository of formulae). You can add this tap before installing the CLI.
 
 ```bash
 # Add the Flux CD Homebrew tap
@@ -200,7 +202,7 @@ brew untap fluxcd/tap
 
 If you encounter issues during installation, here are some common solutions.
 
-**Homebrew tap not found:** Make sure you added the tap with `brew tap fluxcd/tap` before attempting to install.
+**Homebrew tap not found:** Make sure you added the tap with `brew tap fluxcd/tap`, or install with the fully qualified formula name `brew install fluxcd/tap/flux`.
 
 **Permission denied errors:** Ensure your Homebrew installation has the correct ownership. Run `brew doctor` to diagnose issues.
 
@@ -218,8 +220,8 @@ sudo rm /usr/local/bin/flux
 
 ```bash
 # For Apple Silicon Macs, add Homebrew to PATH
-echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
-source ~/.zshrc
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+source ~/.zprofile
 ```
 
 ## Conclusion
