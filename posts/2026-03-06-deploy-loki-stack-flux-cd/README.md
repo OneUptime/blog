@@ -12,7 +12,7 @@ Description: A practical guide to deploying the Grafana Loki logging stack on Ku
 
 Grafana Loki is a horizontally scalable, highly available log aggregation system inspired by Prometheus. Unlike traditional log aggregation tools, Loki indexes only metadata (labels) rather than the full text of log lines, making it cost-effective and efficient.
 
-This guide walks you through deploying the complete Loki stack -- including Loki, Promtail, and related components -- using Flux CD.
+This guide walks you through deploying the Loki stack -- including Loki and the legacy Promtail collector -- using Flux CD. Promtail reached end-of-life on March 2, 2026, so use Grafana Alloy for new deployments and keep Promtail only for existing environments that still depend on it.
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ metadata:
 
 ## Deploying Loki in Scalable Mode
 
-For production use, deploy Loki in its microservices (scalable) mode with object storage.
+For scalable deployments, deploy Loki in Simple Scalable mode with object storage. Grafana now recommends microservices mode for larger production workloads, and Simple Scalable mode is being deprecated before Loki 4.0.
 
 ```yaml
 # clusters/my-cluster/logging/loki.yaml
@@ -82,7 +82,14 @@ spec:
     remediation:
       retries: 3
   values:
-    # Deploy in scalable single binary mode
+    global:
+      extraArgs:
+        - -config.expand-env=true
+      extraEnvFrom:
+        - secretRef:
+            name: loki-s3-credentials
+
+    # Deploy with read, write, and backend targets
     deploymentMode: SimpleScalable
 
     loki:
@@ -100,16 +107,18 @@ spec:
               prefix: loki_index_
               period: 24h
 
-      # Storage configuration for S3
+      # Loki runtime storage configuration for S3
+      storage_config:
+        aws:
+          region: us-east-1
+          bucketnames: my-loki-chunks
+          s3forcepathstyle: false
+          access_key_id: "${AWS_ACCESS_KEY_ID}"
+          secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+
+      # Helm chart bucket configuration
       storage:
         type: s3
-        s3:
-          endpoint: s3.amazonaws.com
-          region: us-east-1
-          bucketnames: my-loki-logs
-          # Use IRSA or instance profiles for auth
-          insecure: false
-          sse_encryption: true
         bucketNames:
           chunks: my-loki-chunks
           ruler: my-loki-ruler
@@ -192,7 +201,7 @@ spec:
 
 ## Deploying Promtail for Log Collection
 
-Promtail is the agent that ships logs from your nodes to Loki.
+Promtail is the legacy agent that ships logs from your nodes to Loki. It is end-of-life as of March 2, 2026; use this only when maintaining an existing Promtail-based setup.
 
 ```yaml
 # clusters/my-cluster/logging/promtail.yaml
@@ -321,7 +330,7 @@ sops --encrypt \
 ## Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/logging/kustomization.yaml
+# clusters/my-cluster/flux-system/logging-stack.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -329,7 +338,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: logging
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -346,42 +354,46 @@ spec:
 
 ## Setting Up Log-Based Alerts with Ruler
 
-Configure Loki ruler to generate alerts from log queries.
+Configure Loki ruler to generate alerts from log queries by adding rules to the Loki HelmRelease values.
 
 ```yaml
-# clusters/my-cluster/logging/ruler-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: loki-ruler-config
-  namespace: logging
-data:
-  rules.yaml: |
-    groups:
-      - name: application-log-alerts
-        rules:
-          # Alert on high error rate in logs
-          - alert: HighErrorRate
-            expr: |
-              sum(rate({namespace="production"} |= "ERROR" [5m])) by (app)
-              /
-              sum(rate({namespace="production"} [5m])) by (app)
-              > 0.05
-            for: 10m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High error rate in {{ $labels.app }}"
+# Add under spec.values in clusters/my-cluster/logging/loki.yaml
+loki:
+  rulerConfig:
+    storage:
+      type: local
+      local:
+        directory: /etc/loki/rules
 
-          # Alert on out-of-memory errors
-          - alert: OOMKilled
-            expr: |
-              count_over_time({namespace=~".+"} |= "OOMKilled" [5m]) > 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "OOM kill detected in logs"
+ruler:
+  directories:
+    fake:
+      rules.yaml: |
+        groups:
+          - name: application-log-alerts
+            rules:
+              # Alert on high error rate in logs
+              - alert: HighErrorRate
+                expr: |
+                  sum(rate({namespace="production"} |= "ERROR" [5m])) by (app)
+                  /
+                  sum(rate({namespace="production"} [5m])) by (app)
+                  > 0.05
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High error rate in {{ $labels.app }}"
+
+              # Alert on out-of-memory errors
+              - alert: OOMKilled
+                expr: |
+                  count_over_time({namespace=~".+"} |= "OOMKilled" [5m]) > 0
+                for: 1m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "OOM kill detected in logs"
 ```
 
 ## Verifying the Deployment
@@ -397,18 +409,17 @@ kubectl get pods -n logging -l app.kubernetes.io/name=loki
 kubectl get pods -n logging -l app.kubernetes.io/name=promtail -o wide
 
 # Check Loki readiness
-kubectl exec -n logging svc/loki-gateway -- wget -qO- http://localhost:80/ready
+kubectl port-forward -n logging svc/loki-gateway 3100:80
+curl -fsS http://localhost:3100/ready
 
 # Test log ingestion with logcli
-kubectl port-forward -n logging svc/loki-gateway 3100:80
-# In another terminal:
-# logcli query '{namespace="logging"}' --addr=http://localhost:3100
+logcli query '{namespace="logging"}' --addr=http://localhost:3100
 
 # Check Loki ring status
-kubectl port-forward -n logging svc/loki-write 3100:3100
+kubectl port-forward -n logging svc/loki-backend 3100:3100
 # Visit http://localhost:3100/ring in a browser
 ```
 
 ## Conclusion
 
-You now have a production-ready Loki logging stack managed entirely through Flux CD. The setup includes scalable Loki components with S3-backed storage, Promtail agents on every node for log collection, log processing pipelines for parsing and filtering, and log-based alerting through the Loki ruler. All configuration is version-controlled and automatically reconciled, ensuring your logging infrastructure stays consistent with your desired state in Git.
+You now have a GitOps-managed Loki logging stack managed entirely through Flux CD. The setup includes scalable Loki components with S3-backed storage, Promtail agents on every node for log collection in legacy environments, log processing pipelines for parsing and filtering, and log-based alerting through the Loki ruler. All configuration is version-controlled and automatically reconciled, ensuring your logging infrastructure stays consistent with your desired state in Git.
