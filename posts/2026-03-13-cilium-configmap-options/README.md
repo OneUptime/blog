@@ -10,7 +10,7 @@ Description: An in-depth reference guide for Cilium's ConfigMap options, explain
 
 ## Introduction
 
-The `cilium-config` ConfigMap in the `kube-system` namespace is the primary mechanism through which Cilium agents receive their runtime configuration. Every Cilium agent reads this ConfigMap at startup and watches it for changes. While Helm chart values provide the primary interface for setting these options, understanding the underlying ConfigMap keys gives you deeper control and visibility into how Cilium behaves.
+The `cilium-config` ConfigMap in the `kube-system` namespace is the primary mechanism through which Cilium agents receive their desired configuration. Every Cilium agent reads this ConfigMap at startup; with dynamic configuration enabled, agents also watch it for drift from their active settings. While Helm chart values provide the primary interface for setting these options, understanding the underlying ConfigMap keys gives you deeper control and visibility into how Cilium behaves.
 
 The ConfigMap contains dozens of options spanning networking mode, security policy, eBPF program settings, monitoring, IPAM, and performance tuning. Some options have complex interdependencies - for example, enabling kube-proxy replacement requires correctly setting `k8s-api-server` and disabling any existing kube-proxy DaemonSet. Incorrect options can cause silent failures or hard-to-debug networking issues.
 
@@ -21,6 +21,8 @@ This guide provides practical guidance on the most important ConfigMap options, 
 - Cilium installed and running in Kubernetes
 - `kubectl` with cluster admin access
 - Helm 3.x (preferred management method for ConfigMap)
+- Cilium CLI for commands such as `cilium config view` and `cilium connectivity test`
+- `jq` for JSON inspection commands
 
 ## Configure Cilium ConfigMap Options
 
@@ -33,7 +35,7 @@ kubectl -n kube-system get configmap cilium-config -o yaml
 
 # Examine specific options
 kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data}' | jq '.'
+  -o json | jq '.data'
 
 # Edit via Helm (preferred - tracks changes in Helm history)
 helm upgrade cilium cilium/cilium \
@@ -46,9 +48,10 @@ Key ConfigMap options by category:
 
 ```bash
 # Networking options
-# tunnel: "vxlan" | "geneve" | "disabled"
+# routing-mode: "tunnel" | "native"
+# tunnel-protocol: "vxlan" | "geneve"
 # enable-bpf-masquerade: "true" | "false"
-# native-routing-cidr: "10.0.0.0/8"
+# ipv4-native-routing-cidr: "10.0.0.0/8"
 # enable-ipv4: "true"
 # enable-ipv6: "false"
 
@@ -87,8 +90,8 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set bpf.preallocateMaps=true \
   --set bpf.mapDynamicSizeRatio=0.005 \
-  --set monitorAggregation=medium \
-  --set monitorAggregationInterval=5s \
+  --set bpf.monitorAggregation=medium \
+  --set bpf.monitorInterval=5s \
   --set bandwidthManager.enabled=true \
   --set endpointRoutes.enabled=true
 ```
@@ -102,17 +105,17 @@ Diagnose ConfigMap-related problems:
 kubectl -n kube-system logs ds/cilium | grep -i "config\|configmap\|option"
 
 # Find options with default values overridden
-kubectl -n kube-system exec ds/cilium -- cilium config view | \
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config --all | \
   grep -v "^#" | grep "=" | sort
 
 # Check if a specific option is recognized
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep monitor-aggregation
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config get monitor-aggregation
 
 # Compare ConfigMap to what agent loaded
 CONFIGMAP_VALUE=$(kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data.monitor-aggregation}')
+  -o json | jq -r '.data["monitor-aggregation"]')
 AGENT_VALUE=$(kubectl -n kube-system exec ds/cilium -- \
-  cilium config view | grep "^monitor-aggregation" | awk '{print $2}')
+  cilium-dbg config get monitor-aggregation | awk '{print $NF}')
 echo "ConfigMap: $CONFIGMAP_VALUE, Agent: $AGENT_VALUE"
 ```
 
@@ -127,6 +130,7 @@ kubectl -n kube-system rollout restart ds/cilium
 kubectl -n kube-system logs ds/cilium | grep -i "invalid\|unrecognized"
 
 # Issue: ConfigMap modified outside Helm (causes Helm drift)
+# Requires the helm-diff plugin
 helm diff upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values
@@ -146,18 +150,18 @@ Verify options are correctly applied:
 
 ```bash
 # Validate critical networking options
-kubectl -n kube-system exec ds/cilium -- cilium config view | \
-  grep -E "^(tunnel|ipam|policy-enforcement|kube-proxy|encryption)" | \
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config --all | \
+  grep -E "^(routing-mode|tunnel-protocol|ipam|policy-enforcement|kube-proxy|encryption)" | \
   while read line; do
     echo "VALIDATED: $line"
   done
 
 # Cross-validate with node behavior
 # Validate tunnel mode matches actual packet encapsulation
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep -i tunnel
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i tunnel
 
 # Validate BPF map sizes are correct for your workload
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
 # Compare to bpf-ct-global-any-max setting
 
 # Full validation test
@@ -170,11 +174,10 @@ cilium connectivity test
 graph TD
     A[Helm upgrade] -->|Updates| B[cilium-config ConfigMap]
     B -->|Watch event| C[Cilium Agent]
-    C -->|Parses options| D{Requires Restart?}
-    D -->|No| E[Live Reload]
-    D -->|Yes| F[Queue for next restart]
-    E -->|Applied| G[New eBPF Programs]
-    F -->|On restart| G
+    C -->|Drift detection| D{Active settings match?}
+    D -->|Yes| E[No action]
+    D -->|No| F[Restart required for many options]
+    F -->|On restart| G[Updated agent configuration]
     H[kubectl] -->|Direct edit| B
     H -.->|Causes drift| I[Helm out of sync]
 ```
@@ -194,13 +197,16 @@ kubectl -n kube-system get configmap cilium-config --watch
 #   namespaces: ["kube-system"]
 #   resourceNames: ["cilium-config"]
 
-# Check recent ConfigMap change history
-kubectl -n kube-system get events | grep "cilium-config"
+# Check the current ConfigMap version and age
+kubectl -n kube-system get configmap cilium-config \
+  -o json | jq '.metadata | {resourceVersion, creationTimestamp}'
 
 # Detect drift from Helm-managed state
-helm get values cilium -n kube-system 2>/dev/null | diff - <(kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data}' 2>/dev/null | jq -r 'to_entries[] | "\(.key): \(.value)"')
+helm diff upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values
 ```
 
 ## Conclusion
 
-The `cilium-config` ConfigMap is the single source of truth for Cilium's runtime behavior. Managing it exclusively through Helm charts ensures that all changes are tracked, auditable, and reproducible. Understanding the key configuration categories - networking, policy, eBPF, IPAM, and feature flags - allows you to tune Cilium for your specific workload and environment. Regularly audit the effective configuration across all Cilium agents to detect drift and ensure consistent behavior across your cluster nodes.
+The `cilium-config` ConfigMap is the single source of truth for Cilium's desired runtime behavior. Managing it exclusively through Helm charts ensures that all changes are tracked, auditable, and reproducible. Understanding the key configuration categories - networking, policy, eBPF, IPAM, and feature flags - allows you to tune Cilium for your specific workload and environment. Regularly audit the effective configuration across all Cilium agents to detect drift and ensure consistent behavior across your cluster nodes.
