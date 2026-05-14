@@ -45,8 +45,9 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kafka
-  namespace: kafka
+  namespace: flux-system
 spec:
+  targetNamespace: kafka
   interval: 15m
   chart:
     spec:
@@ -139,7 +140,7 @@ spec:
 
     # Prometheus metrics via JMX exporter
     metrics:
-      kafka:
+      jmx:
         enabled: true
         resources:
           requests:
@@ -152,7 +153,7 @@ spec:
         enabled: true
         namespace: kafka
 
-    # SASL authentication (enable for production)
+    # SASL credentials (used when listeners use SASL_PLAINTEXT or SASL_SSL)
     sasl:
       client:
         users:
@@ -208,7 +209,7 @@ Verify Kafka is working by producing and consuming test messages.
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease kafka -n kafka
+flux get helmrelease kafka -n flux-system
 
 # Verify all Kafka pods are running
 kubectl get pods -n kafka
@@ -261,8 +262,22 @@ spec:
               value: "production"
             - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
               value: "kafka.kafka.svc.cluster.local:9092"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+  namespace: kafka
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka-ui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ```
 
 ## Summary
 
-Deploying Apache Kafka through a Flux HelmRelease using the Bitnami chart from `oci://registry-1.docker.io/bitnamicharts` provides a GitOps-managed event streaming platform. The chart supports KRaft mode (eliminating ZooKeeper), automatic topic provisioning, SASL authentication, persistent storage, and Prometheus metrics. This setup gives you a production-ready Kafka cluster that is fully declarative and reproducible across environments.
+Deploying Apache Kafka through a Flux HelmRelease using the Bitnami chart from `oci://registry-1.docker.io/bitnamicharts` provides a GitOps-managed event streaming platform. The chart supports KRaft mode (eliminating ZooKeeper), automatic topic provisioning, SASL authentication, persistent storage, and Prometheus metrics. This setup gives you a declarative Kafka cluster that is reproducible across environments and can be hardened further for production.
