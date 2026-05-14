@@ -34,7 +34,7 @@ flux get sources oci
 
 ```mermaid
 graph LR
-    A[flux create secret oci] --> B[Kubernetes Secret<br/>docker-registry type]
+    A[flux create secret oci] --> B[Kubernetes Secret<br/>kubernetes.io/dockerconfigjson type]
     B --> C[OCIRepository CR]
     C -->|Authenticated Pull| D[OCI Registry]
     D -->|Artifact Layers| E[Source Controller]
@@ -99,7 +99,7 @@ spec:
 
 ```bash
 # Create a secret for GitHub Container Registry
-# Use a Personal Access Token with packages:read scope
+# Use a Personal Access Token with read:packages scope
 flux create secret oci ghcr-auth \
   --url=ghcr.io \
   --username=${GITHUB_USERNAME} \
@@ -126,7 +126,7 @@ spec:
 ### AWS Elastic Container Registry (ECR)
 
 ```bash
-# For ECR, you can use static IAM credentials
+# For ECR, you can use the AWS CLI to generate an authorization token
 flux create secret oci ecr-auth \
   --url=123456789.dkr.ecr.us-east-1.amazonaws.com \
   --username=AWS \
@@ -134,7 +134,7 @@ flux create secret oci ecr-auth \
   --namespace=flux-system
 ```
 
-For automatic token refresh with ECR, use the provider field instead:
+For automatic token refresh with ECR, configure AWS identity for the source-controller, then use the provider field instead:
 
 ```yaml
 # ecr-oci-repository.yaml
@@ -163,7 +163,7 @@ flux create secret oci gar-auth \
   --namespace=flux-system
 ```
 
-For automatic authentication with GKE Workload Identity:
+For automatic authentication with GKE Workload Identity, configure the source-controller ServiceAccount with Artifact Registry access:
 
 ```yaml
 # gar-oci-repository.yaml
@@ -191,7 +191,7 @@ flux create secret oci acr-auth \
   --namespace=flux-system
 ```
 
-For automatic authentication with Azure Workload Identity:
+For automatic authentication with Azure Workload Identity, configure the source-controller ServiceAccount with ACR access:
 
 ```yaml
 # acr-oci-repository.yaml
@@ -277,8 +277,8 @@ flux create secret oci ghcr-auth \
 # View the generated YAML structure
 cat oci-secret.yaml
 
-# Encrypt with SOPS before committing to Git
-sops --encrypt --in-place oci-secret.yaml
+# Encrypt the secret data with SOPS before committing to Git
+sops --encrypt --encrypted-regex '^(data|stringData)$' --in-place oci-secret.yaml
 ```
 
 ## Multi-Registry Setup
@@ -411,18 +411,18 @@ spec:
           serviceAccountName: ecr-refresh-sa
           containers:
             - name: refresh
-              image: amazon/aws-cli:latest
+              image: your-registry/aws-kubectl:latest
               command:
                 - /bin/sh
                 - -c
                 - |
                   TOKEN=$(aws ecr get-login-password --region us-east-1)
-                  kubectl delete secret ecr-auth -n flux-system --ignore-not-found
                   kubectl create secret docker-registry ecr-auth \
                     --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
                     --docker-username=AWS \
                     --docker-password=$TOKEN \
-                    -n flux-system
+                    -n flux-system \
+                    --dry-run=client -o yaml | kubectl apply -f -
           restartPolicy: OnFailure
 ```
 
@@ -437,4 +437,4 @@ spec:
 
 ## Summary
 
-The `flux create secret oci` command is essential for setting up authenticated access to OCI registries in Flux. It creates docker-registry type Kubernetes secrets that the source controller uses when pulling OCI artifacts. Whether you are using public cloud registries with automatic provider-based authentication or private registries with static credentials, this command provides a consistent interface for managing OCI authentication in your GitOps workflows.
+The `flux create secret oci` command is essential for setting up authenticated access to OCI registries in Flux. It creates `kubernetes.io/dockerconfigjson` Kubernetes secrets that the source-controller uses when pulling OCI artifacts. Whether you are using public cloud registries with automatic provider-based authentication or private registries with static credentials, this command provides a consistent interface for managing OCI authentication in your GitOps workflows.
