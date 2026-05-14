@@ -8,12 +8,12 @@ Description: Learn how to configure a Flux Receiver to accept Bitbucket webhooks
 
 ---
 
-Flux CD supports Bitbucket as a webhook source, allowing you to trigger immediate reconciliation when changes are pushed to your Bitbucket repositories. This eliminates the polling delay and makes your GitOps pipeline more responsive. This guide covers how to configure a Bitbucket webhook receiver in Flux.
+Flux CD supports Bitbucket Server/Data Center as a webhook source, allowing you to trigger immediate reconciliation when changes are pushed to your Bitbucket repositories. This eliminates the polling delay and makes your GitOps pipeline more responsive. This guide covers how to configure a Bitbucket webhook receiver in Flux.
 
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed, including the notification controller
-- A Bitbucket repository configured as a Flux GitRepository source
+- A Bitbucket Server/Data Center repository configured as a Flux GitRepository source
 - Admin access to the Bitbucket repository for webhook configuration
 - An ingress controller or load balancer to expose the receiver endpoint
 
@@ -49,9 +49,9 @@ metadata:
 spec:
   # Specify bitbucket as the webhook type
   type: bitbucket
-  # Bitbucket push events
+  # Bitbucket Server/Data Center push events
   events:
-    - "repo:push"
+    - "repo:refs_changed"
   # Secret for webhook validation
   secretRef:
     name: bitbucket-webhook-secret
@@ -82,7 +82,7 @@ kubectl get receiver bitbucket-receiver -n flux-system -o jsonpath='{.status.web
 
 ## Step 4: Expose the Receiver Endpoint
 
-Create an ingress to make the notification controller reachable from Bitbucket.
+Create an ingress to make the Flux webhook receiver service reachable from Bitbucket.
 
 ```yaml
 # Ingress for the Bitbucket webhook receiver
@@ -102,7 +102,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -113,18 +113,17 @@ spec:
 
 ## Step 5: Configure the Bitbucket Webhook
 
-For Bitbucket Cloud:
+For Bitbucket Server/Data Center:
 
 1. Navigate to your repository in Bitbucket
-2. Go to Repository settings > Webhooks > Add webhook
+2. Go to Repository settings > Webhooks > Create webhook
 3. Set the **Title** to a descriptive name like "Flux CD Receiver"
 4. Set the **URL** to `https://flux-webhook.example.com/<webhook-path>`
-5. Under **Triggers**, select **Repository push**
-6. Click **Save**
+5. Set the **Secret** to the token value generated in Step 1
+6. Under **Triggers**, select **Repository push**
+7. Click **Create**
 
-For Bitbucket Server, the process is similar but accessed through Repository settings > Webhooks.
-
-Note that Bitbucket Cloud uses the token as a query parameter or header depending on the configuration. Flux handles the validation based on the receiver type.
+Note that Flux documents the `bitbucket` receiver type for Bitbucket Server/Data Center webhooks. If your repositories are on Bitbucket Cloud, use a `generic` receiver instead.
 
 ## Step 6: Configure for Multiple Resources
 
@@ -140,7 +139,7 @@ metadata:
 spec:
   type: bitbucket
   events:
-    - "repo:push"
+    - "repo:refs_changed"
   secretRef:
     name: bitbucket-webhook-secret
   resources:
@@ -188,10 +187,10 @@ curl -I https://flux-webhook.example.com/
 
 If Bitbucket reports webhook delivery failures, check:
 - The webhook URL matches the receiver's webhook path exactly
-- The notification controller service is exposed and reachable
+- The webhook receiver service is exposed and reachable
 - TLS certificates are valid if SSL verification is enabled
 - Network policies are not blocking incoming traffic from Bitbucket's IP ranges
 
 ## Summary
 
-Configuring a Bitbucket webhook receiver in Flux enables push-based GitOps with immediate reconciliation on repository pushes. The setup requires creating a secret for authentication, defining a Receiver resource with type `bitbucket`, exposing the notification controller, and adding the webhook in Bitbucket's repository settings. This reduces deployment latency and keeps your cluster in sync with your Git repository in near real-time.
+Configuring a Bitbucket webhook receiver in Flux enables push-based GitOps with immediate reconciliation on repository pushes. The setup requires creating a secret for authentication, defining a Receiver resource with type `bitbucket`, exposing the webhook receiver service, and adding the webhook in Bitbucket's repository settings. This reduces deployment latency and keeps your cluster in sync with your Git repository in near real-time.
