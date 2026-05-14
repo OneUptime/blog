@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Redis, Kubernetes, Database, GitOps, Operator, Redis-cluster, Sentinel, Caching
 
-Description: A step-by-step guide to deploying the Redis Operator on Kubernetes using Flux CD for GitOps-managed Redis clusters with high availability.
+Description: A step-by-step guide to deploying the Redis Operator on Kubernetes using Flux CD for GitOps-managed Redis failover deployments with high availability.
 
 ---
 
 ## Introduction
 
-Redis is an in-memory data store widely used as a cache, message broker, and database. Running Redis in production on Kubernetes requires proper orchestration for high availability, failover, and persistence. The Spotahome Redis Operator (also known as redis-operator) simplifies the management of Redis Sentinel and Redis Cluster deployments on Kubernetes.
+Redis is an in-memory data store widely used as a cache, message broker, and database. Running Redis in production on Kubernetes requires proper orchestration for high availability, failover, and persistence. The Spotahome Redis Operator (also known as redis-operator) simplifies the management of Redis Sentinel-based failover deployments on Kubernetes.
 
-This guide demonstrates how to deploy the Redis Operator with Flux CD, set up Redis clusters with Sentinel-based failover, configure persistence, and manage Redis through GitOps.
+This guide demonstrates how to deploy the Redis Operator with Flux CD, set up Redis failover deployments with Sentinel-based failover, configure persistence, and manage Redis through GitOps.
 
 ## Prerequisites
 
@@ -30,12 +30,15 @@ Before you begin, ensure you have:
 clusters/
   my-cluster/
     databases/
+      redis-kustomization.yaml
       redis/
         namespace.yaml
         helmrepository.yaml
         helmrelease.yaml
         redis-failover.yaml
         auth-secret.yaml
+        service.yaml
+        monitoring.yaml
         kustomization.yaml
 ```
 
@@ -97,10 +100,7 @@ spec:
       limits:
         cpu: 300m
         memory: 256Mi
-    # RBAC configuration
-    rbac:
-      create: true
-    # Service account configuration
+    # Service account and RBAC configuration
     serviceAccount:
       create: true
 ```
@@ -230,7 +230,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/databases/redis/service.yaml
-# Service pointing to the Redis master (via Sentinel)
+# Alias for the operator-created Redis master service
 apiVersion: v1
 kind: Service
 metadata:
@@ -244,6 +244,8 @@ spec:
   selector:
     app.kubernetes.io/component: redis
     app.kubernetes.io/name: redis-cluster
+    app.kubernetes.io/part-of: redis-failover
+    redisfailovers-role: master
   ports:
     - name: redis
       port: 6379
@@ -264,6 +266,7 @@ spec:
   selector:
     app.kubernetes.io/component: sentinel
     app.kubernetes.io/name: redis-cluster
+    app.kubernetes.io/part-of: redis-failover
   ports:
     - name: sentinel
       port: 26379
@@ -303,7 +306,7 @@ spec:
             - containerPort: 9121
               name: metrics
           env:
-            # Connect to Redis via Sentinel
+            # Connect to the operator-managed Redis master service
             - name: REDIS_ADDR
               value: "redis://redis-master.redis.svc.cluster.local:6379"
             - name: REDIS_PASSWORD
@@ -407,7 +410,10 @@ kubectl get redisfailover -n redis
 kubectl get pods -n redis
 
 # Identify the current master
-kubectl exec -it redis-cluster-sentinel-0 -n redis -- \
+SENTINEL_POD=$(kubectl get pod -n redis \
+  -l app.kubernetes.io/component=sentinel,app.kubernetes.io/name=redis-cluster \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it "$SENTINEL_POD" -n redis -- \
   redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
 
 # Test Redis connectivity
@@ -444,16 +450,18 @@ data:
 
 ```bash
 # Check Sentinel logs
-kubectl logs -n redis redis-cluster-sentinel-0 --tail=100
+kubectl logs -n redis "$(kubectl get pod -n redis \
+  -l app.kubernetes.io/component=sentinel,app.kubernetes.io/name=redis-cluster \
+  -o jsonpath='{.items[0].metadata.name}')" --tail=100
 
 # Check Redis server logs
-kubectl logs -n redis redis-cluster-redis-0 --tail=100
+kubectl logs -n redis rfr-redis-cluster-0 --tail=100
 
 # Check Redis info
-kubectl exec -it redis-cluster-redis-0 -n redis -- \
+kubectl exec -it rfr-redis-cluster-0 -n redis -- \
   redis-cli -a "change-me-to-a-strong-redis-password" INFO replication
 ```
 
 ## Conclusion
 
-You have successfully deployed a highly available Redis cluster on Kubernetes using the Redis Operator and Flux CD. The setup provides automatic failover through Sentinel, persistent storage for data durability, and Prometheus-based monitoring. With Flux CD managing the deployment, all Redis configuration is version-controlled and automatically reconciled from your Git repository.
+You have successfully deployed a highly available Redis failover deployment on Kubernetes using the Redis Operator and Flux CD. The setup provides automatic failover through Sentinel, persistent storage for data durability, and Prometheus-based monitoring. With Flux CD managing the deployment, all Redis configuration is version-controlled and automatically reconciled from your Git repository.
