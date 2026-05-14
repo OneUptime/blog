@@ -12,13 +12,13 @@ Description: Step-by-step instructions for enabling and verifying Calico eBPF mo
 
 Before enabling eBPF in production, you must validate it in a lab environment that matches your production kernel version and Kubernetes distribution. eBPF availability is kernel-dependent, and some features require specific kernel versions. A lab validation catches incompatibilities, performance anomalies, and configuration mistakes before they affect production workloads.
 
-This guide walks through the complete eBPF validation workflow: kernel compatibility check, kube-proxy disablement, eBPF enablement, functional testing, and basic performance benchmarking.
+This guide walks through the complete eBPF validation workflow: kernel compatibility check, kube-proxy disablement, eBPF enablement, functional testing, and basic performance checks.
 
 ## Prerequisites
 
 - A lab Kubernetes cluster with at least two worker nodes
-- Calico v3.13+ installed in standard (iptables) mode
-- Linux kernel 5.3+ on all nodes (5.8+ recommended)
+- Calico installed with the Tigera Operator in standard (iptables) mode
+- Linux kernel 5.10+ on all nodes, or a supported distribution kernel with the required BPF features backported such as RHEL 8.4 kernel 4.18.0-305+
 - `kubectl` configured
 - `bpftool` available on nodes (install via `apt install linux-tools-$(uname -r)` on Ubuntu)
 
@@ -28,7 +28,7 @@ SSH to a worker node and check the kernel version and eBPF capabilities:
 
 ```bash
 uname -r
-# Expected: 5.8 or higher for full Calico eBPF support
+# Expected: 5.10 or higher on generic distributions
 
 # Check that BPF filesystem is mounted
 
@@ -42,14 +42,15 @@ If the BPF filesystem is not mounted, mount it:
 sudo mount bpffs /sys/fs/bpf -t bpf
 ```
 
-## Step 2: Configure Calico to Use the Kernel's BPF Filesystem
+## Step 2: Configure Calico to Talk Directly to the API Server
 
-Before enabling eBPF, ensure Calico's FelixConfiguration has the correct BPF mount path:
+Before disabling kube-proxy, configure Calico with the real API server endpoint so it does not rely on the Kubernetes service ClusterIP. Replace the host and port with the stable address for your control plane or API server load balancer:
 
 ```bash
-kubectl patch felixconfiguration default \
-  --type merge \
-  -p '{"spec":{"bpfEnabled":false,"bpfKubeProxyIptablesCleanupEnabled":true}}'
+kubectl create configmap kubernetes-services-endpoint \
+  -n tigera-operator \
+  --from-literal=KUBERNETES_SERVICE_HOST=<api-server-host> \
+  --from-literal=KUBERNETES_SERVICE_PORT=<api-server-port>
 ```
 
 ## Step 3: Disable kube-proxy
@@ -70,7 +71,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy
 ```bash
 kubectl patch installation.operator.tigera.io default \
   --type merge \
-  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","hostPorts":null}}}'
 ```
 
 Wait for calico-node pods to restart with eBPF mode:
@@ -88,11 +89,11 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i eb
 # Expected: "BPF enabled" or similar confirmation
 ```
 
-List eBPF programs loaded by Calico:
+Inspect Calico's eBPF data plane tables from a calico-node pod:
 
 ```bash
-# On a worker node:
-sudo bpftool prog list | grep calico
+CALICO_NODE=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system "$CALICO_NODE" -- calico-node -bpf nat dump
 ```
 
 ## Step 6: Functional Validation
@@ -102,6 +103,7 @@ Test pod-to-pod connectivity:
 ```bash
 kubectl run client --image=busybox --restart=Never -- sleep 3600
 kubectl run server --image=nginx --restart=Never
+kubectl wait --for=condition=Ready pod/client pod/server --timeout=120s
 SERVER_IP=$(kubectl get pod server -o jsonpath='{.status.podIP}')
 kubectl exec client -- wget -qO- http://$SERVER_IP
 ```
@@ -132,13 +134,14 @@ EOF
 kubectl exec client -- wget --timeout=5 -qO- http://$SERVER_IP
 ```
 
-## Step 7: Verify Source IP Preservation
+## Step 7: Verify Pod Source IP Visibility
 
 Deploy an echo server and check that the pod sees the client's pod IP (not a NAT IP):
 
 ```bash
 kubectl run echo --image=ealen/echo-server --restart=Never
-kubectl exec client -- wget -qO- http://$(kubectl get pod echo -o jsonpath='{.status.podIP}'):80 | grep -i "source-ip"
+kubectl wait --for=condition=Ready pod/echo --timeout=120s
+kubectl exec client -- wget -qO- http://$(kubectl get pod echo -o jsonpath='{.status.podIP}'):80 | grep -i "ip"
 ```
 
 ## Best Practices
