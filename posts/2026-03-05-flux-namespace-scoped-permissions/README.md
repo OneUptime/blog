@@ -66,12 +66,12 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: webapp-deployer
-    namespace: webapp
+    namespace: flux-system
 ```
 
 ## Step 2: Create Per-Namespace Service Accounts
 
-Create a dedicated service account in each managed namespace:
+Create a dedicated service account for each managed namespace in the same namespace as the Flux Kustomization objects. In this example, the Kustomizations are created in `flux-system`, so the service accounts must also exist in `flux-system`:
 
 ```yaml
 # service-accounts-per-namespace.yaml
@@ -80,28 +80,28 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: webapp-deployer
-  namespace: webapp
+  namespace: flux-system
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: api-deployer
-  namespace: api
+  namespace: flux-system
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: worker-deployer
-  namespace: worker
+  namespace: flux-system
 ```
 
 ## Step 3: Configure Kustomizations with Service Account Impersonation
 
-Use `spec.serviceAccountName` to bind each Kustomization to its namespace-scoped service account:
+Use `spec.serviceAccountName` to bind each Kustomization to the dedicated service account that has namespace-scoped permissions:
 
 ```yaml
 # kustomizations-per-namespace.yaml
-# Each Kustomization uses a namespace-scoped service account
+# Each Kustomization uses a dedicated service account with namespace-scoped permissions
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -183,23 +183,22 @@ kind: Kustomization
 namespace: webapp
 resources:
   - ../../base-role-template
-  - service-account.yaml
   - role-binding.yaml
 ```
 
 ## Step 5: Restrict the Kustomize Controller Itself
 
-Reduce the kustomize-controller's own ClusterRole to only allow impersonation:
+Replace the kustomize-controller's broad reconciliation binding with a constrained ClusterRole that keeps access to Flux objects and allows service account impersonation. Keep the Flux `crd-controller` binding in place so the controller can still access the core Flux CRDs and controller-runtime resources it needs:
 
 ```yaml
 # clusterrole-kustomize-minimal.yaml
-# Minimal ClusterRole for kustomize-controller (impersonation only)
+# Constrained ClusterRole for kustomize-controller reconciliation
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: flux-kustomize-minimal
 rules:
-  # Allow impersonating service accounts in any namespace
+  # Allow impersonating service accounts used by Kustomizations
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["impersonate"]
@@ -241,19 +240,19 @@ Test that each service account can only manage resources in its own namespace:
 ```bash
 # webapp-deployer should be able to create deployments in webapp
 kubectl auth can-i create deployments \
-  --as=system:serviceaccount:webapp:webapp-deployer \
+  --as=system:serviceaccount:flux-system:webapp-deployer \
   -n webapp
 # Expected: yes
 
 # webapp-deployer should NOT be able to create deployments in api
 kubectl auth can-i create deployments \
-  --as=system:serviceaccount:webapp:webapp-deployer \
+  --as=system:serviceaccount:flux-system:webapp-deployer \
   -n api
 # Expected: no
 
 # webapp-deployer should NOT have cluster-scoped permissions
 kubectl auth can-i create clusterroles \
-  --as=system:serviceaccount:webapp:webapp-deployer
+  --as=system:serviceaccount:flux-system:webapp-deployer
 # Expected: no
 
 # Verify Flux reconciliation works for each namespace
@@ -264,8 +263,8 @@ flux get kustomizations -A
 
 1. **Use service account impersonation**: Always pair namespace-scoped Roles with `spec.serviceAccountName` in Kustomizations.
 2. **Standardize Role templates**: Create a base Role template and use Kustomize overlays for each namespace.
-3. **Minimize controller permissions**: Reduce the kustomize-controller's own ClusterRole to impersonation and CRD management only.
+3. **Minimize controller permissions**: Replace the broad reconciliation binding with a constrained role while preserving the Flux controller RBAC it still needs.
 4. **Enable cross-namespace restrictions**: Use `--no-cross-namespace-refs` alongside namespace-scoped permissions.
 5. **Audit namespace access**: Regularly review RoleBindings to ensure no unauthorized access has been granted.
 
-Namespace-scoped permissions provide the strongest isolation model for Flux CD in multi-tenant clusters. By combining namespace-scoped Roles with service account impersonation, you ensure that each tenant can only manage resources within their own boundary.
+Namespace-scoped permissions provide a strong isolation model for Flux CD in multi-tenant clusters. By combining namespace-scoped Roles with service account impersonation, you ensure that each tenant can only manage resources within their own boundary.
