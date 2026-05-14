@@ -29,10 +29,10 @@ Start with a complete picture of the HelmRelease state:
 ```bash
 # Quick status overview
 
-flux get helmrelease --all-namespaces
+flux get helmreleases --all-namespaces
 
 # Detailed status for a specific HelmRelease
-flux get helmrelease my-app -n default
+flux get helmreleases -n default | grep my-app
 
 # Full YAML status with all conditions
 kubectl get helmrelease my-app -n default -o yaml
@@ -59,17 +59,20 @@ Released: False - UpgradeFailed - Helm upgrade failed: timed out waiting for the
 
 ### ArtifactFailed / Source Not Ready
 
-The chart source (HelmRepository, GitRepository, OCIRepository, or Bucket) is not available:
+The chart source is not available. With `spec.chart`, Flux creates a HelmChart from a HelmRepository, GitRepository, or Bucket source; with `spec.chartRef`, the HelmRelease can also refer directly to an OCIRepository or HelmChart:
 
 ```bash
 # Check all sources
 flux get sources all -A
 
 # Check the specific source referenced by the HelmRelease
-flux get source helm my-repo -n flux-system
+flux get sources helm -n flux-system | grep my-repo
 
 # If using GitRepository
-flux get source git my-repo -n flux-system
+flux get sources git -n flux-system | grep my-repo
+
+# If using OCIRepository with spec.chartRef
+flux get sources oci -n flux-system | grep my-repo
 
 # Force source reconciliation
 flux reconcile source helm my-repo -n flux-system
@@ -86,10 +89,10 @@ A HelmRelease listed in `dependsOn` is not ready:
 
 ```bash
 # Check the status of all HelmReleases to find the failing dependency
-flux get helmrelease --all-namespaces
+flux get helmreleases --all-namespaces
 
 # Check specific dependency
-flux get helmrelease my-dependency -n default
+flux get helmreleases -n default | grep my-dependency
 ```
 
 Fix the dependency first, then the dependent HelmRelease will automatically reconcile.
@@ -113,7 +116,7 @@ The Helm upgrade operation failed:
 # Check controller logs for upgrade errors
 kubectl logs -n flux-system deployment/helm-controller | grep "my-app" | grep -i "upgrade"
 
-# Check Helm release history
+# Check Helm release history, assuming the Helm release name and storage namespace match
 helm history my-app -n default
 ```
 
@@ -123,10 +126,10 @@ The install or upgrade succeeded but pods did not become ready within the timeou
 
 ```bash
 # Check pod status
-kubectl get pods -n default -l app.kubernetes.io/name=my-app
+kubectl get pods -n default -l app.kubernetes.io/instance=my-app
 
 # Check pod events for the reason they are not ready
-kubectl describe pod -n default -l app.kubernetes.io/name=my-app
+kubectl describe pod -n default -l app.kubernetes.io/instance=my-app
 
 # Common issues: ImagePullBackOff, CrashLoopBackOff, Pending (scheduling)
 kubectl get events -n default --sort-by='{.lastTimestamp}' | grep my-app
@@ -194,14 +197,20 @@ After fixing the underlying issue:
 flux reconcile helmrelease my-app -n default
 
 # Watch the result
-flux get helmrelease my-app -n default --watch
+flux get helmreleases -n default --watch
 ```
 
-If the HelmRelease is stuck and reconciliation does not help:
+If install or upgrade retries are exhausted, reset the failure counters while reconciling:
 
 ```bash
-# Suspend and resume to reset the state
-flux suspend helmrelease my-app -n default
+# Reset remediation retry counters and reconcile
+flux reconcile helmrelease my-app -n default --reset
+```
+
+If the HelmRelease is suspended:
+
+```bash
+# Resume reconciliation
 flux resume helmrelease my-app -n default
 ```
 
@@ -211,18 +220,18 @@ Use this checklist to systematically work through a Not Ready HelmRelease:
 
 ```bash
 # 1. Check the HelmRelease status and conditions
-flux get helmrelease my-app -n default
+flux get helmreleases -n default | grep my-app
 
 # 2. Check the chart source
 flux get sources all -n flux-system
 
 # 3. Check dependencies
-flux get helmrelease --all-namespaces | grep -v "True"
+flux get helmreleases --all-namespaces | grep -v "True"
 
 # 4. Check helm-controller logs
 kubectl logs -n flux-system deployment/helm-controller --since=15m | grep "my-app"
 
-# 5. Check the Helm release in the cluster
+# 5. Check the Helm release in the cluster, assuming the release name and storage namespace match
 helm list -n default -a | grep my-app
 helm history my-app -n default
 
@@ -247,9 +256,9 @@ flux reconcile helmrelease my-app -n default
 | Chart not found | Controller logs | Verify chart name and version |
 | Template error | Controller logs | Fix values or chart templates |
 | Pods not ready | `kubectl get pods` | Fix image, resources, or config |
-| Dependency not ready | `flux get hr -A` | Fix the dependency first |
+| Dependency not ready | `flux get helmreleases -A` | Fix the dependency first |
 | Timeout | HelmRelease conditions | Increase timeout or fix pod startup |
-| Retries exhausted | HelmRelease conditions | Fix root cause, suspend/resume |
+| Retries exhausted | HelmRelease conditions | Fix root cause, then run `flux reconcile hr my-app --reset` |
 | Controller down | `kubectl get pods -n flux-system` | Fix controller resource limits |
 
 ## Best Practices
