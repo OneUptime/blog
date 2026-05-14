@@ -10,7 +10,7 @@ Description: A practical guide to using the flux diff kustomization command to c
 
 ## Introduction
 
-Before applying changes to a production Kubernetes cluster, you want to know exactly what will change. The `flux diff kustomization` command compares the rendered output of a local Kustomization against the live resources in your cluster, showing a precise diff of what would change if the new configuration were applied.
+Before applying changes to a production Kubernetes cluster, you want to know exactly what will change. The `flux diff kustomization` command builds the local Kustomization, performs a server-side dry-run against your cluster, and prints a precise diff of what would change if the new configuration were applied.
 
 This guide covers how to use `flux diff kustomization` to safely preview changes, integrate diffs into your workflow, and avoid unexpected modifications to your cluster.
 
@@ -39,8 +39,8 @@ flux get kustomizations --all-namespaces
 The command performs these steps:
 
 1. Builds the Kustomization from your local files (just like `flux build kustomization`)
-2. Fetches the corresponding live resources from the cluster
-3. Computes and displays the diff between the two
+2. Performs a server-side dry-run against the Kubernetes API
+3. Computes and displays the diff against the live state in the cluster
 
 ```mermaid
 graph LR
@@ -102,7 +102,7 @@ If there are no differences, the command produces no output and exits with code 
 
 ## Using the Path Flag
 
-The `--path` flag specifies the local directory containing your Kustomization files:
+The `--path` flag specifies the local directory that matches the Flux Kustomization's `spec.path`:
 
 ```bash
 # Diff using an absolute path
@@ -219,11 +219,16 @@ BASE_PATH="./clusters/production"
 for KS in "${KUSTOMIZATIONS[@]}"; do
     echo "=== Diffing Kustomization: $KS ==="
     DIFF_OUTPUT=$(flux diff kustomization "$KS" --path "$BASE_PATH/$KS" 2>&1)
+    STATUS=$?
 
-    if [ -z "$DIFF_OUTPUT" ]; then
+    if [ "$STATUS" -eq 0 ]; then
         echo "No changes detected."
+    elif [ "$STATUS" -eq 1 ]; then
+        echo "$DIFF_OUTPUT"
     else
         echo "$DIFF_OUTPUT"
+        echo "Diff failed for $KS"
+        exit "$STATUS"
     fi
     echo ""
 done
@@ -280,7 +285,7 @@ less /tmp/diff.txt
 # Filter for specific resources
 flux diff kustomization apps --path ./clusters/production/apps | grep -A20 "Deployment"
 
-# Count the number of changed resources
+# Count diff headers for changed resources
 flux diff kustomization apps --path ./clusters/production/apps | grep "^---\|^+++" | wc -l
 ```
 
@@ -297,6 +302,7 @@ flux diff kustomization apps --path ./clusters/production/apps
 echo "Exit code: $?"
 # Exit code 0 = no differences
 # Exit code 1 = differences found
+# Exit code greater than 1 = command failed with an error
 ```
 
 ## Using Exit Codes in Scripts
@@ -311,13 +317,20 @@ The exit code is useful for automation:
 KS_NAME=${1:-apps}
 KS_PATH=${2:-./clusters/production/apps}
 
-if flux diff kustomization "$KS_NAME" --path "$KS_PATH" > /dev/null 2>&1; then
+flux diff kustomization "$KS_NAME" --path "$KS_PATH" > /tmp/flux-diff.txt 2>&1
+STATUS=$?
+
+if [ "$STATUS" -eq 0 ]; then
     echo "No changes pending for $KS_NAME"
     exit 0
-else
+elif [ "$STATUS" -eq 1 ]; then
     echo "Changes detected for $KS_NAME:"
-    flux diff kustomization "$KS_NAME" --path "$KS_PATH"
+    cat /tmp/flux-diff.txt
     exit 1
+else
+    echo "Diff failed for $KS_NAME:"
+    cat /tmp/flux-diff.txt
+    exit "$STATUS"
 fi
 ```
 
