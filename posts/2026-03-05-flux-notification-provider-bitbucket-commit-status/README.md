@@ -24,8 +24,7 @@ This guide covers the full setup from creating a Bitbucket app password to verif
 
 In Bitbucket, navigate to **Personal settings** then **App passwords**. Click **Create app password** and give it a label like "Flux CD". Grant the following permissions:
 
-- **Repositories**: Read
-- **Pull requests**: Read and write (for commit status)
+- **Repositories**: Read and write
 
 Copy the generated app password.
 
@@ -48,14 +47,14 @@ Define a Provider resource for Bitbucket commit status updates.
 ```yaml
 # provider-bitbucket-commit-status.yaml
 # Configures Flux to update Bitbucket commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: bitbucket-status-provider
   namespace: flux-system
 spec:
-  # Use "bitbucketserver" as the provider type
-  type: bitbucketserver
+  # Use "bitbucket" as the provider type for Bitbucket Cloud
+  type: bitbucket
   # The Bitbucket repository address
   address: https://bitbucket.org/YOUR_WORKSPACE/YOUR_REPO
   # Reference to the secret containing the Bitbucket credentials
@@ -76,8 +75,8 @@ Create an Alert that triggers commit status updates.
 
 ```yaml
 # alert-bitbucket-commit-status.yaml
-# Updates Bitbucket commit statuses based on Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Updates Bitbucket commit statuses based on Flux Kustomization events
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: bitbucket-status-alert
@@ -89,8 +88,6 @@ spec:
   eventSeverity: info
   eventSources:
     - kind: Kustomization
-      name: "*"
-    - kind: HelmRelease
       name: "*"
 ```
 
@@ -128,8 +125,8 @@ Navigate to your Bitbucket repository and check the latest commit. You should se
 graph LR
     A[Git Push] --> B[Bitbucket Repository]
     B -->|detected by| C[Flux Source Controller]
-    C -->|triggers| D[Flux Kustomize/Helm Controller]
-    D -->|emits event| E[Notification Controller]
+    C -->|triggers| D[Flux Kustomize Controller]
+    D -->|emits Kustomization event| E[Notification Controller]
     E -->|matches Alert| F[Provider: bitbucket]
     F -->|Bitbucket Build Status API| B
 ```
@@ -154,31 +151,31 @@ Create separate providers for each Bitbucket repository:
 
 ```yaml
 # Provider for the platform repository
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: bitbucket-platform
   namespace: flux-system
 spec:
-  type: bitbucketserver
+  type: bitbucket
   address: https://bitbucket.org/YOUR_WORKSPACE/platform
   secretRef:
     name: bitbucket-token
 ---
 # Provider for the services repository
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: bitbucket-services
   namespace: flux-system
 spec:
-  type: bitbucketserver
+  type: bitbucket
   address: https://bitbucket.org/YOUR_WORKSPACE/services
   secretRef:
     name: bitbucket-token
 ---
 # Alert for platform repository resources
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: bitbucket-platform-alert
@@ -192,7 +189,7 @@ spec:
       name: platform
 ---
 # Alert for services repository resources
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: bitbucket-services-alert
@@ -208,17 +205,17 @@ spec:
 
 ## Bitbucket Server (Self-Hosted)
 
-For Bitbucket Server (self-hosted), update the address to your instance:
+For Bitbucket Server/Data Center (self-hosted), use the `bitbucketserver` provider type and set the address to the repository's HTTPS clone URL:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: bitbucket-server-status
   namespace: flux-system
 spec:
   type: bitbucketserver
-  address: https://bitbucket.your-company.com/projects/PROJ/repos/REPO
+  address: https://bitbucket.your-company.com/scm/PROJ/REPO.git
   secretRef:
     name: bitbucket-server-token
 ```
@@ -228,7 +225,7 @@ spec:
 If commit statuses are not appearing in Bitbucket:
 
 1. **Credentials format**: The token in the secret must be in the format `username:app-password`.
-2. **App password permissions**: Ensure the app password has repository read and pull request write permissions.
+2. **App password permissions**: Ensure the app password has repository read and write permissions.
 3. **Repository URL**: The `address` must include the workspace and repository slug.
 4. **Commit SHA**: The revision in the Flux event must match a valid commit in the repository.
 5. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
