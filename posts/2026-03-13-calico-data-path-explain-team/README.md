@@ -49,7 +49,7 @@ graph LR
 
 **eBPF mode - the instant lookup**:
 
-> "In eBPF mode, the first check (service routing) and the policy check are collapsed into a single lookup in a hash table. Instead of scanning through rules sequentially, the kernel looks up the destination in a table and gets the answer instantly."
+> "In eBPF mode, Calico moves service routing and policy enforcement into BPF programs attached to kernel hooks. Service frontends, backends, and policy selector IP sets are stored in BPF maps, so the kernel can do direct map lookups instead of walking long iptables service chains."
 
 ## Level 3: Hands-On Investigation (30 minutes)
 
@@ -57,44 +57,51 @@ For platform engineers who need to debug the data path:
 
 **Identifying which pod interface to inspect**:
 ```bash
-# Get the veth interface name for a pod
+# Get the host-side veth interface name for a pod
 
-POD_IFACE=$(kubectl exec my-pod -- ip route show | grep default | awk '{print $NF}')
-echo "Pod's interface: $POD_IFACE"
+POD=my-pod
+NS=default
 
-# On the node, find the corresponding host-side veth
-ip link | grep "cali"
+NODE=$(kubectl get pod -n "$NS" "$POD" -o jsonpath='{.spec.nodeName}')
+POD_IFLINK=$(kubectl exec -n "$NS" "$POD" -- cat /sys/class/net/eth0/iflink)
+
+echo "Pod runs on node: $NODE"
+echo "Pod eth0 peer ifindex on that node: $POD_IFLINK"
+
+# Run this on the node where the pod is scheduled
+HOST_IFACE=$(ip -o link | awk -F': ' -v ifindex="$POD_IFLINK" '$1 == ifindex {print $2}' | cut -d@ -f1)
+echo "Host-side interface: $HOST_IFACE"
 ```
 
 **Tracing a packet through iptables chains**:
 ```bash
-# List Calico's policy chains for a specific pod interface
-sudo iptables -L cali-tw-<pod-iface> -n -v --line-numbers
+# List Calico's policy chains for a specific host-side pod interface
+sudo iptables -L cali-tw-<host-iface> -n -v --line-numbers
 # cali-tw = "calico traffic-to-workload" (ingress policy)
 
-sudo iptables -L cali-fw-<pod-iface> -n -v --line-numbers
+sudo iptables -L cali-fw-<host-iface> -n -v --line-numbers
 # cali-fw = "calico from-workload" (egress policy)
 ```
 
 **Using iptables logging for debugging**:
 ```bash
 # Temporarily add logging to see which rule matches
-sudo iptables -I cali-tw-<iface> 1 -j LOG --log-prefix "CALICO-DEBUG: "
+sudo iptables -I cali-tw-<host-iface> 1 -j LOG --log-prefix "CALICO-DEBUG: "
 sudo journalctl -f | grep "CALICO-DEBUG"
 # Remember to remove after debugging
-sudo iptables -D cali-tw-<iface> 1
+sudo iptables -D cali-tw-<host-iface> 1
 ```
 
 ## Common Questions
 
 **Q: Where exactly does the policy check happen?**
-A: On the node where the destination pod runs. The check happens when the packet arrives at the host-side of the pod's veth pair.
+A: Ingress policy is checked on the node where the destination pod runs, when the packet arrives at the host-side of the pod's veth pair. Egress policy is checked on the node where the source pod runs, as traffic leaves that workload.
 
 **Q: What happens if Felix crashes?**
 A: Existing iptables/eBPF rules stay in place. Traffic based on the last-known policy continues. New policy changes won't be applied until Felix restarts.
 
 **Q: Why is eBPF faster?**
-A: iptables checks rules sequentially (10,000 services = 10,000 rule checks for some packets). eBPF uses hash maps - any lookup is O(1) regardless of the number of services or pods.
+A: In iptables mode, kube-proxy service handling and policy enforcement rely on chains of rules, so traversal cost can grow as services and rules increase. In eBPF mode, Calico uses BPF programs and maps for service load balancing and policy data, reducing long sequential rule walks.
 
 ## Best Practices
 
