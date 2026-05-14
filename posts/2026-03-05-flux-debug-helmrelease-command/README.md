@@ -8,7 +8,7 @@ Description: Learn how to use the flux debug helmrelease CLI command to diagnose
 
 ---
 
-The `flux debug helmrelease` command (also available as `flux debug hr`) is a CLI tool that provides a consolidated view of a HelmRelease and its related resources. Instead of running multiple `kubectl` commands to check the HelmRelease status, chart source, Helm release history, and controller logs, you can get all this information in a single command. This makes it significantly faster to diagnose issues.
+The `flux debug helmrelease` command (also available as `flux debug hr`) is a CLI tool that helps troubleshoot failing HelmRelease reconciliations. It can print the HelmRelease status, export the final merged values, or print reconciliation history depending on the flags you use. This makes it faster to diagnose many common issues.
 
 ## Prerequisites
 
@@ -21,27 +21,26 @@ The `flux debug helmrelease` command (also available as `flux debug hr`) is a CL
 The simplest form of the command targets a specific HelmRelease:
 
 ```bash
-# Debug a HelmRelease in the default namespace
+# Print the status of a HelmRelease in the default Flux namespace
 
-flux debug helmrelease my-app
+flux debug helmrelease my-app --show-status
 
 # Debug a HelmRelease in a specific namespace
-flux debug helmrelease my-app -n production
+flux debug helmrelease my-app -n production --show-status
 
 # Using the short alias
-flux debug hr my-app -n production
+flux debug hr my-app -n production --show-status
 ```
 
 ## What the Command Shows
 
-The `flux debug hr` command collects and displays:
+The `flux debug hr` command can display:
 
 1. **HelmRelease status** -- The current conditions, including Ready status, last applied revision, and failure messages.
-2. **Chart source status** -- Whether the referenced HelmRepository, GitRepository, OCIRepository, or Bucket is ready and the latest available artifact.
-3. **Helm release information** -- The current Helm release version, status, and chart version installed in the cluster.
-4. **Related events** -- Kubernetes events associated with the HelmRelease.
+2. **Final values** -- The computed values after merging inline values with referenced ConfigMaps and Secrets.
+3. **Reconciliation history** -- Previous release entries recorded in the HelmRelease status.
 
-This consolidated output replaces what would otherwise require running multiple separate commands.
+For related source status, events, and controller logs, use complementary Flux and Kubernetes commands such as `flux get sources helm`, `kubectl events --for HelmRelease/<name>`, and `flux logs`.
 
 ## Example Output
 
@@ -49,10 +48,10 @@ When you run `flux debug hr` against a healthy HelmRelease, the output looks lik
 
 ```bash
 # Debug a healthy HelmRelease
-flux debug hr nginx -n default
+flux debug hr nginx -n default --show-status
 ```
 
-The output will show the HelmRelease conditions, the source status, and the applied version. For a failing HelmRelease, the output highlights the error conditions and provides context about the failure.
+The output will show the HelmRelease status, including conditions and failure messages. For a failing HelmRelease, the output highlights the error conditions and provides context about the failure.
 
 ## Debugging a Failing HelmRelease
 
@@ -60,13 +59,12 @@ When a HelmRelease is in a failed state, `flux debug hr` shows the failure reaso
 
 ```bash
 # Debug a failing HelmRelease
-flux debug hr my-app -n default
+flux debug hr my-app -n default --show-status
 ```
 
 The output will include details such as:
 - The specific failure reason (InstallFailed, UpgradeFailed, etc.)
 - The error message from the Helm operation
-- Whether the source is available
 - The last successful revision vs. the attempted revision
 
 ## Combining with Other Flux Commands
@@ -75,13 +73,13 @@ The debug command is often the first step in a debugging workflow. Based on its 
 
 ```bash
 # Step 1: Get the overview
-flux debug hr my-app -n default
+flux debug hr my-app -n default --show-status
 
 # Step 2: If the source is the issue, check it
-flux get source helm my-repo -n flux-system
+flux get sources helm -n flux-system
 
 # Step 3: If the install/upgrade failed, check controller logs
-kubectl logs -n flux-system deployment/helm-controller | grep "my-app" | tail -20
+flux logs --level=error --kind=HelmRelease --name=my-app --namespace=default
 
 # Step 4: If pods are not ready, check them
 kubectl get pods -n default -l app.kubernetes.io/instance=my-app
@@ -94,18 +92,18 @@ To get an overview of all HelmReleases across namespaces:
 
 ```bash
 # List all HelmReleases with their status
-flux get helmrelease --all-namespaces
+flux get helmreleases --all-namespaces
 
 # Filter for only failing HelmReleases
-flux get helmrelease --all-namespaces | grep -v "True"
+flux get helmreleases --all-namespaces --status-selector ready=false
 ```
 
 Then debug specific failing ones:
 
 ```bash
 # Debug each failing HelmRelease
-flux debug hr failing-app-1 -n namespace-a
-flux debug hr failing-app-2 -n namespace-b
+flux debug hr failing-app-1 -n namespace-a --show-status
+flux debug hr failing-app-2 -n namespace-b --show-status
 ```
 
 ## Using flux debug hr in CI/CD Pipelines
@@ -126,11 +124,11 @@ echo "Waiting for HelmRelease ${RELEASE_NAME} to become ready..."
 elapsed=0
 while [ $elapsed -lt $TIMEOUT ]; do
     # Check if the HelmRelease is ready
-    STATUS=$(flux get hr ${RELEASE_NAME} -n ${NAMESPACE} -o json | jq -r '.[0].isReady')
+    STATUS=$(kubectl get helmrelease "${RELEASE_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
 
-    if [ "$STATUS" = "true" ]; then
+    if [ "$STATUS" = "True" ]; then
         echo "HelmRelease ${RELEASE_NAME} is ready."
-        flux debug hr ${RELEASE_NAME} -n ${NAMESPACE}
+        flux debug hr ${RELEASE_NAME} -n ${NAMESPACE} --show-status
         exit 0
     fi
 
@@ -141,7 +139,7 @@ done
 
 echo "Timeout: HelmRelease ${RELEASE_NAME} did not become ready within ${TIMEOUT}s."
 echo "Debug output:"
-flux debug hr ${RELEASE_NAME} -n ${NAMESPACE}
+flux debug hr ${RELEASE_NAME} -n ${NAMESPACE} --show-status
 exit 1
 ```
 
@@ -151,11 +149,9 @@ The following table shows what `flux debug hr` replaces:
 
 | Information | Manual Command | With flux debug hr |
 |---|---|---|
-| HelmRelease status | `kubectl get hr my-app -o yaml` | Included |
-| Source status | `flux get source helm my-repo` | Included |
-| Conditions | `kubectl get hr -o jsonpath=...` | Included |
-| Events | `kubectl describe hr my-app` | Included |
-| All of the above | Multiple commands | Single command |
+| HelmRelease status | `kubectl get hr my-app -o yaml` | `flux debug hr my-app --show-status` |
+| Final merged values | Manual inspection of HelmRelease values and referenced ConfigMaps/Secrets | `flux debug hr my-app --show-values` |
+| Reconciliation history | `kubectl get hr my-app -o jsonpath=...` | `flux debug hr my-app --show-history` |
 
 ## Additional Flux Debug Commands
 
@@ -163,9 +159,9 @@ The `flux debug` family includes other useful subcommands:
 
 ```bash
 # Debug a Kustomization
-flux debug kustomization my-kustomization -n flux-system
+flux debug kustomization my-kustomization -n flux-system --show-status
 
-# These commands follow the same pattern as flux debug hr
+# Kustomization debug also supports --show-history and --show-vars
 ```
 
 ## Reconciliation After Debugging
@@ -177,7 +173,7 @@ Once you have identified and fixed the issue, trigger a reconciliation:
 flux reconcile helmrelease my-app -n default
 
 # Verify with debug
-flux debug hr my-app -n default
+flux debug hr my-app -n default --show-status
 
 # If stuck, suspend and resume
 flux suspend hr my-app -n default
@@ -190,7 +186,7 @@ Here is a complete debugging workflow using `flux debug hr` as the starting poin
 
 ```bash
 # 1. Start with the debug command
-flux debug hr my-app -n default
+flux debug hr my-app -n default --show-status
 
 # 2. Based on the output, take the appropriate action:
 
@@ -211,17 +207,17 @@ flux suspend hr my-app -n default
 flux resume hr my-app -n default
 
 # 3. Verify the fix
-flux debug hr my-app -n default
+flux debug hr my-app -n default --show-status
 ```
 
 ## Best Practices
 
-1. **Start with flux debug hr.** It should be your first command when investigating a HelmRelease issue.
+1. **Start with flux debug hr.** It should be one of your first commands when investigating a HelmRelease issue.
 2. **Use the short alias.** `flux debug hr` is faster to type than `flux debug helmrelease`.
-3. **Check all namespaces.** When diagnosing cluster-wide issues, use `flux get hr -A` first to find which releases are affected.
+3. **Check all namespaces.** When diagnosing cluster-wide issues, use `flux get helmreleases -A` first to find which releases are affected.
 4. **Incorporate into runbooks.** Include `flux debug hr` commands in your operational runbooks and incident response procedures.
-5. **Use in automation.** Add debug output to your CI/CD pipeline logs for easier post-deployment troubleshooting.
+5. **Use in automation.** Add debug output to your CI/CD pipeline logs for easier post-deployment troubleshooting, but be careful with `--show-values` because referenced Secrets can be printed.
 
 ## Conclusion
 
-The `flux debug helmrelease` (or `flux debug hr`) command is an essential tool for diagnosing HelmRelease issues in Flux CD. It consolidates status, source, release, and event information into a single output, saving time and reducing the number of commands you need to run. Make it the first stop in your debugging workflow whenever a HelmRelease is not behaving as expected.
+The `flux debug helmrelease` (or `flux debug hr`) command is a useful tool for diagnosing HelmRelease issues in Flux CD. It can print status, final values, and reconciliation history, saving time and reducing the number of commands you need to run. Make it an early stop in your debugging workflow whenever a HelmRelease is not behaving as expected.
