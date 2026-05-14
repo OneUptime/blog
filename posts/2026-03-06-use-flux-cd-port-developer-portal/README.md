@@ -285,77 +285,97 @@ spec:
   values:
     # Port API configuration
     secret:
-      existingSecret: port-credentials
+      useExistingSecret: true
+      name: port-credentials
     # Cluster identifier in Port
     stateKey: "production-cluster"
+    extraEnv:
+      - name: CLUSTER_NAME
+        value: "production-cluster"
     # Event listener configuration
     eventListener:
       type: POLLING
     # Resource mapping configuration
-    resources:
-      # Map Flux GitRepositories to Port entities
-      - kind: source.toolkit.fluxcd.io/v1/GitRepository
-        selector:
-          query: "true"
-        port:
-          entity:
-            mappings:
-              - identifier: ".metadata.name + \"-\" + .metadata.namespace"
-                title: .metadata.name
-                blueprint: '"fluxGitRepository"'
-                properties:
-                  url: .spec.url
-                  branch: .spec.ref.branch
-                  revision: .status.artifact.revision
-                  ready: '.status.conditions[] | select(.type=="Ready") | .status == "True"'
-                  lastReconciled: '.status.conditions[] | select(.type=="Ready") | .lastTransitionTime'
-                  interval: .spec.interval
-                relations:
-                  namespace: '".metadata.namespace"'
+    overwriteConfigurationOnRestart: true
+    configMap:
+      config: |
+        resources:
+          # Map Kubernetes namespaces to Port entities
+          - kind: v1/namespaces
+            selector:
+              query: "true"
+            port:
+              entity:
+                mappings:
+                  - identifier: .metadata.name + "-" + env.CLUSTER_NAME
+                    title: .metadata.name
+                    blueprint: '"fluxNamespace"'
+                    properties:
+                      clusterName: env.CLUSTER_NAME
 
-      # Map Flux Kustomizations to Port entities
-      - kind: kustomize.toolkit.fluxcd.io/v1/Kustomization
-        selector:
-          query: "true"
-        port:
-          entity:
-            mappings:
-              - identifier: ".metadata.name + \"-\" + .metadata.namespace"
-                title: .metadata.name
-                blueprint: '"fluxKustomization"'
-                properties:
-                  path: .spec.path
-                  sourceRef: '.spec.sourceRef.kind + "/" + .spec.sourceRef.name'
-                  revision: .status.lastAppliedRevision
-                  ready: '.status.conditions[] | select(.type=="Ready") | .status == "True"'
-                  suspended: '.spec.suspend // false'
-                  lastReconciled: '.status.conditions[] | select(.type=="Ready") | .lastTransitionTime'
-                  statusMessage: '.status.conditions[] | select(.type=="Ready") | .message'
-                  prune: '.spec.prune // false'
-                relations:
-                  namespace: '".metadata.namespace"'
-                  source: '.spec.sourceRef.name + "-" + .metadata.namespace'
+          # Map Flux GitRepositories to Port entities
+          - kind: source.toolkit.fluxcd.io/v1/gitrepositories
+            selector:
+              query: "true"
+            port:
+              entity:
+                mappings:
+                  - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                    title: .metadata.name
+                    blueprint: '"fluxGitRepository"'
+                    properties:
+                      url: .spec.url
+                      branch: .spec.ref.branch // .spec.ref.tag // .spec.ref.semver // .spec.ref.name
+                      revision: .status.artifact.revision
+                      ready: 'any(.status.conditions[]?; .type == "Ready" and .status == "True")'
+                      lastReconciled: '[.status.conditions[]? | select(.type == "Ready") | .lastTransitionTime] | first'
+                      interval: .spec.interval
+                    relations:
+                      namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
 
-      # Map Flux HelmReleases to Port entities
-      - kind: helm.toolkit.fluxcd.io/v2/HelmRelease
-        selector:
-          query: "true"
-        port:
-          entity:
-            mappings:
-              - identifier: ".metadata.name + \"-\" + .metadata.namespace"
-                title: .metadata.name
-                blueprint: '"fluxHelmRelease"'
-                properties:
-                  chartName: .spec.chart.spec.chart
-                  chartVersion: .spec.chart.spec.version
-                  ready: '.status.conditions[] | select(.type=="Ready") | .status == "True"'
-                  suspended: '.spec.suspend // false'
-                  lastReconciled: '.status.conditions[] | select(.type=="Ready") | .lastTransitionTime'
-                  statusMessage: '.status.conditions[] | select(.type=="Ready") | .message'
-                  helmVersion: .status.lastAppliedRevision
-                relations:
-                  namespace: '".metadata.namespace"'
+          # Map Flux Kustomizations to Port entities
+          - kind: kustomize.toolkit.fluxcd.io/v1/kustomizations
+            selector:
+              query: "true"
+            port:
+              entity:
+                mappings:
+                  - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                    title: .metadata.name
+                    blueprint: '"fluxKustomization"'
+                    properties:
+                      path: .spec.path
+                      sourceRef: .spec.sourceRef.kind + "/" + .spec.sourceRef.name
+                      revision: .status.lastAppliedRevision
+                      ready: 'any(.status.conditions[]?; .type == "Ready" and .status == "True")'
+                      suspended: '.spec.suspend // false'
+                      lastReconciled: '[.status.conditions[]? | select(.type == "Ready") | .lastTransitionTime] | first'
+                      statusMessage: '[.status.conditions[]? | select(.type == "Ready") | .message] | first'
+                      prune: '.spec.prune // false'
+                    relations:
+                      namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
+                      source: .spec.sourceRef.name + "-" + (.spec.sourceRef.namespace // .metadata.namespace) + "-" + env.CLUSTER_NAME
+
+          # Map Flux HelmReleases to Port entities
+          - kind: helm.toolkit.fluxcd.io/v2/helmreleases
+            selector:
+              query: "true"
+            port:
+              entity:
+                mappings:
+                  - identifier: .metadata.name + "-" + .metadata.namespace + "-" + env.CLUSTER_NAME
+                    title: .metadata.name
+                    blueprint: '"fluxHelmRelease"'
+                    properties:
+                      chartName: .spec.chart.spec.chart // .status.history[0].chartName
+                      chartVersion: .spec.chart.spec.version // .status.history[0].chartVersion // .status.lastAttemptedRevision
+                      ready: 'any(.status.conditions[]?; .type == "Ready" and .status == "True")'
+                      suspended: '.spec.suspend // false'
+                      lastReconciled: '[.status.conditions[]? | select(.type == "Ready") | .lastTransitionTime] | first'
+                      statusMessage: '[.status.conditions[]? | select(.type == "Ready") | .message] | first'
+                      helmVersion: .status.lastAttemptedRevision
+                    relations:
+                      namespace: .metadata.namespace + "-" + env.CLUSTER_NAME
 ```
 
 Apply the resources:
@@ -393,15 +413,14 @@ metadata:
   namespace: flux-system
 spec:
   type: generic
-  # Secret for webhook authentication
+  # Secret used to generate the webhook path
   secretRef:
     name: port-webhook-token
   resources:
-    - kind: Kustomization
-      name: "*"
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      name: flux-system
       namespace: flux-system
-    - kind: HelmRelease
-      name: "*"
 ---
 # Secret for the webhook token
 apiVersion: v1
