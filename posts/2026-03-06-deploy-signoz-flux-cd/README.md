@@ -12,7 +12,7 @@ Description: A step-by-step guide to deploying Signoz, an open-source observabil
 
 Signoz is an open-source observability platform that provides metrics, traces, and logs in a single pane of glass. Built on top of OpenTelemetry and ClickHouse, Signoz offers a powerful alternative to commercial observability tools like Datadog and New Relic. Deploying Signoz with Flux CD ensures your observability stack is managed through GitOps, making upgrades and configuration changes trackable and reversible.
 
-This guide walks you through deploying Signoz on Kubernetes using Flux CD, including configuring the OpenTelemetry collector, ClickHouse storage, and the Signoz query service.
+This guide walks you through deploying Signoz on Kubernetes using Flux CD, including configuring the OpenTelemetry collector, ClickHouse storage, and the Signoz service.
 
 ## Prerequisites
 
@@ -29,10 +29,12 @@ Before starting, ensure you have:
 ```text
 clusters/
   my-cluster/
+    signoz-sync.yaml
     signoz/
       namespace.yaml
       helmrepository.yaml
       helmrelease.yaml
+      ingress.yaml
       kustomization.yaml
 ```
 
@@ -81,7 +83,7 @@ spec:
   chart:
     spec:
       chart: signoz
-      version: "0.52.x"
+      version: "0.122.x"
       sourceRef:
         kind: HelmRepository
         name: signoz
@@ -89,42 +91,25 @@ spec:
   # Signoz has many components, allow extra time for deployment
   timeout: 15m
   values:
-    # Frontend configuration for the Signoz web UI
-    frontend:
+    global:
+      storageClass: standard
+
+    # SigNoz serves the API and web UI
+    signoz:
       replicaCount: 1
       resources:
         requests:
           cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
           memory: 256Mi
-
-    # Query service processes and returns observability data
-    queryService:
-      replicaCount: 1
-      resources:
-        requests:
-          cpu: 250m
-          memory: 512Mi
         limits:
           cpu: "1"
           memory: 1Gi
 
-    # Alert manager handles alerting rules and notifications
-    alertmanager:
-      replicaCount: 1
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
-
     # ClickHouse is the storage backend for all observability data
     clickhouse:
-      replicaCount: 1
+      layout:
+        shardsCount: 1
+        replicasCount: 1
       resources:
         requests:
           cpu: 500m
@@ -135,7 +120,6 @@ spec:
       persistence:
         enabled: true
         size: 50Gi
-        storageClass: standard
       # Cold storage configuration for long-term retention
       coldStorage:
         enabled: false
@@ -159,17 +143,6 @@ spec:
                 endpoint: 0.0.0.0:4317
               http:
                 endpoint: 0.0.0.0:4318
-
-    # OpenTelemetry Collector running as a DaemonSet for node-level collection
-    otelCollectorMetrics:
-      enabled: true
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
 ```
 
 ## Step 4: Create the Kustomization
@@ -184,6 +157,7 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - helmrelease.yaml
+  - ingress.yaml
 ```
 
 ## Step 5: Create the Flux Kustomization
@@ -207,11 +181,6 @@ spec:
   prune: true
   wait: true
   timeout: 15m
-  healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: signoz
-      namespace: signoz
 ```
 
 ## Step 6: Configure Application Instrumentation
@@ -242,6 +211,9 @@ spec:
             # Point the OTLP exporter to the Signoz collector service
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://signoz-otel-collector.signoz.svc:4317"
+            # Use OTLP/gRPC when targeting port 4317
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
             # Set the service name for identification in Signoz
             - name: OTEL_SERVICE_NAME
               value: "sample-app"
@@ -258,25 +230,7 @@ spec:
 
 ## Step 7: Set Up Data Retention
 
-Configure data retention policies to manage storage costs.
-
-```yaml
-# clusters/my-cluster/signoz/retention-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: signoz-retention-config
-  namespace: signoz
-data:
-  # Retention settings applied via Signoz API or configuration
-  retention.yaml: |
-    # Traces retention in hours (7 days)
-    traces_ttl: 168
-    # Metrics retention in hours (30 days)
-    metrics_ttl: 720
-    # Logs retention in hours (15 days)
-    logs_ttl: 360
-```
+Configure data retention policies to manage storage costs. In self-hosted Signoz, retention is configured from the **General** tab on the **Settings** page in the Signoz UI. By default, logs and traces are retained for 15 days, and metrics are retained for 30 days.
 
 ## Step 8: Configure Ingress for External Access
 
@@ -307,9 +261,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: signoz-frontend
+                name: signoz
                 port:
-                  number: 3301
+                  number: 8080
 ```
 
 ## Verifying the Deployment
@@ -327,13 +281,13 @@ flux get helmreleases -n signoz
 kubectl get pods -n signoz
 
 # Check ClickHouse is ready and accepting connections
-kubectl logs -n signoz -l app=clickhouse --tail=20
+kubectl logs -n signoz -l app.kubernetes.io/component=clickhouse --tail=20
 
 # Port-forward to access the Signoz UI locally
-kubectl port-forward -n signoz svc/signoz-frontend 3301:3301
+kubectl port-forward -n signoz svc/signoz 8080:8080
 ```
 
-After port-forwarding, open your browser and navigate to `http://localhost:3301` to access the Signoz dashboard. On first login, you will be asked to create an admin account.
+After port-forwarding, open your browser and navigate to `http://localhost:8080` to access the Signoz dashboard. On first login, you will be asked to create an admin account.
 
 ## Troubleshooting
 
@@ -341,7 +295,7 @@ Common issues when deploying Signoz:
 
 - **ClickHouse pods crashing**: Check memory limits. ClickHouse requires significant memory, especially during data ingestion. Increase limits to at least 4Gi.
 - **No data appearing in the UI**: Verify that your applications are sending data to the correct OTLP endpoint. Check the otel-collector logs for connection errors.
-- **Slow query performance**: ClickHouse may need more CPU or memory. Consider increasing replica count for the query service.
+- **Slow query performance**: ClickHouse may need more CPU or memory. Consider increasing resources for the Signoz service.
 - **PVC not binding**: Ensure your storage class supports dynamic provisioning and has sufficient capacity.
 - **Collector dropping spans**: Increase the collector memory limit and check the batch processor configuration for queue size settings.
 
