@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Metric, Grafana, Automation
 
-Description: Automate Calico Grafana dashboard provisioning using ConfigMaps, Grafana Operator, and GitOps to ensure consistent visualization across all clusters.
+Description: Automate Calico Grafana dashboard provisioning using ConfigMaps, a Grafana dashboard sidecar, and GitOps to ensure consistent visualization across all clusters.
 
 ---
 
@@ -17,7 +17,8 @@ Manually importing Grafana dashboards for each cluster is unsustainable at scale
 ```yaml
 # grafana-dashboards-calico.yaml
 
-# Grafana sidecar automatically imports ConfigMaps with grafana_dashboard label
+# Grafana sidecar imports ConfigMaps with the grafana_dashboard label.
+# Configure sidecar.dashboards.folderAnnotation: grafana_folder to use the folder annotation.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,6 +26,7 @@ metadata:
   namespace: monitoring
   labels:
     grafana_dashboard: "1"
+  annotations:
     grafana_folder: "Calico"
 data:
   calico-overview.json: |
@@ -43,9 +45,9 @@ data:
       },
       "panels": [
         {
-          "title": "Felix Policies by Node",
+          "title": "Felix Policies by Instance",
           "type": "bargauge",
-          "targets": [{"expr": "felix_active_local_policies"}]
+          "targets": [{"expr": "sum by (instance) (felix_active_local_policies)"}]
         }
       ]
     }
@@ -104,37 +106,29 @@ done
 
 ```jsonnet
 // calico-felix-dashboard.jsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local dashboard = grafana.dashboard;
-local stat = grafana.stat;
-local timeseries = grafana.timeseries;
+local g = import 'github.com/grafana/grafonnet/gen/grafonnet-latest/main.libsonnet';
 
-dashboard.new(
-  'Calico Felix Performance',
-  uid='calico-felix-perf',
-  time_from='now-1h',
-  tags=['calico', 'networking'],
-)
-.addPanel(
-  stat.new(
-    'Active Local Policies',
-    datasource='Prometheus',
-  ).addTarget(
-    grafana.prometheus.target('sum(felix_active_local_policies)')
-  ),
-  gridPos={x: 0, y: 0, w: 6, h: 4}
-)
-.addPanel(
-  timeseries.new(
-    'Felix Dataplane Programming Latency p99',
-  ).addTarget(
-    grafana.prometheus.target(
-      'histogram_quantile(0.99, rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))',
-      legendFormat='{{node}}'
+g.dashboard.new('Calico Felix Performance')
++ g.dashboard.withUid('calico-felix-perf')
++ g.dashboard.time.withFrom('now-1h')
++ g.dashboard.withTags(['calico', 'networking'])
++ g.dashboard.withPanels([
+  g.panel.stat.new('Active Local Policies')
+  + g.panel.stat.queryOptions.withTargets([
+    g.query.prometheus.new('Prometheus', 'sum(felix_active_local_policies)'),
+  ])
+  + g.panel.stat.panelOptions.withGridPos(x=0, y=0, w=6, h=4),
+
+  g.panel.timeSeries.new('Felix Dataplane Programming Latency p99')
+  + g.panel.timeSeries.queryOptions.withTargets([
+    g.query.prometheus.new(
+      'Prometheus',
+      'histogram_quantile(0.99, sum by (le, instance) (rate(felix_int_dataplane_apply_time_seconds_bucket[5m])))'
     )
-  ),
-  gridPos={x: 0, y: 4, w: 24, h: 8}
-)
+    + g.query.prometheus.withLegendFormat('{{instance}}'),
+  ])
+  + g.panel.timeSeries.panelOptions.withGridPos(x=0, y=4, w=24, h=8),
+])
 ```
 
 ## Conclusion
