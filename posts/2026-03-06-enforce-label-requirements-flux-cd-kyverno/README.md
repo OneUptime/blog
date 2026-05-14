@@ -81,7 +81,6 @@ metadata:
       All Deployments, StatefulSets, and DaemonSets must include
       the organization's standard labels for proper governance.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-app-labels
@@ -100,6 +99,7 @@ spec:
                 - flux-system
                 - kyverno
       validate:
+        failureAction: Enforce
         message: >-
           The following labels are required:
           app.kubernetes.io/name, app.kubernetes.io/version,
@@ -129,6 +129,7 @@ spec:
                 - flux-system
                 - kyverno
       validate:
+        failureAction: Enforce
         message: >-
           Pod template must also include the standard labels
           for proper monitoring and service discovery.
@@ -157,7 +158,6 @@ metadata:
     policies.kyverno.io/category: Organization Standards
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-environment-label
@@ -175,10 +175,11 @@ spec:
                 - kube-system
                 - flux-system
       validate:
+        failureAction: Enforce
         message: >-
           The 'environment' label must be one of:
           development, staging, production, or sandbox.
-          Got: {{request.object.metadata.labels.environment}}
+          Got: {{request.object.metadata.labels.environment || ''}}
         pattern:
           metadata:
             labels:
@@ -198,10 +199,11 @@ spec:
                 - kube-system
                 - flux-system
       validate:
+        failureAction: Enforce
         message: >-
           The 'app.kubernetes.io/component' label must be one of:
           frontend, backend, database, cache, queue, worker, gateway.
-          Got: {{request.object.metadata.labels."app.kubernetes.io/component"}}
+          Got: {{request.object.metadata.labels."app.kubernetes.io/component" || ''}}
         pattern:
           metadata:
             labels:
@@ -221,6 +223,7 @@ spec:
                 - kube-system
                 - flux-system
       validate:
+        failureAction: Enforce
         message: >-
           The 'team' label must match the pattern: team-<name>.
           Example: team-platform, team-frontend, team-data.
@@ -273,12 +276,17 @@ spec:
                 - Deployment
                 - StatefulSet
                 - DaemonSet
+      context:
+        - name: namespaceCostCenter
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{request.namespace}}"
+            jmesPath: "metadata.labels.\"cost-center\" || 'unknown'"
       # Inherit cost-center label from the namespace
       mutate:
         patchStrategicMerge:
           metadata:
             labels:
-              +(cost-center): "{{request.namespace}}"
+              +(cost-center): "{{namespaceCostCenter}}"
     - name: propagate-labels-to-pods
       match:
         any:
@@ -294,8 +302,8 @@ spec:
             template:
               metadata:
                 labels:
-                  +(team): "{{request.object.metadata.labels.team}}"
-                  +(environment): "{{request.object.metadata.labels.environment}}"
+                  +(team): "{{request.object.metadata.labels.team || ''}}"
+                  +(environment): "{{request.object.metadata.labels.environment || ''}}"
 ```
 
 ## Policy: Require Labels on Namespaces
@@ -313,7 +321,6 @@ metadata:
     policies.kyverno.io/category: Organization Standards
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-owner-and-purpose
@@ -333,6 +340,7 @@ spec:
                 - flux-system
                 - kyverno
       validate:
+        failureAction: Enforce
         message: >-
           Namespaces must include 'owner', 'purpose', and
           'cost-center' labels. Namespace {{request.object.metadata.name}}
@@ -360,7 +368,6 @@ metadata:
     policies.kyverno.io/category: Organization Standards
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: prevent-label-removal
@@ -379,6 +386,7 @@ spec:
             operator: Equals
             value: UPDATE
       validate:
+        failureAction: Enforce
         message: >-
           Cannot remove critical labels (team, environment,
           app.kubernetes.io/name) from production resources.
@@ -462,7 +470,7 @@ EOF
 kubectl get deployment test-labeled -o jsonpath='{.metadata.labels}' | jq .
 
 # View policy reports
-kubectl get policyreports -A
+kubectl get policyreport -A
 ```
 
 ## Conclusion
