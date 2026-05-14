@@ -12,7 +12,7 @@ Description: Monitor Cilium node health by inspecting the Cilium agent status, c
 
 Cilium node health encompasses the health of the Cilium agent running on each node, the inter-node connectivity that enables pod-to-pod communication across nodes, and the kernel-level BPF program state that implements the data plane. A node where Cilium is unhealthy affects not just pods on that node but potentially all pods that need to communicate with them - broken inter-node tunnels cause cluster-wide connectivity issues for any communication involving pods on the unhealthy node.
 
-Cilium provides health monitoring at multiple levels: the Cilium agent performs continuous health checks against all other nodes in the cluster through `cilium-health`, Kubernetes readiness and liveness probes monitor the agent process, and Prometheus metrics expose detailed health indicators for alerting. The `cilium status` command gives the most comprehensive single-command view of node health, while `cilium-health status` specifically checks the inter-node connectivity mesh.
+Cilium provides health monitoring at multiple levels: the Cilium agent performs continuous health checks against all other nodes in the cluster through `cilium-health`, Kubernetes readiness and liveness probes monitor the agent process, and Prometheus metrics expose detailed health indicators for alerting. The `cilium status` command gives a comprehensive single-command view of Cilium cluster status, while `cilium-dbg status --verbose` and `cilium-health status` check the local daemon and inter-node connectivity mesh.
 
 This guide covers monitoring Cilium node health, diagnosing agent failures, checking inter-node connectivity, and recovering from node-level Cilium failures.
 
@@ -26,9 +26,13 @@ This guide covers monitoring Cilium node health, diagnosing agent failures, chec
 ## Step 1: Check Overall Node Health
 
 ```bash
-# Comprehensive health status for the local node
+# Comprehensive Cilium status for the cluster
 
 cilium status --verbose
+
+# Detailed daemon status from a Cilium pod
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg status --verbose
 
 # Check all Cilium pods across the cluster
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
@@ -40,20 +44,24 @@ kubectl get pods -n kube-system -l k8s-app=cilium | grep -v Running
 ## Step 2: Check Inter-Node Connectivity
 
 ```bash
-# Check connectivity from this node to all other nodes
-cilium-health status
+# Check connectivity from a Cilium pod to all other nodes
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-health status
 
-# Expected output showing all nodes reachable:
-# Probe Summary:
-#   Total: 10
-#   Up: 10
-#   Down: 0
+# Expected output includes per-node host and endpoint connectivity:
+# Nodes:
+#   <node-name>:
+#     Host connectivity to <node-ip>:
+#       ICMP to stack: OK
+#       HTTP to agent: OK
 
 # Detailed per-node connectivity
-cilium-health status --verbose
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-health status --verbose
 
-# Check specific node connectivity
-cilium-health ping <node-name>
+# Succinct per-node connectivity summary
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-health status --succinct
 ```
 
 ## Step 3: Verify BPF Program Loading
@@ -61,7 +69,7 @@ cilium-health ping <node-name>
 ```bash
 # Check if BPF programs are loaded correctly
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium status | grep -i "BPF\|datapath"
+  cilium-dbg status --verbose | grep -i "BPF\|datapath\|XDP"
 
 # Verify TC BPF programs on interfaces
 kubectl exec -n kube-system cilium-xxxxx -- \
@@ -95,9 +103,9 @@ kubectl logs -n kube-system cilium-xxxxx --since=15m | \
 
 ```bash
 # Restart the Cilium pod on a specific node
-NODE_IP="10.0.0.5"
+NODE_NAME="worker-1"
 POD=$(kubectl get pods -n kube-system -l k8s-app=cilium \
-  --field-selector spec.nodeName=${NODE_IP} -o name)
+  --field-selector spec.nodeName=${NODE_NAME} -o name)
 
 kubectl delete ${POD} -n kube-system
 # DaemonSet will automatically restart the pod
@@ -112,14 +120,14 @@ kubectl get pods -n kube-system -l k8s-app=cilium -w
 # Key metrics for node health monitoring
 kubectl port-forward -n kube-system ds/cilium 9962:9962
 
-# Check agent up/down status
-curl -s http://localhost:9962/metrics | grep "cilium_up"
+# Check that the metrics endpoint is reachable
+curl -sf http://localhost:9962/metrics >/dev/null
 
-# Check inter-node connectivity metric
-curl -s http://localhost:9962/metrics | grep "cilium_node_connectivity"
+# Check inter-node connectivity metrics
+curl -s http://localhost:9962/metrics | grep "cilium_unreachable_nodes\|cilium_unreachable_health_endpoints\|cilium_node_health_connectivity"
 
 # Endpoint regeneration failures
-curl -s http://localhost:9962/metrics | grep "cilium_endpoint_regenerations_total.*failure"
+curl -s http://localhost:9962/metrics | grep 'cilium_endpoint_regenerations_total{.*outcome="failure"'
 ```
 
 ## Node Health Alert Rule
@@ -142,7 +150,7 @@ spec:
           annotations:
             summary: "Cilium agent down on {{ $labels.node }}"
         - alert: CiliumInterNodeConnectivityDown
-          expr: cilium_node_connectivity_status == 0
+          expr: cilium_unreachable_nodes > 0 or cilium_unreachable_health_endpoints > 0
           for: 2m
           labels:
             severity: critical
@@ -155,7 +163,7 @@ flowchart TD
     A[Cilium Agent] -->|health probe| B[cilium-health daemon]
     B -->|ping via ICMP+HTTP| C[All other nodes]
     C -->|Response| B
-    B -->|status| D[cilium-health status]
+    B -->|status| D[cilium-health status --verbose]
     A -->|metrics| E[Prometheus]
     E -->|alert| F[AlertManager]
     A -->|liveness probe| G[Kubernetes\nNode health]
@@ -163,4 +171,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium node health monitoring requires checking multiple layers: the Cilium agent process (via Kubernetes pod health), inter-node connectivity (via `cilium-health status`), BPF program loading (via `cilium status`), and agent logs for error patterns. Inter-node connectivity issues are particularly impactful because they affect all pods on the unhealthy node, not just local communication. Set up Prometheus alerts for `up{job="cilium-agent"} == 0` as a critical alert, and `cilium-health status` failures as a high-severity alert to catch node-level Cilium issues before they cause widespread service disruptions.
+Cilium node health monitoring requires checking multiple layers: the Cilium agent process (via Kubernetes pod health), inter-node connectivity (via `cilium-health status`), BPF program loading (via `cilium-dbg status --verbose` and datapath inspection commands), and agent logs for error patterns. Inter-node connectivity issues are particularly impactful because they affect all pods on the unhealthy node, not just local communication. Set up Prometheus alerts for `up{job="cilium-agent"} == 0` as a critical alert, and `cilium-health status` failures as a high-severity alert to catch node-level Cilium issues before they cause widespread service disruptions.
