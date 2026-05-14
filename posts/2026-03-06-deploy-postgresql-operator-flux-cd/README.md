@@ -18,7 +18,7 @@ This guide demonstrates how to deploy CloudNativePG with Flux CD, configure Post
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster (v1.29 or later)
 - Flux CD installed and bootstrapped on your cluster
 - A storage class available for persistent volumes
 - kubectl configured to access your cluster
@@ -34,9 +34,13 @@ clusters/
         namespace.yaml
         helmrepository.yaml
         helmrelease.yaml
+        credentials.yaml
         cluster.yaml
         scheduled-backup.yaml
+        monitoring.yaml
+        pooler.yaml
         kustomization.yaml
+      postgresql-kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -82,7 +86,7 @@ spec:
   chart:
     spec:
       chart: cloudnative-pg
-      version: "0.21.x"
+      version: "0.28.x"
       sourceRef:
         kind: HelmRepository
         name: cloudnative-pg
@@ -137,6 +141,17 @@ stringData:
   # Superuser credentials for administrative tasks
   username: postgres
   password: "change-me-to-a-strong-superuser-password"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pg-s3-credentials
+  namespace: postgresql
+type: Opaque
+stringData:
+  # Object storage credentials for backups
+  ACCESS_KEY_ID: "change-me-to-your-access-key"
+  ACCESS_SECRET_KEY: "change-me-to-your-secret-key"
 ```
 
 ## Step 5: Deploy a PostgreSQL Cluster
@@ -168,6 +183,8 @@ spec:
       min_wal_size: "512MB"
       # Connection settings
       max_connections: "200"
+      # Required for pg_stat_statements
+      shared_preload_libraries: "pg_stat_statements"
       # Logging
       log_statement: "ddl"
       log_min_duration_statement: "1000"
@@ -189,6 +206,7 @@ spec:
         - CREATE EXTENSION IF NOT EXISTS pgcrypto
 
   # Superuser credentials
+  enableSuperuserAccess: true
   superuserSecret:
     name: pg-superuser-credentials
 
@@ -222,7 +240,6 @@ spec:
 
   # Monitoring configuration
   monitoring:
-    enablePodMonitor: true
     customQueriesConfigMap:
       - name: pg-custom-queries
         key: queries
@@ -258,11 +275,11 @@ metadata:
   namespace: postgresql
 spec:
   # Run daily at 2 AM UTC
-  schedule: "0 2 * * *"
+  schedule: "0 0 2 * * *"
   # Reference to the PostgreSQL cluster
   cluster:
     name: pg-cluster
-  # Backup type: full database backup
+  # Set the owner reference on generated Backup resources
   backupOwnerReference: self
   # Immediate backup on creation
   immediate: false
@@ -308,6 +325,18 @@ data:
         - lag_seconds:
             usage: "GAUGE"
             description: "Replication lag in seconds"
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: pg-cluster
+  namespace: postgresql
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: pg-cluster
+  podMetricsEndpoints:
+    - port: metrics
 ```
 
 ## Step 8: Configure Connection Pooling
@@ -413,11 +442,11 @@ kubectl describe cluster pg-cluster -n postgresql
 # Check PostgreSQL pod status
 kubectl get pods -n postgresql -l cnpg.io/cluster=pg-cluster
 
-# Connect to the primary instance
-kubectl exec -it pg-cluster-1 -n postgresql -- psql -U postgres -d appdb
+# Connect to the current primary instance
+kubectl exec -it -n postgresql svc/pg-cluster-rw -- psql -U postgres -d appdb
 
 # Check replication status
-kubectl exec -it pg-cluster-1 -n postgresql -- psql -U postgres -c "SELECT * FROM pg_stat_replication;"
+kubectl exec -it -n postgresql svc/pg-cluster-rw -- psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 ```
 
 ## Troubleshooting
