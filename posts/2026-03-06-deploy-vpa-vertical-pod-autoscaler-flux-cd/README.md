@@ -43,6 +43,7 @@ graph TB
 ```text
 clusters/
   my-cluster/
+    vpa-kustomization.yaml
     vpa/
       namespace.yaml
       helmrepository.yaml
@@ -51,6 +52,8 @@ clusters/
         recommendation-only.yaml
         auto-update.yaml
         initial-only.yaml
+        vpa-with-hpa.yaml
+        pdb.yaml
       kustomization.yaml
 ```
 
@@ -96,7 +99,7 @@ spec:
   chart:
     spec:
       chart: vpa
-      version: "4.7.x"
+      version: "4.11.x"
       sourceRef:
         kind: HelmRepository
         name: fairwinds-stable
@@ -106,7 +109,7 @@ spec:
     # Recommender analyzes metrics and generates recommendations
     recommender:
       enabled: true
-      replicas: 1
+      replicaCount: 1
       resources:
         requests:
           cpu: 50m
@@ -126,17 +129,15 @@ spec:
         pod-recommendation-min-cpu-millicores: 15
         # Minimum memory recommendation in MB
         pod-recommendation-min-memory-mb: 64
-        # How many days of metrics to consider
+        # Track only pods associated with a VPA to reduce memory usage
         memory-saver: "true"
         # OOM bump-up factor
         oom-bump-up-ratio: "1.2"
-        # Minimum OOM memory increase in bytes
-        oom-min-bump-up-bytes: 104857600
 
     # Updater evicts pods to apply new resource recommendations
     updater:
       enabled: true
-      replicas: 1
+      replicaCount: 1
       resources:
         requests:
           cpu: 50m
@@ -145,9 +146,9 @@ spec:
           cpu: 250m
           memory: 256Mi
       extraArgs:
-        # Minimum time between two consecutive evictions
+        # Fraction of replicas that can be evicted for updates
         eviction-tolerance: "0.5"
-        # Minimum change needed to trigger eviction (10%)
+        # Minimum number of replicas required before eviction
         min-replicas: 2
         # How often to run the update loop
         updater-interval: "1m"
@@ -159,7 +160,7 @@ spec:
     # Admission controller mutates pod resources at creation time
     admissionController:
       enabled: true
-      replicas: 2
+      replicaCount: 2
       resources:
         requests:
           cpu: 50m
@@ -168,13 +169,7 @@ spec:
           cpu: 250m
           memory: 128Mi
       # Generate TLS certificates for the webhook
-      certGen:
-        enabled: true
-
-    # Metrics and monitoring
-    metrics:
-      serviceMonitor:
-        enabled: true
+      generateCertificate: true
 ```
 
 ## Step 4: VPA in Recommendation-Only Mode
@@ -219,9 +214,9 @@ spec:
         mode: "Off"
 ```
 
-## Step 5: VPA with Auto Update Mode
+## Step 5: VPA with Recreate Update Mode
 
-Use "Auto" mode for VPA to automatically adjust resources.
+Use "Recreate" mode for VPA to automatically adjust resources by evicting pods and recreating them.
 
 ```yaml
 # clusters/my-cluster/vpa/vpa-resources/auto-update.yaml
@@ -236,8 +231,8 @@ spec:
     kind: Deployment
     name: batch-worker
   updatePolicy:
-    # "Auto" mode: VPA will evict pods and set new resources
-    updateMode: "Auto"
+    # "Recreate" mode: VPA will evict pods and set new resources
+    updateMode: "Recreate"
     # Minimum number of replicas that must be available during updates
     minReplicas: 2
   resourcePolicy:
@@ -302,7 +297,7 @@ spec:
     kind: Deployment
     name: api-server
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: api
@@ -363,6 +358,21 @@ spec:
 
 ```yaml
 # clusters/my-cluster/vpa/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - vpa-resources/recommendation-only.yaml
+  - vpa-resources/auto-update.yaml
+  - vpa-resources/initial-only.yaml
+  - vpa-resources/vpa-with-hpa.yaml
+  - vpa-resources/pdb.yaml
+```
+
+```yaml
+# clusters/my-cluster/vpa-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -418,13 +428,13 @@ kubectl get events -n default --field-selector reason=EvictedByVPA
 
 ```bash
 # Check recommender logs for metric collection issues
-kubectl logs -n vpa -l app=vpa-recommender --tail=30
+kubectl logs -n vpa -l app.kubernetes.io/component=recommender --tail=30
 
 # Check updater logs for eviction issues
-kubectl logs -n vpa -l app=vpa-updater --tail=30
+kubectl logs -n vpa -l app.kubernetes.io/component=updater --tail=30
 
 # Check admission controller logs
-kubectl logs -n vpa -l app=vpa-admission-controller --tail=30
+kubectl logs -n vpa -l app.kubernetes.io/component=admission-controller --tail=30
 
 # Verify metrics server is providing data
 kubectl top pods -n default
@@ -441,7 +451,7 @@ kubectl describe vpa web-api-vpa -n default | grep -A20 "Status"
 - Start with "Off" mode to review recommendations before enabling auto-updates
 - Always set `minAllowed` and `maxAllowed` to prevent extreme resource assignments
 - Use PodDisruptionBudgets to protect availability during VPA-triggered evictions
-- When combining VPA with HPA, have VPA manage memory and HPA manage CPU
+- When combining VPA with HPA, have VPA and HPA manage different resource metrics, such as VPA managing memory and HPA managing CPU
 - Exclude sidecar containers (istio-proxy, linkerd-proxy) from VPA management
 - Monitor OOM events and adjust `oom-bump-up-ratio` if pods are frequently killed
 - Use "Initial" mode for StatefulSets to avoid disruptive evictions
