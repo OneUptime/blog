@@ -82,6 +82,14 @@ kubectl create secret docker-registry ocir-secret \
   --docker-username="<tenancy-namespace>/<username>" \
   --docker-password="<auth-token>" \
   --docker-email="your-email@example.com"
+
+# Create the same image pull secret in the application namespace
+kubectl create secret docker-registry ocir-secret \
+  --namespace default \
+  --docker-server=<region-code>.ocir.io \
+  --docker-username="<tenancy-namespace>/<username>" \
+  --docker-password="<auth-token>" \
+  --docker-email="your-email@example.com"
 ```
 
 ## Step 3: Set Up a Git Repository
@@ -164,6 +172,31 @@ spec:
       range: ">=1.0.0"
 ```
 
+Create an ImageUpdateAutomation resource to update marked image references in Git:
+
+```yaml
+# clusters/oke-production/image-update-automation.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+    push:
+      branch: main
+  update:
+    path: ./apps
+```
+
 ## Step 6: Integrate OCI Vault for Secrets Management
 
 OCI Vault provides centralized secrets management. You can integrate it with Flux using the External Secrets Operator.
@@ -189,7 +222,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: "0.9.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -213,11 +246,41 @@ spec:
   url: https://charts.external-secrets.io
 ```
 
+Create a Kustomization to reconcile the infrastructure manifests:
+
+```yaml
+# clusters/oke-production/infrastructure-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure
+  prune: true
+  wait: true
+  timeout: 5m
+```
+
+Create a Kubernetes secret with your OCI API key fingerprint and private key:
+
+```bash
+kubectl create secret generic oci-credentials \
+  --namespace external-secrets \
+  --from-literal=fingerprint="<api-key-fingerprint>" \
+  --from-file=privateKey=/path/to/oci_api_key.pem
+```
+
 Configure a SecretStore pointing to OCI Vault:
 
 ```yaml
 # infrastructure/external-secrets/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: oci-vault
@@ -228,31 +291,27 @@ spec:
       vault: ocid1.vault.oc1.iad.xxxxxxxxxxxx
       # The OCI region
       region: us-ashburn-1
+      principalType: UserPrincipal
       auth:
+        # The user and tenancy OCIDs
+        user: ocid1.user.oc1..xxxxxxxxxxxx
+        tenancy: ocid1.tenancy.oc1..xxxxxxxxxxxx
         secretRef:
           privatekey:
             name: oci-credentials
             namespace: external-secrets
-            key: private-key
+            key: privateKey
           fingerprint:
             name: oci-credentials
             namespace: external-secrets
             key: fingerprint
-          tenancy:
-            name: oci-credentials
-            namespace: external-secrets
-            key: tenancy
-          user:
-            name: oci-credentials
-            namespace: external-secrets
-            key: user
 ```
 
 Create an ExternalSecret to pull secrets from OCI Vault:
 
 ```yaml
 # apps/my-app/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -269,8 +328,8 @@ spec:
   data:
     - secretKey: database-password
       remoteRef:
-        # The secret OCID in OCI Vault
-        key: ocid1.vaultsecret.oc1.iad.xxxxxxxxxxxx
+        # The secret name in OCI Vault
+        key: my-database-password
 ```
 
 ## Step 7: Deploy an Application
@@ -336,7 +395,7 @@ Configure Flux to send deployment notifications:
 
 ```yaml
 # clusters/oke-production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -348,7 +407,7 @@ spec:
     name: slack-webhook-url
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
