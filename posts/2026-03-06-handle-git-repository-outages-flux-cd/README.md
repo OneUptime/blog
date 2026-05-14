@@ -29,7 +29,7 @@ This means your cluster is stable but frozen. No new changes will be applied.
 ```yaml
 # alerts/git-outage-alert.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
@@ -40,7 +40,7 @@ spec:
   secretRef:
     name: pagerduty-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: git-outage-alert
@@ -75,7 +75,7 @@ spec:
         - alert: FluxGitFetchFailing
           expr: |
             gotk_resource_info{
-              kind="GitRepository",
+              customresource_kind="GitRepository",
               ready="False"
             } == 1
           for: 10m
@@ -84,18 +84,18 @@ spec:
           annotations:
             summary: "GitRepository {{ $labels.name }} fetch is failing"
 
-        # Alert when no successful fetch in 30 minutes
+        # Alert when Git fetch has been failing for 30 minutes
         - alert: FluxGitFetchStale
           expr: |
-            time() - gotk_resource_info{
-              kind="GitRepository",
-              ready="True"
-            } > 1800
-          for: 5m
+            gotk_resource_info{
+              customresource_kind="GitRepository",
+              ready="False"
+            } == 1
+          for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "GitRepository {{ $labels.name }} has not updated in 30 minutes"
+            summary: "GitRepository {{ $labels.name }} has been failing for 30 minutes"
 ```
 
 ## Strategy 1: Configure Git Repository Mirrors
@@ -229,7 +229,7 @@ Store your manifests in an OCI registry as a fallback when Git is unavailable.
 flux push artifact oci://ghcr.io/org/fleet-infra:latest \
   --path=./clusters/production \
   --source="https://github.com/org/fleet-infra" \
-  --revision="main@sha1:abc123"
+  --revision="main@sha1:abc1230000000000000000000000000000000000"
 ```
 
 ```yaml
@@ -268,14 +268,13 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
-      - name: Login to GHCR
+      - name: Push OCI artifact
         run: |
-          echo "${{ secrets.GHCR_TOKEN }}" | \
-            flux push artifact oci://ghcr.io/org/fleet-infra:${{ github.sha }} \
-              --path=./clusters/production \
-              --source="${{ github.repositoryUrl }}" \
-              --revision="main@sha1:${{ github.sha }}" \
-              --creds=flux:${{ secrets.GHCR_TOKEN }}
+          flux push artifact oci://ghcr.io/org/fleet-infra:${{ github.sha }} \
+            --path=./clusters/production \
+            --source="$(git config --get remote.origin.url)" \
+            --revision="main@sha1:${{ github.sha }}" \
+            --creds=flux:${{ secrets.GHCR_TOKEN }}
 
       # Also tag as latest for easy fallback
       - name: Tag as latest
@@ -295,30 +294,28 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - gotk-components.yaml
+  - gotk-sync.yaml
+  - source-controller-pvc.yaml
 patches:
-  - target:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: artifact-storage
+          persistentVolumeClaim:
+            claimName: source-controller-pvc
+      - op: replace
+        path: /spec/template/spec/containers/0/volumeMounts/0
+        value:
+          name: artifact-storage
+          mountPath: /data
+    target:
       kind: Deployment
       name: source-controller
-    patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: source-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                # Use a persistent volume for the artifact storage
-                # so cached manifests survive pod restarts
-                volumeMounts:
-                  - name: artifact-storage
-                    mountPath: /data
-            volumes:
-              - name: artifact-storage
-                persistentVolumeClaim:
-                  claimName: source-controller-pvc
----
+```
+
+```yaml
+# flux-system/source-controller-pvc.yaml
 # Persistent storage for cached artifacts
 apiVersion: v1
 kind: PersistentVolumeClaim
