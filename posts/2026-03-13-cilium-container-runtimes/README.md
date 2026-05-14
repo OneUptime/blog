@@ -4,176 +4,179 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: Understand how Cilium integrates with different Kubernetes container runtimes including containerd, CRI-O, and Docker, with configuration guidance, troubleshooting tips, and compatibility validation.
+Description: Understand how Cilium runs on Kubernetes nodes that use containerd, CRI-O, or Docker through cri-dockerd, with configuration guidance, troubleshooting tips, and compatibility validation.
 
 ---
 
 ## Introduction
 
-Cilium interacts with container runtimes through the Container Runtime Interface (CRI) to obtain information about running containers, their network namespaces, and their metadata including labels. This information feeds directly into Cilium's identity computation and endpoint management. While Cilium works with all major CRI-compliant runtimes, each runtime has specific socket paths and behaviors that Cilium must be configured to work with correctly.
+Cilium integrates with Kubernetes primarily as a CNI plugin and through the Kubernetes API. The kubelet talks to the node's container runtime through the Container Runtime Interface (CRI), and it calls the configured CNI plugin when creating a pod sandbox. Cilium then manages pod networking and derives endpoint metadata from Kubernetes pod labels, and where available, container labels.
 
-The primary container runtimes in production Kubernetes deployments are containerd (default for most distributions), CRI-O (popular with OpenShift and RHEL-based clusters), and Docker (legacy, removed from Kubernetes 1.24+). Each exposes its CRI socket at a different path, and Cilium must be able to connect to this socket to query container state. An incorrect socket path is a common but easily overlooked configuration issue.
+The primary container runtimes in production Kubernetes deployments are containerd (default for most distributions), CRI-O (popular with OpenShift and RHEL-based clusters), and Docker through cri-dockerd (legacy after dockershim was removed from Kubernetes 1.24). Cilium does not require a Helm setting for the runtime socket on current Kubernetes installations. The important integration point is that Cilium's CNI binary and CNI configuration are installed where the kubelet and runtime expect them.
 
-This guide covers how to configure Cilium for each container runtime, troubleshoot runtime connectivity issues, validate Cilium's runtime integration, and monitor for runtime-related networking problems.
+This guide covers how to verify Cilium on nodes using each container runtime, troubleshoot CNI installation issues, validate Cilium endpoint integration, and monitor for runtime-adjacent networking problems.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed
 - Knowledge of which container runtime your cluster uses
 - `kubectl` with cluster admin access
-- Node-level access for socket inspection
+- Node-level access for CNI inspection and runtime service checks
 
 ## Configure Cilium for Different Container Runtimes
 
 Identify the container runtime in use:
 
 ```bash
-# Check container runtime for each node
-
 kubectl get nodes -o wide
 # CONTAINER-RUNTIME column shows: containerd://1.7.x or cri-o://1.29.x
 
-# Check socket path on a node
+# Check the host CNI paths on a node
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /run/containerd/containerd.sock \
-    /var/run/crio/crio.sock \
-    /run/cri-dockerd.sock 2>/dev/null
+  ls -la /host/etc/cni/net.d /host/opt/cni/bin/cilium-cni 2>/dev/null
 ```
 
 Configure Cilium for containerd (default):
 
 ```bash
-# containerd socket: /run/containerd/containerd.sock
+# No containerd socket value is required for Cilium on Kubernetes.
+# Install or upgrade Cilium normally and let it manage the CNI files.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set containerRuntime.integration=containerd \
-  --set containerRuntime.socketPath=/run/containerd/containerd.sock
+  --set cni.install=true
 ```
 
 Configure Cilium for CRI-O:
 
 ```bash
-# CRI-O socket: /var/run/crio/crio.sock
+# CRI-O uses the same Cilium CNI installation path.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set containerRuntime.integration=crio \
-  --set containerRuntime.socketPath=/var/run/crio/crio.sock
+  --set cni.install=true
+
+# After initial installation, restart CRI-O on each node if it did not
+# pick up the newly written CNI configuration automatically.
+ssh <node-name> "sudo systemctl restart crio"
 ```
 
 Configure Cilium for Docker via cri-dockerd (legacy):
 
 ```bash
-# cri-dockerd socket: /run/cri-dockerd.sock
+# Cilium does not connect to the cri-dockerd socket directly.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set containerRuntime.integration=docker \
-  --set containerRuntime.socketPath=/run/cri-dockerd.sock
+  --set cni.install=true
 
-# Note: Docker Engine direct support removed in Kubernetes 1.24
-# Must use cri-dockerd shim for Docker on K8s 1.24+
+# Note: Kubernetes 1.24 removed dockershim from kubelet.
+# Use cri-dockerd if the node still relies on Docker Engine.
 ```
 
 ## Troubleshoot Container Runtime Issues
 
-Diagnose runtime integration problems:
+Diagnose CNI integration problems:
 
 ```bash
-# Check if Cilium can reach the runtime socket
+# Check the Cilium CNI files on a node
+kubectl debug node/<node-name> -it --image=ubuntu -- \
+  ls -la /host/etc/cni/net.d /host/opt/cni/bin/cilium-cni 2>/dev/null
+
+# Check the Cilium agent status
 kubectl -n kube-system exec ds/cilium -- \
-  ls -la /run/containerd/containerd.sock 2>/dev/null || echo "Socket not accessible"
+  cilium-dbg status --verbose
 
-# Check Cilium logs for runtime errors
-kubectl -n kube-system logs ds/cilium | grep -i "container runtime\|cri\|containerd\|crio\|docker"
+# Check Cilium logs for CNI and endpoint errors
+kubectl -n kube-system logs ds/cilium | grep -i "cni\|endpoint\|datapath\|crio"
 
-# Verify socket mount in Cilium DaemonSet
-kubectl -n kube-system get ds cilium -o yaml | grep -A 5 "containerd\|crio"
+# Verify CNI hostPath mounts in the Cilium DaemonSet
+kubectl -n kube-system get ds cilium -o yaml | grep -A 20 -i "cni"
 
-# Test runtime socket connectivity
+# Verify Cilium has local endpoint state
 kubectl -n kube-system exec ds/cilium -- \
-  crictl --runtime-endpoint unix:///run/containerd/containerd.sock version
+  cilium-dbg endpoint list --no-headers
 ```
 
-Fix common runtime integration issues:
+Fix common CNI integration issues:
 
 ```bash
-# Issue: Wrong socket path
-kubectl -n kube-system exec ds/cilium -- \
-  cilium config view | grep runtime
+# Issue: Cilium CNI files were not installed
+kubectl -n kube-system get configmap cilium-config -o yaml | grep -i "cni"
 
 # Fix by updating Helm values
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set containerRuntime.socketPath=/run/containerd/containerd.sock
+  --set cni.install=true
 
-# Issue: Socket not mounted into Cilium pod
-kubectl -n kube-system get ds cilium -o yaml | grep -A 20 "volumes:"
-# Should include containerd or crio socket as hostPath volume
+# Issue: Cilium cannot write to the host CNI directories
+kubectl -n kube-system get ds cilium -o yaml | grep -A 20 "volumeMounts:"
+# Should include host mounts for /etc/cni/net.d and /opt/cni/bin
 
-# Issue: Runtime socket permissions
-kubectl debug node/<node-name> -it --image=ubuntu -- \
-  stat /run/containerd/containerd.sock
-# Should be accessible by root or cilium service account
+# Issue: CRI-O did not reload the new CNI configuration
+ssh <node-name> "sudo systemctl restart crio"
 ```
 
 ## Validate Runtime Integration
 
-Confirm Cilium is correctly reading from the container runtime:
+Confirm Cilium is correctly managing Kubernetes endpoints:
 
 ```bash
-# Verify Cilium sees all running containers
-PODS=$(kubectl get pods -A --no-headers | wc -l)
+# Compare running, non-host-network pods with Cilium endpoints
+PODS=$(kubectl get pods -A \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{range .items[?(@.spec.hostNetwork!=true)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | wc -l)
 ENDPOINTS=$(kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint list --no-headers | grep -v "^host" | wc -l)
-echo "Pods: $PODS, Cilium Endpoints (non-host): $ENDPOINTS"
+  cilium-dbg endpoint list --no-headers | grep -v "reserved:host" | wc -l)
+echo "Running non-host-network pods: $PODS, Cilium endpoints: $ENDPOINTS"
 
-# Check container labels are correctly imported from runtime
+# Check endpoint labels
 kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint get <endpoint-id> | jq '.status.identity.labels'
+  cilium-dbg endpoint get <endpoint-id> -o jsonpath='{.status.identity.labels}'
 
-# Verify Kubernetes labels are used for identity (not just CRI labels)
+# Verify Kubernetes labels are used for identity
 kubectl get pod my-pod --show-labels
 kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint list | grep $(kubectl get pod my-pod -o jsonpath='{.status.podIP}')
+  cilium-dbg endpoint list | grep "$(kubectl get pod my-pod -o jsonpath='{.status.podIP}')"
 
-# Run Cilium runtime checks
-cilium status --verbose | grep -i "container runtime"
+# Run Cilium status checks
+cilium status --verbose
 ```
 
 ## Monitor Runtime Integration Health
 
 ```mermaid
 graph TD
-    A[Container Runtime] -->|CRI Socket| B[Cilium Agent]
-    B -->|Container Events| C[Endpoint Manager]
+    A[Kubelet] -->|CNI ADD/DEL| B[Cilium CNI Plugin]
+    B -->|Endpoint request| C[Cilium Agent]
+    H[Kubernetes API] -->|Pod metadata| C
     C -->|Create/Delete| D[Cilium Endpoints]
     D -->|Identity| E[eBPF Maps]
-    F[New Pod] -->|Create event| A
-    A -->|Notify| B
-    B -->|Configure netns| G[Pod Network Ready]
+    F[New Pod] -->|Sandbox lifecycle| A
+    A -->|CRI| G[Container Runtime]
+    C -->|Configure datapath| I[Pod Network Ready]
 ```
 
 Monitor runtime integration metrics:
 
 ```bash
-# Check for runtime connection errors
-kubectl -n kube-system logs ds/cilium --since=1h | grep -i "runtime\|cri\|socket"
+# Check for CNI and endpoint errors
+kubectl -n kube-system logs ds/cilium --since=1h | grep -i "cni\|endpoint\|datapath"
 
-# Monitor endpoint creation rate (reflects runtime event processing)
+# Monitor endpoint state metrics
 kubectl -n kube-system port-forward ds/cilium 9962:9962 &
-curl -s http://localhost:9962/metrics | grep endpoint_created
+curl -s http://localhost:9962/metrics | grep cilium_endpoint
 
-# Watch for endpoint creation/deletion events
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type endpoint
+# Watch datapath events related to endpoints
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg monitor --type trace --type policy-verdict --type drop
 
-# Alert on runtime disconnection
+# Alert on Cilium agent health
 watch -n30 "kubectl -n kube-system exec ds/cilium -- \
-  cilium status | grep 'Container runtime'"
+  cilium-dbg status --brief"
 ```
 
 ## Conclusion
 
-Correct container runtime integration is essential for Cilium to maintain accurate endpoint state and apply network policies to the right workloads. The socket path configuration is simple but critical: an incorrect path prevents Cilium from receiving container lifecycle events, which can leave endpoints in stale state or cause policy enforcement gaps. Always verify the correct socket path for your runtime and confirm it is mounted into the Cilium DaemonSet pods. The endpoint count comparison to running pods is a simple but effective validation that the runtime integration is functioning correctly.
+Correct CNI integration is essential for Cilium to maintain accurate endpoint state and apply network policies to the right workloads. The runtime choice still matters operationally, especially for CRI-O reload behavior and legacy Docker nodes that require cri-dockerd, but current Cilium Kubernetes installations do not need runtime socket Helm settings. Always verify that Cilium installed its CNI binary and configuration on the host, and confirm that new pods become Cilium endpoints. The endpoint count comparison to running, non-host-network pods is a simple but effective validation that the integration is functioning correctly.
