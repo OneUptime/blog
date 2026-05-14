@@ -15,14 +15,14 @@ Drift detection is a core capability of Flux CD's Kustomize controller. When som
 Flux's kustomize-controller periodically compares the state of managed resources in the cluster against the desired state defined in Git. When a difference is found, the controller:
 
 1. Emits a Kubernetes event describing the drift
-2. Records the drift in the Kustomization status
-3. Corrects the drift by reapplying the desired state (if `force` or `prune` is enabled)
+2. Updates the Kustomization status after reconciliation
+3. Corrects the drift by reapplying the desired state with server-side apply
 
 This happens on every reconciliation interval defined in your Kustomization resource.
 
 ## Enabling Drift Detection
 
-Drift detection is enabled by default in Flux v2. The kustomize-controller compares the last applied configuration with the live state on each reconciliation. You can control the behavior with the `spec.force` field:
+Drift detection and correction are enabled by default for Flux v2 Kustomizations. The kustomize-controller runs a server-side apply dry-run to compare the desired manifests with the live state on each reconciliation. You can control replacement behavior for immutable field changes with the `spec.force` field:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -40,7 +40,7 @@ spec:
   force: false
 ```
 
-With `force: false` (the default), Flux uses server-side apply to correct drift. With `force: true`, Flux deletes and recreates resources that have immutable field changes.
+With `force: false` (the default), Flux uses server-side apply to correct drift. With `force: true`, Flux replaces resources when patching fails because of immutable field changes.
 
 ## Viewing Drift Events with kubectl
 
@@ -67,18 +67,17 @@ Flux's notification-controller can send alerts when drift is detected. Configure
 ### Slack Alerts
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
-  channel: flux-alerts
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-alert
@@ -107,7 +106,7 @@ kubectl create secret generic slack-webhook \
 ### Microsoft Teams Alerts
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
@@ -117,7 +116,7 @@ spec:
   secretRef:
     name: teams-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-alert
@@ -137,7 +136,7 @@ spec:
 For custom alerting systems, use the generic webhook provider:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: webhook
@@ -151,25 +150,25 @@ spec:
 
 ## Monitoring with Prometheus
 
-Flux controllers expose Prometheus metrics that include drift-related information. The `gotk_reconcile_condition` metric tracks the condition of each reconciled resource.
+Flux monitoring setups expose Prometheus metrics that help monitor reconciliation activity. There is no dedicated drift counter, so use events and logs for drift details, and metrics such as `gotk_resource_info`, `gotk_reconcile_duration_seconds_*`, and `controller_runtime_reconcile_total` for reconciliation health and activity.
 
 ### Key Metrics for Drift Detection
 
 ```promql
-# Count of reconciliation failures (may indicate drift correction issues)
+# Count of reconciliation failures from Flux resource status (requires kube-state-metrics custom resource metrics)
 
-sum(gotk_reconcile_condition{type="Ready", status="False"}) by (kind, name, namespace)
+sum(gotk_resource_info{ready="False"}) by (customresource_kind, name, exported_namespace)
 
 # Reconciliation duration (spikes may indicate large drift corrections)
 histogram_quantile(0.99, sum(rate(gotk_reconcile_duration_seconds_bucket[5m])) by (le, kind))
 
 # Total reconciliation count (frequent reconciliations may indicate continuous drift)
-sum(rate(gotk_reconcile_condition{type="Ready"}[5m])) by (kind, name)
+sum(rate(gotk_reconcile_duration_seconds_count[5m])) by (kind, name, namespace)
 ```
 
 ### Grafana Dashboard
 
-Import the official Flux CD Grafana dashboard (ID 16714) to visualize reconciliation metrics. The dashboard shows:
+Use the dashboards from the official Flux monitoring example to visualize reconciliation metrics. The dashboards show:
 
 - Reconciliation status across all Flux resources
 - Error rates and durations
@@ -183,7 +182,7 @@ When someone runs `kubectl edit` or `kubectl apply` to modify a Flux-managed res
 
 ### Helm Value Overrides
 
-If a HelmRelease-managed resource is modified directly, the helm-controller detects and corrects the drift during its next reconciliation cycle.
+If a HelmRelease-managed resource is modified directly and `.spec.driftDetection.mode` is set to `enabled`, the helm-controller detects and corrects the drift during its next reconciliation cycle. With `.spec.driftDetection.mode` set to `warn`, it detects drift and emits an event without correcting it.
 
 ### Scaling Changes
 
@@ -206,9 +205,7 @@ spec:
       rules:
         - alert: FluxDriftDetected
           expr: |
-            sum(gotk_reconcile_condition{type="Ready", status="True"}) by (kind, name, namespace)
-            and
-            sum(increase(gotk_reconcile_condition{type="Ready"}[10m])) by (kind, name, namespace) > 3
+            sum(increase(gotk_reconcile_duration_seconds_count[10m])) by (kind, name, namespace) > 3
           for: 5m
           labels:
             severity: warning
@@ -227,6 +224,6 @@ spec:
 
 4. **Review RBAC policies**: If drift occurs frequently, tighten RBAC to prevent direct cluster modifications by users who should be going through Git.
 
-5. **Document exceptions**: Some resources may legitimately need out-of-band changes (such as autoscaler-managed replicas). Use the `kustomize.toolkit.fluxcd.io/ssa: Ignore` annotation on specific fields to avoid false drift alerts.
+5. **Document exceptions**: Some resources may legitimately need out-of-band changes (such as autoscaler-managed replicas). For Kustomizations, use the `kustomize.toolkit.fluxcd.io/ssa: Merge` annotation when other tools need to add non-overlapping fields, or `kustomize.toolkit.fluxcd.io/ssa: Ignore` when Flux should skip applying an entire resource. For HelmReleases, use `.spec.driftDetection.ignore` rules to ignore specific paths such as `/spec/replicas`.
 
 Monitoring drift detection events closes the feedback loop in your GitOps process. By alerting on unauthorized changes and tracking drift patterns, you ensure that Git remains the single source of truth for your cluster state.
