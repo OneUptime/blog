@@ -14,11 +14,11 @@ Minikube is one of the most widely used tools for running Kubernetes locally. It
 
 Ensure you have the following installed:
 
-- **Minikube** (v1.30 or later)
-- **kubectl** (matching your Kubernetes version)
+- **Minikube** (v1.38 or later)
+- **kubectl** (within one minor version of your Kubernetes version)
 - **Docker** (or another supported Minikube driver)
 - **Flux CLI** (v2.0 or later)
-- **A GitHub account** with a personal access token
+- **A GitHub account** with a personal access token that can administer the repository
 
 ## Step 1: Install the Flux CLI
 
@@ -43,7 +43,7 @@ minikube start \
   --cpus=4 \
   --memory=8192 \
   --driver=docker \
-  --kubernetes-version=v1.30.0 \
+  --kubernetes-version=v1.34.1 \
   --profile=flux-dev
 
 # Verify the cluster is running
@@ -86,7 +86,7 @@ All checks should pass. If you see warnings about the Kubernetes version, update
 Flux needs credentials to interact with your Git repository. Export the required environment variables.
 
 ```bash
-# Set your GitHub personal access token (needs repo permissions)
+# Set your GitHub personal access token (classic tokens need the repo scope)
 export GITHUB_TOKEN=<your-github-token>
 
 # Set your GitHub username
@@ -215,7 +215,7 @@ spec:
 
 ```yaml
 # apps/minikube/service.yaml
-# ClusterIP service for the nginx deployment
+# NodePort service for the nginx deployment
 apiVersion: v1
 kind: Service
 metadata:
@@ -227,7 +227,7 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-  type: ClusterIP
+  type: NodePort
 ```
 
 Commit and push all these files to your repository. Within the reconciliation interval (5 minutes by default), Flux will deploy the application.
