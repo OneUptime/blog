@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: A complete reference to the Cilium IPAM specification including all configuration parameters, pre-allocation settings, cloud provider-specific options, and how to tune IPAM behavior for different...
+Description: A practical reference to the Cilium IPAM specification including common configuration parameters, pre-allocation settings, cloud provider-specific options, and how to tune IPAM behavior for different...
 
 ---
 
 ## Introduction
 
-The Cilium IPAM specification encompasses the full set of parameters that control how IP addresses are allocated, pre-allocated, and managed across different deployment environments. These parameters exist at multiple levels: the cluster-wide IPAM mode configuration in the Cilium ConfigMap, the per-node IPAM spec in CiliumNode CRDs, and the cloud-provider-specific parameters for ENI, Azure, and GKE integrations.
+The Cilium IPAM specification encompasses the parameters that control how IP addresses are allocated, pre-allocated, and managed across different deployment environments. These parameters exist at multiple levels: the cluster-wide IPAM mode configuration in the Cilium ConfigMap, the per-node IPAM spec in CiliumNode CRDs, and the cloud-provider-specific parameters for ENI, Azure, and GKE integrations.
 
-Understanding the complete IPAM specification is essential for tuning Cilium to your specific workload patterns. Clusters with highly dynamic workloads (frequent pod churn) benefit from higher pre-allocation settings that reduce pod startup latency. Clusters running on cloud providers can leverage prefix delegation and interface-level optimizations to maximize available IPs per node. The specification also covers multi-pool IPAM, which enables different parts of the cluster to use different IP pools.
+Understanding the IPAM specification is essential for tuning Cilium to your specific workload patterns. Clusters with highly dynamic workloads (frequent pod churn) benefit from higher pre-allocation settings that reduce pod startup latency. Clusters running on cloud providers can leverage prefix delegation and interface-level optimizations to maximize available IPs per node. The specification also covers multi-pool IPAM, which enables different parts of the cluster to use different IP pools.
 
-This guide provides a complete reference to all IPAM specification parameters, how to configure them, troubleshoot configuration-related issues, and validate that the specified behavior matches actual IPAM operation.
+This guide provides a practical reference to common IPAM specification parameters, how to configure them, troubleshoot configuration-related issues, and validate that the specified behavior matches actual IPAM operation.
 
 ## Prerequisites
 
@@ -25,21 +25,16 @@ This guide provides a complete reference to all IPAM specification parameters, h
 
 ## Configure IPAM Specification
 
-Complete IPAM configuration reference for cluster-pool mode:
+Example IPAM configuration for cluster-pool mode:
 
 ```bash
 # Cluster-pool IPAM specification
-
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set ipam.mode=cluster-pool \
-  # Cluster-level CIDR pool (Operator allocates from this)
   --set "ipam.operator.clusterPoolIPv4PodCIDRList={10.244.0.0/16}" \
-  # Size of each node's allocation from the pool
-  --set ipam.operator.clusterPoolIPv4MaskSize=24 \
-  # GC settings
-  --set operator.ipamGCInterval=15m
+  --set ipam.operator.clusterPoolIPv4MaskSize=24
 ```
 
 Per-node IPAM specification in CiliumNode:
@@ -52,8 +47,8 @@ spec:
     podCIDRs:
       - 10.244.1.0/24
 
-    # Minimum number of IPs to maintain available at all times
-    # Prevents IPs from running out on very active nodes
+    # Minimum number of IPs that must be allocated on bootstrap
+    # Relevant for cloud IPAM modes such as AWS ENI and Azure IPAM
     min-allocate: 10
 
     # Maximum number of IPs the agent can allocate for this node
@@ -77,13 +72,11 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set ipam.mode=eni \
   --set eni.enabled=true \
-  # Enable AWS prefix delegation for more IPs per ENI
   --set eni.awsEnablePrefixDelegation=true \
-  # Pre-allocate addresses on ENI interfaces
-  --set ipam.operator.eniMinAllocate=8 \
-  --set ipam.operator.eniMaxAllocate=30 \
-  # Interface tags for ENI selection
-  --set "eni.tags.cilium=true"
+  --set ipam.nodeSpec.ipamMinAllocate=8 \
+  --set ipam.nodeSpec.ipamPreAllocate=16 \
+  --set ipam.nodeSpec.ipamMaxAllocate=30 \
+  --set-string eni.eniTags.cilium=true
 ```
 
 ## Troubleshoot IPAM Specification Issues
@@ -93,7 +86,7 @@ Diagnose misconfiguration in IPAM spec:
 ```bash
 # Check effective IPAM specification
 kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data}' | jq '{
+  -o json | jq '.data | {
     ipam: .ipam,
     "cluster-pool-cidr": .["cluster-pool-ipv4-cidr"],
     "mask-size": .["cluster-pool-ipv4-mask-size"]
@@ -101,16 +94,21 @@ kubectl -n kube-system get configmap cilium-config \
 
 # Check per-node IPAM spec
 kubectl get ciliumnode worker-1 \
-  -o jsonpath='{.spec.ipam}' | jq '.'
+  -o json | jq '.spec.ipam'
 
 # Identify nodes with incorrect pre-allocation
 kubectl get ciliumnodes -o json | \
-  jq '.items[] | select((.status.ipam.available | length) < 5) |
-  {node: .metadata.name, available: (.status.ipam.available | length)}'
+  jq '.items[] |
+  ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length)) as $available |
+  select($available < 5) |
+  {node: .metadata.name, available: $available}'
 
 # Check if pre-allocation is working
 kubectl get ciliumnode worker-1 -o json | \
-  jq '.status.ipam | {used: (.used | length), available: (.available | length)}'
+  jq '{
+    used: (.status.ipam.used // {} | length),
+    available: ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length))
+  }'
 ```
 
 Fix IPAM specification issues:
@@ -126,8 +124,8 @@ kubectl patch ciliumnode worker-1 --type merge -p \
   '{"spec": {"ipam": {"max-allocate": 500}}}'
 
 # Issue: IPAM mode mismatch between ConfigMap and CiliumNode
-# Ensure all nodes are updated after ConfigMap change
-kubectl -n kube-system rollout restart ds/cilium
+# Do not change IPAM mode in place on an existing cluster; install a fresh
+# cluster with the target IPAM mode to avoid workload connectivity disruption.
 ```
 
 ## Validate IPAM Specification
@@ -137,10 +135,10 @@ Verify IPAM spec is correctly applied:
 ```bash
 # Validate pre-allocation is working
 for node in $(kubectl get ciliumnodes -o jsonpath='{.items[*].metadata.name}'); do
-  AVAILABLE=$(kubectl get ciliumnode $node \
-    -o jsonpath='{.status.ipam.available}' | jq 'length')
-  PRE_ALLOC=$(kubectl get ciliumnode $node \
-    -o jsonpath='{.spec.ipam.pre-allocate}' 2>/dev/null || echo "default")
+  AVAILABLE=$(kubectl get ciliumnode "$node" -o json | \
+    jq '(.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length)')
+  PRE_ALLOC=$(kubectl get ciliumnode "$node" \
+    -o json | jq -r '.spec.ipam."pre-allocate" // "default"')
   echo "$node: available=$AVAILABLE, pre-allocate=$PRE_ALLOC"
 done
 
@@ -157,7 +155,7 @@ kubectl delete pod spec-test
 if kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.ipam}' | grep -q eni; then
   kubectl get ciliumnodes -o json | \
-    jq '.items[] | {node: .metadata.name, eni_count: (.status.eni | length)}'
+    jq '.items[] | {node: .metadata.name, eni_count: (.status.eni.enis // {} | length)}'
 fi
 ```
 
@@ -168,28 +166,28 @@ graph TD
     A[IPAM Spec: pre-allocate=16] -->|Agent maintains| B[16 IPs always available]
     C[Pod created] -->|Uses pre-allocated IP| D[Immediate IP assignment]
     D -->|Agent replenishes| B
-    E[IPAM Spec: min-allocate=10] -->|Agent ensures| F[Always >= 10 available]
-    G[IPAM Spec: max-allocate=250] -->|Agent won't exceed| H[Max 250 IPs total]
-    I[Monitor] -->|Track| J{available >= min-allocate?}
+    E[IPAM Spec: min-allocate=10] -->|Operator ensures| F[At least 10 IPs allocated at bootstrap]
+    G[IPAM Spec: max-allocate=250] -->|Operator won't exceed| H[Max 250 IPs total]
+    I[Monitor] -->|Track| J{available >= pre-allocate?}
     J -->|No| K[Alert: Pre-allocation failing]
 ```
 
 Monitor IPAM specification adherence:
 
 ```bash
-# Check pre-allocation is meeting the min-allocate requirement
+# Check pre-allocation is meeting the pre-allocate requirement
 kubectl get ciliumnodes -o json | jq '[.items[] | {
   node: .metadata.name,
   min_allocate: (.spec.ipam."min-allocate" // "default"),
-  available: (.status.ipam.available | length),
+  available: ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length)),
   meeting_minimum: (
-    (.status.ipam.available | length) >= (.spec.ipam."min-allocate" // 10)
+    ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length)) >= (.spec.ipam."pre-allocate" // 8)
   )
 }]'
 
 # Monitor IPAM pre-allocation efficiency
-kubectl -n kube-system port-forward ds/cilium 9962:9962 &
-curl -s http://localhost:9962/metrics | grep -E "ipam_(available|used|allocated)"
+kubectl -n kube-system port-forward deployment/cilium-operator 9963:9963 &
+curl -s http://localhost:9963/metrics | grep -E "cilium_operator_ipam_(available|used|needed)_ips"
 
 # Alert when available IPs below minimum
 kubectl apply -f - <<EOF
@@ -203,7 +201,7 @@ spec:
   - name: ipam-spec
     rules:
     - alert: CiliumIPAMPreAllocationLow
-      expr: cilium_ipam_available_ips < 5
+      expr: cilium_operator_ipam_available_ips < 5
       for: 2m
       labels:
         severity: warning
@@ -214,4 +212,4 @@ EOF
 
 ## Conclusion
 
-The Cilium IPAM specification provides extensive tunability for different deployment scenarios and workload patterns. Pre-allocation settings directly impact pod startup latency - higher values reduce latency at the cost of temporarily reserving more IPs. The min-allocate and max-allocate thresholds prevent both IP starvation and runaway consumption. Cloud provider IPAM modes have additional specification options that leverage platform-specific capabilities like AWS prefix delegation for dramatic increases in IPs per node. Validate that your IPAM specification settings are reflected in actual CiliumNode status to ensure the configuration is taking effect.
+The Cilium IPAM specification provides extensive tunability for different deployment scenarios and workload patterns. Pre-allocation settings directly impact pod startup latency - higher values reduce latency at the cost of temporarily reserving more IPs. The min-allocate, pre-allocate, and max-allocate thresholds help control bootstrap allocation, steady-state spare IP capacity, and runaway consumption. Cloud provider IPAM modes have additional specification options that leverage platform-specific capabilities like AWS prefix delegation for dramatic increases in IPs per node. Validate that your IPAM specification settings are reflected in actual CiliumNode status to ensure the configuration is taking effect.
