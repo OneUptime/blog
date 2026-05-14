@@ -100,7 +100,7 @@ kubectl create secret generic receiver-token \
 
 ## Step 3: Verify the Webhook URL
 
-The full webhook URL is composed of the notification controller service address and the Receiver's webhook path.
+The full webhook URL is composed of the webhook receiver service address and the Receiver's webhook path.
 
 ```bash
 # Get the webhook path from the Receiver status
@@ -110,7 +110,7 @@ WEBHOOK_PATH=$(kubectl get receiver github-receiver -n flux-system \
 echo "Webhook path: $WEBHOOK_PATH"
 
 # The full URL format is:
-# http://<notification-controller-address>/<webhook-path>
+# http://<webhook-receiver-address>/<webhook-path>
 ```
 
 The external URL that your Git provider should call depends on how you expose the notification controller.
@@ -141,8 +141,8 @@ spec:
             pathType: Prefix
             backend:
               service:
-                # This is the notification controller service
-                name: notification-controller
+                # This is the webhook receiver service created by Flux
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -158,7 +158,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: webhook-receiver
+  name: receiver
   namespace: flux-system
 spec:
   type: LoadBalancer
@@ -175,12 +175,10 @@ spec:
 ```bash
 # Temporary port-forward for testing
 kubectl port-forward -n flux-system \
-  svc/notification-controller 9292:80
+  svc/webhook-receiver 9292:80
 
-# Test locally
-curl -X POST localhost:9292/<webhook-path> \
-  -H "Content-Type: application/json" \
-  -d '{}'
+# Then send a signed test request to http://localhost:9292${WEBHOOK_PATH}
+# as shown in Step 6.
 ```
 
 ## Step 5: Configure Your Git Provider Webhook
@@ -258,6 +256,7 @@ SIGNATURE=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$TOKEN" | awk '{print 
 # Send the test webhook
 curl -X POST "https://flux-webhook.example.com${WEBHOOK_PATH}" \
   -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: push" \
   -H "X-Hub-Signature-256: ${SIGNATURE}" \
   -d "$BODY"
 ```
@@ -292,13 +291,14 @@ Common error messages:
 
 ## Step 8: Verify Resources Exist
 
-The Receiver must reference existing Flux resources. If a referenced resource does not exist, the Receiver may be ready but will not trigger anything.
+The Receiver must reference existing Flux resources. Receivers should usually reconcile source or image resources such as `GitRepository`, `OCIRepository`, or `ImageRepository`; downstream `Kustomization` and `HelmRelease` resources are notified when their sources publish a new revision.
 
 ```bash
 # Check that referenced resources exist
 kubectl get gitrepositories -n flux-system
-kubectl get kustomizations -n flux-system
-kubectl get helmreleases -n flux-system
+kubectl get helmrepositories -n flux-system
+kubectl get ocirepositories -n flux-system
+kubectl get imagerepositories -n flux-system
 
 # The names must match exactly what is in the Receiver spec
 kubectl get receiver github-receiver -n flux-system \
