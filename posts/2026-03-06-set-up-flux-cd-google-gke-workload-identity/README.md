@@ -12,7 +12,7 @@ Description: A comprehensive guide to setting up Flux CD on Google Kubernetes En
 
 Workload Identity is the recommended way for workloads running on GKE to access Google Cloud services. Instead of using static service account keys, Workload Identity allows Kubernetes service accounts to act as Google Cloud service accounts, providing a more secure and manageable authentication mechanism.
 
-This guide walks you through setting up Flux CD on GKE with Workload Identity, enabling Flux controllers to securely access Google Artifact Registry, Cloud Source Repositories, and other GCP services without static credentials.
+This guide walks you through setting up Flux CD on GKE with Workload Identity, enabling Flux controllers to securely access Google Artifact Registry and other GCP services without static credentials. If your organization already uses Cloud Source Repositories, the same IAM pattern can be used for that service as well.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ This guide walks you through setting up Flux CD on GKE with Workload Identity, e
 - gcloud CLI installed and configured
 - kubectl installed
 - Flux CLI v2.0 or later installed
-- Owner or Editor role on the GCP project
+- IAM permissions to manage GKE clusters, service accounts, and project IAM bindings, such as `roles/container.admin`, `roles/iam.serviceAccountAdmin`, and `roles/resourcemanager.projectIamAdmin`
 
 ## Step 1: Enable Required APIs
 
@@ -33,8 +33,11 @@ gcloud services enable \
   container.googleapis.com \
   artifactregistry.googleapis.com \
   iam.googleapis.com \
-  iamcredentials.googleapis.com \
-  sourcerepo.googleapis.com
+  iamcredentials.googleapis.com
+
+# Optional: enable Cloud Source Repositories only if your organization
+# used the service before June 17, 2024.
+# gcloud services enable sourcerepo.googleapis.com
 
 # Set project variables
 export PROJECT_ID=$(gcloud config get-value project)
@@ -115,11 +118,12 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:flux-source-controller@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.reader"
 
-# Grant Source Repository Reader to source-controller
-# Allows cloning Git repositories from Cloud Source Repos
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:flux-source-controller@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/source.reader"
+# Optional: grant Source Repository Reader to source-controller
+# Allows cloning Git repositories from Cloud Source Repositories if your
+# organization already uses that service.
+# gcloud projects add-iam-policy-binding $PROJECT_ID \
+#   --member="serviceAccount:flux-source-controller@${PROJECT_ID}.iam.gserviceaccount.com" \
+#   --role="roles/source.reader"
 
 # Grant KMS Decrypter to kustomize-controller (for SOPS decryption)
 gcloud projects add-iam-policy-binding $PROJECT_ID \
@@ -167,6 +171,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/gke-cluster \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --personal
 ```
 
@@ -208,32 +213,41 @@ resources:
   - gotk-sync.yaml
 patches:
   # Patch source-controller service account
-  - target:
+  - patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        annotations:
+          iam.gke.io/gcp-service-account: flux-source-controller@PROJECT_ID.iam.gserviceaccount.com
+    target:
       kind: ServiceAccount
       name: source-controller
-      namespace: flux-system
-    patch: |
-      - op: add
-        path: /metadata/annotations/iam.gke.io~1gcp-service-account
-        value: flux-source-controller@PROJECT_ID.iam.gserviceaccount.com
   # Patch kustomize-controller service account
-  - target:
+  - patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: kustomize-controller
+        namespace: flux-system
+        annotations:
+          iam.gke.io/gcp-service-account: flux-kustomize-controller@PROJECT_ID.iam.gserviceaccount.com
+    target:
       kind: ServiceAccount
       name: kustomize-controller
-      namespace: flux-system
-    patch: |
-      - op: add
-        path: /metadata/annotations/iam.gke.io~1gcp-service-account
-        value: flux-kustomize-controller@PROJECT_ID.iam.gserviceaccount.com
   # Patch image-reflector-controller service account
-  - target:
+  - patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: image-reflector-controller
+        namespace: flux-system
+        annotations:
+          iam.gke.io/gcp-service-account: flux-image-automation@PROJECT_ID.iam.gserviceaccount.com
+    target:
       kind: ServiceAccount
       name: image-reflector-controller
-      namespace: flux-system
-    patch: |
-      - op: add
-        path: /metadata/annotations/iam.gke.io~1gcp-service-account
-        value: flux-image-automation@PROJECT_ID.iam.gserviceaccount.com
 ```
 
 ## Step 8: Configure Flux Sources with GCP Provider
@@ -382,4 +396,4 @@ kubectl exec -n flux-system deploy/source-controller -- \
 
 ## Summary
 
-In this guide, you set up Flux CD on Google GKE with Workload Identity Federation. You created a GKE cluster with Workload Identity enabled, set up Google Service Accounts for each Flux controller, bound Kubernetes service accounts to Google service accounts, and configured Flux sources to use the GCP provider for keyless authentication. This setup eliminates the need for static service account keys and provides a secure, auditable way for Flux controllers to access Google Cloud services like Artifact Registry and Cloud Source Repositories.
+In this guide, you set up Flux CD on Google GKE with Workload Identity Federation. You created a GKE cluster with Workload Identity enabled, set up Google Service Accounts for Flux controllers, bound Kubernetes service accounts to Google service accounts, and configured Flux sources to use the GCP provider for keyless authentication. This setup eliminates the need for static service account keys and provides a secure, auditable way for Flux controllers to access Google Cloud services like Artifact Registry.
