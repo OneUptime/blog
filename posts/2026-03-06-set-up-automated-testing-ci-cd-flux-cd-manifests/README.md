@@ -150,7 +150,7 @@ Validate manifests against Kubernetes API schemas and Flux CRD schemas.
       - name: Install kubeconform
         run: |
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin
+            sudo tar xz -C /usr/local/bin
 
       - name: Download Flux CRD schemas
         run: |
@@ -186,7 +186,7 @@ Validate manifests against Kubernetes API schemas and Flux CRD schemas.
 
 ## Layer 3: Flux Build Validation
 
-Use `flux build` to validate Kustomization rendering and variable substitution.
+Use `flux build` to validate Kustomization rendering. In CI, use dry-run mode so the command does not need to query a live cluster; substitutions loaded from cluster Secrets or ConfigMaps are skipped in dry-run mode.
 
 ```yaml
   # Layer 3: Flux build validation
@@ -231,7 +231,8 @@ Use `flux build` to validate Kustomization rendering and variable substitution.
 
             if flux build kustomization "$NAME" \
               --path ".${PATH_FIELD}" \
-              --kustomization-file "$ks_file" > /tmp/build-output.yaml 2>&1; then
+              --kustomization-file "$ks_file" \
+              --dry-run > /tmp/build-output.yaml 2>&1; then
               RESOURCES=$(grep -c "^kind:" /tmp/build-output.yaml || echo 0)
               echo "  OK: $RESOURCES resources rendered"
             else
@@ -270,7 +271,7 @@ Validate HelmRelease resources by rendering their templates.
       - name: Discover and add Helm repositories
         run: |
           # Find all HelmRepository definitions and add them
-          find . -name "*.yaml" -type f | while read -r file; do
+          while IFS= read -r file; do
             KIND=$(yq '.kind' "$file" 2>/dev/null)
             if [ "$KIND" = "HelmRepository" ]; then
               NAME=$(yq '.metadata.name' "$file")
@@ -279,42 +280,52 @@ Validate HelmRelease resources by rendering their templates.
               echo "Adding repo: $NAME -> $URL"
               helm repo add "$NAME" "$URL" 2>/dev/null || true
             fi
-          done
-          helm repo update
+          done < <(find . -name "*.yaml" -type f)
+          if helm repo list -o yaml | grep -q "name:"; then
+            helm repo update
+          fi
 
       - name: Render HelmRelease templates
         run: |
           ERRORS=0
 
-          find . -name "*.yaml" -type f | while read -r file; do
+          while IFS= read -r file; do
             KIND=$(yq '.kind' "$file" 2>/dev/null)
             [ "$KIND" = "HelmRelease" ] || continue
 
             NAME=$(yq '.metadata.name' "$file")
-            NS=$(yq '.metadata.namespace' "$file")
+            NS=$(yq '.spec.targetNamespace // .metadata.namespace // "default"' "$file")
             CHART=$(yq '.spec.chart.spec.chart' "$file")
             VERSION=$(yq '.spec.chart.spec.version' "$file")
+            SOURCE_KIND=$(yq '.spec.chart.spec.sourceRef.kind' "$file")
             REPO=$(yq '.spec.chart.spec.sourceRef.name' "$file")
+
+            if [ "$CHART" = "null" ] || [ "$REPO" = "null" ] || [ "$SOURCE_KIND" != "HelmRepository" ]; then
+              echo "Skipping unsupported HelmRelease source in $file"
+              continue
+            fi
 
             echo "Rendering: $NAME ($CHART@$VERSION)"
 
             # Extract values to temp file
             yq '.spec.values // {}' "$file" > /tmp/values.yaml
+            VERSION_ARGS=()
+            [ "$VERSION" != "null" ] && VERSION_ARGS=(--version "$VERSION")
 
             if helm template "$NAME" "$REPO/$CHART" \
-              --version "$VERSION" \
+              "${VERSION_ARGS[@]}" \
               --namespace "$NS" \
               --values /tmp/values.yaml > /dev/null 2>&1; then
               echo "  OK"
             else
               echo "  FAILED:"
               helm template "$NAME" "$REPO/$CHART" \
-                --version "$VERSION" \
+                "${VERSION_ARGS[@]}" \
                 --namespace "$NS" \
                 --values /tmp/values.yaml 2>&1 || true
               ERRORS=$((ERRORS + 1))
             fi
-          done
+          done < <(find . -name "*.yaml" -type f)
 
           [ "$ERRORS" -eq 0 ] || exit 1
 ```
@@ -348,6 +359,12 @@ Spin up a local Kubernetes cluster and test the actual deployment.
       - name: Install Flux CLI
         uses: fluxcd/flux2/action@main
 
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
       - name: Install Flux controllers
         run: |
           flux install --components-extra=image-reflector-controller,image-automation-controller
@@ -355,6 +372,8 @@ Spin up a local Kubernetes cluster and test the actual deployment.
       - name: Apply infrastructure manifests
         run: |
           # Apply base infrastructure to the test cluster
+          ERRORS=0
+
           for ks_file in clusters/staging/*.yaml; do
             [ -f "$ks_file" ] || continue
 
@@ -366,9 +385,15 @@ Spin up a local Kubernetes cluster and test the actual deployment.
 
             echo "Applying: $PATH_FIELD"
             # Use kustomize build and kubectl apply for testing
-            kustomize build ".${PATH_FIELD}" | \
-              kubectl apply --dry-run=server -f - || true
+            if kubectl kustomize ".${PATH_FIELD}" | kubectl apply --dry-run=server -f -; then
+              echo "  OK"
+            else
+              echo "  FAILED"
+              ERRORS=$((ERRORS + 1))
+            fi
           done
+
+          [ "$ERRORS" -eq 0 ] || exit 1
 
       - name: Verify Flux resource health
         run: |
@@ -408,14 +433,14 @@ Scan manifests for security issues.
         run: |
           ERRORS=0
 
-          find . -name "*.yaml" -type f | while read -r file; do
+          while IFS= read -r file; do
             if grep -q "kind: Secret" "$file" 2>/dev/null; then
               if ! grep -q "sops:" "$file"; then
                 echo "ERROR: Unencrypted Secret: $file"
                 ERRORS=$((ERRORS + 1))
               fi
             fi
-          done
+          done < <(find . -name "*.yaml" -type f)
 
           [ "$ERRORS" -eq 0 ] || exit 1
           echo "No unencrypted secrets found"
@@ -521,7 +546,8 @@ if command -v flux &>/dev/null; then
 
       if ! flux build kustomization "$NAME" \
         --path ".${PATH_FIELD}" \
-        --kustomization-file "$ks_file" > /dev/null 2>&1; then
+        --kustomization-file "$ks_file" \
+        --dry-run > /dev/null 2>&1; then
         echo "  FAILED: $NAME ($cluster)"
         BUILD_ERRORS=$((BUILD_ERRORS + 1))
       fi
@@ -540,13 +566,13 @@ fi
 # Layer 4: Kustomize builds
 echo "[4/5] Kustomize Builds..."
 KS_ERRORS=0
-find . -path "*/overlays/*/kustomization.yaml" | while read -r ks_file; do
+while IFS= read -r ks_file; do
   DIR=$(dirname "$ks_file")
   if ! kustomize build "$DIR" > /dev/null 2>&1; then
     echo "  FAILED: $DIR"
     KS_ERRORS=$((KS_ERRORS + 1))
   fi
-done
+done < <(find . -path "*/overlays/*/kustomization.yaml")
 if [ "$KS_ERRORS" -eq 0 ]; then
   echo "  PASSED"
 else
@@ -556,12 +582,12 @@ fi
 # Layer 5: Secret detection
 echo "[5/5] Secret Detection..."
 SECRET_ERRORS=0
-find . -name "*.yaml" -type f | while read -r file; do
+while IFS= read -r file; do
   if grep -q "kind: Secret" "$file" 2>/dev/null && ! grep -q "sops:" "$file"; then
     echo "  ALERT: Unencrypted secret: $file"
     SECRET_ERRORS=$((SECRET_ERRORS + 1))
   fi
-done
+done < <(find . -name "*.yaml" -type f)
 if [ "$SECRET_ERRORS" -eq 0 ]; then
   echo "  PASSED"
 else
