@@ -156,47 +156,43 @@ spec:
 
 ## Managing CRDs from Helm Charts
 
-Some Helm charts bundle CRDs. Use a dedicated HelmRelease for CRD installation:
+Some Helm charts bundle CRDs. Use a dedicated HelmRelease with CRD management enabled:
 
 ```yaml
-# infrastructure/crds/cert-manager-crds.yaml
+# infrastructure/controllers/cert-manager.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: jetstack
+  name: cert-manager
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://charts.jetstack.io
+  url: oci://quay.io/jetstack/charts
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cert-manager-crds
+  name: cert-manager
   namespace: flux-system
 spec:
   interval: 1h
+  releaseName: cert-manager
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
-        name: jetstack
-  # Only install CRDs, skip the controller
+        name: cert-manager
   install:
-    crds: Create
+    createNamespace: true
+    crds: CreateReplace
   upgrade:
     crds: CreateReplace
   values:
-    installCRDs: true
-    # Disable everything except CRDs
-    webhook:
-      enabled: false
-    cainjector:
-      enabled: false
-    startupapicheck:
-      enabled: false
+    crds:
+      enabled: true
 ```
 
 ## Versioning CRDs Safely
@@ -290,7 +286,6 @@ spec:
     name: flux-system
   path: ./infrastructure/crds
   prune: false
-  wait: true
   timeout: 5m
   # Health checks verify CRDs are established
   healthChecks:
@@ -313,8 +308,8 @@ kind: CustomResourceDefinition
 metadata:
   name: myapps.example.com
   annotations:
-    # Prevent Flux from deleting this CRD
-    kustomize.toolkit.fluxcd.io/prune: disabled
+    # Prevent Flux from pruning this CRD
+    kustomize.toolkit.fluxcd.io/prune: Disabled
   labels:
     app.kubernetes.io/managed-by: flux
 spec:
@@ -365,7 +360,7 @@ Check the status of your CRD Kustomization to verify everything is in sync:
 
 ```yaml
 # Alert for CRD reconciliation failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: crd-alerts
@@ -378,7 +373,8 @@ spec:
     - kind: Kustomization
       name: crds
       namespace: flux-system
-  summary: "CRD reconciliation alert"
+  eventMetadata:
+    summary: "CRD reconciliation alert"
 ```
 
 ## Common Pitfalls and Solutions
