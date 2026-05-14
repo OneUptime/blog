@@ -54,9 +54,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gloo
-  namespace: gloo-system
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: gloo-system
   chart:
     spec:
       chart: gloo
@@ -103,9 +104,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: monitoring
   chart:
     spec:
       chart: prometheus
@@ -235,9 +237,9 @@ spec:
       targetPort: http
 ```
 
-## Step 7: Create the Gloo Upstream and VirtualService
+## Step 7: Create the Gloo VirtualService
 
-Gloo uses Upstreams and VirtualServices for routing. When discovery is enabled, Gloo auto-discovers upstreams. You need to create a VirtualService to route traffic.
+Gloo uses Upstreams, RouteTables, and VirtualServices for routing. Flagger will generate the RouteTable and upstreams for the canary. You need to create a VirtualService that delegates traffic to the RouteTable managed by Flagger.
 
 ```yaml
 # virtualservice.yaml
@@ -245,7 +247,7 @@ apiVersion: gateway.solo.io/v1
 kind: VirtualService
 metadata:
   name: podinfo
-  namespace: gloo-system
+  namespace: demo
 spec:
   virtualHost:
     domains:
@@ -253,21 +255,10 @@ spec:
     routes:
       - matchers:
           - prefix: /
-        routeAction:
-          multi:
-            destinations:
-              # Primary upstream - Flagger will manage these weights
-              - destination:
-                  upstream:
-                    name: demo-podinfo-primary-9898
-                    namespace: gloo-system
-                weight: 100
-              # Canary upstream
-              - destination:
-                  upstream:
-                    name: demo-podinfo-canary-9898
-                    namespace: gloo-system
-                weight: 0
+        delegateAction:
+          ref:
+            name: podinfo
+            namespace: demo
 ```
 
 ## Step 8: Create the Canary Resource
@@ -280,16 +271,11 @@ metadata:
   name: podinfo
   namespace: demo
 spec:
+  provider: gloo
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: podinfo
-  # Gloo upstream discovery settings
-  upstreamRef:
-    apiVersion: gloo.solo.io/v1
-    kind: Upstream
-    name: demo-podinfo-9898
-    namespace: gloo-system
   service:
     port: 9898
     targetPort: http
@@ -327,8 +313,8 @@ kubectl get canary -n demo
 # Verify Gloo upstreams were created
 kubectl get upstream -n gloo-system | grep podinfo
 
-# Check VirtualService routing
-kubectl get virtualservice -n gloo-system podinfo -o yaml
+# Check the generated RouteTable routing
+kubectl get routetable -n demo podinfo -o yaml
 ```
 
 ## How Gloo Edge Traffic Splitting Works
@@ -337,14 +323,15 @@ kubectl get virtualservice -n gloo-system podinfo -o yaml
 graph LR
     A[Client] --> B[Gloo Edge Gateway]
     B --> C[VirtualService]
-    C --> D{Weighted Route}
-    D -->|90%| E[Upstream: podinfo-primary]
-    D -->|10%| F[Upstream: podinfo-canary]
-    E --> G[Primary Pods]
-    F --> H[Canary Pods]
+    C --> D[Delegated RouteTable]
+    D --> E{Weighted Route}
+    E -->|90%| F[Upstream: podinfo-primary]
+    E -->|10%| G[Upstream: podinfo-canary]
+    F --> H[Primary Pods]
+    G --> I[Canary Pods]
 ```
 
-Flagger adjusts the destination weights in the Gloo VirtualService route action during each canary analysis step.
+Flagger adjusts the destination weights in the Gloo RouteTable during each canary analysis step.
 
 ## Step 10: Trigger a Canary Release
 
@@ -371,8 +358,8 @@ flux reconcile kustomization flux-system --with-source
 # Watch canary events
 kubectl describe canary podinfo -n demo
 
-# Check Gloo upstream weights
-kubectl get virtualservice podinfo -n gloo-system -o yaml | grep -A10 routeAction
+# Check Gloo RouteTable weights
+kubectl get routetable podinfo -n demo -o yaml | grep -A10 routeAction
 
 # View Flagger logs
 kubectl logs -f deploy/flagger -n flux-system
@@ -381,7 +368,8 @@ kubectl logs -f deploy/flagger -n flux-system
 You can also use glooctl to inspect routing:
 
 ```bash
-glooctl get virtualservice podinfo -n gloo-system
+glooctl get virtualservice podinfo -n demo
+glooctl get routetable podinfo -n demo
 glooctl get upstream -n gloo-system | grep podinfo
 ```
 
@@ -403,14 +391,14 @@ spec:
   query: |
     # Calculate error rate from Gloo Edge Envoy metrics
     sum(rate(
-      envoy_cluster_upstream_rq{
-        envoy_cluster_name=~"demo-podinfo-canary.*",
-        envoy_response_code=~"5.*"
+      envoy_cluster_upstream_rq_xx{
+        envoy_cluster_name=~".*demo-podinfo-canaryupstream-9898.*",
+        envoy_response_code_class="5"
       }[{{ interval }}]
     )) /
     sum(rate(
-      envoy_cluster_upstream_rq{
-        envoy_cluster_name=~"demo-podinfo-canary.*"
+      envoy_cluster_upstream_rq_completed{
+        envoy_cluster_name=~".*demo-podinfo-canaryupstream-9898.*"
       }[{{ interval }}]
     )) * 100
 ```
@@ -486,7 +474,7 @@ kubectl get clusterrole flagger -o yaml | grep gloo
 You have configured Flagger with Gloo Edge and Flux for automated canary deployments. This setup uses:
 
 - Gloo Edge API gateway with Envoy proxy for traffic routing
-- Gloo VirtualService weighted destinations for traffic splitting
+- Gloo VirtualService delegation and Flagger-managed RouteTable weights for traffic splitting
 - Prometheus for collecting Envoy metrics
 - Flagger for automating the progressive delivery lifecycle
 - Flux for GitOps-based configuration management
