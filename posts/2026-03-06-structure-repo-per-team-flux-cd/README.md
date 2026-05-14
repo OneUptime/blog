@@ -151,7 +151,7 @@ rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["*"]
-  # Explicitly deny cluster-scoped resources
+  # No cluster-scoped permissions are granted.
   # Teams cannot create namespaces, clusterroles, etc.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -202,7 +202,7 @@ spec:
   prune: true
   # Use the team's service account for RBAC enforcement
   serviceAccountName: team-frontend
-  # Only allow resources in the team's namespace
+  # Set the namespace for namespaced resources in the team's manifests
   targetNamespace: team-frontend
 ```
 
@@ -214,6 +214,8 @@ resources:
   - namespace.yaml
   - rbac.yaml
   - sync.yaml
+  - resource-quota.yaml
+  - network-policy.yaml
 ```
 
 Resource Quotas and Limits
@@ -275,26 +277,29 @@ spec:
   ingress:
     # Allow traffic within the namespace
     - from:
-        - namespaceSelector:
-            matchLabels:
-              toolkit.fluxcd.io/tenant: team-frontend
+        - podSelector: {}
     # Allow ingress controller traffic
     - from:
         - namespaceSelector:
             matchLabels:
               name: ingress-system
   egress:
-    # Allow DNS
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-    # Allow traffic within the namespace
+    # Allow DNS to CoreDNS in kube-system
     - to:
         - namespaceSelector:
             matchLabels:
-              toolkit.fluxcd.io/tenant: team-frontend
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow traffic within the namespace
+    - to:
+        - podSelector: {}
     # Allow external traffic
     - to:
         - ipBlock:
