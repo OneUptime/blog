@@ -8,7 +8,7 @@ Description: Step-by-step instructions for installing Flux CD on Docker Desktop'
 
 ---
 
-Docker Desktop includes a built-in single-node Kubernetes cluster that you can enable with a single toggle. This makes it one of the simplest ways to get a local Kubernetes environment running on macOS or Windows. In this guide, you will learn how to enable Kubernetes in Docker Desktop, install Flux CD, and set up a working GitOps pipeline.
+Docker Desktop includes a built-in Kubernetes cluster that you can enable from the Docker Desktop dashboard. This makes it one of the simplest ways to get a local Kubernetes environment running on macOS or Windows. In this guide, you will learn how to enable Kubernetes in Docker Desktop, install Flux CD, and set up a working GitOps pipeline.
 
 ## Prerequisites
 
@@ -19,13 +19,13 @@ Docker Desktop includes a built-in single-node Kubernetes cluster that you can e
 
 ## Step 1: Enable Kubernetes in Docker Desktop
 
-Docker Desktop ships with Kubernetes disabled by default. Enable it through the settings.
+Docker Desktop ships with Kubernetes disabled by default. Enable it through the Kubernetes view or the Kubernetes settings, depending on your Docker Desktop version.
 
 1. Open Docker Desktop
-2. Click the **Settings** (gear) icon
-3. Navigate to **Kubernetes**
-4. Check **Enable Kubernetes**
-5. Click **Apply & Restart**
+2. Open the **Kubernetes** view, or click the **Settings** (gear) icon and navigate to **Kubernetes**
+3. Create or enable the Kubernetes cluster
+4. If prompted, choose a cluster type. `kubeadm` creates a single-node cluster, while `kind` can create a multi-node cluster.
+5. Click **Apply & Restart** or **Create**
 
 Docker Desktop will download the Kubernetes components and start the cluster. This may take a few minutes on first run.
 
@@ -37,7 +37,7 @@ Verify the cluster is running.
 kubectl get nodes
 ```
 
-You should see a single node named `docker-desktop` with `Ready` status.
+You should see one or more nodes with `Ready` status. A `kubeadm` cluster normally shows a single node named `docker-desktop`.
 
 ## Step 2: Set the Correct kubectl Context
 
@@ -216,14 +216,14 @@ Visit http://localhost:9898 in your browser.
 
 - **Cluster persistence**: Docker Desktop Kubernetes state persists across Docker restarts. Flux CD and your workloads survive Docker Desktop restarts without needing to re-bootstrap.
 - **Reset Kubernetes cluster**: If you use the "Reset Kubernetes Cluster" button in Docker Desktop settings, all Flux components and workloads are deleted. You will need to run `flux bootstrap` again.
-- **Docker image builds**: Since Docker Desktop shares the Docker daemon between the host and Kubernetes, images you build locally with `docker build` are immediately available to Kubernetes pods without pushing to a registry. This is useful for testing with Flux image automation.
-- **Port conflicts**: Docker Desktop Kubernetes uses the host network for `NodePort` and `LoadBalancer` services. Be aware of port conflicts with other services running on your machine.
+- **Docker image builds**: Local images are easiest with Docker Desktop Kubernetes when the cluster and Docker use compatible image stores. In current Docker Desktop versions, `kubeadm` works with both the Docker and containerd image stores, while `kind` works with the containerd image store. If your cluster cannot see a local image, push it to a registry or use a local registry.
+- **Port conflicts**: `NodePort` and `LoadBalancer` services can publish ports on your local machine. Be aware of port conflicts with other services running on your machine.
 - **Storage**: Docker Desktop provides a default `StorageClass` called `hostpath`. This works for testing persistent volumes with Flux-managed Helm releases.
 - **WSL 2 backend (Windows)**: On Windows with the WSL 2 backend, Kubernetes performance is generally better. Ensure WSL 2 is configured if you are on Windows.
 
 ## Using Flux with Local Docker Images
 
-A common development workflow is building images locally and deploying them through Flux. Here is how to reference a locally built image in a Flux-managed deployment.
+A common development workflow is building images locally and deploying them through Flux. Here is how to reference a locally built image in a Flux-managed deployment when your Docker Desktop Kubernetes cluster can access the local image store.
 
 ```yaml
 # local-app-deployment.yaml
@@ -263,4 +263,4 @@ flux uninstall --silent
 
 ## Conclusion
 
-Docker Desktop provides the most straightforward path to running a local Kubernetes cluster on macOS and Windows. Combined with Flux CD, it gives you a complete GitOps development environment where you can test configurations, validate Helm releases, and develop Kustomization overlays before promoting changes to remote clusters. The shared Docker daemon makes it particularly convenient for building and testing container images as part of your GitOps workflow.
+Docker Desktop provides the most straightforward path to running a local Kubernetes cluster on macOS and Windows. Combined with Flux CD, it gives you a complete GitOps development environment where you can test configurations, validate Helm releases, and develop Kustomization overlays before promoting changes to remote clusters. Docker Desktop's local image-store integration can make it particularly convenient for building and testing container images as part of your GitOps workflow.
