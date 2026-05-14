@@ -162,33 +162,19 @@ spec:
 ```
 
 ```yaml
-# dr-config/failover/active/scale-up.yaml
+# dr-config/failover/active/kustomization.yaml
 # Applied during failover to bring DR cluster to full capacity
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: frontend
-  namespace: production
-spec:
-  replicas: 3
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: backend
-  namespace: production
-spec:
-  replicas: 5
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: worker
-  namespace: production
-spec:
-  replicas: 3
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/apps
+replicas:
+  - name: frontend
+    count: 3
+  - name: backend
+    count: 5
+  - name: worker
+    count: 3
 ```
 
 ## Failover Automation
@@ -211,41 +197,48 @@ echo "Time: $(date -u)"
 # Step 1: Verify DR cluster is accessible
 echo ""
 echo "Step 1: Verifying DR cluster connectivity..."
-kubectl --context "$DR_CONTEXT" cluster-info
-if [ $? -ne 0 ]; then
+if ! kubectl --context "$DR_CONTEXT" cluster-info; then
   echo "ERROR: Cannot reach DR cluster!"
   exit 1
 fi
 
-# Step 2: Activate the failover Kustomization
+# Step 2: Suspend the standby configuration so it does not scale workloads back down
 echo ""
-echo "Step 2: Activating failover configuration..."
+echo "Step 2: Suspending standby configuration..."
+kubectl --context "$DR_CONTEXT" -n flux-system \
+  patch kustomization apps \
+  --type merge \
+  --patch '{"spec":{"suspend":true}}'
+
+# Step 3: Activate the failover Kustomization
+echo ""
+echo "Step 3: Activating failover configuration..."
 kubectl --context "$DR_CONTEXT" -n flux-system \
   patch kustomization failover-active \
   --type merge \
   --patch '{"spec":{"suspend":false}}'
 
-# Step 3: Force reconciliation
+# Step 4: Force reconciliation
 echo ""
-echo "Step 3: Forcing Flux reconciliation..."
+echo "Step 4: Forcing Flux reconciliation..."
 flux --context "$DR_CONTEXT" reconcile kustomization failover-active --with-source
 
-# Step 4: Wait for deployments to scale up
+# Step 5: Wait for deployments to scale up
 echo ""
-echo "Step 4: Waiting for deployments to scale up..."
+echo "Step 5: Waiting for deployments to scale up..."
 kubectl --context "$DR_CONTEXT" -n production \
   rollout status deployment/frontend --timeout=300s
 kubectl --context "$DR_CONTEXT" -n production \
   rollout status deployment/backend --timeout=300s
 
-# Step 5: Verify DR applications are healthy
+# Step 6: Verify DR applications are healthy
 echo ""
-echo "Step 5: Verifying application health..."
+echo "Step 6: Verifying application health..."
 kubectl --context "$DR_CONTEXT" get pods -n production
 
-# Step 6: Update DNS to point to DR cluster
+# Step 7: Update DNS to point to DR cluster
 echo ""
-echo "Step 6: Updating DNS records..."
+echo "Step 7: Updating DNS records..."
 DR_LB=$(kubectl --context "$DR_CONTEXT" get svc -n ingress-nginx \
   ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 echo "Update DNS to point to: $DR_LB"
@@ -253,9 +246,9 @@ echo "Update DNS to point to: $DR_LB"
 # Example with Route53:
 # aws route53 change-resource-record-sets --hosted-zone-id ZONE_ID --change-batch ...
 
-# Step 7: Scale down primary (if accessible)
+# Step 8: Scale down primary (if accessible)
 echo ""
-echo "Step 7: Scaling down primary cluster (if reachable)..."
+echo "Step 8: Scaling down primary cluster (if reachable)..."
 kubectl --context "$PRIMARY_CONTEXT" -n flux-system \
   patch kustomization apps \
   --type merge \
@@ -318,6 +311,11 @@ kubectl --context "$DR_CONTEXT" -n flux-system \
   patch kustomization failover-active \
   --type merge \
   --patch '{"spec":{"suspend":true}}'
+kubectl --context "$DR_CONTEXT" -n flux-system \
+  patch kustomization apps \
+  --type merge \
+  --patch '{"spec":{"suspend":false}}'
+flux --context "$DR_CONTEXT" reconcile kustomization apps --with-source
 
 echo "=== Failback Complete ==="
 ```
@@ -422,21 +420,18 @@ spec:
           serviceAccountName: dr-monitor
           containers:
             - name: health-check
-              image: bitnami/kubectl:1.29
+              image: bitnami/kubectl:1.35
               command:
-                - /bin/bash
+                - /bin/sh
                 - -c
                 - |
                   echo "DR Health Check - $(date -u)"
 
                   # Check Flux is reconciling
-                  STALE=$(kubectl get kustomizations -A -o json | \
-                    jq '[.items[] | select(.status.conditions[]? | select(.type=="Ready" and .status=="False"))] | length')
-
-                  if [ "$STALE" -gt 0 ]; then
-                    echo "WARNING: $STALE Kustomizations are not ready"
-                    exit 1
-                  fi
+                  kubectl wait kustomizations.kustomize.toolkit.fluxcd.io \
+                    --all --all-namespaces \
+                    --for=condition=Ready \
+                    --timeout=60s
 
                   # Verify Git source is syncing
                   LAST_SYNC=$(kubectl get gitrepository flux-system -n flux-system \
@@ -444,11 +439,10 @@ spec:
                   echo "Last Git sync: $LAST_SYNC"
 
                   # Check node health
-                  NOT_READY=$(kubectl get nodes --no-headers | grep -v Ready | wc -l)
-                  if [ "$NOT_READY" -gt 0 ]; then
-                    echo "WARNING: $NOT_READY nodes are not ready"
-                    exit 1
-                  fi
+                  kubectl wait nodes \
+                    --all \
+                    --for=condition=Ready \
+                    --timeout=60s
 
                   echo "DR cluster is healthy and ready for failover"
           restartPolicy: OnFailure
