@@ -145,23 +145,13 @@ The `gotk-components.yaml` file contains all the Flux custom resource definition
 Now that Flux is running, you can deploy applications by committing manifests to your repository. Create a simple namespace definition to test.
 
 ```yaml
-# clusters/eks-anywhere/namespaces/demo-namespace.yaml
+# clusters/eks-anywhere/demo-namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: demo
   labels:
     purpose: flux-demo
-```
-
-Create a Kustomization file to include this namespace.
-
-```yaml
-# clusters/eks-anywhere/namespaces/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - demo-namespace.yaml
 ```
 
 Commit and push these files to your repository. Flux will automatically detect the changes and apply them to your cluster.
