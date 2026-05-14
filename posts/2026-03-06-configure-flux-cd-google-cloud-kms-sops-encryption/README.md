@@ -10,7 +10,7 @@ Description: A hands-on guide to encrypting Kubernetes secrets with SOPS and Goo
 
 ## Introduction
 
-Storing secrets in Git repositories is a fundamental challenge in GitOps workflows. SOPS (Secrets OPerationS) solves this by encrypting secret values while leaving keys and metadata in plaintext, making encrypted files easy to review in pull requests. When combined with Google Cloud KMS, SOPS provides a robust encryption solution where the encryption keys are managed by Google Cloud's hardware security modules.
+Storing secrets in Git repositories is a fundamental challenge in GitOps workflows. SOPS (Secrets OPerationS) solves this by encrypting secret values while leaving keys and metadata in plaintext, making encrypted files easy to review in pull requests. When combined with Google Cloud KMS, SOPS provides a robust encryption solution where the encryption keys are managed by Google Cloud KMS.
 
 This guide walks you through setting up SOPS with Google Cloud KMS for encrypting Kubernetes secrets, and configuring Flux CD to automatically decrypt them during reconciliation using Workload Identity.
 
@@ -360,7 +360,7 @@ gcloud iam service-accounts keys create sops-key.json \
 # Create a Kubernetes secret with the service account key
 kubectl create secret generic sops-gcp-credentials \
   --namespace flux-system \
-  --from-file=sops.gcp-credentials=sops-key.json
+  --from-file=sops.gcp-kms=sops-key.json
 
 # Clean up the key file
 rm sops-key.json
@@ -399,14 +399,24 @@ kubectl logs -n flux-system deploy/kustomize-controller | grep -i "sops\|decrypt
 # Verify the Workload Identity annotation is set
 kubectl get sa kustomize-controller -n flux-system -o yaml | grep gcp-service-account
 
-# Test KMS access from a debug pod
+# Create a test ciphertext with your local credentials
+echo -n 'test' > /tmp/kms-plaintext
+gcloud kms encrypt \
+  --key=$KEY_NAME --keyring=$KEYRING_NAME --location=$REGION \
+  --plaintext-file=/tmp/kms-plaintext --ciphertext-file=/tmp/kms-ciphertext
+export TEST_CIPHERTEXT=$(base64 /tmp/kms-ciphertext | tr -d '\n')
+rm /tmp/kms-plaintext /tmp/kms-ciphertext
+
+# Test KMS decrypt access from a debug pod
 kubectl run kms-test --rm -it \
   --image=google/cloud-sdk:slim \
   --namespace=flux-system \
   --serviceaccount=kustomize-controller \
-  -- bash -c "echo 'test' | gcloud kms encrypt \
+  --env=TEST_CIPHERTEXT="$TEST_CIPHERTEXT" \
+  -- bash -c "echo \$TEST_CIPHERTEXT | base64 -d > /tmp/ciphertext && \
+    gcloud kms decrypt \
     --key=$KEY_NAME --keyring=$KEYRING_NAME --location=$REGION \
-    --plaintext-file=- --ciphertext-file=- | base64"
+    --ciphertext-file=/tmp/ciphertext --plaintext-file=-"
 ```
 
 ### SOPS Configuration Issues
