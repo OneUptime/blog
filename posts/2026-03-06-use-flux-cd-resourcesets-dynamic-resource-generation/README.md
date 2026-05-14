@@ -1,23 +1,23 @@
-# How to Use Flux CD ResourceSets for Dynamic Resource Generation
+# How to Use Flux Operator ResourceSets for Dynamic Resource Generation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ResourceSets, Dynamic Resources, GitOps, Kubernetes, Templating, Automation
+Tags: Flux Operator, Flux CD, ResourceSets, Dynamic Resources, GitOps, Kubernetes, Templating, Automation
 
-Description: Learn how to use Flux CD ResourceSets to dynamically generate Kubernetes resources from templates and data sources, reducing repetitive manifests across environments.
+Description: Learn how to use Flux Operator ResourceSets to dynamically generate Kubernetes resources from templates and data sources, reducing repetitive manifests across environments.
 
 ---
 
 ## Introduction
 
-Flux CD ResourceSets provide a powerful way to dynamically generate Kubernetes resources from templates combined with input data. Instead of maintaining dozens of near-identical YAML files for different teams, environments, or applications, you can define a template once and let ResourceSets generate the actual resources based on input parameters.
+Flux Operator ResourceSets provide a powerful way to dynamically generate Kubernetes resources from templates combined with input data. Instead of maintaining dozens of near-identical YAML files for different teams, environments, or applications, you can define a template once and let ResourceSets generate the actual resources based on input parameters.
 
 This guide covers the ResourceSet resource, its templating capabilities, and practical patterns for reducing configuration duplication in your GitOps workflows.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
-- Flux CD v2.4 or later with the ResourceSet controller enabled
+- A Kubernetes cluster supported by your Flux Operator and Flux versions
+- Flux Operator installed with the ResourceSet API available
 - kubectl configured to access your cluster
 - Familiarity with Go templates
 
@@ -25,14 +25,14 @@ This guide covers the ResourceSet resource, its templating capabilities, and pra
 
 A ResourceSet consists of two parts:
 
-1. **Inputs**: Data sources that provide values (ConfigMaps, Secrets, or inline data)
+1. **Inputs**: Inline values or values supplied by ResourceSetInputProvider objects
 2. **Resources**: Go templates that use input values to generate Kubernetes resources
 
 ```mermaid
 graph TD
-    A[Input: ConfigMap] --> D[ResourceSet Controller]
-    B[Input: Secret] --> D
-    C[Input: Inline Data] --> D
+    A[Inline Inputs] --> D[ResourceSet Controller]
+    B[ResourceSetInputProvider] --> D
+    C[Static Data] --> D
     D --> E[Generated Deployment]
     D --> F[Generated Service]
     D --> G[Generated Ingress]
@@ -54,82 +54,81 @@ metadata:
 spec:
   # Input data - list of teams
   inputs:
-    - name: teams
-      inline:
-        - teamName: frontend
-          quota_cpu: "4"
-          quota_memory: "8Gi"
-          contact: frontend-team@company.com
-        - teamName: backend
-          quota_cpu: "8"
-          quota_memory: "16Gi"
-          contact: backend-team@company.com
-        - teamName: data
-          quota_cpu: "16"
-          quota_memory: "32Gi"
-          contact: data-team@company.com
+    - teamName: frontend
+      quota_cpu: "4"
+      quota_memory: "8Gi"
+      contact: frontend-team@company.com
+    - teamName: backend
+      quota_cpu: "8"
+      quota_memory: "16Gi"
+      contact: backend-team@company.com
+    - teamName: data
+      quota_cpu: "16"
+      quota_memory: "32Gi"
+      contact: data-team@company.com
   # Resource templates - generated for each input item
   resources:
     # Create a namespace for each team
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ .teamName }}"
+        name: << inputs.teamName >>
         labels:
-          team: "{{ .teamName }}"
+          team: << inputs.teamName | quote >>
           managed-by: flux-resourceset
-          contact: "{{ .contact }}"
+          contact: << inputs.contact | quote >>
     # Create resource quotas for each team
     - apiVersion: v1
       kind: ResourceQuota
       metadata:
-        name: "{{ .teamName }}-quota"
-        namespace: "{{ .teamName }}"
+        name: << printf "%s-quota" inputs.teamName >>
+        namespace: << inputs.teamName >>
       spec:
         hard:
-          requests.cpu: "{{ .quota_cpu }}"
-          requests.memory: "{{ .quota_memory }}"
-          limits.cpu: "{{ .quota_cpu }}"
-          limits.memory: "{{ .quota_memory }}"
+          requests.cpu: << inputs.quota_cpu | quote >>
+          requests.memory: << inputs.quota_memory | quote >>
+          limits.cpu: << inputs.quota_cpu | quote >>
+          limits.memory: << inputs.quota_memory | quote >>
 ```
 
-## Using ConfigMap as Input
+## Using ResourceSetInputProvider as Input
 
-Load input data from a ConfigMap for easier management:
+Load input data from ResourceSetInputProvider objects for easier management:
 
 ```yaml
-# inputs/team-config.yaml
-apiVersion: v1
-kind: ConfigMap
+# inputs/platform-team.yaml
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
 metadata:
-  name: team-definitions
+  name: platform-team
   namespace: flux-system
-data:
-  # JSON array of team configurations
-  teams.json: |
-    [
-      {
-        "teamName": "platform",
-        "environment": "production",
-        "replicas": 3,
-        "domain": "platform.company.com",
-        "tier": "critical"
-      },
-      {
-        "teamName": "analytics",
-        "environment": "production",
-        "replicas": 2,
-        "domain": "analytics.company.com",
-        "tier": "standard"
-      },
-      {
-        "teamName": "mobile-api",
-        "environment": "production",
-        "replicas": 5,
-        "domain": "mobile-api.company.com",
-        "tier": "critical"
-      }
-    ]
+  labels:
+    app.kubernetes.io/part-of: team-apps
+spec:
+  type: Static
+  defaultValues:
+    teamName: platform
+    environment: production
+    replicas: 3
+    domain: platform.company.com
+    tier: critical
+---
+# inputs/analytics-team.yaml
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: analytics-team
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/part-of: team-apps
+spec:
+  type: Static
+  defaultValues:
+    teamName: analytics
+    environment: production
+    replicas: 2
+    domain: analytics.company.com
+    tier: standard
 ---
 # resourcesets/app-deployment.yaml
 apiVersion: fluxcd.controlplane.io/v1
@@ -138,35 +137,35 @@ metadata:
   name: team-deployments
   namespace: flux-system
 spec:
-  inputs:
-    - name: teams
-      configMapRef:
-        name: team-definitions
-        key: teams.json
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      selector:
+        matchLabels:
+          app.kubernetes.io/part-of: team-apps
   resources:
     # Deployment for each team
     - apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: "{{ .teamName }}-app"
-        namespace: "{{ .teamName }}"
+        name: << printf "%s-app" inputs.teamName >>
+        namespace: << inputs.teamName >>
         labels:
-          app: "{{ .teamName }}"
-          tier: "{{ .tier }}"
+          app: << inputs.teamName | quote >>
+          tier: << inputs.tier | quote >>
       spec:
-        replicas: {{ .replicas }}
+        replicas: << inputs.replicas | int >>
         selector:
           matchLabels:
-            app: "{{ .teamName }}"
+            app: << inputs.teamName | quote >>
         template:
           metadata:
             labels:
-              app: "{{ .teamName }}"
-              tier: "{{ .tier }}"
+              app: << inputs.teamName | quote >>
+              tier: << inputs.tier | quote >>
           spec:
             containers:
               - name: app
-                image: "registry.company.com/{{ .teamName }}:latest"
+                image: << printf "registry.company.com/%s:latest" inputs.teamName | quote >>
                 resources:
                   requests:
                     cpu: "250m"
@@ -178,11 +177,11 @@ spec:
     - apiVersion: v1
       kind: Service
       metadata:
-        name: "{{ .teamName }}-svc"
-        namespace: "{{ .teamName }}"
+        name: << printf "%s-svc" inputs.teamName >>
+        namespace: << inputs.teamName >>
       spec:
         selector:
-          app: "{{ .teamName }}"
+          app: << inputs.teamName | quote >>
         ports:
           - port: 80
             targetPort: 8080
@@ -191,25 +190,25 @@ spec:
     - apiVersion: networking.k8s.io/v1
       kind: Ingress
       metadata:
-        name: "{{ .teamName }}-ingress"
-        namespace: "{{ .teamName }}"
+        name: << printf "%s-ingress" inputs.teamName >>
+        namespace: << inputs.teamName >>
         annotations:
           cert-manager.io/cluster-issuer: letsencrypt-prod
       spec:
         ingressClassName: nginx
         tls:
           - hosts:
-              - "{{ .domain }}"
-            secretName: "{{ .teamName }}-tls"
+              - << inputs.domain | quote >>
+            secretName: << printf "%s-tls" inputs.teamName >>
         rules:
-          - host: "{{ .domain }}"
+          - host: << inputs.domain | quote >>
             http:
               paths:
                 - path: /
                   pathType: Prefix
                   backend:
                     service:
-                      name: "{{ .teamName }}-svc"
+                      name: << printf "%s-svc" inputs.teamName >>
                       port:
                         number: 80
 ```
@@ -227,43 +226,41 @@ metadata:
   namespace: flux-system
 spec:
   inputs:
-    - name: services
-      inline:
-        - name: payment-service
-          tier: critical
-          needsPDB: true
-          needsHPA: true
-          minReplicas: 3
-          maxReplicas: 10
-        - name: notification-service
-          tier: standard
-          needsPDB: false
-          needsHPA: true
-          minReplicas: 1
-          maxReplicas: 5
-        - name: reporting-service
-          tier: batch
-          needsPDB: false
-          needsHPA: false
-          minReplicas: 1
-          maxReplicas: 1
+    - name: payment-service
+      tier: critical
+      needsPDB: true
+      needsHPA: true
+      minReplicas: 3
+      maxReplicas: 10
+    - name: notification-service
+      tier: standard
+      needsPDB: false
+      needsHPA: true
+      minReplicas: 1
+      maxReplicas: 5
+    - name: reporting-service
+      tier: batch
+      needsPDB: false
+      needsHPA: false
+      minReplicas: 1
+      maxReplicas: 1
   resources:
     # HPA - only for services that need autoscaling
     - apiVersion: autoscaling/v2
       kind: HorizontalPodAutoscaler
       metadata:
-        name: "{{ .name }}-hpa"
+        name: << printf "%s-hpa" inputs.name >>
         namespace: default
         # Skip generation if needsHPA is false
         annotations:
-          fluxcd.io/skip: "{{ not .needsHPA }}"
+          fluxcd.controlplane.io/reconcile: << if inputs.needsHPA >>enabled<< else >>disabled<< end >>
       spec:
         scaleTargetRef:
           apiVersion: apps/v1
           kind: Deployment
-          name: "{{ .name }}"
-        minReplicas: {{ .minReplicas }}
-        maxReplicas: {{ .maxReplicas }}
+          name: << inputs.name >>
+        minReplicas: << inputs.minReplicas | int >>
+        maxReplicas: << inputs.maxReplicas | int >>
         metrics:
           - type: Resource
             resource:
@@ -275,25 +272,25 @@ spec:
     - apiVersion: policy/v1
       kind: PodDisruptionBudget
       metadata:
-        name: "{{ .name }}-pdb"
+        name: << printf "%s-pdb" inputs.name >>
         namespace: default
         annotations:
-          fluxcd.io/skip: "{{ not .needsPDB }}"
+          fluxcd.controlplane.io/reconcile: << if inputs.needsPDB >>enabled<< else >>disabled<< end >>
       spec:
         minAvailable: 2
         selector:
           matchLabels:
-            app: "{{ .name }}"
+            app: << inputs.name | quote >>
     # NetworkPolicy - generated for all services
     - apiVersion: networking.k8s.io/v1
       kind: NetworkPolicy
       metadata:
-        name: "{{ .name }}-netpol"
+        name: << printf "%s-netpol" inputs.name >>
         namespace: default
       spec:
         podSelector:
           matchLabels:
-            app: "{{ .name }}"
+            app: << inputs.name | quote >>
         policyTypes:
           - Ingress
           - Egress
@@ -301,7 +298,7 @@ spec:
           - from:
               - namespaceSelector:
                   matchLabels:
-                    tier: "{{ .tier }}"
+                    tier: << inputs.tier | quote >>
 ```
 
 ## Multi-Environment ResourceSets
@@ -317,65 +314,63 @@ metadata:
   namespace: flux-system
 spec:
   inputs:
-    - name: environments
-      inline:
-        - env: dev
-          namespace: app-dev
-          replicas: 1
-          ingressHost: dev.app.company.com
-          resourceLimit_cpu: "500m"
-          resourceLimit_memory: "512Mi"
-          enableDebug: "true"
-        - env: staging
-          namespace: app-staging
-          replicas: 2
-          ingressHost: staging.app.company.com
-          resourceLimit_cpu: "1"
-          resourceLimit_memory: "1Gi"
-          enableDebug: "false"
-        - env: production
-          namespace: app-production
-          replicas: 5
-          ingressHost: app.company.com
-          resourceLimit_cpu: "2"
-          resourceLimit_memory: "2Gi"
-          enableDebug: "false"
+    - env: dev
+      namespace: app-dev
+      replicas: 1
+      ingressHost: dev.app.company.com
+      resourceLimit_cpu: "500m"
+      resourceLimit_memory: "512Mi"
+      enableDebug: "true"
+    - env: staging
+      namespace: app-staging
+      replicas: 2
+      ingressHost: staging.app.company.com
+      resourceLimit_cpu: "1"
+      resourceLimit_memory: "1Gi"
+      enableDebug: "false"
+    - env: production
+      namespace: app-production
+      replicas: 5
+      ingressHost: app.company.com
+      resourceLimit_cpu: "2"
+      resourceLimit_memory: "2Gi"
+      enableDebug: "false"
   resources:
     # Namespace per environment
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ .namespace }}"
+        name: << inputs.namespace >>
         labels:
-          environment: "{{ .env }}"
+          environment: << inputs.env | quote >>
     # Flux Kustomization per environment
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
-        name: "app-{{ .env }}"
+        name: << printf "app-%s" inputs.env >>
         namespace: flux-system
       spec:
         interval: 10m
         sourceRef:
           kind: GitRepository
           name: app-repo
-        path: "./deploy/overlays/{{ .env }}"
+        path: << printf "./deploy/overlays/%s" inputs.env | quote >>
         prune: true
-        targetNamespace: "{{ .namespace }}"
+        targetNamespace: << inputs.namespace | quote >>
         # Pass environment-specific values via postBuild
         postBuild:
           substitute:
-            ENV: "{{ .env }}"
-            REPLICAS: "{{ .replicas }}"
-            INGRESS_HOST: "{{ .ingressHost }}"
-            CPU_LIMIT: "{{ .resourceLimit_cpu }}"
-            MEMORY_LIMIT: "{{ .resourceLimit_memory }}"
-            DEBUG_ENABLED: "{{ .enableDebug }}"
+            ENV: << inputs.env | quote >>
+            REPLICAS: << inputs.replicas | quote >>
+            INGRESS_HOST: << inputs.ingressHost | quote >>
+            CPU_LIMIT: << inputs.resourceLimit_cpu | quote >>
+            MEMORY_LIMIT: << inputs.resourceLimit_memory | quote >>
+            DEBUG_ENABLED: << inputs.enableDebug | quote >>
 ```
 
-ResourceSet with Secret Inputs
+## ResourceSet with External Secret References
 
-Use secrets for sensitive input data:
+Use ExternalSecret resources for sensitive data and keep only non-sensitive routing values in ResourceSet inputs:
 
 ```yaml
 # resourcesets/database-credentials.yaml
@@ -386,41 +381,44 @@ metadata:
   namespace: flux-system
 spec:
   inputs:
-    - name: databases
-      secretRef:
-        name: database-configs
-        key: databases.json
+    - serviceName: billing
+      namespace: billing
+    - serviceName: orders
+      namespace: orders
   resources:
-    # Create a secret in each service namespace
-    - apiVersion: v1
-      kind: Secret
-      metadata:
-        name: "{{ .serviceName }}-db-credentials"
-        namespace: "{{ .namespace }}"
-      type: Opaque
-      stringData:
-        DB_HOST: "{{ .dbHost }}"
-        DB_PORT: "{{ .dbPort }}"
-        DB_NAME: "{{ .dbName }}"
-        DB_USER: "{{ .dbUser }}"
-        DB_PASSWORD: "{{ .dbPassword }}"
-    # Create an ExternalSecret reference instead for production
+    # Create an ExternalSecret reference in each service namespace
     - apiVersion: external-secrets.io/v1beta1
       kind: ExternalSecret
       metadata:
-        name: "{{ .serviceName }}-db-external"
-        namespace: "{{ .namespace }}"
+        name: << printf "%s-db-external" inputs.serviceName >>
+        namespace: << inputs.namespace >>
       spec:
         refreshInterval: 1h
         secretStoreRef:
           name: vault-backend
           kind: ClusterSecretStore
         target:
-          name: "{{ .serviceName }}-db-credentials"
+          name: << printf "%s-db-credentials" inputs.serviceName >>
         data:
+          - secretKey: DB_HOST
+            remoteRef:
+              key: << printf "databases/%s" inputs.serviceName | quote >>
+              property: host
+          - secretKey: DB_PORT
+            remoteRef:
+              key: << printf "databases/%s" inputs.serviceName | quote >>
+              property: port
+          - secretKey: DB_NAME
+            remoteRef:
+              key: << printf "databases/%s" inputs.serviceName | quote >>
+              property: name
+          - secretKey: DB_USER
+            remoteRef:
+              key: << printf "databases/%s" inputs.serviceName | quote >>
+              property: user
           - secretKey: DB_PASSWORD
             remoteRef:
-              key: "databases/{{ .serviceName }}"
+              key: << printf "databases/%s" inputs.serviceName | quote >>
               property: password
 ```
 
@@ -435,8 +433,8 @@ kubectl get resourcesets -n flux-system
 # Check detailed status
 kubectl describe resourceset team-namespaces -n flux-system
 
-# View generated resources
-kubectl get resourceset team-namespaces -n flux-system -o jsonpath='{.status.generatedResources}'
+# View the reconciled resource inventory
+kubectl get resourceset team-namespaces -n flux-system -o jsonpath='{.status.inventory.entries}'
 
 # Check events
 kubectl events -n flux-system --for resourceset/team-namespaces
@@ -447,21 +445,21 @@ kubectl events -n flux-system --for resourceset/team-namespaces
 ### Template Rendering Errors
 
 ```bash
-# Check controller logs for template errors
-kubectl logs -n flux-system deploy/resourceset-controller | grep -i error
+# Check operator logs for template errors
+kubectl logs -n flux-system deploy/flux-operator | grep -i error
 
-# Validate your Go templates locally
-# Ensure all referenced fields exist in input data
+# Build your ResourceSet locally
+flux-operator build rset -f resourcesets/team-resources.yaml
 ```
 
 ### Input Data Issues
 
 ```bash
-# Verify ConfigMap data is valid JSON
-kubectl get cm team-definitions -n flux-system -o jsonpath='{.data.teams\.json}' | jq .
+# Verify ResourceSetInputProvider status
+kubectl get resourcesetinputproviders -n flux-system
 
-# Check that Secret exists and has expected keys
-kubectl get secret database-configs -n flux-system -o jsonpath='{.data.databases\.json}' | base64 -d | jq .
+# Check detailed input provider status
+kubectl describe resourcesetinputprovider platform-team -n flux-system
 ```
 
 ## Best Practices
@@ -472,7 +470,7 @@ kubectl get secret database-configs -n flux-system -o jsonpath='{.data.databases
 
 3. **Use meaningful names**: Generated resource names should clearly indicate their source ResourceSet and input parameters.
 
-4. **Version your input data**: Store ConfigMaps and input definitions in Git so changes are tracked and auditable.
+4. **Version your input data**: Store ResourceSet and ResourceSetInputProvider definitions in Git so changes are tracked and auditable.
 
 5. **Start small**: Begin with a single ResourceSet for one use case, then expand as you gain confidence with the templating system.
 
@@ -480,4 +478,4 @@ kubectl get secret database-configs -n flux-system -o jsonpath='{.data.databases
 
 ## Conclusion
 
-Flux CD ResourceSets dramatically reduce the amount of repetitive YAML in your GitOps repositories. By defining resource templates once and driving them with input data, you can manage hundreds of similar resources with minimal configuration. This approach scales well for multi-tenant platforms, multi-environment deployments, and organizations with many teams sharing similar infrastructure patterns.
+Flux Operator ResourceSets dramatically reduce the amount of repetitive YAML in your GitOps repositories. By defining resource templates once and driving them with input data, you can manage hundreds of similar resources with minimal configuration. This approach scales well for multi-tenant platforms, multi-environment deployments, and organizations with many teams sharing similar infrastructure patterns.
