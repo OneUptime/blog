@@ -128,6 +128,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: fleet-cluster-admin
+  labels:
+    managed-by: flux
 rules:
   - apiGroups: ["*"]
     resources: ["*"]
@@ -138,6 +140,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: fleet-cluster-admin-binding
+  labels:
+    managed-by: flux
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -156,6 +160,8 @@ kind: Role
 metadata:
   name: developer
   namespace: production
+  labels:
+    managed-by: flux
 rules:
   # Developers can view and manage most workload resources
   - apiGroups: ["apps"]
@@ -165,15 +171,14 @@ rules:
     resources: ["pods", "pods/log", "services", "configmaps"]
     verbs: ["get", "list", "watch"]
   # Developers cannot delete pods or access secrets
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: developer-binding
   namespace: production
+  labels:
+    managed-by: flux
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -191,19 +196,28 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: fleet-readonly
+  labels:
+    managed-by: flux
 rules:
-  - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
-  # Explicitly deny access to secrets content
   - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["list"]
+    resources: ["configmaps", "endpoints", "persistentvolumeclaims", "pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: fleet-readonly-binding
+  labels:
+    managed-by: flux
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -224,6 +238,8 @@ kind: NetworkPolicy
 metadata:
   name: default-deny-all
   namespace: production
+  labels:
+    managed-by: flux
 spec:
   podSelector: {}
   policyTypes:
@@ -237,6 +253,8 @@ kind: NetworkPolicy
 metadata:
   name: allow-dns
   namespace: production
+  labels:
+    managed-by: flux
 spec:
   podSelector: {}
   policyTypes:
@@ -247,6 +265,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -260,6 +281,8 @@ kind: NetworkPolicy
 metadata:
   name: allow-monitoring-ingress
   namespace: production
+  labels:
+    managed-by: flux
 spec:
   podSelector: {}
   policyTypes:
@@ -286,6 +309,8 @@ kind: ResourceQuota
 metadata:
   name: production-quota
   namespace: production
+  labels:
+    managed-by: flux
 spec:
   hard:
     # Compute resource limits
@@ -306,6 +331,8 @@ kind: LimitRange
 metadata:
   name: production-limit-range
   namespace: production
+  labels:
+    managed-by: flux
 spec:
   limits:
     - type: Container
@@ -335,6 +362,7 @@ metadata:
   namespace: monitoring
   labels:
     app: node-exporter
+    managed-by: flux
 spec:
   selector:
     matchLabels:
@@ -351,7 +379,7 @@ spec:
         - operator: Exists
       containers:
         - name: node-exporter
-          image: prom/node-exporter:v1.7.0
+          image: quay.io/prometheus/node-exporter:v1.11.1
           args:
             - "--path.rootfs=/host"
             - "--web.listen-address=:9100"
@@ -413,7 +441,7 @@ spec:
   kubeConfig:
     secretRef:
       name: cluster-1-kubeconfig
-  # Force apply to overwrite any manual changes
+  # Force should normally stay false; set it temporarily only for immutable field changes
   force: false
   timeout: 5m
 ---
@@ -545,7 +573,7 @@ done
 
 **Resources not applied to all clusters**: Verify that each cluster has a Kustomization pointing to the `./global` path and that the GitRepository source is accessible.
 
-**RBAC conflicts**: If a cluster has pre-existing RBAC that conflicts with global definitions, use `force: true` carefully or reconcile manually first.
+**RBAC conflicts**: If a cluster has pre-existing RBAC that conflicts with global definitions, reconcile it manually first. Use `force: true` carefully only when immutable fields, such as a binding's `roleRef`, must be replaced.
 
 **Network policy blocking traffic**: Test connectivity after applying default-deny policies. Ensure allow rules for DNS and monitoring are applied alongside deny rules.
 
