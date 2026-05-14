@@ -70,7 +70,7 @@ kubectl create secret generic signing-key \
   --from-file=git.asc=flux-signing-key.asc
 ```
 
-After creating the secret, securely delete the exported key file:
+After creating the secret, delete the exported key file:
 
 ```bash
 rm flux-signing-key.asc
@@ -195,13 +195,13 @@ rm new-signing-key.asc
 
 ## Using a Passphrase-Protected Key
 
-The ImageUpdateAutomation controller expects the GPG key to have no passphrase. If your key has a passphrase, you need to remove it before creating the secret:
+The ImageUpdateAutomation controller can use a passphrase-protected GPG key if the passphrase is stored in the same Secret under the `passphrase` field:
 
 ```bash
-gpg --edit-key flux@example.com
-# At the gpg> prompt, type: passwd
-# Enter the old passphrase, then press Enter for an empty new passphrase
-# Type: save
+kubectl create secret generic signing-key \
+  --namespace=flux-system \
+  --from-file=git.asc=flux-signing-key.asc \
+  --from-literal=passphrase='your-key-passphrase'
 ```
 
 Alternatively, generate the key without a passphrase from the start using `%no-protection` in the batch generation parameters.
