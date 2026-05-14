@@ -224,7 +224,7 @@ spec:
 
 ## Including Values Files from the Bucket
 
-Just like Git-based charts, you can specify values files to include from the chart directory in the bucket.
+Just like Git-based charts, you can specify values files to include from the bucket source artifact.
 
 ```yaml
 # helmchart-bucket-values.yaml
@@ -241,10 +241,10 @@ spec:
     name: helm-charts-bucket
   interval: 10m
   reconcileStrategy: Revision
-  # Values files relative to the chart directory
+  # Values files relative to the Bucket source artifact
   valuesFiles:
-    - values.yaml
-    - values-production.yaml
+    - ./charts/my-app/values.yaml
+    - ./charts/my-app/values-production.yaml
 ```
 
 ## Connecting to a HelmRelease
