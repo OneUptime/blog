@@ -53,7 +53,7 @@ This approach works for public repositories or quick prototyping, but the follow
 
 ## Strategy 2: Flux GitRepository Sources
 
-The recommended approach is to use Flux's `GitRepository` source to fetch the remote repository, then reference it from a Flux Kustomization. This gives you authentication, caching, version control, and status monitoring.
+The recommended approach is to use Flux's `GitRepository` source to fetch the remote repository, then include that artifact in the application source that your Flux Kustomization reconciles. This gives you authentication, caching, version control, and status monitoring.
 
 ### Step 1: Define the Remote GitRepository Source
 
@@ -87,9 +87,32 @@ flux create secret git platform-bases-auth \
   --password=$GITHUB_TOKEN
 ```
 
-### Step 2: Create the Local Overlay
+### Step 2: Include the Remote Source in the Local Source
 
-In your application repository, create an overlay that expects the remote base to be available at a known path. The overlay only needs to contain the customizations.
+Define your application repository as a GitRepository and include the remote base artifact at a known path.
+
+```yaml
+# clusters/my-cluster/sources/myapp-config.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: myapp-config
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: https://github.com/myorg/myapp-config
+  ref:
+    branch: main
+  include:
+    - repository:
+        name: platform-bases
+      fromPath: microservice/base
+      toPath: apps/myapp/vendor/microservice-base
+```
+
+### Step 3: Create the Local Overlay
+
+In your application repository, create an overlay that references the included remote base path. The overlay only needs to contain the customizations.
 
 ```yaml
 # apps/myapp/overlays/production/kustomization.yaml
@@ -97,10 +120,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  # This path will be resolved relative to the Flux Kustomization's path
-  # Flux handles mounting the remote source
-  - deployment.yaml
-  - service.yaml
+  # This path is copied into the application source by GitRepository include
+  - ../../vendor/microservice-base
 
 replicas:
   - name: myapp
@@ -111,13 +132,13 @@ images:
     newTag: "v2.0.0"
 ```
 
-### Step 3: Use Flux Kustomization with Cross-Reference
+### Step 4: Use Flux Kustomization with the Source
 
-There are two approaches to combine the remote base with local overlays.
+There are two common deployment patterns for the sources.
 
-**Approach A: Use the remote source directly**
+**Approach A: Use the included source with a local overlay**
 
-If the remote repository already contains a complete, ready-to-deploy Kustomize structure, point the Flux Kustomization directly at it and use `patches` or `postBuild` for customization.
+Point the Flux Kustomization at the local overlay in the application source. The included base is available at the path referenced by the overlay.
 
 ```yaml
 # clusters/my-cluster/myapp-production.yaml
@@ -128,30 +149,17 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  # Point to the path within the remote repository
-  path: ./microservice/base
+  path: ./apps/myapp/overlays/production
   prune: true
   sourceRef:
     kind: GitRepository
-    name: platform-bases    # references the remote GitRepository
+    name: myapp-config
   targetNamespace: production
-  # Use Flux's built-in patches to customize
-  patches:
-    - patch: |
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: microservice
-        spec:
-          replicas: 5
-      target:
-        kind: Deployment
-        name: microservice
 ```
 
 **Approach B: Use dependsOn with two Kustomizations**
 
-Deploy the remote base first, then apply local customizations.
+Deploy the remote base first, then apply separate local resources that depend on it. This is useful for add-on resources such as ConfigMaps, Secrets, Ingresses, or policies, but it is not the same as a Kustomize overlay patching the remote base.
 
 ```yaml
 # Deploy the base from the remote repository
@@ -169,7 +177,7 @@ spec:
     name: platform-bases
   targetNamespace: production
 ---
-# Apply local customizations that depend on the base
+# Apply local add-on resources that depend on the base
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -177,11 +185,11 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./apps/myapp/overlays/production
+  path: ./apps/myapp/addons/production
   prune: true
   sourceRef:
     kind: GitRepository
-    name: flux-system     # local repository
+    name: myapp-config     # local repository
   targetNamespace: production
   dependsOn:
     - name: myapp-base
@@ -200,7 +208,7 @@ Use the Flux CLI to package a Kustomize directory and push it to an OCI registry
 flux push artifact oci://ghcr.io/myorg/platform-bases/microservice:v1.2.0 \
   --path=./microservice/base \
   --source="https://github.com/myorg/platform-bases" \
-  --revision="v1.2.0"
+  --revision="v1.2.0@sha1:$(git rev-parse HEAD)"
 ```
 
 ### Step 2: Define an OCIRepository Source
