@@ -16,7 +16,7 @@ This guide covers deploying Karpenter on EKS with Flux CD, configuring NodePools
 
 ## Prerequisites
 
-- An AWS EKS cluster (v1.25+)
+- An AWS EKS cluster (v1.29+ for current Karpenter releases)
 - Flux CD installed and bootstrapped
 - AWS IAM roles configured for Karpenter (IRSA)
 - kubectl, flux CLI, and AWS CLI installed
@@ -45,7 +45,7 @@ clusters/
   my-cluster/
     karpenter/
       namespace.yaml
-      helmrepository.yaml
+      ocirepository.yaml
       helmrelease.yaml
       default-nodepool.yaml
       spot-nodepool.yaml
@@ -66,20 +66,24 @@ metadata:
     app.kubernetes.io/managed-by: flux
 ```
 
-## Step 2: Add the Karpenter Helm Repository
+## Step 2: Add the Karpenter OCI Repository
 
 ```yaml
-# clusters/my-cluster/karpenter/helmrepository.yaml
+# clusters/my-cluster/karpenter/ocirepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: karpenter
   namespace: karpenter
 spec:
-  interval: 1h
-  type: oci
   # Official Karpenter OCI Helm chart repository
-  url: oci://public.ecr.aws/karpenter
+  interval: 1h
+  url: oci://public.ecr.aws/karpenter/karpenter
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    semver: "1.12.x"
 ```
 
 ## Step 3: Deploy Karpenter with HelmRelease
@@ -93,15 +97,10 @@ metadata:
   namespace: karpenter
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: karpenter
-      version: "1.1.x"
-      sourceRef:
-        kind: HelmRepository
-        name: karpenter
-        namespace: karpenter
-      interval: 12h
+  chartRef:
+    kind: OCIRepository
+    name: karpenter
+    namespace: karpenter
   values:
     # Service account with IRSA for AWS API access
     serviceAccount:
@@ -133,7 +132,7 @@ spec:
 
     # Pod disruption budget
     podDisruptionBudget:
-      minAvailable: 1
+      maxUnavailable: 1
 
     # Logging
     logLevel: info
@@ -346,7 +345,7 @@ spec:
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
-  # Lower weight means spot is chosen after on-demand
+  # Lower weight keeps on-demand preferred for workloads that match both pools
   weight: 20
 ```
 
@@ -375,13 +374,12 @@ spec:
           value: spot
           operator: Equal
           effect: NoSchedule
-      # Prefer spot nodes for cost savings
+      # Require spot nodes for cost savings
       affinity:
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
                   - key: karpenter.sh/capacity-type
                     operator: In
                     values: ["spot"]
@@ -421,11 +419,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
+  wait: false
   timeout: 5m
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: karpenter
       namespace: karpenter
 ```
@@ -452,7 +450,8 @@ kubectl get nodes -l karpenter.sh/nodepool
 kubectl describe node -l karpenter.sh/nodepool=default | grep -A5 "Capacity"
 
 # View Karpenter metrics
-kubectl get --raw /metrics -n karpenter | grep karpenter_
+kubectl port-forward -n karpenter svc/karpenter 8080:8080 >/tmp/karpenter-port-forward.log 2>&1 &
+curl -s http://localhost:8080/metrics | grep karpenter_
 ```
 
 ## Troubleshooting
