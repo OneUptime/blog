@@ -10,10 +10,10 @@ Description: A detailed guide to understanding, configuring, and optimizing the 
 
 ## What Is the Reconciliation Interval?
 
-Every Flux CD resource has a `spec.interval` field that controls how frequently the resource is reconciled. This is the heartbeat of the GitOps loop. When the interval elapses, the owning controller picks up the resource and runs through its full reconciliation cycle: fetch, compare, apply, and verify.
+The main Flux CD source and delivery resources covered in this guide have a `spec.interval` field that controls how frequently the resource is reconciled. This is the heartbeat of the GitOps loop. When the interval elapses, the owning controller picks up the resource and runs through that resource's reconciliation cycle, such as fetching a source artifact or applying manifests to the cluster.
 
 ```yaml
-# The interval field is present on every Flux resource
+# The interval field is present on Flux source and delivery resources
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -27,7 +27,7 @@ spec:
     branch: main
 ```
 
-The interval is not a delay between the end of one reconciliation and the start of the next. It is the period between the start of consecutive reconciliations. If a reconciliation takes 30 seconds and the interval is 5 minutes, the next reconciliation begins 5 minutes after the previous one started (effectively 4 minutes and 30 seconds of idle time).
+The interval is the delay used to requeue a resource after a successful reconciliation finishes. It is approximate, and Flux controllers can be configured to apply jitter so many resources with the same interval do not all reconcile at the same time. If a reconciliation takes 30 seconds and the interval is 5 minutes, the next scheduled reconciliation is about 5 minutes after the previous reconciliation completes.
 
 ## Where Intervals Apply
 
@@ -134,7 +134,7 @@ spec:
 
 ## The Retry Interval
 
-When a reconciliation fails, the controller uses `spec.retryInterval` (if set) instead of the regular interval for the next attempt. This allows faster retries on transient errors without increasing the normal reconciliation frequency.
+For Kustomization resources, when a reconciliation fails, the controller uses `spec.retryInterval` (if set) instead of the regular interval for the next attempt. This allows faster retries on transient errors without increasing the normal reconciliation frequency.
 
 ```yaml
 # Retry failed reconciliations more frequently than normal ones
@@ -216,7 +216,7 @@ flux reconcile helmrelease ingress-nginx
 
 ### Using Webhooks
 
-Configure a Receiver to accept webhooks from your Git provider. When a push event arrives, the notification-controller annotates the relevant source, triggering immediate reconciliation.
+Configure a Receiver to accept webhooks from your Git provider. When a push event arrives, the notification-controller requests reconciliation for the relevant source.
 
 ```yaml
 # Receiver that triggers on GitHub push events
@@ -249,7 +249,7 @@ sequenceDiagram
 
     Dev->>GH: git push
     GH->>NC: Webhook POST (push event)
-    NC->>SC: Annotate GitRepository (immediate trigger)
+    NC->>SC: Request GitRepository reconciliation
     SC->>SC: Fetch new commit immediately
     SC->>KC: Artifact revision updated
     KC->>KC: Reconcile Kustomization immediately
@@ -262,13 +262,13 @@ Each reconciliation involves API calls to the Kubernetes API server. The source-
 
 The relationship between interval and API load is inversely proportional:
 
-| Interval | API Calls per Hour (per resource) | Use Case |
-|----------|-----------------------------------|----------|
-| 1m       | 60                                | Critical apps needing fast convergence |
-| 5m       | 12                                | Standard applications |
-| 10m      | 6                                 | Default for most workloads |
-| 30m      | 2                                 | Stable infrastructure |
-| 1h       | 1                                 | Rarely changing chart repos |
+| Interval | Scheduled Reconciliations per Hour (per resource) | Use Case |
+|----------|---------------------------------------------------|----------|
+| 1m       | About 60                                          | Critical apps needing fast convergence |
+| 5m       | About 12                                          | Standard applications |
+| 10m      | About 6                                           | Common baseline for many workloads |
+| 30m      | About 2                                           | Stable infrastructure |
+| 1h       | About 1                                           | Rarely changing chart repos |
 
 For clusters managing hundreds of Flux resources, using aggressive intervals (1m) on every resource can generate significant API server load. Use short intervals selectively for resources that need fast convergence and longer intervals for stable components.
 
@@ -323,4 +323,4 @@ spec:
 
 ## Summary
 
-The reconciliation interval is the fundamental timing mechanism in Flux CD. It controls how often each resource is checked and reconciled, directly affecting convergence speed, drift detection latency, and API server load. Use short intervals for critical applications and longer intervals for stable infrastructure. Combine intervals with webhooks to get immediate reactions to Git pushes while maintaining periodic drift correction. Use `retryInterval` for faster failure recovery and `timeout` to prevent stuck reconciliations. The interval is not a polling delay - it is the period between reconciliation starts, and it can be bypassed at any time with manual triggers or webhook events.
+The reconciliation interval is the fundamental timing mechanism in Flux CD. It controls how often each source or delivery resource is checked and reconciled, directly affecting convergence speed, drift detection latency, and API server load. Use short intervals for critical applications and longer intervals for stable infrastructure. Combine intervals with webhooks to get immediate reactions to Git pushes while maintaining periodic drift correction. Use Kustomization `retryInterval` for faster failure recovery and `timeout` to limit long reconciliation operations. The interval is an approximate requeue delay after reconciliation, and it can be bypassed at any time with manual triggers or webhook events.
