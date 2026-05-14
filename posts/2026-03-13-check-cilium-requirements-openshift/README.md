@@ -10,13 +10,13 @@ Description: Learn how to verify that your OpenShift cluster meets the prerequis
 
 ## Introduction
 
-Installing Cilium on OpenShift is more complex than on vanilla Kubernetes because OpenShift ships with its own CNI plugin (OVN-Kubernetes) and has strict security requirements enforced through Security Context Constraints (SCCs). Replacing the default CNI with Cilium requires specific cluster configuration, node rebooting during migration, and adjusting SCCs to allow Cilium's privileged operations.
+Installing Cilium on OpenShift is more complex than on vanilla Kubernetes because OpenShift ships with its own CNI plugin (OVN-Kubernetes) and has strict security requirements enforced through Security Context Constraints (SCCs). Using Cilium as the cluster network provider requires a supported OpenShift-specific installation path and SCC/RBAC configuration that allows Cilium's privileged operations.
 
 This guide covers the prerequisites check for Cilium on OpenShift 4.x, including platform compatibility, kernel requirements, and the OpenShift-specific configuration needed before installation.
 
 ## Prerequisites
 
-- OpenShift 4.x cluster (OCP or OKD)
+- OpenShift 4.x cluster (OCP or OKD) with a supported Cilium distribution or vendor-maintained OpenShift installation path
 - `oc` CLI installed and authenticated
 - `kubectl` configured (optional, works alongside `oc`)
 - `cilium` CLI v1.14+
@@ -54,11 +54,11 @@ oc get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeIn
 # Check OS version (should be RHCOS for control plane, RHEL for workers)
 oc get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.osImage}{"\n"}{end}'
 
-# RHCOS 4.12+ uses kernel 5.14+ which provides full Cilium feature support
+# RHCOS 4.12 is based on RHEL 8.6, while OpenShift 4.13/4.14 use RHEL 9.2-based RHCOS.
+# Check the actual node kernel instead of assuming the kernel version from the OpenShift minor version.
 # Verify minimum kernel version for your required Cilium features:
-# - Basic CNI: 4.9.17+
-# - kube-proxy replacement: 4.19.57+
-# - eBPF host routing: 5.10+
+# - Cilium 1.19 baseline: Linux 5.10+, or an equivalent vendor kernel such as RHEL 8.10's 4.18 kernel
+# - Advanced features can require newer kernels; check the Cilium system requirements for your Cilium version.
 oc debug node/<node-name> -- chroot /host uname -r
 ```
 
@@ -74,20 +74,20 @@ oc get scc privileged
 # (This will fail before Cilium is installed, but verifies the SCC mechanism works)
 oc adm policy who-can use scc/privileged
 
-# Cilium requires these SCC capabilities:
-# - hostNetwork: true
-# - hostPID: true
-# - privileged: true
+# The built-in privileged SCC allows these relevant settings:
+# - allowHostNetwork: true
+# - allowHostPID: true
+# - allowPrivilegedContainer: true
 # - runAsUser: RunAsAny
-# - seLinux: RunAsAny
+# - seLinuxContext: RunAsAny
 
 # View the full privileged SCC definition
-oc get scc privileged -o yaml | grep -E "allowPrivilege|hostNetwork|hostPID|runAsUser"
+oc get scc privileged -o yaml | grep -E "allowPrivilegedContainer|allowHostNetwork|allowHostPID|runAsUser|seLinuxContext"
 ```
 
 ## Step 4: Prepare for CNI Replacement
 
-Replacing OVN-Kubernetes with Cilium on OpenShift requires putting the cluster into "network type migration" mode.
+OpenShift's documented network plugin migration flow is for migrating between OpenShift-managed network plugins, such as OpenShift SDN to OVN-Kubernetes. Do not assume that an existing OVN-Kubernetes cluster can be converted to Cilium by using the OpenShift SDN-to-OVN migration field; follow the supported Cilium or vendor documentation for your OpenShift version and distribution.
 
 ```bash
 # Check current network operator configuration
@@ -95,9 +95,9 @@ oc get network.operator cluster -o yaml
 
 # Check current network type
 oc get network.config cluster -o jsonpath='{.status.networkType}'
-# Expected before migration: OVNKubernetes
+# Typical default on OpenShift 4.14+: OVNKubernetes
 
-# List all MachineConfig objects (nodes will need to reboot during migration)
+# List network-related MachineConfig objects (supported migrations can trigger node reboots)
 oc get machineconfig | grep -E "network|cni"
 
 # Check node readiness before starting migration
@@ -108,39 +108,29 @@ oc get nodes
 oc get clusterversion -o jsonpath='{.items[0].spec.channel}'
 ```
 
-## Step 5: Install Cilium on OpenShift Using the Cilium Operator
+## Step 5: Confirm the Supported Cilium Installation Method
 
-Use the Cilium Helm chart with OpenShift-specific values.
+Use the supported OpenShift-specific Cilium installation method for your distribution. Current upstream Cilium documentation does not provide a community-maintained OpenShift installation; it points OpenShift users to vendor-maintained OLM images and instructions. Older OKD-focused documentation used Cilium OLM manifests during cluster installation rather than a generic `cilium install` or Helm install with an `openshift.enabled` value.
 
 ```bash
-# Install Cilium with OpenShift-specific configuration
-# Note: OpenShift uses its own kube-proxy implementation - do not enable kube-proxy replacement initially
-cilium install \
-  --helm-set kubeProxyReplacement=false \
-  --helm-set openshift.enabled=true \
-  --helm-set cni.chainingMode=none \
-  --version 1.15.0
+# Check whether a Cilium Operator installed through OLM is present
+oc get csv -A | grep -i cilium
 
-# Alternatively, use Helm directly with OpenShift values
-helm install cilium cilium/cilium \
-  --version 1.15.0 \
-  --namespace kube-system \
-  --set openshift.enabled=true \
-  --set kubeProxyReplacement=false \
-  --set securityContext.privileged=true
+# Check for Cilium custom resources installed by your supported distribution
+oc api-resources | grep -i cilium
 
-# After installation, verify Cilium pods are running
-oc get pods -n kube-system -l k8s-app=cilium
+# After installation, verify Cilium pods in the namespace used by your distribution
+oc get pods -A -l k8s-app=cilium
 ```
 
 ## Best Practices
 
 - Always test Cilium on a non-production OpenShift cluster before migrating production.
-- Perform CNI migration during a maintenance window - all nodes will reboot during the migration.
+- Perform any supported CNI migration during a maintenance window; OpenShift network plugin migrations can include downtime and node reboots.
 - Do not attempt CNI migration while an OpenShift cluster upgrade is in progress.
-- Use the Cilium operator (`openshift.enabled=true`) to ensure OpenShift-specific SCC and RBAC configurations are applied correctly.
+- Use the supported Cilium Operator or vendor-maintained OpenShift installation method so OpenShift-specific SCC and RBAC configurations are applied correctly.
 - Verify all critical workloads are healthy after the migration before declaring success.
 
 ## Conclusion
 
-Cilium on OpenShift requires specific preparation around SCCs, kernel compatibility, and CNI replacement mode. By checking RHCOS kernel versions, verifying SCC availability, and confirming cluster stability before migration, you minimize the risk of connectivity disruption during the Cilium installation. Always run `cilium status` after installation to confirm all agents are healthy on every node.
+Cilium on OpenShift requires specific preparation around SCCs, kernel compatibility, and the supported installation method. By checking RHCOS kernel versions, verifying SCC availability, and confirming cluster stability before migration, you minimize the risk of connectivity disruption during the Cilium installation. Always run `cilium status` after installation, using the correct namespace if needed, to confirm all agents are healthy on every node.
