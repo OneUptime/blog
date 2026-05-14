@@ -69,8 +69,8 @@ spec:
     name: flux-system
   path: ./infrastructure
   prune: true
-  # No serviceAccountName means it uses the flux-system default
-  # which has cluster-admin permissions
+  # No serviceAccountName means kustomize-controller applies with its
+  # own permissions, which are cluster-admin in a standard Flux bootstrap
 ```
 
 ## Step 3: Configure Tenant Registration
@@ -91,7 +91,7 @@ spec:
     name: flux-system
   path: ./tenants
   prune: true
-  # Runs as flux-system service account (cluster-admin)
+  # Runs with the kustomize-controller service account permissions
   # This allows creating namespaces and RBAC bindings
 ```
 
@@ -129,37 +129,11 @@ kind: ClusterRole
 metadata:
   name: platform-admin
 rules:
-  # Full access to Flux CRDs
-  - apiGroups: ["source.toolkit.fluxcd.io"]
+  # Full access to Kubernetes and Flux resources
+  - apiGroups: ["*"]
     resources: ["*"]
     verbs: ["*"]
-  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["*"]
-  - apiGroups: ["helm.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["*"]
-  - apiGroups: ["notification.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["*"]
-  - apiGroups: ["image.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["*"]
-  # Namespace management
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["*"]
-  # RBAC management
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
-    verbs: ["*"]
-  # Resource quotas and limit ranges
-  - apiGroups: [""]
-    resources: ["resourcequotas", "limitranges"]
-    verbs: ["*"]
-  # Network policies
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["networkpolicies"]
+  - nonResourceURLs: ["*"]
     verbs: ["*"]
 ```
 
@@ -222,6 +196,12 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
     name: platform-admins
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: team-alpha
+  namespace: team-alpha
 ---
 # Tenant role binding (per namespace)
 apiVersion: rbac.authorization.k8s.io/v1
