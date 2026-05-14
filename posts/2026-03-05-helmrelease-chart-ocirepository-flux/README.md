@@ -41,6 +41,9 @@ metadata:
 spec:
   interval: 5m
   url: oci://ghcr.io/my-org/charts/my-app
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     # Pull a specific version tag
     tag: "1.2.0"
@@ -58,6 +61,9 @@ metadata:
 spec:
   interval: 5m
   url: oci://ghcr.io/my-org/charts/my-app
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     tag: "1.2.0"
   secretRef:
@@ -113,6 +119,9 @@ metadata:
 spec:
   interval: 5m
   url: oci://ghcr.io/my-org/charts/my-app
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     # Automatically pick up patch updates within the 1.2.x range
     semver: ">=1.2.0 <1.3.0"
@@ -132,6 +141,9 @@ metadata:
 spec:
   interval: 5m
   url: oci://ghcr.io/my-org/charts/my-app
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     digest: sha256:abc123def456...
 ```
@@ -150,6 +162,9 @@ metadata:
 spec:
   interval: 10m
   url: oci://registry-1.docker.io/bitnamicharts/nginx
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     semver: "15.x"
 ---
@@ -224,6 +239,9 @@ metadata:
 spec:
   interval: 5m
   url: oci://123456789.dkr.ecr.us-east-1.amazonaws.com/charts/my-app
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     tag: "1.2.0"
   provider: aws
@@ -237,10 +255,10 @@ After applying the resources, verify they are working correctly:
 
 ```bash
 # Check the OCIRepository source status
-flux get source oci my-app-chart -n flux-system
+flux get sources oci -n flux-system
 
 # Check the HelmRelease status
-flux get helmrelease my-app -n default
+flux get helmreleases -n default
 
 # View detailed status of the OCIRepository
 kubectl describe ocirepository my-app-chart -n flux-system
@@ -258,7 +276,7 @@ Common issues and how to diagnose them:
 kubectl describe ocirepository my-app-chart -n flux-system | grep -A 5 "Message"
 
 # Chart not found -- verify the OCI URL and tag
-flux get source oci my-app-chart -n flux-system
+flux get sources oci -n flux-system
 
 # HelmRelease not reconciling -- check chartRef configuration
 kubectl describe helmrelease my-app -n default
