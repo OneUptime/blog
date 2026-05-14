@@ -17,12 +17,12 @@ This guide covers configuring the Grafana notification provider to send deployme
 - A Kubernetes cluster with Flux CD installed (including the notification controller)
 - `kubectl` access to the cluster
 - A Grafana instance with API access (Grafana Cloud or self-hosted)
-- A Grafana API key or service account token with annotation write permissions
+- A Grafana service account token, or legacy API key, with annotation create permissions
 - The `flux` CLI installed (optional but helpful)
 
-## Step 1: Create a Grafana API Key
+## Step 1: Create a Grafana Service Account Token
 
-In Grafana, navigate to **Configuration** then **API keys** (or **Service Accounts** in newer versions). Create a new API key or service account token with the **Editor** role, which grants permission to create annotations.
+In Grafana, navigate to **Administration** then **Users and access** then **Service accounts**. Create a new service account token with the **Editor** role, which grants permission to create annotations. In older Grafana installations that still use API keys, create an API key with equivalent permissions.
 
 Copy the generated token.
 
@@ -45,7 +45,7 @@ Define a Provider resource for Grafana.
 ```yaml
 # provider-grafana.yaml
 # Configures Flux to send annotations to Grafana dashboards
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: grafana-provider
@@ -53,8 +53,8 @@ metadata:
 spec:
   # Use "grafana" as the provider type
   type: grafana
-  # The Grafana instance URL
-  address: https://grafana.example.com
+  # The Grafana annotations API endpoint
+  address: https://grafana.example.com/api/annotations
   # Reference to the secret containing the API token
   secretRef:
     name: grafana-token
@@ -74,7 +74,7 @@ Create an Alert that sends deployment events as Grafana annotations.
 ```yaml
 # alert-grafana.yaml
 # Sends Flux events as annotations to Grafana
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: grafana-alert
@@ -140,25 +140,25 @@ To see Flux annotations on your Grafana dashboards:
 1. Open any dashboard
 2. Click the dashboard settings gear icon
 3. Go to **Annotations**
-4. Add a new annotation query filtered by tags (Flux annotations include tags like `flux`, the resource kind, and the resource name)
+4. Add a new annotation query filtered by tags (Flux annotations include tags like `flux`, `kind: Kustomization`, and `name: flux-system`)
 5. Save the dashboard
 
 Annotations will now appear as vertical lines on all panels in the dashboard.
 
 ## Grafana Cloud Configuration
 
-For Grafana Cloud, use your Grafana Cloud instance URL:
+For Grafana Cloud, use your Grafana Cloud annotations API endpoint:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: grafana-cloud-provider
   namespace: flux-system
 spec:
   type: grafana
-  # Use your Grafana Cloud instance URL
-  address: https://YOUR_INSTANCE.grafana.net
+  # Use your Grafana Cloud annotations API endpoint
+  address: https://YOUR_INSTANCE.grafana.net/api/annotations
   secretRef:
     name: grafana-cloud-token
 ```
@@ -168,7 +168,7 @@ spec:
 To only annotate failures:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: grafana-errors
@@ -194,26 +194,26 @@ If you have separate Grafana instances for different environments:
 
 ```yaml
 # Production Grafana
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: grafana-prod
   namespace: flux-system
 spec:
   type: grafana
-  address: https://grafana-prod.example.com
+  address: https://grafana-prod.example.com/api/annotations
   secretRef:
     name: grafana-prod-token
 ---
 # Staging Grafana
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: grafana-staging
   namespace: flux-system
 spec:
   type: grafana
-  address: https://grafana-staging.example.com
+  address: https://grafana-staging.example.com/api/annotations
   secretRef:
     name: grafana-staging-token
 ```
@@ -222,8 +222,8 @@ spec:
 
 If annotations are not appearing in Grafana:
 
-1. **API token permissions**: The token must have Editor role or specific annotation write permissions.
-2. **Grafana URL**: The `address` must be the root URL of your Grafana instance (no trailing `/api` path).
+1. **API token permissions**: The token must have Editor role or specific annotation create permissions.
+2. **Grafana URL**: The `address` must be the Grafana annotations API endpoint, for example `https://grafana.example.com/api/annotations`.
 3. **Dashboard annotation query**: Ensure your dashboard has an annotation query configured to display Flux annotations.
 4. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
 5. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for HTTP errors.
