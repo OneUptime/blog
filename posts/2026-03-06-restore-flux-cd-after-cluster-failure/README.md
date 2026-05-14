@@ -48,7 +48,7 @@ Ensure your new cluster matches the requirements of your workloads.
 eksctl create cluster \
   --name production-restored \
   --region us-east-1 \
-  --version 1.29 \
+  --version 1.34 \
   --nodegroup-name workers \
   --node-type m5.xlarge \
   --nodes 3 \
@@ -114,7 +114,7 @@ flux bootstrap git \
   --branch=main \
   --path=clusters/production \
   --components-extra=image-reflector-controller,image-automation-controller \
-  --secret-ref=flux-system
+  --secret-name=flux-system
 ```
 
 ### Option B: Bootstrap with New Deploy Key
@@ -122,14 +122,15 @@ flux bootstrap git \
 If the original deploy key is lost, generate a new one.
 
 ```bash
+# Create a GitHub personal access token and export it as an env var
+export GITHUB_TOKEN="ghp_your_token_here"
+
 # Bootstrap Flux CD - this generates a new deploy key
 flux bootstrap github \
   --owner=myorg \
   --repository=fleet-repo \
   --branch=main \
   --path=clusters/production \
-  --personal \
-  --token-auth \
   --components-extra=image-reflector-controller,image-automation-controller
 
 # The new deploy key will be added to the repository automatically
@@ -208,8 +209,8 @@ kubectl apply -f /path/to/backup/helm-state.yaml
 # Verify Helm releases are recognized
 helm list -A
 
-# If Helm releases are out of sync, force reconciliation
-flux reconcile helmrelease -A --all
+# If a Helm release is out of sync, force reconciliation
+flux reconcile helmrelease <name> -n <namespace>
 ```
 
 ## Step 7: Handle Stuck Reconciliations
@@ -218,9 +219,9 @@ Sometimes resources get stuck during restoration. Here is how to handle common i
 
 ```bash
 # Check for suspended resources
-flux get kustomizations --status-selector suspended=true
+flux get kustomizations -A
 
-# Resume any suspended kustomizations
+# Resume suspended kustomizations in the current Flux namespace
 flux resume kustomization --all
 
 # If a HelmRelease is stuck, try resetting it
@@ -273,7 +274,8 @@ echo "--- Pod Health ---"
 TOTAL_PODS=$(kubectl get pods -A --no-headers | wc -l)
 RUNNING_PODS=$(kubectl get pods -A --no-headers --field-selector=status.phase=Running | wc -l)
 FAILED_PODS=$(kubectl get pods -A --no-headers --field-selector=status.phase=Failed | wc -l)
-echo "Total: $TOTAL_PODS | Running: $RUNNING_PODS | Failed: $FAILED_PODS"
+NON_RUNNING_PODS=$(kubectl get pods -A --no-headers --field-selector=status.phase!=Running,status.phase!=Succeeded | wc -l)
+echo "Total: $TOTAL_PODS | Running: $RUNNING_PODS | Failed: $FAILED_PODS | Non-running: $NON_RUNNING_PODS"
 
 # List any pods not in Running state
 echo ""
@@ -291,7 +293,7 @@ echo "--- PVC Status ---"
 kubectl get pvc -A --no-headers | grep -v Bound || echo "All PVCs are bound"
 
 echo ""
-if [ "$FAILED_KS" -eq 0 ] && [ "$FAILED_HR" -eq 0 ] && [ "$FAILED_PODS" -eq 0 ]; then
+if [ "$FAILED_KS" -eq 0 ] && [ "$FAILED_HR" -eq 0 ] && [ "$FAILED_PODS" -eq 0 ] && [ "$NON_RUNNING_PODS" -eq 0 ]; then
   echo "RESTORATION SUCCESSFUL: All resources are healthy"
 else
   echo "RESTORATION INCOMPLETE: Some resources need attention"
