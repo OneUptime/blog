@@ -16,7 +16,7 @@ This guide demonstrates how to deploy both cert-manager and its CSI driver using
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25+)
+- A Kubernetes cluster supported by cert-manager v1.20 (v1.32-v1.35)
 - Flux CD installed and bootstrapped
 - kubectl and flux CLI tools installed
 - Basic understanding of cert-manager and CSI drivers
@@ -39,13 +39,13 @@ graph LR
 ```text
 clusters/
   my-cluster/
+    cert-manager-flux-kustomization.yaml
     cert-manager/
       namespace.yaml
       helmrepository.yaml
       cert-manager-helmrelease.yaml
       csi-driver-helmrelease.yaml
       cluster-issuer.yaml
-      kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -92,7 +92,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.16.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -104,6 +104,10 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
+    # Render and install cert-manager CRDs with the Helm chart
+    crds:
+      enabled: true
+
     # Enable the certificate approval controller
     enableCertificateOwnerRef: true
 
@@ -161,7 +165,7 @@ spec:
   chart:
     spec:
       chart: cert-manager-csi-driver
-      version: "0.10.x"
+      version: "v0.14.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -176,34 +180,6 @@ spec:
       limits:
         cpu: 250m
         memory: 128Mi
-
-    # Liveness probe configuration
-    livenessProbe:
-      enabled: true
-      httpGet:
-        port: healthz
-        path: /healthz
-
-    # Node driver registrar sidecar
-    nodeDriverRegistrar:
-      resources:
-        requests:
-          cpu: 10m
-          memory: 20Mi
-        limits:
-          cpu: 100m
-          memory: 64Mi
-
-    # Liveness probe sidecar
-    livenessProbeImage:
-      resources:
-        requests:
-          cpu: 10m
-          memory: 20Mi
-        limits:
-          cpu: 100m
-          memory: 64Mi
-
     # Tolerations to ensure the driver runs on all nodes
     tolerations:
       - operator: Exists
@@ -318,7 +294,7 @@ spec:
 
 ## Step 7: mTLS Between Services
 
-Configure two services with mutual TLS using the CSI driver.
+Configure another service with a certificate from the same issuer for mutual trust. Application-level mTLS configuration is still required.
 
 ```yaml
 # clusters/my-cluster/apps/mtls-client.yaml
@@ -365,7 +341,7 @@ spec:
 ## Step 8: Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/cert-manager/kustomization.yaml
+# clusters/my-cluster/cert-manager-flux-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
