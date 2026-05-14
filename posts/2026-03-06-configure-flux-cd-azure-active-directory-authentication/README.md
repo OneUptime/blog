@@ -40,7 +40,8 @@ az aks create \
   --resource-group rg-flux-demo \
   --name aks-flux-cluster \
   --enable-aad \
-  --enable-azure-rbac \
+  --enable-oidc-issuer \
+  --enable-workload-identity \
   --node-count 3 \
   --generate-ssh-keys
 ```
@@ -53,7 +54,8 @@ az aks update \
   --resource-group rg-flux-demo \
   --name aks-flux-cluster \
   --enable-aad \
-  --enable-azure-rbac
+  --enable-oidc-issuer \
+  --enable-workload-identity
 ```
 
 ## Step 2: Create Azure AD Groups for Flux Access
@@ -87,7 +89,7 @@ az ad group member add \
 
 ## Step 3: Configure Azure RBAC Role Assignments
 
-Assign Azure RBAC roles to the AD groups for AKS access.
+Assign Azure RBAC roles to the AD groups so members can download user credentials for the AKS cluster. The Kubernetes RBAC resources in the next steps grant access to Flux custom resources.
 
 ```bash
 # Get the AKS cluster resource ID
@@ -96,23 +98,23 @@ AKS_ID=$(az aks show \
   --name aks-flux-cluster \
   --query id -o tsv)
 
-# Grant cluster admin access to flux-admins group
+# Allow flux-admins group members to get AKS user credentials
 az role assignment create \
   --assignee "$ADMIN_GROUP_ID" \
-  --role "Azure Kubernetes Service RBAC Cluster Admin" \
+  --role "Azure Kubernetes Service Cluster User Role" \
   --scope "$AKS_ID"
 
-# Grant read-only access to flux-readers group
+# Allow flux-readers group members to get AKS user credentials
 az role assignment create \
   --assignee "$READONLY_GROUP_ID" \
-  --role "Azure Kubernetes Service RBAC Reader" \
+  --role "Azure Kubernetes Service Cluster User Role" \
   --scope "$AKS_ID"
 
-# Grant write access to flux-developers group (namespace-scoped)
+# Allow flux-developers group members to get AKS user credentials
 az role assignment create \
   --assignee "$DEV_GROUP_ID" \
-  --role "Azure Kubernetes Service RBAC Writer" \
-  --scope "$AKS_ID/namespaces/dev"
+  --role "Azure Kubernetes Service Cluster User Role" \
+  --scope "$AKS_ID"
 ```
 
 ## Step 4: Configure Kubernetes RBAC for Flux
@@ -199,6 +201,10 @@ subjects:
 
 Create namespace-scoped roles for the developer group.
 
+```bash
+kubectl create namespace dev
+```
+
 ```yaml
 # role-flux-developer.yaml
 # Grants developers access to Flux resources within the dev namespace
@@ -214,13 +220,6 @@ rules:
       - helm.toolkit.fluxcd.io
     resources: ["*"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  # Prevent developers from deleting Flux resources
-  - apiGroups:
-      - source.toolkit.fluxcd.io
-      - kustomize.toolkit.fluxcd.io
-      - helm.toolkit.fluxcd.io
-    resources: ["*"]
-    verbs: ["delete"]
 ---
 # role-binding-flux-developer.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -250,11 +249,11 @@ az aks get-credentials \
 
 # Bootstrap Flux using a GitHub repository
 flux bootstrap github \
+  --token-auth \
   --owner=<your-github-org> \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/aks-flux-cluster \
-  --personal
+  --path=clusters/aks-flux-cluster
 ```
 
 ## Step 7: Configure Flux Service Account with Azure Managed Identity
@@ -284,9 +283,50 @@ az identity federated-credential create \
   --audiences api://AzureADTokenExchange
 ```
 
+Patch the Flux source-controller ServiceAccount and Deployment so Azure Workload Identity can inject the projected token.
+
+```yaml
+# flux-source-controller-workload-identity.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        annotations:
+          azure.workload.identity/client-id: <FLUX_IDENTITY_CLIENT_ID>
+        labels:
+          azure.workload.identity/use: "true"
+    target:
+      kind: ServiceAccount
+      name: source-controller
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        labels:
+          azure.workload.identity/use: "true"
+      spec:
+        template:
+          metadata:
+            labels:
+              azure.workload.identity/use: "true"
+    target:
+      kind: Deployment
+      name: source-controller
+```
+
 ## Step 8: Set Up Conditional Access Policies
 
-Configure Azure AD Conditional Access to add extra security for Flux operations.
+Configure Azure AD Conditional Access named locations to add extra security for interactive Flux operations. Use the public egress CIDR for your CI/CD network.
 
 ```bash
 # Create a named location for your CI/CD network
@@ -299,20 +339,20 @@ az rest --method POST \
     "ipRanges": [
       {
         "@odata.type": "#microsoft.graph.iPv4CidrRange",
-        "cidrAddress": "10.0.0.0/16"
+        "cidrAddress": "203.0.113.10/32"
       }
     ]
   }'
 ```
 
-## Step 9: Configure Flux Notification with Azure AD
+## Step 9: Configure Flux Notification with a Secured Webhook
 
-Set up Flux notifications that integrate with Azure AD-secured endpoints.
+Set up Flux notifications that integrate with a secured webhook endpoint.
 
 ```yaml
 # notification-provider.yaml
-# Configures Flux to send notifications to an Azure AD-protected webhook
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Configures Flux to send notifications to a secured webhook
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: azure-webhook
@@ -325,7 +365,7 @@ spec:
 ---
 # notification-alert.yaml
 # Sends alerts for Flux reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-reconciliation-alert
