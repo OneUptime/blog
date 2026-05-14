@@ -16,11 +16,11 @@ Different registries have different rate limit policies:
 
 - **Docker Hub (anonymous)**: 100 pulls per 6 hours per IP
 - **Docker Hub (authenticated free)**: 200 pulls per 6 hours per account
-- **Docker Hub (Pro/Team)**: 5000 pulls per day
-- **Amazon ECR**: 1000 pulls per second per region (but token refresh limits apply)
-- **GitHub Container Registry**: 5000 requests per hour (authenticated)
-- **Google Container Registry/Artifact Registry**: No hard limit but quota-based throttling
-- **Azure Container Registry**: Varies by tier (Basic: 1000 reads/min, Standard: 10000)
+- **Docker Hub (Pro/Team/Business)**: Unlimited pulls, subject to fair use
+- **Amazon ECR**: API quotas apply per region (for example, BatchGetImage and GetDownloadUrlForLayer quotas, plus token refresh limits)
+- **GitHub Container Registry**: Authenticated access is available through GitHub tokens; GitHub does not publish a Docker Hub-style pull quota for GHCR
+- **Google Artifact Registry**: Quota-based throttling applies; Container Registry is shut down for writes, with `gcr.io` repositories hosted by Artifact Registry
+- **Azure Container Registry**: Varies by tier (Basic: 1000 reads/min, Standard: 3000 reads/min, Premium: 10000 reads/min)
 
 ## Step 1: Identify Rate Limiting Errors
 
@@ -117,9 +117,9 @@ spec:
 # interval >= (10 * 360 min) / 200 = 18 minutes
 ```
 
-## Step 4: Use Exclusion Lists to Reduce Tag Scanning
+## Step 4: Use Exclusion Lists to Reduce Stored Tags
 
-Limit which tags are scanned to reduce API calls.
+Exclude tags that Flux should ignore after listing the repository tags. This reduces the stored scan result and downstream policy processing, but it does not avoid the initial tag-list request to the registry.
 
 ```yaml
 # ImageRepository with tag filtering
@@ -133,7 +133,7 @@ spec:
   interval: 15m
   secretRef:
     name: dockerhub-creds
-  # Only scan tags matching this regex pattern
+  # Exclude tags matching these regex patterns
   exclusionList:
     # Exclude development and test tags
     - "^dev-"
@@ -147,11 +147,26 @@ spec:
 
 ## Step 5: Set Up a Pull-Through Cache
 
-A pull-through cache proxy sits between Flux and the registry, caching images locally and dramatically reducing upstream requests.
+A pull-through cache proxy sits between Flux and the registry, caching images locally and dramatically reducing upstream requests. After deploying the cache, point Flux at the cache registry URL or configure your cluster runtime to use it as a Docker Hub mirror; the cache is not used automatically.
 
 ### Option A: Docker Registry Pull-Through Cache
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-cache-upstream-creds
+  namespace: registry-system
+type: Opaque
+stringData:
+  username: your-dockerhub-username
+  password: your-dockerhub-token
+---
 # Deploy a pull-through cache in your cluster
 apiVersion: apps/v1
 kind: Deployment
@@ -178,11 +193,14 @@ spec:
             - name: REGISTRY_PROXY_REMOTEURL
               value: "https://registry-1.docker.io"
             - name: REGISTRY_PROXY_USERNAME
-              value: "your-dockerhub-username"
+              valueFrom:
+                secretKeyRef:
+                  name: registry-cache-upstream-creds
+                  key: username
             - name: REGISTRY_PROXY_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: dockerhub-creds
+                  name: registry-cache-upstream-creds
                   key: password
           volumeMounts:
             - name: cache-storage
@@ -225,10 +243,11 @@ spec:
 aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix docker-hub \
   --upstream-registry-url registry-1.docker.io \
-  --credential-arn arn:aws:secretsmanager:us-east-1:123456789:secret:dockerhub-creds
+  --credential-arn arn:aws:secretsmanager:us-east-1:123456789012:secret:ecr-pullthroughcache/dockerhub-creds \
+  --region us-east-1
 
 # Your images are now available at:
-# 123456789.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/nginx
+# 123456789012.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/nginx
 ```
 
 Configure Flux to use the ECR cache:
@@ -242,7 +261,7 @@ metadata:
   namespace: flux-system
 spec:
   # Use ECR pull-through cache URL instead of Docker Hub
-  image: 123456789.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/nginx
+  image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/nginx
   interval: 10m
   provider: aws
 ```
@@ -259,7 +278,7 @@ metadata:
   name: my-ecr-app
   namespace: flux-system
 spec:
-  image: 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app
+  image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
   interval: 10m
   # Use the AWS provider for automatic ECR token management
   provider: aws
@@ -276,20 +295,20 @@ metadata:
   namespace: flux-system
   annotations:
     # Annotate with the IAM role ARN
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/flux-image-reflector
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-image-reflector
 ```
 
-## Step 7: Configure GCR and Artifact Registry
+## Step 7: Configure Artifact Registry
 
 ```yaml
 # ImageRepository with GCP provider
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: my-gcr-app
+  name: my-artifact-registry-app
   namespace: flux-system
 spec:
-  image: gcr.io/my-project/my-app
+  image: us-docker.pkg.dev/my-project/my-repo/my-app
   interval: 10m
   # Use the GCP provider for automatic token management
   provider: gcp
@@ -316,7 +335,7 @@ curl -s -I -H "Authorization: Bearer $TOKEN" \
 
 ```yaml
 # Alert when image scanning fails (including rate limits)
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-scan-failures
@@ -343,7 +362,7 @@ metadata:
   name: my-app-ghcr
   namespace: flux-system
 spec:
-  # Mirror your images to GHCR for higher limits
+  # Mirror your images to GHCR as an alternative registry
   image: ghcr.io/myorg/my-app
   interval: 5m
   secretRef:
@@ -357,8 +376,8 @@ Set up a CI pipeline to mirror images:
 docker tag myorg/my-app:1.0.0 ghcr.io/myorg/my-app:1.0.0
 docker push ghcr.io/myorg/my-app:1.0.0
 
-docker tag myorg/my-app:1.0.0 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:1.0.0
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:1.0.0
+docker tag myorg/my-app:1.0.0 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:1.0.0
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:1.0.0
 ```
 
 ## Step 10: Full Debugging Checklist
@@ -397,9 +416,9 @@ Flux CD rate limiting from container registries can be mitigated through:
 
 - **Authenticating with registries** to get higher rate limits (essential for Docker Hub)
 - **Increasing scan intervals** to reduce API call frequency
-- **Using tag exclusion lists** to narrow the scan scope
+- **Using tag exclusion lists** to reduce stored tag results and downstream policy processing
 - **Deploying pull-through caches** to cache registry responses locally
-- **Mirroring images** to registries with higher limits (ECR, GHCR)
+- **Mirroring images** to alternative registries such as ECR or GHCR
 - **Monitoring rate limit headers** to proactively detect approaching limits
 
 The most impactful fix is usually authentication combined with reasonable scan intervals. For large-scale deployments, a pull-through cache is the definitive solution.
