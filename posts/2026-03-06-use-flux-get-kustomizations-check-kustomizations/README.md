@@ -10,7 +10,7 @@ Description: A comprehensive guide to using flux get kustomizations to monitor, 
 
 ## Introduction
 
-Kustomizations are the primary mechanism Flux CD uses to apply Kubernetes manifests from Git repositories to your cluster. They define what to deploy, where to find the manifests, and how to handle dependencies and health checks. The `flux get kustomizations` command lets you quickly assess whether your GitOps pipeline is successfully applying configurations.
+Kustomizations are the primary mechanism Flux CD uses to apply Kubernetes manifests from Flux sources to your cluster. They define what to deploy, where to find the manifests, and how to handle dependencies and health checks. The `flux get kustomizations` command lets you quickly assess whether your GitOps pipeline is successfully applying configurations.
 
 This guide covers how to use this command for daily operations, debugging, and automation.
 
@@ -26,8 +26,7 @@ This guide covers how to use this command for daily operations, debugging, and a
 Check the status of all Kustomizations.
 
 ```bash
-# List kustomizations in the default namespace
-
+# List kustomizations in the current namespace
 flux get kustomizations
 
 # List kustomizations across all namespaces
@@ -78,10 +77,10 @@ Verify that kustomizations are in sync with their sources.
 ```bash
 # Compare source revision to kustomization revision
 echo "=== Sources ==="
-flux get sources git -A --no-header | awk '{print $1, $2}'
+flux get sources git -A --no-header | awk '{print $1, $2, $3}'
 echo ""
 echo "=== Kustomizations ==="
-flux get ks -A --no-header | awk '{print $1, $2}'
+flux get ks -A --no-header | awk '{print $1, $2, $3}'
 ```
 
 If a kustomization shows a different revision than its source, it may still be reconciling or may have encountered an error.
@@ -184,12 +183,13 @@ kubectl get kustomizations -A -o jsonpath='{range .items[*]}{.metadata.namespace
 # Visualize dependency order
 echo "Kustomization Dependency Chain:"
 echo "================================"
-for ks in $(flux get ks -A --no-header | awk '{print $1}'); do
-    deps=$(kubectl get kustomization $ks -n flux-system -o jsonpath='{.spec.dependsOn[*].name}' 2>/dev/null)
+flux get ks -A --no-header | while read -r ns name rev susp ready msg; do
+    deps=$(kubectl get kustomization "$name" -n "$ns" -o json 2>/dev/null |
+      jq -r --arg ns "$ns" '(.spec.dependsOn // []) | map((.namespace // $ns) + "/" + .name) | join(" ")')
     if [ -z "$deps" ]; then
-        echo "$ks -> (no dependencies)"
+        echo "$ns/$name -> (no dependencies)"
     else
-        echo "$ks -> depends on: $deps"
+        echo "$ns/$name -> depends on: $deps"
     fi
 done
 ```
@@ -245,7 +245,7 @@ kubectl get kustomization my-app -n flux-system \
 # Count resources managed by each kustomization
 for ks in $(flux get ks -n flux-system --no-header | awk '{print $1}'); do
     count=$(kubectl get kustomization $ks -n flux-system \
-      -o jsonpath='{.status.inventory.entries}' 2>/dev/null | jq 'length' 2>/dev/null)
+      -o json 2>/dev/null | jq '.status.inventory.entries // [] | length' 2>/dev/null)
     echo "$ks: ${count:-0} resources"
 done
 ```
@@ -256,10 +256,11 @@ Use different output formats for different needs.
 
 ```bash
 # YAML output for full resource details
-flux get ks my-app -n flux-system -o yaml
+kubectl get kustomization my-app -n flux-system -o yaml
 
 # JSON output for scripting
-flux get ks -A -o json | jq '.[] | {
+kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o json | jq '.items[] | {
+  namespace: .metadata.namespace,
   name: .metadata.name,
   path: .spec.path,
   source: .spec.sourceRef.name,
@@ -307,7 +308,10 @@ flux get ks -A --no-header 2>/dev/null | while read -r ns name rev susp ready ms
     # Get the source for this kustomization
     source=$(kubectl get kustomization "$name" -n "$ns" \
       -o jsonpath='{.spec.sourceRef.name}' 2>/dev/null)
-    source_rev=$(kubectl get gitrepository "$source" -n "$ns" \
+    source_ns=$(kubectl get kustomization "$name" -n "$ns" \
+      -o jsonpath='{.spec.sourceRef.namespace}' 2>/dev/null)
+    source_ns=${source_ns:-$ns}
+    source_rev=$(kubectl get gitrepository "$source" -n "$source_ns" \
       -o jsonpath='{.status.artifact.revision}' 2>/dev/null)
     if [ "$rev" != "$source_rev" ] && [ -n "$source_rev" ]; then
         echo "  OUT OF SYNC: $ns/$name (ks: $rev, source: $source_rev)"
@@ -333,7 +337,7 @@ exit 0
 | `flux get ks -A` | All kustomizations across namespaces |
 | `flux get ks <name> -n <ns>` | Specific kustomization |
 | `flux get ks -A --status-selector ready=false` | Failed kustomizations |
-| `flux get ks -A -o json` | JSON output for scripting |
+| `kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o json` | JSON output for scripting |
 | `flux reconcile ks <name>` | Force reconciliation |
 | `flux reconcile ks <name> --with-source` | Reconcile with source refresh |
 | `flux suspend ks <name>` | Pause reconciliation |
