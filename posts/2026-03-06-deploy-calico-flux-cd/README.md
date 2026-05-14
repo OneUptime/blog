@@ -46,13 +46,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tigera-operator
-  namespace: tigera-operator
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: tigera-operator
   chart:
     spec:
       chart: tigera-operator
-      version: "3.28.x"
+      version: "v3.32.0"
       sourceRef:
         kind: HelmRepository
         name: projectcalico
@@ -64,9 +65,15 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
-    # Installation configuration
+    # Install only the operator; define Calico CRs separately below
     installation:
-      enabled: true
+      enabled: false
+    apiServer:
+      enabled: false
+    goldmane:
+      enabled: false
+    whisker:
+      enabled: false
     # Resource limits for the operator
     resources:
       requests:
@@ -111,23 +118,32 @@ spec:
   # Control plane replicas
   controlPlaneReplicas: 2
   # Component resource limits
-  componentResources:
-    - componentName: Node
-      resourceRequirements:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-    - componentName: KubeControllers
-      resourceRequirements:
-        requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
-          cpu: 250m
-          memory: 256Mi
+  calicoNodeDaemonSet:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: calico-node
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+  calicoKubeControllersDeployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: calico-kube-controllers
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
 ```
 
 ## Configuring Calico API Server
@@ -301,7 +317,27 @@ spec:
 ## Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/calico-kustomization.yaml
+# clusters/my-cluster/calico-config-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: calico-config
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/my-cluster/calico-config
+  prune: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      name: calico-node
+      namespace: calico-system
+  timeout: 10m
+---
+# clusters/my-cluster/calico-policies-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -315,7 +351,7 @@ spec:
   path: ./clusters/my-cluster/calico-policies
   prune: true
   dependsOn:
-    - name: tigera-operator
+    - name: calico-config
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
@@ -334,17 +370,17 @@ kubectl get pods -n calico-system
 kubectl get pods -n tigera-operator
 
 # Verify the installation resource
-kubectl get installation default -o yaml
+kubectl get installation.operator.tigera.io default -o yaml
 
 # List all Calico network policies
 kubectl get globalnetworkpolicies
 kubectl get networkpolicies.projectcalico.org -A
 
 # Check Calico node status via calicoctl
-kubectl calico node status
+calicoctl node status
 
 # View IP pools
-kubectl get ippools -o yaml
+kubectl get ippools.projectcalico.org -o yaml
 ```
 
 ## Troubleshooting
@@ -357,10 +393,10 @@ kubectl logs -n calico-system -l k8s-app=calico-node
 kubectl logs -n calico-system -l k8s-app=calico-kube-controllers
 
 # Verify BGP peering (if enabled)
-kubectl calico node status
+calicoctl node status
 
 # Check Felix configuration
-kubectl get felixconfiguration default -o yaml
+kubectl get felixconfigurations.projectcalico.org default -o yaml
 
 # Debug policy enforcement
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i policy
