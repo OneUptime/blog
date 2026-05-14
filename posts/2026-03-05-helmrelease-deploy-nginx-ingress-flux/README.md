@@ -15,6 +15,7 @@ The NGINX Ingress Controller is the most widely used ingress solution in Kuberne
 - A Kubernetes cluster with Flux CD installed
 - A GitOps repository connected to Flux
 - A cloud provider load balancer or MetalLB for bare-metal clusters
+- Prometheus Operator CRDs installed if you enable the ServiceMonitor
 
 ## Creating the HelmRepository
 
@@ -43,9 +44,11 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 15m
+  releaseName: ingress-nginx
+  targetNamespace: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
@@ -95,8 +98,10 @@ spec:
         type: LoadBalancer
         # Annotations for cloud provider load balancers (AWS example)
         annotations: {}
-          # service.beta.kubernetes.io/aws-load-balancer-type: nlb
-          # service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          # service.beta.kubernetes.io/aws-load-balancer-type: external
+          # service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+          # service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+          # service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
 
       # Enable Prometheus metrics
       metrics:
@@ -107,7 +112,7 @@ spec:
 
       # Custom NGINX configuration
       config:
-        # Use real client IP behind load balancer
+        # Trust X-Forwarded-* headers from an upstream L7 load balancer
         use-forwarded-headers: "true"
         # Enable gzip compression
         use-gzip: "true"
@@ -171,19 +176,20 @@ For AWS with Network Load Balancer:
 controller:
   service:
     annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: nlb
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
-      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+      service.beta.kubernetes.io/aws-load-balancer-type: external
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
 ```
 
-For GCP:
+For GKE external LoadBalancer services:
 
 ```yaml
-# Add these annotations under controller.service.annotations for GCP
+# Add these annotations under controller.service.annotations for GKE
 controller:
   service:
     annotations:
-      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/l4-rbs: "enabled"
 ```
 
 ## Testing with a Sample Ingress
@@ -220,7 +226,7 @@ Check that the NGINX Ingress Controller is running and the LoadBalancer has been
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease ingress-nginx -n ingress-nginx
+flux get helmreleases -n flux-system
 
 # Verify controller pods are running
 kubectl get pods -n ingress-nginx
