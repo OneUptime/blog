@@ -253,7 +253,7 @@ The namespace and policy name must match an existing ImagePolicy resource exactl
 
 ## Verifying Markers Are Detected
 
-After committing your manifests with markers, you can verify that Flux detects them:
+After committing your manifests with markers, you can check the ImageUpdateAutomation status:
 
 ```bash
 flux get image update --all-namespaces
