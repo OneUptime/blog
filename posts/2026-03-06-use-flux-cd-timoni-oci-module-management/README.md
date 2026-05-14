@@ -12,13 +12,13 @@ Description: Learn how to use Timoni with Flux CD to manage OCI-based Kubernetes
 
 Timoni is a package manager for Kubernetes powered by CUE, a type-safe configuration language. It distributes Kubernetes modules as OCI artifacts, making them easy to version, share, and consume. When paired with Flux CD, Timoni modules provide a robust GitOps workflow with strong typing guarantees and OCI-native distribution.
 
-This guide covers how to set up Timoni modules, publish them to OCI registries, and deploy them using Flux CD for continuous reconciliation.
+This guide covers how to set up Timoni modules, publish them to OCI registries, generate Kubernetes manifests, and deploy the generated manifests using Flux CD for continuous reconciliation.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster compatible with your installed Flux version
 - Flux CD installed and bootstrapped
 - Timoni CLI installed
 - Access to an OCI-compatible registry (GitHub Container Registry, Docker Hub, or Harbor)
@@ -47,8 +47,8 @@ Timoni modules are packages of CUE definitions that generate Kubernetes resource
 
 ```mermaid
 graph LR
-    A[CUE Module] --> B[timoni mod push]
-    B --> C[OCI Registry]
+    A[CUE Module] --> B[timoni build / timoni bundle build]
+    B --> C[Manifest OCI Artifact]
     C --> D[Flux OCIRepository]
     D --> E[Flux Kustomization]
     E --> F[Kubernetes Cluster]
@@ -252,9 +252,9 @@ timoni mod push my-webapp oci://ghcr.io/myorg/modules/my-webapp \
 timoni mod list oci://ghcr.io/myorg/modules/my-webapp
 ```
 
-## Configuring Flux CD to Consume OCI Modules
+## Configuring Flux CD to Consume Generated OCI Artifacts
 
-Set up Flux CD to pull Timoni modules from your OCI registry.
+Set up Flux CD to pull generated Kubernetes manifests from your OCI registry. Flux does not render Timoni modules directly; use Timoni in CI to build the manifests, then push those manifests as Flux-compatible OCI artifacts.
 
 ### Create OCI Repository Source
 
@@ -269,7 +269,7 @@ spec:
   # Reconcile interval
   interval: 5m
   # OCI artifact URL
-  url: oci://ghcr.io/myorg/modules/my-webapp
+  url: oci://ghcr.io/myorg/manifests/my-webapp
   # Reference a specific semver range
   ref:
     semver: ">=1.0.0 <2.0.0"
@@ -379,13 +379,24 @@ Use Timoni to generate static manifests that Flux can reconcile:
 
 ```bash
 # Generate manifests from a bundle
-timoni bundle build -f bundles/production.cue \
-  --output ./generated/production/
+mkdir -p ./generated/production
+timoni bundle build -f bundles/production.cue > ./generated/production/resources.yaml
 
 # Or generate from a single instance
-timoni mod vendor oci://ghcr.io/myorg/modules/my-webapp \
+mkdir -p ./generated/my-webapp
+timoni -n production build frontend oci://ghcr.io/myorg/modules/my-webapp \
   --version 1.0.0 \
-  --output ./generated/my-webapp/
+  --values ./frontend-values.cue \
+  > ./generated/my-webapp/resources.yaml
+```
+
+To publish generated manifests for Flux to consume from OCI, use the Flux CLI:
+
+```bash
+flux push artifact oci://ghcr.io/myorg/manifests/my-webapp:1.0.0 \
+  --path=./generated/production \
+  --source=https://github.com/myorg/timoni-modules \
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 ## Flux Kustomization for Generated Manifests
@@ -400,13 +411,13 @@ metadata:
 spec:
   # Reconcile every 10 minutes
   interval: 10m
-  # Path to the generated manifests
-  path: ./generated/production
+  # Path inside the OCI artifact
+  path: ./
   # Prune deleted resources
   prune: true
   sourceRef:
-    kind: GitRepository
-    name: flux-system
+    kind: OCIRepository
+    name: my-webapp-module
   # Wait for all resources to be ready
   wait: true
   timeout: 5m
@@ -418,7 +429,7 @@ Automate module publishing and manifest generation:
 
 ```yaml
 # .github/workflows/timoni-publish.yaml
-name: Publish Timoni Modules
+name: Publish Timoni Modules and Manifests
 
 on:
   push:
@@ -440,6 +451,10 @@ jobs:
           curl -sSL https://github.com/stefanprodan/timoni/releases/latest/download/timoni_linux_amd64.tar.gz | \
             tar -xz && sudo mv timoni /usr/local/bin/
 
+      - name: Install Flux CLI
+        run: |
+          curl -s https://fluxcd.io/install.sh | sudo bash
+
       - name: Login to GHCR
         run: |
           # Authenticate with the OCI registry
@@ -457,15 +472,27 @@ jobs:
             --version $VERSION \
             --source ${{ github.server_url }}/${{ github.repository }} \
             --latest
+
+      - name: Generate and publish manifests
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          mkdir -p ./generated/production
+          timoni bundle build -f bundles/production.cue > ./generated/production/resources.yaml
+          flux push artifact \
+            oci://ghcr.io/${{ github.repository_owner }}/manifests/my-webapp:$VERSION \
+            --path=./generated/production \
+            --source=${{ github.server_url }}/${{ github.repository }} \
+            --revision=${{ github.ref_name }}@sha1:${{ github.sha }} \
+            --creds ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
 ```
 
-## Verifying OCI Module Integrity with Cosign
+## Verifying OCI Artifact Integrity with Cosign
 
-Sign and verify your Timoni modules for supply chain security:
+Sign and verify your generated manifest artifacts for supply chain security:
 
 ```bash
-# Sign the OCI artifact with Cosign
-cosign sign ghcr.io/myorg/modules/my-webapp:1.0.0
+# Sign the generated manifest OCI artifact with Cosign
+cosign sign ghcr.io/myorg/manifests/my-webapp:1.0.0
 
 # Configure Flux to verify signatures
 ```
@@ -479,7 +506,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: oci://ghcr.io/myorg/modules/my-webapp
+  url: oci://ghcr.io/myorg/manifests/my-webapp
   ref:
     semver: ">=1.0.0"
   # Verify the OCI artifact signature
@@ -519,11 +546,11 @@ flux reconcile source oci my-webapp-module
 
 ## Best Practices
 
-1. **Use semver for modules** - Follow semantic versioning for your OCI modules so Flux can automatically pick up compatible updates.
+1. **Use semver for artifacts** - Follow semantic versioning for your generated OCI artifacts so Flux can automatically pick up compatible updates.
 2. **Sign your artifacts** - Use Cosign to sign OCI artifacts and configure Flux to verify signatures for supply chain security.
 3. **Validate CUE schemas** - CUE provides type safety; leverage it by defining strict constraints in your values schema.
 4. **Use bundles for environments** - Create separate Timoni bundles for each environment (staging, production) with appropriate values.
-5. **Cache modules locally** - Use `timoni mod vendor` to vendor modules locally for offline development and faster CI builds.
+5. **Use Timoni's local cache** - Timoni caches pulled modules under `$HOME/.timoni/cache` by default, which helps reduce registry traffic in repeated local and CI builds.
 
 ## Conclusion
 
