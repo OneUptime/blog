@@ -8,7 +8,7 @@ Description: Learn how to export Flux CD reconciliation and controller metrics t
 
 ---
 
-While Prometheus is the most common metrics backend for Kubernetes workloads, many organizations use InfluxDB as their time-series database. InfluxDB offers strong support for downsampling, retention policies, and integrates well with visualization tools like Grafana and Chronograf. Exporting Flux CD metrics to InfluxDB allows you to incorporate GitOps monitoring into your existing InfluxDB-based observability stack.
+While Prometheus is the most common metrics backend for Kubernetes workloads, many organizations use InfluxDB as their time-series database. InfluxDB offers strong support for downsampling, bucket retention periods, and integrates well with visualization tools like Grafana and Chronograf. Exporting Flux CD metrics to InfluxDB allows you to incorporate GitOps monitoring into your existing InfluxDB-based observability stack.
 
 This guide walks through setting up Telegraf to scrape Flux CD Prometheus metrics and write them to InfluxDB.
 
@@ -75,7 +75,7 @@ data:
         "http://helm-controller.flux-system.svc:8080/metrics",
         "http://notification-controller.flux-system.svc:8080/metrics"
       ]
-      metric_version = 2
+      metric_version = 1
       url_tag = "controller"
 
     [[outputs.influxdb_v2]]
@@ -161,40 +161,54 @@ This Flux query (InfluxDB's query language, not to be confused with Flux CD) sho
 
 Build dashboards in InfluxDB's built-in UI or connect Grafana with an InfluxDB data source. Key queries for monitoring Flux:
 
-**Reconciliation success rate**:
+**Reconciliation results**:
 
 ```flux
 from(bucket: "flux-metrics")
   |> range(start: -24h)
-  |> filter(fn: (r) => r._measurement == "gotk_reconcile_condition")
-  |> filter(fn: (r) => r.type == "Ready")
-  |> group(columns: ["status", "kind"])
-  |> count()
+  |> filter(fn: (r) => r._measurement == "controller_runtime_reconcile_total")
+  |> filter(fn: (r) => r._field == "counter")
+  |> increase()
+  |> group(columns: ["controller", "result"])
+  |> sum()
 ```
 
 **Reconciliation duration over time**:
 
 ```flux
-from(bucket: "flux-metrics")
+data = from(bucket: "flux-metrics")
   |> range(start: -6h)
   |> filter(fn: (r) => r._measurement == "gotk_reconcile_duration_seconds")
   |> filter(fn: (r) => r.kind == "Kustomization")
-  |> aggregateWindow(every: 5m, fn: mean)
+
+sum = data
+  |> filter(fn: (r) => r._field == "sum")
+  |> derivative(unit: 5m, nonNegative: true)
+
+count = data
+  |> filter(fn: (r) => r._field == "count")
+  |> derivative(unit: 5m, nonNegative: true)
+
+join(tables: {sum: sum, count: count}, on: ["_time", "kind", "name", "namespace"])
+  |> map(fn: (r) => ({r with _value: r._value_sum / r._value_count}))
 ```
 
-**Source artifact staleness**:
+**Source controller reconciliations**:
 
 ```flux
 from(bucket: "flux-metrics")
   |> range(start: -1h)
-  |> filter(fn: (r) => r._measurement == "gotk_reconcile_condition")
-  |> filter(fn: (r) => r.kind == "GitRepository")
-  |> last()
+  |> filter(fn: (r) => r._measurement == "controller_runtime_reconcile_total")
+  |> filter(fn: (r) => r._field == "counter")
+  |> filter(fn: (r) => r.controller =~ /gitrepository|helmrepository|ocirepository|bucket/)
+  |> increase()
+  |> group(columns: ["controller", "result"])
+  |> sum()
 ```
 
 ## Step 6: Configure Retention and Downsampling
 
-InfluxDB v2 supports retention policies and tasks for downsampling. Create a downsampling task to aggregate Flux metrics for long-term storage:
+InfluxDB v2 supports bucket retention periods and tasks for downsampling. Create a downsampling task to aggregate Flux metrics for long-term storage:
 
 ```flux
 option task = {name: "downsample-flux-metrics", every: 1h}
@@ -213,7 +227,7 @@ Set the `flux-metrics` bucket to 30 days retention and `flux-metrics-downsampled
 Create InfluxDB checks and notification rules for Flux metrics. In the InfluxDB UI, navigate to **Alerts** and create a threshold check:
 
 - **Name**: Flux Reconciliation Failure
-- **Query**: Filter `gotk_reconcile_condition` where `status=False`
+- **Query**: Filter `controller_runtime_reconcile_total` where `_field="counter"` and `result="error"`, then use `increase()` over the check window
 - **Threshold**: Critical when count is above 0
 - **Every**: 5 minutes
 
@@ -221,4 +235,4 @@ Configure a notification endpoint (Slack, PagerDuty, or HTTP webhook) and create
 
 ## Summary
 
-Exporting Flux CD metrics to InfluxDB through Telegraf allows you to integrate GitOps monitoring into an InfluxDB-based observability stack. Telegraf's Prometheus input plugin handles the format translation seamlessly, and InfluxDB's retention policies and downsampling tasks help manage data at scale. Whether you use InfluxDB's built-in dashboards or connect Grafana as a visualization layer, you get full visibility into Flux reconciliation health, source fetch performance, and controller behavior.
+Exporting Flux CD metrics to InfluxDB through Telegraf allows you to integrate GitOps monitoring into an InfluxDB-based observability stack. Telegraf's Prometheus input plugin handles the format translation seamlessly, and InfluxDB's bucket retention periods and downsampling tasks help manage data at scale. Whether you use InfluxDB's built-in dashboards or connect Grafana as a visualization layer, you get full visibility into Flux reconciliation health, source fetch performance, and controller behavior.
