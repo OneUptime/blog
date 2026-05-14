@@ -8,11 +8,11 @@ Description: A practical guide to configuring reconciliation intervals in Flux C
 
 ---
 
-Reconciliation intervals control how often Flux CD checks for changes and reapplies desired state. Intervals that are too short waste resources and overload the API server. Intervals that are too long delay deployments and drift detection. This guide helps you find the right balance for every type of Flux resource.
+Reconciliation intervals control how often Flux CD checks for changes and reapplies desired state. Intervals that are too short waste resources and overload the API server. Intervals that are too long delay deployments and drift detection. This guide helps you find the right balance for Flux resources that reconcile on an interval.
 
 ## How Reconciliation Intervals Work
 
-Every Flux resource has an `interval` field that determines how frequently it is reconciled. The reconciliation cycle involves:
+Most reconciled Flux resources have an `interval` field that determines how frequently they are reconciled. For resources such as GitRepository, Kustomization, and HelmRelease, the reconciliation cycle can involve:
 
 1. Checking if the source has changed (for source resources)
 2. Computing the desired state
@@ -32,7 +32,7 @@ graph TD
     G --> H[Wait for Next Interval]
 ```
 
-Even when nothing has changed, drift detection still makes API calls to compare desired and actual state. This means every reconciliation has a cost.
+Even when nothing has changed, reconciliation still has a cost. Source resources poll upstream systems, Kustomizations compare and correct cluster drift, and HelmReleases perform drift detection when it is explicitly enabled.
 
 ## Recommended Intervals by Resource Type
 
@@ -82,7 +82,7 @@ spec:
   interval: 6h
   url: https://charts.external.example.com
 ---
-# HelmRepository - internal chart repository
+# HelmRepository - internal OCI chart repository
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -90,8 +90,8 @@ metadata:
   namespace: flux-system
 spec:
   type: oci
-  # Internal charts may update more frequently during releases
-  interval: 30m
+  # For OCI HelmRepository resources, Flux ignores interval.
+  # Prefer OCIRepository for improved OCI chart support.
   url: oci://registry.internal.example.com/charts
 ```
 
@@ -174,8 +174,10 @@ metadata:
   name: production-app
   namespace: production
 spec:
-  # Pinned version, just need drift detection
+  # Pinned version, enable drift detection explicitly
   interval: 30m
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: my-app
@@ -194,6 +196,8 @@ metadata:
 spec:
   # Staging needs faster updates
   interval: 5m
+  driftDetection:
+    mode: enabled
   chart:
     spec:
       chart: my-app
@@ -241,7 +245,7 @@ spec:
       name: app-source
       namespace: flux-system
 ---
-# Alert to notify on successful reconciliation
+# Alert to notify on source reconciliation events
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
@@ -252,14 +256,14 @@ spec:
     name: slack-provider
   eventSeverity: info
   eventSources:
-    - kind: Kustomization
+    - kind: GitRepository
       name: app-source
       namespace: flux-system
 ```
 
 This pattern provides:
 - Immediate response to actual changes (via webhook)
-- Periodic drift detection (via interval)
+- Periodic source polling and drift detection (via interval)
 - Lower resource consumption (long interval means fewer scheduled reconciliations)
 
 ## Configuring Retry Intervals
@@ -312,7 +316,7 @@ Estimate the API server load from your reconciliation configuration.
 # - 30 HelmReleases at 30m interval = 60 reconciliations/hour
 # Total: ~480 reconciliation cycles per hour
 #
-# Each reconciliation makes roughly 5-20 API calls
+# If each reconciliation makes roughly 5-20 API calls
 # Estimated API load: 2,400 - 9,600 API calls/hour from Flux
 #
 # Compare with optimized intervals:
@@ -353,15 +357,16 @@ spec:
             summary: "Flux reconciliation rate is {{ $value }}/sec"
             description: "Check for resources with very short intervals or retry loops."
 
-        # Alert when reconciliations are consistently failing and retrying
+        # Alert when Flux resources are consistently failing and retrying.
+        # This metric is exported by kube-state-metrics when configured for Flux CRDs.
         - alert: FluxRetryLoop
           expr: |
-            gotk_reconcile_condition{type="Ready", status="False"} == 1
+            gotk_resource_info{ready="False", suspended="False"} == 1
           for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "{{ $labels.kind }}/{{ $labels.name }} stuck in retry loop"
+            summary: "{{ $labels.customresource_kind }}/{{ $labels.name }} stuck in retry loop"
 ```
 
 Useful PromQL queries:
@@ -374,7 +379,9 @@ sum(rate(gotk_reconcile_duration_seconds_count[1h])) by (kind)
 topk(10, rate(gotk_reconcile_duration_seconds_count[1h]))
 
 # Average reconciliation duration per kind
-avg(gotk_reconcile_duration_seconds_sum / gotk_reconcile_duration_seconds_count) by (kind)
+sum(rate(gotk_reconcile_duration_seconds_sum[5m])) by (kind)
+  /
+sum(rate(gotk_reconcile_duration_seconds_count[5m])) by (kind)
 ```
 
 ## Summary
@@ -386,7 +393,7 @@ Guidelines for configuring efficient reconciliation intervals:
 3. Set retry intervals shorter than main intervals for faster error recovery
 4. GitRepositories for stable infrastructure: 30m to 1h
 5. GitRepositories for active applications: 5m to 10m (or 1h with webhooks)
-6. HelmRepositories: 1h to 6h depending on update frequency
+6. HelmRepositories: 1h to 6h depending on update frequency; OCI HelmRepository resources ignore `interval`
 7. Kustomizations: 5m for critical, 30m for standard, 1h for stable
 8. Monitor reconciliation rates and adjust intervals based on actual load
 
