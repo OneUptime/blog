@@ -37,10 +37,6 @@ spec:
   # Enable IPv6 support in Felix
   ipv6Support: true
 
-  # Configure the IPv6 autodetection method for node IPs
-  # Use CIDR-based detection pointing at your IPv6 node subnet
-  ipv6AutodetectionMethod: "cidr=fd00:10::/48"
-
   # Enable BPF dataplane for IPv6 (if using eBPF mode)
   # bpfEnabled: true  # Uncomment if using eBPF dataplane
 ```
@@ -67,6 +63,10 @@ calicoctl get node -o wide
 # worker-02    64512    10.0.1.11/24      fd00:10::11/48
 
 # If IPv6 column is empty, the node IPv6 address was not detected
+# For manifest-based installs, set an IPv6 autodetection method on calico-node
+kubectl set env daemonset/calico-node -n kube-system \
+  IP6=autodetect IP6_AUTODETECTION_METHOD=cidr=fd00:10::/48
+
 # Fix: update the node resource manually
 calicoctl patch node worker-01 --patch \
   '{"spec":{"bgp":{"ipv6Address":"fd00:10::10/48"}}}'
@@ -88,22 +88,22 @@ spec:
   peerIP: "fd00:10::1"             # IPv6 address of the BGP peer (router)
   asNumber: 65000                  # Router AS number
   # This peer applies to all nodes
-  # nodeSelector: all()            # Uncomment to restrict to specific nodes
+  # nodeSelector: "rack == 'rack-1'" # Uncomment to restrict to specific nodes
 ```
 
 ```yaml
 # bgpconfiguration-ipv6.yaml
-# BGP configuration with IPv6 advertisement enabled
+# BGP configuration for advertising Kubernetes service CIDRs
 apiVersion: projectcalico.org/v3
 kind: BGPConfiguration
 metadata:
   name: default
 spec:
   asNumber: 64512                  # Your cluster's AS number
-  # Advertise both IPv4 and IPv6 pod CIDRs
-  serviceLoadBalancerIPs:
-    - cidr: "10.244.0.0/16"        # IPv4 pod CIDR
-    - cidr: "fd00:10:244::/56"     # IPv6 pod CIDR
+  # Advertise both IPv4 and IPv6 Kubernetes service CIDRs
+  serviceClusterIPs:
+    - cidr: "10.96.0.0/12"         # IPv4 service CIDR
+    - cidr: "fd00:10:96::/112"     # IPv6 service CIDR
 ```
 
 ## Step 4: Mistake - IPv6 iptables Rules Not Created
@@ -137,7 +137,7 @@ kubectl run pod-b --image=alpine --restart=Never -- sleep 3600
 kubectl wait --for=condition=Ready pod/pod-a pod/pod-b --timeout=60s
 
 # Get IPv6 address of pod-b
-POD_B_IPV6=$(kubectl get pod pod-b -o jsonpath='{.status.podIPs[1].ip}')
+POD_B_IPV6=$(kubectl get pod pod-b -o go-template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}' | grep ':' | head -n1)
 echo "Pod B IPv6: ${POD_B_IPV6}"
 
 # Test IPv6 ping from pod-a to pod-b
