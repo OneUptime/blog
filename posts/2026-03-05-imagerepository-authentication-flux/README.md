@@ -18,7 +18,7 @@ When working with private container registries, Flux needs credentials to scan f
 
 ## Understanding Authentication in ImageRepository
 
-The ImageRepository resource uses the `secretRef` field to reference a Kubernetes Secret containing registry credentials. The Secret must be of type `kubernetes.io/dockerconfigjson` or `Opaque` with the appropriate keys. The Secret must exist in the same namespace as the ImageRepository resource.
+The ImageRepository resource uses the `secretRef` field to reference a Kubernetes Secret containing registry credentials. The Secret should use the Docker config Secret format, usually type `kubernetes.io/dockerconfigjson` with the `.dockerconfigjson` key. The Secret must exist in the same namespace as the ImageRepository resource.
 
 ## Step 1: Create a Docker Registry Secret
 
@@ -79,7 +79,7 @@ For a declarative approach, create the Secret as a YAML manifest. You need to ba
 
 ```bash
 # Generate a base64-encoded Docker config JSON string
-echo -n '{"auths":{"registry.example.com":{"username":"myuser","password":"mypassword","auth":"bXl1c2VyOm15cGFzc3dvcmQ="}}}' | base64
+printf '%s' '{"auths":{"registry.example.com":{"username":"myuser","password":"mypassword","auth":"bXl1c2VyOm15cGFzc3dvcmQ="}}}' | base64 | tr -d '\n'
 ```
 
 Then use the encoded value in a Secret manifest.
@@ -149,7 +149,7 @@ The image reflector controller will pick up the updated credentials on the next 
 
 ## Step 7: Use Sealed Secrets or SOPS for GitOps
 
-Storing plain-text credentials in Git is not secure. Use Sealed Secrets or Mozilla SOPS to encrypt credentials.
+Storing plain-text credentials in Git is not secure. Use Sealed Secrets or SOPS to encrypt credentials.
 
 With Sealed Secrets, first create a regular Secret, then seal it.
 
@@ -184,7 +184,7 @@ kubectl logs -n flux-system deployment/image-reflector-controller | grep -i "aut
 1. **401 Unauthorized** -- The credentials are incorrect or the Secret format is wrong. Verify the username and password.
 2. **Secret not found** -- The Secret must be in the same namespace as the ImageRepository. Check the namespace.
 3. **Expired tokens** -- Some registries use short-lived tokens. Set up a CronJob or use a cloud provider integration to refresh tokens automatically.
-4. **Wrong Secret type** -- Ensure the Secret type is `kubernetes.io/dockerconfigjson` when using `secretRef`.
+4. **Wrong Secret format** -- Ensure the Secret uses the Docker config Secret format when using `secretRef`, typically type `kubernetes.io/dockerconfigjson` with the `.dockerconfigjson` key.
 
 ## Summary
 
