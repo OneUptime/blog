@@ -73,7 +73,7 @@ Make sure it is referenced in your kustomization.yaml:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Namespace must be listed first
+  # Include the namespace with the resources that use it
   - namespace.yaml
   - deployment.yaml
   - service.yaml
@@ -171,7 +171,24 @@ Even with dependencies, if the chain is not correctly wired, namespace creation 
 
 ### Fix: Set Up a Multi-Layer Dependency Chain
 
-A common pattern is infrastructure, then namespaces, then applications:
+A common pattern is namespaces, then infrastructure, then applications:
+
+```yaml
+# clusters/my-cluster/namespaces.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: namespaces
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./infrastructure/namespaces
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # No dependencies - this runs first
+```
 
 ```yaml
 # clusters/my-cluster/infrastructure.yaml
@@ -187,7 +204,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # No dependencies - this runs first
+  # Depends on namespaces being created first
+  dependsOn:
+    - name: namespaces
 ```
 
 ```yaml
@@ -223,9 +242,8 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Depends on both infrastructure layers being ready
+  # Depends on the infrastructure layers being ready
   dependsOn:
-    - name: infrastructure
     - name: infrastructure-config
 ```
 
@@ -272,35 +290,37 @@ spec:
     - name: app-namespaces
 ```
 
-## Cause 5: Race Condition During Initial Bootstrap
+## Cause 5: Dependencies Not Waiting for Workloads to Become Ready
 
-During the first bootstrap of a cluster, all Kustomizations may start reconciling at the same time, causing race conditions even with dependencies.
+During the first bootstrap of a cluster, dependencies prevent a Kustomization from applying until the Kustomizations it depends on are ready. For workloads or controllers, you may also need health checks so dependent Kustomizations wait until those resources are healthy, not just applied.
 
 ### Fix: Use Health Checks to Gate Dependencies
 
 ```yaml
-# clusters/my-cluster/namespaces.yaml
+# clusters/my-cluster/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: namespaces
+  name: infrastructure
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./infrastructure/namespaces
+  path: ./infrastructure/controllers
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Health checks ensure the namespace is truly ready
+  # Health checks ensure controllers are ready before apps deploy
   healthChecks:
-    - apiVersion: v1
-      kind: Namespace
-      name: my-app
-    - apiVersion: v1
-      kind: Namespace
-      name: monitoring
-  # Wait up to 3 minutes for namespaces to be ready
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: cert-manager
+      namespace: cert-manager
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: ingress-nginx-controller
+      namespace: ingress-nginx
+  # Wait up to 3 minutes for workloads to be ready
   timeout: 3m
 ```
 
@@ -320,7 +340,7 @@ spec:
     name: flux-system
   dependsOn:
     # This dependency now waits for health checks to pass
-    - name: namespaces
+    - name: infrastructure
 ```
 
 ## Recommended Repository Structure
@@ -375,4 +395,4 @@ kubectl get kustomization namespaces -n flux-system -o jsonpath='{.status.condit
 
 ## Summary
 
-The "namespace not found" error in Flux CD is fundamentally an ordering problem. The solution is to ensure namespaces are created before the resources that depend on them. The best approach is to manage namespaces in a dedicated Kustomization with no dependencies, then use `dependsOn` in your application Kustomizations to wait for namespace creation. Adding health checks to the namespace Kustomization provides an extra layer of safety against race conditions during initial bootstrap or cluster recovery.
+The "namespace not found" error in Flux CD is fundamentally an ordering problem. The solution is to ensure namespaces are created before the resources that depend on them. The best approach is to manage namespaces in a dedicated Kustomization with no dependencies, then use `dependsOn` in your application Kustomizations to wait for namespace creation. Adding health checks to workload or controller Kustomizations provides an extra layer of safety when later Kustomizations depend on those resources being ready.
