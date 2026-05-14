@@ -17,14 +17,14 @@ This guide covers how to define meaningful SLIs and SLOs for Flux CD, implement 
 Before defining SLOs, you need Service Level Indicators (SLIs) -- the measurable values that represent the health of your system. For Flux CD, the most relevant SLIs are:
 
 - **Reconciliation success rate**: The percentage of reconciliation attempts that succeed
-- **Reconciliation latency**: The time it takes for a change in Git to be applied to the cluster
+- **Reconciliation latency**: The time the controller spends processing each reconciliation
 - **Source fetch success rate**: The percentage of successful source artifact fetches
 - **Drift correction time**: How quickly Flux detects and corrects configuration drift
 
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed
-- Prometheus deployed and scraping Flux CD metrics
+- Prometheus deployed and scraping Flux CD controller metrics, and kube-state-metrics configured for Flux custom resource metrics if you want resource readiness dashboards
 - Grafana for visualization (optional but recommended)
 - The `flux` CLI installed
 
@@ -45,11 +45,22 @@ metadata:
   name: flux-system
   namespace: flux-system
 spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - helm-controller
+          - source-controller
+          - kustomize-controller
+          - notification-controller
+          - image-automation-controller
+          - image-reflector-controller
   podMetricsEndpoints:
     - port: http-prom
-  selector:
-    matchLabels:
-      app.kubernetes.io/part-of: flux
 ```
 
 ## Step 2: Define the Reconciliation Success Rate SLO
@@ -58,19 +69,19 @@ The reconciliation success rate is the most fundamental SLO for Flux CD. Define 
 
 **SLO**: 99.5% of Kustomization reconciliations succeed over a 30-day window.
 
-The Prometheus query for this SLI uses the `gotk_reconcile_condition` metric:
+The Prometheus query for this SLI uses the controller-runtime `controller_runtime_reconcile_total` counter:
 
 ```promql
-sum(rate(gotk_reconcile_condition{type="Ready", status="True", kind="Kustomization"}[30d]))
+sum(rate(controller_runtime_reconcile_total{controller="kustomization", result!="error"}[30d]))
 /
-sum(rate(gotk_reconcile_condition{type="Ready", kind="Kustomization"}[30d]))
+sum(rate(controller_runtime_reconcile_total{controller="kustomization"}[30d]))
 ```
 
-This gives you the fraction of reconciliations that resulted in a Ready=True condition. Multiply by 100 to get the percentage.
+This gives you the fraction of Kustomization reconciliations that did not return an error. Multiply by 100 to get the percentage.
 
 ## Step 3: Define the Reconciliation Latency SLO
 
-Reconciliation latency measures how long it takes from when a source change is detected to when it is applied. Use the `gotk_reconcile_duration_seconds` metric:
+Reconciliation latency measures how long the controller spends processing a reconciliation after it starts. Use the `gotk_reconcile_duration_seconds` metric:
 
 **SLO**: 95% of reconciliations complete within 60 seconds.
 
@@ -88,10 +99,12 @@ Source fetching is a prerequisite for reconciliation. If Flux cannot pull artifa
 
 **SLO**: 99.9% of source fetches succeed over a 30-day window.
 
+For GitRepository fetch attempts, use the source controller's `controller_runtime_reconcile_total` metric:
+
 ```promql
-sum(rate(gotk_reconcile_condition{type="Ready", status="True", kind="GitRepository"}[30d]))
+sum(rate(controller_runtime_reconcile_total{controller="gitrepository", result!="error"}[30d]))
 /
-sum(rate(gotk_reconcile_condition{type="Ready", kind="GitRepository"}[30d]))
+sum(rate(controller_runtime_reconcile_total{controller="gitrepository"}[30d]))
 ```
 
 Source fetch failures often indicate external dependencies (Git provider outages, network issues), so set a slightly higher target to catch problems quickly.
@@ -113,9 +126,9 @@ groups:
       - record: flux:reconciliation:error_budget_remaining
         expr: |
           1 - (
-            sum(increase(gotk_reconcile_condition{type="Ready", status="False", kind="Kustomization"}[30d]))
+            sum(increase(controller_runtime_reconcile_total{controller="kustomization", result="error"}[30d]))
             /
-            (sum(increase(gotk_reconcile_condition{type="Ready", kind="Kustomization"}[30d])) * 0.005)
+            (sum(increase(controller_runtime_reconcile_total{controller="kustomization"}[30d])) * 0.005)
           )
 ```
 
@@ -132,10 +145,18 @@ groups:
       - alert: FluxReconciliationBurnRateHigh
         expr: |
           (
-            sum(rate(gotk_reconcile_condition{type="Ready", status="False", kind="Kustomization"}[1h]))
-            /
-            sum(rate(gotk_reconcile_condition{type="Ready", kind="Kustomization"}[1h]))
-          ) > (14.4 * 0.005)
+            (
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization", result="error"}[1h]))
+              /
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization"}[1h]))
+            ) > (14.4 * 0.005)
+            and
+            (
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization", result="error"}[5m]))
+              /
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization"}[5m]))
+            ) > (14.4 * 0.005)
+          )
         for: 5m
         labels:
           severity: critical
@@ -145,10 +166,18 @@ groups:
       - alert: FluxReconciliationBurnRateSlow
         expr: |
           (
-            sum(rate(gotk_reconcile_condition{type="Ready", status="False", kind="Kustomization"}[6h]))
-            /
-            sum(rate(gotk_reconcile_condition{type="Ready", kind="Kustomization"}[6h]))
-          ) > (6 * 0.005)
+            (
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization", result="error"}[6h]))
+              /
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization"}[6h]))
+            ) > (6 * 0.005)
+            and
+            (
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization", result="error"}[30m]))
+              /
+              sum(rate(controller_runtime_reconcile_total{controller="kustomization"}[30m]))
+            ) > (6 * 0.005)
+          )
         for: 30m
         labels:
           severity: warning
@@ -156,7 +185,7 @@ groups:
           summary: "Flux reconciliation error rate is elevated"
 ```
 
-The fast-burn alert (1-hour window, 14.4x multiplier) catches sudden outages. The slow-burn alert (6-hour window, 6x multiplier) catches gradual degradation.
+The fast-burn alert (1-hour and 5-minute windows, 14.4x multiplier) catches sudden outages. The slow-burn alert (6-hour and 30-minute windows, 6x multiplier) catches gradual degradation.
 
 ## Step 7: Build an SLO Dashboard
 
