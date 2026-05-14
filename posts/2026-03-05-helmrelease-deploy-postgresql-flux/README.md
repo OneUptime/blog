@@ -41,6 +41,17 @@ flux bootstrap github \
 
 The first step is to tell Flux where to find the PostgreSQL Helm chart. Bitnami publishes their charts through an OCI-based registry. You define a HelmRepository resource that points to this registry.
 
+Create a file called `postgresql-namespace.yaml`:
+
+```yaml
+# postgresql-namespace.yaml
+# Creates the namespace where the HelmRelease and PostgreSQL resources will live
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+```
+
 Create a file called `postgresql-helmrepository.yaml`:
 
 ```yaml
@@ -73,13 +84,13 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: postgresql
-  namespace: database  # Target namespace for the PostgreSQL deployment
+  namespace: database  # Namespace for the HelmRelease and PostgreSQL deployment
 spec:
   interval: 30m  # Reconciliation interval
   chart:
     spec:
       chart: postgresql
-      version: "16.x"  # Use a version constraint to control upgrades
+      version: "18.x"  # Use a version constraint to control upgrades
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -167,7 +178,7 @@ Commit all the manifest files to your Flux-connected Git repository:
 
 ```bash
 # Add the manifests to your Git repository
-git add postgresql-helmrepository.yaml postgresql-helmrelease.yaml
+git add postgresql-namespace.yaml postgresql-helmrepository.yaml postgresql-helmrelease.yaml postgresql-secret.yaml
 git commit -m "Add PostgreSQL HelmRelease for Flux CD deployment"
 git push origin main
 ```
@@ -197,12 +208,13 @@ kubectl get pods -n database
 kubectl run pg-client --rm -it --restart=Never \
   --namespace database \
   --image=bitnami/postgresql:latest \
+  --env="PGPASSWORD=$(kubectl get secret postgresql-credentials -n database -o jsonpath='{.data.password}' | base64 -d)" \
   --command -- psql -h postgresql -U appuser -d appdb -c "SELECT version();"
 ```
 
 ## Handling Upgrades
 
-One of the key benefits of using Flux with HelmRelease is automated upgrades. When a new version of the PostgreSQL chart is published that matches your version constraint (e.g., `16.x`), Flux will automatically detect it and perform the upgrade during the next reconciliation cycle.
+One of the key benefits of using Flux with HelmRelease is automated upgrades. When a new version of the PostgreSQL chart is published that matches your version constraint (e.g., `18.x`), Flux will automatically detect it and perform the upgrade during the next reconciliation cycle.
 
 To pin a specific version and control upgrades manually, set an exact version:
 
@@ -211,7 +223,7 @@ To pin a specific version and control upgrades manually, set an exact version:
 chart:
   spec:
     chart: postgresql
-    version: "16.4.2"  # Exact version pin
+    version: "18.6.3"  # Exact version pin
 ```
 
 ## Conclusion
