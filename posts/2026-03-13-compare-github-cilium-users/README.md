@@ -70,7 +70,7 @@ gh issue list \
 gh issue list \
   --repo cilium/cilium \
   --label "kind/bug" \
-  --label "area/policy" \
+  --label "sig/policy" \
   --limit 10
 ```
 
@@ -80,11 +80,11 @@ Good bug reports get resolved faster. Include all relevant diagnostic informatio
 
 ```bash
 # Generate a sysdump to attach to your issue
-cilium sysdump --output-filename cilium-sysdump-$(date +%Y%m%d).zip
+cilium sysdump --output-filename cilium-sysdump-$(date +%Y%m%d)
 
 # Collect version information for the issue template
 cilium version
-kubectl version --short
+kubectl version
 ```
 
 ```yaml
@@ -127,7 +127,7 @@ gh pr create \
 ## Best Practices
 
 - Watch the `cilium/cilium` repository for release announcements and security advisories
-- Use GitHub labels to filter issues - `good first issue` is ideal for new contributors
+- Use GitHub labels to filter issues - `good-first-issue` is ideal for new contributors
 - Reference related issues and PRs in your comments to build context
 - Attach sysdumps and logs as files, not inline text, to keep issues readable
 - Check the CONTRIBUTING.md guide before submitting your first PR
