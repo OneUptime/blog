@@ -12,13 +12,13 @@ Description: Learn how to deploy and manage the NGINX Ingress Controller using F
 
 The NGINX Ingress Controller is one of the most widely used ingress controllers for Kubernetes. It provides HTTP and HTTPS routing, load balancing, SSL termination, and many other networking features. Deploying it with Flux CD ensures your ingress infrastructure is version-controlled, auditable, and automatically reconciled.
 
-This guide covers deploying the NGINX Ingress Controller using Flux CD's HelmRelease, configuring it for production use, and setting up Ingress resources for your applications.
+This guide covers deploying the community ingress-nginx controller using Flux CD's HelmRelease, configuring it for existing environments, and setting up Ingress resources for your applications. The community `kubernetes/ingress-nginx` project was retired in March 2026, so new production deployments should evaluate Gateway API implementations or another actively maintained ingress controller instead.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster version supported by your pinned ingress-nginx chart (for chart 4.15.1, Kubernetes v1.31-v1.35)
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A domain name for configuring ingress rules
@@ -35,7 +35,8 @@ clusters/
       ingress-nginx/
         namespace.yaml          # Namespace definition
         release.yaml            # HelmRelease for NGINX
-        kustomization.yaml      # Flux Kustomization
+        kustomization.yaml      # Kustomize overlay
+      ingress-nginx-kustomization.yaml # Flux Kustomization
     apps/
       ingress-rules/
         webapp-ingress.yaml     # Application ingress rules
@@ -85,7 +86,7 @@ spec:
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.11.x"
+      version: "4.15.1"
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
@@ -213,6 +214,15 @@ spec:
 
 ```yaml
 # clusters/production/infrastructure/ingress-nginx/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - release.yaml
+```
+
+```yaml
+# clusters/production/infrastructure/ingress-nginx-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -225,7 +235,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
+  wait: false
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -302,11 +312,8 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     # Upstream hash-based load balancing
     nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
-    # Enable WebSocket support
+    # Use HTTP/1.1 for upstream connections
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
 spec:
   ingressClassName: nginx
   tls:
@@ -352,7 +359,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```yaml
@@ -484,4 +491,4 @@ kubectl delete certificate webapp-tls-auto -n production
 
 ## Conclusion
 
-Deploying NGINX Ingress Controller with Flux CD gives you a fully GitOps-managed ingress infrastructure. The HelmRelease ensures the controller is installed, configured, and upgraded through version-controlled values, while Ingress resources define routing rules that Flux CD reconciles automatically. Combined with cert-manager for TLS and Prometheus for monitoring, this setup provides a production-ready ingress solution that is auditable, repeatable, and self-healing.
+Deploying NGINX Ingress Controller with Flux CD gives you a fully GitOps-managed ingress infrastructure. The HelmRelease ensures the controller is installed, configured, and upgraded through version-controlled values, while Ingress resources define routing rules that Flux CD reconciles automatically. Combined with cert-manager for TLS and Prometheus for monitoring, this setup provides an auditable, repeatable ingress solution for existing ingress-nginx environments.
