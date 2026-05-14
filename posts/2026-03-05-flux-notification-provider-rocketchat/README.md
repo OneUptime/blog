@@ -27,11 +27,12 @@ In your Rocket.Chat instance, go to **Administration** then **Integrations** and
 - **Name**: Flux CD Notifications
 - **Post to Channel**: The channel where you want messages (e.g., `#deployments`)
 - **Post as**: Choose a username for the bot (e.g., `flux-bot`)
+- **Allow to overwrite destination channel in the body parameters**: Enable this if you want Flux's `channel` field to route messages
 
 Save the integration and copy the **Webhook URL**. It will look something like:
 
 ```text
-https://rocketchat.example.com/hooks/TOKEN_VALUE
+https://rocketchat.example.com/hooks/INTEGRATION_ID/TOKEN_VALUE
 ```
 
 ## Step 2: Create a Kubernetes Secret
@@ -43,7 +44,7 @@ Store the Rocket.Chat webhook URL in a Kubernetes secret.
 
 kubectl create secret generic rocketchat-webhook-url \
   --namespace=flux-system \
-  --from-literal=address=https://rocketchat.example.com/hooks/TOKEN_VALUE
+  --from-literal=address=https://rocketchat.example.com/hooks/INTEGRATION_ID/TOKEN_VALUE
 ```
 
 ## Step 3: Create the Flux Notification Provider
@@ -53,16 +54,16 @@ Define a Provider resource for Rocket.Chat.
 ```yaml
 # provider-rocketchat.yaml
 # Configures Flux to send notifications to Rocket.Chat
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: rocketchat-provider
   namespace: flux-system
 spec:
-  # Use "rocketchat" as the provider type
-  type: rocketchat
+  # Use "rocket" as the provider type for Rocket.Chat
+  type: rocket
   # Channel where messages are posted
-  channel: deployments
+  channel: "#deployments"
   # Reference to the secret containing the webhook URL
   secretRef:
     name: rocketchat-webhook-url
@@ -82,7 +83,7 @@ Create an Alert that defines which events to forward.
 ```yaml
 # alert-rocketchat.yaml
 # Routes Flux events to the Rocket.Chat provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rocketchat-alert
@@ -133,7 +134,7 @@ A message should appear in your Rocket.Chat channel within a few seconds.
 ```mermaid
 graph LR
     A[Flux Controllers] -->|emit events| B[Notification Controller]
-    B -->|matches Alert rules| C[Provider: rocketchat]
+    B -->|matches Alert rules| C[Provider: rocket]
     C -->|HTTP POST| D[Rocket.Chat Channel]
 ```
 
@@ -142,7 +143,7 @@ graph LR
 To reduce noise and only receive error notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rocketchat-errors
@@ -165,26 +166,26 @@ Create separate providers for different channels:
 
 ```yaml
 # Provider for production alerts
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: rocketchat-prod
   namespace: flux-system
 spec:
-  type: rocketchat
-  channel: production-alerts
+  type: rocket
+  channel: "#production-alerts"
   secretRef:
     name: rocketchat-webhook-url
 ---
 # Provider for development updates
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: rocketchat-dev
   namespace: flux-system
 spec:
-  type: rocketchat
-  channel: dev-updates
+  type: rocket
+  channel: "#dev-updates"
   secretRef:
     name: rocketchat-webhook-url
 ```
@@ -195,19 +196,19 @@ If notifications are not arriving in Rocket.Chat:
 
 1. **Secret format**: The secret must contain an `address` key with the complete webhook URL.
 2. **Integration enabled**: Verify the incoming webhook integration is enabled in Rocket.Chat administration.
-3. **Channel name**: The `channel` field should not include the `#` prefix.
+3. **Channel routing**: If you set the Flux `channel` field, enable Rocket.Chat's option to allow overwriting the destination channel from body parameters.
 4. **Namespace alignment**: Provider, Alert, and Secret must all be in the same namespace.
 5. **Controller logs**: Inspect logs with `kubectl logs -n flux-system deploy/notification-controller`.
 6. **Network connectivity**: Ensure the cluster can reach your Rocket.Chat instance. For self-hosted instances behind a firewall, you may need to configure network policies or egress rules.
-7. **TLS certificates**: If your Rocket.Chat instance uses a self-signed certificate, the notification controller may reject the connection. You may need to configure the controller to trust the CA.
+7. **TLS certificates**: If your Rocket.Chat instance uses a self-signed certificate, the notification controller may reject the connection. Configure the Provider with a `certSecretRef` that contains the trusted CA certificate.
 
 ## Self-Hosted Considerations
 
 Since Rocket.Chat is often self-hosted, keep the following in mind:
 
 - **Internal DNS**: If your Rocket.Chat is on an internal network, make sure Kubernetes DNS can resolve the hostname.
-- **Certificate trust**: For instances with custom TLS certificates, you may need to mount the CA bundle into the notification controller.
-- **Proxy settings**: If your cluster routes external traffic through a proxy, configure the notification controller's environment variables accordingly.
+- **Certificate trust**: For instances with custom TLS certificates, configure the Provider with a `certSecretRef` that contains the trusted CA certificate.
+- **Proxy settings**: If your cluster routes external traffic through a proxy, configure the Provider with a `proxySecretRef`.
 
 ## Conclusion
 
