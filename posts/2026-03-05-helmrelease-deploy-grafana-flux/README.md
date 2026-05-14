@@ -39,6 +39,11 @@ The following HelmRelease deploys Grafana with persistent storage, a Prometheus 
 
 ```yaml
 # helmrelease-grafana.yaml - Standalone Grafana deployment via Flux
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -126,7 +131,7 @@ spec:
             url: http://loki.monitoring.svc.cluster.local:3100
             access: proxy
 
-    # Dashboard provisioning from ConfigMaps
+    # Dashboard provisioning from files
     dashboardProviders:
       dashboardproviders.yaml:
         apiVersion: 1
@@ -200,7 +205,7 @@ stringData:
   admin-password: "your-secure-password-here"
 ```
 
-Then reference it in the HelmRelease using `valuesFrom`:
+Remove the inline `adminUser` and `adminPassword` values, then reference the Secret in the HelmRelease using `valuesFrom`:
 
 ```yaml
 # Snippet: Reference admin credentials from a Secret
@@ -218,7 +223,7 @@ spec:
 
 ## Adding Custom Dashboards via ConfigMap
 
-You can provision custom dashboards by creating ConfigMaps with dashboard JSON and labeling them for Grafana's sidecar to pick up.
+You can provision custom dashboards by creating ConfigMaps with dashboard JSON and mapping them to a dashboard provider.
 
 ```yaml
 # dashboard-configmap.yaml - Custom dashboard stored in a ConfigMap
@@ -227,35 +232,39 @@ kind: ConfigMap
 metadata:
   name: custom-app-dashboard
   namespace: monitoring
-  labels:
-    # This label tells the Grafana sidecar to load this dashboard
-    grafana_dashboard: "1"
 data:
   custom-app.json: |
     {
-      "dashboard": {
-        "title": "Custom App Metrics",
-        "panels": []
-      }
+      "title": "Custom App Metrics",
+      "panels": []
     }
 ```
 
-Enable the sidecar in the HelmRelease values to auto-discover dashboard ConfigMaps:
+Add a provider and reference the ConfigMap in the HelmRelease values:
 
 ```yaml
-# Snippet: Enable sidecar for dashboard auto-discovery
-sidecar:
-  dashboards:
-    enabled: true
-    label: grafana_dashboard
-    searchNamespace: ALL
+# Snippet: Provision a dashboard from an external ConfigMap
+dashboardProviders:
+  custom-dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: custom
+        orgId: 1
+        folder: Custom
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/custom
+dashboardsConfigMaps:
+  custom: custom-app-dashboard
 ```
 
 ## Verifying the Deployment
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease grafana -n monitoring
+flux get helmreleases -n monitoring
 
 # Verify Grafana pod is running
 kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
@@ -264,7 +273,7 @@ kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
 kubectl port-forward -n monitoring svc/grafana 3000:80
 
 # Check that data sources are configured
-curl -u admin:changeme http://localhost:3000/api/datasources
+curl -u admin:changeme-use-secret-in-production http://localhost:3000/api/datasources
 ```
 
 ## Summary
