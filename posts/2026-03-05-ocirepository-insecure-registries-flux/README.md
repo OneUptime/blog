@@ -139,7 +139,8 @@ Push an artifact to the local registry.
 flux push artifact oci://localhost:5000/my-app/manifests:dev \
   --path ./manifests \
   --source="local" \
-  --revision="dev/latest"
+  --revision="dev@sha1:0000000000000000000000000000000000000000" \
+  --insecure-registry
 ```
 
 Configure Flux to pull from it.
