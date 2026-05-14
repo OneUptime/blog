@@ -12,7 +12,7 @@ Description: Learn how to integrate Jenkins for continuous integration with Flux
 
 Jenkins remains one of the most widely deployed CI systems in enterprise environments, with its rich plugin ecosystem and flexible pipeline-as-code model. Migrating from a Jenkins push-based deployment to a GitOps model does not require abandoning Jenkins CI; instead, Jenkins handles what it does best (build, test, publish) while Flux CD takes over the deployment concern.
 
-In this architecture, a Jenkins pipeline builds your Docker image, pushes it to a registry, then updates an image tag in your Git fleet repository. Flux CD watches that repository and reconciles the new image into the cluster. No Kubernetes credentials are needed in Jenkins, and every deployment is traceable in Git history.
+In this architecture, a Jenkins pipeline builds your Docker image and pushes it to a registry. Flux CD image automation detects the new tag, updates your Git fleet repository, and reconciles the new image into the cluster. No Kubernetes or fleet-repository write credentials are needed in Jenkins, and every deployment is traceable in Git history.
 
 This guide walks through a Jenkinsfile-based pipeline integrated with Flux CD image automation for a complete GitOps workflow.
 
@@ -20,6 +20,7 @@ This guide walks through a Jenkinsfile-based pipeline integrated with Flux CD im
 
 - Jenkins instance with Pipeline, Docker Pipeline, and Git plugins installed
 - A Kubernetes cluster with Flux CD bootstrapped
+- Flux image automation controllers enabled
 - A container registry accessible from Jenkins agents
 - A fleet Git repository containing Kubernetes manifests
 - `kubectl` and `flux` CLI for verification steps
@@ -28,14 +29,16 @@ This guide walks through a Jenkinsfile-based pipeline integrated with Flux CD im
 
 ```bash
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=your-org \
   --repository=fleet-repo \
   --branch=main \
   --path=clusters/production \
+  --read-write-key \
   --personal
 ```
 
-Flux creates the GitRepository and Kustomization controllers in the `flux-system` namespace.
+Flux installs the default controllers plus the image reflector and image automation controllers in the `flux-system` namespace, then configures the cluster to sync from the repository path.
 
 ## Step 2: Define Flux Resources for the Application
 
@@ -106,8 +109,6 @@ pipeline {
     environment {
         REGISTRY = 'your-registry.example.com'
         IMAGE_NAME = 'myapp'
-        FLEET_REPO = 'https://github.com/your-org/fleet-repo.git'
-        FLEET_REPO_CRED = 'github-fleet-credentials'
         REGISTRY_CRED = 'registry-credentials'
     }
 
@@ -130,38 +131,11 @@ pipeline {
             }
             steps {
                 script {
-                    def imageTag = "${env.TAG_NAME}"
+                    def imageTag = env.TAG_NAME.replaceFirst('^v', '')
                     docker.withRegistry("https://${REGISTRY}", REGISTRY_CRED) {
                         def image = docker.build("${REGISTRY}/${IMAGE_NAME}:${imageTag}")
                         image.push()
                         image.push('latest')
-                    }
-                }
-            }
-        }
-
-        stage('Update Fleet Repo') {
-            when {
-                tag 'v*'
-            }
-            steps {
-                script {
-                    def imageTag = "${env.TAG_NAME}"
-                    withCredentials([usernamePassword(
-                        credentialsId: FLEET_REPO_CRED,
-                        usernameVariable: 'GIT_USER',
-                        passwordVariable: 'GIT_TOKEN'
-                    )]) {
-                        sh """
-                            git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/your-org/fleet-repo.git fleet-repo
-                            cd fleet-repo
-                            sed -i 's|image: ${REGISTRY}/${IMAGE_NAME}:.*|image: ${REGISTRY}/${IMAGE_NAME}:${imageTag}|' apps/myapp/deployment.yaml
-                            git config user.email "jenkins@your-org.com"
-                            git config user.name "Jenkins CI"
-                            git add apps/myapp/deployment.yaml
-                            git commit -m "chore: update myapp to ${imageTag}"
-                            git push origin main
-                        """
                     }
                 }
             }
@@ -204,18 +178,46 @@ spec:
   policy:
     semver:
       range: ">=1.0.0"
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: myapp
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-repo
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: Flux
+        email: flux@your-org.com
+      messageTemplate: "{{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}"
+    push:
+      branch: main
+  update:
+    strategy: Setters
+    path: ./apps/myapp
 ```
 
 ## Step 6: Verify the Pipeline End to End
 
 ```bash
-# After Jenkins pushes a new tag and updates the fleet repo:
+# After Jenkins pushes a new tag and Flux updates the fleet repo:
 
 # Confirm Flux detected the new commit
 flux get sources git fleet-repo
 
 # Check image policy resolved the new tag
 flux get images policy myapp
+
+# Check image automation committed the manifest update
+flux get image update myapp
 
 # Verify the Kustomization reconciled
 flux get kustomizations myapp
@@ -226,12 +228,12 @@ kubectl get pods -n myapp -o jsonpath='{.items[*].spec.containers[0].image}'
 
 ## Best Practices
 
-- Store registry and Git credentials in Jenkins Credentials Manager, never in the Jenkinsfile.
-- Restrict the fleet repository credentials to write access only to the `apps/` path to limit blast radius.
-- Use Jenkins shared libraries to standardize the fleet repo update pattern across teams.
-- Add a post-deploy verification stage that polls `flux get kustomizations` via the Flux API or a kubectl check.
+- Store registry credentials and any source repository credentials in Jenkins Credentials Manager, never in the Jenkinsfile.
+- Restrict Flux's fleet repository write credentials to the paths needed for image automation where your Git provider supports path-level controls.
+- Use Jenkins shared libraries to standardize the image build and publish pattern across teams.
+- Add post-deploy verification outside Jenkins, or in a separate trusted environment, by polling `flux get kustomizations` or using a kubectl check.
 - Use multibranch pipelines to handle feature branch images separately from production tags.
-- Run the fleet update only on tagged builds, not on every commit, to avoid noisy Git history.
+- Publish production image tags only from tagged builds, not on every commit, to avoid noisy Git history.
 
 ## Conclusion
 
