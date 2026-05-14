@@ -23,7 +23,7 @@ The decrypted values only exist in memory during reconciliation and are never wr
 
 ## Basic SOPS Decryption Configuration
 
-The minimal configuration requires setting the decryption provider to `sops` and referencing a secret that contains the decryption key.
+For key-based decryption, the minimal configuration requires setting the decryption provider to `sops` and referencing a secret that contains the decryption key.
 
 ```yaml
 # kustomization.yaml - Basic SOPS decryption configuration
@@ -52,7 +52,7 @@ The secret referenced by `spec.decryption.secretRef` must contain specific keys 
 
 ### Age Key Secret
 
-For Age encryption, the secret must contain an `age.agekey` key with the private key.
+For Age encryption, the secret must contain an entry whose key ends with `.agekey`.
 
 ```bash
 # Create the Age key secret
@@ -63,7 +63,7 @@ cat age.agekey | kubectl create secret generic sops-age \
 
 ### GPG Key Secret
 
-For GPG encryption, the secret must contain a `sops.asc` key with the ASCII-armored private key.
+For OpenPGP encryption, the secret must contain an entry whose key ends with `.asc`.
 
 ```bash
 # Create the GPG key secret
@@ -86,14 +86,15 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  aws_access_key_id: AKIAIOSFODNN7EXAMPLE
-  aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-  aws_region: us-east-1
+  sops.aws-kms: |
+    aws_access_key_id: AKIAIOSFODNN7EXAMPLE
+    aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+    aws_session_token: <optional-session-token>
 ```
 
 ### Azure Key Vault Credentials Secret
 
-For Azure Key Vault, the secret contains service principal credentials.
+For Azure Key Vault, the secret contains application certificate credentials.
 
 ```yaml
 # azure-credentials-secret.yaml
@@ -104,9 +105,12 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  tenantId: <azure-tenant-id>
-  clientId: <service-principal-client-id>
-  clientSecret: <service-principal-client-secret>
+  sops.azure-kv: |
+    tenantId: <azure-tenant-id>
+    clientId: <application-client-id>
+    clientCertificate: <certificate-and-private-key>
+    clientCertificatePassword: <optional-private-key-password>
+    clientCertificateSendChain: true
 ```
 
 ### HashiCorp Vault Token Secret
@@ -127,7 +131,7 @@ stringData:
 
 ## Using Cloud Provider Identity (No secretRef)
 
-When using cloud provider workload identity (IRSA on EKS, Workload Identity on GKE), the kustomize-controller inherits permissions from the service account. In this case, you can omit the `secretRef`.
+When using cloud provider workload identity (IRSA on EKS, Workload Identity on GKE/AKS), Flux can use Kubernetes service account identity instead of static credentials. In this case, you can omit the `secretRef` and set `spec.decryption.serviceAccountName` when using object-level workload identity.
 
 ```yaml
 # kustomization.yaml - Using cloud provider identity
@@ -145,6 +149,7 @@ spec:
     name: flux-system
   decryption:
     provider: sops
+    serviceAccountName: sops-identity
     # No secretRef needed when using workload identity
 ```
 
@@ -222,9 +227,9 @@ flux reconcile kustomization my-app --with-source
 
 ## Common Configuration Mistakes
 
-1. **Wrong namespace for the decryption secret.** The secret must be in the `flux-system` namespace (same namespace as the Kustomization).
+1. **Wrong namespace for the decryption secret.** The secret must be in the same namespace as the Kustomization, such as `flux-system` for a Kustomization in `flux-system`.
 
-2. **Incorrect key name in the secret.** Age expects `age.agekey`, GPG expects `sops.asc`, and Vault expects `sops.vault-token`.
+2. **Incorrect key name in the secret.** Age expects a key ending with `.agekey`, OpenPGP expects a key ending with `.asc`, and Vault expects `sops.vault-token`.
 
 3. **Missing decryption block entirely.** Without `spec.decryption`, Flux will try to apply SOPS-encrypted files as-is, resulting in mangled secret values.
 
