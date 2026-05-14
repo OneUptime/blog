@@ -22,7 +22,7 @@ This guide covers how to configure commit SHA pinning, when to use it, and how t
 
 ## Basic Commit SHA Pinning
 
-To pin a GitRepository to a specific commit, set `spec.ref.commit` to the full commit SHA. You must also specify a `branch` when using `commit` so that the Source Controller knows which branch to search for the commit.
+To pin a GitRepository to a specific commit, set `spec.ref.commit` to the full commit SHA. You can also specify a `branch` when using `commit` so that the Source Controller performs a shallow clone of that branch. In that case, the commit must exist on the specified branch.
 
 ```yaml
 # gitrepository-commit.yaml - Pin to a specific commit SHA
@@ -49,7 +49,7 @@ Apply the manifest and verify.
 kubectl apply -f gitrepository-commit.yaml
 
 # Verify the source is pinned to the commit
-flux get sources git my-app -n flux-system
+flux get sources git -n flux-system
 ```
 
 The artifact revision will show the pinned commit SHA, confirming that the Source Controller fetched exactly that commit.
@@ -65,8 +65,8 @@ git rev-parse main
 # Get the full SHA of a specific tag
 git rev-parse v1.2.3
 
-# List recent commits with their SHAs
-git log --oneline -10 main
+# List recent commits with their full SHAs
+git log --format='%H %s' -10 main
 ```
 
 Always use the full 40-character SHA, not the abbreviated form. While Flux may accept abbreviated SHAs in some cases, using the full SHA is more reliable and explicit.
@@ -78,7 +78,7 @@ Commit SHA pinning is ideal for the following scenarios:
 1. **Compliance and audit requirements**: When regulations require you to prove exactly which version of code was deployed at a given time.
 2. **Hotfix deployments**: When you need to deploy a specific commit that may not yet have a tag.
 3. **Rollback to a known good state**: When you need to revert to a specific commit that was previously running in production.
-4. **Reproducible builds**: When you need to guarantee that the same artifact is produced regardless of when the reconciliation occurs.
+4. **Reproducible source artifacts**: When you need to guarantee that the same source artifact is produced regardless of when the reconciliation occurs.
 5. **Security-sensitive environments**: When any change, including tag movements, must be explicitly authorized.
 
 ## Commit SHA Pinning vs Other Reference Types
@@ -225,9 +225,9 @@ kubectl logs -n flux-system deployment/source-controller | grep "my-app"
 
 Common issues include:
 
-- **Commit not found**: Ensure the commit SHA is correct and exists on the specified branch. The commit must be reachable from the branch tip.
+- **Commit not found**: Ensure the commit SHA is correct. If you specify a `branch` with the commit, the commit must exist on that branch.
 - **Abbreviated SHA**: Use the full 40-character SHA. Abbreviated SHAs may not be unique and can cause errors.
-- **Branch mismatch**: The specified branch must contain the commit. If the commit is on a different branch, update the `branch` field accordingly.
+- **Branch mismatch**: When `branch` and `commit` are both set, the specified branch must contain the commit. If the commit is on a different branch, update the `branch` field accordingly.
 
 ## Conclusion
 
