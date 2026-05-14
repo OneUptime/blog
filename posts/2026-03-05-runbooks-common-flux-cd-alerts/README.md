@@ -48,7 +48,7 @@ groups:
 ```bash
 # Check which resources are failing
 
-flux get all --status-selector ready=false
+flux get all --all-namespaces --status-selector ready=false
 
 # Get detailed status for the failing resource
 flux get kustomizations <name> -n <namespace>
@@ -77,13 +77,13 @@ kubectl get events -n flux-system --sort-by=.lastTimestamp | tail -20
 
 ```bash
 # Check source status
-flux get sources all
+flux get sources all --all-namespaces
 
 # Get detailed error message
 kubectl describe gitrepository <name> -n flux-system
 
 # Test Git connectivity from the cluster
-kubectl run git-test --rm -it --image=alpine/git -- git ls-remote <repo-url>
+kubectl run git-test --rm -it --image=alpine/git --command -- git ls-remote <repo-url>
 
 # Check if credentials secret exists and is valid
 kubectl get secret <secret-name> -n flux-system -o yaml
@@ -121,7 +121,7 @@ kubectl logs -n flux-system deployment/helm-controller --tail=100 | grep <releas
 **Common causes and remediation**:
 
 - **Values validation error**: Check that the values in the HelmRelease spec are valid for the chart version
-- **Resource conflict**: Another release or manual deployment owns a resource the chart tries to create. Use `--force` or delete the conflicting resource
+- **Resource conflict**: Another release or manual deployment owns a resource the chart tries to create. Fix the ownership conflict, delete the conflicting resource, or trigger a one-off forced reconcile with `flux reconcile helmrelease <name> -n <namespace> --force` when appropriate
 - **Timeout**: Increase `spec.timeout` in the HelmRelease if the chart takes longer than expected to install
 - **OOM killed**: Check if Helm controller pods are being OOM killed during large releases. Increase memory limits
 
@@ -144,14 +144,14 @@ kubectl describe imagerepository <name> -n flux-system
 kubectl get secret <secret-name> -n flux-system -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
 
 # Test registry access
-kubectl run registry-test --rm -it --image=curlimages/curl -- curl -v https://<registry>/v2/
+kubectl run registry-test --rm -it --image=curlimages/curl --command -- curl -v https://<registry>/v2/
 ```
 
 **Common causes and remediation**:
 
 - **Expired credentials**: Refresh the registry authentication token
 - **Registry unavailable**: Check the registry status page. Wait for recovery if it is a provider outage
-- **Too many tags**: Add exclusion patterns to reduce the scan scope
+- **Too many tags**: Add patterns to `.spec.exclusionList` to exclude tags from the scan result
 
 ## Runbook 5: Notification Delivery Failed
 
