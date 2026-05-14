@@ -59,12 +59,10 @@ spec:
       interval: 15m
   install:
     createNamespace: true
-    atomic: true
     timeout: 10m
     remediation:
       retries: 3
   upgrade:
-    atomic: true
     timeout: 10m
     cleanupOnFail: true
     remediation:
@@ -106,7 +104,7 @@ spec:
     ingressRoute:
       dashboard:
         enabled: true
-        matchRule: Host(`traefik.example.com`)
+        matchRule: Host(`traefik.example.com`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))
         entryPoints:
           - websecure
 
@@ -159,6 +157,8 @@ persistence:
   path: /data
 ```
 
+When using Traefik's file-backed ACME storage, run a single Traefik replica or use an external certificate controller such as cert-manager for high availability. The ACME storage file cannot safely be shared by multiple Traefik instances.
+
 ## Defining IngressRoute Resources
 
 With Traefik deployed, you can create IngressRoute custom resources to route traffic to your services.
@@ -206,7 +206,7 @@ spec:
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease traefik -n traefik
+flux get helmreleases traefik -n traefik
 
 # Verify Traefik pods are running
 kubectl get pods -n traefik
@@ -217,8 +217,8 @@ kubectl get svc -n traefik
 # Verify Traefik CRDs are installed
 kubectl get crds | grep traefik
 
-# Check Traefik dashboard
-kubectl port-forward svc/traefik -n traefik 9000:9000
+# Check Traefik dashboard through the HTTPS service port
+kubectl port-forward svc/traefik -n traefik 8443:443
 ```
 
 ## Summary
