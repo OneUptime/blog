@@ -125,17 +125,17 @@ flux install \
 
 ```bash
 # Step 1: Pull and push Flux images to your private registry
-FLUX_VERSION="v2.4.0"
 PRIVATE_REGISTRY="registry.internal.company.com/fluxcd"
 
 # List the images that Flux needs
 flux install --export | grep "image:" | awk '{print $2}' | sort -u
 
-# Pull and re-tag each image (example for source-controller)
-docker pull ghcr.io/fluxcd/source-controller:v1.2.4
-docker tag ghcr.io/fluxcd/source-controller:v1.2.4 \
-  "${PRIVATE_REGISTRY}/source-controller:v1.2.4"
-docker push "${PRIVATE_REGISTRY}/source-controller:v1.2.4"
+# Pull and re-tag each image using the tags from your exported manifests
+SOURCE_IMAGE="$(flux install --export | grep 'ghcr.io/fluxcd/source-controller' | awk '{print $2}' | head -n1)"
+SOURCE_TAG="${SOURCE_IMAGE##*:}"
+docker pull "${SOURCE_IMAGE}"
+docker tag "${SOURCE_IMAGE}" "${PRIVATE_REGISTRY}/source-controller:${SOURCE_TAG}"
+docker push "${PRIVATE_REGISTRY}/source-controller:${SOURCE_TAG}"
 
 # Step 2: Install from the private registry
 flux install --registry="${PRIVATE_REGISTRY}"
@@ -186,13 +186,13 @@ Control network access for Flux controllers:
 # Install with network policies enabled
 flux install --network-policy=true
 
-# Install without network policies (default)
+# Install without network policies
 flux install --network-policy=false
 ```
 
-Resource Limits and Tolerations
+Tolerations
 
-Customize resource allocation and scheduling:
+Customize scheduling:
 
 ```bash
 # Install with custom tolerations (for dedicated nodes)
