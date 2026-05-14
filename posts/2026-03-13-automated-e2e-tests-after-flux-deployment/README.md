@@ -12,7 +12,7 @@ Description: Learn how to automatically run end-to-end tests after Flux CD succe
 
 Flux CD's reconciliation model is pull-based, which means CI systems don't directly trigger deployments. This creates a challenge for post-deployment testing: how do you know when Flux has finished reconciling so you can start E2E tests? The answer is Flux's Notification Controller, which can emit webhook events when a Kustomization or HelmRelease reaches a Ready state.
 
-By combining Flux notifications with a GitHub Actions workflow dispatch or webhook receiver, you can trigger E2E tests automatically once Flux confirms a deployment is healthy. This closes the feedback loop: code push → CI build → image push → Flux reconcile → E2E tests → notification.
+By combining Flux notifications with a GitHub Actions repository dispatch or webhook receiver, you can trigger E2E tests automatically once Flux confirms a deployment is healthy. This closes the feedback loop: code push → CI build → image push → Flux reconcile → E2E tests → notification.
 
 This guide covers configuring Flux notifications to trigger a GitHub Actions E2E test workflow after a successful deployment reconciliation.
 
@@ -21,28 +21,28 @@ This guide covers configuring Flux notifications to trigger a GitHub Actions E2E
 - A Kubernetes cluster with Flux CD deployed and an application reconciled
 - Flux Notification Controller installed (part of default Flux installation)
 - GitHub Actions for running E2E tests
-- A GitHub personal access token for triggering workflow dispatches
+- A GitHub personal access token or GitHub App token for triggering repository dispatch events
 - `flux` CLI installed
 
 ## Step 1: Configure Flux Alert to Trigger GitHub Actions
 
-Flux can send a webhook to GitHub's workflow dispatch endpoint when a reconciliation succeeds:
+Flux can send a GitHub `repository_dispatch` event when a reconciliation succeeds:
 
 ```yaml
 # clusters/staging/notifications/github-e2e-trigger.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-dispatch
   namespace: flux-system
 spec:
-  type: github
+  type: githubdispatch
   address: https://github.com/your-org/your-repo
   secretRef:
     name: github-dispatch-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: e2e-trigger-on-deploy
@@ -56,9 +56,11 @@ spec:
     - kind: Kustomization
       name: myapp
       namespace: flux-system
-  # Filter to only Ready events (not in-progress or failed)
+  # Filter to successful reconciliation messages
   inclusionList:
-    - ".*Reconciliation succeeded.*"
+    - ".*succeeded.*"
+  eventMetadata:
+    environment: staging
 ```
 
 Create the GitHub PAT secret:
@@ -71,22 +73,22 @@ kubectl create secret generic github-dispatch-token \
 
 ## Step 2: Alternatively, Use a Generic Webhook Receiver
 
-For CI systems without native GitHub dispatch support, use a generic webhook:
+For CI systems without native GitHub dispatch support, use a signed generic webhook:
 
 ```yaml
 # clusters/staging/notifications/generic-webhook-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: e2e-webhook
   namespace: flux-system
 spec:
-  type: generic
+  type: generic-hmac
   address: https://your-ci-webhook-endpoint.example.com/trigger-e2e
   secretRef:
     name: webhook-hmac-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: trigger-e2e-on-success
@@ -110,21 +112,14 @@ spec:
 name: E2E Tests (Post-Deployment)
 
 on:
-  # Triggered by Flux notification via workflow_dispatch
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target environment'
-        required: true
-        default: 'staging'
-      image_tag:
-        description: 'Image tag that was deployed'
-        required: false
+  # Triggered by Flux notification via repository_dispatch
+  repository_dispatch:
+    types: [Kustomization/myapp.flux-system]
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ github.event.client_payload.metadata.environment || 'staging' }}
 
     steps:
       - name: Checkout
@@ -150,11 +145,14 @@ jobs:
           for i in $(seq 1 $MAX_RETRIES); do
             if curl -sf "$URL" > /dev/null; then
               echo "Application is healthy, proceeding with E2E tests"
-              break
+              exit 0
             fi
             echo "Attempt $i/$MAX_RETRIES: Application not ready, waiting..."
             sleep $RETRY_INTERVAL
           done
+
+          echo "Application did not become healthy in time"
+          exit 1
 
       - name: Run Playwright E2E tests
         env:
@@ -178,7 +176,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "E2E tests failed after Flux deployment to ${{ github.event.inputs.environment }}",
+              "text": "E2E tests failed after Flux deployment to ${{ github.event.client_payload.metadata.environment || 'staging' }}",
               "attachments": [{"color": "danger", "text": "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}]
             }
         env:
@@ -187,19 +185,27 @@ jobs:
 
 ## Step 4: Configure Flux to Include Deployment Metadata in Webhook
 
-Use a custom webhook body template to pass deployment metadata to the E2E trigger:
+Use Alert metadata to pass deployment metadata to the E2E trigger:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
-kind: Provider
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
 metadata:
-  name: github-e2e
+  name: e2e-trigger-on-deploy
   namespace: flux-system
 spec:
-  type: generic
-  address: https://api.github.com/repos/your-org/your-repo/actions/workflows/e2e-tests.yml/dispatches
-  secretRef:
-    name: github-dispatch-token
+  providerRef:
+    name: github-dispatch
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: myapp
+      namespace: flux-system
+  inclusionList:
+    - ".*succeeded.*"
+  eventMetadata:
+    environment: staging
+    app: myapp
 ```
 
 ## Step 5: Handle Rollback on E2E Failure
