@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostic, Automation
 
-Description: Automate Calico per-node diagnostic collection across all cluster nodes, including Felix health status, BGP peer state, and node-level diag bundles, for rapid multi-node incident analysis.
+Description: Automate Calico per-node diagnostic collection across all cluster nodes, including Felix health status, BGP/BIRD readiness, and recent calico-node logs, for rapid multi-node incident analysis.
 
 ---
 
 ## Introduction
 
-When a networking issue affects multiple nodes, manually running diagnostics on each node one at a time is too slow. Automating node diagnostics means running the same set of checks across all calico-node pods in parallel and aggregating the results, so you can quickly identify which nodes are healthy and which have problems.
+When a networking issue affects multiple nodes, manually running diagnostics on each node one at a time is too slow. Automating node diagnostics means running the same set of checks across all calico-node pods and aggregating the results, so you can quickly identify which nodes are healthy and which have problems.
 
 ## Automated Multi-Node Diagnostic Collection
 
@@ -38,10 +38,10 @@ for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
     calico-node -felix-live > "${NODE_DIR}/felix-live.txt" 2>&1 || \
     echo "Felix not live" > "${NODE_DIR}/felix-live.txt"
 
-  # BGP state
+  # BGP/BIRD readiness (only applies when Calico is using BIRD for BGP)
   kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    calicoctl node status > "${NODE_DIR}/bgp-status.txt" 2>/dev/null || \
-    echo "BGP status unavailable" > "${NODE_DIR}/bgp-status.txt"
+    calico-node -bird-ready > "${NODE_DIR}/bgp-readiness.txt" 2>&1 || \
+    echo "BGP/BIRD readiness unavailable or not ready" > "${NODE_DIR}/bgp-readiness.txt"
 
   # Recent logs
   kubectl logs -n calico-system "${pod}" -c calico-node \
@@ -75,9 +75,8 @@ for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   TOTAL=$((TOTAL + 1))
 
   if [ "${POD_STATUS}" = "Running" ]; then
-    LIVE=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-      calico-node -felix-live 2>&1 | grep -c "Calico is live" || echo 0)
-    if [ "${LIVE}" -gt 0 ]; then
+    if kubectl exec -n calico-system "${pod}" -c calico-node -- \
+      calico-node -felix-live >/dev/null 2>&1; then
       echo "OK  : ${NODE} (${pod})"
       HEALTHY=$((HEALTHY + 1))
     else
