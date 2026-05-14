@@ -12,7 +12,7 @@ Description: A practical guide to tagging OCI artifacts with the flux tag artifa
 
 The `flux tag artifact` command allows you to add additional tags to existing OCI artifacts in a container registry without re-uploading the artifact content. This is essential for promotion workflows, semantic versioning, and managing artifact lifecycle across environments.
 
-Tagging is a lightweight operation that creates a new reference pointing to an existing artifact layer. This guide covers practical tagging strategies, promotion workflows, and automation patterns.
+Tagging is a lightweight operation that creates a new reference pointing to an existing artifact manifest. This guide covers practical tagging strategies, promotion workflows, and automation patterns.
 
 ## Prerequisites
 
