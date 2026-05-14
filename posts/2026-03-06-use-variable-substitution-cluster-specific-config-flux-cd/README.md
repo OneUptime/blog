@@ -321,13 +321,23 @@ stringData:
   redis-password: "${REDIS_PASSWORD}"
 ```
 
+Add `secret.yaml` to `base/apps/web-app/kustomization.yaml` so Flux includes it in the rendered output.
+
+```yaml
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - secret.yaml
+```
+
 ## Step 5: Use Default Values
 
-Provide default values to prevent errors when a variable is not defined.
+Provide default values to avoid empty substitutions when a variable is not defined, or reconciliation failures when strict substitution is enabled.
 
 ```yaml
 # base/apps/web-app/deployment.yaml
-# Using default values with the :- syntax
+# Using default values with the := syntax
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -467,8 +477,11 @@ kubectl get events -n flux-system \
 # Manually test what the substituted output looks like
 flux build kustomization web-app \
   --path ./base/apps/web-app \
+  --kustomization-file ./clusters/us-east/apps.yaml \
   --dry-run
 ```
+
+In dry-run mode, Flux applies inline `postBuild.substitute` values from the local Kustomization file, but skips values loaded from ConfigMaps and Secrets with `substituteFrom`.
 
 Common issues:
 
