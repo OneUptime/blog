@@ -90,7 +90,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "7.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -129,13 +129,7 @@ spec:
     # Install AWS plugin
     initContainers:
       - name: velero-plugin-for-aws
-        image: velero/velero-plugin-for-aws:v1.10.0
-        volumeMounts:
-          - mountPath: /target
-            name: plugins
-      # CSI plugin for CSI volume snapshots
-      - name: velero-plugin-for-csi
-        image: velero/velero-plugin-for-csi:v0.7.0
+        image: velero/velero-plugin-for-aws:v1.14.0
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -152,7 +146,9 @@ spec:
       server:
         annotations:
           eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/velero-backup
-    # Deploy node agent for file-system backups (Restic/Kopia)
+    credentials:
+      useSecret: false
+    # Deploy node agent for file-system backups
     deployNodeAgent: true
     nodeAgent:
       resources:
@@ -277,11 +273,11 @@ spec:
       - default
     # Keep for 14 days
     ttl: 336h
-    # Order of resource backup (ensures dependencies are restored correctly)
+    # Order of resources to collect during the backup
     orderedResources:
       # Back up secrets and configmaps first
-      v1/Secret: "production/db-credentials,production/app-config"
-      v1/ConfigMap: "production/app-settings"
+      secrets: "production/db-credentials,production/app-config"
+      configmaps: "production/app-settings"
     metadata:
       labels:
         backup-type: production
@@ -394,13 +390,17 @@ spec:
         # Alert when no backups have completed recently
         - alert: VeleroNoRecentBackup
           expr: |
-            time() - velero_backup_last_successful_timestamp > 86400
+            (
+              (time() - velero_backup_last_successful_timestamp) > bool 86400
+              or
+              absent(velero_backup_last_successful_timestamp)
+            ) == 1
           for: 1h
           labels:
             severity: warning
           annotations:
             summary: "No successful Velero backup in 24 hours"
-            description: "The last successful backup was over 24 hours ago."
+            description: "No scheduled Velero backup has completed successfully in the last 24 hours."
         # Alert on backup partial failures
         - alert: VeleroBackupPartialFailure
           expr: |
