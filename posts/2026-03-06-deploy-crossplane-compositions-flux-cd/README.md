@@ -30,7 +30,7 @@ graph TD
     C --> D[XRD validates schema]
     D --> E[Composition creates resources]
     E --> F[S3 Bucket]
-    E --> G[IAM Policy]
+    E --> G[Public Access Block]
     E --> H[Bucket Encryption]
     E --> I[Bucket Versioning]
 ```
@@ -88,10 +88,6 @@ spec:
                   type: boolean
                   description: "Enable object versioning"
                   default: true
-                encryption:
-                  type: boolean
-                  description: "Enable server-side encryption"
-                  default: true
               required:
                 - region
                 - environment
@@ -141,7 +137,7 @@ spec:
           # Create the S3 bucket
           - name: bucket
             base:
-              apiVersion: s3.aws.upbound.io/v1beta2
+              apiVersion: s3.aws.upbound.io/v1beta1
               kind: Bucket
               spec:
                 forProvider:
@@ -164,6 +160,10 @@ spec:
               - type: ToCompositeFieldPath
                 fromFieldPath: status.atProvider.arn
                 toFieldPath: status.bucketArn
+              # Expose the bucket regional domain name in status
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.bucketRegionalDomainName
+                toFieldPath: status.bucketDomainName
 
           # Configure bucket versioning
           - name: versioning
@@ -196,7 +196,7 @@ spec:
                       "true": Enabled
                       "false": Suspended
 
-          # Configure server-side encryption
+          # Enforce server-side encryption
           - name: encryption
             base:
               apiVersion: s3.aws.upbound.io/v1beta1
@@ -245,12 +245,12 @@ Crossplane compositions use functions for patching logic.
 ```yaml
 # platform/functions/patch-and-transform.yaml
 # Install the patch-and-transform function
-apiVersion: pkg.crossplane.io/v1beta1
+apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: function-patch-and-transform
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.7.0
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
 ```
 
 ## Building a Database Composition
@@ -348,11 +348,17 @@ spec:
                   engineVersion: "16"
                   username: appadmin
                   autoGeneratePassword: true
-                  passwordSecretRef: {}
+                  passwordSecretRef:
+                    namespace: crossplane-system
+                    name: rds-password
+                    key: password
                   skipFinalSnapshot: true
                   publiclyAccessible: false
                   storageEncrypted: true
                   backupRetentionPeriod: 7
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: rds-connection
                 providerConfigRef:
                   name: default
             patches:
@@ -388,15 +394,35 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.region
                 toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: spec.forProvider.passwordSecretRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "rds-%s-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "rds-%s-connection"
             connectionDetails:
               - name: host
+                type: FromFieldPath
                 fromFieldPath: status.atProvider.address
               - name: port
+                type: FromFieldPath
                 fromFieldPath: status.atProvider.port
-                type: FromFieldPath
               - name: username
-                fromFieldPath: spec.forProvider.username
                 type: FromFieldPath
+                fromFieldPath: spec.forProvider.username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
 ```
 
 ## Deploying Compositions with Flux
@@ -470,7 +496,6 @@ spec:
   region: us-east-1
   environment: production
   versioning: true
-  encryption: true
 ---
 # Developer claim for a database
 apiVersion: platform.example.com/v1alpha1
