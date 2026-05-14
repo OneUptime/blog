@@ -28,8 +28,8 @@ sleep 600  # 10 minutes
 kubectl patch felixconfiguration default \
   --type=merge -p '{"spec":{"logSeverityScreen":"Info"}}'
 
-# Debug can generate 10-100x more log volume than Info
-# On a 100-node cluster: could be GBs per hour per component
+# Debug is the most verbose level and can significantly increase log volume
+# On large clusters, keep the window short to avoid saturating log pipelines
 ```
 
 ## Mistake 2: Collecting Logs from Only One Node
@@ -54,11 +54,12 @@ kubectl logs -n calico-system -l k8s-app=calico-node \
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node > logs.txt
 # Submitting this to Tigera support without CRD state
 
-# CORRECT: Always collect CRD state alongside logs
+# CORRECT: Collect CRD state alongside logs
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node > calico-node.log
 kubectl get tigerastatus -o yaml > tigerastatus.yaml
 kubectl get felixconfiguration -o yaml > felixconfiguration.yaml
 kubectl get installation -o yaml > installation.yaml
+# tigerastatus and installation are available on operator-managed installs
 # Logs without CRD state are much harder to analyze
 ```
 
@@ -73,7 +74,7 @@ kubectl get pods -n logging -l app=fluent-bit
 kubectl exec -n logging <fluent-bit-pod> -- \
   curl -s http://localhost:2020/api/v1/metrics | \
   python3 -m json.tool | grep -A5 "output"
-# Check: output.errors should be 0 or very low
+# Check: each output plugin's errors and retries_failed counters should be 0 or very low
 ```
 
 ## Common Mistakes Summary
