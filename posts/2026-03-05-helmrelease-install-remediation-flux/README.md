@@ -24,11 +24,12 @@ flowchart TD
     B -->|Yes| C[Release Ready]
     B -->|No| D{Retries Remaining?}
     D -->|Yes| E[Retry Install]
-    E --> A
+    E --> J[Uninstall Failed Release]
+    J --> A
     D -->|No| F{remediateLastFailure?}
-    F -->|true| G[Uninstall Failed Release]
+    F -->|true| G[Uninstall Final Failed Release]
     F -->|false| H[Leave Failed Release - Stall]
-    G --> I[Retry from Clean State on Next Reconciliation]
+    G --> I[Remain Failed Until Retries Are Reset]
 ```
 
 ## Basic Install Remediation
@@ -67,7 +68,7 @@ spec:
 
 ## Configuring remediateLastFailure
 
-The `remediateLastFailure` field controls whether Flux should uninstall a failed Helm release before retrying. When set to `true`, Flux cleans up the failed release so the next attempt starts fresh. This is particularly useful when a partial install leaves resources in an inconsistent state.
+The `remediateLastFailure` field controls whether Flux should uninstall the final failed Helm release after all retries are exhausted. Flux already performs an uninstall between retry attempts when install remediation retries are configured. Setting `remediateLastFailure` to `true` also cleans up the last failed release instead of leaving it in place after the retry budget is exhausted.
 
 The following example enables cleanup of failed installations:
 
@@ -91,7 +92,7 @@ spec:
     remediation:
       # Retry installation 3 times
       retries: 3
-      # Uninstall the failed release before retrying
+      # Uninstall the final failed release after retries are exhausted
       remediateLastFailure: true
   values:
     replicaCount: 3
@@ -101,7 +102,7 @@ spec:
 
 The `spec.install` field supports additional options beyond remediation that control the Helm install behavior. These can be combined with remediation settings for a comprehensive installation strategy.
 
-The following example shows a complete install configuration with remediation, timeout, and resource replacement settings:
+The following example shows a complete install configuration with remediation, timeout, and Helm release name reuse settings:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -122,12 +123,12 @@ spec:
   install:
     # Set a timeout for the install operation
     timeout: 5m
-    # Replace resources that already exist instead of failing
+    # Re-use the release name if a deleted release remains in Helm history
     replace: true
     remediation:
       # Retry up to 5 times for mission-critical applications
       retries: 5
-      # Clean up failed releases before retrying
+      # Clean up the final failed release after retries are exhausted
       remediateLastFailure: true
   values:
     replicaCount: 3
@@ -158,7 +159,7 @@ kubectl get helmrelease my-application -n default -o yaml
 kubectl events --for helmrelease/my-application -n default
 
 # Use Flux CLI for a human-readable status
-flux get helmrelease my-application -n default
+flux get helmreleases my-application -n default
 ```
 
 You can also check the Helm controller logs for detailed remediation information:
@@ -196,7 +197,7 @@ spec:
     remediation:
       # More retries for infrastructure-critical components
       retries: 5
-      # Always clean up failed installs for databases
+      # Clean up the final failed install for databases
       remediateLastFailure: true
   values:
     auth:
@@ -208,23 +209,23 @@ spec:
 
 ## Understanding Retry Behavior
 
-When `retries` is set, Flux counts each failed install attempt. Once the retry limit is reached, Flux stops attempting to install the release and sets the HelmRelease status to a failure condition. The release will remain in this state until:
+When `retries` is set, Flux counts each failed install attempt and performs an uninstall between retry attempts. Once the retry limit is reached, Flux stops retrying the release and sets the HelmRelease status to a failure condition. The release will remain in this state until:
 
 1. You update the HelmRelease spec (which resets the retry counter)
-2. You manually reconcile the HelmRelease with `flux reconcile helmrelease`
-3. The next reconciliation interval triggers (if `remediateLastFailure` is true)
+2. The values or chart revision changes
+3. You manually reset the retry counter with `flux reconcile helmrelease --reset`
 
 To manually trigger a retry after exhausting all attempts:
 
 ```bash
 # Force a reconciliation, resetting the retry counter
-flux reconcile helmrelease my-application -n default
+flux reconcile helmrelease my-application -n default --reset
 ```
 
 ## Best Practices
 
 1. **Set retries to at least 3** for production workloads to handle transient failures without manual intervention.
-2. **Enable remediateLastFailure** for applications where a clean install is preferable to debugging a partially deployed release.
+2. **Enable remediateLastFailure** for applications where cleaning up the final failed release is preferable to debugging a partially deployed release.
 3. **Set appropriate timeouts** -- charts that provision PersistentVolumes or wait for external resources may need longer timeouts.
 4. **Use alerts** to get notified when a HelmRelease exhausts its retry budget, so you can investigate root causes.
 5. **Do not set retries too high** -- if an install consistently fails, a high retry count just delays the notification. Three to five retries is usually sufficient.
