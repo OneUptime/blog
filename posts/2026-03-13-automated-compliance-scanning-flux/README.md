@@ -43,13 +43,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract image references from changed manifests
         id: extract-images
         run: |
           # Find all image references in changed YAML files
           IMAGES=$(git diff --name-only origin/main...HEAD \
-            | xargs grep -h 'image:' \
+            | xargs -r grep -h 'image:' \
             | grep -v '#' \
             | awk '{print $2}' \
             | sort -u)
@@ -116,21 +118,21 @@ spec:
         name: aquasecurity
         namespace: flux-system
   values:
+    # Scan all namespaces
+    targetNamespaces: ""
     trivy:
       ignoreUnfixed: true
       severity: CRITICAL,HIGH,MEDIUM
     operator:
-      # Scan all namespaces
-      targetNamespaces: ""
       # Generate compliance reports
-      complianceEnabled: true
+      clusterComplianceEnabled: true
       # Run scans on this schedule
       scanJobTimeout: 5m
     compliance:
       # Enable CIS Kubernetes Benchmark compliance report
       specs:
         - k8s-cis-1.23
-        - nsa-1.0
+        - k8s-nsa-1.0
 ```
 
 ## Step 3: Run CIS Kubernetes Benchmark with kube-bench
@@ -157,12 +159,9 @@ spec:
           containers:
             - name: kube-bench
               image: aquasec/kube-bench:latest
-              command: ["kube-bench"]
+              command: ["/bin/sh", "-c"]
               args:
-                - run
-                - --targets=node
-                - --json
-                - --outputfile=/reports/kube-bench-$(date +%Y%m%d).json
+                - kube-bench run --targets=node --json --outputfile=/reports/kube-bench-$(date +%Y%m%d).json
               volumeMounts:
                 - name: var-lib-kubelet
                   mountPath: /var/lib/kubelet
@@ -221,16 +220,73 @@ spec:
         name: falcosecurity
         namespace: flux-system
   values:
+    services:
+      - name: k8saudit-webhook
+        type: NodePort
+        ports:
+          - port: 9765
+            nodePort: 32765
+            protocol: TCP
+    falcoctl:
+      artifact:
+        install:
+          enabled: true
+        follow:
+          enabled: true
+      config:
+        artifact:
+          install:
+            refs: [k8saudit-rules:0.5]
+          follow:
+            refs: [k8saudit-rules:0.5]
     driver:
       kind: modern_ebpf
     falco:
-      rules_file:
+      rules_files:
         - /etc/falco/falco_rules.yaml
         - /etc/falco/k8s_audit_rules.yaml
-        - /etc/falco/custom_rules.yaml
+        - /etc/falco/rules.d
+      plugins:
+        - name: k8saudit
+          library_path: libk8saudit.so
+          init_config: ""
+          open_params: "http://:9765/k8s-audit"
+        - name: json
+          library_path: libjson.so
+          init_config: ""
+      load_plugins: [k8saudit, json]
       json_output: true
       log_stderr: true
       log_syslog: false
+    customRules:
+      custom_rules.yaml: |-
+        # Alert if any process writes to a Kubernetes config file
+        - rule: Write to Kubernetes Configuration
+          desc: Detects writes to Kubernetes configuration files outside of Flux reconciliation
+          condition: >
+            open_write and
+            fd.name startswith /etc/kubernetes and
+            not proc.name in (kube-apiserver, kube-controller-manager, kube-scheduler)
+          output: >
+            Unexpected write to Kubernetes config
+            (user=%user.name command=%proc.cmdline file=%fd.name)
+          priority: WARNING
+          tags: [compliance, configuration-management]
+
+        # Alert on kubectl exec into production pods
+        - rule: Kubectl Exec to Production Pod
+          desc: Detects exec into pods in production namespace
+          condition: >
+            k8s_audit and
+            ka.verb=create and
+            ka.target.resource=pods/exec and
+            ka.target.namespace=production
+          output: >
+            kubectl exec into production pod
+            (user=%ka.user.name pod=%ka.target.name namespace=%ka.target.namespace)
+          priority: WARNING
+          source: k8s_audit
+          tags: [compliance, access-control]
     falcosidekick:
       enabled: true
       config:
@@ -240,17 +296,14 @@ spec:
           minimumpriority: warning
 ```
 
-Custom Falco rules for GitOps compliance:
+The `Kubectl Exec to Production Pod` rule requires Kubernetes audit logs to be forwarded to Falco's `k8saudit` plugin endpoint.
+
+Custom Falco rules for GitOps compliance are added through the Falco Helm chart's `customRules` value:
 
 ```yaml
-# infrastructure/scanning/falco-custom-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: falco-custom-rules
-  namespace: falco
-data:
-  custom_rules.yaml: |
+# Add under spec.values in infrastructure/scanning/falco.yaml
+customRules:
+  custom_rules.yaml: |-
     # Alert if any process writes to a Kubernetes config file
     - rule: Write to Kubernetes Configuration
       desc: Detects writes to Kubernetes configuration files outside of Flux reconciliation
@@ -276,6 +329,7 @@ data:
         kubectl exec into production pod
         (user=%ka.user.name pod=%ka.target.name namespace=%ka.target.namespace)
       priority: WARNING
+      source: k8s_audit
       tags: [compliance, access-control]
 ```
 
@@ -314,10 +368,9 @@ cat >> "$OUTPUT" << 'EOF'
 ## CIS Benchmark Status
 EOF
 
-kubectl get compliancereports \
-  --all-namespaces \
+kubectl get clustercompliancereports \
   -o json \
-  | jq -r '.items[] | "\(.metadata.name): \(.report.summary.passCount) pass, \(.report.summary.failCount) fail"' \
+  | jq -r '.items[] | "\(.metadata.name): \(.status.summary.passCount) pass, \(.status.summary.failCount) fail"' \
   >> "$OUTPUT"
 
 echo "Report generated: $OUTPUT"
@@ -333,9 +386,10 @@ metadata:
   name: compliance-scan-failure
   namespace: flux-system
 spec:
-  summary: "Compliance scan detected critical finding"
   providerRef:
     name: pagerduty-critical
+  eventMetadata:
+    summary: "Compliance scan detected critical finding"
   eventSeverity: error
   eventSources:
     - kind: Kustomization
