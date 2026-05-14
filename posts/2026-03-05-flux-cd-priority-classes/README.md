@@ -8,14 +8,15 @@ Description: Learn how to assign Kubernetes Priority Classes to Flux CD controll
 
 ---
 
-Kubernetes Priority Classes determine the scheduling order and eviction priority of pods. When node resources are scarce, the scheduler evicts lower-priority pods to make room for higher-priority ones. Flux CD controllers are critical infrastructure components -- if they are evicted, your cluster stops reconciling its desired state from Git. Assigning appropriate Priority Classes to Flux controllers ensures they remain running even during resource contention.
+Kubernetes Priority Classes determine the scheduling order and preemption priority of pods. If a high-priority pod cannot be scheduled, the scheduler may preempt lower-priority pods to make room for it. The kubelet also considers pod priority when choosing pods for node-pressure eviction. Flux CD controllers are critical infrastructure components -- if they are evicted, your cluster stops reconciling its desired state from Git. Assigning appropriate Priority Classes to Flux controllers helps keep them running during resource contention.
 
 ## Understanding Priority Classes
 
-A PriorityClass is a cluster-scoped resource that assigns a numeric priority value to pods. Kubernetes uses this value in two ways:
+A PriorityClass is a cluster-scoped resource that assigns a numeric priority value to pods. Kubernetes uses this value in three ways:
 
 1. **Scheduling**: Higher-priority pods are scheduled before lower-priority pods when resources are limited.
 2. **Preemption**: If a high-priority pod cannot be scheduled, the scheduler may evict lower-priority pods to free resources.
+3. **Node-pressure eviction order**: When the kubelet must evict pods to reclaim node resources, pod priority is one of the factors it uses to choose eviction order.
 
 Kubernetes ships with two built-in Priority Classes:
 - `system-cluster-critical` (priority value: 2000000000)
@@ -115,7 +116,7 @@ kubectl apply -f infrastructure/priority-classes/flux-critical.yaml
 kubectl apply -f infrastructure/priority-classes/flux-standard.yaml
 ```
 
-Option 2: Include the Priority Classes in the gotk-components.yaml file before the controller Deployments. Since YAML documents are applied in order, this ensures the Priority Classes exist first.
+Option 2: Include the Priority Classes in the gotk-components.yaml file and apply them before the controller Deployments during the initial bootstrap. This is useful for the first `kubectl apply`, but for ongoing GitOps management, prefer explicit dependency ordering.
 
 Option 3: Use a separate Flux Kustomization with dependency ordering:
 
@@ -240,15 +241,14 @@ To verify that Flux controllers survive resource pressure:
 ```bash
 # Create a pod that consumes significant resources (test only)
 kubectl run resource-hog --image=nginx \
-  --requests='cpu=4,memory=8Gi' \
-  --limits='cpu=4,memory=8Gi' \
-  --restart=Never
+  --restart=Never \
+  --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"resource-hog","image":"nginx","resources":{"requests":{"cpu":"4","memory":"8Gi"},"limits":{"cpu":"4","memory":"8Gi"}}}]}}'
 
 # Check if Flux pods remain scheduled
 kubectl get pods -n flux-system -o wide
 ```
 
-If the node cannot accommodate both the resource-hog pod and Flux controllers, the resource-hog should be preempted (or fail to schedule) because it has a lower priority.
+If the node cannot accommodate both the resource-hog pod and Flux controllers, the resource-hog should fail to schedule rather than causing Flux pods to be preempted. If Flux controllers need to be rescheduled later, they can preempt lower-priority workloads.
 
 ## Summary
 
