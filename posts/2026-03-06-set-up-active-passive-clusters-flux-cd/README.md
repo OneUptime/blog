@@ -57,6 +57,8 @@ fleet-infra/
         kustomization.yaml
         ingress-nginx/
           helmrelease.yaml
+        external-dns/
+          helmrelease.yaml
     active/                  # Active cluster overrides
       flux-system/
         gotk-components.yaml
@@ -64,6 +66,7 @@ fleet-infra/
         kustomization.yaml
       apps.yaml
       infrastructure.yaml
+      dns-failover.yaml
     passive/                 # Passive cluster overrides
       flux-system/
         gotk-components.yaml
@@ -71,6 +74,7 @@ fleet-infra/
         kustomization.yaml
       apps.yaml
       infrastructure.yaml
+      dns-failover.yaml
 ```
 
 ### Shared Base Configuration
@@ -230,7 +234,7 @@ spec:
           name: any
           annotations:
             # Do not serve traffic in passive mode
-            external-dns.alpha.kubernetes.io/exclude: "true"
+            external-dns.alpha.kubernetes.io/controller: standby
 ```
 
 ## Step 5: Configure DNS-Based Failover
@@ -249,17 +253,25 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
         namespace: flux-system
   values:
-    provider: aws
-    # Configure Route53 health checks for automatic failover
-    aws:
-      zoneType: public
-      evaluateTargetHealth: true
+    provider:
+      name: aws
+    sources:
+      - service
+      - ingress
+      - crd
+    extraArgs:
+      - --aws-zone-type=public
+      # Evaluate target health for AWS alias records.
+      # Route53 health checks must be created separately and referenced below.
+      - --aws-evaluate-target-health
+    managedRecordTypes:
+      - A
     domainFilters:
       - example.com
 ```
@@ -325,8 +337,10 @@ echo "Starting failover to passive cluster..."
 echo "Scaling up passive cluster..."
 KUBECONFIG=$PASSIVE_KUBECONFIG kubectl get deployments -A \
   -l app.kubernetes.io/managed-by=flux \
-  -o name | while read deploy; do
-    KUBECONFIG=$PASSIVE_KUBECONFIG kubectl scale "$deploy" --replicas=3 -A
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+  while read -r namespace deploy; do
+    KUBECONFIG=$PASSIVE_KUBECONFIG kubectl scale deployment "$deploy" \
+      --replicas=3 -n "$namespace"
 done
 
 # Step 2: Wait for passive cluster pods to be ready
@@ -335,6 +349,8 @@ KUBECONFIG=$PASSIVE_KUBECONFIG kubectl wait --for=condition=available \
   deployment --all -n default --timeout=300s
 
 # Step 3: Update DNS to point to passive cluster
+# Skip this step if you are using the Route53 failover records above;
+# Route53 will switch to the SECONDARY record when the PRIMARY health check fails.
 echo "Updating DNS records..."
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z123456789 \
@@ -376,28 +392,32 @@ spec:
           serviceAccountName: failover-controller
           containers:
             - name: watcher
-              image: curlimages/curl:latest
+              image: alpine/k8s:1.34.1
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Check if active cluster health endpoint is responding
-                  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-                    --connect-timeout 5 \
-                    https://health.active.example.com/readyz || echo "000")
+                  FAIL_COUNT=0
+                  for attempt in 1 2 3; do
+                    # Check if active cluster health endpoint is responding
+                    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                      --connect-timeout 5 \
+                      https://health.active.example.com/readyz || echo "000")
 
-                  if [ "$HTTP_CODE" != "200" ]; then
-                    FAIL_COUNT_FILE="/tmp/failover-count"
-                    CURRENT_COUNT=$(cat $FAIL_COUNT_FILE 2>/dev/null || echo "0")
-                    NEW_COUNT=$((CURRENT_COUNT + 1))
-                    echo $NEW_COUNT > $FAIL_COUNT_FILE
-
-                    # Trigger failover after 3 consecutive failures
-                    if [ "$NEW_COUNT" -ge 3 ]; then
-                      echo "Active cluster unreachable. Initiating failover..."
-                      # Scale up workloads on this (passive) cluster
-                      kubectl scale deployment --all --replicas=3 -n default
+                    if [ "$HTTP_CODE" = "200" ]; then
+                      FAIL_COUNT=0
+                      break
                     fi
+
+                    FAIL_COUNT=$((FAIL_COUNT + 1))
+                    sleep 10
+                  done
+
+                  # Trigger failover after 3 consecutive failures
+                  if [ "$FAIL_COUNT" -ge 3 ]; then
+                    echo "Active cluster unreachable. Initiating failover..."
+                    # Scale up workloads on this (passive) cluster
+                    kubectl scale deployment --all --replicas=3 -n default
                   fi
           restartPolicy: OnFailure
 ```
@@ -428,6 +448,8 @@ KUBECONFIG=$ACTIVE_KUBECONFIG kubectl wait --for=condition=available \
   deployment --all -n default --timeout=300s
 
 # Step 3: Update DNS to point back to active cluster
+# Skip this step if you are using the Route53 failover records above;
+# Route53 will switch back to the PRIMARY record when its health check is healthy.
 echo "Updating DNS to active cluster..."
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z123456789 \
@@ -447,8 +469,10 @@ aws route53 change-resource-record-sets \
 echo "Scaling down passive cluster..."
 KUBECONFIG=$PASSIVE_KUBECONFIG kubectl get deployments -A \
   -l app.kubernetes.io/managed-by=flux \
-  -o name | while read deploy; do
-    KUBECONFIG=$PASSIVE_KUBECONFIG kubectl scale "$deploy" --replicas=1 -A
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+  while read -r namespace deploy; do
+    KUBECONFIG=$PASSIVE_KUBECONFIG kubectl scale deployment "$deploy" \
+      --replicas=1 -n "$namespace"
 done
 
 echo "Failback complete."
@@ -468,7 +492,7 @@ KUBECONFIG=~/.kube/active-cluster.yaml kubectl get deployments -A -o wide
 KUBECONFIG=~/.kube/passive-cluster.yaml kubectl get deployments -A -o wide
 
 # Simulate active cluster failure (in a test environment)
-KUBECONFIG=~/.kube/active-cluster.yaml kubectl cordon --all
+KUBECONFIG=~/.kube/active-cluster.yaml sh -c 'kubectl get nodes -o name | xargs -r kubectl cordon'
 # Then run the failover script and verify
 
 # Run a failover drill monthly
