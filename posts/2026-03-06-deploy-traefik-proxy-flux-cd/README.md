@@ -85,7 +85,7 @@ spec:
   chart:
     spec:
       chart: traefik
-      version: "31.x"
+      version: "40.x"
       sourceRef:
         kind: HelmRepository
         name: traefik
@@ -121,23 +121,41 @@ spec:
         exposedPort: 80
         protocol: TCP
         # Redirect HTTP to HTTPS
-        redirectTo:
-          port: websecure
-          priority: 10
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              priority: 10
+        transport:
+          lifeCycle:
+            graceTimeOut: 30s
 
       # HTTPS entrypoint
       websecure:
         port: 8443
         exposedPort: 443
         protocol: TCP
-        tls:
-          enabled: true
+        http:
+          tls:
+            enabled: true
+        transport:
+          lifeCycle:
+            graceTimeOut: 30s
 
       # Metrics entrypoint
       metrics:
         port: 9100
         exposedPort: 9100
         protocol: TCP
+
+      # PostgreSQL TCP entrypoint
+      postgres:
+        port: 5432
+        exposedPort: 5432
+        protocol: TCP
+        expose:
+          default: true
 
     # Service configuration
     service:
@@ -193,8 +211,7 @@ spec:
         service:
           enabled: true
         serviceMonitor:
-          enabled: true
-          namespace: monitoring
+          enabled: false
 
     # Pod disruption budget
     podDisruptionBudget:
@@ -227,9 +244,6 @@ spec:
     additionalArguments:
       # Enable access log buffering
       - "--accesslog.bufferingsize=100"
-      # Set graceful timeout
-      - "--entrypoints.web.transport.lifecycle.gracetimeout=30s"
-      - "--entrypoints.websecure.transport.lifecycle.gracetimeout=30s"
 ```
 
 ## Flux Kustomization for Traefik
@@ -575,8 +589,8 @@ kubectl get events -n traefik --sort-by='.lastTimestamp'
 kubectl get ingressroutes -A
 
 # Check Traefik dashboard for loaded routers
-kubectl port-forward -n traefik svc/traefik 9000:9000
-# Visit http://localhost:9000/dashboard/
+kubectl port-forward -n traefik deployment/traefik 8080:8080
+# Visit http://localhost:8080/dashboard/
 
 # View Traefik access logs
 kubectl logs -n traefik -l app.kubernetes.io/name=traefik --tail=50
