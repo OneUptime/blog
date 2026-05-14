@@ -8,7 +8,7 @@ Description: Learn how to use the flux create tenant command to quickly set up t
 
 ---
 
-The `flux create tenant` command is a built-in CLI tool that simplifies tenant creation in multi-tenant Flux CD environments. It generates the namespace, service account, and RBAC bindings needed for a tenant in a single command. This guide covers all the options and patterns for using this command effectively.
+The `flux create tenant` command is a built-in CLI tool that simplifies tenant creation in multi-tenant Flux CD environments. It generates the namespace, service account, and RBAC bindings needed for a tenant in a single command. The command is currently marked as preview in the Flux CLI documentation, so check the CLI help for your Flux version before automating it broadly. This guide covers common options and patterns for using this command effectively.
 
 ## What flux create tenant Creates
 
@@ -16,9 +16,9 @@ When you run `flux create tenant`, it generates three types of resources:
 
 1. A Namespace for the tenant
 2. A ServiceAccount within that namespace
-3. A RoleBinding that grants the service account permissions within the namespace
+3. A RoleBinding that grants the service account and Flux reconciler user permissions within the namespace
 
-These are the foundational resources needed for Flux to reconcile tenant-specific Kustomizations under the tenant's identity.
+These are the foundational resources needed for Flux to reconcile tenant-specific Kustomizations under the tenant's identity when the Flux Kustomization or HelmRelease uses the generated service account, or when multi-tenancy lockdown configures a tenant default service account.
 
 ## Basic Usage
 
@@ -109,7 +109,7 @@ flux create tenant team-alpha \
   --export > team-alpha-tenant.yaml
 ```
 
-The custom ClusterRole must already exist in the cluster. The generated RoleBinding will reference it instead of `cluster-admin`.
+The custom ClusterRole must exist by the time the generated RoleBinding is applied. The generated RoleBinding will reference it instead of `cluster-admin`.
 
 ```yaml
 # Generated RoleBinding with custom cluster role
