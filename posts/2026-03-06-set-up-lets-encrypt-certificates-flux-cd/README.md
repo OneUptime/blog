@@ -16,7 +16,7 @@ This guide focuses specifically on Let's Encrypt integration, covering both HTTP
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.24 or later)
+- A Kubernetes cluster version supported by your installed Flux CD and cert-manager releases
 - Flux CD installed and bootstrapped
 - cert-manager installed (see our cert-manager guide)
 - A registered domain name with DNS management access
@@ -24,7 +24,7 @@ This guide focuses specifically on Let's Encrypt integration, covering both HTTP
 
 ## Understanding ACME Challenges
 
-Let's Encrypt uses the ACME protocol to verify domain ownership. There are two primary challenge types.
+Let's Encrypt uses the ACME protocol to verify domain ownership. For cert-manager Kubernetes workflows, the two common challenge types are HTTP-01 and DNS-01.
 
 ```mermaid
 graph TD
@@ -123,7 +123,7 @@ spec:
     name: letsencrypt-production
     kind: ClusterIssuer
   # Certificate validity and renewal timing
-  duration: 2160h     # 90 days (Let's Encrypt default)
+  duration: 2160h     # Request 90 days; the issuer may choose the actual lifetime
   renewBefore: 720h   # Renew 30 days before expiry
   # Domain names to include in the certificate
   dnsNames:
@@ -197,7 +197,7 @@ spec:
             - "example.com"
 ```
 
-For AWS, the recommended approach is to use IRSA. Add this annotation to the cert-manager ServiceAccount.
+For EKS, you can use ambient credentials with EKS Pod Identity or IRSA. If you use IRSA, add this annotation to the cert-manager ServiceAccount.
 
 ```yaml
 # Patch for cert-manager service account
