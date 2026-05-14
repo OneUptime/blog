@@ -172,83 +172,89 @@ spec:
   wait: true
 ```
 
-```yaml
-# In fleet-infra-production: clusters/prod-us-east-1/infrastructure-patches.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infrastructure-patches
-  namespace: flux-system
-spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./infrastructure
-  prune: true
-  dependsOn:
-    - name: infrastructure-base
-```
+Environment-specific patches should be configured on the Flux Kustomization that renders the base source. A separate Kustomization that points at the environment repository will apply its own manifests, but it will not patch the manifests rendered from `fleet-infra-base`.
 
 ## Environment-Specific Configurations
 
 ### Development Environment
 
 ```yaml
-# fleet-infra-dev/infrastructure/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
+# fleet-infra-dev/clusters/dev-cluster/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-patches:
-  # Use minimal resources in development
-  - patch: |
-      apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      metadata:
+metadata:
+  name: infrastructure-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra-base
+  path: ./infrastructure
+  prune: true
+  wait: true
+  patches:
+    # Use minimal resources in development
+    - patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: ingress-nginx
+        spec:
+          values:
+            controller:
+              replicaCount: 1
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+      target:
+        kind: HelmRelease
         name: ingress-nginx
-      spec:
-        values:
-          controller:
-            replicaCount: 1
-            resources:
-              requests:
-                cpu: 50m
-                memory: 64Mi
-    target:
-      kind: HelmRelease
-      name: ingress-nginx
 ```
 
 ### Production Environment
 
 ```yaml
-# fleet-infra-production/infrastructure/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
+# fleet-infra-production/clusters/prod-us-east-1/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-patches:
-  # High availability settings for production
-  - patch: |
-      apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      metadata:
+metadata:
+  name: infrastructure-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra-base
+  path: ./infrastructure
+  prune: true
+  wait: true
+  patches:
+    # High availability settings for production
+    - patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: ingress-nginx
+        spec:
+          values:
+            controller:
+              replicaCount: 3
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  cpu: 1000m
+                  memory: 512Mi
+              autoscaling:
+                enabled: true
+                minReplicas: 3
+                maxReplicas: 10
+      target:
+        kind: HelmRelease
         name: ingress-nginx
-      spec:
-        values:
-          controller:
-            replicaCount: 3
-            resources:
-              requests:
-                cpu: 200m
-                memory: 256Mi
-              limits:
-                cpu: 1000m
-                memory: 512Mi
-            autoscaling:
-              enabled: true
-              minReplicas: 3
-              maxReplicas: 10
-    target:
-      kind: HelmRelease
-      name: ingress-nginx
 ```
 
 ## Promotion Workflow
@@ -290,9 +296,10 @@ git checkout -b "promote-${VERSION}"
 
 # Update the base repo reference to the new version
 # Find and update all GitRepository resources pointing to fleet-infra-base
+export VERSION
 find . -name "*.yaml" -exec grep -l "fleet-infra-base" {} \; | while read -r file; do
   # Update the tag reference
-  sed -i '' "s/tag: v[0-9]\+\.[0-9]\+\.[0-9]\+/tag: ${VERSION}/" "$file"
+  perl -0pi -e 's/(name:\s*fleet-infra-base\b(?:(?!\n---).)*?\n\s*tag:\s*)v\d+\.\d+\.\d+/${1}$ENV{VERSION}/sg' "$file"
 done
 
 # Commit and push
@@ -313,7 +320,7 @@ echo "Pull request created for promotion"
 
 Set up different access controls for each repository:
 
-```yaml
+```text
 # Example GitHub CODEOWNERS for production repo
 # fleet-infra-production/.github/CODEOWNERS
 
@@ -352,8 +359,8 @@ git clone git@github.com:my-org/fleet-infra-staging.git /tmp/staging
 git clone git@github.com:my-org/fleet-infra-production.git /tmp/production
 
 # Compare the base repo version references
-STAGING_VERSION=$(grep -r "tag:" /tmp/staging/clusters/ | grep fleet-infra-base | head -1 | awk '{print $NF}')
-PROD_VERSION=$(grep -r "tag:" /tmp/production/clusters/ | grep fleet-infra-base | head -1 | awk '{print $NF}')
+STAGING_VERSION=$(find /tmp/staging/clusters -name "*.yaml" -print0 | xargs -0 awk '/name: fleet-infra-base/{found=1} found && /^[[:space:]]*tag:/{print $2; exit}')
+PROD_VERSION=$(find /tmp/production/clusters -name "*.yaml" -print0 | xargs -0 awk '/name: fleet-infra-base/{found=1} found && /^[[:space:]]*tag:/{print $2; exit}')
 
 echo "Staging base version: $STAGING_VERSION"
 echo "Production base version: $PROD_VERSION"
