@@ -18,9 +18,10 @@ The Azure Arc GitOps extension installs Flux CD as a managed component and allow
 
 - A Kubernetes cluster (any distribution: k3s, Rancher, EKS, GKE, on-premises, etc.)
 - kubectl configured to access the cluster
-- Azure CLI (v2.50 or later)
+- Azure CLI (latest version; v2.70 or later for the current `connectedk8s` extension)
 - An Azure subscription
 - Outbound connectivity from the cluster to Azure endpoints
+- Flux CLI installed locally if you want to use the `flux get all` troubleshooting command
 
 ## Architecture
 
@@ -175,7 +176,7 @@ az k8s-configuration flux create \
     name=applications \
     path=./apps/production \
     prune=true \
-    dependsOn=["infrastructure"] \
+    depends_on=infrastructure \
     sync_interval=5m
 ```
 
@@ -271,7 +272,7 @@ az k8s-configuration flux create \
     name=apps \
     path=./apps/overlays/onprem-dc1 \
     prune=true \
-    dependsOn=["infra"]
+    depends_on=infra
 
 # Configure the on-premises datacenter 2 cluster
 az k8s-configuration flux create \
@@ -291,7 +292,7 @@ az k8s-configuration flux create \
     name=apps \
     path=./apps/overlays/onprem-dc2 \
     prune=true \
-    dependsOn=["infra"]
+    depends_on=infra
 ```
 
 ## Step 7: Use Azure Policy for Arc GitOps Compliance
@@ -303,16 +304,22 @@ Enforce that all Arc-connected clusters have a GitOps configuration applied.
 az policy assignment create \
   --name "enforce-gitops-config" \
   --display-name "All Arc clusters must have GitOps configured" \
-  --policy "171dd5ba-a076-4db9-be0a-8d23b46fbc93" \
+  --policy "83ea2fd1-9eaf-2f6d-f672-cd7b2ac798f6" \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}" \
+  --mi-system-assigned \
+  --identity-scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}" \
+  --role Contributor \
+  --location $LOCATION \
   --params '{
-    "configurationName": "cluster-baseline",
-    "sourceKind": "GitRepository",
-    "url": "https://github.com/my-org/fleet-infra",
-    "branch": "main",
-    "kustomizationName": "infrastructure",
-    "kustomizationPath": "./infrastructure/base",
-    "effect": "deployIfNotExists"
+    "configurationName": { "value": "cluster-baseline" },
+    "configurationNamespace": { "value": "flux-system" },
+    "configurationScope": { "value": "cluster" },
+    "repositoryUrl": { "value": "https://github.com/my-org/fleet-infra" },
+    "repositoryRefBranch": { "value": "main" },
+    "kustomizationName": { "value": "infrastructure" },
+    "kustomizationPath": { "value": "./infrastructure/base" },
+    "kustomizationPrune": { "value": true },
+    "effect": { "value": "DeployIfNotExists" }
   }'
 ```
 
@@ -451,8 +458,8 @@ az k8s-extension show \
   --name flux \
   --query "{State:provisioningState, Error:errorInfo}"
 
-# Check for Helm release issues
-kubectl get helmreleases -n flux-system
+# Check Flux namespace events for installation issues
+kubectl get events -n flux-system --sort-by=.lastTimestamp
 ```
 
 ### GitOps Configuration Not Compliant
