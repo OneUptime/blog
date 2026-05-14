@@ -29,7 +29,7 @@ Each Git provider has its own process for generating tokens. The token needs rea
 
 **GitLab**: Go to **Settings > Access Tokens**. Create a token with the `read_repository` scope.
 
-**Bitbucket**: Go to **Personal settings > App passwords**. Create a password with **Repositories: Read** permission.
+**Bitbucket**: Go to **Personal settings > API tokens**. Create an API token with **Repositories: Read** permission.
 
 Store the token securely. You will need it in the next step.
 
@@ -46,7 +46,7 @@ kubectl create secret generic my-app-git-https \
   --from-literal=password=ghp_YOUR_PERSONAL_ACCESS_TOKEN
 ```
 
-For GitHub, the username can be any non-empty string when using a fine-grained PAT, but it is conventional to use your GitHub username. For GitLab, use `oauth2` as the username when using a project or personal access token.
+For GitHub, the username can be any non-empty string when using a fine-grained PAT, but it is conventional to use your GitHub username. For GitLab, the username can be any non-empty string when using a personal or project access token.
 
 You can also use the Flux CLI to create the Secret.
 
@@ -123,7 +123,7 @@ kubectl events -n flux-system --for gitrepository/my-app
 
 ## Handling Self-Signed TLS Certificates
 
-If your Git server uses a self-signed certificate or an internal certificate authority, Flux will fail to connect by default because the certificate cannot be verified. You can provide the CA certificate to Flux through the same Secret or a separate one.
+If your Git server uses a self-signed certificate or an internal certificate authority, Flux will fail to connect by default because the certificate cannot be verified. You can provide the CA certificate to Flux through the referenced Secret.
 
 First, add the CA certificate to the Secret.
 
@@ -133,10 +133,10 @@ kubectl create secret generic my-app-git-https \
   --namespace=flux-system \
   --from-literal=username=my-username \
   --from-literal=password=my-token \
-  --from-file=caFile=./ca-cert.pem
+  --from-file=ca.crt=./ca-cert.pem
 ```
 
-The GitRepository manifest remains the same. The Source Controller automatically picks up the `caFile` field from the referenced Secret.
+The GitRepository manifest remains the same. The Source Controller automatically picks up the `ca.crt` field from the referenced Secret.
 
 ```yaml
 # gitrepository-self-signed.yaml - GitRepository with self-signed cert support
@@ -177,7 +177,7 @@ stringData:
 ### GitLab
 
 ```yaml
-# GitLab HTTPS Secret - use oauth2 as username with access tokens
+# GitLab HTTPS Secret
 apiVersion: v1
 kind: Secret
 metadata:
@@ -185,8 +185,8 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  # GitLab requires 'oauth2' as username when using access tokens
-  username: oauth2
+  # Use any non-empty username with personal or project access tokens
+  username: my-gitlab-user
   # Use a project or personal access token
   password: glpat-xxxxxxxxxxxxxxxxxxxx
 ```
@@ -203,7 +203,7 @@ metadata:
 type: Opaque
 stringData:
   username: my-bitbucket-user
-  # Use an app password
+  # Use an API token with Repositories: Read permission
   password: xxxxxxxxxxxxxxxxxxxx
 ```
 
