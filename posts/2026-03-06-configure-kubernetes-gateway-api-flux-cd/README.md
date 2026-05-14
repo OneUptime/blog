@@ -16,7 +16,7 @@ This guide demonstrates how to set up the Gateway API with Flux CD, deploy a com
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.26 or later recommended)
+- A Kubernetes cluster (v1.32 through v1.35 for Envoy Gateway v1.7)
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A Git repository connected to Flux CD
@@ -48,15 +48,15 @@ First, install the Gateway API CRDs using a Flux Kustomization that pulls from t
 # clusters/my-cluster/gateway-api/crds-source.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
+kind: GitRepository
 metadata:
   name: gateway-api-crds
   namespace: flux-system
 spec:
   interval: 12h
-  url: oci://ghcr.io/fluxcd/manifests/gateway-api
+  url: https://github.com/kubernetes-sigs/gateway-api
   ref:
-    tag: v1.2.0
+    tag: v1.4.1
 ```
 
 ```yaml
@@ -69,9 +69,9 @@ metadata:
 spec:
   interval: 1h
   sourceRef:
-    kind: OCIRepository
+    kind: GitRepository
     name: gateway-api-crds
-  path: ./
+  path: ./config/crd
   prune: false
   wait: true
 ```
@@ -81,15 +81,25 @@ spec:
 The Gateway API requires a controller implementation. We will use Envoy Gateway as the controller.
 
 ```yaml
-# clusters/my-cluster/sources/envoy-gateway-helmrepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+# clusters/my-cluster/sources/envoy-gateway-ocirepository.yaml
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: envoy-gateway
-  namespace: flux-system
+  name: envoy-gateway-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: gateway-helm
+  namespace: envoy-gateway-system
 spec:
   interval: 1h
-  url: https://gateway.envoyproxy.io/charts
+  url: oci://docker.io/envoyproxy/gateway-helm
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    tag: v1.7.3
 ```
 
 ```yaml
@@ -100,18 +110,15 @@ metadata:
   name: envoy-gateway
   namespace: envoy-gateway-system
 spec:
-  interval: 30m
-  chart:
-    spec:
-      chart: gateway-helm
-      version: "1.2.x"
-      sourceRef:
-        kind: HelmRepository
-        name: envoy-gateway
-        namespace: flux-system
-      interval: 12h
-  install:
-    createNamespace: true
+  interval: 5m
+  releaseName: eg
+  chartRef:
+    kind: OCIRepository
+    name: gateway-helm
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 5m
   values:
     # Controller configuration
     config:
@@ -120,13 +127,15 @@ spec:
           level:
             default: info
     # Resource limits for the controller
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    deployment:
+      envoyGateway:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
 ```
 
 ## Creating a GatewayClass
@@ -169,6 +178,7 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
+      hostname: "app.example.com"
       tls:
         mode: Terminate
         certificateRefs:
@@ -189,10 +199,7 @@ spec:
             name: api-tls-secret
       allowedRoutes:
         namespaces:
-          from: Selector
-          selector:
-            matchLabels:
-              gateway-access: "true"
+          from: Same
 ```
 
 ## Configuring HTTPRoutes
@@ -237,7 +244,7 @@ metadata:
 spec:
   parentRefs:
     - name: main-gateway
-      sectionName: https
+      sectionName: api-https
   hostnames:
     - "api.example.com"
   rules:
