@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
-Description: A guide to configuring Azure CNI Delegated IPAM with Cilium on AKS, giving Cilium control over pod IP address management while retaining Azure VNet integration.
+Description: A guide to configuring Azure CNI Delegated IPAM with Cilium on AKS, using AKS-managed delegated IP address management while retaining Azure VNet integration.
 
 ---
 
 ## Introduction
 
-Azure CNI Delegated IPAM is a mode where Cilium takes responsibility for assigning pod IP addresses rather than Azure's default IPAM mechanism. In this configuration, Azure handles the node-level networking and VNet connectivity, while Cilium manages the pod IP address pool using its own IPAM engine.
+Azure CNI Delegated IPAM is the IPAM model used by Azure CNI powered by Cilium. In this configuration, Azure handles the node-level networking and VNet connectivity, while the delegated IPAM component works with Cilium CNI to allocate pod addresses from Azure-managed pod address space.
 
-This approach provides greater flexibility in IP address management, particularly for clusters with dense pod deployments or specific IP addressing requirements. Cilium can use either cluster-scope or multi-pool IPAM modes, allowing fine-grained control over which IP ranges are used for different workloads.
+This approach provides greater flexibility in IP address management, particularly for clusters with dense pod deployments or specific IP addressing requirements. On AKS, pod IPs can be assigned from an overlay network or from a pod subnet in the virtual network.
 
-This guide walks through enabling Azure CNI Delegated IPAM with Cilium, configuring IP pools, and verifying that pods receive addresses from the Cilium-managed range.
+This guide walks through enabling Azure CNI Delegated IPAM with Cilium, inspecting delegated IPAM resources, and verifying that pods receive addresses from the delegated pod subnet.
 
 ## Prerequisites
 
@@ -34,38 +34,53 @@ RESOURCE_GROUP="my-rg"
 CLUSTER_NAME="cilium-delegated-ipam"
 LOCATION="eastus"
 VNET_NAME="aks-vnet"
-SUBNET_NAME="aks-subnet"
+NODE_SUBNET_NAME="aks-node-subnet"
+POD_SUBNET_NAME="aks-pod-subnet"
 
-# Create a VNet and subnet with sufficient address space
+# Create a VNet with separate node and pod subnets
 az network vnet create \
   --resource-group $RESOURCE_GROUP \
   --name $VNET_NAME \
   --address-prefix 10.0.0.0/8 \
-  --subnet-name $SUBNET_NAME \
+  --subnet-name $NODE_SUBNET_NAME \
   --subnet-prefix 10.240.0.0/16
 
-# Get the subnet ID for cluster creation
-SUBNET_ID=$(az network vnet subnet show \
+az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
-  --name $SUBNET_NAME \
+  --name $POD_SUBNET_NAME \
+  --address-prefixes 10.241.0.0/16
+
+# Get the subnet IDs for cluster creation
+NODE_SUBNET_ID=$(az network vnet subnet show \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name $VNET_NAME \
+  --name $NODE_SUBNET_NAME \
+  --query id -o tsv)
+
+POD_SUBNET_ID=$(az network vnet subnet show \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name $VNET_NAME \
+  --name $POD_SUBNET_NAME \
   --query id -o tsv)
 
 # Create the AKS cluster with Azure CNI and Cilium dataplane (delegated IPAM)
 az aks create \
   --resource-group $RESOURCE_GROUP \
   --name $CLUSTER_NAME \
+  --location $LOCATION \
   --network-plugin azure \
   --network-dataplane cilium \
-  --vnet-subnet-id $SUBNET_ID \
-  --pod-cidr 192.168.0.0/16 \
+  --vnet-subnet-id $NODE_SUBNET_ID \
+  --pod-subnet-id $POD_SUBNET_ID \
+  --max-pods 250 \
   --node-count 3 \
   --generate-ssh-keys
 ```
 
 ## Step 2: Verify Cilium IPAM Configuration
 
-After cluster creation, verify that Cilium is managing IP addresses.
+After cluster creation, verify that Azure delegated IPAM is active.
 
 ```bash
 # Get credentials and check cluster health
@@ -79,56 +94,36 @@ cilium status
 # Check Cilium IPAM configuration
 cilium config view | grep -i ipam
 
-# Inspect CiliumNode objects to see IP allocations per node
-kubectl get ciliumnodes -o yaml | grep -A5 "ipam:"
+# Inspect NodeNetworkConfig objects to see Azure delegated IPAM allocations
+kubectl get nodenetworkconfigs -n kube-system -o wide
 ```
 
 ## Step 3: Inspect IP Address Allocation
 
-Verify that pods are receiving IPs from the Cilium-managed CIDR.
+Verify that pods are receiving IPs from the delegated pod subnet.
 
 ```bash
 # List all pods with their IP addresses
 kubectl get pods -A -o wide
 
-# Check the IP allocations on a specific CiliumNode
+# Check the IP allocations on a specific NodeNetworkConfig
 NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-kubectl get ciliumnode $NODE_NAME -o jsonpath='{.spec.ipam}' | python3 -m json.tool
+kubectl get nodenetworkconfig $NODE_NAME -n kube-system -o yaml
 
-# Verify pod IPs are in the delegated IPAM range (192.168.0.0/16)
+# Verify pod IPs are in the delegated pod subnet range (10.241.0.0/16)
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.podIP}{"\n"}{end}'
 ```
 
-## Step 4: Configure IP Pool Customization
+## Step 4: Inspect Delegated IPAM Configuration
 
-For advanced deployments, customize the IP pools Cilium uses for pod addresses.
-
-```yaml
-# cilium-ipam-config.yaml
-# Configure Cilium IPAM with custom pool settings
-# This is applied as a Helm values override
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cilium-config
-  namespace: kube-system
-data:
-  # Use cluster-scope IPAM mode for Azure CNI delegated
-  ipam: "cluster-pool"
-  # Define the cluster-wide pod CIDR
-  cluster-pool-ipv4-cidr: "192.168.0.0/16"
-  # Each node gets a /24 block from the cluster pool
-  cluster-pool-ipv4-mask-size: "24"
-```
+For AKS-managed Azure CNI powered by Cilium, AKS manages the Cilium installation and most Cilium configuration values. Customizing `ipam.mode` or applying Helm overrides to the managed `cilium-config` ConfigMap is not supported. Configure the pod address range at cluster creation time with either `--pod-cidr` for overlay clusters or `--pod-subnet-id` for pod-subnet clusters.
 
 ```bash
-# Apply the ConfigMap changes via Helm upgrade
-helm upgrade cilium cilium/cilium \
-  --namespace kube-system \
-  --reuse-values \
-  --set ipam.mode=cluster-pool \
-  --set ipam.operator.clusterPoolIPv4PodCIDRList="192.168.0.0/16" \
-  --set ipam.operator.clusterPoolIPv4MaskSize=24
+# Confirm Cilium is using the delegated IPAM plugin
+cilium config view | grep -E "ipam|local-router-ipv4"
+
+# Inspect delegated IPAM resources created for nodes
+kubectl get nodenetworkconfigs -n kube-system -o yaml
 ```
 
 ## Step 5: Verify Pod Connectivity
@@ -149,12 +144,12 @@ cilium endpoint list
 
 ## Best Practices
 
-- Plan your pod CIDR to avoid overlap with VNet address space and on-premises networks
-- Use `/24` per-node blocks to balance address utilization and route table size
-- Monitor Cilium IPAM metrics (`cilium_ipam_*`) for address exhaustion alerts
-- Enable Hubble to trace IPAM-related connectivity issues
-- Review Azure IP limits per VM SKU - larger nodes can hold more Cilium IP pools
+- Plan your pod CIDR or pod subnet to avoid overlap with service CIDRs and on-premises networks
+- For pod-subnet dynamic IP allocation, plan for IPs to be allocated to nodes in batches of 16
+- Monitor Azure pod subnet IP usage for address exhaustion alerts
+- Enable Advanced Container Networking Services when you need managed network observability features
+- Review Azure CNI pod limits when selecting `--max-pods` values
 
 ## Conclusion
 
-Azure CNI Delegated IPAM with Cilium provides a powerful combination of Azure's VNet integration and Cilium's flexible IP address management. By delegating IPAM to Cilium, you gain fine-grained control over pod addressing while maintaining full compatibility with Azure networking features like Network Security Groups and VNet peering.
+Azure CNI Delegated IPAM with Cilium provides a powerful combination of Azure's VNet integration and Cilium's eBPF dataplane. By using Azure CNI powered by Cilium with a pod subnet or overlay pod CIDR, you can control pod addressing while maintaining compatibility with Azure networking features like Network Security Groups and VNet peering.
