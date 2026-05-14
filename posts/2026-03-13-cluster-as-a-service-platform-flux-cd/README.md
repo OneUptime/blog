@@ -19,13 +19,13 @@ In this guide you will build a management cluster that hosts Flux and Cluster AP
 ## Prerequisites
 
 - A management Kubernetes cluster with Flux CD v2 bootstrapped
-- Cluster API installed with at least one infrastructure provider (e.g., CAPA for AWS or CAPV for vSphere)
+- Provider prerequisites and credentials for at least one Cluster API infrastructure provider (e.g., CAPA for AWS or CAPV for vSphere)
 - kubectl, clusterctl, and the Flux CLI installed
 - Git repository for platform configuration
 
-## Step 1: Install Cluster API via Flux
+## Step 1: Install Cluster API Operator via Flux
 
-Manage the Cluster API installation itself through Flux to keep it version-controlled and auditable.
+Manage the Cluster API Operator installation itself through Flux to keep it version-controlled and auditable. The operator can then install Cluster API providers declaratively.
 
 ```yaml
 # infrastructure/controllers/cluster-api/kustomization.yaml
@@ -33,7 +33,7 @@ Manage the Cluster API installation itself through Flux to keep it version-contr
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: cluster-api
+  name: cluster-api-operator
   namespace: flux-system
 spec:
   interval: 10m
@@ -43,10 +43,27 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: capi-controller-manager
-      namespace: capi-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: capi-operator
+      namespace: capi-operator-system
+```
+
+```yaml
+# infrastructure/controllers/cluster-api/source.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capi-operator-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: capi-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: https://kubernetes-sigs.github.io/cluster-api-operator
 ```
 
 ```yaml
@@ -54,17 +71,17 @@ spec:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: cluster-api
-  namespace: capi-system
+  name: capi-operator
+  namespace: capi-operator-system
 spec:
   interval: 10m
   chart:
     spec:
-      chart: cluster-api
-      version: "1.x"
+      chart: cluster-api-operator
+      version: "0.x"
       sourceRef:
         kind: HelmRepository
-        name: cluster-api-helm
+        name: capi-operator
         namespace: flux-system
 ```
 
@@ -74,53 +91,56 @@ Create a reusable cluster template for a standard workload cluster.
 
 ```yaml
 # clusters/templates/aws-standard/cluster.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
-  name: CLUSTER_NAME
-  namespace: CLUSTER_NAMESPACE
+  name: standard
+  namespace: default
   labels:
-    platform.io/team: TEAM_NAME
-    platform.io/environment: ENVIRONMENT
+    platform.io/team: default
+    platform.io/environment: dev
 spec:
   clusterNetwork:
     pods:
       cidrBlocks: ["192.168.0.0/16"]
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: AWSCluster
-    name: CLUSTER_NAME
+    name: standard
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
-    name: CLUSTER_NAME-control-plane
+    name: standard-control-plane
 ```
 
 ```yaml
 # clusters/templates/aws-standard/machinedeployment.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
-  name: CLUSTER_NAME-workers
-  namespace: CLUSTER_NAMESPACE
+  name: standard-workers
+  namespace: default
 spec:
-  clusterName: CLUSTER_NAME
+  clusterName: standard
   replicas: 3
   selector:
     matchLabels:
-      cluster.x-k8s.io/cluster-name: CLUSTER_NAME
+      cluster.x-k8s.io/cluster-name: standard
   template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: standard
     spec:
-      clusterName: CLUSTER_NAME
+      clusterName: standard
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
-          name: CLUSTER_NAME-workers
+          name: standard-workers
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: AWSMachineTemplate
-        name: CLUSTER_NAME-workers
+        name: standard-workers
 ```
 
 ## Step 3: Create a Cluster Request
@@ -141,19 +161,55 @@ patches:
       - op: replace
         path: /metadata/namespace
         value: team-beta
+      - op: replace
+        path: /metadata/labels/platform.io~1team
+        value: team-beta
+      - op: replace
+        path: /metadata/labels/platform.io~1environment
+        value: prod
+      - op: replace
+        path: /spec/infrastructureRef/name
+        value: team-beta-prod
+      - op: replace
+        path: /spec/controlPlaneRef/name
+        value: team-beta-prod-control-plane
     target:
       kind: Cluster
   - patch: |-
       - op: replace
+        path: /metadata/name
+        value: team-beta-prod-workers
+      - op: replace
+        path: /metadata/namespace
+        value: team-beta
+      - op: replace
+        path: /spec/clusterName
+        value: team-beta-prod
+      - op: replace
         path: /spec/replicas
         value: 5          # Team beta needs more workers
+      - op: replace
+        path: /spec/selector/matchLabels/cluster.x-k8s.io~1cluster-name
+        value: team-beta-prod
+      - op: replace
+        path: /spec/template/metadata/labels/cluster.x-k8s.io~1cluster-name
+        value: team-beta-prod
+      - op: replace
+        path: /spec/template/spec/clusterName
+        value: team-beta-prod
+      - op: replace
+        path: /spec/template/spec/bootstrap/configRef/name
+        value: team-beta-prod-workers
+      - op: replace
+        path: /spec/template/spec/infrastructureRef/name
+        value: team-beta-prod-workers
     target:
       kind: MachineDeployment
 ```
 
 ## Step 4: Bootstrap the Workload Cluster with Flux
 
-Once Cluster API provisions the cluster, automatically bootstrap Flux into it using a GitOps-managed Secret and a Flux Kustomization on the management cluster.
+Once Cluster API provisions the cluster, automatically bootstrap Flux into it using the Cluster API kubeconfig Secret and a Flux Kustomization on the management cluster.
 
 ```yaml
 # clusters/requests/team-beta-prod/flux-bootstrap.yaml
@@ -161,7 +217,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-beta-prod-bootstrap
-  namespace: flux-system   # Running on the management cluster
+  namespace: team-beta     # Same namespace as the Cluster and kubeconfig Secret
 spec:
   interval: 5m
   path: ./clusters/workloads/team-beta-prod
@@ -169,6 +225,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+    namespace: flux-system
   # Use the kubeconfig from Cluster API for the target cluster
   kubeConfig:
     secretRef:
@@ -177,7 +234,7 @@ spec:
 
 ## Step 5: Define Workload Cluster Configuration
 
-The workload cluster bootstrap path installs the base platform components.
+The workload cluster bootstrap path installs Flux and the base platform components.
 
 ```yaml
 # clusters/workloads/team-beta-prod/flux-system.yaml
@@ -227,7 +284,7 @@ graph TD
 
 ## Best Practices
 
-- Use ClusterClass resources (CAPI v1beta1) to create reusable cluster topologies with sensible defaults
+- Use ClusterClass resources (CAPI v1beta2) to create reusable cluster topologies with sensible defaults
 - Store cluster kubeconfig secrets in a secrets manager and sync them with External Secrets Operator
 - Implement cluster lifecycle policies: automatically delete ephemeral dev clusters after 7 days
 - Monitor cluster provisioning status with Flux health checks and alert on prolonged pending states
