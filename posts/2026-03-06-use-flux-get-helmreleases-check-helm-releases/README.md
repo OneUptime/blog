@@ -77,7 +77,7 @@ Narrow down results to find specific releases.
 
 ```bash
 # Check a specific helm release
-flux get hr nginx -n flux-system
+flux get hr -n flux-system | awk 'NR==1 || $1=="nginx"'
 
 # Check releases in a specific namespace
 flux get hr -n production
@@ -86,7 +86,7 @@ flux get hr -n production
 flux get hr -A --status-selector ready=false
 
 # Find suspended releases
-flux get hr -A | grep "True" | head -20
+flux get hr -A --no-header | awk '$4=="True"'
 ```
 
 ## Step 4: Get Detailed Information
@@ -95,18 +95,20 @@ When you need more than the summary view.
 
 ```bash
 # Get YAML output with full status details
-flux get hr nginx -n flux-system -o yaml
+kubectl get helmrelease nginx -n flux-system -o yaml
 
 # Get JSON output for scripting
-flux get hr -A -o json
+kubectl get helmreleases -A -o json
 
 # Extract specific fields with jq
-flux get hr -A -o json | jq '.[] | {
+kubectl get helmreleases -A -o json | jq '.items[] |
+([.status.conditions[]? | select(.type=="Ready")][0] // {}) as $ready |
+{
   name: .metadata.name,
   namespace: .metadata.namespace,
   revision: .status.lastAppliedRevision,
-  ready: .status.conditions[-1].status,
-  message: .status.conditions[-1].message
+  ready: $ready.status,
+  message: $ready.message
 }'
 ```
 
@@ -116,7 +118,7 @@ When a Helm release shows `READY: False`, follow these steps to diagnose.
 
 ```bash
 # Step 1: Check the flux output for the error message
-flux get hr my-app -n production
+flux get hr -n production | awk 'NR==1 || $1=="my-app"'
 
 # Step 2: Get detailed conditions
 kubectl describe helmrelease my-app -n production
@@ -199,8 +201,8 @@ flux get hr -A | grep my-app
 echo "Environment Version Comparison"
 echo "=============================="
 for ns in staging production; do
-    version=$(flux get hr my-app -n $ns --no-header 2>/dev/null | awk '{print $2}')
-    ready=$(flux get hr my-app -n $ns --no-header 2>/dev/null | awk '{print $4}')
+    version=$(flux get hr -n "$ns" --no-header 2>/dev/null | awk '$1=="my-app"{print $2}')
+    ready=$(flux get hr -n "$ns" --no-header 2>/dev/null | awk '$1=="my-app"{print $4}')
     echo "$ns: version=$version ready=$ready"
 done
 ```
@@ -214,7 +216,7 @@ Watch Helm releases during deployments.
 flux get hr -A -w
 
 # Watch a specific release during an upgrade
-flux get hr my-app -n production -w
+kubectl get helmrelease my-app -n production --watch
 
 # Combine with watch for periodic refresh
 watch -n 5 'flux get hr -A'
@@ -283,9 +285,9 @@ echo ""
 
 # Count statistics
 total=$(flux get hr -A --no-header 2>/dev/null | wc -l)
-healthy=$(flux get hr -A --no-header 2>/dev/null | grep "True" | wc -l)
-unhealthy=$(flux get hr -A --no-header 2>/dev/null | grep "False" | wc -l)
-suspended=$(flux get hr -A --no-header 2>/dev/null | awk '$3=="True"' | wc -l)
+healthy=$(flux get hr -A --no-header 2>/dev/null | awk '$5=="True"' | wc -l)
+unhealthy=$(flux get hr -A --no-header 2>/dev/null | awk '$5=="False"' | wc -l)
+suspended=$(flux get hr -A --no-header 2>/dev/null | awk '$4=="True"' | wc -l)
 
 echo "Summary:"
 echo "  Total releases: $total"
@@ -311,8 +313,8 @@ exit 0
 | Command | Description |
 |---------|-------------|
 | `flux get hr -A` | All Helm releases across namespaces |
-| `flux get hr <name> -n <ns>` | Specific Helm release |
-| `flux get hr -A -o json` | JSON output |
+| `kubectl get helmrelease <name> -n <ns>` | Specific Helm release |
+| `kubectl get helmreleases -A -o json` | JSON output |
 | `flux get hr -A --status-selector ready=false` | Failed releases only |
 | `flux reconcile hr <name>` | Force reconciliation |
 | `flux suspend hr <name>` | Pause reconciliation |
