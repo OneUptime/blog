@@ -16,7 +16,7 @@ This guide covers building a complete compliance testing framework that integrat
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25+)
+- A Kubernetes cluster (v1.30+ for current Flux CD releases)
 - Flux CD bootstrapped and connected to a Git repository
 - A policy engine (Kyverno or Gatekeeper) installed
 - GitHub Actions or equivalent CI system
@@ -49,7 +49,7 @@ Kyverno provides built-in support for policy unit tests using test manifests.
 #   policies/
 #     require-labels/
 #       policy.yaml        - The policy to test
-#       test.yaml           - Test definitions
+#       kyverno-test.yaml   - Test definitions
 #       resources/
 #         valid-deployment.yaml
 #         invalid-deployment.yaml
@@ -58,7 +58,7 @@ Kyverno provides built-in support for policy unit tests using test manifests.
 ### Defining Test Cases
 
 ```yaml
-# tests/policies/require-labels/test.yaml
+# tests/policies/require-labels/kyverno-test.yaml
 name: require-standard-labels
 policies:
   - policy.yaml
@@ -166,9 +166,11 @@ For Rego-based policies, use OPA's built-in test framework.
 # policy/require_labels_test.rego
 package main
 
+import rego.v1
+
 # Test that a properly labeled deployment passes
-test_valid_deployment {
-  input := {
+test_valid_deployment if {
+  test_input := {
     "kind": "Deployment",
     "metadata": {
       "name": "test-app",
@@ -180,12 +182,12 @@ test_valid_deployment {
     }
   }
   # Expect no deny messages
-  count(deny) == 0 with input as input
+  count(deny) == 0 with input as test_input
 }
 
 # Test that a deployment without labels fails
-test_missing_labels {
-  input := {
+test_missing_labels if {
+  test_input := {
     "kind": "Deployment",
     "metadata": {
       "name": "test-app",
@@ -193,19 +195,19 @@ test_missing_labels {
     }
   }
   # Expect deny messages
-  count(deny) > 0 with input as input
+  count(deny) > 0 with input as test_input
 }
 
 # Test that non-Deployment resources are not affected
-test_skip_non_deployment {
-  input := {
+test_skip_non_deployment if {
+  test_input := {
     "kind": "Service",
     "metadata": {
       "name": "test-service",
       "labels": {}
     }
   }
-  count(deny) == 0 with input as input
+  count(deny) == 0 with input as test_input
 }
 ```
 
@@ -310,53 +312,40 @@ jobs:
 
 ## Compliance Gate in Flux CD Pipeline
 
-Use Flux CD notifications and health checks to gate deployments on compliance.
+Use Flux CD notifications and health checks to gate deployments on a compliance check Job.
 
 ```yaml
 # clusters/my-cluster/compliance/compliance-check-job.yaml
 apiVersion: batch/v1
-kind: CronJob
+kind: Job
 metadata:
   name: compliance-audit
   namespace: flux-system
 spec:
-  # Run compliance audit every hour
-  schedule: "0 * * * *"
-  jobTemplate:
+  backoffLimit: 1
+  template:
     spec:
-      template:
-        spec:
-          serviceAccountName: compliance-auditor
-          containers:
-            - name: audit
-              image: ghcr.io/kyverno/kyverno-cli:v1.12.0
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  echo "Running compliance audit..."
+      serviceAccountName: compliance-auditor
+      containers:
+        - name: audit
+          image: bitnami/kubectl:1.34.3
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Running compliance audit..."
 
-                  # Check for policy violations in all namespaces
-                  VIOLATIONS=$(kubectl get policyreports -A -o json | \
-                    jq '[.items[].results[]? | select(.result == "fail")] | length')
+              # Check for policy violations in all namespaces
+              VIOLATIONS=$(kubectl get policyreports -A -o jsonpath='{range .items[*]}{range .results[?(@.result=="fail")]}{.policy}{"/"}{.rule}{": "}{.message}{"\n"}{end}{end}')
 
-                  echo "Found $VIOLATIONS policy violations"
+              if [ -n "$VIOLATIONS" ]; then
+                echo "COMPLIANCE CHECK FAILED"
+                echo "$VIOLATIONS"
+                exit 1
+              fi
 
-                  if [ "$VIOLATIONS" -gt "0" ]; then
-                    echo "COMPLIANCE CHECK FAILED"
-                    # List all violations
-                    kubectl get policyreports -A -o json | \
-                      jq '.items[].results[]? | select(.result == "fail") | {
-                        policy: .policy,
-                        rule: .rule,
-                        resource: .resources[0].name,
-                        message: .message
-                      }'
-                    exit 1
-                  fi
-
-                  echo "All resources are compliant"
-          restartPolicy: OnFailure
+              echo "All resources are compliant"
+      restartPolicy: Never
 ```
 
 ## Compliance Dashboard with Policy Reports
@@ -378,7 +367,7 @@ spec:
   # Health check: ensure compliance job succeeds
   healthChecks:
     - apiVersion: batch/v1
-      kind: CronJob
+      kind: Job
       name: compliance-audit
       namespace: flux-system
 ```
@@ -442,7 +431,7 @@ echo ""
 echo "--- Policy Status ---"
 kubectl get clusterpolicies -o custom-columns=\
 NAME:.metadata.name,\
-ACTION:.spec.validationFailureAction,\
+ACTION:.spec.rules[*].validate.failureAction,\
 READY:.status.conditions[0].status
 
 # Compliance summary
