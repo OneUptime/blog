@@ -86,7 +86,7 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.21.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
@@ -124,6 +124,13 @@ spec:
       - ingress
       - service
       - crd  # DNSEndpoint custom resources
+    # Enable additional record types used by DNSEndpoint examples
+    managedRecordTypes:
+      - A
+      - AAAA
+      - CNAME
+      - MX
+      - TXT
     # Sync interval
     interval: "1m"
     # Log level
@@ -141,10 +148,8 @@ spec:
       annotations:
         eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/external-dns
     # Metrics for Prometheus
-    metrics:
+    serviceMonitor:
       enabled: true
-      serviceMonitor:
-        enabled: true
 ```
 
 ## Deploying External-DNS for Cloudflare
@@ -161,7 +166,7 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.21.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
@@ -181,7 +186,7 @@ spec:
     # Enable Cloudflare proxy for CDN and DDoS protection
     extraArgs:
       - --cloudflare-proxied
-      # Only proxy A and CNAME records
+      # Fetch up to 5000 DNS records per Cloudflare API request
       - --cloudflare-dns-records-per-page=5000
     txtOwnerId: "my-cluster"
     policy: sync
@@ -189,6 +194,12 @@ spec:
       - ingress
       - service
       - crd
+    managedRecordTypes:
+      - A
+      - AAAA
+      - CNAME
+      - MX
+      - TXT
     resources:
       requests:
         cpu: 50m
@@ -229,7 +240,7 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: my-app.example.com
     # Set TTL for the DNS record
     external-dns.alpha.kubernetes.io/ttl: "300"
-    # Set the record type (optional, defaults to A/CNAME)
+    # Override the DNS record target
     external-dns.alpha.kubernetes.io/target: ingress-lb.example.com
 spec:
   ingressClassName: nginx
@@ -326,7 +337,7 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.21.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
@@ -355,7 +366,7 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.21.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
