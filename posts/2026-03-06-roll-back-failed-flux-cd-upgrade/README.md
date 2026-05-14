@@ -175,8 +175,9 @@ curl -sL https://github.com/fluxcd/flux2/releases/download/v2.3.0/install.yaml \
   -o flux-v2.3.0-install.yaml
 
 # Extract and apply only the CRDs
-# CRDs are at the beginning of the install manifest
-kubectl apply -f flux-v2.3.0-install.yaml --selector=app.kubernetes.io/component=crd
+# Requires yq v4
+yq e 'select(.kind == "CustomResourceDefinition")' flux-v2.3.0-install.yaml \
+  | kubectl apply -f -
 ```
 
 ### Handling CRD Conversion Issues
@@ -189,7 +190,7 @@ kubectl patch crd kustomizations.kustomize.toolkit.fluxcd.io \
   --type=json -p='[{"op": "remove", "path": "/spec/conversion"}]'
 
 # Apply the old CRD version
-kubectl replace -f backup/crds.yaml
+kubectl apply -f backup/crds.yaml
 
 # Verify resources are still accessible
 kubectl get kustomizations -A
@@ -278,7 +279,7 @@ kubectl logs -n flux-system deploy/kustomize-controller --tail=100 > diagnostics
 kubectl logs -n flux-system deploy/helm-controller --tail=100 > diagnostics/helm-controller.txt
 
 # Check Kubernetes version compatibility
-kubectl version --short
+kubectl version
 
 # Check node resource availability
 kubectl top nodes
@@ -299,13 +300,14 @@ mkdir -p "$BACKUP_DIR"
 
 echo "Backing up Flux resources to $BACKUP_DIR..."
 
-# Export all Flux resources
+# Export Flux resources from the current namespace (default: flux-system).
+# Repeat with -n for other namespaces if needed.
 flux export source git --all > "$BACKUP_DIR/git-sources.yaml" 2>/dev/null
 flux export source helm --all > "$BACKUP_DIR/helm-sources.yaml" 2>/dev/null
 flux export kustomization --all > "$BACKUP_DIR/kustomizations.yaml" 2>/dev/null
 flux export helmrelease --all > "$BACKUP_DIR/helmreleases.yaml" 2>/dev/null
 flux export alert --all > "$BACKUP_DIR/alerts.yaml" 2>/dev/null
-flux export alert-provider --all > "$BACKUP_DIR/providers.yaml" 2>/dev/null
+flux export alert-provider --all > "$BACKUP_DIR/alert-providers.yaml" 2>/dev/null
 flux export image repository --all > "$BACKUP_DIR/image-repos.yaml" 2>/dev/null
 flux export image policy --all > "$BACKUP_DIR/image-policies.yaml" 2>/dev/null
 flux export image update --all > "$BACKUP_DIR/image-updates.yaml" 2>/dev/null
@@ -314,7 +316,7 @@ flux export image update --all > "$BACKUP_DIR/image-updates.yaml" 2>/dev/null
 kubectl get deployments -n flux-system -o yaml > "$BACKUP_DIR/deployments.yaml"
 
 # Export CRDs
-kubectl get crds -o yaml | grep -A 100 'fluxcd.io' > "$BACKUP_DIR/crds.yaml"
+kubectl get crds -l app.kubernetes.io/part-of=flux -o yaml > "$BACKUP_DIR/crds.yaml"
 
 # Record current versions
 flux version > "$BACKUP_DIR/versions.txt"
