@@ -12,7 +12,7 @@ Description: A practical guide to deploying Apache Kafka on Kubernetes using Flu
 
 Apache Kafka is a distributed event streaming platform used for building real-time data pipelines and streaming applications. It handles high-throughput, fault-tolerant messaging with features like topic partitioning, consumer groups, and exactly-once semantics. Deploying Kafka with Flux CD enables you to manage your messaging infrastructure through GitOps, ensuring consistent deployments and trackable configuration changes.
 
-This guide covers deploying Apache Kafka on Kubernetes using the Bitnami Helm chart through Flux CD, including ZooKeeper setup, topic configuration, and production-ready settings.
+This guide covers deploying Apache Kafka on Kubernetes using the Bitnami Helm chart through Flux CD, including KRaft controller setup, topic configuration, and production-ready settings.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ This guide covers deploying Apache Kafka on Kubernetes using the Bitnami Helm ch
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
-- Persistent storage available (at least 100 GB recommended)
+- Persistent storage available (at least 200 GB recommended for the example PVC sizes)
 
 ## Repository Structure
 
@@ -96,6 +96,8 @@ spec:
     controller:
       # Number of controller replicas (must be odd for quorum)
       replicaCount: 3
+      # Run controllers separately from brokers
+      controllerOnly: true
       resources:
         requests:
           cpu: 250m
@@ -107,6 +109,12 @@ spec:
         enabled: true
         size: 10Gi
         storageClass: standard
+      # Pod disruption budget for controller quorum availability
+      pdb:
+        create: true
+        minAvailable: 2
+      # Anti-affinity to spread controllers across nodes
+      podAntiAffinityPreset: hard
 
     # Broker configuration
     broker:
@@ -124,6 +132,12 @@ spec:
         enabled: true
         size: 50Gi
         storageClass: standard
+      # Pod disruption budget for broker availability
+      pdb:
+        create: true
+        minAvailable: 2
+      # Anti-affinity to spread brokers across nodes
+      podAntiAffinityPreset: hard
 
     # Kafka broker configuration settings
     extraConfig: |
@@ -170,7 +184,8 @@ spec:
 
     # JMX metrics for monitoring
     metrics:
-      kafka:
+      # JMX exporter for Prometheus
+      jmx:
         enabled: true
         resources:
           requests:
@@ -179,22 +194,11 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
-      # JMX exporter for Prometheus
-      jmx:
-        enabled: true
       # ServiceMonitor for Prometheus Operator
       serviceMonitor:
         enabled: true
         labels:
           release: prometheus
-
-    # Pod disruption budget for high availability
-    pdb:
-      create: true
-      minAvailable: 2
-
-    # Anti-affinity to spread brokers across nodes
-    podAntiAffinityPreset: hard
 ```
 
 ## Step 4: Create Kafka Topics
@@ -219,13 +223,26 @@ spec:
       containers:
         - name: create-topics
           image: bitnami/kafka:latest
+          env:
+            - name: KAFKA_CLIENT_PASSWORDS
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-passwords
+                  key: client-passwords
           command:
             - /bin/bash
             - -c
             - |
+              PASSWORD="$(echo "$KAFKA_CLIENT_PASSWORDS" | cut -d , -f 1)"
+              cat > /tmp/client.properties <<EOF
+              security.protocol=SASL_PLAINTEXT
+              sasl.mechanism=PLAIN
+              sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="$PASSWORD";
+              EOF
+
               # Wait for Kafka to be ready
               echo "Waiting for Kafka to be ready..."
-              until kafka-broker-api-versions.sh --bootstrap-server kafka.kafka.svc:9092 2>/dev/null; do
+              until kafka-broker-api-versions.sh --bootstrap-server kafka.kafka.svc:9092 --command-config /tmp/client.properties 2>/dev/null; do
                 echo "Kafka not ready yet, retrying in 10s..."
                 sleep 10
               done
@@ -234,6 +251,7 @@ spec:
 
               # Create events topic with 12 partitions for high throughput
               kafka-topics.sh --bootstrap-server kafka.kafka.svc:9092 \
+                --command-config /tmp/client.properties \
                 --create --if-not-exists \
                 --topic events \
                 --partitions 12 \
@@ -243,6 +261,7 @@ spec:
 
               # Create orders topic with compaction for state tracking
               kafka-topics.sh --bootstrap-server kafka.kafka.svc:9092 \
+                --command-config /tmp/client.properties \
                 --create --if-not-exists \
                 --topic orders \
                 --partitions 6 \
@@ -252,6 +271,7 @@ spec:
 
               # Create logs topic for log aggregation
               kafka-topics.sh --bootstrap-server kafka.kafka.svc:9092 \
+                --command-config /tmp/client.properties \
                 --create --if-not-exists \
                 --topic application-logs \
                 --partitions 6 \
@@ -261,6 +281,7 @@ spec:
 
               # Create dead-letter topic for failed messages
               kafka-topics.sh --bootstrap-server kafka.kafka.svc:9092 \
+                --command-config /tmp/client.properties \
                 --create --if-not-exists \
                 --topic dead-letter \
                 --partitions 3 \
@@ -270,7 +291,7 @@ spec:
               echo "All topics created successfully."
 
               # List all topics for verification
-              kafka-topics.sh --bootstrap-server kafka.kafka.svc:9092 --list
+              kafka-topics.sh --bootstrap-server kafka.kafka.svc:9092 --command-config /tmp/client.properties --list
 ```
 
 ## Step 5: Create the Kustomization
@@ -312,9 +333,9 @@ spec:
       namespace: kafka
 ```
 
-## Step 7: Deploy a Test Producer and Consumer
+## Step 7: Deploy a Test Producer
 
-Verify the Kafka deployment with a simple producer and consumer.
+Verify the Kafka deployment with a simple producer.
 
 ```yaml
 # clusters/my-cluster/kafka/test-producer.yaml
@@ -328,14 +349,28 @@ spec:
   containers:
     - name: producer
       image: bitnami/kafka:latest
+      env:
+        - name: KAFKA_CLIENT_PASSWORDS
+          valueFrom:
+            secretKeyRef:
+              name: kafka-user-passwords
+              key: client-passwords
       command:
         - /bin/bash
         - -c
         - |
+          PASSWORD="$(echo "$KAFKA_CLIENT_PASSWORDS" | cut -d , -f 2)"
+          cat > /tmp/client.properties <<EOF
+          security.protocol=SASL_PLAINTEXT
+          sasl.mechanism=PLAIN
+          sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="producer" password="$PASSWORD";
+          EOF
+
           # Produce test messages to the events topic
           for i in $(seq 1 10); do
             echo "{\"event_id\": $i, \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"data\": \"test-event-$i\"}" | \
               kafka-console-producer.sh \
+                --producer.config /tmp/client.properties \
                 --bootstrap-server kafka.kafka.svc:9092 \
                 --topic events
             echo "Produced message $i"
@@ -356,16 +391,23 @@ flux get helmreleases -n kafka
 kubectl get pods -n kafka
 
 # Check broker cluster status
-kubectl exec -n kafka kafka-broker-0 -- kafka-metadata.sh --snapshot /bitnami/kafka/data/__cluster_metadata-0/00000000000000000000.log --cluster-id
+kubectl exec -n kafka kafka-broker-0 -- bash -ec 'PASSWORD="$(echo "$KAFKA_CLIENT_PASSWORDS" | cut -d , -f 1)"; cat > /tmp/client.properties <<EOF
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=PLAIN
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="$PASSWORD";
+EOF'
+
+# Check KRaft metadata quorum status
+kubectl exec -n kafka kafka-broker-0 -- kafka-metadata-quorum.sh --bootstrap-server localhost:9092 --command-config /tmp/client.properties describe --status
 
 # List topics
-kubectl exec -n kafka kafka-broker-0 -- kafka-topics.sh --bootstrap-server localhost:9092 --list
+kubectl exec -n kafka kafka-broker-0 -- kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/client.properties --list
 
 # Describe a specific topic
-kubectl exec -n kafka kafka-broker-0 -- kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic events
+kubectl exec -n kafka kafka-broker-0 -- kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/client.properties --describe --topic events
 
 # Check consumer group lag
-kubectl exec -n kafka kafka-broker-0 -- kafka-consumer-groups.sh --bootstrap-server localhost:9092 --all-groups --describe
+kubectl exec -n kafka kafka-broker-0 -- kafka-consumer-groups.sh --bootstrap-server localhost:9092 --command-config /tmp/client.properties --all-groups --describe
 ```
 
 ## Troubleshooting
