@@ -26,19 +26,24 @@ Before you begin, ensure you have:
 
 ## Setting Up the Helm Repository
 
-Add the Grafana Operator Helm repository as a Flux source.
+Add the Grafana Operator OCI Helm chart as a Flux source.
 
 ```yaml
 # clusters/my-cluster/grafana/helm-repo.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: grafana-operator
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://grafana.github.io/helm-charts
+  url: oci://ghcr.io/grafana/helm-charts/grafana-operator
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  ref:
+    semver: ">=5.0.0 <6.0.0"
 ```
 
 ## Creating the Grafana Namespace
@@ -66,15 +71,10 @@ metadata:
   namespace: grafana
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: grafana-operator
-      version: "5.x"
-      sourceRef:
-        kind: HelmRepository
-        name: grafana-operator
-        namespace: flux-system
-      interval: 12h
+  chartRef:
+    kind: OCIRepository
+    name: grafana-operator
+    namespace: flux-system
   maxHistory: 5
   install:
     crds: CreateReplace
@@ -95,7 +95,7 @@ spec:
         cpu: 500m
         memory: 512Mi
     # Watch all namespaces for Grafana resources
-    watchNamespaces: []
+    watchNamespaces: ""
     # Enable leader election for HA
     leaderElect: true
 ```
@@ -126,7 +126,6 @@ spec:
     # Security settings
     security:
       admin_user: admin
-      admin_password: "${ADMIN_PASSWORD}"
     # Log settings
     log:
       mode: console
@@ -137,7 +136,9 @@ spec:
       host: "postgres-service.grafana.svc:5432"
       name: grafana
       user: grafana
-      password: "${DB_PASSWORD}"
+      password: "$__env{DB_PASSWORD}"
+  # Default secret with admin credentials is disabled as the username and password are supplied externally
+  disableDefaultAdminSecret: true
   deployment:
     spec:
       replicas: 2
@@ -179,7 +180,8 @@ metadata:
   namespace: grafana
 type: Opaque
 stringData:
-  ADMIN_PASSWORD: "your-secure-password"
+  GF_SECURITY_ADMIN_USER: "admin"
+  GF_SECURITY_ADMIN_PASSWORD: "your-secure-password"
   DB_PASSWORD: "your-db-password"
 ```
 
@@ -205,6 +207,7 @@ metadata:
   name: prometheus
   namespace: grafana
 spec:
+  uid: prometheus
   instanceSelector:
     matchLabels:
       dashboards: grafana
@@ -233,6 +236,7 @@ metadata:
   name: loki
   namespace: grafana
 spec:
+  uid: loki
   instanceSelector:
     matchLabels:
       dashboards: grafana
