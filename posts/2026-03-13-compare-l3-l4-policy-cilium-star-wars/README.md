@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
-Description: A deep dive into L3 and L4 network policy enforcement using the Cilium Star Wars demo, explaining how identity-based IP and port policies work in practice.
+Description: A deep dive into L3 and L4 network policy enforcement using the Cilium Star Wars demo, explaining how identity and port policies work in practice.
 
 ---
 
@@ -101,17 +101,15 @@ hubble observe \
 Inspect the policy compiled to the Death Star endpoint to confirm it matches your intent.
 
 ```bash
-# Get the endpoint ID for the Death Star pod
-ENDPOINT_ID=$(cilium endpoint list | grep deathstar | awk '{print $1}')
-
-# View the policy installed on this endpoint
-cilium endpoint get $ENDPOINT_ID | jq '.[].spec.policy'
+# View the policy in effect on the Death Star endpoints
+kubectl get ciliumendpoints -o json | \
+  jq '.items[] | select(.metadata.name | startswith("deathstar-")) | .status.policy'
 ```
 
 ## Best Practices
 
 - Use identity-based L3 policies (label selectors) rather than IP-based CIDR rules for pod-to-pod traffic
-- Always specify both `fromEndpoints` and `toPorts` together for least-privilege enforcement
+- For least-privilege service access, specify both `fromEndpoints` and `toPorts` together when the allowed destination port is known
 - Watch Hubble flows while testing policy changes to immediately see enforcement results
 - Combine L3/L4 policies with L7 rules for APIs that require method-level control
 - Label pods with structured, consistent labels from the start - policy design depends on label hygiene
