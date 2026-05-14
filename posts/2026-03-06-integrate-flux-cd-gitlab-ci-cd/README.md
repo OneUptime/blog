@@ -21,6 +21,7 @@ This guide covers setting up GitLab CI pipelines for building container images, 
 - Flux CLI installed locally
 - A GitLab project for your application code
 - A GitLab project for your Flux configuration
+- A GitLab runner configured for Docker-in-Docker privileged mode, or another container image builder
 
 ## Step 1: Bootstrap Flux with GitLab
 
@@ -37,8 +38,7 @@ flux bootstrap gitlab \
   --repository=flux-config \
   --branch=main \
   --path=clusters/production \
-  --token-auth \
-  --personal
+  --token-auth
 ```
 
 For self-hosted GitLab instances:
@@ -51,8 +51,7 @@ flux bootstrap gitlab \
   --repository=flux-config \
   --branch=main \
   --path=clusters/production \
-  --token-auth \
-  --personal
+  --token-auth
 ```
 
 Verify the bootstrap:
@@ -161,16 +160,17 @@ Add a stage to push Kubernetes manifests as OCI artifacts.
 push-manifests:
   stage: push-manifests
   image:
-    name: ghcr.io/fluxcd/flux-cli:v2.2.0
+    name: ghcr.io/fluxcd/flux-cli:v2.8.6
     entrypoint: [""]
   script:
+    # Ensure ./deploy references the image tag you want Flux to apply
     # Push manifests as an OCI artifact to the GitLab Container Registry
     - |
       flux push artifact \
         oci://$CI_REGISTRY_IMAGE/manifests:$CI_COMMIT_SHORT_SHA \
         --path=./deploy \
         --source="$CI_PROJECT_URL" \
-        --revision="$CI_COMMIT_BRANCH/$CI_COMMIT_SHA" \
+        --revision="$CI_COMMIT_REF_NAME@sha1:$CI_COMMIT_SHA" \
         --creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
     # Tag as latest
     - |
@@ -262,8 +262,8 @@ metadata:
 spec:
   type: gitlab
   events:
-    - "push"
-    - "tag_push"
+    - "Push Hook"
+    - "Tag Push Hook"
   secretRef:
     name: gitlab-webhook-secret
   resources:
@@ -295,7 +295,7 @@ Configure the webhook in GitLab:
 ```bash
 # Add the webhook to your GitLab project
 # Go to: Settings > Webhooks
-# URL: http://<flux-notification-controller>:80/hook/<receiver-hash>
+# URL: https://<notification-controller-ingress><webhook-path>
 # Secret Token: <the webhook token you generated>
 # Trigger: Push events, Tag push events
 ```
@@ -317,9 +317,6 @@ notify-flux:
         "$FLUX_WEBHOOK_URL"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-  variables:
-    FLUX_WEBHOOK_URL: $FLUX_WEBHOOK_URL
-    FLUX_WEBHOOK_TOKEN: $FLUX_WEBHOOK_TOKEN
 ```
 
 ## Step 6: Set Up Multi-Environment Deployment
@@ -338,7 +335,7 @@ stages:
 deploy-staging:
   stage: deploy-staging
   image:
-    name: ghcr.io/fluxcd/flux-cli:v2.2.0
+    name: ghcr.io/fluxcd/flux-cli:v2.8.6
     entrypoint: [""]
   script:
     # Push manifests tagged for staging
@@ -347,7 +344,7 @@ deploy-staging:
         oci://$CI_REGISTRY_IMAGE/manifests:staging-$CI_COMMIT_SHORT_SHA \
         --path=./deploy/staging \
         --source="$CI_PROJECT_URL" \
-        --revision="$CI_COMMIT_BRANCH/$CI_COMMIT_SHA" \
+        --revision="$CI_COMMIT_REF_NAME@sha1:$CI_COMMIT_SHA" \
         --creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
     - |
       flux tag artifact \
@@ -375,7 +372,7 @@ integration-test:
 deploy-production:
   stage: deploy-production
   image:
-    name: ghcr.io/fluxcd/flux-cli:v2.2.0
+    name: ghcr.io/fluxcd/flux-cli:v2.8.6
     entrypoint: [""]
   script:
     # Push manifests tagged for production
@@ -384,7 +381,7 @@ deploy-production:
         oci://$CI_REGISTRY_IMAGE/manifests:production-$CI_COMMIT_SHORT_SHA \
         --path=./deploy/production \
         --source="$CI_PROJECT_URL" \
-        --revision="$CI_COMMIT_BRANCH/$CI_COMMIT_SHA" \
+        --revision="$CI_COMMIT_REF_NAME@sha1:$CI_COMMIT_SHA" \
         --creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
     - |
       flux tag artifact \
@@ -412,8 +409,8 @@ metadata:
   namespace: flux-system
 spec:
   type: gitlab
-  # GitLab project URL
-  address: https://gitlab.com/my-group/my-app
+  # GitLab project URL with the project ID
+  address: https://gitlab.com/12345678
   secretRef:
     # GitLab token with api scope
     name: gitlab-token
@@ -447,6 +444,17 @@ kubectl create secret generic gitlab-token \
 
 Create the application deployment that Flux will manage:
 
+```bash
+kubectl create namespace my-app
+
+kubectl create secret docker-registry gitlab-pull-secret \
+  --namespace my-app \
+  --docker-server=registry.gitlab.com \
+  --docker-username=<deploy-token-username> \
+  --docker-password=<deploy-token-password> \
+  --docker-email=flux@example.com
+```
+
 ```yaml
 # deploy/production/deployment.yaml
 apiVersion: apps/v1
@@ -467,7 +475,7 @@ spec:
       containers:
         - name: my-app
           # Image from GitLab Container Registry
-          image: registry.gitlab.com/my-group/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app"}
+          image: registry.gitlab.com/my-group/my-app:1.0.0
           ports:
             - containerPort: 8080
           resources:
