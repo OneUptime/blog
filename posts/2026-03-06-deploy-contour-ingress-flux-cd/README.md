@@ -98,7 +98,7 @@ spec:
   chart:
     spec:
       chart: contour
-      version: "18.x"
+      version: "21.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -112,6 +112,36 @@ spec:
     remediation:
       retries: 3
   values:
+    # Contour configuration
+    configInline:
+      # Default HTTP versions
+      default-http-versions:
+        - HTTP/1.1
+        - HTTP/2
+      # Timeout settings
+      timeouts:
+        request-timeout: 60s
+        connection-idle-timeout: 60s
+        stream-idle-timeout: 300s
+        max-connection-duration: 0s
+        delayed-close-timeout: 1s
+        connection-shutdown-grace-period: 5s
+      # Rate limit service configuration
+      rateLimitService:
+        extensionService: projectcontour/ratelimit
+        domain: contour
+        failOpen: false
+      # Access log configuration
+      accesslog-format: json
+      # Default request headers
+      policy:
+        request-headers:
+          set:
+            X-Request-Start: "t=%START_TIME(%s.%3f)%"
+      # Gateway API support
+      gateway:
+        controllerName: projectcontour.io/gateway-controller
+
     # Contour control plane configuration
     contour:
       # Number of Contour replicas
@@ -124,38 +154,11 @@ spec:
         limits:
           cpu: 500m
           memory: 256Mi
-      # Contour configuration
-      configInline:
-        # Default HTTP versions
-        default-http-versions:
-          - HTTP/1.1
-          - HTTP/2
-        # Timeout settings
-        timeouts:
-          request-timeout: 60s
-          connection-idle-timeout: 60s
-          stream-idle-timeout: 300s
-          max-connection-duration: 0s
-          delayed-close-timeout: 1s
-          connection-shutdown-grace-period: 5s
-        # Rate limit service configuration
-        rateLimitService:
-          extensionService: projectcontour/ratelimit
-          domain: contour
-          failOpen: false
-        # Access log configuration
-        accesslog-format: json
-        # Enable external authorization
-        policy:
-          request-headers:
-            set:
-              X-Request-Start: "t=%START_TIME(%s.%3f)%"
-        # Gateway API support
-        gateway:
-          controllerName: projectcontour.io/gateway-controller
 
     # Envoy data plane configuration
     envoy:
+      # Install Envoy as a Deployment so HPA can scale it
+      kind: deployment
       # Number of Envoy replicas
       replicaCount: 3
       # Resource allocation for Envoy
@@ -216,7 +219,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
+  wait: false
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -224,7 +227,7 @@ spec:
       name: contour-contour
       namespace: projectcontour
     - apiVersion: apps/v1
-      kind: DaemonSet
+      kind: Deployment
       name: contour-envoy
       namespace: projectcontour
 ```
@@ -266,6 +269,8 @@ spec:
       retryPolicy:
         count: 3
         perTryTimeout: 10s
+        retryOn:
+          - retriable-status-codes
         retriableStatusCodes:
           - 503
           - 504
@@ -404,11 +409,6 @@ spec:
       namespace: backend-team
       conditions:
         - prefix: /api
-    # Delegate /admin path to the platform team
-    - name: admin-routes
-      namespace: platform-team
-      conditions:
-        - prefix: /admin
 ```
 
 ### Team-Specific HTTPProxy
@@ -422,9 +422,7 @@ metadata:
   namespace: frontend-team
 spec:
   routes:
-    - conditions:
-        - prefix: /app
-      services:
+    - services:
         - name: frontend
           port: 80
       pathRewritePolicy:
@@ -443,12 +441,12 @@ metadata:
 spec:
   routes:
     - conditions:
-        - prefix: /api/v1
+        - prefix: /v1
       services:
         - name: api-v1
           port: 8080
     - conditions:
-        - prefix: /api/v2
+        - prefix: /v2
       services:
         - name: api-v2
           port: 8080
@@ -460,6 +458,63 @@ spec:
 
 ```yaml
 # clusters/production/infrastructure/contour/ratelimit.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ratelimit-config
+  namespace: projectcontour
+data:
+  config.yaml: |
+    domain: contour
+    descriptors:
+      - key: generic_key
+        value: global-limit
+        rate_limit:
+          unit: minute
+          requests_per_unit: 1000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: projectcontour
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2-alpine
+          args:
+            - redis-server
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+          ports:
+            - containerPort: 6379
+              name: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: projectcontour
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -477,7 +532,7 @@ spec:
     spec:
       containers:
         - name: ratelimit
-          image: docker.io/envoyproxy/ratelimit:master
+          image: docker.io/envoyproxy/ratelimit:v1.4.0
           ports:
             - containerPort: 8081
               name: grpc
@@ -492,6 +547,8 @@ spec:
               value: "/data"
             - name: RUNTIME_SUBDIRECTORY
               value: "ratelimit"
+            - name: RUNTIME_APPDIRECTORY
+              value: "config"
             - name: USE_STATSD
               value: "false"
           volumeMounts:
@@ -546,7 +603,7 @@ spec:
     rateLimitPolicy:
       global:
         descriptors:
-          # Global rate limit: 1000 requests per minute
+          # Descriptor matched by the rate limit service config
           - entries:
               - genericKey:
                   value: global-limit
