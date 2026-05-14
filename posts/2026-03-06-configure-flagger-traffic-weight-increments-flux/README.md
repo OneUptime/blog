@@ -17,7 +17,7 @@ This guide explains how to configure and fine-tune traffic weight increments for
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed
-- Flagger installed with a supported service mesh (Istio, Linkerd, or Nginx)
+- Flagger installed with a supported traffic provider, such as Istio, Linkerd, or NGINX Ingress
 - Prometheus for metrics collection
 - Basic understanding of canary deployment concepts
 
@@ -27,7 +27,7 @@ Flagger uses three key parameters to control traffic shifting:
 
 - **stepWeight**: The percentage of traffic to add to the canary at each successful analysis interval
 - **maxWeight**: The maximum percentage of traffic the canary will receive before promotion
-- **stepWeightPromotion**: The increment used during the final promotion phase
+- **stepWeightPromotion**: The increment used to shift traffic back to the updated primary during the final promotion phase
 
 ```mermaid
 graph TD
@@ -196,7 +196,7 @@ spec:
     stepWeight: 10
     maxWeight: 50
     # Separate increment for the promotion phase
-    # Once analysis passes, promote traffic in 20% increments
+    # Once analysis passes, shift traffic back to the updated primary in 20% increments
     stepWeightPromotion: 20
     metrics:
       - name: request-success-rate
@@ -241,7 +241,7 @@ spec:
           max: 500
         interval: 1m
     webhooks:
-      # Mirror traffic to canary for testing
+      # Send synthetic load to the canary for testing
       - name: load-test
         type: rollout
         url: http://flagger-loadtester.flagger-system/
@@ -283,32 +283,36 @@ spec:
 
 ```yaml
 # overlays/staging/canary-patch.yaml
-apiVersion: flagger.app/v1beta1
-kind: Canary
-metadata:
-  name: my-app
-spec:
-  analysis:
-    # Fast increments for staging
-    interval: 30s
-    threshold: 5
-    stepWeight: 20
-    maxWeight: 80
+# Fast increments for staging
+- op: replace
+  path: /spec/analysis/interval
+  value: 30s
+- op: replace
+  path: /spec/analysis/threshold
+  value: 5
+- op: replace
+  path: /spec/analysis/stepWeight
+  value: 20
+- op: replace
+  path: /spec/analysis/maxWeight
+  value: 80
 ```
 
 ```yaml
 # overlays/production/canary-patch.yaml
-apiVersion: flagger.app/v1beta1
-kind: Canary
-metadata:
-  name: my-app
-spec:
-  analysis:
-    # Conservative increments for production
-    interval: 2m
-    threshold: 1
-    stepWeight: 2
-    maxWeight: 30
+# Conservative increments for production
+- op: replace
+  path: /spec/analysis/interval
+  value: 2m
+- op: replace
+  path: /spec/analysis/threshold
+  value: 1
+- op: replace
+  path: /spec/analysis/stepWeight
+  value: 2
+- op: replace
+  path: /spec/analysis/maxWeight
+  value: 30
 ```
 
 ```yaml
@@ -317,8 +321,13 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - canary-patch.yaml
+patches:
+  - target:
+      group: flagger.app
+      version: v1beta1
+      kind: Canary
+      name: my-app
+    path: canary-patch.yaml
 ```
 
 ## Step 7: Deploy with Flux
@@ -393,7 +402,7 @@ If the canary stays at the initial weight:
 # Check if metrics are returning valid data
 kubectl logs -n flagger-system deployment/flagger | grep "metric"
 
-# Verify the service mesh is correctly routing traffic
+# Verify the traffic provider is correctly routing traffic
 # For Istio:
 kubectl get virtualservice -n production -o yaml
 # For Linkerd:
