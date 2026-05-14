@@ -101,7 +101,7 @@ spec:
 
 ## Step 3: Map v1 Tag Filters to ImagePolicy
 
-Flux v1 used annotation values to define tag filtering. Here is how each v1 filter maps to v2.
+Flux v1 used annotation values to define tag filtering. Here is how each v1 filter maps to v2. For v1 `glob:` and `regex:` filters, Flux selected the newest matching image by build time. Flux v2 does not support build-time ordering, so the tag must include a sortable value such as a timestamp or build number.
 
 ### SemVer Filter
 
@@ -129,7 +129,7 @@ spec:
 # v1 annotation
 fluxcd.io/tag.my-app: glob:main-*
 
-# v2 ImagePolicy (use filterTags + alphabetical)
+# v2 ImagePolicy (use filterTags + alphabetical for sortable tags)
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -150,7 +150,7 @@ spec:
 
 ```yaml
 # v1 annotation
-fluxcd.io/tag.my-app: regexp:^build-[0-9]+$
+fluxcd.io/tag.my-app: regex:^build-[0-9]+$
 
 # v2 ImagePolicy
 apiVersion: image.toolkit.fluxcd.io/v1
