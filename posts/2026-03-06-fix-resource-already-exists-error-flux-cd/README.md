@@ -10,7 +10,7 @@ Description: A practical guide to resolving 'resource already exists' errors in 
 
 ## Introduction
 
-When Flux CD attempts to apply a resource that already exists in the cluster and was created by a different controller or manually by a user, you may encounter a "resource already exists" or "field manager conflict" error. This is especially common when migrating existing workloads to a GitOps workflow or when multiple tools manage overlapping resources. This guide covers how to diagnose and resolve these conflicts.
+When Flux CD attempts to apply a resource that already exists in the cluster and was created by a different controller or manually by a user, you may encounter an "already exists" error from the API server or a field manager conflict from Server-Side Apply. This is especially common when migrating existing workloads to a GitOps workflow or when multiple tools manage overlapping resources. This guide covers how to diagnose and resolve these conflicts.
 
 ## Identifying the Error
 
@@ -33,7 +33,7 @@ Status:
     - Type: Ready
       Status: "False"
       Reason: ReconciliationFailed
-      Message: 'Apply failed: resource already exists and is not managed by Flux'
+      Message: 'failed to create resource: <kind> "<name>" already exists'
 ```
 
 Or for field manager conflicts:
@@ -45,11 +45,35 @@ Message: 'Apply failed: conflict with "kubectl-client-side-apply" using apps/v1:
 
 ## Cause 1: Resource Was Created Manually
 
-If you created resources with `kubectl apply` or `kubectl create` before adding them to your Flux-managed Git repository, Flux cannot adopt them without explicit action.
+If you created resources with `kubectl apply` or `kubectl create` before adding them to your Flux-managed Git repository, Flux can reconcile them only if the desired manifests are in Git and the existing resources do not conflict with Flux's Server-Side Apply operation.
 
-### Fix: Force Apply to Adopt Existing Resources
+### Fix: Reconcile the Existing Resources from Git
 
-Add the `force` flag to your Kustomization:
+Add the resource manifests to your Kustomization path and reconcile the Kustomization:
+
+```yaml
+# kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./apps/my-app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+```
+
+Apply the change:
+
+```bash
+kubectl apply -f kustomization.yaml
+```
+
+If the existing resource differs in immutable fields, temporarily use `force: true` so Flux can replace resources when patching fails due to immutable field changes:
 
 ```yaml
 # kustomization-force.yaml
@@ -65,35 +89,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Force apply takes ownership of existing resources
+  # Use temporarily for immutable field changes that require replacement
   force: true
 ```
 
-Apply the change:
-
-```bash
-kubectl apply -f kustomization-force.yaml
-```
-
-After Flux has successfully reconciled and taken ownership, you can remove the `force: true` flag to return to normal operation:
-
-```yaml
-# kustomization-normal.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./apps/my-app
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  # Remove force after adoption is complete
-  # force: true
-```
+Remove `force: true` after the immutable field change has been applied, because replacement can cause downtime.
 
 ## Cause 2: Field Manager Conflicts with Server-Side Apply
 
@@ -112,26 +112,22 @@ kubectl get deployment my-app -n my-app -o json | \
   jq '.metadata.managedFields[] | {manager: .manager, operation: .operation, fields: (.fieldsV1 | keys)}'
 ```
 
-### Fix: Use fieldManagers Override
+### Fix: Use Flux SSA Policies
 
-Configure Flux to take over from specific field managers:
+Configure Flux apply behavior on the resource manifest. The default `Override` policy reconciles the resource to the desired state in Git; use `Merge` only when you need Flux to preserve non-overlapping fields added by other tools:
 
 ```yaml
-# kustomization-field-managers.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+# configmap-ssa-merge.yaml
+apiVersion: v1
+kind: ConfigMap
 metadata:
   name: my-app
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./apps/my-app
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  # Override field ownership from other managers
-  force: true
+  namespace: my-app
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: merge
+data:
+  app.conf: |
+    LOG_LEVEL=info
 ```
 
 ### Fix: Manually Transfer Field Ownership
@@ -139,7 +135,7 @@ spec:
 For more precise control, you can manually transfer field ownership:
 
 ```bash
-# Apply the resource with Flux's field manager to take ownership
+# Apply the resource with Flux's field manager and force conflicts
 kubectl apply --server-side --field-manager=kustomize-controller \
   --force-conflicts \
   -f deployment.yaml
@@ -241,6 +237,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  # Use force only for CRD updates that require replacement of immutable fields
   force: true
 ```
 
@@ -316,7 +313,7 @@ resources:
 # 1. Check resource field managers
 kubectl get <resource-type> <name> -n <namespace> -o json | jq '.metadata.managedFields'
 
-# 2. Force adopt a single resource
+# 2. Force Flux's field manager to take over conflicting fields for a single resource
 kubectl apply --server-side --field-manager=kustomize-controller --force-conflicts -f resource.yaml
 
 # 3. Check Kustomization inventory for conflicts
@@ -325,16 +322,16 @@ flux get kustomizations
 # 4. View the applied inventory
 kubectl get kustomization <name> -n flux-system -o jsonpath='{.status.inventory.entries}' | jq .
 
-# 5. Temporarily enable force apply
+# 5. Temporarily enable replacement for immutable field changes
 kubectl patch kustomization <name> -n flux-system --type merge -p '{"spec":{"force":true}}'
 
 # 6. Force reconciliation after fix
 flux reconcile kustomization <name> --with-source
 
-# 7. After successful adoption, disable force apply
+# 7. After the immutable field change is applied, disable force
 kubectl patch kustomization <name> -n flux-system --type merge -p '{"spec":{"force":false}}'
 ```
 
 ## Summary
 
-The "resource already exists" error in Flux CD arises from ownership conflicts between Flux and other tools or manual operations. The primary fix is to use `force: true` in your Kustomization to let Flux take over field ownership, and then disable it once adoption is complete. For long-term stability, ensure each resource in your cluster has a single owner, separate CRD management from application management, and avoid overlapping Kustomization paths. When migrating existing workloads to GitOps, plan a phased adoption strategy where you enable force apply temporarily for each component.
+The "resource already exists" error in Flux CD arises from ownership conflicts between Flux and other tools or manual operations. The primary fix is to ensure the resource has a single long-term owner, add the desired manifest to Git, and resolve any Server-Side Apply field conflicts deliberately. Use `kubectl apply --server-side --force-conflicts` only when you intend Flux's field manager to take over conflicting fields, and use `force: true` only for immutable field changes that require resource replacement. For long-term stability, ensure each resource in your cluster has a single owner, separate CRD management from application management, and avoid overlapping Kustomization paths.
