@@ -117,10 +117,10 @@ spec:
 
 ### Use Specific References
 
-Pinning to a specific branch or tag avoids unnecessary ref resolution.
+Pinning to a specific tag or commit avoids unnecessary ref resolution.
 
 ```yaml
-# GitRepository pinned to a specific commit for deterministic fetches
+# GitRepository pinned to a specific tag
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -203,7 +203,7 @@ Poorly structured dependencies create serialization bottlenecks. Minimize the de
 # infra -> cert-manager
 # infra -> ingress-controller
 # cert-manager + ingress-controller -> apps
-# infra -> monitoring (independent branch)
+# infra -> monitoring
 
 # Infrastructure base - no dependencies, reconciles immediately
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -251,7 +251,7 @@ spec:
     kind: GitRepository
     name: fleet-infra
 ---
-# Monitoring is independent - no need to wait for anything else
+# Monitoring depends only on infrastructure
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -286,7 +286,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: my-app
-  # Reduce timeout from default 5m to 3m
+  # Reduce timeout from the 10m interval default to 3m
   timeout: 3m
   # Only check health on critical resources
   healthChecks:
@@ -294,8 +294,6 @@ spec:
       kind: Deployment
       name: my-app
       namespace: my-app
-  # Wait for health checks before marking as ready
-  wait: true
 ```
 
 For resources that do not need health checking, disable it:
@@ -357,9 +355,9 @@ spec:
 Track reconciliation duration with Prometheus queries.
 
 ```yaml
-# ServiceMonitor to scrape Flux controller metrics
+# PodMonitor to scrape Flux controller metrics
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-controllers
   namespace: flux-system
@@ -367,7 +365,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/part-of: flux
-  endpoints:
+  podMetricsEndpoints:
     - port: http-prom
       interval: 15s
       path: /metrics
@@ -376,14 +374,14 @@ spec:
 Useful Prometheus queries for tracking reconciliation latency:
 
 ```promql
-# Average reconciliation duration by controller
+# 95th percentile reconciliation duration by Flux kind
 histogram_quantile(0.95,
-  rate(gotk_reconcile_duration_seconds_bucket[5m])
+  sum by (le, kind) (rate(gotk_reconcile_duration_seconds_bucket[5m]))
 )
 
-# Count of reconciliations exceeding 60 seconds
-sum(rate(gotk_reconcile_duration_seconds_count[5m]))
-- sum(rate(gotk_reconcile_duration_seconds_bucket{le="60"}[5m]))
+# Count of reconciliations exceeding 60 seconds by Flux kind
+sum by (kind) (rate(gotk_reconcile_duration_seconds_count[5m]))
+- sum by (kind) (rate(gotk_reconcile_duration_seconds_bucket{le="60"}[5m]))
 ```
 
 ## Summary
