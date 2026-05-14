@@ -12,7 +12,7 @@ Description: A step-by-step guide to configuring blue-green deployments with tra
 
 Blue-green mirroring combines blue-green deployments with traffic mirroring (also called traffic shadowing). In this strategy, production traffic is mirrored to the green environment in real time. The mirrored traffic generates real-world load on the new version without affecting users, because the responses from the green environment are discarded. Once the green version proves stable under real production traffic patterns, Flagger switches traffic to it.
 
-This approach is particularly valuable for testing performance under realistic conditions without any user impact.
+This approach is particularly valuable for testing performance under realistic conditions without any user impact. Because each mirrored request is processed by both the primary and canary services, use mirroring only for read-only or idempotent request paths.
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ Blue-green mirroring requires Istio. Verify it is running.
 
 kubectl get pods -n istio-system
 
-# Verify Istio version (mirroring is supported in Istio 1.10+)
+# Verify Istio version (Flagger's Istio integration requires Istio 1.5+)
 istioctl version
 
 # Ensure the namespace has Istio sidecar injection enabled
@@ -482,7 +482,7 @@ Approve the promotion (if manual gating is enabled):
 ```bash
 # Open the gate to approve promotion
 kubectl exec -n flagger-system deployment/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/open
+  curl -s -d '{"name":"api-service","namespace":"api-service"}' http://localhost:8080/gate/open
 ```
 
 ## Step 10: Verify the Virtual Service Configuration
