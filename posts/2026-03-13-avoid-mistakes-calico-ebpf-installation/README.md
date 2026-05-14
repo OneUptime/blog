@@ -10,21 +10,22 @@ Description: Avoid the most common mistakes when installing Calico with eBPF, in
 
 ## Introduction
 
-Fresh Calico eBPF installations have their own set of common mistakes that differ from migration-related issues. The biggest pitfalls involve installation order (BPF filesystem, kube-proxy, operator, Installation resource), missing prerequisites on some but not all nodes, and subtle configuration errors that only manifest under load.
+Fresh Calico eBPF installations have their own set of common mistakes that differ from migration-related issues. The biggest pitfalls involve installation order (kernel prerequisites, kube-proxy, API server endpoint ConfigMap, operator, Installation resource), missing prerequisites on some but not all nodes, and subtle configuration errors that only manifest under load.
 
 ## Mistake 1: Installing Calico Before Setting Up BPF Prerequisites
 
 ```bash
-# WRONG - installing operator before BPF filesystem is mounted
+# WRONG - installing operator before verifying node kernel support
 
 kubectl create -f tigera-operator.yaml  # Too early!
-# calico-node starts and can't load BPF programs, falls back to iptables
+# calico-node may later report that BPF mode is not supported by the kernel
 
 # CORRECT - prepare ALL nodes first
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  # Ensure BPF filesystem is mounted
-  kubectl debug node/${node} --image=ubuntu:22.04 -it -- \
-    bash -c 'mount | grep -q bpffs || mount -t bpf bpffs /sys/fs/bpf' 2>/dev/null
+  # Calico Open Source eBPF requires Linux kernel v5.10+,
+  # or RHEL 8.4 kernel v4.18.0-305+ with backported features.
+  kubectl debug node/${node} --image=ubuntu:22.04 --profile=sysadmin -it -- \
+    chroot /host uname -r
 done
 
 # THEN install operator
@@ -36,10 +37,11 @@ kubectl create -f tigera-operator.yaml
 ```bash
 # WRONG - race condition
 kubectl create -f tigera-operator.yaml
-kubectl apply -f installation.yaml  # Operator not ready yet, may miss the Installation
+kubectl apply -f installation.yaml  # May fail if the Installation CRD is not established yet
 
-# CORRECT - wait for operator first
+# CORRECT - wait for the operator CRD first
 kubectl create -f tigera-operator.yaml
+kubectl wait --for=condition=Established crd/installations.operator.tigera.io --timeout=120s
 kubectl rollout status deploy/tigera-operator -n tigera-operator --timeout=120s
 kubectl apply -f installation.yaml  # Now safe to apply
 ```
@@ -47,63 +49,77 @@ kubectl apply -f installation.yaml  # Now safe to apply
 ## Mistake 3: Using Helm Without Disabling kube-proxy
 
 ```bash
-# WRONG - default Helm install includes kube-proxy
-helm install calico projectcalico/calico --namespace calico-system
+# WRONG - installing Calico without disabling kube-proxy for eBPF mode
+helm install calico projectcalico/tigera-operator \
+  --namespace tigera-operator
 
-# CORRECT - pass eBPF values to Helm
-helm install calico projectcalico/calico \
-  --namespace calico-system \
-  --set installation.calicoNetwork.linuxDataplane=BPF \
-  --set installation.calicoNetwork.hostPorts=Disabled \
-  --set kubeProxy.enabled=false
+# CORRECT - disable kube-proxy when creating the cluster, then install Calico
+kubeadm init --skip-phases=addon/kube-proxy
+kubectl create namespace tigera-operator
+
+cat > values.yaml <<EOF
+installation:
+  enabled: true
+  calicoNetwork:
+    linuxDataplane: BPF
+EOF
+
+helm install calico projectcalico/tigera-operator \
+  --namespace tigera-operator \
+  -f values.yaml
 ```
 
-## Mistake 4: Not Persisting BPF Filesystem Mount
+## Mistake 4: Not Creating the API Server Endpoint ConfigMap
 
 ```bash
-# WRONG - mounting BPF filesystem only once (not persistent)
-mount -t bpf bpffs /sys/fs/bpf
-# After node reboot, BPF filesystem is unmounted again!
-# calico-node can't load BPF programs on restart
+# WRONG - relying on the Kubernetes service ClusterIP after kube-proxy is disabled
+kubectl create -f custom-resources.yaml
 
-# CORRECT - add to /etc/fstab for persistence
-echo 'bpffs /sys/fs/bpf bpf defaults 0 0' >> /etc/fstab
-mount -t bpf bpffs /sys/fs/bpf
-echo "BPF filesystem mounted and persisted"
+# CORRECT - create the real API server endpoint ConfigMap first
+kubectl apply -f - <<EOF
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: kubernetes-services-endpoint
+  namespace: tigera-operator
+data:
+  KUBERNETES_SERVICE_HOST: "<API server host>"
+  KUBERNETES_SERVICE_PORT: "<API server port>"
+EOF
+
+kubectl create -f custom-resources.yaml
 ```
 
 ## Mistake 5: Installing Without Checking Network Policy Support
 
 ```bash
-# eBPF mode requires specific kernel features for network policy
-# Check that the kernel has the required BPF socket options
+# eBPF mode requires a supported Linux kernel on every node
+# Check the running host kernel version
 
-kubectl debug node/<node> --image=ubuntu:22.04 -it -- \
-  bash -c 'grep -E "CONFIG_BPF_SYSCALL|CONFIG_NET_CLS_BPF|CONFIG_CGROUP_BPF" /boot/config-$(uname -r)'
+kubectl debug node/<node> --image=ubuntu:22.04 --profile=sysadmin -it -- \
+  chroot /host uname -r
 
 # Required:
-# CONFIG_BPF_SYSCALL=y
-# CONFIG_NET_CLS_BPF=y or m
-# CONFIG_CGROUP_BPF=y
+# Linux kernel v5.10 or above
+# RHEL 8.4 kernel v4.18.0-305 or above is also supported
 
-# If any are missing, eBPF network policy won't work
-# (Calico may fall back to iptables for policy enforcement)
+# If the kernel is not supported, Calico logs that BPF mode is not supported
+# and disables BPF mode.
 ```
 
 ## Installation Order Checklist
 
 ```mermaid
 flowchart TD
-    A[1. Verify kernel versions] --> B[2. Mount BPF filesystem\nand add to /etc/fstab]
-    B --> C[3. Disable kube-proxy in\ncluster bootstrap OR patch DS]
-    C --> D[4. Install Tigera Operator]
-    D --> E[5. Wait for operator ready]
-    E --> F[6. Create API Server ConfigMap]
-    F --> G[7. Apply Installation with BPF]
-    G --> H[8. Wait for TigeraStatus Available]
-    H --> I[9. Validate BPF programs loaded]
+    A[1. Verify kernel versions] --> B[2. Disable kube-proxy in\ncluster bootstrap OR patch DS]
+    B --> C[3. Install Tigera Operator]
+    C --> D[4. Wait for CRDs and operator ready]
+    D --> E[5. Create API Server ConfigMap]
+    E --> F[6. Apply Installation with BPF]
+    F --> G[7. Wait for TigeraStatus Available]
+    G --> H[8. Validate BPF mode in calico-node logs]
 ```
 
 ## Conclusion
 
-Fresh Calico eBPF installation mistakes are almost entirely about order of operations and prerequisites. Always prepare nodes (BPF filesystem persistent mount, kernel verification) before installing the operator, disable kube-proxy before enabling eBPF mode, and wait for the operator to be ready before applying the Installation resource. By following the installation order checklist in this guide, you avoid the race conditions and missing prerequisites that cause most eBPF installation failures.
+Fresh Calico eBPF installation mistakes are almost entirely about order of operations and prerequisites. Always prepare nodes (kernel verification) before installing the operator, disable kube-proxy before enabling eBPF mode, create the API server endpoint ConfigMap, and wait for the operator CRDs to be ready before applying the Installation resource. By following the installation order checklist in this guide, you avoid the race conditions and missing prerequisites that cause most eBPF installation failures.
