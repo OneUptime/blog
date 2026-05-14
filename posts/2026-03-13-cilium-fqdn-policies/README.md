@@ -12,15 +12,15 @@ Description: Control pod egress traffic to external services by domain name usin
 
 Controlling outbound traffic from Kubernetes pods to external services is a common security requirement, but IP-based CIDR policies are notoriously difficult to maintain. AWS S3 alone has thousands of IP addresses across multiple CIDR ranges, and any cloud service that uses a CDN or load balancer can have its IP addresses change without notice. FQDN-based policies solve this by letting you write rules like "allow traffic to `*.s3.amazonaws.com` on port 443" and letting Cilium handle the IP tracking.
 
-Cilium FQDN policies intercept DNS responses at the Cilium DNS proxy and dynamically update eBPF maps with the resolved IP addresses. When a pod queries `api.example.com` and gets back an IP, that IP is automatically added to an allow list that expires when the DNS TTL passes. This means your policy stays synchronized with the actual IPs behind any domain name, automatically, without any manual intervention.
+Cilium FQDN policies use the Cilium DNS proxy to observe DNS responses and dynamically derive policy entries for the resolved IP addresses. When a pod queries `api.example.com` and gets back an IP, that IP is automatically added to the FQDN cache for the TTL returned by DNS. Existing connections are kept allowed while they remain tracked, but new connections to the same IP after the cached DNS data expires require a fresh DNS lookup.
 
 This guide covers FQDN policy design patterns, configuration, DNS TTL considerations, and troubleshooting FQDN policy issues.
 
 ## Prerequisites
 
-- Cilium v1.9+ with DNS proxy enabled
+- Cilium with the L7 proxy enabled
 - `kubectl` installed
-- `cilium` CLI installed
+- access to a Cilium agent pod with `cilium-dbg`
 - `hubble` CLI for DNS observability
 
 ## Step 1: Basic FQDN Policy Design Pattern
@@ -42,13 +42,14 @@ spec:
     - toEndpoints:
         - matchLabels:
             "k8s:io.kubernetes.pod.namespace": kube-system
-            k8s-app: kube-dns
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
     # Allow HTTPS to specific domains
     - toFQDNs:
         - matchName: "api.github.com"
@@ -63,9 +64,9 @@ spec:
 
 ```yaml
 egress:
-  # All AWS services
+  # AWS service subdomains
   - toFQDNs:
-      - matchPattern: "*.amazonaws.com"
+      - matchPattern: "**.amazonaws.com"
     toPorts:
       - ports:
           - port: "443"
@@ -87,21 +88,20 @@ egress:
 # Show cached FQDN-to-IP mappings
 
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium fqdn cache list
+  cilium-dbg fqdn cache list
 
 # Sample output:
-# FQDN                    SOURCE     IPS
-# api.github.com          lookup     140.82.113.5,140.82.113.6
-# *.amazonaws.com         pattern    52.216.0.0/14,...
+# Endpoint   Source   FQDN             TTL   ExpirationTime          IPs
+# 1234       lookup   api.github.com   60    2026-05-14T12:01:00Z   140.82.113.5
 
 # Clear stale cache entries if needed
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium fqdn cache clean
+  cilium-dbg fqdn cache clean --force
 ```
 
 ## Step 4: DNS TTL Considerations
 
-Short TTLs can cause gaps in policy enforcement - if a DNS response has TTL=30 but the TCP connection takes 60 seconds to complete, the IP may be removed from the allow list:
+Short TTLs can cause policy drops for later connections - if a DNS response has TTL=30 and the pod reuses the same IP after that cache entry expires without doing another DNS lookup, the new connection can be denied:
 
 ```bash
 # Check DNS TTL for a domain
@@ -122,12 +122,15 @@ kubectl exec -n production app-pod -- nslookup api.github.com
 
 # Check if IP is in FQDN cache
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium fqdn cache list | grep github
+  cilium-dbg fqdn cache list | grep github
 
 # If connection fails after DNS succeeds:
-# Check if IP is in the eBPF policy map
+# Check generated FQDN identities and policy map entries
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium bpf policy get <endpoint-id>
+  cilium-dbg bpf ipcache list | grep <resolved-ip>
+
+kubectl exec -n kube-system cilium-xxxxx -- \
+  cilium-dbg bpf policy get --all
 
 # Watch DNS queries in real-time
 hubble observe --namespace production \
@@ -148,13 +151,13 @@ sequenceDiagram
     P->>CP: DNS Query: api.github.com
     CP->>K: Forward query
     K->>CP: Response: 140.82.113.5 TTL=60
-    CP->>CP: Update eBPF map:\n140.82.113.5 → ALLOW (60s)
+    CP->>CP: Cache DNS data:\n140.82.113.5 allowed by FQDN policy
     CP->>P: DNS Response
     P->>E: HTTPS to 140.82.113.5:443
     Note over P,E: eBPF allows via dynamic mapping
-    Note over CP: After TTL expires:\nIP removed from allow map
+    Note over CP: After TTL expires:\nnew connections need fresh DNS data
 ```
 
 ## Conclusion
 
-FQDN policies are the right approach for any Kubernetes cluster that needs to control external egress without the operational burden of maintaining CIDR allowlists. The DNS proxy intercepts and tracks IP resolution automatically, keeping your policies synchronized with the real IPs behind any domain name. The two most common pitfalls are forgetting to include a DNS allow rule (which breaks resolution entirely) and not accounting for very short TTLs (configure `dnsProxy.minTtl` to protect against gaps). Use `cilium fqdn cache list` as your primary debugging tool when FQDN policies are not working as expected.
+FQDN policies are the right approach for any Kubernetes cluster that needs to control external egress without the operational burden of maintaining CIDR allowlists. The DNS proxy observes and tracks IP resolution automatically, keeping your policies synchronized with the real IPs behind any domain name. The two most common pitfalls are forgetting to include a DNS allow rule with `rules.dns` (which breaks DNS proxy interception) and not accounting for very short TTLs (configure `dnsProxy.minTtl` to protect against gaps). Use `cilium-dbg fqdn cache list` as your primary debugging tool when FQDN policies are not working as expected.
