@@ -42,13 +42,30 @@ metadata:
 ---
 # tenants/team-alpha/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tenant-reconciler
+  namespace: team-alpha
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "services", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# tenants/team-alpha/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: team-alpha-reconciler
   namespace: team-alpha
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: tenant-reconciler
 subjects:
   - kind: ServiceAccount
@@ -220,6 +237,7 @@ metadata:
   name: redis
 spec:
   interval: 5m
+  serviceAccountName: team-alpha
   chart:
     spec:
       chart: redis
@@ -253,7 +271,7 @@ Give tenants visibility into their deployment status by setting up notifications
 
 ```yaml
 # tenants/team-alpha/notification.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-slack
@@ -264,7 +282,7 @@ spec:
   secretRef:
     name: team-alpha-slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-alerts
