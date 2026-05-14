@@ -347,11 +347,16 @@ spec:
 
 ## Configuring Notifications
 
-Set up Flux notifications to receive alerts when deployments fail or succeed:
+Set up Flux notifications to receive alerts when deployments fail:
+
+```bash
+kubectl -n flux-system create secret generic github-token \
+  --from-literal=token=<your-github-personal-access-token>
+```
 
 ```yaml
 # clusters/k0s-cluster/apps/notification-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -362,7 +367,7 @@ spec:
   secretRef:
     name: github-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: k0s-alerts
@@ -384,7 +389,7 @@ When running Flux CD on k0s, keep these points in mind:
 
 ### Storage
 
-k0s does not include a default StorageClass. If your Flux-managed workloads need persistent storage, install a CSI driver:
+k0s does not include a default StorageClass. If your Flux-managed workloads need persistent storage, install a storage provisioner or CSI driver:
 
 ```yaml
 # clusters/k0s-cluster/apps/local-path-provisioner.yaml
@@ -445,7 +450,7 @@ spec:
         address: 10.0.0.12
         user: root
   k0s:
-    version: "1.30.0+k0s.0"
+    version: "1.35.2+k0s.0"
 ```
 
 ## Troubleshooting
@@ -464,8 +469,8 @@ flux reconcile kustomization flux-system --with-source
 flux suspend kustomization demo-app
 flux resume kustomization demo-app
 
-# Check k0s-specific logs
-sudo k0s logs
+# Check k0s-specific logs on systemd-based hosts
+sudo journalctl -u k0scontroller
 ```
 
 ## Conclusion
