@@ -59,6 +59,8 @@ Flux needs the known hosts entry for the Git server to verify the server identit
 ssh-keyscan github.com > ./known_hosts 2>/dev/null
 ```
 
+Verify the scanned host key fingerprint against your Git provider's published SSH host key fingerprints, or another trusted source, before using it.
+
 For other providers, replace `github.com` with the appropriate hostname (e.g., `gitlab.com`, `bitbucket.org`, or your self-hosted Git server hostname).
 
 ## Step 4: Create the Kubernetes Secret
@@ -185,6 +187,8 @@ spec:
   secretRef:
     name: gitlab-ssh-secret
 ```
+
+For custom SSH ports, generate the `known_hosts` entry with the same port, for example `ssh-keyscan -p 2222 gitlab.example.com > ./known_hosts 2>/dev/null`.
 
 ## Security Best Practices
 
