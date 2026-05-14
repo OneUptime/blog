@@ -8,7 +8,7 @@ Description: Learn how to use the flux build command to validate Kustomization r
 
 ---
 
-The `flux build` command allows you to render and validate Flux CD Kustomization resources locally, without needing a running Kubernetes cluster. This is essential for catching configuration errors early in your development workflow before pushing changes to Git.
+The `flux build` command allows you to render and validate Flux CD Kustomization resources locally with `--dry-run`, without needing a running Kubernetes cluster. This is essential for catching configuration errors early in your development workflow before pushing changes to Git.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ The `flux build` command allows you to render and validate Flux CD Kustomization
 
 ## What Does flux build Do?
 
-The `flux build` command processes a Kustomization resource, resolves all overlays and patches, applies variable substitutions, and outputs the final rendered manifests. It works entirely offline, making it perfect for local development and CI pipelines.
+The `flux build` command processes a Kustomization resource, resolves all overlays and patches, applies inline variable substitutions, and outputs the final rendered manifests. When you pass `--dry-run` and a local `--kustomization-file`, it works offline, making it perfect for local development and CI pipelines.
 
 ## Basic Usage
 
@@ -29,7 +29,7 @@ Suppose you have the following directory structure:
 ```text
 clusters/
   production/
-    kustomization.yaml
+    infrastructure.yaml
 infrastructure/
   base/
     kustomization.yaml
@@ -117,8 +117,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - patch-replicas.yaml
+patches:
+  - path: patch-replicas.yaml
 ```
 
 ```yaml
@@ -158,14 +158,15 @@ spec:
 # Build the Kustomization and output rendered manifests
 flux build kustomization infrastructure \
   --path ./infrastructure/overlays/production \
-  --kustomization-file ./clusters/production/infrastructure.yaml
+  --kustomization-file ./clusters/production/infrastructure.yaml \
+  --dry-run
 ```
 
 This outputs the fully rendered YAML with all patches applied. You should see the deployment with 3 replicas instead of 1.
 
 ## Variable Substitution Validation
 
-Flux CD supports post-build variable substitution. The `flux build` command can validate these as well.
+Flux CD supports post-build variable substitution. The `flux build` command can validate inline substitutions in offline dry-run mode. Substitutions from ConfigMaps and Secrets referenced with `substituteFrom` require cluster data and are skipped in dry-run mode.
 
 ### Kustomization with Variables
 
@@ -189,9 +190,6 @@ spec:
       CLUSTER_NAME: production
       DOMAIN: example.com
       ENVIRONMENT: prod
-    substituteFrom:
-      - kind: ConfigMap
-        name: cluster-settings
 ```
 
 ### Application Manifest with Variables
@@ -230,7 +228,8 @@ spec:
 # Build with inline variable substitution
 flux build kustomization apps \
   --path ./apps/production \
-  --kustomization-file ./clusters/production/apps.yaml
+  --kustomization-file ./clusters/production/apps.yaml \
+  --dry-run
 ```
 
 The output will show `myapp.example.com` and `letsencrypt-prod` with all variables resolved.
@@ -245,7 +244,8 @@ If a Kustomization references a file that does not exist:
 # This will fail with a clear error message
 flux build kustomization infrastructure \
   --path ./infrastructure/overlays/staging \
-  --kustomization-file ./clusters/staging/infrastructure.yaml
+  --kustomization-file ./clusters/staging/infrastructure.yaml \
+  --dry-run
 
 # Output:
 # Error: accumulating resources: accumulating resources from ...
@@ -258,7 +258,8 @@ flux build kustomization infrastructure \
 # Invalid YAML syntax produces clear errors
 flux build kustomization apps \
   --path ./apps/broken \
-  --kustomization-file ./clusters/production/apps.yaml
+  --kustomization-file ./clusters/production/apps.yaml \
+  --dry-run
 
 # Output:
 # Error: yaml: line 15: did not find expected key
@@ -267,13 +268,15 @@ flux build kustomization apps \
 ### Unresolved Variables
 
 ```bash
-# Missing variable substitutions are detected
+# Missing variable substitutions are detected with strict mode
 flux build kustomization apps \
   --path ./apps/production \
-  --kustomization-file ./clusters/production/apps.yaml
+  --kustomization-file ./clusters/production/apps.yaml \
+  --dry-run \
+  --strict-substitute
 
 # If a variable like ${MISSING_VAR} is not defined,
-# the output will contain the raw ${MISSING_VAR} string
+# the command will fail instead of substituting it with an empty string
 ```
 
 ## Integrating flux build into a Validation Script
@@ -291,9 +294,9 @@ ERRORS=0
 echo "Running flux build validation..."
 
 # Find all Flux Kustomization files
-find "$REPO_ROOT/clusters" -name "*.yaml" -type f | while read -r ks_file; do
+while read -r ks_file; do
   # Extract the path field from the Kustomization
-  KS_PATH=$(grep "path:" "$ks_file" | head -1 | awk '{print $2}' | tr -d '"')
+  KS_PATH=$(grep "path:" "$ks_file" | head -1 | awk '{print $2}' | tr -d '"' || true)
 
   # Skip files that are not Kustomization resources
   if [ -z "$KS_PATH" ]; then
@@ -301,7 +304,7 @@ find "$REPO_ROOT/clusters" -name "*.yaml" -type f | while read -r ks_file; do
   fi
 
   # Extract the name for the build command
-  KS_NAME=$(grep "name:" "$ks_file" | head -1 | awk '{print $2}')
+  KS_NAME=$(grep "name:" "$ks_file" | head -1 | awk '{print $2}' || true)
 
   echo "Building: $KS_NAME (path: $KS_PATH)"
 
@@ -311,17 +314,19 @@ find "$REPO_ROOT/clusters" -name "*.yaml" -type f | while read -r ks_file; do
   # Run flux build and capture output
   if ! flux build kustomization "$KS_NAME" \
     --path "$FULL_PATH" \
-    --kustomization-file "$ks_file" > /dev/null 2>&1; then
+    --kustomization-file "$ks_file" \
+    --dry-run > /dev/null 2>&1; then
     echo "  FAILED: $KS_NAME"
     # Show the error details
     flux build kustomization "$KS_NAME" \
       --path "$FULL_PATH" \
-      --kustomization-file "$ks_file" 2>&1 || true
+      --kustomization-file "$ks_file" \
+      --dry-run 2>&1 || true
     ERRORS=$((ERRORS + 1))
   else
     echo "  OK: $KS_NAME"
   fi
-done
+done < <(find "$REPO_ROOT/clusters" -name "*.yaml" -type f)
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Build validation failed with $ERRORS error(s)"
@@ -355,44 +360,50 @@ jobs:
 
       - name: Run flux build on all Kustomizations
         run: |
+          set -euo pipefail
+
           # Build each Kustomization defined in the clusters directory
-          for ks_file in clusters/**/*.yaml; do
+          while read -r ks_file; do
             # Parse the path from the Kustomization spec
-            path=$(yq '.spec.path' "$ks_file" 2>/dev/null)
-            name=$(yq '.metadata.name' "$ks_file" 2>/dev/null)
+            path=$(grep "path:" "$ks_file" | head -1 | awk '{print $2}' | tr -d '"' || true)
+            name=$(grep "name:" "$ks_file" | head -1 | awk '{print $2}' || true)
 
             # Skip non-Kustomization files
-            if [ "$path" = "null" ] || [ "$name" = "null" ]; then
+            if [ -z "$path" ] || [ -z "$name" ]; then
               continue
             fi
 
             echo "Building $name from $ks_file..."
             flux build kustomization "$name" \
-              --path ".${path}" \
-              --kustomization-file "$ks_file"
-          done
+              --path "$path" \
+              --kustomization-file "$ks_file" \
+              --dry-run
+          done < <(find clusters -name "*.yaml" -type f)
 
       - name: Validate rendered output with kubeconform
         run: |
+          set -euo pipefail
+
           # Install kubeconform for schema validation
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
             tar xz -C /usr/local/bin
 
           # Build and pipe to kubeconform
-          for ks_file in clusters/**/*.yaml; do
-            path=$(yq '.spec.path' "$ks_file" 2>/dev/null)
-            name=$(yq '.metadata.name' "$ks_file" 2>/dev/null)
+          while read -r ks_file; do
+            path=$(grep "path:" "$ks_file" | head -1 | awk '{print $2}' | tr -d '"' || true)
+            name=$(grep "name:" "$ks_file" | head -1 | awk '{print $2}' || true)
 
-            if [ "$path" = "null" ] || [ "$name" = "null" ]; then
+            if [ -z "$path" ] || [ -z "$name" ]; then
               continue
             fi
 
             echo "Validating schemas for $name..."
             flux build kustomization "$name" \
-              --path ".${path}" \
-              --kustomization-file "$ks_file" | \
+              --path "$path" \
+              --kustomization-file "$ks_file" \
+              --dry-run | \
               kubeconform -strict -summary
-          done
+          done < <(find clusters -name "*.yaml" -type f)
 ```
 
 ## Comparing Environments with flux build
@@ -408,12 +419,14 @@ Use `flux build` to compare rendered output across environments.
 flux build kustomization infrastructure \
   --path ./infrastructure/overlays/staging \
   --kustomization-file ./clusters/staging/infrastructure.yaml \
+  --dry-run \
   > /tmp/staging-output.yaml
 
 # Build production
 flux build kustomization infrastructure \
   --path ./infrastructure/overlays/production \
   --kustomization-file ./clusters/production/infrastructure.yaml \
+  --dry-run \
   > /tmp/production-output.yaml
 
 # Show the differences
@@ -423,4 +436,4 @@ diff --color /tmp/staging-output.yaml /tmp/production-output.yaml || true
 
 ## Summary
 
-The `flux build` command is a powerful tool for offline validation of Flux CD configurations. It renders Kustomization resources with all overlays, patches, and variable substitutions applied, allowing you to catch errors before they reach your cluster. Integrate it into your local development workflow and CI pipelines for rapid feedback on configuration changes.
+The `flux build` command is a powerful tool for offline validation of Flux CD configurations when used with `--dry-run` and local Kustomization files. It renders Kustomization resources with all overlays, patches, and inline variable substitutions applied, allowing you to catch errors before they reach your cluster. Integrate it into your local development workflow and CI pipelines for rapid feedback on configuration changes.
