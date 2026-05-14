@@ -40,9 +40,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
-  namespace: kyverno
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: kyverno
   chart:
     spec:
       chart: kyverno
@@ -54,10 +55,17 @@ spec:
   install:
     createNamespace: true
   values:
-    replicaCount: 3
-    resources:
-      limits:
-        memory: 384Mi
+    admissionController:
+      replicas: 3
+      resources:
+        limits:
+          memory: 384Mi
+    backgroundController:
+      replicas: 2
+    cleanupController:
+      replicas: 2
+    reportsController:
+      replicas: 2
 ```
 
 ### OPA Gatekeeper
@@ -76,9 +84,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gatekeeper
-  namespace: gatekeeper-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: gatekeeper-system
   chart:
     spec:
       chart: gatekeeper
@@ -101,7 +110,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-limits
       match:
@@ -112,6 +120,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: "All containers must have CPU and memory limits defined."
         pattern:
           spec:
@@ -132,7 +141,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-team-label
       match:
@@ -142,6 +150,7 @@ spec:
                 - Deployment
                 - Service
       validate:
+        failureAction: Enforce
         message: "The label 'team' is required."
         pattern:
           metadata:
@@ -161,6 +170,9 @@ spec:
     spec:
       names:
         kind: K8sDisallowPrivileged
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -225,24 +237,18 @@ spec:
 
 Mutating webhooks modify resources during admission. For example, a webhook might inject sidecar containers or add default labels. This creates a discrepancy between the Git state and the cluster state, which Flux may interpret as drift.
 
-To handle this, configure Flux to use server-side apply with force conflicts:
+To handle this for Kustomizations, keep webhook-injected fields out of Git when possible and use Flux's server-side apply merge policy on resources where another controller owns additional fields:
 
 ```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
-  namespace: flux-system
-spec:
-  interval: 10m
-  path: ./apps/my-app
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  force: true
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: Merge
 ```
 
-For HelmReleases, Helm's three-way merge handles most mutation drift automatically.
+For HelmReleases, enable drift detection only when you want Flux to detect and correct in-cluster changes, and use `driftDetection.ignore` for webhook-managed fields that should not be reconciled back to the chart output.
 
 ## Step 5: Exclude Flux Resources from Webhooks
 
@@ -255,7 +261,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-limits
       match:
@@ -269,6 +274,18 @@ spec:
               namespaces:
                 - flux-system
                 - kyverno
+      validate:
+        failureAction: Enforce
+        message: "All containers must have CPU and memory limits defined."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - resources:
+                      limits:
+                        memory: "?*"
+                        cpu: "?*"
 ```
 
 For Gatekeeper, use `excludedNamespaces` in the constraint:
