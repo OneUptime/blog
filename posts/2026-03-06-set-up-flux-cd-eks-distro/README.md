@@ -33,7 +33,7 @@ EKS-D can be deployed using several tools:
 - **EKS Anywhere** - For on-premises deployments with EKS-D
 - **Kind/Minikube** - For local development
 
-This guide covers deploying EKS-D with kOps on AWS, the most common production scenario.
+This guide covers deploying EKS-D with the official EKS-D kOps scripts on AWS.
 
 ## Installing Required Tools
 
@@ -80,73 +80,55 @@ aws iam attach-group-policy --group-name kops --policy-arn arn:aws:iam::aws:poli
 aws iam attach-group-policy --group-name kops --policy-arn arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess
 
 # Set environment variables
+export AWS_REGION=us-east-1
+export AWS_DEFAULT_REGION=$AWS_REGION
 export KOPS_STATE_STORE=s3://flux-eksd-kops-state
-export NAME=flux-eksd.k8s.local
+export KOPS_CLUSTER_NAME=flux-eksd.k8s.local
+export NAME=$KOPS_CLUSTER_NAME
 ```
 
 ## Creating an EKS-D Cluster with kOps
 
-Create the cluster specification:
+Create the cluster configuration with the EKS-D kOps scripts:
 
 ```bash
-# Create the cluster configuration
-kops create cluster \
-  --name=$NAME \
-  --state=$KOPS_STATE_STORE \
-  --zones=us-east-1a,us-east-1b \
-  --node-count=3 \
-  --node-size=t3.large \
-  --control-plane-size=t3.medium \
-  --control-plane-count=1 \
-  --kubernetes-version="https://distro.eks.amazonaws.com/kubernetes-1-30/kubernetes-1-30-eks-12.yaml" \
-  --dry-run \
-  --output yaml > cluster-spec.yaml
+git clone https://github.com/aws/eks-distro.git
+cd eks-distro/development/kops
+
+# Pin the EKS-D release channel and release
+export RELEASE_BRANCH=1-30
+export RELEASE=12
+export NODE_INSTANCE_TYPE=t3.large
+
+# Install script requirements and generate the kOps configuration
+./install_requirements.sh
+./create_values_yaml.sh
+./create_configuration.sh
 ```
 
-Review and edit the cluster spec as needed:
+Review the generated values as needed:
 
 ```yaml
-# cluster-spec.yaml (key sections)
-apiVersion: kops.k8s.io/v1alpha2
-kind: Cluster
-metadata:
-  name: flux-eksd.k8s.local
-spec:
-  # Use EKS-D as the Kubernetes distribution
-  kubernetesVersion: "https://distro.eks.amazonaws.com/kubernetes-1-30/kubernetes-1-30-eks-12.yaml"
-  channel: stable
-  cloudProvider: aws
-  configBase: s3://flux-eksd-kops-state/flux-eksd.k8s.local
-  networking:
-    amazonVPC: {}
-  topology:
-    dns:
-      type: Private
-  subnets:
-    - name: us-east-1a
-      type: Private
-      zone: us-east-1a
-    - name: us-east-1b
-      type: Private
-      zone: us-east-1b
-    - name: utility-us-east-1a
-      type: Utility
-      zone: us-east-1a
-    - name: utility-us-east-1b
-      type: Utility
-      zone: us-east-1b
+# ./${KOPS_CLUSTER_NAME}/values.yaml (key sections)
+kubernetesVersion: https://distro.eks.amazonaws.com/kubernetes-1-30/releases/12/artifacts/kubernetes/v1.30.3
+clusterName: flux-eksd.k8s.local
+configBase: s3://flux-eksd-kops-state/flux-eksd.k8s.local
+awsRegion: us-east-1
+instanceType: t3.large
+architecture: amd64
+pause:
+  repository: public.ecr.aws/eks-distro/kubernetes/pause
+  tag: v1.30.3-eks-1-30-12
 ```
 
 Apply the cluster configuration:
 
 ```bash
 # Create the cluster
-kops create -f cluster-spec.yaml
-kops create secret --name $NAME sshpublickey admin -i ~/.ssh/id_rsa.pub
-kops update cluster --name $NAME --yes --admin
+./create_cluster.sh
 
 # Wait for the cluster to be ready (this takes several minutes)
-kops validate cluster --name $NAME --wait 15m
+./cluster_wait.sh
 ```
 
 ## Configuring kubectl Access
@@ -158,7 +140,7 @@ kubectl get nodes
 kubectl cluster-info
 
 # Export the kubeconfig for use with Flux
-kops export kubeconfig --name $NAME --admin
+kops export kubeconfig --name $KOPS_CLUSTER_NAME --admin
 export KUBECONFIG=~/.kube/config
 ```
 
@@ -185,6 +167,7 @@ flux bootstrap github \
   --branch=main \
   --path=./clusters/eksd \
   --personal \
+  --read-write-key \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
@@ -223,7 +206,7 @@ mkdir -p apps/production
 
 ## Deploying AWS-Specific Infrastructure
 
-Since EKS-D uses the same components as EKS, you can use the same AWS integrations:
+Since EKS-D uses the same Kubernetes APIs as EKS, you can use the same AWS integrations when the cluster runs on AWS and the controller IAM permissions are configured:
 
 ```yaml
 # infrastructure/sources/aws.yaml
@@ -266,6 +249,9 @@ spec:
   targetNamespace: kube-system
   values:
     controller:
+      serviceAccount:
+        annotations:
+          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AmazonEKS_EBS_CSI_DriverRole
       resources:
         requests:
           cpu: 50m
@@ -308,6 +294,8 @@ spec:
     serviceAccount:
       create: true
       name: aws-load-balancer-controller
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AWSLoadBalancerControllerIAMRole
     resources:
       requests:
         cpu: 50m
@@ -380,7 +368,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:1.27-alpine
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/eksd-app:1.0.0 # {"$imagepolicy": "flux-system:eksd-app"}
           ports:
             - containerPort: 80
           resources:
@@ -413,7 +401,8 @@ metadata:
   namespace: demo
   annotations:
     # Use AWS Load Balancer Controller
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   selector:
@@ -528,12 +517,11 @@ spec:
       author:
         name: flux-automation
         email: flux@example.com
-      messageTemplate: "chore: update eksd-app to {{.NewValue}}"
+      messageTemplate: "chore: update eksd-app image"
     push:
       branch: main
   update:
     path: ./apps/base
-    strategy: Setters
 ```
 
 ## Monitoring with CloudWatch Integration
@@ -586,7 +574,7 @@ kubectl logs -n flux-system deploy/helm-controller
 flux reconcile kustomization flux-system --with-source
 
 # Check kOps cluster health
-kops validate cluster --name $NAME
+kops validate cluster --name $KOPS_CLUSTER_NAME
 
 # Verify AWS IAM permissions
 aws sts get-caller-identity
@@ -598,8 +586,8 @@ kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}'
 flux events
 
 # Debug image automation
-flux get image repository
-flux get image policy
+flux get images repository
+flux get images policy
 ```
 
 ## Conclusion
