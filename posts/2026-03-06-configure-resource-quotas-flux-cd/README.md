@@ -44,13 +44,17 @@ infrastructure/
     overlays/
       development/
         kustomization.yaml
-        patch.yaml
+        compute-patch.yaml
+        storage-patch.yaml
       staging/
         kustomization.yaml
-        patch.yaml
+        compute-patch.yaml
+        storage-patch.yaml
       production/
         kustomization.yaml
-        patch.yaml
+        compute-patch.yaml
+        object-count-patch.yaml
+        storage-patch.yaml
 ```
 
 ## Basic Compute Resource Quota
@@ -147,7 +151,7 @@ resources:
 Create patches for different environments. Development gets smaller quotas, production gets larger ones.
 
 ```yaml
-# infrastructure/resource-quotas/overlays/development/patch.yaml
+# infrastructure/resource-quotas/overlays/development/compute-patch.yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -160,7 +164,10 @@ spec:
     requests.memory: 4Gi
     limits.memory: 8Gi
     pods: "10"
----
+```
+
+```yaml
+# infrastructure/resource-quotas/overlays/development/storage-patch.yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -178,11 +185,12 @@ kind: Kustomization
 resources:
   - ../../base
 patches:
-  - path: patch.yaml
+  - path: compute-patch.yaml
+  - path: storage-patch.yaml
 ```
 
 ```yaml
-# infrastructure/resource-quotas/overlays/production/patch.yaml
+# infrastructure/resource-quotas/overlays/production/compute-patch.yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -195,7 +203,10 @@ spec:
     requests.memory: 64Gi
     limits.memory: 128Gi
     pods: "100"
----
+```
+
+```yaml
+# infrastructure/resource-quotas/overlays/production/object-count-patch.yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -207,7 +218,10 @@ spec:
     secrets: "200"
     services: "50"
     services.loadbalancers: "10"
----
+```
+
+```yaml
+# infrastructure/resource-quotas/overlays/production/storage-patch.yaml
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -215,6 +229,18 @@ metadata:
 spec:
   hard:
     requests.storage: 500Gi
+```
+
+```yaml
+# infrastructure/resource-quotas/overlays/production/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - path: compute-patch.yaml
+  - path: object-count-patch.yaml
+  - path: storage-patch.yaml
 ```
 
 ## Flux Kustomization for Multi-Namespace Deployment
@@ -365,7 +391,7 @@ Get notified when quota configurations are updated.
 
 ```yaml
 # clusters/my-cluster/notifications/quota-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: quota-alerts
@@ -375,7 +401,10 @@ spec:
     name: slack
   eventSources:
     - kind: Kustomization
-      name: quota-team-*
+      name: quota-team-alpha
+      namespace: flux-system
+    - kind: Kustomization
+      name: quota-team-beta
       namespace: flux-system
   eventSeverity: info
 ```
@@ -395,8 +424,21 @@ kubectl get resourcequota -n team-alpha
 kubectl describe resourcequota compute-quota -n team-alpha
 
 # Test quota enforcement by creating a pod that exceeds limits
-kubectl run test-pod --image=nginx --namespace=team-alpha \
-  --requests='cpu=100,memory=999Gi' --dry-run=server
+kubectl apply --dry-run=server -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: team-alpha
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+      resources:
+        requests:
+          cpu: "100"
+          memory: 999Gi
+EOF
 ```
 
 ## Troubleshooting
@@ -404,7 +446,7 @@ kubectl run test-pod --image=nginx --namespace=team-alpha \
 Common issues when working with Resource Quotas:
 
 - **Pod creation rejected**: Check if the namespace has exceeded its quota with `kubectl describe resourcequota -n <namespace>`
-- **Missing resource requests**: When a compute quota exists, all pods must specify resource requests and limits. Use LimitRanges to set defaults.
+- **Missing resource requests**: When a quota sets `requests.cpu` or `requests.memory`, pods must specify those requests. When it sets `limits.cpu` or `limits.memory`, pods must specify those limits. Use LimitRanges to set defaults.
 - **Flux not applying changes**: Verify the Kustomization path is correct and the source is accessible with `flux get sources git`
 
 ## Conclusion
