@@ -24,6 +24,7 @@ Before you begin, ensure you have:
 - kubectl configured to access your cluster
 - A Git repository connected to Flux CD
 - cert-manager installed (for TLS certificate management)
+- Prometheus Operator installed (for ServiceMonitor monitoring)
 
 ## Repository Structure
 
@@ -36,7 +37,8 @@ clusters/
         helmrepository.yaml
         helmrelease.yaml
         certificate.yaml
-        client-secret.yaml
+        backup.yaml
+        monitoring.yaml
         kustomization.yaml
 ```
 
@@ -130,14 +132,16 @@ spec:
     - server auth
     - client auth
   dnsNames:
+    - node
     - localhost
-    - "127.0.0.1"
     - "cockroachdb-public"
     - "cockroachdb-public.cockroachdb"
     - "cockroachdb-public.cockroachdb.svc.cluster.local"
     - "*.cockroachdb"
     - "*.cockroachdb.cockroachdb"
     - "*.cockroachdb.cockroachdb.svc.cluster.local"
+  ipAddresses:
+    - "127.0.0.1"
 ---
 # Client certificate for root user
 apiVersion: cert-manager.io/v1
@@ -173,7 +177,7 @@ spec:
   chart:
     spec:
       chart: cockroachdb
-      version: "13.x"
+      version: "20.x"
       sourceRef:
         kind: HelmRepository
         name: cockroachdb
@@ -196,12 +200,9 @@ spec:
         type: RollingUpdate
       # Pod anti-affinity to spread across nodes
       topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: cockroachdb
+        maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
 
     # Storage configuration
     storage:
@@ -236,13 +237,16 @@ spec:
 
     # Service configuration
     service:
+      ports:
+        grpc:
+          external:
+            port: 26257
+          internal:
+            port: 26257
+        http:
+          port: 8080
       public:
         type: ClusterIP
-        ports:
-          grpc:
-            port: 26257
-          http:
-            port: 8080
 
     # Init job configuration
     init:
@@ -251,16 +255,13 @@ spec:
         # SQL commands to run after cluster initialization
         databases:
           - name: appdb
+            owners:
+              - app_user
         users:
           - name: app_user
             password: "change-me-app-password"
             options:
               - "LOGIN"
-        grants:
-          - database: appdb
-            user: app_user
-            privileges:
-              - "ALL"
 ```
 
 ## Step 5: Configure Backup Schedule
@@ -285,7 +286,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: cockroachdb/cockroach:v24.1.0
+              image: cockroachdb/cockroach:v26.1.4
               command:
                 - /bin/bash
                 - -c
