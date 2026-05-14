@@ -42,23 +42,26 @@ spec:
   chart:
     spec:
       chart: cluster-proportional-autoscaler
-      version: "1.9.x"
+      version: "1.1.x"
       sourceRef:
         kind: HelmRepository
         name: cluster-proportional-autoscaler
+        namespace: flux-system
   values:
+    image:
+      tag: v1.10.3
     config:
       linear:
-        # Scaling rules: nodes/coresPerReplica or nodes/nodesPerReplica
+        # Scaling rules: cores/coresPerReplica or nodes/nodesPerReplica
         coresPerReplica: 256   # 1 CoreDNS replica per 256 CPU cores
         nodesPerReplica: 16    # 1 CoreDNS replica per 16 nodes
         min: 2                 # Minimum CoreDNS replicas
         max: 50               # Maximum CoreDNS replicas
-        preventSinglePointOfFailure: true
+        preventSinglePointFailure: true
     options:
       namespace: kube-system
       target: "deployment/coredns"
-      nodesSelector: ""  # All nodes
+      nodeLabels: {}  # All nodes
     resources:
       requests:
         cpu: 20m
@@ -72,6 +75,43 @@ spec:
 
 ```yaml
 # infrastructure/coredns-autoscaler/deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: coredns-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: coredns-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale", "replicasets/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["replicationcontrollers/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: coredns-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: coredns-autoscaler
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: coredns-autoscaler
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -94,7 +134,7 @@ spec:
           operator: Exists
       containers:
         - name: autoscaler
-          image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.9.0
+          image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.10.3
           command:
             - /cluster-proportional-autoscaler
             - --namespace=kube-system
@@ -123,16 +163,53 @@ data:
       "nodesPerReplica": 16,
       "min": 2,
       "max": 50,
-      "preventSinglePointOfFailure": true
+      "preventSinglePointFailure": true
     }
 ```
 
 ## Step 3: Scale Other Addons
 
-CPA can scale any Deployment. Example for kube-proxy or monitoring agents:
+CPA can scale any Deployment, ReplicaSet, or ReplicationController in the configured namespace. Example for metrics-server or other Deployment-based monitoring agents:
 
 ```yaml
 # Scale metrics-server proportionally
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-server-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: metrics-server-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale", "replicasets/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["replicationcontrollers/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: metrics-server-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: metrics-server-autoscaler
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: metrics-server-autoscaler
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -157,10 +234,14 @@ spec:
     matchLabels:
       k8s-app: metrics-server-autoscaler
   template:
+    metadata:
+      labels:
+        k8s-app: metrics-server-autoscaler
     spec:
+      serviceAccountName: metrics-server-autoscaler
       containers:
         - name: autoscaler
-          image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.9.0
+          image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.10.3
           command:
             - /cluster-proportional-autoscaler
             - --namespace=kube-system
@@ -168,7 +249,7 @@ spec:
             - --target=deployment/metrics-server
 ```
 
-## Step 4: Deploy via Flux with Dependency
+## Step 4: Deploy via Flux Kustomization
 
 ```yaml
 # clusters/production/infrastructure/cpa-kustomization.yaml
@@ -213,7 +294,7 @@ kubectl get configmap coredns-autoscaler -n kube-system -o yaml
 - Tune `nodesPerReplica` based on your actual DNS query load; the default is a starting point, not a universal value.
 - Update the CPA ConfigMap through Flux to track scaling policy changes in Git.
 - Monitor CoreDNS CPU and memory after adjusting CPA parameters; the defaults may not be right for workloads with heavy internal DNS traffic.
-- Use `preventSinglePointOfFailure: true` to ensure CPA adds a replica when the cluster has only one node.
+- Use `preventSinglePointFailure: true` to ensure CPA keeps at least two replicas when the cluster has more than one node.
 
 ## Conclusion
 
