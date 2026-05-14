@@ -61,6 +61,7 @@ on:
     paths: ['manifests/**']
 
 permissions:
+  contents: read
   packages: write
 
 jobs:
@@ -72,8 +73,8 @@ jobs:
 
       - name: Login to registry
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | flux oci login ghcr.io \
-            --username flux --password-stdin
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
 
       - name: Push artifact
         run: |
@@ -98,8 +99,8 @@ Create a secret for Flux to authenticate with the OCI registry.
 kubectl create secret docker-registry oci-registry-creds \
   --namespace flux-system \
   --docker-server=ghcr.io \
-  --docker-username=flux \
-  --docker-password="${GITHUB_TOKEN}"
+  --docker-username="${GHCR_USERNAME}" \
+  --docker-password="${GHCR_TOKEN}"
 ```
 
 ## Step 4: Create the OCIRepository Resource
