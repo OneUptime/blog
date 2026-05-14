@@ -56,7 +56,7 @@ spec:
   chart:
     spec:
       chart: cluster-autoscaler
-      version: "9.37.x"
+      version: "9.57.x"
       sourceRef:
         kind: HelmRepository
         name: autoscaler
@@ -171,7 +171,7 @@ spec:
 
 ## Configuring Priority-Based Expander
 
-The priority expander lets you define which node groups the autoscaler should prefer when scaling up.
+The priority expander lets you define which node groups the autoscaler should prefer when scaling up after `extraArgs.expander` is set to `priority`.
 
 ```yaml
 # infrastructure/autoscaler/priority-config.yaml
@@ -235,7 +235,7 @@ spec:
         # Alert when autoscaler cannot scale up
         - alert: ClusterAutoscalerUnableToScaleUp
           expr: |
-            cluster_autoscaler_failed_scale_ups_total > 0
+            increase(cluster_autoscaler_failed_scale_ups_total[5m]) > 0
           for: 15m
           labels:
             severity: warning
@@ -270,7 +270,7 @@ spec:
   chart:
     spec:
       chart: cluster-autoscaler
-      version: "9.37.x"
+      version: "9.57.x"
       sourceRef:
         kind: HelmRepository
         name: autoscaler
@@ -278,9 +278,13 @@ spec:
   values:
     # GCP-specific settings
     cloudProvider: gce
-    extraArgs:
-      # GKE uses a different node group discovery mechanism
-      node-group-auto-discovery: "mig:namePrefix=gke-my-cluster,min=1,max=10"
+    autoDiscovery:
+      clusterName: my-cluster
+    # GKE uses MIG name-prefix discovery through the chart's GCE values
+    autoscalingGroupsnamePrefix:
+      - name: gke-my-cluster
+        minSize: 1
+        maxSize: 10
     # GKE workload identity
     rbac:
       serviceAccount:
@@ -294,7 +298,7 @@ Configure Flux to notify you when autoscaler configuration changes are applied.
 
 ```yaml
 # clusters/my-cluster/notifications/autoscaler-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: autoscaler-alerts
