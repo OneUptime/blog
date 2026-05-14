@@ -16,9 +16,10 @@ The AKS GitOps extension provides automatic upgrades, Azure support coverage, an
 
 ## Prerequisites
 
-- An AKS cluster (Kubernetes version 1.22 or later)
-- Azure CLI (v2.50 or later)
+- An MSI-based AKS cluster
+- Azure CLI (v2.51 or later)
 - The `k8s-extension` and `k8s-configuration` Azure CLI extensions
+- Read and write permissions on the `Microsoft.ContainerService/managedClusters`, `Microsoft.KubernetesConfiguration/extensions`, and `Microsoft.KubernetesConfiguration/fluxConfigurations` resource types
 
 ## Step 1: Install Required Azure CLI Extensions
 
@@ -41,19 +42,25 @@ az extension list --output table
 ## Step 2: Register Required Resource Providers
 
 ```bash
+# Register the Container Service and Kubernetes resource providers
+az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Kubernetes
+
 # Register the Kubernetes Configuration resource provider
 az provider register --namespace Microsoft.KubernetesConfiguration
 
-# Check registration status (wait until "Registered")
-az provider show \
-  --namespace Microsoft.KubernetesConfiguration \
-  --query "registrationState" \
-  --output tsv
+# Check registration status (wait until each provider is "Registered")
+for provider in Microsoft.ContainerService Microsoft.Kubernetes Microsoft.KubernetesConfiguration; do
+  az provider show \
+    --namespace $provider \
+    --query "registrationState" \
+    --output tsv
+done
 ```
 
 ## Step 3: Install the Flux Extension on AKS
 
-The `microsoft.flux` extension installs all Flux CD controllers on your AKS cluster.
+The `microsoft.flux` extension installs Flux CD controllers on your AKS cluster. The Source, Kustomize, Helm, and Notification controllers are enabled by default; the image automation controllers are enabled explicitly in the example below.
 
 ```bash
 # Set variables
@@ -350,6 +357,7 @@ az k8s-extension update \
   --cluster-name $CLUSTER_NAME \
   --cluster-type managedClusters \
   --name flux \
+  --auto-upgrade-minor-version false \
   --version "1.12.0"
 ```
 
