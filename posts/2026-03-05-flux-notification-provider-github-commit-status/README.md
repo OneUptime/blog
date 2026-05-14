@@ -17,12 +17,12 @@ This guide walks through the complete setup for the GitHub commit status provide
 - A Kubernetes cluster with Flux CD installed (including the notification controller)
 - `kubectl` access to the cluster
 - A GitHub repository managed by Flux
-- A GitHub personal access token (PAT) or GitHub App with `repo:status` permissions
+- A GitHub personal access token (PAT) or GitHub App with permission to update commit statuses
 - The `flux` CLI installed (optional but helpful)
 
 ## Step 1: Create a GitHub Personal Access Token
 
-Navigate to GitHub **Settings** then **Developer settings** then **Personal access tokens**. Create a new token with the `repo:status` scope (or `repo` scope for private repositories). Copy the token.
+Navigate to GitHub **Settings** then **Developer settings** then **Personal access tokens**. Create a classic token with the `repo:status` scope, or a fine-grained token with **Commit statuses** set to **Read and write** for the repository. Copy the token.
 
 Alternatively, you can use a GitHub App with the **Commit statuses** permission set to **Read & write**.
 
@@ -45,7 +45,7 @@ Define a Provider resource for GitHub commit status updates.
 ```yaml
 # provider-github-commit-status.yaml
 # Configures Flux to update GitHub commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status-provider
@@ -53,7 +53,7 @@ metadata:
 spec:
   # Use "github" as the provider type for commit status updates
   type: github
-  # The GitHub repository address (owner/repo format)
+  # The GitHub repository URL
   address: https://github.com/YOUR_ORG/YOUR_REPO
   # Reference to the secret containing the GitHub token
   secretRef:
@@ -69,12 +69,12 @@ kubectl apply -f provider-github-commit-status.yaml
 
 ## Step 4: Create an Alert Resource
 
-Create an Alert that triggers commit status updates for relevant Flux resources.
+Create an Alert that triggers commit status updates for relevant Flux Kustomizations.
 
 ```yaml
 # alert-github-commit-status.yaml
 # Updates GitHub commit statuses based on Flux reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-status-alert
@@ -86,8 +86,6 @@ spec:
   eventSeverity: info
   eventSources:
     - kind: Kustomization
-      name: "*"
-    - kind: HelmRelease
       name: "*"
 ```
 
@@ -125,17 +123,16 @@ Navigate to your GitHub repository and check the latest commit. You should see a
 graph LR
     A[Git Push] --> B[GitHub Repository]
     B -->|detected by| C[Flux Source Controller]
-    C -->|triggers| D[Flux Kustomize/Helm Controller]
+    C -->|triggers| D[Flux Kustomize Controller]
     D -->|emits event| E[Notification Controller]
     E -->|matches Alert| F[Provider: github]
     F -->|GitHub Status API| B
 ```
 
-When Flux reconciles a resource, it emits an event. The notification controller matches the event against the Alert criteria and updates the commit status on the corresponding commit via the GitHub Status API. The commit status reflects the reconciliation outcome:
+When Flux reconciles a Kustomization, it emits an event. The notification controller matches the event against the Alert criteria and updates the commit status on the corresponding commit via the GitHub Status API. The commit status reflects the reconciliation outcome:
 
 - **Success**: The deployment was applied successfully
 - **Failure**: The reconciliation failed
-- **Pending**: Reconciliation is in progress
 
 ## Commit Status in Pull Requests
 
@@ -147,7 +144,7 @@ If Flux manages resources from multiple repositories, create a provider for each
 
 ```yaml
 # Provider for the infrastructure repository
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status-infra
@@ -159,7 +156,7 @@ spec:
     name: github-token
 ---
 # Provider for the applications repository
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status-apps
@@ -171,7 +168,7 @@ spec:
     name: github-token
 ---
 # Alert for infrastructure Kustomizations
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-status-infra-alert
@@ -185,7 +182,7 @@ spec:
       name: infrastructure
 ---
 # Alert for application Kustomizations
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-status-apps-alert
@@ -201,13 +198,13 @@ spec:
 
 ## Using GitHub Apps Instead of PAT
 
-For production environments, using a GitHub App is recommended over personal access tokens. Create a GitHub App with the **Commit statuses** permission, install it on your repository, and generate a private key. Store the App ID, installation ID, and private key in the secret.
+For production environments, using a GitHub App is recommended over personal access tokens. Create a GitHub App with the **Commit statuses** permission set to **Read & write**, install it on your repository, and generate a private key. Store the App ID, installation owner or installation ID, and private key in the secret.
 
 ## Troubleshooting
 
 If commit statuses are not appearing on GitHub:
 
-1. **Token permissions**: Ensure the GitHub token has `repo:status` permissions (or `repo` for private repos).
+1. **Token permissions**: Ensure the GitHub token has `repo:status` permissions for a classic PAT, or **Commit statuses** set to **Read and write** for a fine-grained PAT or GitHub App.
 2. **Repository URL**: The `address` field must match the exact repository URL (including correct owner and repo name).
 3. **Commit revision**: The notification controller uses the revision from the Flux event to identify the commit. If the revision does not match a valid commit SHA, the status update will fail.
 4. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
