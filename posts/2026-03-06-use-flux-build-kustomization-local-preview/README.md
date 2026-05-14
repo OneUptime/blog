@@ -18,8 +18,8 @@ This guide demonstrates how to use `flux build kustomization` for local developm
 
 Ensure you have:
 
-- A running Kubernetes cluster with Flux CD installed
-- `kubectl` configured for your cluster
+- A running Kubernetes cluster with Flux CD installed for cluster-backed builds
+- `kubectl` configured for your cluster for cluster-backed validation
 - The Flux CLI installed locally
 - A Git repository with Kustomization manifests
 
@@ -36,7 +36,7 @@ flux get kustomizations --all-namespaces
 
 ## What flux build kustomization Does
 
-The `flux build kustomization` command renders the final YAML output that a Kustomization would apply to your cluster. It processes:
+The `flux build kustomization` command renders the final YAML output that a Flux Kustomization would apply to your cluster. By default, it fetches the named Flux Kustomization from the Kubernetes API, uses that spec to transform the local manifests passed with `--path`, and prints the resulting multi-document YAML to stdout. It processes:
 
 - Kustomize overlays and patches
 - Variable substitutions defined in Flux
@@ -56,7 +56,7 @@ graph LR
 Build a Kustomization using a local path:
 
 ```bash
-# Build a kustomization named "apps" using local source files
+# Build a Flux Kustomization named "apps" using local source files
 flux build kustomization apps --path ./clusters/production/apps
 ```
 
@@ -99,7 +99,7 @@ spec:
 
 ## Using with Local Source Path
 
-The `--path` flag specifies the local directory containing your Kustomization files:
+The `--path` flag specifies the local directory containing the manifests or `kustomization.yaml` to build:
 
 ```bash
 # Build from a specific local directory
@@ -237,9 +237,11 @@ jobs:
 
       - name: Build and validate apps kustomization
         run: |
-          # Build the kustomization
+          # Build the kustomization without connecting to a cluster
           flux build kustomization apps \
             --path ./clusters/production/apps \
+            --kustomization-file ./clusters/production/apps-kustomization.yaml \
+            --dry-run \
             > /tmp/output.yaml
 
           # Validate with kubeconform or kubeval
@@ -249,6 +251,8 @@ jobs:
         run: |
           flux build kustomization infrastructure \
             --path ./clusters/production/infrastructure \
+            --kustomization-file ./clusters/production/infrastructure-kustomization.yaml \
+            --dry-run \
             > /tmp/infra-output.yaml
 
           kubeconform -strict /tmp/infra-output.yaml
@@ -260,12 +264,12 @@ Compare the rendered output between different environments:
 
 ```bash
 # Build staging configuration
-flux build kustomization apps \
+flux build kustomization apps-staging \
   --path ./clusters/staging/apps \
   > /tmp/staging.yaml
 
 # Build production configuration
-flux build kustomization apps \
+flux build kustomization apps-production \
   --path ./clusters/production/apps \
   > /tmp/production.yaml
 
@@ -278,8 +282,11 @@ diff /tmp/staging.yaml /tmp/production.yaml
 For local development without a cluster connection, you can still build Kustomizations, but variable substitutions from ConfigMaps and Secrets will not be available:
 
 ```bash
-# Build locally (substitutions from cluster will be skipped)
-flux build kustomization apps --path ./clusters/production/apps
+# Build locally using a Flux Kustomization file from your repository
+flux build kustomization apps \
+  --path ./clusters/production/apps \
+  --kustomization-file ./clusters/production/apps-kustomization.yaml \
+  --dry-run
 ```
 
 ## Validating the Build Output
@@ -319,7 +326,7 @@ flux build kustomization apps --path ./clusters/production/apps \
 
 # Count total resources
 flux build kustomization apps --path ./clusters/production/apps \
-  | grep "^---" | wc -l
+  | grep "^kind:" | wc -l
 ```
 
 ## Common Flags Reference
@@ -327,7 +334,9 @@ flux build kustomization apps --path ./clusters/production/apps \
 | Flag | Description |
 |------|-------------|
 | `--path` | Local path to the Kustomization directory |
-| `--namespace` | Namespace of the Kustomization resource |
+| `--kustomization-file` | Path to a local Flux Kustomization YAML file |
+| `--dry-run` | Build without connecting to the cluster |
+| `--namespace` | Namespace of the Kustomization resource; defaults to `flux-system` |
 
 ## Troubleshooting
 
