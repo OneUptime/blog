@@ -8,18 +8,18 @@ Description: A practical guide to reducing Git API calls from Flux CD to avoid r
 
 ---
 
-Flux CD makes regular API calls to Git providers to check for changes and fetch repository content. In organizations with many clusters and repositories, these calls can trigger rate limits on platforms like GitHub, GitLab, and Bitbucket. This guide covers techniques to minimize Git API calls while maintaining fast change detection.
+Flux CD makes regular Git network requests to Git providers to check for changes and fetch repository content. It can also make Git provider API calls for features such as commit status updates. In organizations with many clusters and repositories, this traffic can trigger rate limits on platforms like GitHub, GitLab, and Bitbucket. This guide covers techniques to minimize Git provider traffic while maintaining fast change detection.
 
 ## Understanding Git API Call Sources
 
-Flux CD generates Git API calls from several sources:
+Flux CD generates Git provider traffic from several sources:
 
-- **GitRepository reconciliation**: Each reconciliation polls the Git provider via ls-remote to check for ref changes
-- **Webhook receiver validation**: Verifying webhook signatures involves API calls
-- **Image automation commits**: Pushing updated image tags to Git generates write API calls
+- **GitRepository reconciliation**: Each reconciliation fetches the Git repository and checks the configured ref for changes
+- **Webhook receiver validation**: Verifying webhook signatures or shared tokens happens locally in the notification-controller
+- **Image automation commits**: Pushing updated image tags to Git generates Git write traffic
 - **Notification provider**: Sending commit status updates uses the Git provider API
 
-The primary source of API calls is GitRepository polling. Every reconciliation cycle calls `git ls-remote` to check if the tracked ref has changed.
+The primary source of scheduled Git traffic is GitRepository polling. The source-controller checks each GitRepository at its configured interval and fetches the repository when it needs to produce a new artifact.
 
 ## Calculating Your API Call Budget
 
@@ -30,39 +30,40 @@ Git providers impose rate limits that you need to plan around:
 | GitHub (authenticated) | 5,000 requests/hour | Per token |
 | GitHub (unauthenticated) | 60 requests/hour | Per IP |
 | GitLab (authenticated) | 2,000 requests/minute | Per user |
-| Bitbucket Cloud | 1,000 requests/hour | Per user |
+| Bitbucket Cloud (repository data API) | 1,000 requests/hour | Per user |
+| Bitbucket Cloud (Git HTTPS requests) | 60,000 requests/hour | Per user |
 
 Calculate your current call rate:
 
 ```yaml
 # Estimation formula:
 
-# API calls per hour = (number of GitRepositories) * (60 / interval_minutes) * (number of clusters)
+# Scheduled Git checks per hour = (number of GitRepositories) * (60 / interval_minutes) * (number of clusters)
 #
 # Example:
 # 20 GitRepositories * (60 / 5 min interval) * 3 clusters
-# = 20 * 12 * 3 = 720 API calls/hour
+# = 20 * 12 * 3 = 720 scheduled Git checks/hour
 #
 # With a single GitHub token (5000/hour limit), this is fine.
 # But if each cluster uses its own token, each token sees 240 calls/hour.
 #
 # Optimized with 30m intervals:
-# 20 * 2 * 3 = 120 API calls/hour (83% reduction)
+# 20 * 2 * 3 = 120 scheduled Git checks/hour (83% reduction)
 ```
 
 ## Increasing GitRepository Intervals
 
-The simplest way to reduce API calls is to increase reconciliation intervals.
+The simplest way to reduce scheduled Git checks is to increase reconciliation intervals.
 
 ```yaml
-# Before: Aggressive polling generates many API calls
+# Before: Aggressive polling generates many scheduled Git checks
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: my-app
   namespace: flux-system
 spec:
-  # 5-minute interval = 12 API calls per hour per cluster
+  # 5-minute interval = 12 scheduled Git checks per hour per cluster
   interval: 5m
   url: https://github.com/org/my-app
   ref:
@@ -75,7 +76,7 @@ metadata:
   name: my-app
   namespace: flux-system
 spec:
-  # 1-hour interval = 1 API call per hour per cluster
+  # 1-hour interval = 1 scheduled Git check per hour per cluster
   # Webhooks provide immediate change detection
   interval: 1h
   url: https://github.com/org/my-app
@@ -85,7 +86,7 @@ spec:
 
 ## Setting Up Webhooks for Push-Based Triggers
 
-Replace polling with webhooks to get instant change detection without constant API calls.
+Use webhooks alongside longer polling intervals to get fast change detection without constant scheduled Git checks.
 
 ```yaml
 # Receiver for GitHub push events
@@ -145,10 +146,10 @@ spec:
       namespace: flux-system
 ```
 
-For Bitbucket:
+For Bitbucket Server or Data Center:
 
 ```yaml
-# Receiver for Bitbucket push events
+# Receiver for Bitbucket Server/Data Center push events
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
@@ -157,7 +158,7 @@ metadata:
 spec:
   type: bitbucket
   events:
-    - "repo:push"
+    - "repo:refs_changed"
   secretRef:
     name: bitbucket-webhook-token
   resources:
@@ -166,12 +167,14 @@ spec:
       namespace: flux-system
 ```
 
+For Bitbucket Cloud, use a `generic` Receiver because Bitbucket Cloud does not sign webhook requests in the format Flux's `bitbucket` Receiver validates.
+
 ## Consolidating GitRepositories
 
 Reduce the number of GitRepository resources by sharing sources across multiple Kustomizations.
 
 ```yaml
-# Bad: Separate GitRepository per application (more API calls)
+# Bad: Separate GitRepository per application (more scheduled Git checks)
 # Each GitRepository polls independently
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -198,7 +201,7 @@ spec:
 
 ```yaml
 # Good: Single GitRepository shared by multiple Kustomizations
-# Only one set of API calls for the entire monorepo
+# Only one set of scheduled Git checks for the entire monorepo
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -244,11 +247,11 @@ spec:
 
 ## Using Dedicated Git Tokens Per Cluster
 
-Distribute API calls across multiple tokens to avoid hitting a single token's rate limit.
+Distribute provider API calls and authenticated Git requests across multiple tokens to avoid hitting a single token's rate limit.
 
 ```yaml
 # Each cluster uses its own Git credentials
-# This distributes API calls across multiple tokens
+# This distributes authenticated Git requests across multiple tokens
 apiVersion: v1
 kind: Secret
 metadata:
@@ -275,7 +278,7 @@ stringData:
 
 ## Using a Git Proxy or Cache
 
-Deploy a Git proxy that caches responses and reduces upstream API calls.
+Deploy a Git proxy that caches fetches and reduces upstream Git requests.
 
 ```yaml
 # Git caching proxy deployment
@@ -296,16 +299,9 @@ spec:
     spec:
       containers:
         - name: proxy
-          image: jonaharagon/git-cache:latest
+          image: nobodyxu/git-cache:latest
           ports:
             - containerPort: 8080
-          env:
-            # Cache Git responses for 5 minutes
-            - name: CACHE_TTL
-              value: "300"
-            # Upstream Git server
-            - name: UPSTREAM_URL
-              value: "https://github.com"
           resources:
             requests:
               cpu: "100m"
@@ -339,7 +335,7 @@ metadata:
 spec:
   interval: 5m
   # Point to the local proxy instead of GitHub directly
-  url: http://git-cache-proxy.flux-system:8080/org/my-app
+  url: http://git-cache-proxy.flux-system:8080/github.com/org/my-app
   ref:
     branch: main
   secretRef:
@@ -348,7 +344,7 @@ spec:
 
 ## Reducing Image Automation Git Writes
 
-Image automation controllers push commits to Git, which counts against write rate limits.
+Image automation controllers push commits to Git, which counts against Git write and content creation limits.
 
 ```yaml
 # ImageUpdateAutomation with batched commits
@@ -384,30 +380,30 @@ spec:
       branch: main
 ```
 
-## Monitoring Git API Usage
+## Monitoring Git Usage
 
-Track Git API calls to stay within rate limits.
+Track GitRepository reconciliations to estimate scheduled Git checks and stay within rate limits.
 
 ```yaml
-# PrometheusRule for Git API call monitoring
+# PrometheusRule for GitRepository reconciliation monitoring
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: flux-git-api-alerts
+  name: flux-git-alerts
   namespace: flux-system
 spec:
   groups:
-    - name: flux-git-api
+    - name: flux-git
       rules:
-        # Track Git fetch rate
+        # Track GitRepository reconciliation rate
         - record: flux:git_fetch_rate:1h
           expr: |
             sum(increase(gotk_reconcile_duration_seconds_count{
               kind="GitRepository"
             }[1h]))
 
-        # Alert when approaching GitHub rate limit
-        - alert: FluxGitAPIRateHigh
+        # Alert when scheduled Git checks are high
+        - alert: FluxGitReconcileRateHigh
           expr: |
             sum(rate(gotk_reconcile_duration_seconds_count{
               kind="GitRepository"
@@ -416,8 +412,8 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Flux Git API rate projected at {{ $value }}/hour"
-            description: "Approaching GitHub rate limit of 5000/hour."
+            summary: "Flux GitRepository reconciliation rate projected at {{ $value }}/hour"
+            description: "Scheduled Git checks are high. Compare this estimate with your Git provider's Git and API limits."
 
         # Alert on authentication failures (may indicate rate limiting)
         - alert: FluxGitAuthFailure
@@ -432,12 +428,12 @@ spec:
             severity: critical
           annotations:
             summary: "GitRepository {{ $labels.name }} authentication failing"
-            description: "May be rate limited. Check Git provider API quotas."
+            description: "May be rate limited. Check Git provider quotas and authentication settings."
 ```
 
 ## Summary
 
-Key strategies for reducing Git API calls from Flux CD:
+Key strategies for reducing Git provider traffic from Flux CD:
 
 1. Increase GitRepository reconciliation intervals (biggest impact)
 2. Set up webhook receivers for push-based change detection
@@ -445,6 +441,6 @@ Key strategies for reducing Git API calls from Flux CD:
 4. Use dedicated Git tokens per cluster to distribute rate limits
 5. Deploy a Git caching proxy for clusters that poll the same repositories
 6. Batch image automation commits with longer intervals
-7. Monitor API call rates and set alerts before hitting rate limits
+7. Monitor GitRepository reconciliation rates and set alerts before hitting rate limits
 
-The webhook-plus-long-interval pattern is the recommended approach. It provides instant change detection while reducing scheduled API calls by 90% or more compared to short polling intervals.
+The webhook-plus-long-interval pattern is the recommended approach. It provides instant change detection while reducing scheduled Git checks by 90% or more compared to short polling intervals.
