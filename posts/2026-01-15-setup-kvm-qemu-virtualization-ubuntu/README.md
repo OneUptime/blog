@@ -82,6 +82,11 @@ virsh net-list --all
 # If default network is inactive, start it
 sudo virsh net-start default
 sudo virsh net-autostart default
+
+# Tell libvert to use the system-wide QEMU hypervisor
+# instead of using session mode that runs VMs under
+# your personal user account
+export LIBVIRT_DEFAULT_URI='qemu:///system'
 ```
 
 ## Create Virtual Machine
