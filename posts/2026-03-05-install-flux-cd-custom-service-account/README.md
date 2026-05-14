@@ -21,7 +21,7 @@ This guide covers how to create and configure custom service accounts for Flux C
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20+)
+- A Kubernetes cluster version supported by your Flux release
 - `flux` CLI installed (v2.0+)
 - `kubectl` configured with cluster-admin access
 - Basic understanding of Kubernetes RBAC
@@ -96,68 +96,43 @@ kubectl create namespace flux-system --dry-run=client -o yaml | kubectl apply -f
 kubectl apply -f custom-service-accounts.yaml
 ```
 
-## Step 2: Create Custom RBAC for the Service Accounts
+## Step 2: Plan RBAC for the Service Accounts
 
-Define ClusterRoles and ClusterRoleBindings that give each controller only the permissions it needs:
+Flux installs ClusterRoleBindings for its controller service accounts. When you run the controllers under different service account names, you must update those bindings to reference the custom accounts.
+
+For the default Flux components, `kustomize-controller` and `helm-controller` are bound to the `cluster-admin` role through the `cluster-reconciler` ClusterRoleBinding, and the controllers are bound to Flux CRD permissions through the `crd-controller` ClusterRoleBinding. If you install extra components such as image automation, include their custom service accounts in the same way.
 
 ```yaml
-# rbac-source-controller.yaml
-# RBAC for source-controller - needs access to source CRDs and secrets
+# rbac-patches.yaml
+# Strategic merge patches for Flux-generated ClusterRoleBindings.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: ClusterRoleBinding
 metadata:
-  name: flux-source-controller
-rules:
-  - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["*"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "patch"]
+  name: cluster-reconciler
+subjects:
+  - kind: ServiceAccount
+    name: flux-kustomize-controller
+    namespace: flux-system
+  - kind: ServiceAccount
+    name: flux-helm-controller
+    namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: flux-source-controller
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: flux-source-controller
+  name: crd-controller
 subjects:
   - kind: ServiceAccount
     name: flux-source-controller
     namespace: flux-system
-```
-
-```yaml
-# rbac-kustomize-controller.yaml
-# RBAC for kustomize-controller - needs broad access to apply manifests
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: flux-kustomize-controller
-rules:
-  - apiGroups: ["*"]
-    resources: ["*"]
-    verbs: ["*"]
-  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["*"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: flux-kustomize-controller
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: flux-kustomize-controller
-subjects:
   - kind: ServiceAccount
     name: flux-kustomize-controller
+    namespace: flux-system
+  - kind: ServiceAccount
+    name: flux-helm-controller
+    namespace: flux-system
+  - kind: ServiceAccount
+    name: flux-notification-controller
     namespace: flux-system
 ```
 
@@ -179,7 +154,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - flux-install.yaml
+  - custom-service-accounts.yaml
 patches:
+  # Patch Flux ClusterRoleBindings to bind the custom service accounts
+  - path: rbac-patches.yaml
   # Patch source-controller to use the custom service account
   - target:
       kind: Deployment
