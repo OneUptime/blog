@@ -21,15 +21,15 @@ calicoctl ipam check
 
 # Verify specific IP before release
 IP="192.168.1.42"
-kubectl get pod --all-namespaces -o wide | grep "${IP}"
-kubectl get endpoints --all-namespaces | grep "${IP}"
+kubectl get pods --all-namespaces -o wide | grep -F "${IP}"
+kubectl get endpointslices.discovery.k8s.io --all-namespaces -o yaml | grep -F "${IP}"
 
 # Release after verification (no pod found)
 calicoctl ipam release --ip="${IP}"
 
 # Post-release verification
 calicoctl ipam check
-calicoctl ipam show | grep "${IP}"  # Should show no output
+calicoctl ipam show --ip="${IP}"  # Should report that the IP is not currently assigned
 ```
 
 ## Workflow Summary
@@ -51,19 +51,18 @@ flowchart TD
 # Always run check before and after releases
 calicoctl ipam check  # Before
 # ... run releases ...
-calicoctl ipam check  # After - should still show "consistent"
+calicoctl ipam check  # After - verify no new problems are reported
 
 # Never bulk-release without individual verification
 # for ip in $(leaked-ips); do release ${ip}; done  # DANGEROUS without verify
 
 # Correct approach: verify each one
 for ip in $(cat release-candidates.txt); do
-  IN_USE=$(kubectl get pod --all-namespaces -o wide | grep -c "${ip}" || echo 0)
-  if [ "${IN_USE}" -eq 0 ]; then
+  if kubectl get pods,endpointslices.discovery.k8s.io --all-namespaces -o yaml | grep -Fq "${ip}"; then
+    echo "SKIP ${ip} - still in use"
+  else
     calicoctl ipam release --ip="${ip}"
     echo "Released ${ip}"
-  else
-    echo "SKIP ${ip} - still in use"
   fi
 done
 ```
