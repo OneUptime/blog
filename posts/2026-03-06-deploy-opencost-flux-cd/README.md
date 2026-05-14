@@ -26,12 +26,15 @@ This guide covers deploying OpenCost alongside Prometheus, configuring custom pr
 ```text
 clusters/
   production/
+    opencost.yaml
     opencost/
       namespace.yaml
       source.yaml
       release.yaml
       prometheus-source.yaml
       prometheus-release.yaml
+      rbac.yaml
+      ingress.yaml
       kustomization.yaml
 ```
 
@@ -106,7 +109,7 @@ spec:
     # Disable components not needed for OpenCost
     alertmanager:
       enabled: false
-    pushgateway:
+    prometheus-pushgateway:
       enabled: false
     # Configure server for cost metrics retention
     server:
@@ -122,20 +125,21 @@ spec:
           cpu: 1000m
           memory: 2Gi
     # Enable node exporter for node-level cost metrics
-    nodeExporter:
+    prometheus-node-exporter:
       enabled: true
-    # Scrape config to collect kubelet and cadvisor metrics
-    serverFiles:
-      prometheus.yml:
-        scrape_configs:
-          - job_name: kubelet
-            scheme: https
-            tls_config:
-              insecure_skip_verify: true
-            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-            kubernetes_sd_configs:
-              - role: node
-            metrics_path: /metrics/cadvisor
+    # Scrape config to collect OpenCost metrics
+    extraScrapeConfigs: |
+      - job_name: opencost
+        honor_labels: true
+        scrape_interval: 1m
+        scrape_timeout: 10s
+        metrics_path: /metrics
+        scheme: http
+        dns_sd_configs:
+          - names:
+              - opencost.opencost
+            type: A
+            port: 9003
 ```
 
 ## Step 4: Deploy OpenCost
@@ -176,16 +180,17 @@ spec:
   values:
     # OpenCost configuration
     opencost:
+      prometheus:
+        internal:
+          # Point OpenCost to the Prometheus server
+          enabled: true
+          serviceName: prometheus-server
+          namespaceName: opencost
+          port: 80
       exporter:
-        # Point OpenCost to the Prometheus server
         defaultClusterId: "production"
-        extraEnv:
-          # Prometheus endpoint for cost data queries
-          PROMETHEUS_SERVER_ENDPOINT: "http://prometheus-server.opencost.svc:80"
-          # Cloud provider for accurate pricing
-          CLOUD_PROVIDER_API_KEY: ""
-          # Cluster ID for multi-cluster setups
-          CLUSTER_ID: "production"
+        # Cloud provider API key for GCP pricing, if needed
+        cloudProviderApiKey: ""
         resources:
           requests:
             cpu: 100m
@@ -212,37 +217,31 @@ spec:
 
 ## Step 5: Configure Custom Pricing
 
-If you need custom pricing (on-prem or for specific regions), create a pricing ConfigMap.
+If you need custom pricing (on-prem or for specific regions), configure it in the OpenCost Helm values.
 
 ```yaml
-# clusters/production/opencost/config/custom-pricing.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: opencost-custom-pricing
-  namespace: opencost
-data:
-  # Custom pricing model for on-premises clusters
-  default.json: |
-    {
-      "provider": "custom",
-      "description": "Custom on-premises pricing",
-      "CPU": "0.031611",
-      "spotCPU": "0.006655",
-      "RAM": "0.004237",
-      "spotRAM": "0.000892",
-      "GPU": "0.95",
-      "spotGPU": "0.25",
-      "storage": "0.00005479452",
-      "zoneNetworkEgress": "0.01",
-      "regionNetworkEgress": "0.01",
-      "internetNetworkEgress": "0.12"
-    }
+# clusters/production/opencost/release.yaml
+values:
+  opencost:
+    customPricing:
+      enabled: true
+      provider: custom
+      costModel:
+        description: Custom on-premises pricing
+        CPU: 0.031611
+        spotCPU: 0.006655
+        RAM: 0.004237
+        spotRAM: 0.000892
+        GPU: 0.95
+        storage: 0.00005479452
+        zoneNetworkEgress: 0.01
+        regionNetworkEgress: 0.01
+        internetNetworkEgress: 0.12
 ```
 
 ## Step 6: Set Up RBAC for Multi-Team Access
 
-Configure RBAC so different teams can view their own cost data.
+Configure Kubernetes RBAC for users or automation that need read access to related workload metadata. OpenCost cost filtering is done with API query parameters such as namespace and label aggregation.
 
 ```yaml
 # clusters/production/opencost/rbac.yaml
@@ -251,7 +250,7 @@ kind: ClusterRole
 metadata:
   name: opencost-viewer
 rules:
-  # Allow read access to OpenCost API
+  # Allow read access to workload metadata used for cost analysis
   - apiGroups: [""]
     resources: ["pods", "nodes", "namespaces"]
     verbs: ["get", "list"]
@@ -277,7 +276,7 @@ subjects:
 ## Step 7: Create the Flux Kustomization
 
 ```yaml
-# clusters/production/opencost/kustomization.yaml
+# clusters/production/opencost.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -291,14 +290,29 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: prometheus
+      namespace: opencost
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: opencost
       namespace: opencost
   timeout: 10m
-  # Wait for Prometheus to be healthy before deploying OpenCost
-  dependsOn:
-    - name: prometheus
+```
+
+```yaml
+# clusters/production/opencost/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - source.yaml
+  - prometheus-source.yaml
+  - prometheus-release.yaml
+  - release.yaml
+  - rbac.yaml
+  - ingress.yaml
 ```
 
 ## Step 8: Expose OpenCost via Ingress
