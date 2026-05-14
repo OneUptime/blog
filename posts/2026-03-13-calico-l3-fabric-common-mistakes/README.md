@@ -35,7 +35,7 @@ Deploying only one route reflector means it is a single point of failure for all
 
 **Symptom**: Cross-node traffic fails after a specific node is drained for maintenance. `birdcl show protocols` shows all sessions in `Active` state (trying to re-establish).
 
-**Fix**: Always deploy route reflectors in pairs with pod anti-affinity:
+**Fix**: Always deploy at least two route reflector nodes, and spread them across failure domains. Calico route reflectors are configured on nodes with a route reflector cluster ID and selected by `BGPPeer` resources; if you run dedicated route reflector pods in your own design, use pod anti-affinity:
 
 ```yaml
 # Route reflector pod anti-affinity (if deployed as pods)
@@ -51,7 +51,7 @@ affinity:
 
 ## Mistake 3: Forgetting to Disable Node-to-Node Mesh When Adding Route Reflectors
 
-A common configuration mistake: adding route reflectors without disabling the default node-to-node mesh. This creates redundant BGP sessions and iBGP route reflection loops.
+A common configuration mistake: adding route reflectors without disabling the default node-to-node mesh. This creates redundant BGP sessions and can mask route reflector configuration problems because nodes may continue to learn routes through direct node-to-node sessions.
 
 **Symptom**: Excessive BGP session count. Routes may be preferred via direct node-to-node sessions over route reflectors, causing inconsistent behavior.
 
@@ -78,9 +78,9 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 ```
 
 **Common causes**:
-- BGP hold timer mismatch between peers
+- Overly aggressive BGP hold/keepalive timers for the network path
 - Network congestion causing keepalive packet loss
-- Felix restarting and disrupting BIRD
+- `calico/node` or BIRD restarting
 - Insufficient resources causing BIRD to crash
 
 **Fix**: Check Felix and BIRD logs for error patterns:
@@ -98,7 +98,7 @@ Advertising pod CIDR routes externally (so external systems can reach pod IPs di
 **Fix**: Before enabling external pod route advertisement, work with your security team to:
 1. Define which external systems should be able to reach pod IPs
 2. Implement firewall ACLs at the cluster boundary
-3. Apply Calico HostEndpoint policies to control external-to-pod traffic
+3. Apply Calico HostEndpoint policies with `applyOnForward: true` to control forwarded external-to-pod traffic
 
 ## Best Practices
 
