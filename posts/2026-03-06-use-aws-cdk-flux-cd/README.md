@@ -20,7 +20,7 @@ This guide demonstrates how to build an end-to-end workflow using AWS CDK with T
 - Node.js 18+ and npm
 - AWS CLI configured with appropriate credentials
 - kubectl and flux CLI installed
-- A GitHub account with a personal access token
+- A GitHub repository containing the Flux manifests
 
 ## Project Setup
 
@@ -172,8 +172,6 @@ export class EksFluxStack extends cdk.Stack {
         kustomizeController: { create: true },
         helmController: { create: true },
         notificationController: { create: true },
-        // Set resource requests for stability
-        cli: { install: false },
       },
     });
 
@@ -410,7 +408,8 @@ spec:
       # Use NLB for AWS
       service:
         annotations:
-          service.beta.kubernetes.io/aws-load-balancer-type: nlb
+          service.beta.kubernetes.io/aws-load-balancer-type: external
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
           service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
       replicaCount: 2
 ```
