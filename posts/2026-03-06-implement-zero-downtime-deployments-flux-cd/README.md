@@ -154,8 +154,7 @@ spec:
     name: fleet-infra
   path: ./apps/production
   prune: true
-  wait: true
-  # Wait for all health checks to pass
+  # Wait for this health check to pass
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -360,7 +359,7 @@ spec:
     name: slack-webhook
 ---
 # Flux notification for reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-deployments
@@ -371,7 +370,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
