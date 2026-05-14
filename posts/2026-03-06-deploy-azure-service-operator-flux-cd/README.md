@@ -96,9 +96,9 @@ az identity federated-credential create \
   --audiences "api://AzureADTokenExchange"
 ```
 
-## Step 2: Create the ASO Credential Secret
+## Step 2: Create the ASO Namespace
 
-ASO requires a secret with Azure credential information.
+The Helm release in the next step creates the ASO controller settings secret from the Helm values. Create the ASO namespace before Flux installs the chart.
 
 ```yaml
 # File: clusters/my-cluster/aso/namespace.yaml
@@ -108,23 +108,6 @@ metadata:
   name: azureserviceoperator-system
   labels:
     app.kubernetes.io/managed-by: flux
----
-# File: clusters/my-cluster/aso/aso-credential-secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: aso-credential
-  namespace: azureserviceoperator-system
-type: Opaque
-stringData:
-  # Subscription where ASO will create resources
-  AZURE_SUBSCRIPTION_ID: "<SUBSCRIPTION_ID>"
-  # Tenant ID of your Azure AD
-  AZURE_TENANT_ID: "<TENANT_ID>"
-  # Client ID of the managed identity
-  AZURE_CLIENT_ID: "<ASO_CLIENT_ID>"
-  # Use workload identity authentication
-  AUTH_MODE: "workloadidentity"
 ```
 
 ## Step 3: Install ASO v2 via Flux CD HelmRelease
@@ -137,10 +120,9 @@ metadata:
   name: aso-helm-repo
   namespace: flux-system
 spec:
-  type: oci
   interval: 30m
-  # ASO Helm charts are published to GitHub Container Registry
-  url: oci://ghcr.io/azure/azure-service-operator
+  # ASO Helm charts are published in the project's Helm repository
+  url: https://raw.githubusercontent.com/Azure/azure-service-operator/main/v2/charts
 ```
 
 ```yaml
@@ -155,18 +137,15 @@ spec:
   chart:
     spec:
       chart: azure-service-operator
-      version: "2.x"
+      version: ">=2.0.0 <3.0.0"
       sourceRef:
         kind: HelmRepository
         name: aso-helm-repo
         namespace: flux-system
   install:
-    # CRDs are managed by the Helm chart
-    crds: CreateReplace
     remediation:
       retries: 3
   upgrade:
-    crds: CreateReplace
     remediation:
       retries: 3
   values:
@@ -187,7 +166,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - aso-credential-secret.yaml
   - helm-source.yaml
   - helm-release.yaml
 ```
@@ -333,14 +311,14 @@ spec:
   enableNonSslPort: false
   minimumTlsVersion: "1.2"
   redisConfiguration:
-    maxmemoryPolicy: allkeys-lru
+    maxmemory-policy: allkeys-lru
   tags:
     managed-by: flux-cd
 ```
 
-## Step 7: Export Connection Strings to Kubernetes Secrets
+## Step 7: Export Connection Information to Kubernetes Secrets
 
-ASO can automatically export connection information to Kubernetes secrets.
+ASO can automatically export resource information to Kubernetes secrets.
 
 ```yaml
 # File: apps/azure-resources/postgresql-secret-export.yaml
@@ -378,7 +356,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Resource group must be created first
+  # Resource group is referenced by dependent resources
   - resource-group.yaml
   # Then create dependent resources
   - storage-account.yaml
@@ -448,8 +426,8 @@ kubectl describe flexibleserver psql-myapp-prod -n default
 ### Authentication Errors
 
 ```bash
-# Verify the ASO credential secret
-kubectl get secret aso-credential -n azureserviceoperator-system -o yaml
+# Verify the ASO controller settings secret
+kubectl get secret aso-controller-settings -n azureserviceoperator-system -o yaml
 
 # Check the workload identity is configured
 kubectl get serviceaccount azureserviceoperator-default \
