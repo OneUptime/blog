@@ -30,20 +30,22 @@ Adjust MTU for your network environment:
 ```bash
 # Check current MTU setting
 
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep mtu
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config get mtu
 
 # Adjust MTU for VXLAN overlay (VXLAN header = 50 bytes overhead)
 # Physical NIC MTU = 1500 -> Pod MTU = 1450
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set MTU=1450
+  --set MTU=1450 \
+  --set rollOutCiliumPods=true
 
 # For Jumbo frames environment (9000 MTU physical)
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set MTU=8950  # With VXLAN overlay
+  --set MTU=8950 \
+  --set rollOutCiliumPods=true  # With VXLAN overlay
 ```
 
 Configure CNI chaining with other plugins:
@@ -53,10 +55,12 @@ Configure CNI chaining with other plugins:
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set cni.chainingMode=portmap
+  --set cni.chainingMode=portmap \
+  --set rollOutCiliumPods=true
 
 # The resulting chained CNI config:
-cat /etc/cni/net.d/05-cilium.conf
+kubectl debug node/<node-name> --image=ubuntu -q -- \
+  cat /host/etc/cni/net.d/05-cilium.conflist
 ```
 
 ```json
@@ -81,7 +85,7 @@ cat /etc/cni/net.d/05-cilium.conf
 # Lower number = higher priority
 # Rename to ensure Cilium is the first CNI
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  mv /etc/cni/net.d/10-cilium.conf /etc/cni/net.d/05-cilium.conf
+  mv /host/etc/cni/net.d/10-cilium.conflist /host/etc/cni/net.d/05-cilium.conflist
 ```
 
 ## Troubleshoot CNI Adjustment Issues
@@ -95,7 +99,7 @@ kubectl get pods -A | grep -v Running | grep ContainerCreating
 # Check if change was applied to all nodes
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   CONFIG=$(kubectl debug node/$node --image=ubuntu -q -- \
-    cat /etc/cni/net.d/05-cilium.conf 2>/dev/null | jq -c '.type // .plugins[0].type')
+    cat /host/etc/cni/net.d/05-cilium.conflist 2>/dev/null | jq -c '.type // .plugins[0].type')
   echo "$node: $CONFIG"
 done
 
@@ -113,20 +117,22 @@ Fix CNI adjustment failures:
 ```bash
 # Issue: MTU mismatch causing packet drops
 # Diagnose by checking for IP fragmentation
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop | grep -i frag
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop | grep -i frag
 
 # Fix by setting appropriate MTU
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep mtu
-helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values --set MTU=1400
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config get mtu
+helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values --set MTU=1400 --set rollOutCiliumPods=true
 
 # Issue: Chained CNI not loading second plugin
-cat /etc/cni/net.d/05-cilium.conf | jq '.plugins[1].type'
+kubectl debug node/<node-name> --image=ubuntu -q -- \
+  cat /host/etc/cni/net.d/05-cilium.conflist | jq '.plugins[1].type'
 # Verify the second plugin binary exists
-ls /opt/cni/bin/portmap
+kubectl debug node/<node-name> --image=ubuntu -q -- \
+  ls /host/opt/cni/bin/portmap
 
 # Issue: CNI config not propagated to new node
-# DaemonSet install-cni init container should handle this
-kubectl -n kube-system describe pod <cilium-pod-on-new-node> | grep install-cni
+# The cilium-agent writes the CNI configuration when it becomes ready
+kubectl -n kube-system logs <cilium-pod-on-new-node> | grep -i "cni"
 ```
 
 ## Validate CNI Adjustments
@@ -137,12 +143,12 @@ Verify CNI configuration changes are correctly applied:
 # Validate MTU is consistent across all nodes
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   MTU=$(kubectl debug node/$node --image=ubuntu -q -- \
-    ip link show | grep mtu | head -1 | grep -oP "mtu \K\d+" 2>/dev/null)
-  echo "$node NIC MTU: $MTU"
+    ip link show cilium_vxlan 2>/dev/null | grep -oP "mtu \K\d+")
+  echo "$node Cilium VXLAN MTU: $MTU"
 done
 
 # Test pod-to-pod connectivity after adjustment
-kubectl run mtu-test-1 --image=nicolaka/netshoot --restart=Never
+kubectl run mtu-test-1 --image=nicolaka/netshoot --restart=Never -- sleep 3600
 kubectl run mtu-test-2 --image=nicolaka/netshoot --restart=Never -- sleep 3600
 kubectl wait pod/mtu-test-1 pod/mtu-test-2 --for=condition=Ready
 
@@ -175,7 +181,7 @@ Monitor for CNI adjustment side effects:
 ```bash
 # Monitor packet drops after MTU changes
 kubectl -n kube-system exec ds/cilium -- \
-  cilium monitor --type drop -f | grep -i mtu
+  cilium-dbg monitor --type drop -f | grep -i mtu
 
 # Check pod creation success rate after CNI change
 watch -n10 "kubectl get pods -A | grep -c Running && kubectl get pods -A | grep -c ContainerCreating"
