@@ -30,7 +30,7 @@ fleet-repo/
 ├── infrastructure/
 │   ├── sources/
 │   │   ├── kustomization.yaml
-│   │   ├── helm-bitnami.yaml
+│   │   ├── helm-ingress-nginx.yaml
 │   │   ├── helm-jetstack.yaml
 │   │   └── helm-prometheus.yaml
 │   ├── shared/
@@ -74,7 +74,7 @@ Start by defining shared Helm repository sources that all clusters will use.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - helm-bitnami.yaml
+  - helm-ingress-nginx.yaml
   - helm-jetstack.yaml
   - helm-prometheus.yaml
 ```
@@ -103,6 +103,19 @@ metadata:
 spec:
   interval: 24h
   url: https://prometheus-community.github.io/helm-charts
+```
+
+```yaml
+# infrastructure/sources/helm-ingress-nginx.yaml
+# Ingress NGINX Helm repository for ingress controller charts
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: ingress-nginx
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://kubernetes.github.io/ingress-nginx
 ```
 
 ## Creating Shared Component Definitions
@@ -143,7 +156,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -158,7 +171,8 @@ spec:
       retries: 3
   values:
     # Default values shared across all clusters
-    installCRDs: true
+    crds:
+      enabled: true
     replicaCount: 2
     prometheus:
       enabled: true
@@ -219,8 +233,10 @@ spec:
             memory: 512Mi
     grafana:
       enabled: true
-      adminPassword:
+      admin:
         existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
 ```
 
 ## Aggregating Shared Components
@@ -305,14 +321,14 @@ spec:
       replicaCount: 5
 ```
 
-Then update the cluster's Flux Kustomization to point to the cluster-specific overlay instead:
+Then update the cluster's shared-component Flux Kustomization to point to the cluster-specific overlay instead:
 
 ```yaml
 # clusters/cluster-a/infrastructure.yaml (updated to use cluster-specific overlay)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: infra-components
+  name: infra-shared
   namespace: flux-system
 spec:
   dependsOn:
@@ -336,7 +352,7 @@ spec:
     spec:
       chart: cert-manager
       # Allows patch updates but not minor/major
-      version: ">=1.14.0 <1.15.0"
+      version: ">=1.20.0 <1.21.0"
       sourceRef:
         kind: HelmRepository
         name: jetstack
