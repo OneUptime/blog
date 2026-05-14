@@ -26,11 +26,14 @@ This guide walks through deploying Dex, configuring identity connectors, and int
 ```text
 clusters/
   my-cluster/
+    kustomization-dex.yaml
     dex/
       namespace.yaml
       helmrepository.yaml
       helmrelease.yaml
       ingress.yaml
+      dex-secrets.yaml
+      rbac.yaml
       kustomization.yaml
 ```
 
@@ -76,7 +79,7 @@ spec:
   chart:
     spec:
       chart: dex
-      version: "0.19.x"
+      version: "0.24.x"
       sourceRef:
         kind: HelmRepository
         name: dex
@@ -84,7 +87,11 @@ spec:
       interval: 12h
   values:
     # Replica count for high availability
-    replicas: 2
+    replicaCount: 2
+
+    # Enable the chart's gRPC container port and service port
+    grpc:
+      enabled: true
 
     # Resource limits
     resources:
@@ -122,13 +129,17 @@ spec:
       expiry:
         # How long ID tokens are valid
         idTokens: "24h"
-        # How long signing keys are valid
-        signingKeys: "6h"
         # Refresh token settings
         refreshTokens:
           reuseInterval: "3s"
           validIfNotUsedFor: "168h"
           absoluteLifetime: "720h"
+
+      # Signing key rotation configuration
+      signer:
+        type: local
+        config:
+          keysRotationPeriod: "6h"
 
       # OAuth2 settings
       oauth2:
@@ -201,7 +212,7 @@ spec:
         # Kubernetes OIDC authentication
         - id: kubernetes
           name: Kubernetes
-          secret: $KUBERNETES_CLIENT_SECRET
+          secretEnv: KUBERNETES_CLIENT_SECRET
           redirectURIs:
             - http://localhost:8000
             - http://localhost:18000
@@ -209,14 +220,14 @@ spec:
         # Grafana SSO
         - id: grafana
           name: Grafana
-          secret: $GRAFANA_CLIENT_SECRET
+          secretEnv: GRAFANA_CLIENT_SECRET
           redirectURIs:
             - https://grafana.example.com/login/generic_oauth
 
         # Custom application
         - id: my-app
           name: My Application
-          secret: $MY_APP_CLIENT_SECRET
+          secretEnv: MY_APP_CLIENT_SECRET
           redirectURIs:
             - https://app.example.com/auth/callback
 
@@ -271,8 +282,6 @@ spec:
           port: 5556
         grpc:
           port: 5557
-        telemetry:
-          port: 5558
 
     # Service monitor for Prometheus
     serviceMonitor:
@@ -371,8 +380,8 @@ metadata:
   name: oidc-platform-admins
 subjects:
   - kind: Group
-    # Group name matches the connector group with prefix
-    name: "oidc:platform-team"
+    # GitHub team claims are formatted as "<org>:<team>" before the OIDC group prefix
+    name: "oidc:my-organization:platform-team"
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -385,7 +394,7 @@ metadata:
   name: oidc-developers
 subjects:
   - kind: Group
-    name: "oidc:developers"
+    name: "oidc:my-organization:developers"
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -398,6 +407,19 @@ roleRef:
 
 ```yaml
 # clusters/my-cluster/dex/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - dex-secrets.yaml
+  - helmrepository.yaml
+  - helmrelease.yaml
+  - ingress.yaml
+  - rbac.yaml
+```
+
+```yaml
+# clusters/my-cluster/kustomization-dex.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -441,7 +463,8 @@ kubectl run curl-test --rm -it --image=curlimages/curl -- \
 kubectl oidc-login setup \
   --oidc-issuer-url=https://dex.example.com \
   --oidc-client-id=kubernetes \
-  --oidc-client-secret=<your-secret>
+  --oidc-client-secret=<your-secret> \
+  --oidc-extra-scope=groups
 
 # Verify Flux reconciliation
 flux get helmrelease -n dex
