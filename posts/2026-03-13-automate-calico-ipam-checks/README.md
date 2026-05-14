@@ -29,15 +29,18 @@ spec:
           serviceAccountName: calico-diagnostics
           containers:
             - name: ipam-check
-              image: calico/ctl:v3.27.0
+              image: calico/ctl:v3.32.0
               command:
                 - /bin/sh
                 - -c
                 - |
-                  echo "=== Calico IPAM Check $(date) ===" && \
-                  calicoctl ipam check && \
-                  echo "IPAM check passed" || \
-                  echo "IPAM check FAILED - review output above"
+                  echo "=== Calico IPAM Check $(date) ==="
+                  if calicoctl ipam check --show-problem-ips; then
+                    echo "IPAM check passed"
+                  else
+                    echo "IPAM check FAILED - review output above"
+                    exit 1
+                  fi
               env:
                 - name: DATASTORE_TYPE
                   value: kubernetes
@@ -50,13 +53,22 @@ spec:
 #!/bin/bash
 # ipam-utilization-exporter.sh
 
-# Export IPAM utilization as Prometheus metrics on port 9099
+# Export IPAM utilization as Prometheus textfile metrics
 
 while true; do
-  TOTAL=$(calicoctl ipam show 2>/dev/null | grep "IPs in use" | \
-    awk '{print $(NF-1)}' | tr -d '(' || echo 0)
-  USED=$(calicoctl ipam show 2>/dev/null | grep "IPs in use" | \
-    awk '{print $NF}' | tr -d '%' || echo 0)
+  USED=$(calicoctl ipam show 2>/dev/null | awk -F'|' '
+    /IP Pool/ {
+      total += $4 + 0
+      split($5, used, " ")
+      inuse += used[1] + 0
+    }
+    END {
+      if (total > 0) {
+        printf "%.0f", (inuse / total) * 100
+      } else {
+        print 0
+      }
+    }' || echo 0)
 
   cat > /tmp/ipam-metrics.txt << METRICS
 # HELP calico_ipam_utilization_percent IPAM IP utilization percentage
@@ -78,8 +90,19 @@ SLACK_WEBHOOK="${SLACK_WEBHOOK_URL}"
 WARN_THRESHOLD=80
 CRIT_THRESHOLD=90
 
-USED=$(calicoctl ipam show 2>/dev/null | grep "IPs in use" | \
-  awk '{print $NF}' | tr -d '%' || echo 0)
+USED=$(calicoctl ipam show 2>/dev/null | awk -F'|' '
+  /IP Pool/ {
+    total += $4 + 0
+    split($5, used, " ")
+    inuse += used[1] + 0
+  }
+  END {
+    if (total > 0) {
+      printf "%.0f", (inuse / total) * 100
+    } else {
+      print 0
+    }
+  }' || echo 0)
 
 if [ "${USED}" -ge "${CRIT_THRESHOLD}" ]; then
   MSG="CRITICAL: Calico IPAM at ${USED}% utilization - pod scheduling may fail"
@@ -113,4 +136,4 @@ flowchart TD
 
 ## Conclusion
 
-Automating Calico IPAM checks with a weekly consistency CronJob and a daily utilization check CronJob provides complete IPAM visibility without manual effort. The consistency check catches leaked IPs that won't appear in utilization metrics. The utilization check provides early warning before exhaustion. Both should be configured from day one in production - not after the first IPAM-related incident.
+Automating Calico IPAM checks with a weekly consistency CronJob and a daily utilization check CronJob provides complete IPAM visibility without manual effort. The consistency check catches leaked or incorrectly allocated IPs that utilization metrics cannot identify. The utilization check provides early warning before exhaustion. Both should be configured from day one in production - not after the first IPAM-related incident.
