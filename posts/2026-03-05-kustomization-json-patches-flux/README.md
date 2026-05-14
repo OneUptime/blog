@@ -10,7 +10,7 @@ Description: Learn how to use JSON patches (RFC 6902) in Flux Kustomization reso
 
 ## Introduction
 
-While strategic merge patches are the default way to modify resources in Flux, there are situations where you need more precise control. JSON patches, defined by RFC 6902, use explicit operations (add, remove, replace, move, copy, test) to modify specific fields at exact paths. This makes them ideal for scenarios where strategic merge patches fall short, such as modifying list items by index, removing specific fields, or making changes that require exact positioning. This guide covers how to use JSON patches in Flux Kustomizations.
+While strategic merge patches are a common way to modify resources in Flux, there are situations where you need more precise control. JSON patches, defined by RFC 6902, use explicit operations (add, remove, replace, move, copy, test) to modify specific fields at exact paths. This makes them ideal for scenarios where strategic merge patches fall short, such as modifying list items by index, removing specific fields, or making changes that require exact positioning. This guide covers how to use JSON patches in Flux Kustomizations.
 
 ## JSON Patch vs Strategic Merge Patch
 
@@ -101,6 +101,8 @@ patches:
 ```
 
 Note that forward slashes in key names must be escaped as `~1` in JSON Pointer syntax. The tilde character is escaped as `~0`.
+
+The parent object or array must already exist. For example, adding `/metadata/annotations/prometheus.io~1scrape` requires `metadata.annotations` to exist on the target resource.
 
 ### Add an Environment Variable
 
@@ -365,7 +367,7 @@ patches:
 
 ```bash
 # Preview the patched output
-flux build kustomization my-app
+flux build kustomization my-app --path ./deploy
 
 # Check for patch errors in the Kustomization status
 kubectl describe kustomization my-app -n flux-system
