@@ -283,12 +283,19 @@ spec:
         - name: notify
           image: curlimages/curl:latest
           command:
-            - curl
-            - -X
-            - POST
-            - -d
-            - '{"text":"Deployment completed successfully"}'
-            - $(SLACK_WEBHOOK_URL)
+            - sh
+            - -c
+            - |
+              curl -X POST \
+                -H "Content-Type: application/json" \
+                -d '{"text":"Deployment completed successfully"}' \
+                "$SLACK_WEBHOOK_URL"
+          env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook
+                  key: url
       restartPolicy: Never
 ```
 
@@ -301,7 +308,7 @@ spec:
 | SSO and RBAC | Built-in | Kubernetes-native |
 | ApplicationSets | Powerful templating | Kustomize overlays |
 | Sync windows | Native support | Manual suspension |
-| Resource hooks | PreSync/PostSync | Helm hooks only |
+| Resource hooks | PreSync/PostSync | Helm hooks and tests |
 | Team familiarity | UI-friendly | CLI-friendly |
 
 ## Making Your Decision
