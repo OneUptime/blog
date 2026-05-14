@@ -24,12 +24,15 @@ An SBOM is a machine-readable document that lists every component in a software 
 Install the necessary tools:
 
 ```bash
-# Install Cosign for fetching signed SBOMs
+# Install Cosign for verifying signed images
 
 brew install cosign
 
 # Install Flux CLI
 brew install fluxcd/tap/flux
+
+# Install Docker with Buildx for extracting image SBOMs
+brew install --cask docker
 
 # Install syft for SBOM analysis (optional)
 brew install syft
@@ -55,22 +58,38 @@ echo "Total packages in SBOM"
 cat flux_${FLUX_VERSION}_sbom.spdx.json | jq -r '.packages[] | "\(.name) \(.versionInfo)"'
 ```
 
-## Step 2: Retrieve SBOMs for Controller Images
+## Step 2: Verify Controller Images and Retrieve SBOMs
 
-Flux CD controller images have SBOMs attached as OCI artifacts. Use Cosign to download them:
+Flux CD controller images are signed with Cosign and include architecture-specific SBOMs. Verify the image signature with Cosign, then use Docker Buildx to extract the SPDX JSON:
 
 ```bash
-# Download the SBOM for source-controller
-cosign download sbom ghcr.io/fluxcd/source-controller:v1.4.1 > source-controller-sbom.spdx.json
+# Verify and extract the SBOM for source-controller
+cosign verify ghcr.io/fluxcd/source-controller:v1.4.1 \
+  --certificate-identity-regexp='^https://github\.com/fluxcd/.*$' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+docker buildx imagetools inspect ghcr.io/fluxcd/source-controller:v1.4.1 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > source-controller-sbom.spdx.json
 
-# Download the SBOM for kustomize-controller
-cosign download sbom ghcr.io/fluxcd/kustomize-controller:v1.4.0 > kustomize-controller-sbom.spdx.json
+# Verify and extract the SBOM for kustomize-controller
+cosign verify ghcr.io/fluxcd/kustomize-controller:v1.4.0 \
+  --certificate-identity-regexp='^https://github\.com/fluxcd/.*$' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+docker buildx imagetools inspect ghcr.io/fluxcd/kustomize-controller:v1.4.0 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > kustomize-controller-sbom.spdx.json
 
-# Download the SBOM for helm-controller
-cosign download sbom ghcr.io/fluxcd/helm-controller:v1.1.0 > helm-controller-sbom.spdx.json
+# Verify and extract the SBOM for helm-controller
+cosign verify ghcr.io/fluxcd/helm-controller:v1.1.0 \
+  --certificate-identity-regexp='^https://github\.com/fluxcd/.*$' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+docker buildx imagetools inspect ghcr.io/fluxcd/helm-controller:v1.1.0 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > helm-controller-sbom.spdx.json
 
-# Download the SBOM for notification-controller
-cosign download sbom ghcr.io/fluxcd/notification-controller:v1.4.0 > notification-controller-sbom.spdx.json
+# Verify and extract the SBOM for notification-controller
+cosign verify ghcr.io/fluxcd/notification-controller:v1.4.0 \
+  --certificate-identity-regexp='^https://github\.com/fluxcd/.*$' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+docker buildx imagetools inspect ghcr.io/fluxcd/notification-controller:v1.4.0 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > notification-controller-sbom.spdx.json
 ```
 
 ## Step 3: Analyze the SBOM Contents
@@ -82,7 +101,7 @@ Examine the SBOM to understand what dependencies are included:
 cat source-controller-sbom.spdx.json | jq '.packages | length'
 
 # List all Go modules and their versions
-cat source-controller-sbom.spdx.json | jq -r '.packages[] | select(.externalRefs != null) | "\(.name)@\(.versionInfo)"' | sort
+cat source-controller-sbom.spdx.json | jq -r '.packages[] | select(.externalRefs[]? | .referenceLocator | startswith("pkg:golang/")) | "\(.name)@\(.versionInfo)"' | sort
 
 # Find specific packages (e.g., check for a particular library)
 cat source-controller-sbom.spdx.json | jq -r '.packages[] | select(.name | contains("crypto")) | "\(.name) \(.versionInfo)"'
@@ -133,10 +152,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.0
 
       - name: Install Grype
-        uses: anchore/scan-action/download-grype@v4
+        run: curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Download and scan Flux SBOMs
         run: |
@@ -151,8 +173,14 @@ jobs:
             NAME="${CTRL%%:*}"
             echo "Processing $NAME..."
 
-            # Download SBOM
-            cosign download sbom "ghcr.io/fluxcd/${CTRL}" > "${NAME}-sbom.spdx.json"
+            # Verify the image signature
+            cosign verify "ghcr.io/fluxcd/${CTRL}" \
+              --certificate-identity-regexp='^https://github\.com/fluxcd/.*$' \
+              --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+            # Extract the linux/amd64 SBOM
+            docker buildx imagetools inspect "ghcr.io/fluxcd/${CTRL}" \
+              --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > "${NAME}-sbom.spdx.json"
 
             # Scan for vulnerabilities
             grype "sbom:${NAME}-sbom.spdx.json" --fail-on critical
@@ -171,8 +199,10 @@ When upgrading Flux, compare SBOMs to understand what changed:
 
 ```bash
 # Download SBOMs for two versions
-cosign download sbom ghcr.io/fluxcd/source-controller:v1.3.0 > sc-old.spdx.json
-cosign download sbom ghcr.io/fluxcd/source-controller:v1.4.1 > sc-new.spdx.json
+docker buildx imagetools inspect ghcr.io/fluxcd/source-controller:v1.3.0 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > sc-old.spdx.json
+docker buildx imagetools inspect ghcr.io/fluxcd/source-controller:v1.4.1 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX}}' > sc-new.spdx.json
 
 # Extract package lists and compare
 jq -r '.packages[] | "\(.name)@\(.versionInfo)"' sc-old.spdx.json | sort > old-packages.txt
