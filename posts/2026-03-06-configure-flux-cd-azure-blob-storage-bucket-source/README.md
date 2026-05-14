@@ -18,7 +18,7 @@ Flux CD's Bucket source controller polls Azure Blob Storage containers for chang
 
 - An AKS cluster with Flux CD installed
 - Azure CLI (v2.50 or later)
-- Flux CLI (v2.2 or later)
+- Flux CLI (v2.4 or later)
 - An Azure subscription with permissions to create storage accounts
 
 ## Architecture
@@ -40,6 +40,11 @@ export RESOURCE_GROUP="rg-fluxcd-demo"
 export LOCATION="eastus"
 export STORAGE_ACCOUNT="stfluxcdbucket"
 export CONTAINER_NAME="flux-manifests"
+
+# Create a resource group
+az group create \
+  --name $RESOURCE_GROUP \
+  --location $LOCATION
 
 # Create a storage account
 az storage account create \
@@ -204,7 +209,7 @@ az identity federated-credential create \
   --audiences "api://AzureADTokenExchange"
 ```
 
-### Step 3: Patch the Source Controller Service Account
+### Step 3: Patch the Source Controller Service Account and Deployment
 
 ```yaml
 # File: clusters/my-cluster/flux-system/patches/storage-identity.yaml
@@ -218,6 +223,17 @@ metadata:
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
   labels:
     azure.workload.identity/use: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: source-controller
+  namespace: flux-system
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
 ```
 
 ### Step 4: Create the Bucket Source with Azure Provider
@@ -256,12 +272,14 @@ export STORAGE_KEY=$(az storage account keys list \
   --output tsv)
 
 # Generate a SAS token valid for 1 year with read and list permissions
+export SAS_EXPIRY=$(date -u -d "+1 year" '+%Y-%m-%dT%H:%MZ')
+
 export SAS_TOKEN=$(az storage container generate-sas \
   --account-name $STORAGE_ACCOUNT \
   --account-key $STORAGE_KEY \
   --name $CONTAINER_NAME \
   --permissions rl \
-  --expiry $(date -u -v+1y '+%Y-%m-%dT%H:%MZ') \
+  --expiry $SAS_EXPIRY \
   --https-only \
   --output tsv)
 
@@ -274,7 +292,7 @@ echo "SAS Token generated (keep this secure)"
 # Create a secret containing the SAS token
 kubectl create secret generic azure-blob-sas \
   --namespace flux-system \
-  --from-literal=sasToken="?${SAS_TOKEN}"
+  --from-literal=sasKey="?${SAS_TOKEN}"
 ```
 
 ### Step 3: Create the Bucket Source with SAS Authentication
@@ -288,8 +306,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  # Use 'generic' provider when not using managed identity
-  provider: generic
+  # Use the 'azure' provider for Azure Blob Storage SAS authentication
+  provider: azure
   bucketName: flux-manifests
   endpoint: "https://stfluxcdbucket.blob.core.windows.net"
   # Reference the secret containing the SAS token
@@ -318,7 +336,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  provider: generic
+  provider: azure
   bucketName: flux-manifests
   endpoint: "https://stfluxcdbucket.blob.core.windows.net"
   secretRef:
@@ -420,19 +438,21 @@ Regenerate the SAS token and update the Kubernetes secret:
 
 ```bash
 # Generate a new SAS token
+export NEW_SAS_EXPIRY=$(date -u -d "+1 year" '+%Y-%m-%dT%H:%MZ')
+
 export NEW_SAS_TOKEN=$(az storage container generate-sas \
   --account-name $STORAGE_ACCOUNT \
   --account-key $STORAGE_KEY \
   --name $CONTAINER_NAME \
   --permissions rl \
-  --expiry $(date -u -v+1y '+%Y-%m-%dT%H:%MZ') \
+  --expiry $NEW_SAS_EXPIRY \
   --https-only \
   --output tsv)
 
 # Update the secret
 kubectl create secret generic azure-blob-sas \
   --namespace flux-system \
-  --from-literal=sasToken="?${NEW_SAS_TOKEN}" \
+  --from-literal=sasKey="?${NEW_SAS_TOKEN}" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
