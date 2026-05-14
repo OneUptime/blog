@@ -188,7 +188,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 argocd admin initial-password -n argocd
 
 # Login via CLI
-argocd login localhost:8080 --username admin --password <password>
+argocd login localhost:8080 --username admin --password <password> --insecure
 ```
 
 ### ArgoCD CLI Operations
@@ -246,6 +246,8 @@ metadata:
   # Finalizer ensures cleanup when app is deleted via UI
   finalizers:
     - resources-finalizer.argocd.argoproj.io
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: deployments
 spec:
   project: default
   source:
@@ -259,18 +261,9 @@ spec:
     automated:
       prune: true
       selfHeal: true
-  # UI can display these sync windows
-  syncWindows:
-    - kind: allow
-      schedule: "0 8-18 * * 1-5"
-      duration: 10h
-      applications:
-        - "*"
-  # Notifications visible in UI
-  metadata:
-    annotations:
-      notifications.argoproj.io/subscribe.on-sync-succeeded.slack: deployments
 ```
+
+Sync windows are configured on ArgoCD AppProjects, and the UI can display whether a window allows or blocks syncing for an application.
 
 The ArgoCD web UI provides:
 
@@ -278,7 +271,7 @@ The ArgoCD web UI provides:
 - Live sync status with visual indicators for healthy, degraded, and out-of-sync states
 - Resource diff viewer comparing live state vs desired state
 - Log streaming from any pod directly in the browser
-- Terminal access to pods through the UI
+- Optional terminal access to pods through the UI when the web terminal is enabled
 - Sync history with commit details and deployment timelines
 - One-click sync, rollback, and refresh operations
 
@@ -400,39 +393,35 @@ argocd app logs webapp --container main
 While Flux does not include a built-in UI, several third-party options exist.
 
 ```yaml
-# Weave GitOps - the most popular UI for Flux CD
-# Deploy via Helm with Flux
+# Capacitor - a general-purpose UI for Flux CD
+# Deploy via Flux from OCI manifests
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: weave-gitops
+  name: capacitor
   namespace: flux-system
 spec:
-  url: https://helm.gitops.weave.works
-  interval: 1h
+  interval: 12h
+  url: oci://ghcr.io/gimlet-io/capacitor-manifests
+  ref:
+    semver: ">=0.1.0"
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: weave-gitops
+  name: capacitor
   namespace: flux-system
 spec:
-  interval: 30m
-  chart:
-    spec:
-      chart: weave-gitops
-      version: "4.x"
-      sourceRef:
-        kind: HelmRepository
-        name: weave-gitops
-  values:
-    # Admin credentials for the UI
-    adminUser:
-      create: true
-      username: admin
-    # OIDC integration for SSO
-    oidcConfig:
-      enabled: false
+  targetNamespace: flux-system
+  interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  wait: true
+  prune: true
+  path: "./"
+  sourceRef:
+    kind: OCIRepository
+    name: capacitor
 ```
 
 ## Automation and Scripting
@@ -447,10 +436,12 @@ flux get kustomization webapp --status-selector ready=true
 # Wait for a reconciliation to complete
 flux reconcile kustomization webapp --with-source --timeout=5m
 
-# Export all resources for backup
-flux export source all > sources.yaml
-flux export kustomization all > kustomizations.yaml
-flux export helmrelease all > helmreleases.yaml
+# Export resources for backup
+flux export source git --all > git-sources.yaml
+flux export source helm --all > helm-sources.yaml
+flux export source oci --all > oci-sources.yaml
+flux export kustomization --all > kustomizations.yaml
+flux export helmrelease --all > helmreleases.yaml
 
 # Programmatic health check
 if flux get kustomization webapp | grep -q "True"; then
