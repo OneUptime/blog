@@ -57,7 +57,6 @@ spec:
     name: flux-system
   path: ./apps/myapp
   prune: true
-  wait: true
   timeout: 5m
   healthChecks:
     - apiVersion: apps/v1
@@ -330,12 +329,23 @@ annotations:
 spec:
   replicas: 5
   template:
+    metadata:
+      annotations:
+        app.kubernetes.io/version: "2.0.0"
     spec:
       containers:
         - name: myapp
           image: myregistry.io/myapp:v2.0.0
+          env:
+            - name: VERSION
+              value: "2.0.0"
+            - name: TRACK
+              value: "stable"
 
-# Remove canary deployment
+# Disable canary traffic by removing the canary ingress or setting:
+# nginx.ingress.kubernetes.io/canary-weight: "0"
+
+# Scale down the canary deployment
 # apps/myapp/canary/deployment.yaml
 spec:
   replicas: 0
@@ -379,7 +389,7 @@ spec:
 
 ## Pod-Based Canary (Without Ingress)
 
-Use a single Service that selects both stable and canary pods. Traffic distribution is proportional to the number of pods:
+Use a single Service that selects both stable and canary pods. Over many requests, traffic distribution is approximately proportional to the number of ready pods:
 
 ```yaml
 # apps/myapp/unified-service.yaml
@@ -398,12 +408,12 @@ spec:
 ```
 
 ```yaml
-# Stable: 9 replicas = 90% traffic
+# Stable: 9 replicas = approximately 90% traffic
 # apps/myapp/stable/deployment.yaml
 spec:
   replicas: 9
 
-# Canary: 1 replica = 10% traffic
+# Canary: 1 replica = approximately 10% traffic
 # apps/myapp/canary/deployment.yaml
 spec:
   replicas: 1
@@ -427,7 +437,7 @@ To shift traffic, adjust replica counts:
 
 ## Automated Rollback on Failure
 
-Create a monitoring CronJob that checks canary health and triggers rollback:
+Create a monitoring CronJob that checks canary health and triggers rollback. Because Flux will reconcile the Git state again on its next interval, suspend the Flux Kustomization before making an emergency in-cluster rollback:
 
 ```yaml
 # apps/myapp/canary-monitor.yaml
@@ -464,18 +474,29 @@ spec:
                   RESTART_COUNT=$(kubectl get pods \
                     -n myapp \
                     -l track=canary \
-                    -o jsonpath='{.items[*].status.containerStatuses[*].restartCount}')
+                    -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' \
+                    | awk '{sum += $1} END {print sum + 0}')
+
+                  CANARY_READY=${CANARY_READY:-0}
 
                   echo "Canary ready: $CANARY_READY/$CANARY_DESIRED"
                   echo "Restart count: $RESTART_COUNT"
 
                   # Rollback if pods are not ready or restarting frequently
                   if [ "$CANARY_READY" != "$CANARY_DESIRED" ] || [ "$RESTART_COUNT" -gt "3" ]; then
-                    echo "Canary is unhealthy. Scaling down canary."
+                    echo "Canary is unhealthy. Suspending Flux and scaling down canary."
+                    kubectl patch kustomization.kustomize.toolkit.fluxcd.io myapp-canary \
+                      -n flux-system \
+                      --type=merge \
+                      -p '{"spec":{"suspend":true}}'
                     kubectl scale deployment myapp-canary \
                       -n myapp \
                       --replicas=0
-                    echo "Canary scaled to 0. Manual intervention required."
+                    kubectl annotate ingress myapp-canary \
+                      -n myapp \
+                      nginx.ingress.kubernetes.io/canary-weight="0" \
+                      --overwrite
+                    echo "Canary scaled to 0 and canary traffic disabled. Commit the rollback to Git, then resume Flux."
                   else
                     echo "Canary is healthy."
                   fi
@@ -495,6 +516,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "deployments/scale"]
     verbs: ["get", "list", "patch", "update"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "patch"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list"]
@@ -504,6 +528,30 @@ kind: RoleBinding
 metadata:
   name: canary-monitor
   namespace: myapp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: canary-monitor
+subjects:
+  - kind: ServiceAccount
+    name: canary-monitor
+    namespace: myapp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: canary-monitor
+  namespace: flux-system
+rules:
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: canary-monitor
+  namespace: flux-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -555,7 +603,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: canary-alerts
@@ -567,7 +615,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: myapp-canary
-  summary: "Canary deployment status change"
+  eventMetadata:
+    summary: "Canary deployment status change"
 ```
 
 ## Summary
