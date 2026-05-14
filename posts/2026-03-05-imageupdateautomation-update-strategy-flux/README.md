@@ -93,7 +93,7 @@ This limits updates to a specific application's manifests.
 
 The Setters strategy relies on inline comments that reference an ImagePolicy. The format is:
 
-```json
+```text
 # {"$imagepolicy": "<namespace>:<policy-name>"}
 
 ```
@@ -108,7 +108,13 @@ kind: Deployment
 metadata:
   name: frontend
 spec:
+  selector:
+    matchLabels:
+      app: frontend
   template:
+    metadata:
+      labels:
+        app: frontend
     spec:
       containers:
         - name: frontend
@@ -127,7 +133,13 @@ kind: Deployment
 metadata:
   name: frontend
 spec:
+  selector:
+    matchLabels:
+      app: frontend
   template:
+    metadata:
+      labels:
+        app: frontend
     spec:
       containers:
         - name: frontend
@@ -167,6 +179,7 @@ spec:
           containers:
             - name: sync
               image: docker.io/myorg/data-sync:v2.0.1 # {"$imagepolicy": "flux-system:data-sync"}
+          restartPolicy: OnFailure
 ```
 
 ### StatefulSets
@@ -177,7 +190,14 @@ kind: StatefulSet
 metadata:
   name: database
 spec:
+  serviceName: database
+  selector:
+    matchLabels:
+      app: database
   template:
+    metadata:
+      labels:
+        app: database
     spec:
       containers:
         - name: db
