@@ -88,24 +88,21 @@ flux bootstrap github \
   --owner=myorg \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/dev-us-east \
-  --personal
+  --path=clusters/dev-us-east
 
 # Bootstrap the production US East cluster
 flux bootstrap github \
   --owner=myorg \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/prod-us-east \
-  --personal
+  --path=clusters/prod-us-east
 
 # Bootstrap the production EU West cluster
 flux bootstrap github \
   --owner=myorg \
   --repository=fleet-repo \
   --branch=main \
-  --path=clusters/prod-eu-west \
-  --personal
+  --path=clusters/prod-eu-west
 ```
 
 Each cluster only reconciles the manifests under its own `clusters/<name>/` path, but those manifests can reference shared resources elsewhere in the repository.
@@ -409,7 +406,7 @@ Use SOPS or Sealed Secrets for cluster-specific secrets.
 
 ```yaml
 # overlays/prod-us-east/apps/secrets/database-credentials.yaml
-# Encrypted with SOPS - only the production cluster can decrypt
+# Encrypted with SOPS - only clusters with the matching age private key can decrypt
 apiVersion: v1
 kind: Secret
 metadata:
@@ -417,11 +414,19 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  username: ENC[AES256_GCM,data:...,type:str]
-  password: ENC[AES256_GCM,data:...,type:str]
+  username: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
+  password: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
 sops:
-  kms:
-    - arn: arn:aws:kms:us-east-1:123456789:key/abc-def
+  age:
+    - recipient: age1exampleproductionpublickey...
+      enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        ...
+        -----END AGE ENCRYPTED FILE-----
+  lastmodified: "2026-03-06T00:00:00Z"
+  mac: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
+  encrypted_regex: ^(data|stringData)$
+  version: 3.10.2
 ```
 
 Enable SOPS decryption in the Flux Kustomization:
