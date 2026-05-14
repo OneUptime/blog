@@ -25,11 +25,11 @@ This post traces four representative traffic scenarios through Calico's data pat
 ```mermaid
 graph LR
     PodA[Pod A\n10.0.1.4] --> VethA[veth-A host side]
-    VethA --> FORWARD[netfilter FORWARD]
+    VethA --> ROUTING[Kernel routing table\n10.0.1.5 dev veth-B]
+    ROUTING --> FORWARD[netfilter FORWARD]
     FORWARD --> CALIWL[cali-FORWARD\ncali-from-wl-dispatch]
     CALIWL --> POLICY[cali-fw-vethA\nEgress policy check]
-    POLICY --> ROUTING[Kernel routing table\n10.0.1.5 dev veth-B]
-    ROUTING --> INGRESS[cali-tw-vethB\nIngress policy check]
+    POLICY --> INGRESS[cali-tw-vethB\nIngress policy check]
     INGRESS --> PodB[Pod B\n10.0.1.5]
 ```
 
@@ -58,8 +58,9 @@ sequenceDiagram
     participant PodB as Pod B (Node 2)
 
     PodA->>Felix1: Packet: src=10.0.1.4, dst=10.0.2.5
+    Felix1->>Felix1: Route lookup: 10.0.2.0/26 via vxlan.calico
     Felix1->>Felix1: Egress policy check (cali-fw-vethA)
-    Felix1->>VXLAN: Route: 10.0.2.0/26 via vxlan.calico
+    Felix1->>VXLAN: Forward to vxlan.calico
     VXLAN->>Network: Encapsulated: outer src=Node1-IP, outer dst=Node2-IP\nInner: src=10.0.1.4, dst=10.0.2.5
     Network->>VXLAN: Received on Node 2
     VXLAN->>Felix2: Decapsulated packet
@@ -67,12 +68,12 @@ sequenceDiagram
     Felix2->>PodB: Deliver packet
 ```
 
-The VXLAN encapsulation/decapsulation is handled by the Linux kernel's VXLAN driver, not by Calico. Felix programs the FDB (forwarding database) entries that tell the VXLAN driver which Node IP to use for each pod CIDR:
+The VXLAN encapsulation/decapsulation is handled by the Linux kernel's VXLAN driver, not by Calico. Felix programs the routes and FDB (forwarding database) entries that tell the VXLAN driver which remote node VTEP IP to use for remote pod CIDRs:
 
 ```bash
 # View Calico's VXLAN FDB entries
 bridge fdb show dev vxlan.calico
-# Expected: MAC→IP mappings for each remote node's pod CIDR
+# Expected: remote VXLAN MAC-to-node-IP mappings
 ```
 
 ## Scenario 3: Pod-to-External (egress with SNAT)
@@ -80,16 +81,16 @@ bridge fdb show dev vxlan.calico
 ```mermaid
 graph LR
     Pod[Pod\n10.0.1.4] --> VETH[veth pair]
-    VETH --> EGRESS[cali-fw-vethA\nEgress policy check]
-    EGRESS --> ROUTING[Default route\n0.0.0.0/0 via node gateway]
-    ROUTING --> POSTROUTING[POSTROUTING\nCALICO-MASQ rule]
+    VETH --> ROUTING[Default route\n0.0.0.0/0 via node gateway]
+    ROUTING --> EGRESS[cali-fw-vethA\nEgress policy check]
+    EGRESS --> POSTROUTING[POSTROUTING\ncali-nat-outgoing MASQUERADE]
     POSTROUTING --> NIC[Node NIC\nSrc: 203.0.113.1 (Node IP)]
     NIC --> Internet[External service]
 ```
 
-The MASQUERADE rule is in the `nat` table POSTROUTING chain:
+The MASQUERADE rule is reached from Calico's `nat` table POSTROUTING chain through the `cali-nat-outgoing` chain:
 ```bash
-sudo iptables -t nat -L CALICO-MASQ -n -v
+sudo iptables -t nat -L cali-nat-outgoing -n -v
 # Shows: MASQUERADE for pod CIDR traffic to non-cluster destinations
 ```
 
@@ -99,23 +100,22 @@ In eBPF mode, the netfilter chain traversal is replaced with TC hook programs:
 
 ```mermaid
 graph LR
-    PodA[Pod A] --> TCEgress[TC Egress Hook\non veth-A]
-    TCEgress --> EBPFPolicy[eBPF policy map lookup\nsrc pod identity → egress rules]
+    PodA[Pod A] --> TCEgress[TC Ingress Hook\non host-side veth-A]
+    TCEgress --> EBPFPolicy[eBPF egress policy\ncompiled program and map lookups]
     EBPFPolicy --> ServiceMap[eBPF service map\nIf dst is ClusterIP: DNAT]
     ServiceMap --> Routing[Kernel routing table]
-    Routing --> TCIngress[TC Ingress Hook\non veth-B or remote node veth]
-    TCIngress --> EBPFIngress[eBPF ingress policy\nmap lookup]
+    Routing --> TCIngress[TC Egress Hook\non host-side veth-B or tunnel/interface]
+    TCIngress --> EBPFIngress[eBPF ingress policy\ncompiled program and map lookups]
     EBPFIngress --> PodB[Pod B]
 ```
 
 eBPF map inspection:
 ```bash
-# Policy map - contains policy rules per endpoint
-sudo bpftool map list | grep calico_policy
-sudo bpftool map dump id <policy-map-id> | head -30
+# Policy attached to an interface
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf policy dump <interface> <ingress|egress>
 
-# Service map - contains ClusterIP to pod IP mappings
-sudo bpftool map list | grep svc_ports
+# Service maps - contain ClusterIP frontend and backend entries
+sudo bpftool map list | grep 'cali_v4_nat_'
 ```
 
 ## Comparing Packet Counts Between Data Paths
