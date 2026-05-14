@@ -19,7 +19,7 @@ Quay is a container registry by Red Hat that supports webhook notifications for 
 
 ## Step 1: Create the Webhook Secret
 
-Create a Kubernetes secret for webhook authentication.
+Create a Kubernetes secret with a token that Flux uses to generate the receiver webhook path.
 
 ```bash
 # Generate a random token
@@ -49,15 +49,13 @@ metadata:
 spec:
   # Quay webhook type
   type: quay
-  # Quay push events
-  events:
-    - "push"
-  # Secret for authentication
+  # Secret used to generate the webhook path
   secretRef:
     name: quay-webhook-secret
   # Resources to reconcile on image push
   resources:
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: my-app
 ```
 
@@ -102,7 +100,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -138,16 +136,17 @@ metadata:
   namespace: flux-system
 spec:
   type: quay
-  events:
-    - "push"
   secretRef:
     name: quay-webhook-secret
   resources:
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: frontend
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: backend
-    - kind: ImageRepository
+    - apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
       name: worker
 ```
 
