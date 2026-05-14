@@ -146,9 +146,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
@@ -164,7 +165,8 @@ spec:
     crds: CreateReplace
   values:
     # Install CRDs as part of the Helm release
-    installCRDs: true
+    crds:
+      enabled: true
     # Enable Prometheus metrics endpoint
     prometheus:
       enabled: true
@@ -183,9 +185,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
@@ -216,9 +219,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: monitoring
   chart:
     spec:
       chart: kube-prometheus-stack
@@ -273,7 +277,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -288,7 +292,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Step 4: Wire Dependencies with Flux Kustomizations
@@ -339,21 +343,23 @@ spec:
     name: flux-system
   path: ./infrastructure/controllers
   prune: true
-  wait: true
-  # Wait for all controllers to be healthy before proceeding
   timeout: "10m"
   dependsOn:
     - name: sources
-  # Health checks verify controllers are actually running
+  # Health checks verify Helm releases are reconciled before proceeding
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: cert-manager
-      namespace: cert-manager
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: ingress-nginx-controller
-      namespace: ingress-nginx
+      namespace: flux-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: ingress-nginx
+      namespace: flux-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kube-prometheus-stack
+      namespace: flux-system
 ```
 
 ```yaml
@@ -454,11 +460,10 @@ kind: Ingress
 metadata:
   name: backend-api
   annotations:
-    # References the ingress-nginx controller
-    kubernetes.io/ingress.class: nginx
     # References the cert-manager ClusterIssuer
     cert-manager.io/cluster-issuer: letsencrypt-production
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - api.${CLUSTER_DOMAIN}
