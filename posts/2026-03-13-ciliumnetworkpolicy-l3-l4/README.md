@@ -10,15 +10,15 @@ Description: Master CiliumNetworkPolicy for L3 and L4 traffic control, using end
 
 ## Introduction
 
-`CiliumNetworkPolicy` (CNP) is Cilium's enhanced version of the standard Kubernetes `NetworkPolicy`, extending it with richer selectors, CIDR-based ingress/egress rules, port ranges, and entity-based matching (e.g., allow traffic to/from `kube-apiserver` or `world`). While Kubernetes NetworkPolicy is limited to pod and namespace selectors with simple port specifications, CNP gives operators the expressiveness needed to model real-world security requirements.
+`CiliumNetworkPolicy` (CNP) is Cilium's enhanced version of the standard Kubernetes `NetworkPolicy`, extending it with richer selectors, service and DNS-based egress rules, Cilium entities, and L7-aware policy features (e.g., allow traffic to/from `kube-apiserver` or `world`). While Kubernetes NetworkPolicy supports pod selectors, namespace selectors, IP blocks, and L4 ports, CNP gives operators additional expressiveness needed to model real-world security requirements.
 
-At the L3/L4 level, CNP can match on endpoint labels, namespace labels, CIDR blocks, named entities, and protocol types including ICMP. Policies are evaluated by eBPF programs in the kernel, making enforcement extremely fast with no per-packet overhead at the user-space level. This is fundamentally different from iptables-based implementations where each rule adds latency through linear rule matching.
+At the L3/L4 level, CNP can match on endpoint labels, namespace names or labels, CIDR blocks, named entities, and TCP/UDP ports. ICMP and ICMPv6 can be controlled with Cilium's `icmps` policy field rather than `protocol: ICMP` in `toPorts`. Policies are evaluated by eBPF programs in the kernel, making enforcement extremely fast with no per-packet overhead at the user-space level. This is fundamentally different from iptables-based implementations where large rule sets can add latency through sequential rule matching.
 
 This guide covers the full range of L3/L4 CiliumNetworkPolicy features with practical examples covering common security patterns.
 
 ## Prerequisites
 
-- Cilium v1.10+
+- Cilium v1.16+ for the `endPort` port-range example
 - `kubectl` installed
 - Workloads with appropriate labels in the cluster
 
@@ -139,7 +139,7 @@ spec:
 
 ```mermaid
 flowchart TD
-    A[Incoming Packet] --> B[eBPF XDP/TC Hook]
+    A[Incoming Packet] --> B[eBPF Datapath Hook]
     B --> C{Endpoint\nSelector Match?}
     C -->|No Match| D[No Policy - Default Allow\nor Default Deny]
     C -->|Match| E{Ingress Rules\nEvaluated}
