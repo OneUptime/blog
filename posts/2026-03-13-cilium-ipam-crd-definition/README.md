@@ -12,9 +12,9 @@ Description: A detailed reference guide to the CiliumNode CRD structure used for
 
 The `CiliumNode` Custom Resource Definition is the central data structure through which Cilium's IPAM subsystem communicates node-level networking configuration and IP allocation state. Every Kubernetes node managed by Cilium has a corresponding `CiliumNode` object that records its networking capabilities, IPAM parameters, allocated CIDRs, and individual IP allocation state. Understanding the CRD schema helps you inspect, debug, and manually intervene in IPAM operations when necessary.
 
-The `CiliumNode` CRD has two main sections relevant to IPAM: `spec.ipam` which defines what IPAM parameters the node requests (set by the Cilium Agent), and `status.ipam` which reflects the actual allocation state (managed jointly by the Agent and Operator). Additional sections in the CRD record network interfaces, health status, and node metadata used for routing decisions.
+The `CiliumNode` CRD has two main sections relevant to IPAM: `spec.ipam` which defines the IPAM parameters for the node, and `status.ipam` which reflects allocation status reported by Cilium components. In cluster-pool mode, the Cilium operator allocates node PodCIDRs in `spec.ipam.podCIDRs`; other IPAM modes use additional fields such as per-IP pools and cloud allocation watermarks. Additional sections in the CRD record network interfaces, health status, and node metadata used for routing decisions.
 
-This guide covers the complete CRD structure for IPAM-relevant fields, how to configure and manipulate CRD fields, troubleshoot CRD state issues, and validate CRD consistency.
+This guide covers the main CRD structure for IPAM-relevant fields, how to configure and manipulate CRD fields, troubleshoot CRD state issues, and validate CRD consistency.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ View and understand the CRD structure:
 # View the CiliumNode CRD schema
 
 kubectl get crd ciliumnodes.cilium.io \
-  -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.ipam}' | jq '.'
+  -o json | jq '.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.ipam'
 
 # View all CiliumNode objects
 kubectl get ciliumnodes
@@ -57,49 +57,65 @@ spec:
     podCIDRs:
       - 10.244.1.0/24
 
-    # Min/max IP pools for cloud IPAM modes (aws-eni, azure)
+    # IP allocation watermarks for cloud IPAM modes (aws-eni, azure)
     min-allocate: 10
     max-allocate: 30
     pre-allocate: 8
     max-above-watermark: 5
 
-    # Node-specific pool for multi-pool IPAM
-    pool: {}
+    # Per-IP pool used by CRD-backed IPAM mode
+    pool:
+      "192.168.1.10": {}
+      "192.168.1.11": {}
+
+    # Pool requests and allocations used by multi-pool IPAM mode
+    pools:
+      requested:
+        - pool: default
+          needed:
+            ipv4-addrs: 8
+      allocated:
+        - pool: default
+          cidrs:
+            - 10.244.1.0/24
 
 status:
   ipam:
-    # Currently allocated IPs and their owners
+    # Currently allocated IPs and their owners in CRD-backed and cloud IPAM modes
     used:
-      "10.244.1.5":
+      "192.168.1.10":
         owner: "default/frontend-pod-abc123"
         resource: "default/frontend-pod-abc123"
-      "10.244.1.6":
+      "192.168.1.11":
         owner: "kube-system/coredns-xyz"
         resource: "kube-system/coredns-xyz"
 
-    # IPs available for new pod allocation
-    available:
-      "10.244.1.7": {}
-      "10.244.1.8": {}
-      "10.244.1.9": {}
+    # Per-CIDR state for PodCIDRs assigned to this node
+    pod-cidrs:
+      "10.244.1.0/24":
+        status: in-use
 
     # CIDR allocation status (reflects CIDRs in spec.ipam.podCIDRs)
-    operator-status: {}
+    operator-status:
+      error: ""
 ```
 
-Annotate CiliumNode to influence IPAM behavior:
+Patch CiliumNode to adjust cloud IPAM allocation limits:
 
 ```bash
 # Set IPAM allocation limits for a specific node
-kubectl annotate ciliumnode worker-1 \
-  "ipam.cilium.io/max-allocate=200" \
-  "ipam.cilium.io/min-allocate=20" \
-  "ipam.cilium.io/pre-allocate=30" \
-  --overwrite
+kubectl patch ciliumnode worker-1 --type merge -p '{
+  "spec": {
+    "ipam": {
+      "max-allocate": 200,
+      "min-allocate": 20,
+      "pre-allocate": 30
+    }
+  }
+}'
 
-# Verify annotations are applied
-kubectl get ciliumnode worker-1 \
-  -o jsonpath='{.metadata.annotations}' | jq '.'
+# Verify fields are applied
+kubectl get ciliumnode worker-1 -o json | jq '.spec.ipam'
 ```
 
 ## Troubleshoot CRD Definition Issues
@@ -109,7 +125,7 @@ Diagnose CRD structure and state problems:
 ```bash
 # Check if CRD schema is valid
 kubectl get crd ciliumnodes.cilium.io \
-  -o jsonpath='{.status.conditions}' | jq '.[] | select(.type == "NonStructuralSchema")'
+  -o json | jq '.status.conditions[] | select(.type == "NonStructuralSchema")'
 # Should return nothing (no non-structural schema issues)
 
 # Check CiliumNode CRD version
@@ -127,7 +143,8 @@ kubectl get ciliumnodes -o json | \
 kubectl get ciliumnodes -o json | jq '.items[] | {
   node: .metadata.name,
   spec_cidrs: .spec.ipam.podCIDRs,
-  status_cidrs: [.status.ipam | to_entries[] | select(.key == "operator-status") | .value]
+  status_cidrs: (.status.ipam."pod-cidrs" // {}),
+  operator_error: (.status.ipam."operator-status".error // "")
 }'
 ```
 
@@ -135,12 +152,12 @@ Fix CRD state issues:
 
 ```bash
 # Issue: CiliumNode missing spec.ipam.podCIDRs
-# Trigger Operator to re-allocate by patching the annotation
-kubectl annotate ciliumnode <node-name> \
-  "ipam.cilium.io/force-realloc=$(date +%s)" --overwrite
+# Restart Cilium agent on the node so it recreates/reconciles the CiliumNode
+kubectl -n kube-system delete pod -l k8s-app=cilium \
+  --field-selector spec.nodeName=<node-name>
 
 # Issue: Stale entries in status.ipam.used
-# Restart Cilium agent to reconcile
+# Restart Cilium agent to reconcile CRD-backed or cloud IPAM state
 kubectl -n kube-system delete pod -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-name>
 
@@ -166,7 +183,7 @@ else
   echo "MISMATCH: $DIFF"
 fi
 
-# Validate IPAM used entries correspond to real pods
+# Validate IPAM used entries correspond to real pods in CRD-backed and cloud IPAM modes
 kubectl get ciliumnodes -o json | jq -r '
   .items[] | .metadata.name as $node |
   .status.ipam.used // {} | to_entries[] |
@@ -187,8 +204,8 @@ graph TD
     B -->|Watch| C[Cilium Operator]
     C -->|Allocate CIDR| D[Update CiliumNode.spec.ipam.podCIDRs]
     D -->|Watch| E[Cilium Agent]
-    E -->|Pod created| F[Update CiliumNode.status.ipam.used]
-    E -->|Pod deleted| G[Remove from status.ipam.used]
+    E -->|CIDR consumed| F[Update CiliumNode.status.ipam.pod-cidrs]
+    E -->|IPAM status changes| G[Update CiliumNode.status.ipam]
     H[Monitor] -->|Watch CiliumNode| I[Track allocation state]
 ```
 
@@ -197,14 +214,14 @@ Monitor CiliumNode CRD changes:
 ```bash
 # Watch CiliumNode CRD for IPAM state changes
 kubectl get ciliumnodes --watch -o json | \
-  jq -r '"\(.metadata.name): used=\(.status.ipam.used | length // 0)"'
+  jq -r '(.object // .) | select(.kind == "CiliumNode") | "\(.metadata.name): cidrs=\(.spec.ipam.podCIDRs // []) operator_error=\(.status.ipam."operator-status".error // "")"'
 
 # Monitor IPAM utilization across all nodes
 kubectl get ciliumnodes -o json | jq '[.items[] | {
   node: .metadata.name,
-  total_allocated: (.status.ipam.used | length),
-  available: (.status.ipam.available | length),
-  cidr: .spec.ipam.podCIDRs[0]
+  cidrs: (.spec.ipam.podCIDRs // []),
+  cidr_status: (.status.ipam."pod-cidrs" // {}),
+  operator_error: (.status.ipam."operator-status".error // "")
 }]'
 
 # Alert on CiliumNode IPAM anomalies
@@ -214,4 +231,4 @@ watch -n60 "kubectl get ciliumnodes -o json | \
 
 ## Conclusion
 
-The CiliumNode CRD is the authoritative record of IPAM state for each node in a Cilium-managed cluster. Understanding its schema - particularly the distinction between `spec.ipam` (requested/configured parameters) and `status.ipam` (actual allocation state) - enables effective IPAM troubleshooting and monitoring. Regular validation that CRD state reflects actual pod networking state is a valuable operational check. When CRD state and actual state diverge, agent restarts are the standard recovery mechanism, triggering full reconciliation between the CRD state and running containers.
+The CiliumNode CRD is the authoritative record of node-level IPAM configuration and status in a Cilium-managed cluster. Understanding its schema - particularly the distinction between `spec.ipam` (configured parameters such as PodCIDRs or address pools) and `status.ipam` (reported allocation status) - enables effective IPAM troubleshooting and monitoring. Regular validation that CRD state reflects actual pod networking state is a valuable operational check. When CRD state and actual state diverge, agent restarts are a common recovery mechanism, triggering reconciliation between the CRD state and running containers.
