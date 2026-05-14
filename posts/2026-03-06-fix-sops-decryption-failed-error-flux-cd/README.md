@@ -173,6 +173,7 @@ sops --decrypt secret.yaml > /tmp/decrypted-secret.yaml
 
 # Then re-encrypt with the correct key (the one deployed in your cluster)
 sops --encrypt \
+  --encrypted-regex '^(data|stringData)$' \
   --age age1correctkeyhere... \
   /tmp/decrypted-secret.yaml > secret.yaml
 
@@ -194,9 +195,9 @@ creation_rules:
       age1correctkeyhere...
 ```
 
-## Cause 3: SOPS Configuration File Missing or Incorrect
+## Cause 3: SOPS Metadata Missing or Incorrect
 
-SOPS needs a `.sops.yaml` file to know how to decrypt files, or the files must have inline SOPS metadata.
+SOPS uses the metadata embedded in encrypted files to know which keys can decrypt them. A `.sops.yaml` file is used when encrypting files or running `sops updatekeys`, but Flux decryption depends on the `sops` section in each encrypted file.
 
 ### Verify SOPS Metadata in Encrypted Files
 
@@ -278,8 +279,11 @@ Sometimes the Kustomization path does not include the encrypted files, or files 
 # Check what path the Kustomization is reconciling
 kubectl get kustomization <name> -n flux-system -o jsonpath='{.spec.path}'
 
-# List files in the GitRepository artifact
-kubectl exec -n flux-system deploy/source-controller -- ls -la /data/gitrepository/flux-system/flux-system/
+# Check the source reference used by the Kustomization
+kubectl get kustomization <name> -n flux-system -o jsonpath='{.spec.sourceRef.kind}/{.spec.sourceRef.name}'
+
+# Build the same local path Flux is expected to reconcile
+flux build kustomization <name> --path ./apps/my-app
 ```
 
 ## Cause 6: Key Rotation Issues
@@ -293,11 +297,15 @@ After rotating your SOPS keys, old files encrypted with the previous key will fa
 # First update .sops.yaml with the new key
 
 # Then run updatekeys on each encrypted file
-find . -name "*.enc.yaml" -exec sops updatekeys {} \;
+find . -name "*.enc.yaml" -exec sops updatekeys -y {} \;
 
 # Or manually re-encrypt each file
 for file in $(find . -name "*.enc.yaml"); do
-  sops --decrypt "$file" | sops --encrypt --input-type yaml --output-type yaml /dev/stdin > "$file.tmp"
+  sops --decrypt "$file" | sops --encrypt \
+    --filename-override "$file" \
+    --input-type yaml \
+    --output-type yaml \
+    /dev/stdin > "$file.tmp"
   mv "$file.tmp" "$file"
 done
 ```
