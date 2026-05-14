@@ -10,7 +10,7 @@ Description: Automate Calico log collection with scripts that gather component l
 
 ## Introduction
 
-Automating Calico log collection ensures consistent diagnostic data across all nodes without manual effort. Two key automation scenarios are: collecting a point-in-time log bundle for support tickets, and temporarily enabling debug logging for a specific component with automatic reversion to Info level after a timeout.
+Automating Calico log collection ensures consistent diagnostic data across all nodes without manual effort. Two key automation scenarios are: collecting a point-in-time log bundle for support tickets, and temporarily enabling Felix debug logging with automatic reversion to Info level after a timeout.
 
 ## Automated Log Bundle Collection
 
@@ -27,19 +27,19 @@ echo "Collecting Calico component logs..."
 
 # calico-node logs from all nodes
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node \
-  --tail=1000 --prefix=true > "${BUNDLE_DIR}/calico-node.log"
+  --tail=1000 --prefix=true --max-log-requests=50 > "${BUNDLE_DIR}/calico-node.log"
 
 # calico-typha logs
 kubectl logs -n calico-system -l k8s-app=calico-typha \
-  --tail=500 --prefix=true > "${BUNDLE_DIR}/calico-typha.log"
+  --tail=500 --prefix=true --max-log-requests=50 > "${BUNDLE_DIR}/calico-typha.log"
 
 # calico-kube-controllers logs
 kubectl logs -n calico-system -l k8s-app=calico-kube-controllers \
-  --tail=500 --prefix=true > "${BUNDLE_DIR}/calico-kube-controllers.log"
+  --tail=500 --prefix=true --max-log-requests=50 > "${BUNDLE_DIR}/calico-kube-controllers.log"
 
-# calico-apiserver logs (if Enterprise/EE)
+# calico-apiserver logs (if installed)
 kubectl logs -n calico-system -l k8s-app=calico-apiserver \
-  --tail=500 --prefix=true > "${BUNDLE_DIR}/calico-apiserver.log" 2>/dev/null || true
+  --tail=500 --prefix=true --max-log-requests=50 > "${BUNDLE_DIR}/calico-apiserver.log" 2>/dev/null || true
 
 # Calico resource state
 kubectl get tigerastatus -o yaml > "${BUNDLE_DIR}/tigerastatus.yaml"
@@ -111,7 +111,7 @@ spec:
                 - -c
                 - |
                   kubectl logs -n calico-system -l k8s-app=calico-node \
-                    -c calico-node --tail=500 --prefix=true \
+                    -c calico-node --tail=500 --prefix=true --max-log-requests=50 \
                     > /archive/calico-node-$(date +%Y%m%d%H).log
               volumeMounts:
                 - name: archive
@@ -125,4 +125,4 @@ spec:
 
 ## Conclusion
 
-Automating Calico log collection with the bundle script ensures that every support ticket includes the same consistent set of logs and CRD state. The temporary debug script with auto-reversion prevents engineers from forgetting to revert log levels after troubleshooting - a common cause of log pipeline saturation. For long-term operational maturity, the CronJob approach maintains a rolling hourly archive that lets you review Calico behavior up to 24 hours before an incident.
+Automating Calico log collection with the bundle script ensures that every support ticket includes the same consistent set of logs and CRD state. The temporary Felix debug script with auto-reversion prevents engineers from forgetting to revert log levels after troubleshooting - a common cause of log pipeline saturation. For long-term operational maturity, the CronJob approach maintains a rolling hourly archive that lets you review Calico behavior up to 24 hours before an incident.
