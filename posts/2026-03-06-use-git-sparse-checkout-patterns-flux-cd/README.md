@@ -10,14 +10,14 @@ Description: Learn how to use Git sparse checkout patterns with Flux CD to selec
 
 ## Introduction
 
-When working with large monorepos that contain configurations for many teams, environments, or clusters, cloning the entire repository for each Flux CD source is wasteful and slow. Git sparse checkout lets you check out only a subset of files from a repository. Flux CD supports this through the `include` field on GitRepository resources, allowing you to pull only the directories relevant to a specific cluster or application.
+When working with large monorepos that contain configurations for many teams, environments, or clusters, cloning the entire repository for each Flux CD source is wasteful and slow. Git sparse checkout lets you check out only a subset of files from a repository. Flux CD supports this through the `sparseCheckout` field on GitRepository resources, allowing you to include only the directories relevant to a specific cluster or application in the source artifact.
 
 ## Why Use Sparse Checkout with Flux CD
 
 Sparse checkout is valuable when:
 
 - **Large monorepos**: Your repository contains hundreds of directories but each cluster only needs a few.
-- **Security isolation**: You want a cluster to only have access to its own configurations.
+- **Operational isolation**: You want each Flux Kustomization to build and apply only its own configurations.
 - **Performance**: Reducing the amount of data Flux needs to download and process.
 - **Team boundaries**: Different teams manage different subdirectories in the same repository.
 
@@ -59,11 +59,11 @@ platform-repo/
     resource-quotas/
 ```
 
-## Configuring Flux CD GitRepository with Include Paths
+## Configuring Flux CD GitRepository with Sparse Checkout Paths
 
-Flux CD does not use Git's sparse checkout directly. Instead, it provides the `include` field on GitRepository resources to pull in specific paths from other GitRepository sources. However, the primary mechanism is to use the `path` field in Kustomization resources to point to specific directories.
+Flux CD supports sparse checkout on GitRepository resources with the `sparseCheckout` field. This field lists directories to check out when source-controller clones the repository, and only those directory contents are present in the produced artifact.
 
-For true sparse-like behavior, you can create separate GitRepository resources that each target specific directories using Kustomization paths.
+Use `sparseCheckout` on the GitRepository to reduce the source artifact, and use the `path` field in Kustomization resources to point each reconciliation at the directory it should build.
 
 ```yaml
 # flux-system/source.yaml
@@ -81,11 +81,15 @@ spec:
     branch: main
   secretRef:
     name: git-credentials
+  sparseCheckout:
+    - infrastructure
+    - teams/team-alpha/staging
+    - policies/network-policies
 ```
 
 ## Using Path-Based Filtering with Kustomizations
 
-The most common approach to achieve sparse checkout behavior is to create Kustomization resources that each point to a specific path in the repository.
+The most common approach to scope what Flux applies is to create Kustomization resources that each point to a specific path in the GitRepository artifact.
 
 ```yaml
 # flux-system/infrastructure-kustomization.yaml
@@ -179,7 +183,7 @@ spec:
 
 ## Setting Up Per-Team GitRepository Sources
 
-For stricter isolation, create separate GitRepository resources per team, each with its own credentials and scope.
+For stricter operational isolation, create separate GitRepository resources per team, each with its own credentials and sparse checkout scope. The Git provider must still enforce any repository or path-level access restrictions; Flux path settings alone are not a security boundary for Git access.
 
 ```yaml
 # flux-system/team-alpha-source.yaml
@@ -197,6 +201,8 @@ spec:
   secretRef:
     # Team-alpha has its own deploy key with limited access
     name: team-alpha-git-credentials
+  sparseCheckout:
+    - teams/team-alpha/staging
 ```
 
 ```yaml
@@ -279,12 +285,12 @@ spec:
 
 ## Notification and Alerting for Specific Paths
 
-Configure Flux alerts that only trigger when changes occur in specific paths.
+Configure Flux alerts for the Kustomization resources that reconcile specific paths.
 
 ```yaml
 # flux-system/alert-team-alpha.yaml
 # Alert provider for team-alpha's Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-slack
@@ -295,8 +301,8 @@ spec:
   secretRef:
     name: slack-webhook-team-alpha
 ---
-# Alert that fires only for team-alpha's Kustomization changes
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Alert that forwards events for team-alpha's Kustomization resources
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-alerts
@@ -346,17 +352,17 @@ spec:
 
 ## Verifying Sparse Checkout Behavior
 
-Check that Flux is correctly processing only the paths you specified.
+Check that Flux is correctly processing the paths you specified.
 
 ```bash
 # Verify the Kustomization is only reconciling the expected path
 flux get kustomizations
 
-# Check the GitRepository artifact size to confirm sparse content
-kubectl get gitrepository platform-repo -n flux-system -o jsonpath='{.status.artifact}'
+# Check the GitRepository artifact size to confirm sparseCheckout is reducing the artifact
+kubectl get gitrepository platform-repo -n flux-system -o jsonpath='{.status.artifact.size}'
 
 # Inspect what resources were applied by a specific Kustomization
-flux get kustomization team-alpha-apps -o json | jq '.status.inventory'
+flux tree kustomization team-alpha-apps
 ```
 
 ## Troubleshooting
@@ -387,13 +393,14 @@ flux logs --kind=Kustomization --name=team-alpha-apps
 
 ## Best Practices
 
-1. **Use path-based Kustomizations** as the primary mechanism for scoping what each cluster sees.
+1. **Use `sparseCheckout` on GitRepository sources** to reduce the directories included in source artifacts.
 2. **Leverage the ignore field** to exclude non-deployment files from GitRepository artifacts.
 3. **Create per-team sources** when strict access isolation is required.
 4. **Use the include field** to compose configurations from multiple repositories without submodules.
-5. **Keep paths stable** to avoid breaking Kustomization references when restructuring the repo.
-6. **Document directory conventions** so all teams understand which paths map to which clusters.
+5. **Use path-based Kustomizations** to scope which directory each reconciliation builds and applies.
+6. **Keep paths stable** to avoid breaking Kustomization references when restructuring the repo.
+7. **Document directory conventions** so all teams understand which paths map to which clusters.
 
 ## Conclusion
 
-Git sparse checkout patterns in Flux CD allow you to work efficiently with large monorepos by scoping each cluster or team to only the directories they need. By combining GitRepository path filtering, the include field, and Kustomization path specifications, you can achieve fine-grained control over what gets synced where. This approach reduces resource consumption, improves security isolation, and keeps your GitOps workflow manageable at scale.
+Git sparse checkout patterns in Flux CD allow you to work efficiently with large monorepos by scoping each cluster or team to only the directories they need. By combining GitRepository `sparseCheckout`, the `include` field, and Kustomization path specifications, you can achieve fine-grained control over what gets synced where. This approach reduces resource consumption, improves operational isolation, and keeps your GitOps workflow manageable at scale.
