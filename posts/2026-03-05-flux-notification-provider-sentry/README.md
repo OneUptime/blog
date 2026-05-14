@@ -8,9 +8,9 @@ Description: Learn how to configure Flux CD's notification controller to send de
 
 ---
 
-Sentry is a widely used error tracking and performance monitoring platform. By integrating Flux CD with Sentry, you can correlate deployment events with application errors, making it easier to identify which deployments introduced regressions. Sentry uses these events to mark releases and track their impact.
+Sentry is a widely used error tracking and performance monitoring platform. By integrating Flux CD with Sentry, you can correlate deployment events with application errors, making it easier to identify which deployments introduced regressions. Flux sends Sentry events for errors and transaction events for info-level events, which can help you track deployment impact.
 
-This guide covers setting up a Flux notification Provider for Sentry, from generating a DSN to verifying events appear in your Sentry project.
+This guide covers setting up a Flux notification Provider for Sentry, from copying a DSN to verifying events appear in your Sentry project.
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ Define a Provider resource for Sentry.
 ```yaml
 # provider-sentry.yaml
 # Configures Flux to send notifications to Sentry
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: sentry-provider
@@ -77,7 +77,7 @@ Create an Alert that specifies which events are sent to Sentry.
 ```yaml
 # alert-sentry.yaml
 # Routes Flux events to Sentry
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: sentry-alert
@@ -142,7 +142,7 @@ Use the `channel` field to set the Sentry environment:
 
 ```yaml
 # Provider for production environment
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: sentry-prod
@@ -154,7 +154,7 @@ spec:
     name: sentry-dsn
 ---
 # Provider for staging environment
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: sentry-staging
@@ -171,7 +171,7 @@ spec:
 If you want to track all deployment events in Sentry, not just errors:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: sentry-all-events
@@ -194,7 +194,7 @@ This is useful for correlating successful deployments with performance changes i
 
 If events are not appearing in Sentry:
 
-1. **DSN format**: Verify the DSN is correct and contains the project ID, key, and organization slug.
+1. **DSN format**: Verify the DSN is correct and contains the public key, ingest host, and project ID.
 2. **Secret format**: The secret must have an `address` key containing the full DSN.
 3. **Project configuration**: Ensure the Sentry project is active and accepting events.
 4. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
