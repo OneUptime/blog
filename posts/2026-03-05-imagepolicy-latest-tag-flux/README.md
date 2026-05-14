@@ -18,9 +18,9 @@ The `latest` tag is a common convention in container registries, but it poses ch
 
 ## The Problem with the Latest Tag
 
-The `latest` tag is a mutable tag that can point to different image digests at different times. It does not convey version information and cannot be sorted or compared meaningfully. When Flux scans an image repository and finds a `latest` tag, it has no way to determine if the underlying image has changed because the tag name remains the same.
+The `latest` tag is a mutable tag that can point to different image digests at different times. It does not convey version information and cannot be sorted or compared meaningfully. By default, Flux selects images by tag and does not reflect the selected image digest, so a mutable `latest` tag can remain selected even when the underlying image changes.
 
-For Flux image automation to work effectively, it needs tags that change when new images are published. The `latest` tag does not change -- only its underlying digest does.
+Flux can reflect digest changes for a mutable tag by setting `digestReflectionPolicy: Always` on an ImagePolicy and using digest-aware automation markers, but versioned tags are usually easier to audit and roll back. For Flux image automation to work effectively with tag updates, it needs tags that change when new images are published. The `latest` tag does not change -- only its underlying digest does.
 
 ## Step 1: Why You Should Avoid the Latest Tag
 
@@ -28,7 +28,7 @@ Consider these issues:
 
 1. **No version tracking** -- You cannot tell which version of your application is running.
 2. **No rollback** -- There is no previous tag to roll back to.
-3. **No change detection** -- Flux detects new images by comparing tag names, not digests.
+3. **Limited change detection** -- Tag-only automation will not update a manifest when the tag name stays `latest`; digest changes require `digestReflectionPolicy: Always` and digest-aware update markers.
 4. **No reproducibility** -- The same tag may refer to different images over time.
 
 ## Step 2: Use SemVer Tags Instead
@@ -184,7 +184,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
