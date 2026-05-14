@@ -20,9 +20,9 @@ A common architecture for multi-cluster Flux monitoring consists of:
 
 ## Configuring Prometheus Remote Write
 
-In each cluster, configure Prometheus (or a Prometheus-compatible agent) to scrape Flux controller metrics and forward them to a central Thanos, Cortex, or Grafana Mimir instance.
+In each cluster, configure Prometheus (or a Prometheus-compatible agent) to scrape Flux controller metrics and kube-state-metrics Flux custom resource metrics, then forward them to a central Thanos, Cortex, or Grafana Mimir instance.
 
-### Prometheus Agent Configuration
+### Prometheus Remote Write Configuration
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -35,7 +35,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "56.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -49,30 +49,43 @@ spec:
           - url: https://mimir.monitoring.example.com/api/v1/push
             headers:
               X-Scope-OrgID: flux-monitoring
-        serviceMonitorSelector:
+        podMonitorSelector:
           matchLabels:
             app.kubernetes.io/part-of: flux
 ```
 
 The `externalLabels.cluster` label is critical. It distinguishes metrics from different clusters in the central store.
 
-### ServiceMonitor for Flux Controllers
+To use the resource readiness queries below, also configure kube-state-metrics custom resource state metrics for Flux resources so it exports `gotk_resource_info`.
 
-Flux controllers expose metrics on port 8080. Create a ServiceMonitor to scrape them:
+### PodMonitor for Flux Controllers
+
+Flux controllers expose metrics on port 8080. Create a PodMonitor to scrape them:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-controllers
   namespace: flux-system
   labels:
     app.kubernetes.io/part-of: flux
 spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
   selector:
-    matchLabels:
-      app.kubernetes.io/part-of: flux
-  endpoints:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - helm-controller
+          - source-controller
+          - kustomize-controller
+          - notification-controller
+          - image-automation-controller
+          - image-reflector-controller
+  podMetricsEndpoints:
     - port: http-prom
       interval: 30s
       path: /metrics
@@ -85,13 +98,13 @@ spec:
 ```promql
 # Ready status across all clusters
 
-sum by (cluster, kind, name, namespace) (
-  gotk_reconcile_condition{type="Ready", status="True"}
+sum by (cluster, customresource_kind, name, exported_namespace) (
+  gotk_resource_info{ready="True"}
 )
 
 # Failed reconciliations by cluster
 sum by (cluster) (
-  gotk_reconcile_condition{type="Ready", status="False"}
+  gotk_resource_info{ready=~"False|Unknown"}
 )
 ```
 
@@ -110,7 +123,7 @@ Resource Counts
 
 ```promql
 # Total Flux resources per cluster
-count by (cluster, kind) (gotk_reconcile_condition{type="Ready"})
+count by (cluster, customresource_kind) (gotk_resource_info)
 ```
 
 ## Centralized Grafana Dashboard
@@ -121,9 +134,9 @@ Import or create a Grafana dashboard that uses the `cluster` label to provide a 
 
 ```promql
 # Percentage of healthy resources per cluster
-sum by (cluster) (gotk_reconcile_condition{type="Ready", status="True"})
+sum by (cluster) (gotk_resource_info{ready="True"})
 /
-count by (cluster) (gotk_reconcile_condition{type="Ready"})
+count by (cluster) (gotk_resource_info{ready=~".+"})
 * 100
 ```
 
@@ -131,13 +144,13 @@ count by (cluster) (gotk_reconcile_condition{type="Ready"})
 
 ```promql
 # Failed resources with details
-gotk_reconcile_condition{type="Ready", status="False"}
+gotk_resource_info{ready=~"False|Unknown"}
 ```
 
 Use Grafana variables to allow selecting a specific cluster:
 
 ```text
-label_values(gotk_reconcile_condition, cluster)
+label_values(gotk_resource_info, cluster)
 ```
 
 ## Centralized Flux Notifications
@@ -149,7 +162,7 @@ Configure each cluster's notification-controller to send alerts to shared channe
 In each cluster, create a Provider and Alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-central
@@ -160,13 +173,14 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-resources
   namespace: flux-system
 spec:
-  summary: "Cluster: production-us-east-1"
+  eventMetadata:
+    summary: "Cluster: production-us-east-1"
   providerRef:
     name: slack-central
   eventSeverity: error
@@ -179,14 +193,14 @@ spec:
       name: '*'
 ```
 
-The `summary` field includes the cluster name so recipients can identify which cluster generated the alert.
+The `eventMetadata.summary` field includes the cluster name so recipients can identify which cluster generated the alert.
 
 ### Webhook to Central Alerting System
 
 For a more structured approach, send events to a central webhook endpoint:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: central-webhook
@@ -235,9 +249,9 @@ spec:
       rules:
         - alert: FluxClusterUnhealthy
           expr: |
-            (sum by (cluster) (gotk_reconcile_condition{type="Ready", status="False"})
+            (sum by (cluster) (gotk_resource_info{ready=~"False|Unknown"})
             /
-            count by (cluster) (gotk_reconcile_condition{type="Ready"}))
+            count by (cluster) (gotk_resource_info{ready=~".+"}))
             > 0.1
           for: 10m
           labels:
@@ -246,7 +260,7 @@ spec:
             summary: "Cluster {{ $labels.cluster }} has more than 10% unhealthy Flux resources"
 
         - alert: FluxClusterMissing
-          expr: absent(gotk_reconcile_condition{cluster="production-us-east-1"})
+          expr: absent(gotk_resource_info{cluster="production-us-east-1"})
           for: 15m
           labels:
             severity: critical
