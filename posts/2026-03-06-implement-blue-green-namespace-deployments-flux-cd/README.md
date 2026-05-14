@@ -202,6 +202,8 @@ spec:
   type: ExternalName
   # Change this to switch between blue and green
   externalName: my-app.my-app-blue.svc.cluster.local
+  ports:
+    - port: 80
 ```
 
 ```yaml
@@ -249,11 +251,6 @@ spec:
     - name: my-app-namespaces
   wait: true
   timeout: 10m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: my-app
-      namespace: my-app-blue
 ```
 
 ```yaml
@@ -274,11 +271,6 @@ spec:
     - name: my-app-namespaces
   wait: true
   timeout: 10m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: my-app
-      namespace: my-app-green
 ```
 
 ```yaml
@@ -311,8 +303,7 @@ To deploy a new version, follow this workflow:
 kubectl get ns my-app-blue -o jsonpath='{.metadata.labels.active}'
 # Returns "true" - so green is the idle namespace
 
-# Step 2: Update the green overlay with the new version
-cd apps/my-app/overlays/green
+# Step 2: Update apps/my-app/overlays/green/kustomization.yaml with the new version
 ```
 
 ```yaml
@@ -335,8 +326,8 @@ git commit -m "Deploy v2.0.0 to green namespace"
 git push origin main
 
 # Step 4: Wait for green deployment to be ready
-flux get kustomization my-app-green --watch
-# Wait until status shows "Applied revision: main@sha1:..."
+flux get kustomizations --watch
+# Wait until the my-app-green row shows "Applied revision: main@sha1:..."
 
 # Step 5: Verify the green deployment manually
 kubectl get pods -n my-app-green
@@ -358,20 +349,22 @@ spec:
   type: ExternalName
   # Switch from blue to green
   externalName: my-app.my-app-green.svc.cluster.local
+  ports:
+    - port: 80
 ```
 
 ```bash
-# Commit the traffic switch
-git add apps/my-app/router/active-service.yaml
+# Update namespace labels in Git to reflect the new active state
+# apps/my-app/namespaces/blue.yaml: active: "false"
+# apps/my-app/namespaces/green.yaml: active: "true"
+
+# Commit the traffic switch and label updates
+git add apps/my-app/router/active-service.yaml apps/my-app/namespaces/blue.yaml apps/my-app/namespaces/green.yaml
 git commit -m "Switch traffic to green (v2.0.0)"
 git push origin main
 
-# Update namespace labels to reflect the new active state
-kubectl label ns my-app-blue active=false --overwrite
-kubectl label ns my-app-green active=true --overwrite
-
 # Monitor the switch
-flux get kustomization my-app-router --watch
+flux get kustomizations --watch
 ```
 
 ## Step 8: Instant Rollback
@@ -389,11 +382,17 @@ spec:
   type: ExternalName
   # Rollback: switch back to blue
   externalName: my-app.my-app-blue.svc.cluster.local
+  ports:
+    - port: 80
 ```
 
 ```bash
+# Update namespace labels in Git as part of the rollback
+# apps/my-app/namespaces/blue.yaml: active: "true"
+# apps/my-app/namespaces/green.yaml: active: "false"
+
 # Commit the rollback
-git add apps/my-app/router/active-service.yaml
+git add apps/my-app/router/active-service.yaml apps/my-app/namespaces/blue.yaml apps/my-app/namespaces/green.yaml
 git commit -m "Rollback: switch traffic back to blue (v1.0.0)"
 git push origin main
 
@@ -407,7 +406,7 @@ For more sophisticated traffic management, use Istio VirtualService instead of E
 
 ```yaml
 # apps/my-app/router/virtual-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -436,7 +435,7 @@ You can also do a gradual shift:
 ```yaml
 # apps/my-app/router/virtual-service.yaml
 # Step 1: Send 10% to green for canary testing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -479,22 +478,35 @@ images:
 Alternatively, scale down the idle namespace to save resources:
 
 ```yaml
-# apps/my-app/overlays/blue/scale-down.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
+# apps/my-app/overlays/blue/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: my-app-blue
+resources:
+  - ../../base
+images:
+  - name: registry.example.com/my-app
+    newTag: "2.0.0"
+patches:
   # Scale down the idle namespace to 0
   # Keep 1 replica if you want instant rollback capability
-  replicas: 1
+  - target:
+      kind: Deployment
+      name: my-app
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: my-app
+      spec:
+        replicas: 1
 ```
 
 ## Monitoring Blue-Green Deployments
 
 ```yaml
 # clusters/production/notifications/blue-green-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: blue-green-alerts
@@ -510,7 +522,8 @@ spec:
       name: "my-app-green"
     - kind: Kustomization
       name: "my-app-router"
-  summary: "Blue-green deployment status update"
+  eventMetadata:
+    summary: "Blue-green deployment status update"
 ```
 
 ## Summary
