@@ -139,6 +139,8 @@ spec:
 kubectl apply -f kustomizations-apps.yaml
 ```
 
+These examples assume the `frontend`, `backend`, and `worker` namespaces already exist or are created by manifests included in each Kustomization path.
+
 ## Step 3: Use Dependencies Between Kustomizations
 
 In monorepos, some services depend on shared infrastructure. Use `spec.dependsOn` to ensure the correct deployment order.
@@ -206,9 +208,9 @@ flowchart TD
     C --> D[Frontend Kustomization]
     C --> E[Backend Kustomization]
     C --> F[Worker Kustomization]
-    D --> G{Files in apps/frontend changed?}
-    E --> H{Files in apps/backend changed?}
-    F --> I{Files in apps/worker changed?}
+    D --> G{Rendered frontend manifests changed?}
+    E --> H{Rendered backend manifests changed?}
+    F --> I{Rendered worker manifests changed?}
     G -- Yes --> J[Apply frontend changes]
     G -- No --> K[No-op]
     H -- Yes --> L[Apply backend changes]
@@ -219,7 +221,7 @@ flowchart TD
 
 ## Step 5: Optimize with Multiple GitRepository Sources
 
-For very large monorepos where you want to reduce unnecessary artifact downloads, you can create multiple GitRepository resources with different include/exclude patterns. However, a more common approach is to use a single GitRepository with a short interval and rely on the Kustomization-level path filtering.
+For very large monorepos where you want to reduce artifact size, you can create multiple GitRepository resources with source-level filtering, such as `sparseCheckout` or `ignore` rules. However, a more common approach is to use a single GitRepository with a short interval and rely on Kustomization paths.
 
 If different parts of the monorepo need different reconciliation intervals, create separate GitRepository sources.
 
@@ -237,6 +239,9 @@ spec:
   url: https://github.com/your-org/my-monorepo.git
   ref:
     branch: main
+  sparseCheckout:
+    - apps
+    - base
   secretRef:
     name: git-credentials
 ---
@@ -253,6 +258,8 @@ spec:
   url: https://github.com/your-org/my-monorepo.git
   ref:
     branch: main
+  sparseCheckout:
+    - infrastructure
   secretRef:
     name: git-credentials
 ```
@@ -284,7 +291,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: monorepo
-  # The overlay in this path can reference ../base internally
+  # The overlay in this path can reference ../../base internally
   path: ./apps/frontend
   prune: true
   targetNamespace: frontend
