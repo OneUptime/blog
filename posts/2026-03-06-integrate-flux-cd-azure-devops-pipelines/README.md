@@ -77,7 +77,7 @@ variables:
   acrName: 'myacr'
   acrLoginServer: 'myacr.azurecr.io'
   imageName: 'my-app'
-  # Use the short commit SHA as the tag
+  # Use the commit SHA as the tag
   imageTag: '$(Build.SourceVersion)'
 
 stages:
@@ -94,7 +94,7 @@ stages:
               version: '8.0.x'
           - script: |
               # Run your test suite
-              dotnet test || echo "Tests passed"
+              dotnet test
             displayName: 'Execute tests'
 
   - stage: Build
@@ -203,10 +203,10 @@ kubectl create secret docker-registry acr-credentials \
   --docker-password=$ACR_PASSWORD
 ```
 
-For AKS clusters, you can also attach ACR directly:
+For AKS clusters, you can also attach ACR directly so workloads can pull images without an image pull secret. Flux image scanning still needs registry authentication, such as the `secretRef` shown below, unless you configure Flux with Azure workload identity.
 
 ```bash
-# Option 2: Attach ACR to AKS (simpler, no secret needed)
+# Option 2: Attach ACR to AKS for workload image pulls
 az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
@@ -342,7 +342,7 @@ metadata:
   name: acr-receiver
   namespace: flux-system
 spec:
-  type: generic
+  type: acr
   secretRef:
     name: webhook-token
   resources:
