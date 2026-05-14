@@ -10,7 +10,7 @@ Description: A practical guide to integrating Flux CD with the Backstage develop
 
 ## Introduction
 
-Backstage is an open-source developer portal originally created by Spotify. It provides a centralized platform for managing services, documentation, and infrastructure. By integrating Flux CD with Backstage, your development teams get a unified view of their services alongside GitOps deployment status, reconciliation history, and source information.
+Backstage is an open-source developer portal originally created by Spotify. It provides a centralized platform for managing services, documentation, and infrastructure. By integrating Flux CD with Backstage, your development teams get a unified view of their services alongside GitOps deployment status, reconciliation state, and source information.
 
 In this guide, you will learn how to set up the Flux CD plugin for Backstage, configure the Kubernetes integration, and create service catalog entries that display Flux CD deployment information.
 
@@ -20,7 +20,7 @@ Before you begin, ensure you have:
 
 - A running Kubernetes cluster with Flux CD installed
 - A Backstage instance (v1.20 or later)
-- Node.js 18 or later
+- A Node.js version supported by your Backstage release
 - kubectl configured to access your cluster
 
 ```bash
@@ -60,6 +60,16 @@ yarn --cwd packages/backend add @backstage/plugin-kubernetes-backend
 
 # Install the Kubernetes frontend plugin
 yarn --cwd packages/app add @backstage/plugin-kubernetes
+```
+
+Then register the backend plugin in `packages/backend/src/index.ts`:
+
+```typescript
+const backend = createBackend();
+
+backend.add(import('@backstage/plugin-kubernetes-backend'));
+
+backend.start();
 ```
 
 ## Configuring Kubernetes Integration
@@ -105,6 +115,10 @@ kubernetes:
             - group: source.toolkit.fluxcd.io
               apiVersion: v1
               plural: gitrepositories
+            # Flux OCIRepositories
+            - group: source.toolkit.fluxcd.io
+              apiVersion: v1
+              plural: ocirepositories
             # Flux HelmRepositories
             - group: source.toolkit.fluxcd.io
               apiVersion: v1
@@ -137,7 +151,7 @@ rules:
     verbs: ["get", "list", "watch"]
   # Flux source resources
   - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["gitrepositories", "helmrepositories", "ocirepositories"]
+    resources: ["buckets", "gitrepositories", "helmcharts", "helmrepositories", "ocirepositories"]
     verbs: ["get", "list", "watch"]
   # Flux kustomize resources
   - apiGroups: ["kustomize.toolkit.fluxcd.io"]
@@ -196,7 +210,7 @@ Install the Flux CD plugin for Backstage:
 
 ```bash
 # Install the Flux plugin for the frontend
-yarn --cwd packages/app add @weaveworks/backstage-plugin-flux
+yarn --cwd packages/app add @backstage-community/plugin-flux
 ```
 
 ### Registering the Plugin
@@ -207,11 +221,11 @@ Add the Flux plugin to your Backstage app:
 // packages/app/src/components/catalog/EntityPage.tsx
 // Import the Flux CD plugin components
 import {
-  FluxEntityKustomizationsCard,
-  FluxEntityHelmReleasesCard,
-  FluxEntityGitRepositoriesCard,
-  FluxEntitySourcesCard,
-} from '@weaveworks/backstage-plugin-flux';
+  EntityFluxKustomizationsCard,
+  EntityFluxHelmReleasesCard,
+  EntityFluxGitRepositoriesCard,
+  EntityFluxSourcesCard,
+} from '@backstage-community/plugin-flux';
 
 // Add Flux cards to the service entity page
 const serviceEntityPage = (
@@ -225,13 +239,13 @@ const serviceEntityPage = (
 
         {/* Flux CD cards */}
         <Grid item md={6}>
-          <FluxEntityKustomizationsCard />
+          <EntityFluxKustomizationsCard />
         </Grid>
         <Grid item md={6}>
-          <FluxEntityHelmReleasesCard />
+          <EntityFluxHelmReleasesCard />
         </Grid>
         <Grid item md={6}>
-          <FluxEntityGitRepositoriesCard />
+          <EntityFluxGitRepositoriesCard />
         </Grid>
       </Grid>
     </EntityLayout.Route>
@@ -240,13 +254,13 @@ const serviceEntityPage = (
     <EntityLayout.Route path="/flux" title="GitOps">
       <Grid container spacing={3}>
         <Grid item md={12}>
-          <FluxEntityKustomizationsCard />
+          <EntityFluxKustomizationsCard />
         </Grid>
         <Grid item md={12}>
-          <FluxEntityHelmReleasesCard />
+          <EntityFluxHelmReleasesCard />
         </Grid>
         <Grid item md={12}>
-          <FluxEntitySourcesCard />
+          <EntityFluxSourcesCard />
         </Grid>
       </Grid>
     </EntityLayout.Route>
@@ -258,7 +272,7 @@ const serviceEntityPage = (
 
 ### Annotating Services for Flux
 
-Create catalog entries with Flux CD annotations:
+Create catalog entries with the Backstage Kubernetes annotation used by the Flux plugin:
 
 ```yaml
 # catalog-info.yaml
@@ -273,12 +287,6 @@ metadata:
     backstage.io/kubernetes-id: payment-service
     # Kubernetes namespace where the service runs
     backstage.io/kubernetes-namespace: payments
-    # Kubernetes label selector for finding pods
-    backstage.io/kubernetes-label-selector: app=payment-service
-    # Flux Kustomization reference
-    flux.weave.works/kustomization: flux-system/payment-service
-    # Flux HelmRelease reference (if using Helm)
-    flux.weave.works/helmrelease: payments/payment-service
   tags:
     - payments
     - golang
@@ -288,6 +296,26 @@ spec:
   lifecycle: production
   owner: team-payments
   system: payment-platform
+```
+
+The Flux resources for this service should use the same Backstage Kubernetes label:
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: payment-service
+  namespace: payments
+  labels:
+    backstage.io/kubernetes-id: payment-service
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: payment-service
+      sourceRef:
+        kind: HelmRepository
+        name: payment-charts
 ```
 
 ### Multi-Environment Catalog Entry
@@ -304,10 +332,8 @@ metadata:
   description: API Gateway service
   annotations:
     backstage.io/kubernetes-id: api-gateway
-    # Reference multiple Flux resources for different environments
-    flux.weave.works/kustomization: |
-      flux-system/api-gateway-staging,
-      flux-system/api-gateway-production
+    # Flux resources in both environments should be labeled with this Kubernetes ID
+    backstage.io/kubernetes-label-selector: backstage.io/kubernetes-id=api-gateway
   links:
     - url: https://github.com/myorg/api-gateway
       title: Source Code
@@ -330,47 +356,10 @@ Add a dedicated Flux overview page to Backstage:
 // packages/app/src/components/flux/FluxOverviewPage.tsx
 // Custom page showing all Flux resources across the organization
 import React from 'react';
-import {
-  Header,
-  Page,
-  Content,
-  ContentHeader,
-} from '@backstage/core-components';
-import { Grid } from '@material-ui/core';
-import {
-  FluxKustomizationsTable,
-  FluxHelmReleasesTable,
-  FluxSourcesTable,
-} from '@weaveworks/backstage-plugin-flux';
+import { FluxRuntimePage } from '@backstage-community/plugin-flux';
 
 // FluxOverviewPage shows a summary of all Flux resources
-export const FluxOverviewPage = () => (
-  <Page themeId="tool">
-    <Header title="GitOps Overview" subtitle="Flux CD Status" />
-    <Content>
-      <ContentHeader title="Kustomizations" />
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <FluxKustomizationsTable />
-        </Grid>
-      </Grid>
-
-      <ContentHeader title="Helm Releases" />
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <FluxHelmReleasesTable />
-        </Grid>
-      </Grid>
-
-      <ContentHeader title="Sources" />
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <FluxSourcesTable />
-        </Grid>
-      </Grid>
-    </Content>
-  </Page>
-);
+export const FluxOverviewPage = () => <FluxRuntimePage />;
 ```
 
 Register the page in your app routes:
@@ -471,6 +460,15 @@ data:
                 - group: helm.toolkit.fluxcd.io
                   apiVersion: v2
                   plural: helmreleases
+                - group: source.toolkit.fluxcd.io
+                  apiVersion: v1
+                  plural: gitrepositories
+                - group: source.toolkit.fluxcd.io
+                  apiVersion: v1
+                  plural: ocirepositories
+                - group: source.toolkit.fluxcd.io
+                  apiVersion: v1
+                  plural: helmrepositories
 ```
 
 ## Setting Up Software Templates
@@ -558,9 +556,6 @@ flux get kustomization -n flux-system
 ### Plugin Rendering Issues
 
 ```bash
-# Clear the Backstage cache
-yarn --cwd packages/app clean
-
 # Rebuild the frontend
 yarn --cwd packages/app build
 
@@ -569,4 +564,4 @@ yarn --cwd packages/app build
 
 ## Summary
 
-Integrating Flux CD with Backstage creates a powerful internal developer platform where teams can see their services, documentation, and GitOps deployment status in one place. The Flux plugin provides real-time visibility into Kustomizations, HelmReleases, and source status directly from the service catalog. By deploying Backstage through Flux CD itself, you achieve a fully self-referential GitOps workflow where the developer portal is managed by the same tools it displays.
+Integrating Flux CD with Backstage creates a powerful internal developer platform where teams can see their services, documentation, and GitOps deployment status in one place. The Flux plugin provides visibility into Kustomizations, HelmReleases, and source status directly from the service catalog. By deploying Backstage through Flux CD itself, you achieve a fully self-referential GitOps workflow where the developer portal is managed by the same tools it displays.
