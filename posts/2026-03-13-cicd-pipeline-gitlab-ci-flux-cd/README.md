@@ -26,7 +26,7 @@ This guide covers setting up a GitLab CI pipeline from code push to container bu
 
 ## Step 1: Bootstrap Flux CD Against GitLab
 
-Bootstrap Flux using a GitLab personal access token or deploy key:
+Bootstrap Flux using a GitLab personal access token:
 
 ```bash
 flux bootstrap gitlab \
@@ -81,6 +81,11 @@ spec:
 
 ```yaml
 # apps/myapp/deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myapp
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -98,8 +103,8 @@ spec:
     spec:
       containers:
         - name: myapp
-          # Flux Image Automation will update this field
-          image: registry.gitlab.com/your-group/myapp:latest # {"$imagepolicy": "flux-system:myapp"}
+          # GitLab CI update-fleet job will update this field
+          image: registry.gitlab.com/your-group/myapp:latest
           ports:
             - containerPort: 8080
           resources:
@@ -125,6 +130,8 @@ stages:
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
   IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
 
 test:
   stage: test
@@ -138,11 +145,13 @@ test:
 
 build-push:
   stage: build
-  image: docker:24
+  image: docker:24.0.5-cli
   services:
-    - docker:24-dind
+    - name: docker:24.0.5-dind
+      variables:
+        HEALTHCHECK_TCP_PORT: "2375"
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
     - docker push $IMAGE_TAG
@@ -157,8 +166,8 @@ update-fleet:
     - git config --global user.email "ci@your-org.com"
     - git config --global user.name "GitLab CI"
   script:
-    # Clone the fleet repository using a CI/CD variable with a deploy token
-    - git clone https://ci-deploy-token:$FLEET_DEPLOY_TOKEN@gitlab.com/your-group/fleet-repo.git
+    # Clone the fleet repository using a CI/CD variable with a project access token that has write_repository scope
+    - git clone https://fleet-bot:$FLEET_PROJECT_ACCESS_TOKEN@gitlab.com/your-group/fleet-repo.git
     - cd fleet-repo
     # Update the image tag using sed
     - |
@@ -170,7 +179,7 @@ update-fleet:
     - tags
 ```
 
-## Step 5: Configure Image Automation with GitLab Registry Secret
+## Step 5: Configure Image Policy Monitoring with GitLab Registry Secret
 
 Create a Kubernetes secret for GitLab registry access:
 
@@ -225,10 +234,10 @@ flux events --for Kustomization/myapp -n flux-system
 
 ## Best Practices
 
-- Use GitLab deploy tokens scoped to the fleet repository for the CI update step rather than personal access tokens.
+- Use a project access token scoped to the fleet repository with `write_repository` for the CI update step rather than a personal access token.
 - Separate application source and fleet repositories even within the same GitLab group.
 - Use GitLab Environments to model staging and production, mapping to different Flux Kustomization paths.
-- Protect your production branch in the fleet repository to require approvals for Flux Bot commits.
+- Protect your production branch in the fleet repository and use merge requests or restricted push permissions for production changes.
 - Use GitLab CI's `only: tags` to ensure images are only pushed for tagged releases.
 - Store sensitive values as GitLab CI/CD variables marked as masked and protected.
 
