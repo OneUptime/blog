@@ -34,10 +34,21 @@ The foundation of approval workflows is branch protection. Configure your main b
 
 gh api repos/my-org/fleet-infra/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["validate-manifests","policy-check"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":2,"dismiss_stale_reviews":true,"require_code_owner_reviews":true}' \
-  --field restrictions=null
+  --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["validate-manifests", "policy-check"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2,
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true
+  },
+  "restrictions": null
+}
+JSON
 ```
 
 ## CODEOWNERS for Routing Reviews
@@ -90,18 +101,32 @@ jobs:
 
       - name: Validate Flux manifests
         run: |
-          # Validate all Kustomization and HelmRelease resources
+          # Validate Flux Kustomization resources
           find . -name "*.yaml" -type f | while read file; do
             if grep -q "kind: Kustomization" "$file"; then
               echo "Validating $file"
-              flux build kustomization --path "$(dirname $file)" --dry-run || exit 1
+              name=$(awk '/^metadata:/,/^spec:/ { if ($1 == "name:") { print $2; exit } }' "$file")
+              path=$(awk '/^spec:/,/^[^ ]/ { if ($1 == "path:") { gsub(/"/, "", $2); print $2; exit } }' "$file")
+              flux build kustomization "$name" \
+                --path "${path:-$(dirname "$file")}" \
+                --kustomization-file "$file" \
+                --dry-run > /dev/null || exit 1
             fi
           done
 
       - name: Run Kubernetes schema validation
-        uses: instrumenta/kubeval-action@master
+        uses: bmuschko/setup-kubeconform@v1
         with:
-          files: .
+          kubeconform-version: "0.7.0"
+
+      - name: Validate rendered Kubernetes manifests
+        run: |
+          for dir in apps/staging apps/production; do
+            if [ -d "$dir" ]; then
+              echo "Validating $dir"
+              kustomize build "$dir" | kubeconform -strict -summary
+            fi
+          done
 
       - name: Run Kustomize build
         run: |
@@ -119,10 +144,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run OPA/Gatekeeper policy checks
-        uses: open-policy-agent/opa-github-action@v2
-        with:
-          input: .
-          policy: policies/
+        uses: open-policy-agent/setup-opa@v2
+
+      - name: Evaluate OPA policies
+        run: |
+          find . -path ./policies -prune -o -name "*.yaml" -type f -print0 | \
+          while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            opa eval --fail-defined \
+              --data policies/deployment.rego \
+              --input "$file" \
+              'data.kubernetes.deployment.deny[_]'
+          done
 ```
 
 ```yaml
@@ -130,7 +163,7 @@ jobs:
 package kubernetes.deployment
 
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.limits
@@ -138,7 +171,7 @@ deny[msg] {
 }
 
 # Deny deployments without liveness probes
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.livenessProbe
@@ -236,11 +269,11 @@ flux suspend kustomization production-apps
 
 ## ChatOps Approval Integration
 
-Integrate Flux with Slack or Teams for approval-based deployments.
+Integrate Flux with Slack or Teams for deployment notifications, and pair the notification with a ChatOps bot or pipeline that performs the approval action.
 
 ```yaml
 # Notification provider for sending deployment requests
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-approvals
@@ -248,11 +281,12 @@ metadata:
 spec:
   type: slack
   channel: deployment-approvals
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
-# Alert on pending deployments
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Alert on deployment events
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-notifications
@@ -283,21 +317,24 @@ metadata:
   name: approval-webhook
   namespace: flux-system
 spec:
-  type: generic
+  type: generic-hmac
   secretRef:
     name: webhook-secret
   resources:
-    - kind: Kustomization
-      name: production-apps
+    - kind: GitRepository
+      name: fleet-infra
       namespace: flux-system
 ```
 
 ```bash
 # External system triggers reconciliation after approval
+WEBHOOK_PATH=$(kubectl -n flux-system get receiver approval-webhook -o jsonpath='{.status.webhookPath}')
+SIGNATURE=$(printf '{}' | openssl dgst -sha256 -r -hmac 'webhook-secret-value' | awk '{print $1}')
+
 curl -X POST \
-  https://flux-webhook.my-org.com/hook/approval-webhook \
+  "https://flux-webhook.my-org.com${WEBHOOK_PATH}" \
   -H "Content-Type: application/json" \
-  -H "X-Signature: sha256=$(echo -n '{}' | openssl dgst -sha256 -hmac 'webhook-secret-value')" \
+  -H "X-Signature: sha256=${SIGNATURE}" \
   -d '{}'
 ```
 
