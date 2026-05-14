@@ -28,19 +28,23 @@ The Tigera Operator selects ImageSets by a specific naming convention. Getting t
 
 metadata:
   name: my-calico-images
+
+metadata:
   name: custom-imageset
+
+metadata:
   name: calico-images-prod
 
 # CORRECT - must follow: calico-<version>
 metadata:
-  name: calico-v3.27.0
+  name: calico-v3.32.0
 ```
 
 ```bash
-# Verify the name format the operator expects
-kubectl get installation default -o jsonpath='{.status.calicoVersion}'
-# Output: v3.27.0
-# Correct ImageSet name: calico-v3.27.0
+# Verify the Calico version the operator is built to deploy
+docker run quay.io/tigera/operator:v1.42.0 --version
+# Output includes: Calico: v3.32.0
+# Correct ImageSet name: calico-v3.32.0
 ```
 
 ## Mistake 2: Using Tags Instead of Digests
@@ -56,36 +60,37 @@ spec:
 spec:
   images:
     - image: "calico/node"
-      tag: "v3.27.0"  # Not a valid field
+      tag: "v3.32.0"  # Not a valid field
 
 # CORRECT
 spec:
   images:
     - image: "calico/node"
-      digest: "sha256:a1b2c3d4..."
+      digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 ```
 
 ## Mistake 3: Missing the Registry Path in Installation
 
-The ImageSet only specifies digests. The registry base URL must be in the Installation resource:
+The ImageSet only specifies digests. The registry and optional image path must be in the Installation resource:
 
 ```yaml
 # WRONG - ImageSet has full image path (not supported)
 spec:
   images:
     - image: "registry.internal.example.com/calico/node"
-      digest: "sha256:..."
+      digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 # CORRECT - image is just the short name, registry goes in Installation
 # ImageSet:
 spec:
   images:
     - image: "calico/node"
-      digest: "sha256:..."
+      digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 # Installation:
 spec:
-  registry: "registry.internal.example.com/calico"
+  registry: "registry.internal.example.com"
+  imagePath: "calico"
 ```
 
 ## Mistake 4: Applying ImageSet After Installation
@@ -107,32 +112,31 @@ kubectl apply -f calico-imageset.yaml -f installation.yaml
 
 ## Mistake 5: Digest From Wrong Registry
 
-If you mirror an image and calculate the digest from the source registry (e.g., docker.io), the digest may not match what's actually in your private registry after the mirror operation:
+If you mirror an image and calculate the digest from the source registry (e.g., docker.io), the digest may not match what's actually in your private registry after the mirror operation, depending on your mirroring tool and registry behavior:
 
 ```bash
 # WRONG - getting digest from source before mirroring
-src_digest=$(crane digest docker.io/calico/node:v3.27.0)
-# Then mirroring...
-crane copy docker.io/calico/node:v3.27.0 registry.internal.example.com/calico/node:v3.27.0
-# The digest may differ due to registry recompression!
+src_digest=$(crane digest docker.io/calico/node:v3.32.0)
+# Then mirroring with your registry sync process...
+# Do not assume src_digest is the destination digest.
 
 # CORRECT - get digest from destination AFTER mirroring
-crane copy docker.io/calico/node:v3.27.0 registry.internal.example.com/calico/node:v3.27.0
-actual_digest=$(crane digest registry.internal.example.com/calico/node:v3.27.0)
+crane copy docker.io/calico/node:v3.32.0 registry.internal.example.com/calico/node:v3.32.0
+actual_digest=$(crane digest registry.internal.example.com/calico/node:v3.32.0)
 ```
 
 ## Mistake 6: Not Covering All Images
 
-If any required image is missing from the ImageSet, the operator falls back to the default registry for that image:
+If any required image is missing from the ImageSet, the operator cannot construct the digest-pinned image reference for that component:
 
 ```bash
 # Check what images are required for your Calico version
-kubectl get installation default -o jsonpath='{.status.computedConfig}' | jq .
+docker run quay.io/tigera/operator:v1.42.0 --print-images=list
 
 # Required images typically include:
 # calico/cni, calico/node, calico/kube-controllers,
 # calico/typha, calico/pod2daemon-flexvol, calico/apiserver,
-# tigera/operator
+# calico/node-windows, tigera/operator, tigera/key-cert-provisioner
 ```
 
 ## Common Mistakes Summary
