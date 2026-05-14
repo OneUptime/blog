@@ -44,12 +44,11 @@ The fields mean:
 
 ## Common Reason Codes
 
-Flux controllers use standardized reason codes that help you quickly categorize the state:
+Flux controllers use recurring reason codes that help you quickly categorize the state. The exact reason values vary by resource kind:
 
 **Success reasons**:
-- `ReconciliationSucceeded`: The resource was reconciled successfully
-- `ArtifactUpToDate`: The source artifact has not changed since the last fetch
-- `HealthCheckSucceeded`: All health checks passed
+- `ReconciliationSucceeded`: A Kustomization was reconciled successfully
+- `Succeeded`: A source, notification, or other Flux resource reached its ready state
 
 **Failure reasons**:
 - `ReconciliationFailed`: An error occurred during reconciliation
@@ -61,7 +60,7 @@ Flux controllers use standardized reason codes that help you quickly categorize 
 
 **In-progress reasons**:
 - `Progressing`: The resource is being reconciled
-- `HealthCheckPending`: Waiting for health checks to complete
+- `ProgressingWithRetry`: The controller is reconciling again after a previous failure
 
 ## Reading Conditions with the CLI
 
@@ -150,7 +149,8 @@ dependency 'flux-system/infrastructure' is not ready
 The Kustomization depends on another Kustomization that has not finished reconciling. Check the dependency chain:
 
 ```bash
-flux tree kustomization my-app
+kubectl get kustomization my-app -n flux-system -o jsonpath='{.spec.dependsOn}'
+flux get kustomizations
 ```
 
 **Health check failure**:
@@ -176,15 +176,15 @@ The SSH key or token used to access the repository is invalid or expired. Update
 
 ## Using Conditions for Monitoring
 
-Flux exports condition data as Prometheus metrics through the `gotk_reconcile_condition` gauge. Each combination of type, status, kind, name, and namespace is a separate metric:
+Flux controller metrics include reconciliation duration and controller runtime data. To monitor Flux resource readiness in Prometheus, use the kube-state-metrics configuration from the Flux monitoring example, which exports Flux custom resource state through `gotk_resource_info`:
 
 ```promql
 # Find all resources that are not ready
 
-gotk_reconcile_condition{type="Ready", status="False"} == 1
+gotk_resource_info{ready!="True"} == 1
 
 # Count ready resources by kind
-count by (kind) (gotk_reconcile_condition{type="Ready", status="True"} == 1)
+count by (customresource_kind) (gotk_resource_info{ready="True"} == 1)
 ```
 
 Set up alerts based on conditions:
@@ -194,17 +194,17 @@ groups:
   - name: flux-conditions
     rules:
       - alert: FluxResourceNotReady
-        expr: gotk_reconcile_condition{type="Ready", status="False"} == 1
+        expr: gotk_resource_info{ready!="True"} == 1
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.kind }}/{{ $labels.name }} is not ready"
+          summary: "{{ $labels.customresource_kind }}/{{ $labels.name }} is not ready"
 ```
 
 ## The observedGeneration Field
 
-The `observedGeneration` field in each condition indicates which version of the resource spec the condition reflects. Compare it with `metadata.generation`:
+The `observedGeneration` field indicates which version of the resource spec the controller has processed. Compare `.status.observedGeneration` with `metadata.generation`:
 
 ```bash
 kubectl get kustomization my-app -n flux-system \
