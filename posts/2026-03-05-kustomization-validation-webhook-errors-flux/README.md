@@ -132,7 +132,7 @@ The webhook service itself is down or unreachable, causing all requests to fail.
 
 Example error:
 
-```json
+```text
 Internal error occurred: failed calling webhook "validate.example.com":
 Post "https://webhook-service.namespace.svc:443/validate": dial tcp: connection refused
 ```
@@ -170,27 +170,21 @@ Example error:
 Deployment/my-app dry-run failed: admission webhook "mutate.example.com" does not support dry run
 ```
 
-Resolution -- configure the Kustomization to skip dry-run validation:
+Resolution -- update the webhook configuration so it can safely receive dry-run requests:
 
 ```yaml
-# Kustomization that skips server-side apply dry-run for specific webhooks
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+# Webhook configuration that supports server-side dry-run
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
 metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: my-repo
-  path: ./apps/my-app
-  prune: true
-  # Force apply without dry-run validation
-  force: true
+  name: my-webhook
+webhooks:
+  - name: mutate.example.com
+    # Use None if the webhook has no side effects, or NoneOnDryRun if it suppresses side effects on dry-run requests
+    sideEffects: NoneOnDryRun
 ```
 
-Alternatively, update the webhook to support dry-run by setting `sideEffects: None` or `sideEffects: NoneOnDryRun` in the webhook configuration.
+Flux does not provide a Kustomization setting to bypass Kubernetes server-side dry-run admission. If the webhook cannot be updated to support dry-run, fix or disable the webhook before reconciling the Kustomization.
 
 ## Debugging Workflow
 
@@ -203,7 +197,7 @@ flowchart TD
     B -->|Yes| D{Is it a policy violation?}
     D -->|Yes| E[Update resources to comply with policy]
     D -->|No| F{Is it a dry-run issue?}
-    F -->|Yes| G[Set force: true or fix webhook sideEffects]
+    F -->|Yes| G[Fix webhook sideEffects or disable the webhook]
     F -->|No| H[Check controller logs for details]
     E --> I[Push fix to Git]
     G --> I
@@ -232,7 +226,7 @@ FAILURE-POLICY:.webhooks[*].failurePolicy
 
 ## Excluding Flux Resources from Webhooks
 
-If a webhook should not validate Flux-managed resources, you can configure namespace or label selectors on the webhook configuration to exclude them:
+If a webhook should not validate Flux control-plane resources, you can configure namespace or label selectors on the webhook configuration to exclude them:
 
 ```yaml
 # ValidatingWebhookConfiguration with namespace selector to exclude flux-system
@@ -244,7 +238,7 @@ webhooks:
   - name: validate.example.com
     namespaceSelector:
       matchExpressions:
-        # Exclude the flux-system namespace from this webhook
+        # Exclude resources in the flux-system namespace from this webhook
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
@@ -272,4 +266,4 @@ If this command succeeds, the resources will pass webhook validation during Flux
 
 ## Conclusion
 
-Validation webhook errors in Flux Kustomizations are typically caused by policy violations, unavailable webhook services, or dry-run incompatibilities. The key to resolving them is identifying which webhook rejected the request and why. Update your manifests to comply with policies, ensure webhook services are healthy, and use `force: true` as a last resort for webhooks that do not support dry-run. Always test changes with `kubectl apply --dry-run=server` before committing to your GitOps repository.
+Validation webhook errors in Flux Kustomizations are typically caused by policy violations, unavailable webhook services, or dry-run incompatibilities. The key to resolving them is identifying which webhook rejected the request and why. Update your manifests to comply with policies, ensure webhook services are healthy, and configure webhooks with `sideEffects: None` or `sideEffects: NoneOnDryRun` so they support dry-run requests. Always test changes with `kubectl apply --dry-run=server` before committing to your GitOps repository.
