@@ -10,13 +10,13 @@ Description: Learn how to automate Cilium status checks in scripts and CI/CD pip
 
 ## Introduction
 
-Cilium's `cilium status` command provides a comprehensive health snapshot of the entire CNI installation - including agent status, BPF map health, Kubernetes connectivity, and policy enforcement state. Running this check manually is insufficient for production clusters; you need automated, continuous monitoring that alerts when Cilium agents degrade.
+Cilium's `cilium status` command provides a health snapshot of the Cilium installation - including agent and operator readiness, Kubernetes connectivity, and optional components such as Hubble. Running this check manually is insufficient for production clusters; you need automated, continuous monitoring that alerts when Cilium agents degrade.
 
 This post shows how to build automated Cilium status checks using the `cilium` CLI and standard Kubernetes tooling, integrate them into monitoring pipelines, and create actionable alerts when components fall out of health.
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium installed (v1.12+)
+- Kubernetes cluster with a supported Cilium release installed
 - `cilium` CLI installed
 - `kubectl` configured with cluster access
 - A monitoring system (Prometheus, Grafana) or CI/CD pipeline
@@ -26,7 +26,7 @@ This post shows how to build automated Cilium status checks using the `cilium` C
 Run a manual status check to understand the structure before automating it.
 
 ```bash
-# Full Cilium status check with all component details
+# Cluster-level Cilium status check
 
 cilium status --verbose
 
@@ -37,8 +37,8 @@ cilium status --wait --wait-duration 120s
 # Output status in JSON format for programmatic parsing
 cilium status -o json
 
-# Check status of a specific Cilium agent pod
-kubectl exec -n kube-system ds/cilium -- cilium status
+# Check status of a Cilium agent pod
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
 ```
 
 ## Step 2: Create a Health Check Script
@@ -69,18 +69,24 @@ if ! cilium status --wait --wait-duration "${WAIT_TIMEOUT}"; then
   FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
-# Check that all Cilium DaemonSet pods are running on every node
+# Check that the Cilium DaemonSet is ready on every node where it should run
 echo ""
 echo "--- Checking Cilium Agent Pods ---"
-TOTAL_NODES=$(kubectl get nodes --no-headers | wc -l)
-READY_AGENTS=$(kubectl get pods -n "${CILIUM_NAMESPACE}" -l k8s-app=cilium \
-  --field-selector=status.phase=Running --no-headers | wc -l)
-
-if [ "${READY_AGENTS}" -lt "${TOTAL_NODES}" ]; then
-  echo "ERROR: Only ${READY_AGENTS}/${TOTAL_NODES} Cilium agents are running"
+if ! DAEMONSET_STATUS=$(kubectl get ds cilium -n "${CILIUM_NAMESPACE}" \
+  -o jsonpath='{.status.desiredNumberScheduled} {.status.numberReady}' 2>/dev/null); then
+  echo "ERROR: Cilium DaemonSet was not found in namespace ${CILIUM_NAMESPACE}"
   FAILURE_COUNT=$((FAILURE_COUNT + 1))
 else
-  echo "OK: All ${READY_AGENTS}/${TOTAL_NODES} Cilium agents are running"
+  read -r DESIRED_AGENTS READY_AGENTS <<< "${DAEMONSET_STATUS}"
+  DESIRED_AGENTS="${DESIRED_AGENTS:-0}"
+  READY_AGENTS="${READY_AGENTS:-0}"
+
+  if [ "${READY_AGENTS}" -lt "${DESIRED_AGENTS}" ]; then
+    echo "ERROR: Only ${READY_AGENTS}/${DESIRED_AGENTS} Cilium agents are ready"
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+  else
+    echo "OK: All ${READY_AGENTS}/${DESIRED_AGENTS} Cilium agents are ready"
+  fi
 fi
 
 # Check Cilium Operator health
@@ -88,6 +94,7 @@ echo ""
 echo "--- Checking Cilium Operator ---"
 OPERATOR_READY=$(kubectl get deployment cilium-operator -n "${CILIUM_NAMESPACE}" \
   -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+OPERATOR_READY="${OPERATOR_READY:-0}"
 if [ "${OPERATOR_READY}" -lt 1 ]; then
   echo "ERROR: Cilium Operator is not ready (readyReplicas=${OPERATOR_READY})"
   FAILURE_COUNT=$((FAILURE_COUNT + 1))
@@ -113,7 +120,7 @@ For deeper inspection, check the status of each Cilium agent pod individually.
 ```bash
 #!/bin/bash
 # scripts/check-all-cilium-agents.sh
-# Runs 'cilium status' inside each Cilium agent pod to detect per-node issues
+# Runs 'cilium-dbg status' inside each Cilium agent pod to detect per-node issues
 
 CILIUM_NAMESPACE="${CILIUM_NAMESPACE:-kube-system}"
 
@@ -129,8 +136,8 @@ for POD in ${CILIUM_PODS}; do
     -o jsonpath='{.spec.nodeName}')
   echo -n "  Agent on node ${NODE} (${POD}): "
 
-  # Run cilium status inside the agent pod
-  if kubectl exec -n "${CILIUM_NAMESPACE}" "${POD}" -- cilium status --brief 2>/dev/null; then
+  # Run cilium-dbg status inside the agent pod
+  if kubectl exec -n "${CILIUM_NAMESPACE}" "${POD}" -- cilium-dbg status --brief 2>/dev/null; then
     echo "OK"
   else
     echo "FAILED"
@@ -164,7 +171,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: cilium-health-checker
+          serviceAccountName: cilium
           restartPolicy: Never
           containers:
             - name: checker
