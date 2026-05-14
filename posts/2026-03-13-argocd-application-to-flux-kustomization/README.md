@@ -30,7 +30,7 @@ spec.source.repoURL          ──►      GitRepository.spec.url
 spec.source.targetRevision   ──►      GitRepository.spec.ref.branch/tag
 spec.source.path             ──►      Kustomization.spec.path
 spec.destination.namespace   ──►      Kustomization.spec.targetNamespace
-spec.syncPolicy.automated    ──►      Kustomization.spec.interval
+spec.syncPolicy.automated    ──►      Kustomization reconciliation
 spec.syncPolicy.prune        ──►      Kustomization.spec.prune
 spec.ignoreDifferences       ──►      Kustomization patches / SSA annotations
 ```
@@ -77,8 +77,6 @@ spec:
   url: https://github.com/your-org/fleet-repo
   ref:
     branch: main
-  secretRef:
-    name: flux-system
 ---
 # Kustomization (equivalent to the Application)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -87,7 +85,7 @@ metadata:
   name: myapp
   namespace: flux-system
 spec:
-  interval: 5m           # replaces automated.selfHeal interval
+  interval: 5m           # reconcile every 5 minutes and correct drift
   path: ./apps/myapp     # replaces spec.source.path
   prune: true            # replaces automated.prune
   sourceRef:
@@ -188,7 +186,7 @@ patches:
 
 ## Step 5: Application with Health Checks
 
-**ArgoCD** uses custom health check Lua scripts. **Flux CD** uses standard Kubernetes readiness and availability conditions:
+**ArgoCD** can use custom health check Lua scripts. **Flux CD** uses health checks based on Kubernetes readiness and availability conditions for built-in workload types, kstatus-compatible custom resources, or CEL expressions for custom logic:
 
 ```yaml
 # Flux Kustomization with health checks
