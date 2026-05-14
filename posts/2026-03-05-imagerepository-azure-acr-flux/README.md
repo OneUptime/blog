@@ -49,7 +49,16 @@ kubectl apply -f imagerepository-acr.yaml
 
 ## Step 2: Configure Azure Workload Identity
 
-For the `provider: azure` to work, set up Azure Workload Identity for the image reflector controller.
+For the `provider: azure` to use Azure Workload Identity, make sure your AKS cluster has the OIDC issuer and Workload Identity enabled, then set up Workload Identity for the image reflector controller.
+
+```bash
+# Enable OIDC issuer and Workload Identity on an existing AKS cluster
+az aks update \
+  --name my-aks-cluster \
+  --resource-group my-resource-group \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+```
 
 Create a managed identity in Azure.
 
@@ -105,20 +114,40 @@ az identity federated-credential create \
   --audiences api://AzureADTokenExchange
 ```
 
-Annotate the image reflector controller ServiceAccount.
+Annotate the image reflector controller ServiceAccount and label the controller pods in your Flux bootstrap Kustomization.
 
 ```yaml
-# Patch the image-reflector-controller ServiceAccount for Azure Workload Identity
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: image-reflector-controller
-  namespace: flux-system
-  annotations:
-    # Associate the Azure managed identity
-    azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    azure.workload.identity/use: "true"
+# flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: image-reflector-controller
+        namespace: flux-system
+        annotations:
+          # Associate the Azure managed identity
+          azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
+        labels:
+          azure.workload.identity/use: "true"
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: image-reflector-controller
+        namespace: flux-system
+        labels:
+          azure.workload.identity/use: "true"
+      spec:
+        template:
+          metadata:
+            labels:
+              azure.workload.identity/use: "true"
 ```
 
 ## Step 3: Use ACR Admin Credentials
@@ -182,19 +211,36 @@ kubectl create secret docker-registry acr-sp-credentials \
   -n flux-system
 ```
 
+Reference the Secret in the ImageRepository.
+
+```yaml
+# imagerepository-acr-sp.yaml
+# Scan ACR using service principal credentials
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  image: myregistry.azurecr.io/my-app
+  interval: 5m0s
+  secretRef:
+    name: acr-sp-credentials
+```
+
 ## Step 5: Attach ACR to AKS (Alternative)
 
-If your AKS cluster is attached to ACR, the kubelet identity has pull access. However, Flux uses its own identity and needs separate configuration.
+If your AKS cluster is attached to ACR, the kubelet identity has pull access. Flux can use that identity when the ImageRepository is configured with `provider: azure`.
 
 ```bash
-# Attach ACR to AKS (this grants the kubelet identity access, not Flux)
+# Attach ACR to AKS (this grants the kubelet identity access)
 az aks update \
   --name my-aks-cluster \
   --resource-group my-resource-group \
   --attach-acr myregistry
 ```
 
-This alone is not sufficient for Flux. You still need to configure the `provider: azure` field or provide credentials via a Secret.
+This alone is not sufficient for the default `generic` provider. You still need to configure the `provider: azure` field or provide credentials via a Secret.
 
 ## Step 6: Verify the ACR ImageRepository
 
