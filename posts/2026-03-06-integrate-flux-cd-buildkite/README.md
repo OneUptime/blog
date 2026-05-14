@@ -111,7 +111,7 @@ steps:
   - label: ":test_tube: Run Tests"
     command: |
       echo "Running tests..."
-      make test || echo "Tests passed"
+      make test
     agents:
       queue: default
 
@@ -120,6 +120,7 @@ steps:
 
   # Step 3: Build and push the container image
   - label: ":docker: Build and Push Image"
+    key: "build-and-push"
     command: |
       # Generate the image tag from the commit SHA
       IMAGE_TAG=$$(echo $$BUILDKITE_COMMIT | cut -c1-7)
@@ -204,20 +205,21 @@ steps:
     branches: "main"
 ```
 
-## Step 4: Using the Docker Buildkite Plugin
+## Step 4: Using the Docker Compose Buildkite Plugin
 
 Buildkite plugins simplify common operations. Use the Docker Compose or Docker plugins for building:
 
 ```yaml
-# .buildkite/pipeline.yml using the Docker plugin
+# .buildkite/pipeline.yml using the Docker Compose plugin
 
 steps:
   - label: ":docker: Build and Push"
     plugins:
-      - docker-compose#v5.2.0:
+      - docker-login#v3.0.0:
+          username: "${DOCKER_USERNAME}"
+          password-env: DOCKER_PASSWORD
+      - docker-compose#v5.12.1:
           build: app
-          image-repository: docker.io/my-org/my-app
-          image-name: my-app
           # Cache from previous builds
           cache-from:
             - "app:docker.io/my-org/my-app:latest"
@@ -244,13 +246,12 @@ env:
 steps:
   - label: ":docker: Build and Push to ECR"
     plugins:
-      - ecr#v2.7.0:
+      - ecr#v2.12.0:
           login: true
           account-ids: "${AWS_ACCOUNT_ID}"
           region: "${AWS_REGION}"
-      - docker-compose#v5.2.0:
+      - docker-compose#v5.12.1:
           build: app
-          image-repository: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
           push:
             - "app:${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:${BUILDKITE_COMMIT:0:7}"
     agents:
@@ -293,6 +294,8 @@ kubectl create secret docker-registry registry-credentials \
 ## Step 7: Set Up Image Policy
 
 Define how Flux selects the latest image tag.
+
+The semver policy below matches the semantic version tags from Step 3 and Step 4. If you only push short commit SHA tags, use a sortable tag format such as a build number or timestamp with a numerical or alphabetical policy instead.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
@@ -390,6 +393,14 @@ spec:
 
 Configure a webhook to notify Flux immediately after a successful build.
 
+Create the receiver token secret first:
+
+```bash
+kubectl create secret generic webhook-token \
+  --namespace=flux-system \
+  --from-literal=token="$(openssl rand -hex 32)"
+```
+
 ```yaml
 # clusters/my-cluster/webhook-receiver.yaml
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -413,9 +424,14 @@ Add a notification step to your Buildkite pipeline:
 # Add to .buildkite/pipeline.yml after the build step
   - label: ":bell: Notify Flux"
     command: |
-      # Trigger Flux to scan for the new image immediately
+      IMAGE_TAG=$$(echo $$BUILDKITE_COMMIT | cut -c1-7)
+
+      # Trigger Flux to scan for the new image immediately.
+      # Set FLUX_WEBHOOK_URL to your externally reachable notification-controller
+      # host plus the receiver path from:
+      # kubectl -n flux-system get receiver buildkite-receiver -o jsonpath='{.status.webhookPath}'
       curl -s -X POST \
-        "https://flux-webhook.example.com/hook/buildkite-receiver" \
+        "$$FLUX_WEBHOOK_URL" \
         -H "Content-Type: application/json" \
         -d '{"image": "'"$$REGISTRY/$$IMAGE_NAME:$$IMAGE_TAG"'"}'
     branches: "main"
