@@ -27,24 +27,24 @@ Set up providers for different notification services.
 ```bash
 # Create secrets for each provider
 
-kubectl create secret generic slack-webhook \
+kubectl create secret generic slack-token \
   --namespace=flux-system \
-  --from-literal=address=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+  --from-literal=token=xoxb-YOUR-SLACK-BOT-TOKEN
 
 kubectl create secret generic teams-webhook \
   --namespace=flux-system \
-  --from-literal=address=https://outlook.office.com/webhook/YOUR/TEAMS/WEBHOOK
+  --from-literal=address=https://prod-xxx.yyy.logic.azure.com:443/workflows/zzz/triggers/manual/paths/invoke?...
 
-kubectl create secret generic pagerduty-token \
+kubectl create secret generic logger-webhook \
   --namespace=flux-system \
-  --from-literal=token=YOUR_PAGERDUTY_ROUTING_KEY
+  --from-literal=address=https://logger.example.com/flux-events
 ```
 
 Now create the provider resources.
 
 ```yaml
 # Slack provider for general notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-general
@@ -52,11 +52,12 @@ metadata:
 spec:
   type: slack
   channel: flux-notifications
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
 # Slack provider for critical alerts
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-critical
@@ -64,11 +65,12 @@ metadata:
 spec:
   type: slack
   channel: flux-critical
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
 # Microsoft Teams provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams-provider
@@ -78,8 +80,19 @@ spec:
   secretRef:
     name: teams-webhook
 ---
+# PagerDuty provider
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: pagerduty-provider
+  namespace: flux-system
+spec:
+  type: pagerduty
+  address: https://events.pagerduty.com
+  channel: YOUR_PAGERDUTY_ROUTING_KEY
+---
 # Generic webhook provider for logging
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: webhook-logger
@@ -106,7 +119,7 @@ Create separate alerts that route different events to different providers.
 
 ```yaml
 # Info-level alert to Slack general channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: slack-info-alert
@@ -127,7 +140,7 @@ spec:
     - ".*is not ready$"
 ---
 # Error-level alert to Slack critical channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: slack-error-alert
@@ -148,7 +161,7 @@ spec:
       namespace: flux-system
 ---
 # Error alert to Microsoft Teams
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: teams-error-alert
@@ -165,8 +178,26 @@ spec:
       name: "*"
       namespace: flux-system
 ---
+# Error alert to PagerDuty
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: pagerduty-error-alert
+  namespace: flux-system
+spec:
+  providerRef:
+    name: pagerduty-provider
+  eventSeverity: error
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+      namespace: flux-system
+    - kind: HelmRelease
+      name: "*"
+      namespace: flux-system
+---
 # All events to webhook logger for audit
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: webhook-audit-alert
@@ -203,7 +234,7 @@ Route alerts from different environments to appropriate providers.
 
 ```yaml
 # Staging alerts to Slack only
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-slack-alert
@@ -223,7 +254,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Production errors to both Slack and Teams
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: prod-slack-alert
@@ -240,7 +271,7 @@ spec:
       name: "*"
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: prod-teams-alert
