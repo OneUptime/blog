@@ -112,12 +112,12 @@ kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
 
 # Check if request success rate metrics exist for the canary
 curl -s "http://localhost:9090/api/v1/query" \
-  --data-urlencode 'query=istio_requests_total{destination_workload="my-app-canary",reporter="destination"}' \
+  --data-urlencode 'query=istio_requests_total{destination_workload="my-app",destination_workload_namespace="default",reporter="destination"}' \
   | jq '.data.result | length'
 
 # Check if the metric query returns a valid value
 curl -s "http://localhost:9090/api/v1/query" \
-  --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="my-app-canary",reporter="destination",response_code!~"5.*"}[1m])) / sum(rate(istio_requests_total{destination_workload="my-app-canary",reporter="destination"}[1m])) * 100' \
+  --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="my-app",destination_workload_namespace="default",reporter="destination",response_code!~"5.*"}[1m])) / sum(rate(istio_requests_total{destination_workload="my-app",destination_workload_namespace="default",reporter="destination"}[1m])) * 100' \
   | jq '.data.result'
 ```
 
@@ -278,7 +278,7 @@ spec:
 
 ```yaml
 # Problem: App takes too long to start, fails health checks
-# Solution: Add skipAnalysis for initial iterations or increase threshold
+# Solution: Increase the progress deadline and threshold to allow more warm-up time
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -292,16 +292,14 @@ spec:
   service:
     port: 80
     targetPort: 8080
-  # Skip analysis during the first iteration to allow warm-up
-  skipAnalysis: false
+  # Allow the canary deployment more time to become ready
+  progressDeadlineSeconds: 300
   analysis:
     interval: 1m
     # Increase threshold to allow more failures during warm-up
     threshold: 10
     maxWeight: 50
     stepWeight: 5
-    # Number of iterations to skip before starting analysis
-    iterations: 0
     metrics:
       - name: request-success-rate
         thresholdRange:
@@ -358,14 +356,18 @@ kubectl rollout restart deployment/flagger -n flagger-system
 Set up monitoring to track rollback frequency and identify patterns.
 
 ```bash
-# Count rollbacks in the last 24 hours from events
+# Count rollbacks from currently retained events
 kubectl get events -n default \
   --field-selector involvedObject.name=my-app,reason=Synced \
   --sort-by='.lastTimestamp' | grep -c "Rolling back"
 
-# Check Flagger Prometheus metrics for rollback counts
+# Check Flagger Prometheus metrics for last known status and failure count
 curl -s "http://localhost:9090/api/v1/query" \
   --data-urlencode 'query=flagger_canary_status{name="my-app",namespace="default"}' \
+  | jq '.data.result'
+
+curl -s "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=flagger_canary_failures_total{name="my-app",namespace="default"}' \
   | jq '.data.result'
 ```
 
