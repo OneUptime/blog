@@ -16,7 +16,7 @@ This guide covers the full setup from installing Istio with Flux CD to configuri
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by Istio 1.29 (v1.31 to v1.35)
 - Flux CD installed and bootstrapped
 - kubectl configured to access your cluster
 - Helm v3 installed
@@ -80,7 +80,7 @@ spec:
   chart:
     spec:
       chart: base
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -104,7 +104,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -144,7 +144,7 @@ spec:
   chart:
     spec:
       chart: gateway
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -163,6 +163,19 @@ spec:
 Flagger needs Prometheus to query Istio's telemetry metrics.
 
 ```yaml
+# infrastructure/monitoring/helmrepository.yaml
+# Prometheus Community Helm chart repository
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: istio-system
+spec:
+  interval: 24h
+  url: https://prometheus-community.github.io/helm-charts
+```
+
+```yaml
 # infrastructure/monitoring/prometheus-helmrelease.yaml
 # Prometheus configured to scrape Istio metrics
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -175,11 +188,11 @@ spec:
   chart:
     spec:
       chart: prometheus
-      version: "25.x"
+      version: "29.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
-        namespace: monitoring
+        namespace: istio-system
   values:
     server:
       # Retain metrics for 15 days
@@ -191,16 +204,16 @@ spec:
       prometheus.yml:
         scrape_configs:
           # Scrape Istio control plane
-          - job_name: 'istio-mesh'
+          - job_name: 'istiod'
             kubernetes_sd_configs:
               - role: endpoints
                 namespaces:
                   names:
                     - istio-system
             relabel_configs:
-              - source_labels: [__meta_kubernetes_service_name]
+              - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
                 action: keep
-                regex: istio-telemetry
+                regex: istiod;http-monitoring
           # Scrape Envoy sidecars
           - job_name: 'envoy-stats'
             metrics_path: /stats/prometheus
@@ -215,6 +228,20 @@ spec:
 ## Step 3: Install Flagger for Istio
 
 ```yaml
+# infrastructure/flagger/helmrepository.yaml
+# Flagger Helm charts are published as OCI artifacts
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: flagger
+  namespace: istio-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/fluxcd/charts
+  type: oci
+```
+
+```yaml
 # infrastructure/flagger/helmrelease.yaml
 # Flagger configured for Istio mesh provider
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -224,14 +251,18 @@ metadata:
   namespace: istio-system
 spec:
   interval: 30m
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   chart:
     spec:
       chart: flagger
-      version: "1.37.x"
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
-        namespace: flagger-system
+        namespace: istio-system
   values:
     # Configure Flagger for Istio
     meshProvider: istio
@@ -275,7 +306,7 @@ spec:
     spec:
       containers:
         - name: loadtester
-          image: ghcr.io/fluxcd/flagger-loadtester:0.31.0
+          image: ghcr.io/fluxcd/flagger-loadtester:0.37.0
           ports:
             - containerPort: 8080
           command:
