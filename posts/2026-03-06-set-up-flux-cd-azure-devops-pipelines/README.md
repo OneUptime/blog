@@ -48,12 +48,12 @@ az acr create \
   --name fluxacrregistry \
   --sku Standard
 
-# Enable admin access (for pipeline authentication)
+# Optional: enable admin access only if you plan to use username/password authentication
 az acr update \
   --name fluxacrregistry \
   --admin-enabled true
 
-# Get ACR credentials for pipeline use
+# Get ACR credentials if you are using username/password authentication
 ACR_USERNAME=$(az acr credential show \
   --name fluxacrregistry \
   --query username -o tsv)
@@ -141,7 +141,7 @@ stages:
                   oci://$(acrLoginServer)/$(ociRepository):$(imageTag) \
                   --path="./kubernetes/manifests" \
                   --source="$(Build.Repository.Uri)" \
-                  --revision="$(Build.SourceBranchName)/$(Build.SourceVersion)"
+                  --revision="$(Build.SourceBranchName)@sha1:$(Build.SourceVersion)"
 
                 # Tag the artifact as latest for the branch
                 flux tag artifact \
@@ -155,7 +155,7 @@ Create a second pipeline that updates image tags in your Git repository when new
 
 ```yaml
 # azure-pipelines-image-update.yaml
-# Pipeline that builds container images and updates Flux image policies
+# Pipeline that builds container images and updates GitOps manifests
 trigger:
   branches:
     include:
@@ -196,7 +196,16 @@ stages:
     jobs:
       - job: UpdateGit
         steps:
-          # Clone the fleet-infra repository
+          # Install Kustomize for editing the kustomization file
+          - task: Bash@3
+            displayName: "Install Kustomize"
+            inputs:
+              targetType: "inline"
+              script: |
+                curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+                sudo mv kustomize /usr/local/bin/
+
+          # Update the fleet-infra repository
           - task: Bash@3
             displayName: "Update Image Tag in Git"
             inputs:
@@ -209,7 +218,7 @@ stages:
                 # Update the image tag in the kustomization
                 cd clusters/production/my-app
                 kustomize edit set image \
-                  $(acrLoginServer)/$(imageName):$(Build.BuildId)
+                  $(imageName)=$(acrLoginServer)/$(imageName):$(Build.BuildId)
 
                 # Commit and push the change
                 git config user.email "pipeline@azuredevops.com"
@@ -222,6 +231,20 @@ stages:
 ## Step 4: Configure Flux to Consume OCI Artifacts from ACR
 
 Set up Flux resources to pull OCI artifacts from ACR.
+
+When using `provider: azure`, Flux authenticates to ACR with Azure workload identity or the AKS kubelet managed identity. Make sure the identity used by `source-controller` has ACR pull access before applying the source:
+
+```bash
+ACR_ID=$(az acr show \
+  --name fluxacrregistry \
+  --resource-group rg-flux-demo \
+  --query id -o tsv)
+
+az aks update \
+  --resource-group rg-flux-demo \
+  --name aks-flux-cluster \
+  --attach-acr "$ACR_ID"
+```
 
 ```yaml
 # oci-repository.yaml
@@ -283,7 +306,7 @@ spec:
 Create the webhook secret:
 
 ```bash
-# Generate a random token for webhook authentication
+# Generate a random token for the receiver webhook path
 WEBHOOK_TOKEN=$(openssl rand -hex 32)
 
 # Create the secret in the cluster
@@ -292,7 +315,9 @@ kubectl create secret generic receiver-token \
   --from-literal=token="$WEBHOOK_TOKEN"
 
 # Get the receiver webhook URL
-flux get receivers azure-devops-receiver
+kubectl get receiver azure-devops-receiver \
+  --namespace flux-system \
+  -o jsonpath='{.status.webhookPath}'
 ```
 
 Add a step to the pipeline to trigger the Flux receiver:
@@ -375,11 +400,11 @@ Add a pipeline stage that verifies the Flux deployment was successful.
               curl -s https://fluxcd.io/install.sh | sudo bash
 
               # Wait for reconciliation to complete (timeout 5 min)
-              flux reconcile ocirepository my-app-manifests \
+              flux reconcile source oci my-app-manifests \
                 --timeout=5m
 
               # Check the kustomization status
-              flux get kustomization my-app
+              flux get kustomizations my-app
 
               # Verify pods are running
               kubectl rollout status deployment/my-app \
@@ -414,7 +439,7 @@ az acr login --name fluxacrregistry
 flux push artifact oci://fluxacrregistry.azurecr.io/test:v1 \
   --path="./manifests" \
   --source="local" \
-  --revision="test/abc123"
+  --revision="test@sha1:abc123"
 ```
 
 ### Flux Not Picking Up New Artifacts
