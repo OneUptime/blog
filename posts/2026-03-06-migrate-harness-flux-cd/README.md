@@ -96,20 +96,22 @@ Install Flux in each cluster that Harness currently deploys to.
 ```bash
 # Bootstrap Flux for the staging cluster
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/staging \
-  --personal
+  --read-write-key
 
 # Switch context and bootstrap production
 kubectl config use-context production-cluster
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/production \
-  --personal
+  --read-write-key
 ```
 
 ## Step 4: Migrate Harness Kubernetes Services
@@ -137,7 +139,7 @@ spec:
       containers:
         - name: my-service
           # Image that was previously managed by Harness artifact source
-          image: registry.example.com/my-service:1.0.0
+          image: registry.example.com/my-service:1.0.0 # {"$imagepolicy": "flux-system:my-service"}
           ports:
             - containerPort: 8080
           env:
@@ -312,6 +314,7 @@ metadata:
 spec:
   interval: 10m
   path: ./apps/my-service/overlays/production
+  targetNamespace: production
   prune: true
   sourceRef:
     kind: GitRepository
@@ -340,6 +343,16 @@ Harness includes deployment verification with metrics analysis. Flux CD integrat
 
 ```yaml
 # clusters/production/releases/flagger.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: flagger
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/fluxcd/charts
+  type: oci
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -351,11 +364,15 @@ spec:
   chart:
     spec:
       chart: flagger
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
   install:
     createNamespace: true
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
 ---
 # Canary resource for progressive delivery verification
 apiVersion: flagger.app/v1beta1
@@ -409,11 +426,32 @@ stringData:
 
 ```bash
 # Encrypt the secret file before committing
-sops --encrypt --in-place clusters/production/secrets/db-credentials.yaml
+sops --encrypt --encrypted-regex '^(data|stringData)$' --in-place clusters/production/secrets/db-credentials.yaml
 
 # The encrypted file is safe to store in Git
 git add clusters/production/secrets/db-credentials.yaml
 git commit -m "Add encrypted database credentials"
+```
+
+Enable SOPS decryption on the Flux Kustomization that applies the encrypted Secret:
+
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: production-secrets
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/production/secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
 ```
 
 ## Step 10: Parallel Operation and Cutover
@@ -451,7 +489,7 @@ Replace Harness notification rules with Flux notification controller:
 
 ```yaml
 # clusters/production/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-notifications
@@ -462,7 +500,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-resources
