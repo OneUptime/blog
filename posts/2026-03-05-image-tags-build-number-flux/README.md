@@ -30,6 +30,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --path=clusters/my-cluster \
+  --read-write-key \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
@@ -54,13 +55,9 @@ metadata:
 spec:
   image: registry.example.com/my-org/my-app
   interval: 5m
-  # Optional: limit scanning to tags matching a pattern
-  filterTags:
-    pattern: '^build-(?P<build>[0-9]+)$'
-    extract: '$build'
 ```
 
-The `filterTags` section uses a regular expression to match only tags that follow the `build-<number>` pattern and extracts the numeric portion for sorting.
+The ImageRepository scans the registry and stores the tag metadata that ImagePolicy resources evaluate.
 
 ## Creating an ImagePolicy with Numerical Ordering
 
@@ -239,7 +236,7 @@ git log --oneline -5
 **ImagePolicy shows no latest image.** Check that your `filterTags` regex matches at least one tag in the registry. Test the pattern against your actual tags.
 
 ```bash
-# List all tags from the image repository
+# Inspect the image repository scan results
 kubectl describe imagerepository my-app -n flux-system
 ```
 
