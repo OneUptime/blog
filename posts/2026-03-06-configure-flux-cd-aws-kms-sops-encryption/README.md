@@ -52,7 +52,7 @@ aws kms describe-key \
 ## Step 2: Create IAM Policy for KMS Access
 
 ```bash
-# Create a policy that allows encrypt and decrypt operations
+# Create a policy that allows the controller to decrypt secrets
 cat > /tmp/flux-kms-sops-policy.json << 'EOF'
 {
   "Version": "2012-10-17",
@@ -83,6 +83,7 @@ Note: The Flux controller only needs `Decrypt` permission. Developers who encryp
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 OIDC_ID=$(aws eks describe-cluster \
   --name my-cluster \
+  --region us-east-1 \
   --query "cluster.identity.oidc.issuer" \
   --output text | cut -d'/' -f5)
 
@@ -147,9 +148,9 @@ patches:
 brew install sops
 
 # Install SOPS (Linux)
-curl -LO https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.linux.amd64
-chmod +x sops-v3.9.4.linux.amd64
-sudo mv sops-v3.9.4.linux.amd64 /usr/local/bin/sops
+curl -LO https://github.com/getsops/sops/releases/download/v3.12.2/sops-v3.12.2.linux.amd64
+chmod +x sops-v3.12.2.linux.amd64
+sudo mv sops-v3.12.2.linux.amd64 /usr/local/bin/sops
 
 # Verify installation
 sops --version
@@ -228,7 +229,7 @@ sops:
       enc: AQICAHh...
       aws_profile: ""
   encrypted_regex: ^(data|stringData)$
-  version: 3.9.4
+  version: 3.12.2
 ```
 
 ## Step 8: Configure Flux Kustomization for Decryption
@@ -329,9 +330,11 @@ kubectl exec -n flux-system deployment/kustomize-controller -- env | grep AWS
 # Check the Kustomization status
 kubectl describe kustomization my-app -n flux-system
 
-# Test KMS access manually from the controller pod
-kubectl exec -n flux-system deployment/kustomize-controller -- \
-  aws kms describe-key --key-id alias/flux-sops --region us-east-1
+# Test KMS access manually with the controller service account
+kubectl run -n flux-system aws-cli-test --rm -i --restart=Never \
+  --image=public.ecr.aws/aws-cli/aws-cli:latest \
+  --overrides='{"spec":{"serviceAccountName":"kustomize-controller"}}' \
+  -- kms describe-key --key-id alias/flux-sops --region us-east-1
 ```
 
 ### Common error: "failed to decrypt"
