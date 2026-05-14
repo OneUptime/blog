@@ -23,7 +23,7 @@ Open Rancher Desktop and configure it for Flux CD compatibility.
 
 1. Launch Rancher Desktop
 2. Navigate to **Preferences** (or **Settings** on Windows)
-3. Under **Kubernetes**, select a stable K3s version (1.27 or later recommended)
+3. Under **Kubernetes**, select a stable K3s version that meets Flux's current Kubernetes support matrix (1.33 or later recommended)
 4. Under **Container Engine**, choose either containerd or dockerd (both work with Flux)
 5. Under **Resources**, allocate at least 4 GB of memory and 2 CPUs
 6. Click **Apply** and wait for the cluster to restart
@@ -222,8 +222,8 @@ graph LR
 - **Cluster resets**: When you reset the Kubernetes cluster in Rancher Desktop (Preferences > Kubernetes > Reset), Flux CD and all deployed workloads are removed. You will need to re-run `flux bootstrap` after a reset.
 - **Resource allocation**: Flux controllers consume approximately 400-600 MB of RAM. If Rancher Desktop feels sluggish, increase the memory allocation in preferences.
 - **Container runtime**: Flux CD works identically with both containerd and dockerd. Choose whichever runtime suits your other development needs.
-- **Path mapping**: On macOS and Windows, Rancher Desktop uses a VM. If you need to mount local volumes for testing, configure the path sharing in Rancher Desktop preferences.
-- **Nerdctl and docker CLI**: Rancher Desktop provides both `nerdctl` (for containerd) and `docker` (for dockerd). You can use either to build images locally and test them with Flux image automation policies.
+- **Path mapping**: On macOS and Linux, Rancher Desktop uses a VM, while Windows uses WSL2. If you need to mount local volumes for testing, configure the path sharing in Rancher Desktop preferences.
+- **Nerdctl and docker CLI**: Rancher Desktop provides both `nerdctl` (for containerd) and `docker` (for dockerd). Use `nerdctl --namespace k8s.io` when building local images that Kubernetes should run; for Flux image automation, push images to a container registry and install the image automation controllers with `--components-extra=image-reflector-controller,image-automation-controller`.
 
 ## Switching Between Environments
 
