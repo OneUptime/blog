@@ -17,18 +17,18 @@ Security is a foundational concern when choosing a GitOps tool. Both Flux CD and
 | Feature | Flux CD | ArgoCD |
 |---|---|---|
 | RBAC Model | Kubernetes-native RBAC | Built-in RBAC + Kubernetes RBAC |
-| Multi-tenancy | Namespace-scoped controllers | AppProject-based isolation |
+| Multi-tenancy | Namespace + service-account scoped reconciliation | AppProject-based isolation |
 | Secret Management | SOPS, Sealed Secrets integration | Vault plugin, AWS Secrets Manager |
 | Git Authentication | SSH, HTTPS, token-based | SSH, HTTPS, token-based |
 | OCI Artifact Verification | Cosign signature verification | Limited |
 | Git Commit Verification | GPG signature verification | GPG signature verification |
 | SLSA Provenance | Supported | Limited |
-| Network Policies | Pull-based (no inbound required) | Pull-based (no inbound required) |
-| Service Account per Resource | Yes | Per AppProject |
+| Network Policies | Pull-based reconciliation (no inbound UI/API) | Pull-based reconciliation; server inbound for UI/API |
+| Service Account per Resource | Yes, via impersonation | Via destination cluster credentials and AppProject controls |
 | SSO Integration | Kubernetes OIDC | Built-in (Dex/OIDC) |
-| Audit Logging | Kubernetes audit logs | Built-in audit logs + UI |
+| Audit Logging | Git history + Kubernetes audit logs | Git history, Kubernetes Events, API logs + UI history |
 | Policy Enforcement | OPA/Kyverno integration | OPA integration |
-| Container Image Scanning | Via Image Reflector | Via third-party integration |
+| Container Image Metadata Scanning | Via Image Reflector | Via third-party integration |
 | TLS for Git Operations | Yes | Yes |
 | Workload Identity | AWS IRSA, GCP WI, Azure WI | AWS IRSA, GCP WI, Azure WI |
 
@@ -55,22 +55,6 @@ metadata:
   name: team-frontend
   namespace: team-frontend
 ---
-# Role granting permissions within the tenant namespace
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: team-frontend-reconciler
-  namespace: team-frontend
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  # Flux provides a built-in cluster role for reconcilers
-  name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: team-frontend
-    namespace: team-frontend
----
 # Kustomization scoped to the tenant's service account
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -86,7 +70,7 @@ spec:
     name: team-frontend-repo
   # Use the tenant-specific service account
   serviceAccountName: team-frontend
-  # Prevent cross-namespace references
+  # Deploy namespaced resources into the tenant namespace
   targetNamespace: team-frontend
 ---
 # Restrict tenant to only deploy to their namespace
@@ -103,10 +87,21 @@ rules:
   - apiGroups: [""]
     resources: ["services", "configmaps", "secrets"]
     verbs: ["get", "list", "create", "update", "patch", "delete"]
-  # Deny cluster-scoped resources
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: []
+---
+# Bind the restricted Role to the tenant service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: team-frontend-reconciler
+  namespace: team-frontend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: team-frontend-deployer
+subjects:
+  - kind: ServiceAccount
+    name: team-frontend
+    namespace: team-frontend
 ```
 
 ### ArgoCD: AppProject-Based RBAC
@@ -280,7 +275,26 @@ ArgoCD supports external secret management through plugins and integrations.
 
 ```yaml
 # ArgoCD Vault Plugin configuration
-# Install via sidecar container on the repo server
+# Install via a Config Management Plugin sidecar on the repo server
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cmp-plugin
+  namespace: argocd
+data:
+  avp.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: argocd-vault-plugin
+    spec:
+      generate:
+        command:
+          - argocd-vault-plugin
+          - generate
+          - "."
+      lockRepo: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -289,10 +303,39 @@ metadata:
 spec:
   template:
     spec:
+      automountServiceAccountToken: true
+      volumes:
+        - name: var-files
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: cmp-plugin
+          configMap:
+            name: cmp-plugin
+        - name: custom-tools
+          emptyDir: {}
+      initContainers:
+        - name: download-tools
+          image: alpine:3.19
+          env:
+            - name: AVP_VERSION
+              value: "1.18.1"
+          command: [sh, -c]
+          args:
+            - >-
+              wget -O /custom-tools/argocd-vault-plugin
+              https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v${AVP_VERSION}/argocd-vault-plugin_${AVP_VERSION}_linux_amd64
+              &&
+              chmod +x /custom-tools/argocd-vault-plugin
+          volumeMounts:
+            - name: custom-tools
+              mountPath: /custom-tools
       containers:
         - name: avp
-          # Argo Vault Plugin sidecar
-          image: argoproj/argocd:latest
+          # ArgoCD Vault Plugin sidecar
+          image: registry.access.redhat.com/ubi8
           command: ["/var/run/argocd/argocd-cmp-server"]
           env:
             # Vault configuration
@@ -303,10 +346,18 @@ spec:
             - name: VAULT_ADDR
               value: https://vault.example.com
           volumeMounts:
+            - name: var-files
+              mountPath: /var/run/argocd
             - name: plugins
               mountPath: /home/argocd/cmp-server/plugins
-            - name: cmp-tmp
+            - name: tmp
               mountPath: /tmp
+            - name: cmp-plugin
+              mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: avp.yaml
+            - name: custom-tools
+              mountPath: /usr/local/bin/argocd-vault-plugin
+              subPath: argocd-vault-plugin
 ---
 # Application using Vault plugin for secrets
 apiVersion: argoproj.io/v1alpha1
@@ -319,7 +370,8 @@ spec:
     repoURL: https://github.com/org/my-app.git
     targetRevision: main
     path: k8s/
-    # Use the Vault plugin for manifest generation
+    # Use the Vault plugin for manifest generation. Omit this name when using
+    # sidecar auto-discovery instead.
     plugin:
       name: argocd-vault-plugin
   destination:
@@ -381,7 +433,7 @@ spec:
   ref:
     branch: main
   # Verify GPG signatures on commits
-  verification:
+  verify:
     mode: HEAD
     # Secret containing trusted GPG public keys
     secretRef:
@@ -418,9 +470,16 @@ spec:
   destinations:
     - namespace: "production"
       server: https://kubernetes.default.svc
-  # Require signed commits for all sources
-  signatureKeys:
-    - keyID: "ABCDEF1234567890"
+  # Require signed commits for all Git sources
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "*"
+          gpg:
+            mode: "head"
+            keys:
+              - "ABCDEF1234567890"
 ```
 
 ## Network Security
@@ -474,7 +533,7 @@ spec:
 ### ArgoCD: API Server Exposure
 
 ```yaml
-# ArgoCD requires the API server to be exposed for UI/CLI access
+# ArgoCD exposes its API server for UI/CLI access
 # Network policy for ArgoCD API server
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -598,11 +657,11 @@ data:
 
 - You need built-in SSO integration with OIDC, SAML, or LDAP
 - You want fine-grained RBAC with AppProject-based access control
-- You prefer a centralized audit log with UI visibility
+- You prefer UI-visible deployment history with Argo CD events and API logs
 - You need HashiCorp Vault integration via the Vault plugin
 - You want role-based access to the deployment UI for different teams
 - You need detailed sync and deployment history through the dashboard
 
 ## Conclusion
 
-Both Flux CD and ArgoCD provide strong security capabilities, but they approach security differently. Flux CD leverages Kubernetes-native security primitives, offers a smaller attack surface due to its pull-only architecture without a UI, and provides excellent supply chain security with Cosign and GPG verification. ArgoCD offers a richer authentication and authorization experience with built-in SSO, granular project-based RBAC, and centralized audit logging. Your choice should depend on whether you prioritize minimizing attack surface and using native Kubernetes security (Flux CD) or need a comprehensive built-in auth layer with UI-based access control (ArgoCD).
+Both Flux CD and ArgoCD provide strong security capabilities, but they approach security differently. Flux CD leverages Kubernetes-native security primitives, offers a smaller attack surface due to its pull-only architecture without a UI, and provides excellent supply chain security with Cosign and GPG verification. ArgoCD offers a richer authentication and authorization experience with built-in SSO, granular project-based RBAC, and UI-visible deployment history backed by events and logs. Your choice should depend on whether you prioritize minimizing attack surface and using native Kubernetes security (Flux CD) or need a comprehensive built-in auth layer with UI-based access control (ArgoCD).
