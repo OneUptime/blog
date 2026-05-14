@@ -85,7 +85,7 @@ spec:
   chart:
     spec:
       chart: victoria-metrics-single
-      version: "0.12.x"
+      version: "0.38.x"
       sourceRef:
         kind: HelmRepository
         name: victoriametrics
@@ -108,14 +108,14 @@ spec:
       persistentVolume:
         enabled: true
         size: 50Gi
-        storageClass: standard
+        storageClassName: standard
       # Scrape configuration for Prometheus-compatible targets
       scrape:
         enabled: true
         configMap: victoriametrics-scrape-config
-    # ServiceMonitor for self-monitoring
-    serviceMonitor:
-      enabled: false
+      # ServiceMonitor for self-monitoring
+      serviceMonitor:
+        enabled: false
 ```
 
 ## Step 4: Configure Scrape Targets
@@ -139,6 +139,7 @@ data:
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         relabel_configs:
           - source_labels:
@@ -192,7 +193,7 @@ spec:
   chart:
     spec:
       chart: victoria-metrics-cluster
-      version: "0.14.x"
+      version: "0.42.x"
       sourceRef:
         kind: HelmRepository
         name: victoriametrics
@@ -235,7 +236,7 @@ spec:
       persistentVolume:
         enabled: true
         size: 100Gi
-        storageClass: standard
+        storageClassName: standard
 ```
 
 ## Step 6: Add a Kustomization
@@ -309,7 +310,7 @@ You can port-forward to access the VictoriaMetrics UI locally.
 kubectl port-forward -n victoriametrics svc/victoriametrics-victoria-metrics-single-server 8428:8428
 
 # Query metrics using the VictoriaMetrics API
-curl http://localhost:8428/api/v1/query?query=up
+curl 'http://localhost:8428/api/v1/query?query=up'
 ```
 
 ## Integrating with Grafana
