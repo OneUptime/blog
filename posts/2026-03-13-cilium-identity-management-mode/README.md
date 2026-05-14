@@ -4,23 +4,24 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: A deep dive into Cilium's identity management modes including CRD-based and kvstore-based allocation, how to configure the right mode for your cluster, and how to troubleshoot identity allocation...
+Description: A deep dive into Cilium's identity allocation backends including CRD-based and kvstore-based allocation, how to configure the right mode for your cluster, and how to troubleshoot identity allocation...
 
 ---
 
 ## Introduction
 
-Cilium's security model is built on the concept of identities - numeric labels assigned to groups of endpoints that share the same security-relevant labels. These identities are used by eBPF programs in the kernel to make fast allow/deny decisions without needing to look up policies for individual IP addresses. The way identities are allocated and stored - the identity management mode - significantly affects how Cilium operates and scales.
+Cilium's security model is built on the concept of identities - numeric labels assigned to groups of endpoints that share the same security-relevant labels. These identities are used by eBPF programs in the kernel to make fast allow/deny decisions without needing to look up policies for individual IP addresses. The way identities are allocated and stored - the identity allocation backend - significantly affects how Cilium operates and scales.
 
-Cilium supports two identity allocation modes: **CRD-based** (the default since Cilium 1.9) where identities are stored as `CiliumIdentity` Kubernetes custom resources, and **kvstore-based** where identities are stored in an external etcd or Consul key-value store. The CRD mode is simpler to operate since it reuses the Kubernetes API server, while the kvstore mode provides better performance at very large scales (thousands of nodes) at the cost of additional infrastructure.
+Cilium supports two steady-state identity allocation backends: **CRD-based** (the default since Cilium 1.9) where identities are stored as `CiliumIdentity` Kubernetes custom resources, and **kvstore-based** where identities are stored in an external etcd key-value store. The CRD mode is simpler to operate since it reuses the Kubernetes API server, while the kvstore mode provides better performance at very large scales (thousands of nodes) at the cost of additional infrastructure. This is separate from Cilium's identity management mode, which controls whether Cilium agents or the Cilium Operator create identities.
 
-This guide covers how to configure identity management modes, troubleshoot identity allocation failures, validate correct identity operation, and monitor identity-related metrics.
+This guide covers how to configure identity allocation backends, troubleshoot identity allocation failures, validate correct identity operation, and monitor identity-related metrics.
 
 ## Prerequisites
 
 - Cilium installed in Kubernetes
 - `kubectl` with cluster admin access
 - Helm 3.x for configuration
+- Hubble CLI for flow verdict verification
 - For kvstore mode: external etcd cluster (optional)
 
 ## Configure Identity Management
@@ -57,11 +58,12 @@ helm upgrade cilium cilium/cilium \
 # Configure identity change queue depth
 kubectl -n kube-system get configmap cilium-config -o yaml | grep identity
 
-# Set labels used for identity computation (subset of all K8s labels)
+# Set label patterns used for identity computation.
+# The Helm value appends to Cilium's default label patterns.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set "labels=k8s:app k8s:role io.kubernetes.pod.namespace"
+  --set "labels=app role"
 ```
 
 ## Troubleshoot Identity Issues
@@ -70,22 +72,26 @@ Diagnose identity allocation failures:
 
 ```bash
 # Check for identity allocation errors
-kubectl -n kube-system logs -l name=cilium-operator | grep -i "identity\|allocation\|error"
+kubectl -n kube-system logs deployment/cilium-operator | grep -i "identity\|allocation\|error"
 
 # List all identities and check for anomalies
-kubectl get ciliumidentities | wc -l
+kubectl get ciliumidentities --no-headers | wc -l
 # Very high count may indicate identity leak
 
-# Find identities with no associated pods
+# Find identities with no associated CiliumEndpoint
+ACTIVE_IDS=$(mktemp)
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq -r '.items[].status.identity.id // empty' | sort -u > "$ACTIVE_IDS"
+
 kubectl get ciliumidentities -o json | jq -r '.items[] | .metadata.name' | while read id; do
-  PODS=$(kubectl get pods -A -l "security.cilium.io/identity=$id" --no-headers 2>/dev/null | wc -l)
-  if [ "$PODS" -eq 0 ]; then
+  if ! grep -qx "$id" "$ACTIVE_IDS"; then
     echo "Orphaned identity: $id"
   fi
 done
+rm -f "$ACTIVE_IDS"
 
 # Check if identity GC is running
-kubectl -n kube-system logs -l name=cilium-operator | grep -i "identity gc\|gc interval"
+kubectl -n kube-system logs deployment/cilium-operator | grep -i "identity gc\|gc interval"
 
 # Investigate a specific identity
 kubectl describe ciliumidentity <identity-id>
@@ -103,15 +109,15 @@ helm upgrade cilium cilium/cilium \
 
 # Issue: Identity not created for new pods
 kubectl -n kube-system exec ds/cilium -- \
-  cilium monitor --type endpoint | grep "created"
+  cilium-dbg monitor --type agent | grep -i "endpoint"
 
 # Check endpoint status
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep "not-ready"
+kubectl get ciliumendpoints --all-namespaces
 
 # Issue: Identity conflicting across namespaces
 # Check if labels are namespace-qualified
-kubectl -n kube-system exec ds/cilium -- \
-  cilium identity list | grep "k8s:app=backend"
+kubectl get ciliumidentities -l 'app=backend' -o json | \
+  jq '.items[] | {id: .metadata.name, labels: .["security-labels"]}'
 # Should show separate identities for different namespaces
 ```
 
@@ -122,16 +128,12 @@ Confirm identity management is working correctly:
 ```bash
 # Verify pods get identities
 kubectl get pod my-pod -o wide
-POD_IP=$(kubectl get pod my-pod -o jsonpath='{.status.podIP}')
-kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint list | grep $POD_IP
-# Should show endpoint with an identity ID
+kubectl get ciliumendpoint my-pod -o jsonpath='{.status.identity.id}{"\n"}'
+# Should print the endpoint's identity ID
 
 # Verify identity matches expected labels
-ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint list | grep $POD_IP | awk '{print $1}')
-kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint get $ENDPOINT_ID | jq '.status.identity'
+IDENTITY_ID=$(kubectl get ciliumendpoint my-pod -o jsonpath='{.status.identity.id}')
+kubectl get ciliumidentity "$IDENTITY_ID" -o json | jq '.["security-labels"]'
 
 # Test that identity-based policy works
 kubectl apply -f - <<EOF
@@ -149,12 +151,11 @@ spec:
         app: frontend
 EOF
 
-# Verify policy trace uses identities
+# Verify selector-to-identity mappings and observe live policy verdicts
 kubectl -n kube-system exec ds/cilium -- \
-  cilium policy trace \
-  --src-label "app=frontend" \
-  --dst-label "app=backend" \
-  --dport 8080
+  cilium-dbg policy selectors -o json | jq '.'
+
+hubble observe --from-label app=frontend --to-label app=backend --verdict DROPPED
 ```
 
 ## Monitor Identity Management
@@ -163,7 +164,7 @@ kubectl -n kube-system exec ds/cilium -- \
 graph TD
     A[Pod with labels] -->|Computed from labels| B[Cilium Identity]
     B -->|CRD mode| C[CiliumIdentity K8s object]
-    B -->|kvstore mode| D[etcd/Consul entry]
+    B -->|kvstore mode| D[etcd entry]
     C -->|Synced to| E[Cilium Agents]
     D -->|Synced to| E
     E -->|Programs| F[eBPF Identity Maps]
@@ -178,15 +179,15 @@ Monitor identity metrics:
 # Watch identity count over time
 watch -n30 "kubectl get ciliumidentities --no-headers | wc -l"
 
-# Monitor identity allocation rate
-kubectl -n kube-system port-forward svc/cilium-operator 9963:9963 &
+# Monitor identity metrics
+kubectl -n kube-system port-forward deployment/cilium-operator 9963:9963 &
 curl -s http://localhost:9963/metrics | grep identity
 
 # Key PromQL queries
-# rate(cilium_identity_count[5m]) - identity creation rate
-# cilium_identity_count - total active identities
+# cilium_identity - number of identities currently allocated
+# delta(cilium_identity[5m]) - recent change in allocated identities
 
-# Alert on identity exhaustion (CRD mode supports up to 16M identities)
+# Alert before cluster-local identity pressure becomes a problem
 # Alert on identity leak (count growing without corresponding pod growth)
 kubectl apply -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
@@ -199,7 +200,7 @@ spec:
   - name: cilium-identity
     rules:
     - alert: CiliumIdentityCountHigh
-      expr: cilium_identity_count > 10000
+      expr: max(cilium_identity) > 10000
       for: 10m
       labels:
         severity: warning
@@ -210,4 +211,4 @@ EOF
 
 ## Conclusion
 
-Cilium's identity management is the core of its security model, translating Kubernetes labels into numeric identifiers that eBPF programs use for fast policy enforcement. CRD-based allocation is the right choice for most clusters, providing simplicity and reliability by leveraging the Kubernetes API server. Monitor identity counts to detect leaks early, tune the GC interval to clean up stale identities promptly, and validate that new pods receive correct identities by checking their Cilium endpoint status after deployment. The identity trace tool is invaluable for debugging why traffic is unexpectedly allowed or denied between services.
+Cilium's identity management is the core of its security model, translating Kubernetes labels into numeric identifiers that eBPF programs use for fast policy enforcement. CRD-based allocation is the right choice for most clusters, providing simplicity and reliability by leveraging the Kubernetes API server. Monitor identity counts to detect leaks early, tune the GC interval to clean up stale identities promptly, and validate that new pods receive correct identities by checking their Cilium endpoint status after deployment. Selector-to-identity inspection and Hubble policy verdicts are invaluable for debugging why traffic is unexpectedly allowed or denied between services.
