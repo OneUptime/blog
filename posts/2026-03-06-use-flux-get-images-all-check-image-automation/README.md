@@ -236,8 +236,7 @@ spec:
     spec:
       containers:
         - name: my-app
-          # {"$imagepolicy": "flux-system:my-app"}
-          image: myregistry/my-app:1.5.2
+          image: myregistry/my-app:1.5.2 # {"$imagepolicy": "flux-system:my-app"}
 ```
 
 ### Diagnose Update Automation Issues
@@ -292,8 +291,15 @@ echo "2. Image Policy (tag selection):"
 flux get images policy $IMAGE_NAME -n $NAMESPACE
 
 # Step 3: Latest selected image
-LATEST=$(kubectl get imagepolicy $IMAGE_NAME -n $NAMESPACE \
-  -o jsonpath='{.status.latestImage}' 2>/dev/null)
+LATEST_IMAGE=$(kubectl get imagepolicy $IMAGE_NAME -n $NAMESPACE \
+  -o jsonpath='{.status.latestRef.image}' 2>/dev/null)
+LATEST_TAG=$(kubectl get imagepolicy $IMAGE_NAME -n $NAMESPACE \
+  -o jsonpath='{.status.latestRef.tag}' 2>/dev/null)
+if [ -n "$LATEST_IMAGE" ] && [ -n "$LATEST_TAG" ]; then
+  LATEST="${LATEST_IMAGE}:${LATEST_TAG}"
+else
+  LATEST=""
+fi
 echo ""
 echo "3. Selected image: ${LATEST:-none}"
 
