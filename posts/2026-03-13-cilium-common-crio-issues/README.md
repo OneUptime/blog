@@ -10,7 +10,7 @@ Description: A practical troubleshooting guide for the most common issues encoun
 
 ## Introduction
 
-While CRI-O and Cilium work well together, a specific set of issues arises in this combination that does not occur with other runtimes. These issues stem from CRI-O's strict CNI invocation behavior, RHEL/OpenShift SELinux policies, differences in network namespace lifecycle management, and version-specific bugs in CRI-O that affect how it calls CNI plugins. Understanding these issues in advance prevents hours of troubleshooting when deploying Cilium on CRI-O-based clusters.
+While CRI-O and Cilium work well together, a specific set of issues can be more visible in this combination than with other runtimes. These issues stem from CRI-O's CNI configuration reload behavior, RHEL/OpenShift SELinux policies, differences in network namespace lifecycle management, and version-specific bugs in CRI-O that affect how it calls CNI plugins. Understanding these issues in advance prevents hours of troubleshooting when deploying Cilium on CRI-O-based clusters.
 
 The most frequent issues include: CRI-O failing to call the CNI ADD command when Cilium is not yet ready, pods getting stuck when the CNI config disappears briefly during Cilium restarts, network namespace cleanup failures leaving stale state, and SELinux denials preventing Cilium from accessing CRI-O's socket or the BPF filesystem. Each of these has a specific diagnosis procedure and resolution.
 
@@ -33,13 +33,14 @@ Tune CRI-O configuration for Cilium compatibility:
 
 cat /etc/crio/crio.conf
 
-# Configure CRI-O to wait for CNI before starting pods
-# Edit /etc/crio/crio.conf
-sudo tee -a /etc/crio/crio.conf <<EOF
+# Configure CRI-O CNI paths. Prefer a drop-in on systems that use
+# /etc/crio/crio.conf.d, otherwise edit /etc/crio/crio.conf.
+sudo mkdir -p /etc/crio/crio.conf.d
+sudo tee /etc/crio/crio.conf.d/99-cilium-cni.conf <<EOF
 [crio.network]
 # Path to the directory where CNI configuration files are located
-cni_config_dir = "/etc/cni/net.d"
-# Wait for CNI plugin to be ready before starting containers
+network_dir = "/etc/cni/net.d"
+# Paths to directories where CNI plugin binaries are located
 plugin_dirs = ["/opt/cni/bin", "/usr/libexec/cni"]
 EOF
 
@@ -53,13 +54,16 @@ crictl info | grep -A 5 "cni"
 Configure Cilium to handle CRI-O gracefully during initialization:
 
 ```bash
-# Configure Cilium to taint nodes until CNI is ready
+# Configure the taint key Cilium removes after the agent is ready
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set agentNotReadyTaintKey="node.cilium.io/agent-not-ready" \
   --set nodeinit.enabled=true \
   --set nodeinit.reconfigureKubelet=true
+
+# For new or replacement nodes, apply the taint before workload scheduling
+kubectl taint nodes <node-name> node.cilium.io/agent-not-ready=true:NoExecute --overwrite
 ```
 
 ## Troubleshoot Common CRI-O Issues
@@ -75,8 +79,8 @@ kubectl describe pod <stuck-pod> | grep -A 10 Events
 journalctl -u crio --since="5 minutes ago" | grep -i "cni\|network\|error"
 
 # Verify Cilium CNI config exists
-ls /etc/cni/net.d/05-cilium.conf
-cat /etc/cni/net.d/05-cilium.conf
+ls /etc/cni/net.d/05-cilium.conflist
+cat /etc/cni/net.d/05-cilium.conflist
 
 # Verify Cilium socket is accessible
 ls /var/run/cilium/cilium.sock
@@ -96,8 +100,8 @@ ausearch -m avc -ts recent | grep crio
 ausearch -m avc -ts recent | grep crio | audit2allow -M cilium-crio
 semodule -i cilium-crio.pp
 
-# Fix Option 2: Label socket correctly
-chcon -t container_runtime_exec_t /var/run/crio/crio.sock
+# Fix Option 2: Restore the platform-provided socket label if it drifted
+restorecon -v /var/run/crio/crio.sock
 
 # Verify fix
 systemctl restart crio
@@ -138,11 +142,13 @@ kubectl -n kube-system logs ds/cilium | grep "not ready\|starting"
 
 # Fix: Ensure node taint prevents pod scheduling until Cilium is ready
 kubectl get node <node-name> -o yaml | grep "node.cilium.io/agent-not-ready"
+kubectl taint nodes <node-name> node.cilium.io/agent-not-ready=true:NoExecute --overwrite
 
-# Configure node initialization properly
+# Configure node initialization and taint handling properly
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
+  --set agentNotReadyTaintKey="node.cilium.io/agent-not-ready" \
   --set nodeinit.enabled=true
 ```
 
@@ -152,16 +158,17 @@ After applying fixes, validate the environment:
 
 ```bash
 # Test pod creation works
-kubectl run validation-test --image=nginx --restart=Never
+kubectl run validation-test --image=curlimages/curl:8.7.1 --restart=Never \
+  --command -- sleep 3600
 kubectl wait pod/validation-test --for=condition=Ready --timeout=120s
 
 # Verify endpoint was created
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | \
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | \
   grep $(kubectl get pod validation-test -o jsonpath='{.status.podIP}')
 
 # Test connectivity
 kubectl exec validation-test -- curl -s -o /dev/null -w "%{http_code}" \
-  http://kubernetes.default.svc.cluster.local
+  -k https://kubernetes.default.svc.cluster.local/version
 echo ""
 
 # Clean up
