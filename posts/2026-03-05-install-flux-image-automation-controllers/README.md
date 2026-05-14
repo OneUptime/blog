@@ -14,10 +14,10 @@ Flux CD provides a set of image automation controllers that enable automatic upd
 
 Before you begin, make sure you have the following:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster supported by your Flux version (current Flux docs list v1.33, v1.34.1 or later, and v1.35 or later)
 - kubectl configured to access your cluster
 - Flux CLI installed on your local machine
-- Flux core controllers already bootstrapped in your cluster
+- Cluster admin permissions to install or update Flux controllers
 
 If you have not yet installed the Flux CLI, use the following command.
 
@@ -36,7 +36,7 @@ flux --version
 
 ## Understanding the Image Automation Controllers
 
-The Flux image automation stack consists of three controllers:
+The Flux image automation stack consists of two controllers:
 
 1. **Image Reflector Controller** -- Scans container registries and reflects the discovered image tags as Kubernetes resources (ImageRepository and ImagePolicy).
 2. **Image Automation Controller** -- Watches ImagePolicy resources and updates YAML manifests in a Git repository when a new image is available (ImageUpdateAutomation).
@@ -55,6 +55,7 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/my-cluster \
   --personal \
+  --read-write-key \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
@@ -72,13 +73,14 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/my-cluster \
   --personal \
+  --read-write-key \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
-Alternatively, you can install the controllers using the Flux install command.
+Alternatively, you can install or upgrade Flux with the extra controllers using the Flux install command.
 
 ```bash
-# Install only the extra image automation components
+# Install Flux with the extra image automation components
 flux install \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
@@ -97,8 +99,8 @@ You should see pods for both `image-reflector-controller` and `image-automation-
 You can also verify using the Flux CLI.
 
 ```bash
-# Run Flux pre-flight checks to confirm everything is healthy
-flux check
+# Run Flux checks to confirm the default and image automation controllers are healthy
+flux check --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 The output should confirm that all controllers are installed and ready.
@@ -150,9 +152,9 @@ git commit -m "Add Flux image automation controllers"
 git push origin main
 ```
 
-## Step 6: Configure RBAC for Image Automation
+## Step 6: Configure Git Credentials for Image Automation
 
-The image automation controller needs permission to push commits to your Git repository. Make sure the Flux source controller has a Git credential secret configured.
+The image automation controller needs permission to push commits to your Git repository. If you bootstrapped with an SSH deploy key, include `--read-write-key` as shown above. If you use HTTPS credentials instead, make sure the GitRepository referenced by your ImageUpdateAutomation has a Git credential secret configured.
 
 ```yaml
 # Secret for Git repository authentication used by the image automation controller
