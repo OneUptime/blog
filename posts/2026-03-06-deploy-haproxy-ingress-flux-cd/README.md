@@ -34,7 +34,6 @@ clusters/
       haproxy-ingress/
         namespace.yaml
         release.yaml            # HelmRelease
-        configmap.yaml          # Global HAProxy configuration
     apps/
       ingress/
         webapp-ingress.yaml
@@ -110,6 +109,10 @@ spec:
           cpu: 2000m
           memory: 1Gi
 
+      # Keep embedded HAProxy in the foreground for stdout logging
+      extraArgs:
+        master-worker: "true"
+
       # Service configuration
       service:
         type: LoadBalancer
@@ -120,11 +123,11 @@ spec:
           service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 
       # Ingress class configuration
+      ingressClass: haproxy
       ingressClassResource:
-        name: haproxy
         enabled: true
         default: false
-        controllerValue: "haproxy-ingress.github.io/controller"
+        controllerClass: "haproxy-ingress.github.io/controller"
 
       # HAProxy configuration defaults
       config:
@@ -143,19 +146,21 @@ spec:
         timeout-queue: "30s"
         # Backend health checks
         health-check-interval: "5s"
-        health-check-fall: "3"
-        health-check-rise: "2"
+        health-check-fall-count: "3"
+        health-check-rise-count: "2"
         # SSL configuration
         ssl-redirect: "true"
         ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
         ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
-        # Enable HTTP/2
-        http2: "true"
+        # Enable HTX for HTTP/2 backends
+        use-htx: "true"
         # Enable stats page
         stats-port: "1936"
         stats-auth: "admin:haproxy-stats"
 
       # Metrics for Prometheus
+      stats:
+        enabled: true
       metrics:
         enabled: true
         service:
@@ -218,11 +223,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
   timeout: 5m
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: haproxy-ingress
       namespace: haproxy-ingress
 ```
@@ -303,8 +307,8 @@ metadata:
     # Health check configuration
     haproxy-ingress.github.io/health-check-uri: "/healthz"
     haproxy-ingress.github.io/health-check-interval: "5s"
-    haproxy-ingress.github.io/health-check-fall: "3"
-    haproxy-ingress.github.io/health-check-rise: "2"
+    haproxy-ingress.github.io/health-check-fall-count: "3"
+    haproxy-ingress.github.io/health-check-rise-count: "2"
     # Request body size limit
     haproxy-ingress.github.io/proxy-body-size: "10m"
     # Backend protocol
@@ -346,11 +350,11 @@ metadata:
     kubernetes.io/ingress.class: "haproxy"
     # Blue-green configuration
     # Weight of blue deployment (0-256)
-    haproxy-ingress.github.io/blue-green-deploy: |
-      v1=blue:100,v2=green:0
+    haproxy-ingress.github.io/blue-green-balance: |
+      group=blue=100,group=green=0
     haproxy-ingress.github.io/blue-green-mode: "deploy"
     # Header-based routing for testing green deployment
-    haproxy-ingress.github.io/blue-green-header: "X-Server:green"
+    haproxy-ingress.github.io/blue-green-header: "X-Server:group"
 spec:
   ingressClassName: haproxy
   tls:
@@ -365,7 +369,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: app-blue
+                name: app
                 port:
                   number: 80
 ```
@@ -375,24 +379,33 @@ To gradually shift traffic during deployment:
 ```bash
 # Start with 100% blue, 0% green
 kubectl annotate ingress blue-green-ingress -n production \
-  haproxy-ingress.github.io/blue-green-deploy="v1=blue:100,v2=green:0" --overwrite
+  haproxy-ingress.github.io/blue-green-balance="group=blue=100,group=green=0" --overwrite
 
 # Shift 10% to green
 kubectl annotate ingress blue-green-ingress -n production \
-  haproxy-ingress.github.io/blue-green-deploy="v1=blue:90,v2=green:10" --overwrite
+  haproxy-ingress.github.io/blue-green-balance="group=blue=90,group=green=10" --overwrite
 
 # Shift 50% to green
 kubectl annotate ingress blue-green-ingress -n production \
-  haproxy-ingress.github.io/blue-green-deploy="v1=blue:50,v2=green:50" --overwrite
+  haproxy-ingress.github.io/blue-green-balance="group=blue=50,group=green=50" --overwrite
 
 # Complete migration to green
 kubectl annotate ingress blue-green-ingress -n production \
-  haproxy-ingress.github.io/blue-green-deploy="v1=blue:0,v2=green:100" --overwrite
+  haproxy-ingress.github.io/blue-green-balance="group=blue=0,group=green=100" --overwrite
 ```
 
 ## WAF Integration with ModSecurity
 
 HAProxy Ingress supports ModSecurity for web application firewall:
+
+Configure a ModSecurity SPOA endpoint in the controller ConfigMap before enabling WAF annotations:
+
+```yaml
+# Add to controller.config in the HelmRelease values
+controller:
+  config:
+    modsecurity-endpoints: "10.0.0.25:12345"
+```
 
 ```yaml
 # clusters/production/apps/ingress/waf-ingress.yaml
@@ -406,7 +419,6 @@ metadata:
     # Enable ModSecurity WAF
     haproxy-ingress.github.io/waf: "modsecurity"
     haproxy-ingress.github.io/waf-mode: "deny"
-    # Use OWASP Core Rule Set
     haproxy-ingress.github.io/ssl-redirect: "true"
 spec:
   ingressClassName: haproxy
@@ -432,82 +444,64 @@ spec:
 HAProxy supports TCP load balancing for databases and other services:
 
 ```yaml
-# clusters/production/infrastructure/haproxy-ingress/tcp-services.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: haproxy-ingress-tcp
-  namespace: haproxy-ingress
-data:
-  # Map external port to internal service
-  # Format: port: "namespace/service:port"
-  "5432": "production/postgres-primary:5432"
-  "6379": "production/redis-master:6379"
-  "3306": "production/mysql-primary:3306"
-```
-
-Update the HelmRelease to reference the TCP ConfigMap:
-
-```yaml
 # Add to the HelmRelease values
 controller:
-  extraArgs:
-    # Reference the TCP services ConfigMap
-    tcp-services-configmap: haproxy-ingress/haproxy-ingress-tcp
+  tcp:
+    # Map external port to internal service
+    # Format: port: "namespace/service:port"
+    "5432": "production/postgres-primary:5432"
+    "6379": "production/redis-master:6379"
+    "3306": "production/mysql-primary:3306"
 ```
 
 ## Global HAProxy Configuration
 
 ```yaml
-# clusters/production/infrastructure/haproxy-ingress/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: haproxy-ingress
-  namespace: haproxy-ingress
-data:
+# Add to controller.config in the HelmRelease values
+controller:
+  config:
   # Global HAProxy settings
   # Connection limits
-  maxconn-server: "2048"
-  nbthread: "4"
+    maxconn-server: "2048"
+    nbthread: "4"
 
   # Logging
-  syslog-endpoint: "stdout"
-  syslog-format: "raw"
+    syslog-endpoint: "stdout"
+    syslog-format: "raw"
 
   # Default load balancing
-  balance-algorithm: "roundrobin"
+    balance-algorithm: "roundrobin"
 
   # Connection management
-  drain-support: "true"
-  drain-support-redispatch: "true"
+    drain-support: "true"
+    drain-support-redispatch: "true"
 
   # HTTP settings
-  forwardfor: "add"
-  http2: "true"
+    forwardfor: "add"
+    use-htx: "true"
 
   # Security
-  ssl-redirect: "true"
-  ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
+    ssl-redirect: "true"
+    ssl-options: "no-sslv3 no-tlsv10 no-tlsv11"
 
   # Rate limiting defaults
-  limit-rps: "100"
-  limit-connections: "50"
+    limit-rps: "100"
+    limit-connections: "50"
 
   # Custom HAProxy global section
-  config-global: |
-    # Increase the DH key size for better security
-    tune.ssl.default-dh-param 2048
-    # Enable multi-threading
-    nbthread 4
+    config-global: |
+      # Increase the DH key size for better security
+      tune.ssl.default-dh-param 2048
+      # Enable multi-threading
+      nbthread 4
 
   # Custom HAProxy defaults section
-  config-defaults: |
-    # Default options
-    option httplog
-    option dontlognull
-    option http-server-close
-    option forwardfor except 127.0.0.0/8
+    config-defaults: |
+      # Default options
+      option httplog
+      option dontlognull
+      option http-server-close
+      option forwardfor except 127.0.0.0/8
 ```
 
 ## Monitoring HAProxy Ingress
@@ -540,13 +534,13 @@ spec:
 
 ```yaml
 # clusters/production/monitoring/haproxy-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: haproxy-ingress-alerts
   namespace: flux-system
 spec:
-  severity: warning
+  eventSeverity: info
   providerRef:
     name: slack-notifications
   eventSources:
