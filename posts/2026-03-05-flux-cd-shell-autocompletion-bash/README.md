@@ -15,7 +15,7 @@ Shell autocompletion dramatically speeds up your workflow with the Flux CD CLI. 
 Before setting up autocompletion, ensure you have:
 
 - The Flux CLI installed (verify with `flux --version`)
-- Bash shell (version 4.1 or later recommended)
+- Bash shell (version 4.2 or later recommended when using `bash-completion@2`)
 - The `bash-completion` package installed
 
 ## Understanding How Bash Completion Works
@@ -70,15 +70,15 @@ Check that bash-completion is being sourced in your shell startup file.
 type _init_completion 2>/dev/null && echo "bash-completion is loaded" || echo "bash-completion is NOT loaded"
 ```
 
-If it is not loaded, add it to your `.bashrc` file.
+If it is not loaded, add it to your shell startup file.
 
 ```bash
-# Source bash-completion in your .bashrc
+# Source bash-completion in your shell startup file
 # For Linux:
 echo '[[ -r /usr/share/bash-completion/bash_completion ]] && . /usr/share/bash-completion/bash_completion' >> ~/.bashrc
 
-# For macOS with Homebrew:
-echo '[[ -r "$(brew --prefix)/etc/profile.d/bash_completion.sh" ]] && . "$(brew --prefix)/etc/profile.d/bash_completion.sh"' >> ~/.bashrc
+# For macOS with Homebrew Bash:
+echo '[[ -r "$(brew --prefix)/etc/profile.d/bash_completion.sh" ]] && . "$(brew --prefix)/etc/profile.d/bash_completion.sh"' >> ~/.bash_profile
 ```
 
 ## Step 3: Generate and Install the Flux Completion Script
@@ -87,11 +87,14 @@ The Flux CLI has a built-in command to generate the Bash completion script. You 
 
 ### Option A: User-Level Installation (Recommended)
 
-Add the completion script to your `.bashrc` file so it loads automatically for your user.
+Add the completion script to your shell startup file so it loads automatically for your user.
 
 ```bash
 # Add Flux autocompletion to .bashrc
 echo 'command -v flux >/dev/null && . <(flux completion bash)' >> ~/.bashrc
+
+# Or, on macOS with Homebrew Bash, add it to .bash_profile
+echo 'command -v flux >/dev/null && . <(flux completion bash)' >> ~/.bash_profile
 ```
 
 This approach uses process substitution to generate and source the completion script each time you open a new shell. The `command -v flux` check ensures it only runs if the Flux CLI is installed.
@@ -102,7 +105,7 @@ Install the completion script system-wide so all users on the machine can benefi
 
 ```bash
 # Generate and install the completion script system-wide
-sudo flux completion bash > /etc/bash_completion.d/flux
+flux completion bash | sudo tee /etc/bash_completion.d/flux > /dev/null
 ```
 
 This writes the completion script to the standard bash-completion directory, where it is automatically loaded by the bash-completion framework.
@@ -114,6 +117,9 @@ Apply the changes by reloading your shell configuration.
 ```bash
 # Reload your .bashrc
 source ~/.bashrc
+
+# Or, on macOS with Homebrew Bash
+source ~/.bash_profile
 ```
 
 Alternatively, close and reopen your terminal.
@@ -196,9 +202,9 @@ EOF
 
 ## Troubleshooting
 
-**Completion does not work at all:** Verify that bash-completion is installed and loaded. Run `type _init_completion` to check. If the function is not found, install the bash-completion package and source it in your `.bashrc`.
+**Completion does not work at all:** Verify that bash-completion is installed and loaded. Run `type _init_completion` to check. If the function is not found, install the bash-completion package and source it in your shell startup file.
 
-**Completion works for some commands but not others:** You may have an outdated completion script. Regenerate it by rerunning `flux completion bash > /etc/bash_completion.d/flux` or removing the line from `.bashrc` and re-adding it.
+**Completion works for some commands but not others:** You may have an outdated completion script. Regenerate it by rerunning `flux completion bash | sudo tee /etc/bash_completion.d/flux > /dev/null` or removing the line from your shell startup file and re-adding it.
 
 **Slow completion:** Process substitution (`. <(flux completion bash)`) adds a small delay to shell startup because it runs `flux completion bash` each time. For faster startup, write the output to a file and source the file instead.
 
