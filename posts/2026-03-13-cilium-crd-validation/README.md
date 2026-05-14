@@ -21,20 +21,20 @@ This guide covers how to configure CRD validation, diagnose validation errors, v
 - Cilium installed in your Kubernetes cluster
 - `kubectl` with cluster admin access
 - Optional: `helm` for managing CRD updates
-- Optional: `cilium-cli` for advanced policy testing
+- Optional: access to `cilium-dbg` in Cilium pods for deployed policy checks
 
 ## Configure CRD Validation
 
 Ensure CRD schema validation is active:
 
 ```bash
-# Verify CRD validation is enabled (default in Cilium 1.12+)
+# Verify the CiliumNetworkPolicy CRD exposes an OpenAPI v3 schema
 
 kubectl get crd ciliumnetworkpolicies.cilium.io \
   -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.type}'
 # Should output: object
 
-# Check validation rules are enforced
+# Check the CRD version is served by the API server
 kubectl get crd ciliumnetworkpolicies.cilium.io \
   -o jsonpath='{.spec.versions[0].served}'
 # Should output: true
@@ -43,7 +43,7 @@ kubectl get crd ciliumnetworkpolicies.cilium.io \
 kubectl get crd ciliumnetworkpolicies.cilium.io \
   -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema}' | jq '.' | head -50
 
-# Enable structural schema validation (enforced by default)
+# Check structural schema status
 kubectl get crd ciliumnetworkpolicies.cilium.io \
   -o jsonpath='{.status.conditions}' | jq '.[] | select(.type == "NonStructuralSchema")'
 # Should return nothing if schema is structural
@@ -71,7 +71,7 @@ spec:
     ports:   # WRONG: should be toPorts
     - port: 80
 EOF
-# Error: ValidationError: unknown field "ports" in io.cilium.v2.CiliumNetworkPolicy.spec.ingress[0]
+# Error may include: strict decoding error: unknown field "spec.ingress[0].ports"
 
 # Fix: Use correct field names
 kubectl apply -f - <<EOF
@@ -103,7 +103,7 @@ Fix common validation errors:
 # Correct:
 #   port: "80"
 
-# Error: protocol must be TCP or UDP (case sensitive)
+# Error: protocol must use an accepted uppercase value such as TCP, UDP, SCTP, or ANY
 # Wrong: protocol: tcp
 # Correct: protocol: TCP
 
@@ -128,12 +128,9 @@ kubectl apply -f policies/ --dry-run=server
 # Validate with output to see what would be created/updated
 kubectl apply -f my-policy.yaml --dry-run=server -o yaml
 
-# Test policy intent with Cilium policy trace
+# Validate deployed CiliumNetworkPolicies with Cilium preflight
 kubectl -n kube-system exec ds/cilium -- \
-  cilium policy trace \
-  --src-label "app=frontend" \
-  --dst-label "app=backend" \
-  --dport 8080
+  cilium-dbg preflight validate-cnp
 
 # Validate existing policies in cluster are syntactically valid
 kubectl get cnp -A -o yaml | kubectl apply --dry-run=server -f -
@@ -167,9 +164,8 @@ graph TD
     B -->|OpenAPI v3 Schema| C{Schema Valid?}
     C -->|No| D[ValidationError returned]
     C -->|Yes| E[Stored in etcd]
-    E -->|Watch| F[Cilium Operator]
-    F -->|Distribute| G[Cilium Agents]
-    G -->|Semantic check| H{Semantically Valid?}
+    E -->|Watch| F[Cilium Agents]
+    F -->|Semantic check| H{Semantically Valid?}
     H -->|No| I[Agent logs error]
     H -->|Yes| J[Policy enforced in eBPF]
 ```
@@ -194,4 +190,4 @@ kubectl get cnp -A -o json | jq -r \
 
 ## Conclusion
 
-CRD validation is your first line of defense against misconfigured Cilium network policies. The server-side dry run capability allows you to test policies against the live cluster schema without any risk of applying them. Integrating schema validation into your CI/CD pipeline catches syntax errors before they reach production. Remember that CRD schema validation covers structural correctness but not semantic policy intent - always combine schema validation with Cilium's policy trace tool to verify that your policies express the intended access control logic.
+CRD validation is your first line of defense against misconfigured Cilium network policies. The server-side dry run capability allows you to test policies against the live cluster schema without any risk of applying them. Integrating schema validation into your CI/CD pipeline catches syntax errors before they reach production. Remember that CRD schema validation covers structural correctness but not semantic policy intent - always combine schema validation with deployed policy checks and traffic tests to verify that your policies express the intended access control logic.
