@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Source Controller, Artifact, OCI
 
-Description: A comprehensive guide to understanding how Flux CD's source-controller fetches, packages, and serves artifacts from Git repositories, Helm repositories, OCI registries, and S3-compatible storage.
+Description: A comprehensive guide to understanding how Flux CD's source-controller fetches, packages, and serves artifacts from Git repositories, Helm repositories, OCI registries, and object storage buckets.
 
 ---
 
@@ -29,7 +29,7 @@ graph TD
     GR -->|fetches from| Git[Git Servers]
     OCR -->|fetches from| OCI[OCI Registries]
     HR -->|fetches from| Helm[Helm Chart Repos]
-    HC -->|fetches from| HelmSource[Helm/Git/OCI]
+    HC -->|fetches from| HelmSource[HelmRepository/Git/Bucket]
     B -->|fetches from| S3[S3 / GCS / Azure Blob]
 ```
 
@@ -165,7 +165,7 @@ spec:
 
 ## What Are Artifacts?
 
-An artifact is the output of a source reconciliation. When the source-controller successfully fetches content from a source, it packages it into a tarball and stores it locally. The artifact metadata is recorded in the source resource's status.
+An artifact is the output of a source reconciliation. When the source-controller successfully fetches content from a source, it stores it locally in the format used by that source type: GitRepository, OCIRepository, Bucket, and HelmChart artifacts are gzip-compressed tar archives, while an HTTP/S HelmRepository stores the fetched `index.yaml`. OCI HelmRepository resources are data containers for HelmChart and do not produce artifacts themselves. The artifact metadata is recorded in the source resource's status.
 
 ```mermaid
 graph LR
@@ -187,13 +187,13 @@ You can inspect artifacts by looking at the source status:
 
 ```bash
 # View the artifact details of a GitRepository
-kubectl get gitrepository webapp -n flux-system -o jsonpath='{.status.artifact}' | jq .
+kubectl get gitrepository webapp -n flux-system -o json | jq '.status.artifact'
 
 # Example output:
 # {
 #   "revision": "main@sha1:a1b2c3d4e5f6",
 #   "digest": "sha256:9f86d081884c...",
-#   "url": "http://source-controller.flux-system.svc.cluster.local./gitrepository/flux-system/webapp/latest.tar.gz",
+#   "url": "http://source-controller.flux-system.svc.cluster.local./gitrepository/flux-system/webapp/a1b2c3d4e5f6.tar.gz",
 #   "lastUpdateTime": "2026-03-05T10:30:00Z"
 # }
 ```
@@ -260,10 +260,10 @@ spec:
 
 ## Verifying Artifact Integrity
 
-Flux supports verifying Git commits using GPG or Cosign signatures, ensuring that only trusted commits are deployed.
+Flux supports verifying Git commits using PGP signatures, ensuring that only commits signed by trusted Git authors are deployed. OCIRepository artifacts can be verified separately with Cosign or Notation signatures.
 
 ```yaml
-# Verify Git commits are signed with a known GPG key
+# Verify Git commits are signed with a trusted PGP key
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -276,11 +276,10 @@ spec:
     branch: main
   verify:
     mode: HEAD               # Verify the HEAD commit signature
-    provider: cosign          # Or 'openpgp' for GPG
     secretRef:
-      name: cosign-public-key
+      name: pgp-public-keys
 ```
 
 ## Summary
 
-Sources are the entry point of the Flux CD pipeline. The source-controller fetches content from Git repositories, OCI registries, Helm repositories, and cloud storage buckets, then packages the content into versioned artifacts with checksums. These artifacts are stored locally and served to downstream controllers via an internal HTTP server. Understanding sources and artifacts is essential because they form the foundation of the entire Flux CD reconciliation chain - without a source, there is nothing to reconcile.
+Sources are the entry point of the Flux CD pipeline. The source-controller fetches content from Git repositories, OCI registries, Helm repositories, and cloud storage buckets, then stores the content as versioned artifacts with checksums where the source type produces an artifact. These artifacts are stored locally and served to downstream controllers via an internal HTTP server. Understanding sources and artifacts is essential because they form the foundation of the entire Flux CD reconciliation chain - without a source, there is nothing to reconcile.
