@@ -71,7 +71,7 @@ spec:
 
 ## Validation Strategy 1: Helm Template Rendering
 
-The most effective validation is rendering the chart templates with your values.
+The most effective validation is rendering the chart templates with your inline values. If your HelmRelease uses `valuesFrom`, merge those referenced ConfigMaps or Secrets into the temporary values file before rendering.
 
 ```bash
 #!/bin/bash
@@ -84,12 +84,12 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 TEMP_DIR=$(mktemp -d)
 ERRORS=0
 
-trap "rm -rf $TEMP_DIR" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 echo "Validating HelmRelease values..."
 
 # Find all HelmRelease files
-find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
+while read -r file; do
   # Check if the file contains a HelmRelease
   KIND=$(yq '.kind' "$file" 2>/dev/null)
   [ "$KIND" = "HelmRelease" ] || continue
@@ -108,8 +108,13 @@ find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
 
   # Look up the HelmRepository URL
   REPO_URL=""
-  REPO_FILE=$(find "$REPO_ROOT" -name "*.yaml" -type f -exec \
-    grep -l "name: $REPO_NAME" {} \; | head -1)
+  REPO_FILE=""
+  while read -r candidate; do
+    if REPO_NAME="$REPO_NAME" yq 'select(.kind == "HelmRepository" and .metadata.name == strenv(REPO_NAME)) | .metadata.name' "$candidate" 2>/dev/null | grep -qx "$REPO_NAME"; then
+      REPO_FILE="$candidate"
+      break
+    fi
+  done < <(find "$REPO_ROOT" -name "*.yaml" -type f)
 
   if [ -n "$REPO_FILE" ]; then
     REPO_URL=$(yq '.spec.url' "$REPO_FILE" 2>/dev/null)
@@ -141,7 +146,7 @@ find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
     RESOURCE_COUNT=$(grep -c "^kind:" "$TEMP_DIR/rendered.yaml" || echo 0)
     echo "  OK: Rendered $RESOURCE_COUNT resources"
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -type f)
 
 if [ "$ERRORS" -gt 0 ]; then
   echo ""
@@ -155,7 +160,7 @@ echo "All HelmRelease values validated successfully"
 
 ## Validation Strategy 2: JSON Schema Validation
 
-Many Helm charts include a `values.schema.json` file. Use it to validate your values.
+Many Helm charts include a `values.schema.json` file. Use it to validate your inline values.
 
 ```bash
 #!/bin/bash
@@ -168,11 +173,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 TEMP_DIR=$(mktemp -d)
 ERRORS=0
 
-trap "rm -rf $TEMP_DIR" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 echo "Validating HelmRelease values against chart schemas..."
 
-find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
+while read -r file; do
   KIND=$(yq '.kind' "$file" 2>/dev/null)
   [ "$KIND" = "HelmRelease" ] || continue
 
@@ -184,6 +189,19 @@ find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
   echo "Checking schema for: $NAME ($CHART@$VERSION)"
 
   # Pull the chart to inspect its schema
+  REPO_FILE=""
+  while read -r candidate; do
+    if REPO_NAME="$REPO_NAME" yq 'select(.kind == "HelmRepository" and .metadata.name == strenv(REPO_NAME)) | .metadata.name' "$candidate" 2>/dev/null | grep -qx "$REPO_NAME"; then
+      REPO_FILE="$candidate"
+      break
+    fi
+  done < <(find "$REPO_ROOT" -name "*.yaml" -type f)
+
+  if [ -n "$REPO_FILE" ]; then
+    REPO_URL=$(yq '.spec.url' "$REPO_FILE" 2>/dev/null)
+    helm repo add "$REPO_NAME" "$REPO_URL" --force-update > /dev/null 2>&1
+  fi
+
   CHART_DIR="$TEMP_DIR/$NAME"
   mkdir -p "$CHART_DIR"
 
@@ -222,7 +240,7 @@ print('  OK: Values match schema')
   else
     echo "  SKIP: Could not pull chart"
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -type f)
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Schema validation failed with $ERRORS error(s)"
@@ -246,20 +264,12 @@ helmreleases:
       - master.resources.limits.memory
       - master.persistence.enabled
       - replica.replicaCount
-    constraints:
-      replica.replicaCount:
-        min: 2
-      master.resources.limits.memory:
-        pattern: "^[0-9]+(Mi|Gi)$"
 
   postgresql:
     required:
       - auth.postgresPassword
       - primary.resources.limits.memory
       - primary.persistence.size
-    constraints:
-      primary.persistence.size:
-        pattern: "^[0-9]+(Gi|Ti)$"
 ```
 
 ```bash
@@ -280,7 +290,7 @@ fi
 
 echo "Checking required HelmRelease values..."
 
-find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
+while read -r file; do
   KIND=$(yq '.kind' "$file" 2>/dev/null)
   [ "$KIND" = "HelmRelease" ] || continue
 
@@ -299,9 +309,9 @@ find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
   fi
 
   # Check each required value
-  echo "$REQUIRED" | while read -r value_path; do
+  while read -r value_path; do
     # Convert dot notation to yq path
-    YQ_PATH=".spec.values.$(echo "$value_path" | sed 's/\./\./g')"
+    YQ_PATH=".spec.values.$value_path"
 
     ACTUAL=$(yq "$YQ_PATH" "$file" 2>/dev/null)
 
@@ -311,8 +321,8 @@ find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
     else
       echo "  OK: $value_path = $ACTUAL"
     fi
-  done
-done
+  done <<< "$REQUIRED"
+done < <(find "$REPO_ROOT" -name "*.yaml" -type f)
 
 if [ "$ERRORS" -gt 0 ]; then
   echo ""
@@ -324,14 +334,14 @@ echo ""
 echo "All required values present"
 ```
 
-## Validation Strategy 4: Version Compatibility Check
+## Validation Strategy 4: Version Pinning Check
 
-Ensure chart versions are compatible and pinned.
+Ensure chart versions are pinned and remediation settings are present.
 
 ```bash
 #!/bin/bash
 # scripts/validate-helm-versions.sh
-# Checks HelmRelease chart version pinning and availability
+# Checks HelmRelease chart version pinning and remediation settings
 
 set -euo pipefail
 
@@ -341,7 +351,7 @@ WARNINGS=0
 
 echo "Validating Helm chart versions..."
 
-find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
+while read -r file; do
   KIND=$(yq '.kind' "$file" 2>/dev/null)
   [ "$KIND" = "HelmRelease" ] || continue
 
@@ -378,7 +388,7 @@ find "$REPO_ROOT" -name "*.yaml" -type f | while read -r file; do
     echo "  WARNING: No upgrade remediation configured"
     WARNINGS=$((WARNINGS + 1))
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -type f)
 
 echo ""
 echo "Errors: $ERRORS, Warnings: $WARNINGS"
