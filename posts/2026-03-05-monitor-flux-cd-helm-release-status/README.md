@@ -12,11 +12,10 @@ Flux CD manages Helm releases through the helm-controller, which reconciles Helm
 
 ## HelmRelease Metrics
 
-The helm-controller exposes the same `gotk_*` metrics as other Flux controllers. For HelmRelease resources, the key metrics are:
+Flux controller metrics and Flux resource state metrics come from different places. The helm-controller exposes reconciliation duration metrics, while current Flux monitoring examples use kube-state-metrics custom resource state metrics for HelmRelease health. For HelmRelease resources, the key metrics are:
 
-- `gotk_reconcile_condition{kind="HelmRelease"}` -- Indicates whether each HelmRelease is Ready, Stalled, or in an error state.
+- `gotk_resource_info{customresource_kind="HelmRelease"}` -- Indicates the current Ready state, suspension state, revision, chart name, and chart source labels for each HelmRelease.
 - `gotk_reconcile_duration_seconds{kind="HelmRelease"}` -- Tracks how long each HelmRelease reconciliation takes.
-- `gotk_suspend_status{kind="HelmRelease"}` -- Shows whether a HelmRelease is suspended.
 
 ## Querying HelmRelease Health
 
@@ -25,7 +24,7 @@ The helm-controller exposes the same `gotk_*` metrics as other Flux controllers.
 To find all HelmReleases that are not in a Ready state:
 
 ```promql
-gotk_reconcile_condition{kind="HelmRelease", type="Ready", status="False"} == 1
+gotk_resource_info{customresource_kind="HelmRelease", ready!="True"} == 1
 ```
 
 ### HelmRelease Success Rate
@@ -34,9 +33,9 @@ To calculate the percentage of healthy HelmReleases:
 
 ```promql
 (
-  count(gotk_reconcile_condition{kind="HelmRelease", type="Ready", status="True"} == 1)
+  count(gotk_resource_info{customresource_kind="HelmRelease", ready="True"} == 1)
   /
-  count(gotk_reconcile_condition{kind="HelmRelease", type="Ready"})
+  count(gotk_resource_info{customresource_kind="HelmRelease"})
 ) * 100
 ```
 
@@ -138,22 +137,22 @@ spec:
     - name: flux-helmrelease-health
       rules:
         - alert: FluxHelmReleaseNotReady
-          expr: gotk_reconcile_condition{kind="HelmRelease", type="Ready", status="False"} == 1
+          expr: gotk_resource_info{customresource_kind="HelmRelease", ready="False"} == 1
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "HelmRelease not ready: {{ $labels.name }}"
-            description: "HelmRelease {{ $labels.name }} in {{ $labels.namespace }} has not been ready for 10 minutes."
+            description: "HelmRelease {{ $labels.name }} in {{ $labels.exported_namespace }} has not been ready for 10 minutes."
 
-        - alert: FluxHelmReleaseStalled
-          expr: gotk_reconcile_condition{kind="HelmRelease", type="Stalled", status="True"} == 1
-          for: 5m
+        - alert: FluxHelmReleaseReconcilingTooLong
+          expr: gotk_resource_info{customresource_kind="HelmRelease", ready="Unknown"} == 1
+          for: 15m
           labels:
             severity: critical
           annotations:
-            summary: "HelmRelease stalled: {{ $labels.name }}"
-            description: "HelmRelease {{ $labels.name }} in {{ $labels.namespace }} is stalled and will not be retried."
+            summary: "HelmRelease reconciliation incomplete: {{ $labels.name }}"
+            description: "HelmRelease {{ $labels.name }} in {{ $labels.exported_namespace }} has reported Ready=Unknown for 15 minutes."
 
         - alert: FluxHelmReconciliationSlow
           expr: |
@@ -172,7 +171,7 @@ spec:
 
 ## Grafana Dashboard Panel
 
-Build a Grafana table panel that shows the current state of all HelmReleases:
+Build a Grafana stat panel that shows the current state of all HelmReleases:
 
 ```json
 {
@@ -180,11 +179,11 @@ Build a Grafana table panel that shows the current state of all HelmReleases:
   "type": "stat",
   "targets": [
     {
-      "expr": "sum(gotk_reconcile_condition{kind=\"HelmRelease\", type=\"Ready\", status=\"True\"})",
+      "expr": "count(gotk_resource_info{customresource_kind=\"HelmRelease\", ready=\"True\"})",
       "legendFormat": "Ready"
     },
     {
-      "expr": "sum(gotk_reconcile_condition{kind=\"HelmRelease\", type=\"Ready\", status=\"False\"})",
+      "expr": "count(gotk_resource_info{customresource_kind=\"HelmRelease\", ready!=\"True\"})",
       "legendFormat": "Not Ready"
     }
   ]
@@ -208,8 +207,8 @@ When monitoring HelmRelease status, watch for these patterns:
 1. Repeated install or upgrade failures often indicate invalid chart values or missing dependencies. Check events with `flux events --for helmrelease/my-app`.
 2. Timeout failures suggest resource provisioning issues. Check the underlying pod events with kubectl.
 3. Source not found errors mean the HelmRepository or HelmChart source is unavailable. Trace the dependency chain with `flux trace`.
-4. Stalled releases indicate the controller has stopped retrying. This usually requires manual intervention to fix the underlying issue and then resume or force reconciliation.
+4. Stalled releases indicate the controller found an error it cannot recover from without human intervention. This usually requires fixing the underlying issue and then resetting remediation retries or forcing reconciliation.
 
 ## Summary
 
-Monitoring Flux CD HelmRelease status requires a combination of Prometheus metrics for aggregate health tracking, Flux CLI commands for quick inspection, and kubectl for detailed status checks. The `gotk_reconcile_condition{kind="HelmRelease"}` metric is the primary indicator of release health, while `gotk_reconcile_duration_seconds` helps identify performance issues. Set up targeted alerts for HelmRelease failures to catch deployment issues early.
+Monitoring Flux CD HelmRelease status requires a combination of Prometheus metrics for aggregate health tracking, Flux CLI commands for quick inspection, and kubectl for detailed status checks. The `gotk_resource_info{customresource_kind="HelmRelease"}` metric is the primary indicator of release health when kube-state-metrics is configured for Flux custom resources, while `gotk_reconcile_duration_seconds` helps identify performance issues. Set up targeted alerts for HelmRelease failures to catch deployment issues early.
