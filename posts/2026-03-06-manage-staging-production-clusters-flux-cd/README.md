@@ -10,7 +10,7 @@ Description: Learn how to manage staging and production Kubernetes clusters with
 
 ## Introduction
 
-The staging-to-production workflow is the most common multi-cluster pattern in Kubernetes. Staging serves as the final validation gate before changes reach production. Flux CD provides the tools to manage both environments from a single repository with clear separation, safe promotion paths, and automated rollback capabilities. This guide covers the complete setup for managing staging and production clusters.
+The staging-to-production workflow is the most common multi-cluster pattern in Kubernetes. Staging serves as the final validation gate before changes reach production. Flux CD provides the tools to manage both environments from a single repository with clear separation, safe promotion paths, automated reconciliation, and health checks. This guide covers the complete setup for managing staging and production clusters.
 
 ## Architecture
 
@@ -204,8 +204,9 @@ patches:
   - path: patches/api-server-patch.yaml
   - path: patches/web-frontend-patch.yaml
 # Add staging-specific labels to all resources
-commonLabels:
-  environment: staging
+labels:
+  - pairs:
+      environment: staging
 ```
 
 ```yaml
@@ -224,7 +225,7 @@ spec:
       containers:
         - name: api-server
           # Staging uses the latest build from the staging branch
-          image: your-org/api-server:v2.2.0-rc1
+          image: your-org/api-server:v2.2.0-rc1 # {"$imagepolicy": "flux-system:api-server-staging"}
           env:
             - name: LOG_LEVEL
               # Verbose logging in staging for debugging
@@ -256,8 +257,9 @@ resources:
 patches:
   - path: patches/api-server-patch.yaml
   - path: patches/web-frontend-patch.yaml
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
 ```
 
 ```yaml
@@ -461,18 +463,17 @@ The promotion workflow becomes:
 ```yaml
 # clusters/production/alerts.yaml
 # Alert on any production deployment failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
   namespace: flux-system
 spec:
-  type: generic
-  address: https://events.pagerduty.com/v2/enqueue
-  secretRef:
-    name: pagerduty-routing-key
+  type: pagerduty
+  address: https://events.pagerduty.com
+  channel: "<pagerduty-integration-key>"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-failures
@@ -486,7 +487,8 @@ spec:
       name: apps
     - kind: HelmRelease
       name: "*"
-  summary: "Production deployment failure detected"
+  eventMetadata:
+    summary: "Production deployment failure detected"
 ```
 
 ## Verifying the Setup
