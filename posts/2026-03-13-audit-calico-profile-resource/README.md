@@ -46,19 +46,20 @@ fi
 ## Audit Check 2: Check for Manually Modified Namespace Profiles
 
 ```bash
-# Namespace profiles should only contain labelsToApply with standard Kubernetes namespace labels
-# Any ingress/egress rules in namespace profiles are suspicious unless intentionally set
+# Namespace profiles should contain labelsToApply with standard Kubernetes namespace labels
+# and the default Allow ingress/egress rules generated from Kubernetes namespaces
 calicoctl get profiles -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
+default_rules = [{'action': 'Allow'}]
 for p in data['items']:
     name = p['metadata']['name']
     if not name.startswith('kns.'):
         continue
     spec = p.get('spec', {})
-    # Flag profiles with ingress/egress rules (unusual for namespace profiles)
-    if spec.get('ingress') or spec.get('egress'):
-        print(f'MODIFIED: {name} has ingress/egress rules (may be unauthorized)')
+    # Flag profiles whose rules differ from the generated default allow rules
+    if spec.get('ingress') != default_rules or spec.get('egress') != default_rules:
+        print(f'MODIFIED: {name} has non-default ingress/egress rules (may be unauthorized)')
     # Verify standard labels are present
     labels = spec.get('labelsToApply', {})
     if 'pcns.projectcalico.org/name' not in labels:
@@ -75,20 +76,20 @@ import json, sys
 data = json.load(sys.stdin)
 custom = [p for p in data['items'] if not p['metadata']['name'].startswith('kns.')]
 print(json.dumps({'items': custom}, indent=2))
-" > current-custom-profiles.yaml
+" > current-custom-profiles.json
 
 # Compare with version-controlled baseline
-diff profiles-baseline.yaml current-custom-profiles.yaml
+diff profiles-baseline.json current-custom-profiles.json
 ```
 
 ```mermaid
 graph LR
     A[Profile Audit] --> B[Count: namespaces == kns.* profiles?]
-    A --> C[Check: namespace profiles have no rules]
+    A --> C[Check: namespace profiles have default rules]
     A --> D[Check: labelsToApply has standard labels]
     A --> E[Compare: custom profiles vs baseline]
     B -->|Mismatch| F[Check kube-controllers sync]
-    C -->|Rules found| G[Review and remove unauthorized rules]
+    C -->|Rule drift found| G[Review and restore generated rules]
     D -->|Labels missing| H[Restore labelsToApply from template]
     E -->|Drift detected| I[Update profile or Git baseline]
 ```
@@ -119,7 +120,7 @@ for ep in data['items']:
 | Check | Status | Details |
 |-------|--------|---------|
 | Namespace profile count | PASS | 15 namespaces, 15 kns.* profiles |
-| Unauthorized rule additions | WARN | 1 namespace profile with egress rules |
+| Unauthorized rule changes | WARN | 1 namespace profile with non-default egress rules |
 | Missing standard labels | PASS | All profiles have pcns labels |
 | Custom profile drift | PASS | No changes from baseline |
 
