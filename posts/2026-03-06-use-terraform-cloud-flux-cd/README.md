@@ -89,6 +89,12 @@ variable "db_instance_class" {
   type        = string
   default     = "db.t3.medium"
 }
+
+variable "db_password" {
+  description = "RDS master user password"
+  type        = string
+  sensitive   = true
+}
 ```
 
 ## Provisioning Infrastructure with Terraform Cloud
@@ -103,7 +109,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = var.cluster_name
-  cluster_version = "1.31"
+  cluster_version = "1.34"
 
   # VPC configuration
   vpc_id     = module.vpc.vpc_id
@@ -142,9 +148,10 @@ module "vpc" {
   name = "${var.cluster_name}-vpc"
   cidr = "10.0.0.0/16"
 
-  azs             = ["${var.region}a", "${var.region}b", "${var.region}c"]
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  azs              = ["${var.region}a", "${var.region}b", "${var.region}c"]
+  private_subnets  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets   = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  database_subnets = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 
   enable_nat_gateway   = true
   single_nat_gateway   = var.environment != "production"
@@ -174,9 +181,11 @@ module "rds" {
   instance_class    = var.db_instance_class
   allocated_storage = 50
 
-  db_name  = "application"
-  username = "appadmin"
-  port     = 5432
+  db_name                     = "application"
+  username                    = "appadmin"
+  password                    = var.db_password
+  port                        = 5432
+  manage_master_user_password = false
 
   # Place in the same VPC as EKS
   vpc_security_group_ids = [module.rds_sg.security_group_id]
@@ -276,7 +285,7 @@ resource "kubernetes_secret" "terraform_outputs" {
     database_port     = tostring(module.rds.db_instance_port)
     database_name     = module.rds.db_instance_name
     database_username = module.rds.db_instance_username
-    database_password = module.rds.db_instance_password
+    database_password = var.db_password
   }
 
   type = "Opaque"
@@ -360,18 +369,21 @@ spec:
               memory: 256Mi
 ```
 
-## Setting Up Terraform Cloud Notifications
+## Signaling Flux After Terraform Applies
 
-Configure Terraform Cloud to notify when infrastructure changes are applied.
+Update a watched Kubernetes resource when infrastructure changes are applied.
 
 ```hcl
 # terraform-cloud/notifications.tf
-# Create a notification to trigger Flux reconciliation
+# Create a watched ConfigMap to trigger Flux reconciliation
 # after Terraform Cloud applies changes
 resource "kubernetes_config_map" "tf_run_status" {
   metadata {
     name      = "terraform-run-status"
     namespace = "flux-system"
+    labels = {
+      "reconcile.fluxcd.io/watch" = "Enabled"
+    }
     annotations = {
       # Update this annotation on each apply to trigger Flux reconciliation
       "terraform-cloud/last-applied" = timestamp()
@@ -385,9 +397,9 @@ resource "kubernetes_config_map" "tf_run_status" {
 }
 ```
 
-## Automating with Terraform Cloud Run Triggers
+## Automating with Terraform Cloud Workspace Configuration
 
-Set up run triggers so infrastructure changes automatically flow to applications.
+Configure the Terraform Cloud workspace so infrastructure changes are planned and applied from Git.
 
 ```hcl
 # terraform-cloud/workspace-config/main.tf
@@ -410,7 +422,7 @@ resource "tfe_workspace" "infrastructure" {
   working_directory = "terraform-cloud"
 
   # Terraform version to use
-  terraform_version = "1.9.0"
+  terraform_version = "1.15.3"
 
   tag_names = ["flux-infrastructure", var.environment]
 }
@@ -427,6 +439,14 @@ resource "tfe_variable" "cluster_name" {
   key          = "cluster_name"
   value        = "flux-${var.environment}"
   category     = "terraform"
+  workspace_id = tfe_workspace.infrastructure.id
+}
+
+resource "tfe_variable" "db_password" {
+  key          = "db_password"
+  value        = var.db_password
+  category     = "terraform"
+  sensitive    = true
   workspace_id = tfe_workspace.infrastructure.id
 }
 
