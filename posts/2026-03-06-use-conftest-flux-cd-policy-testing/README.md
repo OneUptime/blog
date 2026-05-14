@@ -25,8 +25,11 @@ Conftest is an Open Policy Agent (OPA) based tool that lets you write policy tes
 brew install conftest
 
 # Linux
-curl -sL https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | \
-  tar xz -C /usr/local/bin conftest
+LATEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | \
+  grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | cut -c 2-)
+curl -sLO "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+tar xzf "conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+sudo mv conftest /usr/local/bin/
 
 # Verify installation
 conftest --version
@@ -58,7 +61,7 @@ apps/
 package main
 
 # Deny containers without resource limits
-deny[msg] {
+deny_container_limits contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
@@ -69,7 +72,7 @@ deny[msg] {
 }
 
 # Deny containers without resource requests
-deny[msg] {
+deny_container_requests contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.requests
@@ -80,7 +83,7 @@ deny[msg] {
 }
 
 # Deny containers using the 'latest' tag
-deny[msg] {
+deny_container_latest_tag contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     endswith(container.image, ":latest")
@@ -91,7 +94,7 @@ deny[msg] {
 }
 
 # Deny containers without image tag
-deny[msg] {
+deny_container_missing_tag contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not contains(container.image, ":")
@@ -102,7 +105,7 @@ deny[msg] {
 }
 
 # Warn if containers lack liveness probes
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.livenessProbe
@@ -113,7 +116,7 @@ warn[msg] {
 }
 
 # Warn if containers lack readiness probes
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.readinessProbe
@@ -139,7 +142,7 @@ required_labels := {
 }
 
 # Deny resources missing required labels
-deny[msg] {
+deny_required_labels contains msg if {
     # Apply to namespaced resources only
     input.kind != "Namespace"
     input.kind != "CustomResourceDefinition"
@@ -154,7 +157,7 @@ deny[msg] {
 }
 
 # Deny resources without a namespace (except cluster-scoped resources)
-deny[msg] {
+deny_namespace_required contains msg if {
     not cluster_scoped_resource
     not input.metadata.namespace
     msg := sprintf(
@@ -164,7 +167,7 @@ deny[msg] {
 }
 
 # Define cluster-scoped resource types
-cluster_scoped_resource {
+cluster_scoped_resource if {
     cluster_scoped_kinds[input.kind]
 }
 
@@ -188,7 +191,7 @@ cluster_scoped_kinds := {
 package main
 
 # Deny containers running as root
-deny[msg] {
+deny_containers_run_as_root contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     container.securityContext.runAsUser == 0
@@ -199,7 +202,7 @@ deny[msg] {
 }
 
 # Deny privileged containers
-deny[msg] {
+deny_privileged_containers contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     container.securityContext.privileged == true
@@ -210,7 +213,7 @@ deny[msg] {
 }
 
 # Deny containers with privilege escalation
-deny[msg] {
+deny_privilege_escalation contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     container.securityContext.allowPrivilegeEscalation == true
@@ -221,7 +224,7 @@ deny[msg] {
 }
 
 # Deny Secrets that are not SOPS-encrypted
-deny[msg] {
+deny_unencrypted_secrets contains msg if {
     input.kind == "Secret"
     not input.sops
     msg := sprintf(
@@ -231,7 +234,7 @@ deny[msg] {
 }
 
 # Warn about using default service account
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     not input.spec.template.spec.serviceAccountName
     msg := sprintf(
@@ -250,7 +253,7 @@ warn[msg] {
 package main
 
 # Deny Kustomization without prune enabled
-deny[msg] {
+deny_kustomization_prune contains msg if {
     input.kind == "Kustomization"
     input.apiVersion == "kustomize.toolkit.fluxcd.io/v1"
     not input.spec.prune
@@ -261,8 +264,9 @@ deny[msg] {
 }
 
 # Deny HelmRelease without version pinning
-deny[msg] {
+deny_helmrelease_unpinned_chart contains msg if {
     input.kind == "HelmRelease"
+    input.spec.chart
     not input.spec.chart.spec.version
     msg := sprintf(
         "HelmRelease '%s': must pin chart version",
@@ -270,19 +274,19 @@ deny[msg] {
     )
 }
 
-# Deny HelmRelease with version ranges
-deny[msg] {
+# Deny HelmRelease with non-exact chart versions
+deny_helmrelease_version_range contains msg if {
     input.kind == "HelmRelease"
     version := input.spec.chart.spec.version
-    contains(version, ">=")
+    not regex.match("^v?[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$", version)
     msg := sprintf(
-        "HelmRelease '%s': must use exact version, not range (%s)",
+        "HelmRelease '%s': must use exact chart version, not a range (%s)",
         [input.metadata.name, version]
     )
 }
 
 # Warn HelmRelease without remediation
-warn[msg] {
+warn contains msg if {
     input.kind == "HelmRelease"
     not input.spec.install.remediation
     msg := sprintf(
@@ -292,7 +296,7 @@ warn[msg] {
 }
 
 # Warn HelmRelease without upgrade remediation
-warn[msg] {
+warn contains msg if {
     input.kind == "HelmRelease"
     not input.spec.upgrade.remediation
     msg := sprintf(
@@ -302,20 +306,19 @@ warn[msg] {
 }
 
 # Deny Kustomization with interval less than 1 minute
-deny[msg] {
+deny_kustomization_short_interval contains msg if {
     input.kind == "Kustomization"
     input.apiVersion == "kustomize.toolkit.fluxcd.io/v1"
-    interval := input.spec.interval
-    contains(interval, "s")
-    not contains(interval, "m")
+    duration_ns := time.parse_duration_ns(input.spec.interval)
+    duration_ns < 60000000000
     msg := sprintf(
         "Kustomization '%s': interval must be at least 1m (got: %s)",
-        [input.metadata.name, interval]
+        [input.metadata.name, input.spec.interval]
     )
 }
 
 # Deny GitRepository without interval
-deny[msg] {
+deny_gitrepository_interval contains msg if {
     input.kind == "GitRepository"
     not input.spec.interval
     msg := sprintf(
@@ -334,7 +337,7 @@ deny[msg] {
 package main
 
 # Deny Services of type LoadBalancer in non-production namespaces
-deny[msg] {
+deny_loadbalancer_non_production contains msg if {
     input.kind == "Service"
     input.spec.type == "LoadBalancer"
     not production_namespace
@@ -344,7 +347,7 @@ deny[msg] {
     )
 }
 
-production_namespace {
+production_namespace if {
     production_namespaces[input.metadata.namespace]
 }
 
@@ -355,7 +358,7 @@ production_namespaces := {
 }
 
 # Deny Ingress without TLS
-deny[msg] {
+deny_ingress_tls contains msg if {
     input.kind == "Ingress"
     not input.spec.tls
     msg := sprintf(
@@ -372,16 +375,16 @@ deny[msg] {
 ```bash
 # Test a single manifest
 conftest test infrastructure/base/deployment.yaml \
-  --policy policy/base/
+  --policy policy/
 
-# Test with verbose output
+# Test policies from all Rego packages
 conftest test infrastructure/base/deployment.yaml \
-  --policy policy/base/ \
+  --policy policy/ \
   --all-namespaces
 
 # Test with custom output format
 conftest test infrastructure/base/deployment.yaml \
-  --policy policy/base/ \
+  --policy policy/ \
   --output json
 ```
 
@@ -390,7 +393,7 @@ conftest test infrastructure/base/deployment.yaml \
 ```bash
 # Build kustomize overlay and pipe to conftest
 kustomize build infrastructure/overlays/production | \
-  conftest test - --policy policy/base/
+  conftest test - --policy policy/
 ```
 
 ### Test All Overlays
@@ -403,7 +406,7 @@ kustomize build infrastructure/overlays/production | \
 set -euo pipefail
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-POLICY_DIR="$REPO_ROOT/policy/base"
+POLICY_DIR="$REPO_ROOT/policy"
 ERRORS=0
 
 echo "Running Conftest policy tests..."
@@ -419,7 +422,7 @@ find "$REPO_ROOT" -name "*.yaml" -type f \
 # Test rendered overlays
 echo ""
 echo "--- Rendered Overlays ---"
-find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml" | while read -r ks_file; do
+while read -r ks_file; do
   OVERLAY_DIR=$(dirname "$ks_file")
   OVERLAY_NAME=$(echo "$OVERLAY_DIR" | sed "s|$REPO_ROOT/||")
 
@@ -433,7 +436,7 @@ find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml" | while read -r ks_fil
     echo "  FAILED"
     ERRORS=$((ERRORS + 1))
   fi
-done
+done < <(find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml")
 
 echo ""
 if [ "$ERRORS" -gt 0 ]; then
@@ -453,8 +456,6 @@ Define exceptions for resources that legitimately need to bypass certain policie
 
 package main
 
-import future.keywords.in
-
 # List of deployments allowed to run as root
 root_allowed_deployments := {
     "node-exporter",
@@ -463,14 +464,14 @@ root_allowed_deployments := {
 }
 
 # Exception: Allow specific deployments to run as root
-exception[rules] {
+exception contains rules if {
     input.kind == "Deployment"
     input.metadata.name in root_allowed_deployments
     rules := ["containers_run_as_root"]
 }
 
 # Exception: System namespaces skip label requirements
-exception[rules] {
+exception contains rules if {
     system_namespaces[input.metadata.namespace]
     rules := ["required_labels"]
 }
@@ -505,8 +506,11 @@ jobs:
       - name: Install tools
         run: |
           # Install conftest
-          curl -sL https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | \
-            tar xz -C /usr/local/bin conftest
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | \
+            grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | cut -c 2-)
+          curl -sLO "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+          tar xzf "conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+          sudo mv conftest /usr/local/bin/
           # Install kustomize
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
@@ -514,14 +518,14 @@ jobs:
       - name: Verify policies
         run: |
           # Verify that all Rego policies compile
-          conftest verify --policy policy/base/
+          conftest verify --policy policy/
 
       - name: Test raw manifests
         run: |
           find clusters/ infrastructure/ apps/ \
             -name "*.yaml" -type f | \
             xargs conftest test \
-              --policy policy/base/ \
+              --policy policy/ \
               --all-namespaces
 
       - name: Test rendered overlays
@@ -530,7 +534,7 @@ jobs:
             echo "Testing: $overlay_dir"
             kustomize build "$overlay_dir" | \
               conftest test - \
-                --policy policy/base/ \
+                --policy policy/ \
                 --all-namespaces
           done
 
@@ -538,7 +542,7 @@ jobs:
             echo "Testing: $overlay_dir"
             kustomize build "$overlay_dir" | \
               conftest test - \
-                --policy policy/base/ \
+                --policy policy/ \
                 --all-namespaces
           done
 
@@ -551,7 +555,7 @@ jobs:
           find clusters/ infrastructure/ apps/ \
             -name "*.yaml" -type f | \
             xargs conftest test \
-              --policy policy/base/ \
+              --policy policy/ \
               --output table \
               --all-namespaces >> /tmp/policy-report.md 2>&1 || true
 
@@ -569,8 +573,8 @@ Test your policies to ensure they work correctly.
 package main
 
 # Test: Deployment with resource limits should pass
-test_deployment_with_limits {
-    not deny with input as {
+test_deployment_with_limits if {
+    count(deny_container_limits) == 0 with input as {
         "kind": "Deployment",
         "metadata": {"name": "test", "namespace": "default"},
         "spec": {"template": {"spec": {"containers": [{
@@ -585,8 +589,8 @@ test_deployment_with_limits {
 }
 
 # Test: Deployment without limits should fail
-test_deployment_without_limits {
-    deny["Deployment 'test': container 'app' must define resource limits"] with input as {
+test_deployment_without_limits if {
+    "Deployment 'test': container 'app' must define resource limits" in deny_container_limits with input as {
         "kind": "Deployment",
         "metadata": {"name": "test", "namespace": "default"},
         "spec": {"template": {"spec": {"containers": [{
@@ -598,8 +602,8 @@ test_deployment_without_limits {
 }
 
 # Test: Container with latest tag should fail
-test_latest_tag_denied {
-    count(deny) > 0 with input as {
+test_latest_tag_denied if {
+    count(deny_container_latest_tag) > 0 with input as {
         "kind": "Deployment",
         "metadata": {"name": "test", "namespace": "default"},
         "spec": {"template": {"spec": {"containers": [{
@@ -616,7 +620,7 @@ test_latest_tag_denied {
 
 ```bash
 # Run policy unit tests
-conftest verify --policy policy/base/
+conftest verify --policy policy/
 ```
 
 ## Summary
