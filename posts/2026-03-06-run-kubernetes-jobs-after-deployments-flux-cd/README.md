@@ -113,8 +113,6 @@ metadata:
 spec:
   activeDeadlineSeconds: 120
   backoffLimit: 2
-  # Automatically clean up completed Jobs after 1 hour
-  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
@@ -183,14 +181,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Wait for deployment to be fully ready before marking as complete
+  # Wait for all reconciled resources to be ready before marking as complete
   wait: true
   timeout: 10m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: my-app
-      namespace: production
 ```
 
 ```yaml
@@ -213,14 +206,11 @@ spec:
   # Wait for the Job to complete
   wait: true
   timeout: 5m
-  # Force recreate the Job each time
+  # Allow Flux to recreate the Job when immutable fields change
   force: true
-  healthChecks:
-    - apiVersion: batch/v1
-      kind: Job
-      name: my-app-smoke-test
-      namespace: production
 ```
+
+To rerun a Job for a new release, update an immutable field in the Job's pod template, such as a version label, annotation, environment variable, or image tag. The `force: true` setting lets Flux replace the Job when that immutable field changes.
 
 ## Step 4: Cache Warming Post-Deployment Job
 
@@ -237,7 +227,6 @@ metadata:
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 1
-  ttlSecondsAfterFinished: 3600
   template:
     spec:
       containers:
@@ -351,7 +340,6 @@ metadata:
 spec:
   activeDeadlineSeconds: 60
   backoffLimit: 1
-  ttlSecondsAfterFinished: 1800
   template:
     spec:
       containers:
@@ -410,7 +398,6 @@ metadata:
 spec:
   activeDeadlineSeconds: 600
   backoffLimit: 1
-  ttlSecondsAfterFinished: 7200
   template:
     spec:
       containers:
@@ -428,12 +415,12 @@ spec:
 
               # Run tests with output
               ./run-tests.sh --suite=integration --target=$TARGET_URL --output=/tmp/results
+              exit_code=$?
 
               # Print results summary
               cat /tmp/results/summary.txt
 
               # Exit with the test exit code
-              exit_code=$?
               if [ $exit_code -ne 0 ]; then
                 echo "Integration tests FAILED"
                 # Upload results to test reporting system
@@ -485,7 +472,7 @@ Set up alerts specifically for post-deployment failures:
 
 ```yaml
 # clusters/production/notifications/post-deploy-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: post-deploy-failures
@@ -501,7 +488,8 @@ spec:
       name: "my-app-cache-warm"
     - kind: Kustomization
       name: "my-app-notify"
-  summary: "Post-deployment task failed. Review and consider rollback."
+  eventMetadata:
+    summary: "Post-deployment task failed. Review and consider rollback."
 ```
 
 ## Using Helm Post-Install Hooks
@@ -628,4 +616,4 @@ spec:
 
 ## Summary
 
-Running Kubernetes Jobs after deployments with Flux CD uses the same dependency mechanism as pre-deployment Jobs, but with the direction reversed. The post-deploy Kustomization declares `dependsOn` pointing to the main deployment Kustomization. Use `wait: true` and health checks on the deployment to ensure it is fully ready before post-deployment Jobs start. Chain multiple post-deployment tasks with sequential dependencies, and set up alerts to catch failures quickly so you can decide whether to roll back.
+Running Kubernetes Jobs after deployments with Flux CD uses the same dependency mechanism as pre-deployment Jobs, but with the direction reversed. The post-deploy Kustomization declares `dependsOn` pointing to the main deployment Kustomization. Use `wait: true` to ensure reconciled resources are fully ready before post-deployment Jobs start. Chain multiple post-deployment tasks with sequential dependencies, and set up alerts to catch failures quickly so you can decide whether to roll back.
