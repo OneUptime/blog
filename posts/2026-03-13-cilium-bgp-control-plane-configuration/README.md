@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, BGP, eBPF
 
-Description: Configure Cilium's BGP Control Plane to advertise Kubernetes service IPs and pod CIDRs to upstream routers using the CiliumBGPPeeringPolicy CRD.
+Description: Configure Cilium's BGP Control Plane to advertise Kubernetes service IPs and pod CIDRs to upstream routers using Cilium's BGP control plane resources.
 
 ---
 
 ## Introduction
 
-Cilium's BGP Control Plane enables Kubernetes clusters to participate in BGP routing, allowing service IP addresses and pod CIDRs to be advertised to upstream routers without the need for additional tools like MetalLB. Built on top of GoBGP, Cilium's native BGP integration runs directly inside the Cilium agent, giving you a single control plane for both networking and routing policy.
+Cilium's BGP Control Plane enables Kubernetes clusters to participate in BGP routing, allowing service IP addresses and pod CIDRs to be advertised to upstream routers without the need for additional tools like MetalLB. Cilium's native BGP integration runs directly inside the Cilium agent, giving you a single control plane for both networking and route advertisement.
 
-Unlike traditional approaches that required a separate BGP speaker deployment, Cilium handles route advertisement natively. The `CiliumBGPPeeringPolicy` CRD defines which nodes participate in BGP sessions, what prefixes are advertised, and how peers are configured. This tight integration with eBPF means you get consistent policy enforcement from Layer 3 BGP routing all the way up to Layer 7 application policies.
+Unlike traditional approaches that required a separate BGP speaker deployment, Cilium handles route advertisement natively. The `CiliumBGPClusterConfig`, `CiliumBGPPeerConfig`, and `CiliumBGPAdvertisement` CRDs define which nodes participate in BGP sessions, how peers are configured, and what prefixes are advertised. The BGP control plane does not program the datapath itself; Cilium's eBPF datapath continues to enforce networking and security policy.
 
 This guide walks through a complete BGP Control Plane configuration, from installing Cilium with BGP support enabled to verifying route advertisement with a real upstream router peer.
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium v1.13+ installed
+- Kubernetes cluster with Cilium v1.19+ installed
 - BGP-capable upstream router or software router (e.g., FRR, Bird)
 - `cilium` CLI installed
 - `kubectl` installed
@@ -41,37 +41,67 @@ Verify the feature flag is active:
 cilium config view | grep bgp
 ```
 
-## Step 2: Create a CiliumBGPPeeringPolicy
+## Step 2: Create Cilium BGP Resources
 
-The `CiliumBGPPeeringPolicy` resource binds BGP configuration to nodes via a `nodeSelector`:
+The `CiliumBGPClusterConfig` resource binds BGP configuration to nodes via a `nodeSelector`, `CiliumBGPPeerConfig` defines peer settings, and `CiliumBGPAdvertisement` selects the prefixes to advertise:
 
 ```yaml
-apiVersion: "cilium.io/v2alpha1"
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: rack0-bgp-peering
+  name: rack0-bgp
 spec:
   nodeSelector:
     matchLabels:
       rack: rack0
-  virtualRouters:
-    - localASN: 65001
-      exportPodCIDR: true
-      serviceSelector:
+  bgpInstances:
+    - name: "rack0-instance"
+      localASN: 65001
+      peers:
+        - name: "rack0-router"
+          peerASN: 65000
+          peerAddress: "192.168.1.1"
+          peerConfigRef:
+            name: "rack0-peer-config"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: rack0-peer-config
+spec:
+  timers:
+    connectRetryTimeSeconds: 120
+    holdTimeSeconds: 90
+    keepAliveTimeSeconds: 30
+  ebgpMultihop: 10
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: "bgp"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: rack0-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+    - advertisementType: "PodCIDR"
+    - advertisementType: "Service"
+      service:
+        addresses:
+          - LoadBalancerIP
+      selector:
         matchExpressions:
           - key: somekey
             operator: NotIn
             values: ["never-a-value"]
-      neighbors:
-        - peerAddress: "192.168.1.1/32"
-          peerASN: 65000
-          eBGPMultihopTTL: 10
-          connectRetryTimeSeconds: 120
-          holdTimeSeconds: 90
-          keepAliveTimeSeconds: 30
 ```
 
-Apply the policy:
+Apply the configuration:
 
 ```bash
 kubectl apply -f bgp-peering.yaml
@@ -93,7 +123,7 @@ cilium bgp peers
 Expected output showing an established session:
 
 ```plaintext
-Node          Local ASN   Peer ASN   Peer Address    Session State   ...
+Node          Local AS    Peer AS    Peer Address    Session State   ...
 worker-0      65001       65000      192.168.1.1     established
 worker-1      65001       65000      192.168.1.1     established
 ```
@@ -108,7 +138,9 @@ cilium bgp routes advertised ipv4 unicast
 
 ```mermaid
 flowchart TD
-    A[CiliumBGPPeeringPolicy] --> B[Node Selector Match]
+    A[CiliumBGPClusterConfig] --> B[Node Selector Match]
+    P[CiliumBGPPeerConfig] --> C
+    R[CiliumBGPAdvertisement] --> C
     B --> C[Cilium Agent on Matched Node]
     C --> D[GoBGP Speaker]
     D -->|BGP Session| E[Upstream Router]
@@ -121,4 +153,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium's BGP Control Plane turns your Kubernetes nodes into first-class BGP speakers, advertising both pod CIDRs and service IPs to your network fabric without any additional tooling. The `CiliumBGPPeeringPolicy` CRD gives you declarative control over which nodes peer with which routers and what they advertise. From here you can layer on BGP communities, route filtering, and multi-hop configurations to integrate with the most demanding datacenter network designs.
+Cilium's BGP Control Plane turns your Kubernetes nodes into first-class BGP speakers, advertising both pod CIDRs and service IPs to your network fabric without any additional tooling. The BGP control plane CRDs give you declarative control over which nodes peer with which routers and what they advertise. From here you can layer on BGP communities, route filtering, and multi-hop configurations to integrate with the most demanding datacenter network designs.
