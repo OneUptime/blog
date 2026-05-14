@@ -24,9 +24,9 @@ Here is a comparison of the two approaches.
 | Authentication | SSH keys, HTTPS tokens, deploy keys | Docker registry credentials |
 | Artifact size | Entire repo or sparse checkout | Only the packaged manifests |
 | Pull speed | Depends on repo size | Fast (compressed layers) |
-| Rate limits | Git hosting API limits | Registry pull limits |
+| Rate limits | Git hosting clone/fetch limits | Registry pull limits |
 | Versioning | Git branches, tags, commits | OCI tags, semver, digests |
-| Signature verification | Git commit signing (GPG) | Cosign OCI signatures |
+| Signature verification | Git commit or tag signatures (PGP) | Cosign or Notation OCI signatures |
 
 OCIRepository is particularly advantageous when:
 
