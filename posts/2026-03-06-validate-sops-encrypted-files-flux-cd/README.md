@@ -18,6 +18,7 @@ Before you begin, make sure you have:
 - SOPS CLI installed locally
 - Age or GPG keys configured for encryption
 - Access to your Flux CD Git repository
+- `kubectl` and Python 3 with PyYAML for Kubernetes manifest validation
 
 ## Understanding SOPS Encryption in Flux CD
 
@@ -108,7 +109,7 @@ ERRORS=0
 echo "Validating SOPS-encrypted files..."
 
 # Find all files that should be encrypted based on .sops.yaml patterns
-find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*" | while read -r file; do
+while IFS= read -r file; do
   echo "Checking: $file"
 
   # Verify the file contains SOPS metadata
@@ -132,14 +133,17 @@ find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*" | while read -r file; do
   fi
 
   # Verify encrypted_regex was applied
-  if grep -qE "^(data|stringData):" "$file"; then
-    # Check if the values under data/stringData are actually encrypted
-    if grep -A1 "data:" "$file" | grep -qvE "(ENC\[|sops|data:)"; then
-      echo "WARNING: $file may contain unencrypted data fields"
-      ERRORS=$((ERRORS + 1))
-    fi
+  # Check if the values under data/stringData are actually encrypted
+  if awk '
+    /^(data|stringData):/ { in_secret = 1; next }
+    /^[^[:space:]][^:]*:/ { in_secret = 0 }
+    in_secret && /^[[:space:]]+[A-Za-z0-9._-]+:/ && $0 !~ /ENC\[/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$file"; then
+    echo "WARNING: $file may contain unencrypted data fields"
+    ERRORS=$((ERRORS + 1))
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Validation failed with $ERRORS error(s)"
@@ -172,7 +176,7 @@ fi
 
 echo "Testing SOPS decryption..."
 
-find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*" | while read -r file; do
+while IFS= read -r file; do
   echo "Decrypting: $file"
 
   # Attempt to decrypt the file to /dev/null
@@ -186,7 +190,7 @@ find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*" | while read -r file; do
   else
     echo "  OK: Decryption successful"
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Decryption validation failed with $ERRORS error(s)"
@@ -212,18 +216,18 @@ TEMP_DIR=$(mktemp -d)
 ERRORS=0
 
 # Clean up temp directory on exit
-trap "rm -rf $TEMP_DIR" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 echo "Validating decrypted Kubernetes manifests..."
 
-find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*" | while read -r file; do
+while IFS= read -r file; do
   BASENAME=$(basename "$file")
   DECRYPTED="$TEMP_DIR/$BASENAME"
 
   # Decrypt to a temporary file
   if sops --decrypt "$file" > "$DECRYPTED" 2>/dev/null; then
     # Validate the YAML syntax
-    if ! python3 -c "import yaml; yaml.safe_load(open('$DECRYPTED'))" 2>/dev/null; then
+    if ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$DECRYPTED" 2>/dev/null; then
       echo "ERROR: $file produces invalid YAML after decryption"
       ERRORS=$((ERRORS + 1))
       continue
@@ -240,7 +244,7 @@ find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*" | while read -r file; do
   else
     echo "SKIP: Could not decrypt $file (key not available)"
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -path "*/secrets/*")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Kubernetes validation failed with $ERRORS error(s)"
@@ -267,7 +271,7 @@ ERRORS=0
 echo "Scanning for unencrypted Kubernetes secrets..."
 
 # Find all YAML files that define Kubernetes Secrets
-find "$REPO_ROOT" -name "*.yaml" -not -path "*/\.*" | while read -r file; do
+while IFS= read -r file; do
   # Check if the file defines a Kubernetes Secret
   if grep -q "kind: Secret" "$file"; then
     # Check if the file is SOPS-encrypted
@@ -276,7 +280,7 @@ find "$REPO_ROOT" -name "*.yaml" -not -path "*/\.*" | while read -r file; do
       ERRORS=$((ERRORS + 1))
     fi
   fi
-done
+done < <(find "$REPO_ROOT" -name "*.yaml" -not -path "*/\.*")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Found $ERRORS unencrypted secret file(s)"
@@ -305,14 +309,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install SOPS
         run: |
-          # Install the latest SOPS binary
-          curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          # Install the SOPS binary
+          curl -LO https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
+          sudo mv sops-v3.13.0.linux.amd64 /usr/local/bin/sops
           sudo chmod +x /usr/local/bin/sops
+
+      - name: Install Python dependencies
+        run: python3 -m pip install pyyaml
 
       - name: Detect unencrypted secrets
         run: bash scripts/detect-unencrypted-secrets.sh
