@@ -12,7 +12,7 @@ Description: Learn how to configure Cilium metrics collection, scrape them with 
 
 Cilium exposes a rich set of Prometheus metrics from both the Cilium Agent DaemonSet and the Cilium Operator. These metrics provide deep visibility into networking performance, policy enforcement rates, endpoint health, identity management, and eBPF datapath behavior. Properly configured Cilium metrics form the foundation of proactive networking observability and are essential for capacity planning and incident response.
 
-Cilium agents expose metrics on port 9962 by default, while the Cilium Operator exposes its metrics on port 9963. Hubble, when enabled, provides additional metrics on port 9965 through the Hubble Relay. The Prometheus metrics server in each component must be enabled and configured to scrape these endpoints. Cilium provides official Grafana dashboards that visualize these metrics in production-ready format.
+Cilium agents expose metrics on port 9962 by default, while the Cilium Operator exposes its metrics on port 9963. Hubble, when enabled, provides additional metrics on port 9965 from the Hubble instance running inside each Cilium agent. The Prometheus metrics server in each component must be enabled and configured to scrape these endpoints. Cilium provides official Grafana dashboards that visualize these metrics in production-ready format.
 
 This guide covers enabling and configuring metrics, troubleshooting missing or incorrect metrics, validating metric accuracy, and setting up effective monitoring dashboards and alerts.
 
@@ -35,9 +35,13 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set prometheus.enabled=true \
   --set prometheus.port=9962 \
+  --set prometheus.serviceMonitor.enabled=true \
   --set operator.prometheus.enabled=true \
   --set operator.prometheus.port=9963 \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+  --set operator.prometheus.serviceMonitor.enabled=true \
+  --set hubble.enabled=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}" \
+  --set hubble.metrics.serviceMonitor.enabled=true \
   --set hubble.metrics.port=9965
 
 # Verify metrics endpoints are exposed
@@ -46,7 +50,7 @@ kubectl -n kube-system port-forward ds/cilium 9962:9962 &
 curl -s http://localhost:9962/metrics | head -20
 ```
 
-Configure Prometheus scraping with ServiceMonitor:
+If you manage ServiceMonitors yourself instead of letting the Cilium Helm chart create them, use the service labels and port names created by the chart:
 
 ```yaml
 # cilium-servicemonitor.yaml
@@ -60,12 +64,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: cilium
+      app.kubernetes.io/name: cilium-agent
   namespaceSelector:
     matchNames:
       - kube-system
   endpoints:
-  - port: prometheus
+  - port: metrics
     interval: 30s
     path: /metrics
 ---
@@ -78,12 +82,31 @@ spec:
   selector:
     matchLabels:
       io.cilium/app: operator
+      name: cilium-operator
   namespaceSelector:
     matchNames:
       - kube-system
   endpoints:
-  - port: prometheus
+  - port: metrics
     interval: 30s
+    path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: hubble
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+  - port: hubble-metrics
+    interval: 30s
+    path: /metrics
 ```
 
 ```bash
@@ -126,7 +149,7 @@ kubectl -n kube-system get svc -l k8s-app=cilium
 kubectl -n monitoring get prometheuses -o yaml | grep serviceMonitorSelector
 
 # Issue: Metrics port name mismatch
-kubectl -n kube-system get svc cilium -o yaml | grep -A 5 "ports:"
+kubectl -n kube-system get svc cilium-agent cilium-operator hubble-metrics -o yaml | grep -A 5 "ports:"
 # Port name must match ServiceMonitor endpoint port name
 
 # Issue: Hubble metrics not appearing
@@ -141,16 +164,17 @@ Confirm key metrics are present and accurate:
 ```bash
 # Check essential Cilium agent metrics
 METRICS_URL="http://localhost:9962/metrics"
-for metric in "cilium_endpoint_count" "cilium_policy_count" "cilium_identity_count" "cilium_drop_count_total"; do
+for metric in "cilium_endpoint" "cilium_policy" "cilium_identity" "cilium_drop_count_total"; do
   VALUE=$(curl -s $METRICS_URL | grep "^$metric" | head -1)
   echo "$metric: $VALUE"
 done
 
 # Validate metric accuracy
-# Compare endpoint count to kubectl count
-CILIUM_METRIC=$(curl -s $METRICS_URL | grep "^cilium_endpoint_count" | awk '{print $2}')
-KUBECTL_COUNT=$(kubectl get pods -A --no-headers | wc -l)
-echo "Cilium metric: $CILIUM_METRIC, kubectl count: $KUBECTL_COUNT"
+# Compare cluster-wide endpoint count in Prometheus to CiliumEndpoint objects
+PROM_URL="http://localhost:9090"
+CILIUM_METRIC=$(curl -sG "$PROM_URL/api/v1/query" --data-urlencode 'query=sum(cilium_endpoint)' | jq -r '.data.result[0].value[1]')
+KUBECTL_COUNT=$(kubectl get ciliumendpoints.cilium.io -A --no-headers | wc -l)
+echo "Cilium metric: $CILIUM_METRIC, CiliumEndpoint objects: $KUBECTL_COUNT"
 
 # Validate drop metrics by generating test traffic
 cilium hubble port-forward &
@@ -176,25 +200,25 @@ Essential PromQL queries for Cilium monitoring:
 
 ```promql
 # Endpoint health status
-sum by (state) (cilium_endpoint_state)
+sum by (endpoint_state) (cilium_endpoint_state)
 
-# Policy enforcement rate
-rate(cilium_policy_verdict_total[5m])
+# Policy enforcement status
+cilium_policy_endpoint_enforcement_status
 
 # Drop rate by reason
 rate(cilium_drop_count_total[5m]) by (reason, direction)
 
 # Identity count over time
-cilium_identity_count
+cilium_identity
 
 # BPF map pressure (key metric for eBPF health)
-cilium_bpf_map_capacity / cilium_bpf_map_ops_total
+cilium_bpf_map_pressure
 
 # Agent memory usage
 process_resident_memory_bytes{job="cilium-agent"}
 
 # Endpoint regeneration time
-histogram_quantile(0.99, rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m])))
 ```
 
 Create essential alerts:
@@ -212,7 +236,7 @@ groups:
         annotations:
           summary: "High packet drop rate in Cilium"
       - alert: CiliumEndpointRegenerationSlow
-        expr: histogram_quantile(0.99, rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m])) > 10
+        expr: histogram_quantile(0.99, sum by (le) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m]))) > 10
         for: 5m
         labels:
           severity: warning
@@ -222,4 +246,4 @@ groups:
 
 ## Conclusion
 
-Cilium's metrics provide unparalleled visibility into eBPF-based networking behavior. Enabling Prometheus metrics on both the agent and operator, along with Hubble metrics for flow-level observability, gives you a complete picture of your cluster's networking health. Use the official Cilium Grafana dashboards (available at https://grafana.com/grafana/dashboards/?search=cilium) as a starting point and customize them for your specific environment. The drop rate, endpoint regeneration time, and identity count metrics are the most important indicators of Cilium's operational health.
+Cilium's metrics provide unparalleled visibility into eBPF-based networking behavior. Enabling Prometheus metrics on both the agent and operator, along with Hubble metrics for flow-level observability, gives you a complete picture of your cluster's networking health. Use the official Cilium Grafana dashboards (available at https://grafana.com/grafana/dashboards/?search=cilium) as a starting point and customize them for your specific environment. The drop rate, endpoint regeneration time, and identity metrics are the most important indicators of Cilium's operational health.
