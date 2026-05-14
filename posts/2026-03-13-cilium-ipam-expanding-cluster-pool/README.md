@@ -12,7 +12,7 @@ Description: Learn how to safely expand Cilium's cluster-pool IPAM when the pod 
 
 As your Kubernetes cluster grows, the pod IP address pool configured in Cilium's cluster-pool IPAM will eventually approach exhaustion. When the pool fills up, the Cilium Operator cannot allocate CIDRs to new nodes, preventing them from hosting pods. Planning for and executing pool expansion before this happens is a critical operational task for cluster administrators.
 
-Expanding the cluster pool in Cilium is non-disruptive to existing workloads - the new CIDR ranges are simply added to the pool configuration, and the Operator begins using them for new node allocations. Existing node CIDRs remain unchanged. The expansion can be performed at any time without a maintenance window, making it one of the more operationally friendly scaling tasks in Cilium management.
+Expanding the cluster pool in Cilium is non-disruptive to existing workloads - the new CIDR ranges are simply added to the pool configuration, and the Operator can use them for new node allocations when additional capacity is needed. Existing node CIDRs remain unchanged. The expansion can be performed at any time without a maintenance window, making it one of the more operationally friendly scaling tasks in Cilium management.
 
 This guide covers how to detect pool exhaustion risk early, perform the expansion safely, troubleshoot expansion-related issues, and validate that the expanded pool is being used correctly.
 
@@ -62,13 +62,9 @@ helm upgrade cilium cilium/cilium \
 kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.cluster-pool-ipv4-cidr}'
 
-# Method 2: Replace with a larger supernet (if ranges are contiguous)
-# Original: 10.244.0.0/16
-# Expanded: 10.244.0.0/15 (covers 10.244.0.0/16 and 10.245.0.0/16)
-helm upgrade cilium cilium/cilium \
-  --namespace kube-system \
-  --reuse-values \
-  --set "ipam.operator.clusterPoolIPv4PodCIDRList={10.244.0.0/15}"
+# Do not replace an existing list entry with a larger supernet.
+# Cilium documentation warns that changing existing clusterPoolIPv4PodCIDRList
+# elements can cause unexpected behavior; append a new CIDR instead.
 
 # Wait for Operator to reload configuration
 kubectl -n kube-system rollout restart deploy/cilium-operator
@@ -121,7 +117,8 @@ kubectl -n kube-system get configmap cilium-config \
 kubectl -n kube-system logs -l name=cilium-operator | grep -i "cidr\|pool\|expand"
 
 # New nodes still getting old CIDR range only
-# Check if Operator reloaded configuration
+# This is expected while the old range still has available node CIDRs.
+# If the old range is exhausted, check if Operator reloaded configuration.
 kubectl -n kube-system get pods -l name=cilium-operator
 kubectl -n kube-system rollout status deploy/cilium-operator
 
@@ -162,8 +159,8 @@ kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.cluster-pool-ipv4-cidr}'
 # Should show: "10.244.0.0/16,10.245.0.0/16" or similar
 
-# Add a new node and verify it gets a CIDR from the new pool
-# (or test by simulating with a test node if available)
+# After the earlier pool ranges are exhausted, add a new node and verify it
+# gets a CIDR from the new pool (or test with a disposable node if available)
 
 # Check total pool capacity after expansion
 POOL1="10.244.0.0/16"
@@ -200,7 +197,8 @@ graph TD
 Set up pool capacity monitoring:
 
 ```bash
-# Prometheus alert for IPAM pool capacity
+# Prometheus alert for per-node CIDR allocation capacity
+# Example: two /16 pools with /24 node masks provide 512 node CIDRs.
 kubectl apply -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -212,14 +210,14 @@ spec:
   - name: ipam-capacity
     rules:
     - alert: CiliumIPAMPoolWarning
-      expr: (count(kube_node_info) * 256) / (256 * 254) > 0.7
+      expr: count(kube_node_info) / 512 > 0.7
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "Cilium IPAM pool utilization exceeding 70%"
     - alert: CiliumIPAMPoolCritical
-      expr: (count(kube_node_info) * 256) / (256 * 254) > 0.85
+      expr: count(kube_node_info) / 512 > 0.85
       for: 5m
       labels:
         severity: critical
