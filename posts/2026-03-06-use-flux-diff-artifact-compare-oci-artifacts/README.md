@@ -20,7 +20,7 @@ Before you begin, make sure you have the following:
 
 - Flux CLI installed (v2.2.0 or later)
 - Access to an OCI-compatible container registry
-- kubectl configured with cluster access
+- kubectl configured with cluster access if you plan to apply the manifests
 - Basic familiarity with OCI artifacts and Flux CD concepts
 
 ## Understanding OCI Artifacts in Flux
@@ -91,7 +91,7 @@ YAML
 flux push artifact oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
   --path=/tmp/flux-demo/manifests \
   --source="$(git config --get remote.origin.url)" \
-  --revision="v1.0.0"
+  --revision="v1.0.0@sha1:$(git rev-parse HEAD)"
 ```
 
 ## Comparing a Remote Artifact with Local Files
@@ -104,7 +104,7 @@ flux diff artifact oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
   --path=/tmp/flux-demo/manifests
 ```
 
-If there are no differences, the command exits with code 0 and produces no output. If differences exist, you will see a unified diff output:
+If there are no differences, the command exits with code 0 and reports that no changes were detected. If differences exist, you will see a unified diff output:
 
 ```diff
 --- a/deployment.yaml
@@ -147,24 +147,32 @@ REGISTRY="ghcr.io/myorg/my-app-manifests"
 CURRENT_TAG="v2.0.0"
 MANIFEST_PATH="./deploy/manifests"
 
-# Run the diff and capture the exit code
-# Exit code 0 = no changes, Exit code 1 = changes detected
-if flux diff artifact "oci://${REGISTRY}:${CURRENT_TAG}" \
-  --path="${MANIFEST_PATH}" > /tmp/artifact-diff.txt 2>&1; then
+set +e
+flux diff artifact "oci://${REGISTRY}:${CURRENT_TAG}" \
+  --path="${MANIFEST_PATH}" > /tmp/artifact-diff.txt 2>&1
+DIFF_EXIT_CODE=$?
+set -e
+
+# Exit code 0 = no changes, 1 = changes detected, >1 = error
+if [ "${DIFF_EXIT_CODE}" -eq 0 ]; then
   echo "No changes detected in manifests. Skipping deployment."
   exit 0
-else
+elif [ "${DIFF_EXIT_CODE}" -eq 1 ]; then
   echo "Changes detected in manifests:"
   cat /tmp/artifact-diff.txt
   echo ""
   echo "Proceeding with artifact push and deployment..."
+else
+  echo "Error running artifact diff:"
+  cat /tmp/artifact-diff.txt
+  exit "${DIFF_EXIT_CODE}"
 fi
 
 # Push the updated artifact
 flux push artifact "oci://${REGISTRY}:${CURRENT_TAG}" \
   --path="${MANIFEST_PATH}" \
   --source="$(git config --get remote.origin.url)" \
-  --revision="${CURRENT_TAG}"
+  --revision="${CURRENT_TAG}@sha1:$(git rev-parse HEAD)"
 
 echo "Artifact pushed successfully."
 ```
@@ -175,23 +183,22 @@ When working with private registries, you need to authenticate before running di
 
 ```bash
 # Authenticate with GitHub Container Registry
-echo "${GITHUB_TOKEN}" | flux push artifact \
-  oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
-  --path=./manifests \
-  --source="local" \
-  --revision="v1.0.0" \
-  --creds="myuser:${GITHUB_TOKEN}"
+echo "${GITHUB_TOKEN}" | docker login ghcr.io \
+  --username myuser \
+  --password-stdin
+
+flux diff artifact oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
+  --path=./manifests
 
 # Authenticate with Docker Hub
 flux diff artifact oci://docker.io/myorg/my-app-manifests:v1.0.0 \
   --path=./manifests \
   --creds="myuser:${DOCKER_TOKEN}"
 
-# Authenticate with AWS ECR (use aws ecr get-login-password)
-AWS_TOKEN=$(aws ecr get-login-password --region us-east-1)
+# Authenticate with AWS ECR using the AWS provider
 flux diff artifact oci://123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:v1.0.0 \
   --path=./manifests \
-  --creds="AWS:${AWS_TOKEN}"
+  --provider=aws
 ```
 
 ## Diffing with Multiple File Paths
@@ -230,13 +237,21 @@ echo "Comparing \`oci://${REGISTRY}:${TAG}\` against local manifests." >> /tmp/d
 echo "" >> /tmp/diff-report.md
 
 # Capture the diff output
+set +e
 DIFF_OUTPUT=$(flux diff artifact "oci://${REGISTRY}:${TAG}" \
-  --path="${MANIFEST_PATH}" 2>&1 || true)
+  --path="${MANIFEST_PATH}" 2>&1)
+DIFF_EXIT_CODE=$?
+set -e
 
-if [ -z "${DIFF_OUTPUT}" ]; then
+if [ "${DIFF_EXIT_CODE}" -eq 0 ]; then
   echo "No changes detected." >> /tmp/diff-report.md
-else
+elif [ "${DIFF_EXIT_CODE}" -eq 1 ]; then
   echo '```diff' >> /tmp/diff-report.md
+  echo "${DIFF_OUTPUT}" >> /tmp/diff-report.md
+  echo '```' >> /tmp/diff-report.md
+else
+  echo "Error running artifact diff:" >> /tmp/diff-report.md
+  echo '```text' >> /tmp/diff-report.md
   echo "${DIFF_OUTPUT}" >> /tmp/diff-report.md
   echo '```' >> /tmp/diff-report.md
 fi
@@ -280,7 +295,7 @@ flux diff artifact oci://ghcr.io/myorg/my-app-manifests:latest \
 flux push artifact oci://ghcr.io/myorg/my-app-manifests:v2.0.0 \
   --path=./manifests \
   --source="$(git config --get remote.origin.url)" \
-  --revision="v2.0.0"
+  --revision="v2.0.0@sha1:$(git rev-parse HEAD)"
 ```
 
 ### Tag Artifacts with Semantic Versions
@@ -292,7 +307,7 @@ Use semantic versioning to make comparisons meaningful:
 flux push artifact oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
   --path=./manifests \
   --source="local" \
-  --revision="v1.0.0"
+  --revision="v1.0.0@sha1:$(git rev-parse HEAD)"
 
 # Also tag as latest for convenience
 flux tag artifact oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
@@ -305,7 +320,8 @@ The diff command returns meaningful exit codes:
 
 ```bash
 # Exit code 0: no differences found
-# Exit code 1: differences found or error occurred
+# Exit code 1: differences found
+# Exit code >1: error occurred
 
 flux diff artifact oci://ghcr.io/myorg/my-app-manifests:v1.0.0 \
   --path=./manifests
@@ -317,6 +333,10 @@ case $EXIT_CODE in
     ;;
   1)
     echo "Differences detected"
+    ;;
+  *)
+    echo "Error running artifact diff"
+    exit "$EXIT_CODE"
     ;;
 esac
 ```
