@@ -55,9 +55,11 @@ fleet-repo/
         production-values.yaml
   clusters/
     staging/
-      helm-releases.yaml
+      kustomization.yaml
+      flux-kustomization.yaml
     production/
-      helm-releases.yaml
+      kustomization.yaml
+      flux-kustomization.yaml
 ```
 
 ## Setting Up Helm Repository Sources
@@ -76,7 +78,6 @@ metadata:
 spec:
   interval: 30m
   url: https://charts.bitnami.com/bitnami
-  type: oci
 ```
 
 ```yaml
@@ -213,7 +214,7 @@ spec:
       config:
         log-level: warn
         use-forwarded-headers: "true"
-      # Pod disruption budget for production HA
+      # Autoscaling for production HA
       autoscaling:
         enabled: true
         minReplicas: 3
@@ -257,7 +258,7 @@ spec:
     - kind: Secret
       name: postgresql-credentials
       valuesKey: values.yaml
-  # Inline values have the lowest precedence
+  # Inline values override values loaded from valuesFrom
   values:
     architecture: replication
     audit:
@@ -266,7 +267,7 @@ spec:
 ```
 
 ```yaml
-# helm/releases/postgresql/credentials-configmap.yaml
+# helm/releases/postgresql/base-values-configmap.yaml
 # ConfigMap containing non-sensitive PostgreSQL configuration
 apiVersion: v1
 kind: ConfigMap
@@ -310,6 +311,7 @@ resources:
   # Include base HelmRelease definitions
   - ../../helm/releases/nginx/base.yaml
   - ../../helm/releases/postgresql/base.yaml
+  - ../../helm/releases/postgresql/base-values-configmap.yaml
 patches:
   # Apply staging-specific values on top of base
   - path: ../../helm/releases/nginx/staging-values.yaml
@@ -327,6 +329,7 @@ resources:
   - ../../helm/sources/grafana.yaml
   - ../../helm/releases/nginx/base.yaml
   - ../../helm/releases/postgresql/base.yaml
+  - ../../helm/releases/postgresql/base-values-configmap.yaml
 patches:
   # Apply production-specific values on top of base
   - path: ../../helm/releases/nginx/production-values.yaml
@@ -419,10 +422,13 @@ Check that all HelmReleases are reconciled correctly.
 flux get helmreleases --all-namespaces
 
 # Check a specific HelmRelease for errors
-flux get helmrelease ingress-nginx -n ingress-system
+flux get helmreleases ingress-nginx -n ingress-system
 
-# View the rendered values that Flux applied
+# View the release values that Flux applied
 helm get values ingress-nginx -n ingress-system
+
+# View computed values, including chart defaults
+helm get values ingress-nginx -n ingress-system --all
 
 # Check the Helm chart version installed
 helm list -n ingress-system
