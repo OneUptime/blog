@@ -189,7 +189,9 @@ The merge priority from lowest to highest is:
 2. First `valuesFrom` entry
 3. Second `valuesFrom` entry (overrides first)
 4. Additional `valuesFrom` entries in order
-5. `spec.values` inline values (overrides everything)
+5. `spec.values` inline values (overrides values from entries without `targetPath`)
+
+When `targetPath` is set on a `valuesFrom` entry, Flux applies that value using Helm `--set` style path semantics, and it overwrites earlier values at that path, including inline `spec.values`.
 
 ## Step 5: Optional ConfigMaps
 
