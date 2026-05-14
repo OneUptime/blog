@@ -10,11 +10,11 @@ Description: Learn how to use strategic merge patches in Flux Kustomization reso
 
 ## Introduction
 
-Strategic merge patches are the default patch type used in Kubernetes and Flux Kustomizations. Unlike JSON patches that use explicit operations (add, remove, replace), strategic merge patches work by merging a partial resource definition with the existing resource. Kubernetes uses merge keys (like container `name` in a pod spec) to determine how lists should be merged rather than replaced. This guide explains how strategic merge patches work in Flux, how to use them in `spec.patches`, and how they differ from other patch types.
+Strategic merge patches are commonly used in Kubernetes and Flux Kustomizations. Unlike JSON6902 patches that use explicit operations (add, remove, replace), strategic merge patches work by merging a partial resource definition with the existing resource. Kustomize uses Kubernetes merge keys (like container `name` in a pod spec) to determine how lists should be merged rather than replaced. This guide explains how strategic merge patches work in Flux, how to use them in `spec.patches`, and how they differ from other patch types.
 
 ## How Strategic Merge Patches Work
 
-A strategic merge patch is a partial YAML document that looks like the resource it modifies. You only include the fields you want to change. Kubernetes merges the patch with the existing resource using these rules:
+A strategic merge patch is a partial YAML document that looks like the resource it modifies. You only include the fields you want to change. Kustomize merges the patch with the existing resource using these rules:
 
 - **Scalar fields** (strings, numbers, booleans): The patch value replaces the existing value
 - **Maps** (objects): The patch is merged recursively
@@ -34,7 +34,7 @@ graph TD
 
 ## Basic Strategic Merge Patch in Flux
 
-The patches in `spec.patches` use strategic merge patch format by default. Here is an example that modifies a Deployment.
+The patches in `spec.patches` can use strategic merge patch format when the patch is written as a partial resource document. Here is an example that modifies a Deployment.
 
 ```yaml
 # kustomization-smp.yaml - Strategic merge patch to modify a Deployment
@@ -328,7 +328,7 @@ kubectl describe kustomization my-app -n flux-system
 
 ## Best Practices
 
-1. **Use strategic merge patches as the default** since they are the most intuitive and align with how Kubernetes handles updates.
+1. **Use strategic merge patches for built-in Kubernetes resources** when they are the most intuitive and align with how Kubernetes handles updates.
 2. **Leverage merge keys** (like container `name`) to target specific items in lists without replacing the entire list.
 3. **Be aware of lists without merge keys**: environment variables in a container spec (`env`) use `name` as a merge key, but `args` does not have a merge key and will be replaced entirely.
 4. **Use `$patch: delete`** to remove specific items from lists rather than reconstructing the entire list without them.
