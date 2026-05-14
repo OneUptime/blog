@@ -112,10 +112,11 @@ metadata:
     kubernetes.io/description: >
       SCC for Flux CD controllers. Allows non-root execution
       with specific capabilities required for GitOps operations.
+priority: 10
 # Allow the controllers to run as non-root
 allowPrivilegedContainer: false
 allowPrivilegeEscalation: false
-# Flux controllers need to write to their own filesystem
+# Do not force the SCC to override the controllers' own filesystem policy
 readOnlyRootFilesystem: false
 # Run as the user specified in the container image
 runAsUser:
@@ -131,6 +132,10 @@ allowHostNetwork: false
 allowHostPorts: false
 allowHostPID: false
 allowHostIPC: false
+allowHostDirVolumePlugin: false
+# Allow the RuntimeDefault seccomp profile used by Flux controller manifests
+seccompProfiles:
+  - runtime/default
 # Required volume types for Flux
 volumes:
   - configMap
@@ -241,7 +246,7 @@ oc get pods -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{
 flux check
 ```
 
-Each pod should show it is using the `flux-controllers` SCC.
+Each pod should show it is using the `flux-controllers` SCC. If a pod is admitted by another SCC, check the SCC priority and service account bindings.
 
 ## Configuring SCCs for Flux-Managed Workloads
 
@@ -257,6 +262,7 @@ metadata:
     kubernetes.io/description: >
       SCC for applications deployed by Flux CD.
       Provides a restricted but functional security context.
+priority: 10
 allowPrivilegedContainer: false
 allowPrivilegeEscalation: false
 readOnlyRootFilesystem: true
@@ -274,6 +280,13 @@ supplementalGroups:
   ranges:
     - min: 1000
       max: 65534
+allowHostNetwork: false
+allowHostPorts: false
+allowHostPID: false
+allowHostIPC: false
+allowHostDirVolumePlugin: false
+seccompProfiles:
+  - runtime/default
 volumes:
   - configMap
   - downwardAPI
@@ -283,6 +296,13 @@ volumes:
   - secret
 requiredDropCapabilities:
   - ALL
+```
+
+Apply and bind the SCC to the service accounts that run those applications. For example, after creating the `demo-app` namespace:
+
+```bash
+oc apply -f app-scc.yaml
+oc adm policy add-scc-to-user flux-managed-apps -z default -n demo-app
 ```
 
 ## Deploying Applications with SCCs
@@ -460,13 +480,15 @@ spec:
     createNamespace: true
   values:
     # OpenShift-compatible security settings
+    global:
+      compatibility:
+        openshift:
+          adaptSecurityContext: auto
     primary:
       podSecurityContext:
         enabled: true
-        fsGroup: 1000650000
       containerSecurityContext:
         enabled: true
-        runAsUser: 1000650000
         runAsNonRoot: true
         allowPrivilegeEscalation: false
         capabilities:
@@ -486,7 +508,7 @@ Set up alerts for SCC violations that might affect Flux-managed workloads:
 
 ```yaml
 # clusters/openshift/apps/scc-monitoring.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -497,7 +519,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: scc-alerts
@@ -522,7 +544,7 @@ If your organization already uses OpenShift GitOps (ArgoCD), you can run Flux al
 ```yaml
 # Flux manages specific namespaces
 # while OpenShift GitOps manages others
-# Use namespace selectors to avoid conflicts
+# Keep Git paths and resource ownership separate to avoid conflicts
 
 # clusters/openshift/apps/flux-scope.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -537,7 +559,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Only manage resources in specific namespaces
+  # Label Flux-owned namespaces consistently
   patches:
     - patch: |
         apiVersion: v1
@@ -593,4 +615,4 @@ When working with Flux on OpenShift, follow these guidelines:
 
 ## Conclusion
 
-You now have Flux CD running on Red Hat OpenShift with properly configured Security Context Constraints. This setup ensures that your GitOps workflow operates within OpenShift's security framework. The custom SCC provides Flux controllers with the permissions they need while maintaining the security posture expected in enterprise OpenShift environments. All workloads deployed through Flux inherit the appropriate SCCs, ensuring consistent security across your entire deployment pipeline.
+You now have Flux CD running on Red Hat OpenShift with properly configured Security Context Constraints. This setup ensures that your GitOps workflow operates within OpenShift's security framework. The custom SCC provides Flux controllers with the permissions they need while maintaining the security posture expected in enterprise OpenShift environments. Workloads deployed through Flux still use the SCCs granted to their own service accounts, ensuring consistent security across your entire deployment pipeline.
