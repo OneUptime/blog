@@ -63,7 +63,6 @@ Document your existing Kustomize overlays and the commands used to apply them.
 #     ingress.yaml
 #   production/
 #     kustomization.yaml
-#     replicas-patch.yaml
 #     ingress.yaml
 #     hpa.yaml
 
@@ -82,8 +81,10 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
-commonLabels:
-  app: my-app
+labels:
+  - pairs:
+      app: my-app
+    includeSelectors: true
 ```
 
 ```yaml
@@ -93,7 +94,6 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: my-app
@@ -140,27 +140,17 @@ resources:
   - hpa.yaml
 # Production-specific patches
 patches:
-  - path: replicas-patch.yaml
   - path: resources-patch.yaml
 # Production namespace
 namespace: production
 # Production-specific labels
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
 # Production image tag
 images:
   - name: myregistry/my-app
     newTag: "1.5.2"
-```
-
-```yaml
-# overlays/production/replicas-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  replicas: 5
 ```
 
 ```yaml
@@ -536,14 +526,14 @@ Verify that Flux detects and corrects manual changes.
 
 ```bash
 # Make a manual change
-kubectl scale deployment my-app -n production --replicas=1
+kubectl annotate deployment my-app -n production drift-test=manual --overwrite
 
 # Wait for the next reconciliation cycle (or force it)
 flux reconcile kustomization my-app -n flux-system
 
-# Verify replicas are restored to the value defined in Git
-kubectl get deployment my-app -n production -o jsonpath='{.spec.replicas}'
-# Should show 5 (from the production overlay patch)
+# Verify the manual annotation is removed because it is not defined in Git
+kubectl get deployment my-app -n production -o jsonpath='{.metadata.annotations.drift-test}'
+# Should return an empty value
 ```
 
 ## Comparison Summary
@@ -556,7 +546,7 @@ kubectl get deployment my-app -n production -o jsonpath='{.spec.replicas}'
 | Pruning | Manual cleanup | Automatic with `prune: true` |
 | Health checks | None | Built-in |
 | Secret management | External tools | SOPS integration |
-| Variable substitution | Not available | `postBuild.substitute` |
+| Post-build variable substitution | Not built in | `postBuild.substitute` |
 | Retry on failure | Must script | Built-in `retryInterval` |
 
 ## Conclusion
