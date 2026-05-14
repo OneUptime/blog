@@ -40,7 +40,7 @@ Security stakeholders care about visibility and control. Frame it this way:
 |---|---|---|---|
 | Who sees my traffic metadata? | Only you | Tigera (SaaS) | Only you |
 | Can I do FQDN-based egress policy? | No | Yes | Yes |
-| Compliance reports (PCI, SOC2)? | Manual | Automated | Automated |
+| Compliance evidence reports? | Manual | Automated (deprecated current feature) | Automated (deprecated current feature) |
 | Threat detection? | No | Yes | Yes |
 
 Security teams in regulated industries (finance, healthcare, government) typically need Enterprise or at minimum Cloud-level observability to pass audits.
@@ -63,7 +63,7 @@ Platform engineers want to know about API compatibility, upgrade paths, and oper
 
 - All three editions share the same core Calico data model and CRDs
 - Migrating from Open Source to Cloud or Enterprise does **not** require reinstalling the CNI or re-IPing nodes
-- Enterprise adds CRD-based resources (`GlobalThreatFeed`, `PacketCapture`, `PolicyRecommendation`) that are not available in Open Source
+- Enterprise adds CRD-based resources (`GlobalThreatFeed`, `PacketCapture`, `PolicyRecommendationScope`) that are not available in Open Source
 - Calico Cloud connects via a lightweight agent that reports to Tigera's SaaS - no inbound connectivity required from Tigera
 
 ## Best Practices
