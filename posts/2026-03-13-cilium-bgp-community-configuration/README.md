@@ -12,47 +12,74 @@ Description: Attach BGP communities to routes advertised by Cilium to control ro
 
 BGP communities are a powerful signaling mechanism that allows routers to make policy decisions based on tags attached to routes rather than just the prefix itself. In Cilium's BGP Control Plane, you can attach standard communities, large communities, and well-known communities to the routes your cluster advertises, enabling sophisticated traffic engineering without requiring changes to upstream router ACLs for every new service.
 
-Common use cases include marking routes for geographic preference, signaling traffic weight for ECMP load balancing, setting local preference on upstream routers, and blackholing specific prefixes by attaching the NO_EXPORT or BLACKHOLE community. Cilium exposes community configuration through the `CiliumBGPPeeringPolicy` virtualRouter advertisement settings.
+Common use cases include marking routes for geographic preference, signaling traffic weight for ECMP load balancing, setting local preference on upstream routers, and blackholing specific prefixes by attaching the NO_EXPORT or BLACKHOLE community. Cilium exposes community configuration through the `attributes.communities` settings on `CiliumBGPAdvertisement` resources.
 
 This guide shows how to configure BGP communities in Cilium, verify they are attached to advertised routes, and design a community-based routing policy.
 
 ## Prerequisites
 
-- Cilium v1.14+ with `bgpControlPlane.enabled=true`
+- Cilium v1.19+ with `bgpControlPlane.enabled=true`
 - Upstream router configured to honor BGP communities
 - `cilium` CLI installed
-- Existing `CiliumBGPPeeringPolicy` in place
+- Existing `CiliumBGPClusterConfig` and `CiliumBGPPeerConfig` in place
 
 ## Step 1: Configure Standard BGP Communities
 
 Attach standard 2-octet communities (format `AS:value`) to all advertised service routes:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: bgp-with-communities
+  name: cilium-bgp
 spec:
   nodeSelector:
     matchLabels:
       rack: rack0
-  virtualRouters:
-    - localASN: 65001
-      exportPodCIDR: true
-      serviceSelector:
+  bgpInstances:
+    - name: "instance-65001"
+      localASN: 65001
+      peers:
+        - name: "peer-65000"
+          peerASN: 65000
+          peerAddress: "10.0.0.1"
+          peerConfigRef:
+            name: "cilium-peer"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cilium-peer
+spec:
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: "bgp"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: service-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+    - advertisementType: "Service"
+      service:
+        addresses:
+          - LoadBalancerIP
+      selector:
         matchExpressions:
           - key: somekey
             operator: NotIn
             values: ["never-a-value"]
-      neighbors:
-        - peerAddress: "10.0.0.1/32"
-          peerASN: 65000
-          advertisements:
-            service:
-              communities:
-                standard:
-                  - "65000:100"    # Mark as datacenter-internal
-                  - "65000:200"    # Enable ECMP on upstream
+      attributes:
+        communities:
+          standard:
+            - "65000:100"    # Mark as datacenter-internal
+            - "65000:200"    # Enable ECMP policy on upstream
 ```
 
 ## Step 2: Configure Large BGP Communities (RFC 8092)
@@ -60,11 +87,24 @@ spec:
 Large communities use a 3-part format `ASN:datapart1:datapart2` for more expressive policy:
 
 ```yaml
-neighbors:
-  - peerAddress: "10.0.0.1/32"
-    peerASN: 65000
-    advertisements:
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: service-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+    - advertisementType: "Service"
       service:
+        addresses:
+          - LoadBalancerIP
+      selector:
+        matchExpressions:
+          - key: somekey
+            operator: NotIn
+            values: ["never-a-value"]
+      attributes:
         communities:
           large:
             - "65000:1:100"   # Region: US-East, Tier: 100
@@ -76,11 +116,24 @@ neighbors:
 Use IANA-defined communities for standard behaviors:
 
 ```yaml
-neighbors:
-  - peerAddress: "10.0.0.1/32"
-    peerASN: 65000
-    advertisements:
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: service-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+    - advertisementType: "Service"
       service:
+        addresses:
+          - LoadBalancerIP
+      selector:
+        matchExpressions:
+          - key: somekey
+            operator: NotIn
+            values: ["never-a-value"]
+      attributes:
         communities:
           wellKnown:
             - "no-export"           # Do not export beyond eBGP boundary
@@ -116,20 +169,40 @@ flowchart LR
 
 ## Step 5: Per-Service Community Assignment
 
-For fine-grained control, use service annotations (requires Cilium v1.15+):
+For fine-grained control, use service labels and match them from separate `CiliumBGPAdvertisement` entries:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: web-frontend
-  annotations:
-    # Future feature - check Cilium release notes
-    # cilium.io/bgp-communities: "65000:100,65000:200"
+  labels:
+    bgp-community: web
 spec:
   type: LoadBalancer
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: web-service-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+    - advertisementType: "Service"
+      service:
+        addresses:
+          - LoadBalancerIP
+      selector:
+        matchLabels:
+          bgp-community: web
+      attributes:
+        communities:
+          standard:
+            - "65000:100"
+            - "65000:200"
 ```
 
 ## Conclusion
 
-BGP communities in Cilium give your network team the signaling hooks they need to apply routing policy without requiring per-service router configuration. Standard communities work with any BGP implementation, while large communities provide a richer 96-bit signaling space for modern networks. Start with a simple community scheme tied to environment labels and expand to per-service communities as your routing policy matures.
+BGP communities in Cilium give your network team the signaling hooks they need to apply routing policy without requiring per-service router configuration. Standard communities work with any BGP implementation, while large communities provide a richer 96-bit signaling space for modern networks. Start with a simple community scheme tied to service labels and expand to per-service communities as your routing policy matures.
