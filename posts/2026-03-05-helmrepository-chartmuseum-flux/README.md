@@ -46,7 +46,7 @@ spec:
     spec:
       containers:
         - name: chartmuseum
-          image: ghcr.io/helm/chartmuseum:v0.16.2
+          image: ghcr.io/helm/chartmuseum:v0.16.3
           ports:
             - containerPort: 8080
           env:
@@ -61,7 +61,7 @@ spec:
                 secretKeyRef:
                   name: chartmuseum-auth
                   key: password
-            - name: AUTH_ANONYMOUS_GET    # Allow anonymous chart pulls
+            - name: AUTH_ANONYMOUS_GET    # Require auth for chart pulls
               value: "false"
           volumeMounts:
             - name: chart-storage
@@ -70,6 +70,18 @@ spec:
         - name: chart-storage
           persistentVolumeClaim:
             claimName: chartmuseum-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chartmuseum-pvc
+  namespace: chartmuseum
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
@@ -91,6 +103,9 @@ kubectl create secret generic chartmuseum-auth \
   --namespace=chartmuseum \
   --from-literal=password=my-secret-password
 kubectl apply -f chartmuseum-deployment.yaml
+
+# In another terminal, forward the in-cluster service for local upload commands
+kubectl -n chartmuseum port-forward svc/chartmuseum 8080:8080
 ```
 
 ## Step 2: Upload a Chart to ChartMuseum
@@ -102,11 +117,11 @@ Upload a Helm chart to ChartMuseum using the API or the Helm CLI.
 helm package ./my-app-chart/
 curl -u admin:my-secret-password \
   --data-binary "@my-app-1.0.0.tgz" \
-  http://chartmuseum.chartmuseum.svc.cluster.local:8080/api/charts
+  http://localhost:8080/api/charts
 
 # Verify the chart is available
 curl -u admin:my-secret-password \
-  http://chartmuseum.chartmuseum.svc.cluster.local:8080/api/charts | jq '.'
+  http://localhost:8080/api/charts | jq '.'
 ```
 
 Alternatively, use the `helm-push` plugin.
@@ -116,7 +131,7 @@ Alternatively, use the `helm-push` plugin.
 helm plugin install https://github.com/chartmuseum/helm-push
 
 # Add the repo and push
-helm repo add my-chartmuseum http://chartmuseum.chartmuseum.svc.cluster.local:8080 \
+helm repo add my-chartmuseum http://localhost:8080 \
   --username admin --password my-secret-password
 helm cm-push ./my-app-chart/ my-chartmuseum
 ```
@@ -301,7 +316,7 @@ kubectl logs -n flux-system deploy/source-controller --since=10m | grep -i "char
 
 ### Common Issues
 
-1. **Index fetch timeout**: If ChartMuseum has a large number of charts, increase the HelmRepository timeout or interval.
+1. **Index fetch timeout**: If ChartMuseum has a large number of charts, increase the HelmRepository timeout.
 2. **Chart not found after push**: ChartMuseum may cache the index. Use the `POST /api/charts` endpoint or wait for the cache to refresh.
 3. **Anonymous access denied**: Ensure `AUTH_ANONYMOUS_GET` is set correctly if you want unauthenticated reads, or always provide a `secretRef`.
 
