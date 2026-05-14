@@ -51,7 +51,7 @@ Then download the appropriate release from GitHub.
 
 ```bash
 # Set the desired version (check https://github.com/fluxcd/flux2/releases for latest)
-FLUX_VERSION=2.4.0
+FLUX_VERSION=2.8.7
 
 # Download the binary for amd64 (adjust for your architecture)
 curl -sLO "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/flux_${FLUX_VERSION}_linux_amd64.tar.gz"
@@ -122,7 +122,7 @@ echo 'command -v flux >/dev/null && . <(flux completion bash)' >> ~/.bashrc
 source ~/.bashrc
 
 # Option 2: Install system-wide (requires sudo)
-sudo flux completion bash > /etc/bash_completion.d/flux
+flux completion bash | sudo tee /etc/bash_completion.d/flux >/dev/null
 ```
 
 For Zsh users on Linux, use the following.
