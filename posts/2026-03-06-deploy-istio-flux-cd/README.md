@@ -14,7 +14,7 @@ Istio is the most popular service mesh for Kubernetes, providing traffic managem
 
 Before you begin, ensure you have the following:
 
-- A Kubernetes cluster (v1.26 or later)
+- A Kubernetes cluster supported by your Istio release (Istio 1.29 supports Kubernetes v1.31 to v1.35)
 - Flux CD installed on your cluster (v2.x)
 - kubectl configured to access your cluster
 - Familiarity with Istio concepts (sidecar injection, gateways, virtual services)
@@ -58,6 +58,11 @@ Install the Istio base chart which contains the CRDs:
 
 ```yaml
 # istio-base.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+---
 # HelmRelease for Istio base CRDs - must be installed first
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -69,7 +74,7 @@ spec:
   chart:
     spec:
       chart: base
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -103,7 +108,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -160,6 +165,11 @@ Deploy the Istio Ingress Gateway:
 
 ```yaml
 # istio-ingress.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-ingress
+---
 # HelmRelease for Istio Ingress Gateway
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -174,7 +184,7 @@ spec:
   chart:
     spec:
       chart: gateway
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -241,19 +251,22 @@ spec:
   mtls:
     mode: STRICT
 ---
-# Per-namespace PeerAuthentication (if needed)
+# Per-workload PeerAuthentication with a port override (if needed)
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: httpbin
   mtls:
     mode: STRICT
   # Port-level overrides for specific ports
   portLevelMtls:
-    # Allow plaintext on health check port
-    8080:
+    # Allow plaintext on the workload container port
+    80:
       mode: PERMISSIVE
 ```
 
@@ -401,8 +414,8 @@ To upgrade Istio, update the chart version in your HelmRelease resources:
 spec:
   chart:
     spec:
-      # Change from 1.22.x to 1.23.x
-      version: "1.23.x"
+      # Change from 1.28.x to 1.29.x
+      version: "1.29.x"
 ```
 
 Flux CD will detect the change and perform a rolling upgrade. The dependency chain ensures components upgrade in the correct order: base first, then istiod, then gateways.
