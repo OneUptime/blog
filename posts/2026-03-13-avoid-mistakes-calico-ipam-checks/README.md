@@ -30,11 +30,12 @@ kubectl get pod --all-namespaces -o wide | grep "192.168.1.42"
 ## Mistake 2: Misreading ipam show Output (Blocks vs IPs)
 
 ```bash
-# ipam show reports BLOCK allocation, not individual IPs
+# ipam show --show-blocks reports IP usage per pool and per allocated block
 calicoctl ipam show --show-blocks
-# Output: "10% used" on a block might mean:
-# Block has 256 IPs, 25 are allocated
-# But 200 IPs are "reserved" for the node and won't be used by pods from other nodes
+# Output: "10% used" on a default IPv4 block might mean:
+# Block has 64 IPs, 6 are allocated
+# The free IPs are in a block with affinity to one node; with StrictAffinity
+# disabled, Calico can still borrow IPs from another node's block if needed
 
 # CORRECT interpretation:
 calicoctl ipam show  # Total pool utilization
@@ -56,7 +57,10 @@ YAML
 
 # CORRECT: Check existing CIDRs before adding
 kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
-kubectl get svc -n kube-system kubernetes -o jsonpath='{.spec.clusterIP}'
+kubectl get nodes -o jsonpath='{.items[*].spec.podCIDRs}'
+kubectl get svc --all-namespaces -o jsonpath='{range .items[*]}{.spec.clusterIP}{"\n"}{end}'
+# Also check the configured service CIDR, for example the kube-apiserver
+# --service-cluster-ip-range value in self-managed clusters
 calicoctl get ippool -o yaml | grep cidr:
 # Ensure no overlap with any of these
 ```
@@ -69,9 +73,10 @@ kubectl describe pod <new-pod> | grep Events
 # "Failed to allocate IP: no more free CIDR blocks available"
 # At this point: cluster at 100%, pods are failing NOW
 
-# CORRECT: Monitor and alert at 85%
-# Add PrometheusRule with CalicoIPAMUtilizationHigh alert at 85%
-# This gives 2-4 weeks warning in most clusters
+# CORRECT: Monitor and alert before exhaustion
+# For Prometheus, calculate utilization from Calico kube-controllers metrics:
+# sum by (ippool) (ipam_allocations_in_use) / ipam_ippool_size
+# Alert at a threshold that matches your growth rate, for example 85%
 ```
 
 ## Common IPAM Mistakes Summary
@@ -106,11 +111,12 @@ calicoctl delete ippool my-pool
 calicoctl patch ippool my-pool \
   -p '{"spec":{"disabled":true}}'
 # Wait for all pods to be rescheduled onto other pools
-# Verify pool has 0 IPs in use
-calicoctl ipam show | grep my-pool
+# Verify the pool's CIDR has 0 IPs in use
+calicoctl get ippool my-pool -o yaml | grep cidr:
+calicoctl ipam show --show-blocks
 # Only then: calicoctl delete ippool my-pool
 ```
 
 ## Conclusion
 
-The two most dangerous IPAM mistakes are `calicoctl ipam release` on an IP still in use (causes duplicate assignment and immediate networking corruption) and deleting an active IPPool (immediately breaks pods using those IPs). Both require verification steps before execution. The most operationally damaging passive mistake is failing to monitor IPAM utilization until pods start failing to schedule. Build the 85% alert from day one and treat it as a pre-emptive capacity signal rather than an emergency.
+The two most dangerous IPAM mistakes are `calicoctl ipam release` on an IP still in use (causes duplicate assignment and immediate networking corruption) and deleting an active IPPool (can break pods using those IPs). Both require verification steps before execution. The most operationally damaging passive mistake is failing to monitor IPAM utilization until pods start failing to schedule. Build utilization alerts from day one and treat them as a pre-emptive capacity signal rather than an emergency.
