@@ -10,9 +10,9 @@ Description: A comprehensive guide to Layer 3 networking with Calico using BGP, 
 
 ## Introduction
 
-Calico's L3 interconnect fabric uses BGP (Border Gateway Protocol) to distribute pod routing information across the cluster and, optionally, to the external network infrastructure. Unlike L2 overlay modes (VXLAN, IP-in-IP), L3 BGP routing requires no encapsulation - pod packets are routed natively through the network fabric, providing the lowest possible latency and overhead.
+Calico's L3 interconnect fabric uses BGP (Border Gateway Protocol) to distribute pod routing information across the cluster and, optionally, to the external network infrastructure. Unlike encapsulated overlay modes such as VXLAN or IP-in-IP, L3 BGP routing with no encapsulation routes pod packets natively through the network fabric, providing the lowest possible latency and overhead.
 
-BGP is the routing protocol that powers the internet and enterprise wide-area networks. In Calico's context, BGP is used for distributing pod CIDR routes between Kubernetes nodes and between the cluster and external BGP peers (typically top-of-rack switches or enterprise routers).
+BGP is the routing protocol that powers the internet and enterprise wide-area networks. In Calico's context, BGP is used for distributing pod address routes between Kubernetes nodes and between the cluster and external BGP peers (typically top-of-rack switches or enterprise routers).
 
 Understanding L3 BGP interconnect requires understanding BGP session establishment, route advertisement, and route reflector topology.
 
@@ -26,19 +26,19 @@ Understanding L3 BGP interconnect requires understanding BGP session establishme
 
 The fundamental advantage of L3 BGP over overlay encapsulation:
 
-| Aspect | L2 Overlay (VXLAN) | L3 BGP |
+| Aspect | Overlay encapsulation | L3 BGP without encapsulation |
 |---|---|---|
-| Encapsulation overhead | 50 bytes/packet | 0 |
+| Encapsulation overhead | 20 bytes/packet for IP-in-IP, 50 bytes/packet for VXLAN over IPv4 | 0 |
 | Network visibility | Opaque to network | Full visibility to routers |
-| Network requirements | Any UDP network | BGP-capable fabric |
-| Troubleshooting | Double IP headers | Standard IP routing |
+| Network requirements | Underlay IP connectivity that permits the chosen encapsulation, such as VXLAN UDP traffic or IP-in-IP | BGP-capable fabric |
+| Troubleshooting | Additional encapsulation headers | Standard IP routing |
 | MTU impact | Reduced by overhead | Full MTU available |
 
 For on-premises deployments with BGP-capable ToR switches, L3 native routing is significantly more efficient than overlay.
 
 ## How Calico Distributes Routes via BGP
 
-Calico's BIRD daemon on each node advertises the pod CIDR block allocated to that node:
+Calico's BIRD daemon on each node advertises routes for pod addresses on that node. With Calico IPAM, these are typically Calico IPAM blocks assigned to the node, such as the default `/26` IPv4 blocks:
 
 ```mermaid
 graph TD
@@ -50,7 +50,7 @@ graph TD
     RR --> Node3
 ```
 
-After BGP convergence, every node has routes for every other node's pod CIDR. When Node 1 wants to send a packet to a pod on Node 2, it looks up `10.0.2.0/26` in its routing table and finds a direct route to Node 2's IP.
+After BGP convergence, every node has routes for pod address blocks on other nodes. When Node 1 wants to send a packet to a pod on Node 2, it looks up `10.0.2.0/26` in its routing table and finds a route with Node 2's IP as the next hop.
 
 ## BGP Configuration in Calico
 
@@ -82,7 +82,7 @@ spec:
 
 ## Node-to-Node Mesh vs. Route Reflectors
 
-**Node-to-node mesh**: Every node peers with every other node. Simple configuration, but O(n²) BGP sessions - not scalable beyond ~50 nodes.
+**Node-to-node mesh**: Every node peers with every other node. Simple configuration, but O(n²) BGP sessions - Calico documentation describes full mesh as suitable for small and medium deployments of about 100 nodes or less, with route reflectors recommended at significantly larger scales.
 
 **Route reflectors**: Designated nodes reflect routes to all other nodes. All nodes peer with the route reflector(s) instead of each other. Scales to thousands of nodes.
 
@@ -114,4 +114,4 @@ This allows external systems to reach pod IPs directly without NAT - pods are fi
 
 ## Conclusion
 
-Calico's L3 BGP interconnect fabric provides native, no-overhead routing for pod traffic in networks where BGP is supported. BIRD on each node advertises pod CIDRs, and BGP peers (either other nodes or external switches) distribute routing information across the network. For on-premises and private cloud deployments with BGP-capable infrastructure, L3 BGP is the preferred Calico networking mode - delivering the lowest latency and most transparent networking model.
+Calico's L3 BGP interconnect fabric provides native, no-overhead routing for pod traffic in networks where BGP is supported. BIRD on each node advertises pod address routes, such as Calico IPAM blocks, and BGP peers (either other nodes or external switches) distribute routing information across the network. For on-premises and private cloud deployments with BGP-capable infrastructure, L3 BGP is the preferred Calico networking mode - delivering the lowest latency and most transparent networking model.
