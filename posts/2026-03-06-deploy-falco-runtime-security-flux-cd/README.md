@@ -22,7 +22,7 @@ Before starting, ensure you have:
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A Git repository connected to Flux CD
-- Kernel headers available on worker nodes (for the kernel module driver)
+- Kernel headers available on worker nodes if you use the kernel module driver
 
 ## Architecture Overview
 
@@ -35,7 +35,7 @@ graph TD
     D -->|Detect| F[Security Events]
     F -->|Alert| G[Falcosidekick]
     G -->|Forward| H[Slack]
-    G -->|Forward| I[Prometheus]
+    G -->|Expose Metrics| I[Prometheus]
     G -->|Forward| J[Elasticsearch]
     E -->|Kernel Module / eBPF| K[Host Kernel]
 ```
@@ -93,41 +93,30 @@ spec:
   chart:
     spec:
       chart: falco
-      version: "4.x"
+      version: "8.x"
       sourceRef:
         kind: HelmRepository
         name: falcosecurity
         namespace: falco-system
       interval: 12h
   values:
-    # Use eBPF driver instead of kernel module (more portable)
+    # Use the modern eBPF driver instead of the kernel module
     driver:
-      kind: ebpf
-      ebpf:
-        # Host PID is required for eBPF
-        hostNetwork: true
+      kind: modern_ebpf
 
     # Falco configuration
     falco:
       # Log level
-      logLevel: info
-      # Log format
-      logFormat: json
+      log_level: info
       # Priority threshold for alerts
       priority: warning
       # Enable JSON output for structured logging
-      jsonOutput: true
-      jsonIncludeOutputProperty: true
+      json_output: true
+      json_include_output_property: true
       # HTTP output for Falcosidekick
-      httpOutput:
+      http_output:
         enabled: true
         url: "http://falcosidekick.falco-system.svc:2801"
-      # gRPC output
-      grpc:
-        enabled: true
-        bindAddress: "unix:///run/falco/falco.sock"
-      grpcOutput:
-        enabled: true
 
     # Resource limits for Falco pods
     resources:
@@ -171,8 +160,8 @@ spec:
           desc: Detect reverse shell connections from containers
           condition: >
             spawned_process and container and
-            ((proc.name = bash or proc.name = sh) and
-             proc.cmdline contains "/dev/tcp" or
+            (((proc.name = bash or proc.name = sh) and
+              proc.cmdline contains "/dev/tcp") or
              proc.cmdline contains "nc -e" or
              proc.cmdline contains "ncat -e")
           output: >
@@ -198,7 +187,7 @@ spec:
 
 ## Step 4: Deploy Falcosidekick
 
-Deploy Falcosidekick to forward Falco alerts to various destinations.
+Deploy Falcosidekick to forward Falco alerts and expose alert metrics.
 
 ```yaml
 # falcosidekick-helmrelease.yaml
@@ -215,7 +204,7 @@ spec:
   chart:
     spec:
       chart: falcosidekick
-      version: "0.8.x"
+      version: "0.13.x"
       sourceRef:
         kind: HelmRepository
         name: falcosecurity
@@ -233,6 +222,8 @@ spec:
 
     # Alert output configuration
     config:
+      existingSecret: falcosidekick-secrets
+
       # Slack notifications
       slack:
         webhookurl: ""
@@ -291,17 +282,17 @@ stringData:
   ELASTICSEARCH_PASSWORD: "your-password"
 ```
 
-## Step 6: Configure Pod Security for Falco
+## Step 6: Configure Kubernetes Metadata Access for Falco
 
-Ensure Falco has the necessary privileges to monitor system calls.
+Ensure Falco can read Kubernetes metadata used in its event output.
 
 ```yaml
-# falco-psp.yaml
-# ClusterRole and binding for Falco privileged access
+# falco-rbac.yaml
+# ClusterRole and binding for Falco Kubernetes metadata access
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: falco-privileged
+  name: falco-metadata-reader
   labels:
     app.kubernetes.io/name: falco
 rules:
@@ -315,11 +306,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: falco-privileged
+  name: falco-metadata-reader
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: falco-privileged
+  name: falco-metadata-reader
 subjects:
   - kind: ServiceAccount
     name: falco
@@ -328,11 +319,11 @@ subjects:
 
 ## Step 7: Set Up Monitoring
 
-Create ServiceMonitor for Falco metrics.
+Create a ServiceMonitor for Falcosidekick metrics.
 
 ```yaml
 # falco-servicemonitor.yaml
-# Prometheus ServiceMonitor for Falco and Falcosidekick metrics
+# Prometheus ServiceMonitor for Falcosidekick metrics
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -406,7 +397,7 @@ kubectl logs -n falco-system -l app.kubernetes.io/name=falco --tail=10
 kubectl logs -n falco-system -l app.kubernetes.io/name=falcosidekick --tail=20
 
 # Check Falco rules loaded
-kubectl exec -n falco-system ds/falco -- falco --list
+kubectl exec -n falco-system ds/falco -- falco -L
 ```
 
 ## Troubleshooting
@@ -417,8 +408,8 @@ Common issues and solutions:
 # Check if eBPF probe loaded successfully
 kubectl logs -n falco-system -l app.kubernetes.io/name=falco | grep -i "driver"
 
-# Verify kernel headers are available
-kubectl exec -n falco-system ds/falco -- ls /usr/src/
+# Verify tracing filesystem access for the eBPF driver
+kubectl exec -n falco-system ds/falco -- ls /sys/kernel/tracing
 
 # Check Flux errors
 kubectl describe helmrelease falco -n falco-system
@@ -427,9 +418,9 @@ kubectl describe helmrelease falco -n falco-system
 kubectl rollout restart daemonset falco -n falco-system
 
 # Check Falcosidekick connectivity
-kubectl exec -n falco-system deploy/falcosidekick -- wget -qO- http://localhost:2801/healthz
+kubectl exec -n falco-system deploy/falcosidekick -- wget -qO- http://localhost:2801/ping
 ```
 
 ## Conclusion
 
-You have successfully deployed Falco runtime security on Kubernetes using Flux CD. Falco now monitors system calls across all nodes in your cluster, detecting suspicious activity such as shell access, privilege escalation, cryptocurrency mining, and unauthorized network connections. With Falcosidekick forwarding alerts to Slack, Prometheus, and Elasticsearch, you have a comprehensive runtime security monitoring pipeline fully managed through GitOps.
+You have successfully deployed Falco runtime security on Kubernetes using Flux CD. Falco now monitors system calls across all nodes in your cluster, detecting suspicious activity such as shell access, privilege escalation, cryptocurrency mining, and unauthorized network connections. With Falcosidekick forwarding alerts to Slack and Elasticsearch and exposing alert metrics for Prometheus, you have a comprehensive runtime security monitoring pipeline fully managed through GitOps.
