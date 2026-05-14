@@ -19,7 +19,7 @@ This guide provides data path validation procedures for both iptables and eBPF m
 - A Calico lab cluster with at least two worker nodes
 - Node-level SSH access for iptables/bpftool inspection
 - `tcpdump` available on nodes
-- A test pod running `nicolaka/netshoot` for packet generation
+- A test client pod running `nicolaka/netshoot` for packet generation
 
 ## Preparation: Identify Pod Interfaces
 
@@ -62,7 +62,7 @@ Traffic through a pod's policy chains increments iptables counters. Use this to 
 sudo iptables -Z cali-tw-$IFACE
 
 # Generate traffic to the test pod
-kubectl exec test-client -- wget -qO- http://$POD_IP
+kubectl exec test-client -- ping -c 3 $POD_IP
 
 # Check if the counter incremented on the allow rule
 sudo iptables -L cali-tw-$IFACE -n -v
@@ -93,16 +93,16 @@ sudo bpftool prog list | grep calico
 For clusters using VXLAN encapsulation, verify the encapsulation is working correctly:
 
 ```bash
-# Capture traffic on the VXLAN interface
-sudo tcpdump -i vxlan.calico -n -c 10 &
+# Capture encapsulated VXLAN traffic on the node's underlay interface
+sudo tcpdump -i <node-underlay-interface> -n -vv udp port 4789 -c 10 &
 
 # Generate cross-node traffic
-kubectl exec test-client -- wget -qO- http://<pod-on-different-node>
+kubectl exec test-client -- ping -c 3 <pod-on-different-node-ip>
 
 # Verify captured packets show VXLAN headers (UDP port 4789)
 ```
 
-Expected: Packets captured on `vxlan.calico` show outer IP headers (node IPs) and inner IP headers (pod IPs).
+Expected: Packets captured on the underlay interface show outer IP headers (node IPs), VXLAN encapsulation, and inner IP headers (pod IPs). Capturing on `vxlan.calico` is useful for seeing the decapsulated pod traffic, but it does not show the outer VXLAN header.
 
 ## Validation 5: Packet Trace (iptables mode)
 
@@ -113,7 +113,7 @@ Use iptables logging to trace a specific packet through the chain:
 sudo iptables -I cali-tw-$IFACE 1 -j LOG --log-prefix "PKT-TRACE: " --log-level 4
 
 # Generate a packet
-kubectl exec test-client -- wget --timeout=5 -qO- http://$POD_IP
+kubectl exec test-client -- ping -c 1 $POD_IP
 
 # Check kernel log for the trace
 sudo journalctl -k | grep "PKT-TRACE"
@@ -141,7 +141,7 @@ Cross-node latency should be higher by the encapsulation overhead (small for VXL
 
 ## Best Practices
 
-- Run validation 1 and 2 (iptables chain checks) after every policy change to confirm the data path updated
+- In iptables mode, run validation 1 and 2 (iptables chain checks) after policy changes to confirm the data path updated
 - Save the baseline latency measurements and compare after every Calico upgrade
 - Keep temporary logging rules for no more than 5 minutes in production - they generate significant log volume
 
