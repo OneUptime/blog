@@ -12,9 +12,9 @@ GitHub Container Registry (GHCR) is a container image hosting service integrated
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux and image automation controllers installed
+- A Kubernetes cluster with Flux and the image-reflector-controller installed
 - A GitHub account with packages (container images) published to GHCR
-- A GitHub Personal Access Token (PAT) with `read:packages` scope for private images
+- A GitHub Personal Access Token (classic) with `read:packages` scope for private images
 - kubectl access to your cluster
 
 ## Understanding GHCR Image References
@@ -24,7 +24,7 @@ GHCR images follow this format: `ghcr.io/<owner>/<image-name>`. The owner can be
 - `ghcr.io/myuser/my-app`
 - `ghcr.io/my-org/my-service`
 
-Public GHCR images can be scanned without authentication, but private images require a Personal Access Token.
+Public GHCR images can be scanned without authentication, but private images require a Personal Access Token (classic).
 
 ## Step 1: Scan a Public GHCR Image
 
@@ -53,13 +53,13 @@ kubectl apply -f imagerepository-ghcr-public.yaml
 
 ## Step 2: Create a GitHub Personal Access Token
 
-For private images, create a Personal Access Token (PAT) with the `read:packages` scope.
+For private images, create a Personal Access Token (classic) with the `read:packages` scope.
 
 1. Go to GitHub Settings > Developer settings > Personal access tokens > Tokens (classic).
 2. Generate a new token with `read:packages` scope.
 3. Copy the token value.
 
-Alternatively, use a fine-grained token with read access to the specific packages.
+GitHub Packages registry authentication supports personal access tokens (classic) for this use case.
 
 ## Step 3: Create a Kubernetes Secret for GHCR
 
@@ -141,20 +141,9 @@ spec:
     name: ghcr-credentials
 ```
 
-## Step 6: Use a GitHub App Token (Alternative)
+## Step 6: Understand GitHub App Token Limitations
 
-For organizations, a GitHub App token may be preferred over a personal access token. Install a GitHub App with read access to packages, then use the app's installation token.
-
-```bash
-# Create a secret with a GitHub App installation token
-kubectl create secret docker-registry ghcr-app-credentials \
-  --docker-server=ghcr.io \
-  --docker-username=x-access-token \
-  --docker-password=ghs_your-app-installation-token \
-  -n flux-system
-```
-
-Note that GitHub App installation tokens expire and must be refreshed periodically.
+GitHub App installation tokens are supported by GitHub's REST API for some package operations, but GitHub's Container registry authentication documentation specifies personal access tokens (classic) for registry authentication outside GitHub Actions. For Flux ImageRepository scans, use the docker-registry Secret with a PAT (classic) shown above.
 
 ## Step 7: Configure Tag Exclusions
 
@@ -174,6 +163,8 @@ spec:
   secretRef:
     name: ghcr-credentials
   exclusionList:
+    # Keep Flux's default exclusion for Cosign signature tags
+    - "^.*\\.sig$"
     # Exclude SHA-based tags from GitHub Actions
     - "^sha-"
     # Exclude branch name tags
@@ -209,7 +200,7 @@ flux create image repository my-app \
 
 - **403 Forbidden**: The PAT may not have the `read:packages` scope. Generate a new token with the correct permissions.
 - **Package not found**: Ensure the image path matches the GHCR package name exactly, including the organization or user prefix.
-- **Token expired**: GitHub App installation tokens expire. Use a refresh mechanism or switch to a long-lived PAT.
+- **Token expired**: Generate a new PAT (classic), then update the Kubernetes Secret.
 
 ```bash
 # Check logs for GHCR-related errors
@@ -218,4 +209,4 @@ kubectl logs -n flux-system deployment/image-reflector-controller | grep -i "ghc
 
 ## Summary
 
-You have configured Flux to scan GitHub Container Registry for image tags. GHCR integrates well with GitHub-based workflows, and using a PAT with `read:packages` scope provides the necessary access for private images. With the ImageRepository in place, you can create ImagePolicy resources to select the right tag and automate your deployments.
+You have configured Flux to scan GitHub Container Registry for image tags. GHCR integrates well with GitHub-based workflows, and using a PAT (classic) with `read:packages` scope provides the necessary access for private images. With the ImageRepository in place, you can create ImagePolicy resources to select the right tag and automate your deployments.
