@@ -292,6 +292,9 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
               app.kubernetes.io/name: ingress-nginx
 ```
 
@@ -343,7 +346,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-team-label
       match:
@@ -353,6 +355,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: "All workloads must have a 'team' label"
         pattern:
           metadata:
@@ -368,7 +371,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-registries
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-registry
       match:
@@ -377,11 +379,17 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must come from approved registries"
-        pattern:
-          spec:
-            containers:
-              - image: "myorg.azurecr.io/* | ghcr.io/myorg/*"
+        foreach:
+          - list: "request.object.spec.initContainers"
+            anyPattern:
+              - image: "myorg.azurecr.io/*"
+              - image: "ghcr.io/myorg/*"
+          - list: "request.object.spec.containers"
+            anyPattern:
+              - image: "myorg.azurecr.io/*"
+              - image: "ghcr.io/myorg/*"
 ```
 
 ## Team Application Repository Structure
