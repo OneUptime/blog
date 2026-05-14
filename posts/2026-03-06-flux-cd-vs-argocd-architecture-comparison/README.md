@@ -18,13 +18,13 @@ This post provides a deep comparison of their architectures, component designs, 
 
 Flux CD follows a modular, toolkit-based approach. It is built as a set of specialized controllers that can be composed together or used independently. Each controller handles a specific concern: source management, kustomize reconciliation, Helm releases, image automation, and notifications.
 
-ArgoCD follows a monolithic application-centric approach. It provides an integrated platform with a central API server, application controller, repository server, and built-in UI. All components work together as a single cohesive system.
+ArgoCD follows an integrated application-centric approach. It provides a component-based platform with an API server, application controller, repository server, and built-in UI. All components work together as a single cohesive system.
 
 ## Component Architecture
 
 ### Flux CD Components
 
-Flux CD is composed of several independent controllers, each running as its own Kubernetes deployment.
+Flux CD is composed of several independent controllers, each running as its own Kubernetes deployment. The following snippets are representative excerpts of the controller workloads.
 
 ```yaml
 # Flux CD controller architecture
@@ -95,7 +95,7 @@ spec:
           # Watches: Alert, Provider, Receiver
           image: ghcr.io/fluxcd/notification-controller
 
-# 5. Image Reflector + Automation Controllers (optional)
+# 5. Image Reflector Controller (optional)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -110,11 +110,28 @@ spec:
           # Scans container registries for new tags
           # Watches: ImageRepository, ImagePolicy
           image: ghcr.io/fluxcd/image-reflector-controller
+
+---
+# 6. Image Automation Controller (optional)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-automation-controller
+  namespace: flux-system
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: manager
+          # Updates Git repositories based on ImagePolicy results
+          # Watches: ImageUpdateAutomation
+          image: ghcr.io/fluxcd/image-automation-controller
 ```
 
 ### ArgoCD Components
 
-ArgoCD runs as an integrated set of services that communicate through a central API.
+ArgoCD runs as an integrated set of services. The API server is the central API for the Web UI, CLI, and external clients, while internal components such as the application controller and repo server communicate directly for reconciliation work.
 
 ```yaml
 # ArgoCD component architecture
@@ -219,7 +236,7 @@ graph TB
     subgraph "ArgoCD Architecture"
         GR2[Git Repository] --> RS[Repo Server]
         RS --> CACHE[Redis Cache]
-        RS --> AC[Application Controller]
+        AC[Application Controller] --> RS
         AC --> K8S2[Kubernetes API]
         API[API Server] --> AC
         API --> RS
@@ -312,7 +329,7 @@ spec:
         maxDuration: 3m
 ```
 
-Resource Management Comparison
+## Resource Management Comparison
 
 ### How Flux CD Manages Resources
 
@@ -421,21 +438,20 @@ ArgoCD is extended through plugins and custom config management tools.
 
 ```yaml
 # ArgoCD uses Config Management Plugins (CMP)
-apiVersion: v1
-kind: ConfigMap
+# Modern Argo CD installs CMPs as repo-server sidecars.
+# This file is mounted in the sidecar at:
+# /home/argocd/cmp-server/config/plugin.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Register a custom plugin
-  configManagementPlugins: |
-    - name: kustomize-with-sops
-      init:
-        command: ["/bin/sh", "-c"]
-        args: ["sops -d secrets.enc.yaml > secrets.yaml"]
-      generate:
-        command: ["/bin/sh", "-c"]
-        args: ["kustomize build ."]
+  name: kustomize-with-sops
+spec:
+  init:
+    command: ["/bin/sh", "-c"]
+    args: ["sops -d secrets.enc.yaml > secrets.yaml"]
+  generate:
+    command: ["/bin/sh", "-c"]
+    args: ["kustomize build ."]
 ```
 
 ## Scalability Characteristics
@@ -443,7 +459,7 @@ data:
 ### Flux CD Scaling
 
 ```yaml
-# Flux scales by sharding controllers across namespaces
+# Flux scales by sharding controller reconciliation with label selectors
 # Each controller can be configured independently
 
 # Horizontal scaling via multiple Flux instances
@@ -473,7 +489,7 @@ spec:
 ```yaml
 # ArgoCD scales the application controller with sharding
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -487,20 +503,20 @@ spec:
             # Enable controller sharding
             - name: ARGOCD_CONTROLLER_REPLICAS
               value: "3"
-          # Each replica handles a subset of applications
-          # Sharding is based on application hash
+          # Each replica handles a shard of managed clusters and their applications
+          # Sharding can use legacy, round-robin, or consistent-hashing algorithms
 ```
 
 ## Comparison Summary Table
 
 | Aspect | Flux CD | ArgoCD |
 |--------|---------|--------|
-| Architecture | Modular toolkit (separate controllers) | Monolithic platform (integrated services) |
+| Architecture | Modular toolkit (separate controllers) | Integrated platform (component services) |
 | UI | No built-in UI (use Weave GitOps or third-party) | Built-in Web UI with app visualization |
 | API | Kubernetes-native CRDs only | REST/gRPC API server + CRDs |
 | State Storage | Kubernetes etcd (CRD status) | Kubernetes etcd + Redis cache |
 | Authentication | Delegates to Kubernetes RBAC | Built-in SSO, OIDC, LDAP, SAML |
-| Multi-cluster | Native via Kustomization targeting | Via cluster secrets and AppSets |
+| Multi-cluster | Via kubeConfig references on Flux resources | Via cluster secrets and AppSets |
 | Helm Support | Native HelmRelease controller | Renders Helm to manifests, then applies |
 | Drift Detection | Periodic reconciliation | Continuous live state monitoring |
 | Resource Apply | Server-side apply (Kubernetes native) | Custom diff/sync engine |
