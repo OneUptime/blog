@@ -27,19 +27,19 @@ This guide covers how to configure Flux CD to trust self-signed certificates and
 
 ## Step 1: Prepare the CA Certificate
 
-First, obtain the CA certificate that signed your internal server's TLS certificate. The certificate must be in PEM format:
+First, obtain the CA certificate that signed your internal server's TLS certificate from your internal CA or platform team. The certificate must be in PEM format. You can use `openssl s_client` to inspect the certificate chain served by the endpoint:
 
 ```bash
-# Download the CA certificate from a server (if you don't have it)
+# Inspect the certificate presented by the server
 
-openssl s_client -showcerts -connect git.internal.company.com:443 </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > ca-cert.pem
+openssl s_client -showcerts -connect git.internal.company.com:443 -servername git.internal.company.com </dev/null 2>/dev/null | \
+  openssl x509 -outform PEM > server-cert.pem
 
-# Verify the certificate
+# Verify the CA certificate
 openssl x509 -in ca-cert.pem -text -noout | head -20
 
-# If there's a certificate chain, extract all certificates
-openssl s_client -showcerts -connect git.internal.company.com:443 </dev/null 2>/dev/null | \
+# Extract the presented certificate chain for inspection
+openssl s_client -showcerts -connect git.internal.company.com:443 -servername git.internal.company.com </dev/null 2>/dev/null | \
   awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ print }' > ca-chain.pem
 ```
 
@@ -74,13 +74,11 @@ spec:
     branch: main
   # Reference the secret containing the CA certificate
   # The key in the secret must be "ca.crt"
-  certSecretRef:
-    name: git-ca-cert
   secretRef:
-    name: git-credentials
+    name: git-ca-cert
 ```
 
-The `certSecretRef` field tells the source-controller to use the CA certificate from the referenced secret when connecting to the Git server. The secret must contain a key named `ca.crt`.
+The `secretRef` field tells the source-controller to use the CA certificate from the referenced secret when connecting to the Git server. The secret must contain a key named `ca.crt`.
 
 ### Combining CA Certificate with Git Credentials
 
@@ -107,8 +105,6 @@ spec:
   url: https://git.internal.company.com/my-org/my-app.git
   ref:
     branch: main
-  certSecretRef:
-    name: git-internal
   secretRef:
     name: git-internal
 ```
@@ -228,7 +224,7 @@ spec:
   url: https://git.secure.company.com/my-org/secure-app.git
   ref:
     branch: main
-  certSecretRef:
+  secretRef:
     name: git-mtls
 ```
 
@@ -239,11 +235,11 @@ The secret keys must follow this naming convention:
 
 ## Step 7: Mount CA Certificates at the Controller Level
 
-If all your internal services use the same CA, you can mount the CA certificate directly into the Flux controller pods. This avoids configuring `certSecretRef` on every source:
+If all your internal services use the same CA, you can mount the CA certificate directly into the Flux source-controller pod. This avoids configuring certificate secrets on every source:
 
 ```yaml
 # kustomization.yaml
-# Mount CA certificate into all Flux controllers
+# Mount CA certificate into the Flux source-controller
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -319,7 +315,7 @@ The CA certificate is not being loaded or does not match the server's certificat
 
 ```bash
 # Verify the CA cert matches the server's certificate
-openssl verify -CAfile ca-cert.pem <(openssl s_client -connect git.internal.company.com:443 </dev/null 2>/dev/null | openssl x509)
+openssl verify -CAfile ca-cert.pem <(openssl s_client -connect git.internal.company.com:443 -servername git.internal.company.com </dev/null 2>/dev/null | openssl x509)
 
 # Check the secret contains the correct certificate
 kubectl get secret git-ca-cert -n flux-system -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -text -noout
@@ -348,4 +344,4 @@ kubectl get secret git-ca-cert -n flux-system -o jsonpath='{.data}' | jq 'keys'
 
 ## Summary
 
-Configuring Flux CD to work with self-signed certificates is straightforward using the `certSecretRef` field available on GitRepository, HelmRepository, and OCIRepository resources. Store your CA certificate in a Kubernetes secret with the key `ca.crt`, and reference it from your source definitions. For mTLS, include `tls.crt` and `tls.key` in the same secret. For cluster-wide CA trust, mount the certificate directly into the controller pods using Kustomize patches. Always verify the certificate chain with `openssl` before configuring Flux to save debugging time.
+Configuring Flux CD to work with self-signed certificates is straightforward using `secretRef` on GitRepository resources and `certSecretRef` on HelmRepository and OCIRepository resources. Store your CA certificate in a Kubernetes secret with the key `ca.crt`, and reference it from your source definitions. For mTLS, include `tls.crt` and `tls.key` in the same secret. For cluster-wide CA trust, mount the certificate directly into the source-controller pod using Kustomize patches. Always verify the certificate chain with `openssl` before configuring Flux to save debugging time.
