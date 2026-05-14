@@ -12,7 +12,7 @@ Description: A practical guide to implementing and enforcing consistent resource
 
 Resource tagging (labels and annotations in Kubernetes) is essential for cost allocation, ownership tracking, compliance auditing, and operational management. Without consistent tagging standards, it becomes impossible to determine which team owns a resource, what environment it belongs to, or how much a particular service costs to run.
 
-Flux CD provides powerful mechanisms to enforce tagging standards through Kustomize common labels, OPA/Kyverno policies, and post-rendering hooks. This guide covers how to implement a comprehensive tagging strategy using GitOps principles.
+Flux CD provides powerful mechanisms to enforce tagging standards through Kustomize label transformers, OPA/Kyverno policies, and post-build variable substitution. This guide covers how to implement a comprehensive tagging strategy using GitOps principles.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ optional_labels:
 
 ## Applying Common Labels with Kustomize
 
-Use Kustomize's commonLabels feature in your Flux CD Kustomizations to automatically apply tags to all resources.
+Use Kustomize's labels transformer in your Flux CD Kustomizations to automatically apply tags to all resources.
 
 ```yaml
 # clusters/production/kustomization.yaml
@@ -69,11 +69,13 @@ resources:
   - apps.yaml
   - infrastructure.yaml
 # These labels are automatically added to all resources and selectors
-commonLabels:
-  environment: production
-  app.kubernetes.io/managed-by: flux
-  cost-center: platform-engineering
-  team: platform
+labels:
+  - includeSelectors: true
+    pairs:
+      environment: production
+      app.kubernetes.io/managed-by: flux
+      cost-center: platform-engineering
+      team: platform
 ```
 
 ```yaml
@@ -84,11 +86,13 @@ kind: Kustomization
 resources:
   - apps.yaml
   - infrastructure.yaml
-commonLabels:
-  environment: staging
-  app.kubernetes.io/managed-by: flux
-  cost-center: platform-engineering
-  team: platform
+labels:
+  - includeSelectors: true
+    pairs:
+      environment: staging
+      app.kubernetes.io/managed-by: flux
+      cost-center: platform-engineering
+      team: platform
 ```
 
 ## Using Flux CD Post-Build Variable Substitution for Dynamic Tags
@@ -181,8 +185,6 @@ metadata:
       Ensures all Deployments, StatefulSets, and DaemonSets have
       the required organizational labels for cost tracking and ownership.
 spec:
-  # Block resources that do not comply
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-required-labels
@@ -195,6 +197,8 @@ spec:
                 - DaemonSet
                 - Service
       validate:
+        # Block resources that do not comply
+        failureAction: Enforce
         message: >-
           Resource {{request.object.metadata.name}} is missing required labels.
           All resources must have: environment, team, cost-center,
@@ -218,7 +222,6 @@ kind: ClusterPolicy
 metadata:
   name: validate-label-values
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-environment-label
       match:
@@ -229,6 +232,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: >-
           The environment label must be one of:
           production, staging, development, or sandbox.
@@ -245,6 +249,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: >-
           If specified, the tier label must be one of:
           critical, standard, or best-effort.
@@ -368,19 +373,15 @@ spec:
                   echo ""
                   # Find deployments missing the 'team' label
                   echo "--- Deployments missing 'team' label ---"
-                  kubectl get deployments --all-namespaces \
-                    -o json | jq -r '
-                    .items[] |
-                    select(.metadata.labels.team == null) |
-                    "\(.metadata.namespace)/\(.metadata.name)"'
+                  kubectl get deployments --all-namespaces -l '!team' \
+                    -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name \
+                    --no-headers
                   echo ""
                   # Find deployments missing the 'cost-center' label
                   echo "--- Deployments missing 'cost-center' label ---"
-                  kubectl get deployments --all-namespaces \
-                    -o json | jq -r '
-                    .items[] |
-                    select(.metadata.labels["cost-center"] == null) |
-                    "\(.metadata.namespace)/\(.metadata.name)"'
+                  kubectl get deployments --all-namespaces -l '!cost-center' \
+                    -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name \
+                    --no-headers
           restartPolicy: OnFailure
 ```
 
@@ -391,7 +392,7 @@ Set up alerts for when tagging policies block resource creation.
 ```yaml
 # clusters/production/notifications/tagging-alerts.yaml
 # Alert configuration for tagging policy violations
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: tagging-slack
@@ -402,7 +403,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: tagging-violations
@@ -427,7 +428,7 @@ spec:
 Implementing resource tagging standards with Flux CD creates a robust governance framework that ensures every Kubernetes resource is properly labeled for cost tracking, ownership, and compliance. The key strategies covered include:
 
 - Defining a clear tagging standard with required and optional labels
-- Using Kustomize commonLabels for automatic label propagation
+- Using Kustomize label transformers for automatic label propagation
 - Leveraging Flux CD variable substitution for dynamic, environment-specific tags
 - Enforcing tagging with Kyverno validation policies
 - Auto-injecting labels with Kyverno mutating policies
