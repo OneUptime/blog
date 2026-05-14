@@ -30,7 +30,11 @@ helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set egressGateway.enabled=true \
+  --set kubeProxyReplacement=true \
   --set bpf.masquerade=true
+
+kubectl rollout restart ds cilium -n kube-system
+kubectl rollout restart deploy cilium-operator -n kube-system
 ```
 
 ## Step 2: Label Gateway Nodes
@@ -39,7 +43,6 @@ Designate specific nodes as egress gateways:
 
 ```bash
 kubectl label node gateway-node-1 role=egress-gateway
-kubectl label node gateway-node-2 role=egress-gateway
 ```
 
 ## Step 3: Create CiliumEgressGatewayPolicy
@@ -54,7 +57,7 @@ spec:
     - podSelector:
         matchLabels:
           app: payment-service
-          namespace: production
+          io.kubernetes.pod.namespace: production
   destinationCIDRs:
     - "0.0.0.0/0"
   egressGateway:
@@ -71,9 +74,8 @@ spec:
 
 ip addr add 10.0.100.10/32 dev eth0
 
-# Or configure it via node annotations for Cilium to manage
-kubectl annotate node gateway-node-1 \
-  "cilium.io/egress-ip"="10.0.100.10"
+# Re-apply the policy after adding or changing the egress IP
+kubectl apply -f payment-egress.yaml
 ```
 
 ## Step 5: Validate Egress Gateway Routing
@@ -90,7 +92,6 @@ kubectl exec -n production other-service-xxx -- \
 # Expected: Node IP (not gateway IP)
 
 # Check egress gateway policy status
-kubectl get ciliumbgppeeringpolicy
 kubectl get ciliumegressgatewaypolicy payment-egress -o yaml
 ```
 
@@ -104,11 +105,11 @@ hubble observe --namespace production \
 
 # Check BPF egress map
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium bpf egress list
+  cilium-dbg bpf egress list
 
 # Check NAT table for egress mappings
 kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium bpf nat list | grep 10.0.100.10
+  cilium-dbg bpf nat list | grep 10.0.100.10
 ```
 
 ## Egress Gateway Architecture
