@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, OCI, OCIRepository, Docker Hub, Container Registry
 
-Description: Learn how to configure Flux CD OCIRepository to pull OCI artifacts from Docker Hub using personal access tokens and robot accounts for authentication.
+Description: Learn how to configure Flux CD OCIRepository to pull OCI artifacts from Docker Hub using personal access tokens and organization access tokens for authentication.
 
 ---
 
 ## Introduction
 
-Docker Hub is the most widely used container registry and fully supports OCI artifacts. Flux CD can pull Kubernetes manifests, Helm charts, and Kustomize overlays stored as OCI artifacts in Docker Hub. Authentication uses Docker Hub personal access tokens (PATs) or robot account credentials stored in Kubernetes secrets.
+Docker Hub is the most widely used container registry and supports OCI artifacts. Flux CD can pull Kubernetes manifests, Helm charts, and Kustomize overlays stored as OCI artifacts in Docker Hub. Authentication uses Docker Hub personal access tokens (PATs) or organization access tokens (OATs) stored in Kubernetes secrets.
 
 This guide covers pushing OCI artifacts to Docker Hub, configuring OCIRepository with authentication, and managing access for team environments.
 
@@ -18,10 +18,10 @@ This guide covers pushing OCI artifacts to Docker Hub, configuring OCIRepository
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later for the `source.toolkit.fluxcd.io/v1` examples)
 - The `flux` CLI and `kubectl` installed
 - A Docker Hub account (free or paid)
-- A Docker Hub personal access token (PAT) with read/write permissions
+- A Docker Hub personal access token (PAT) with read-only permissions for pulling, or read/write permissions for pushing
 
 ## Creating a Docker Hub Access Token
 
@@ -33,7 +33,7 @@ Before configuring Flux, create a personal access token in Docker Hub.
 4. Set a description (e.g., "Flux CD Source Controller") and the appropriate permissions
 5. Copy the generated token
 
-For read-only access (pulling artifacts), select the "Read-only" scope. For pushing and pulling, select "Read, Write, Delete".
+For read-only access (pulling artifacts), select the "Read-only" scope. For pushing and pulling, select "Read & Write" or a broader scope that includes write access.
 
 ## Pushing Artifacts to Docker Hub
 
@@ -274,9 +274,9 @@ Docker Hub enforces pull rate limits. Here is how to manage them in a Flux envir
 
 ```mermaid
 graph TD
-    A[Docker Hub Rate Limits] --> B[Anonymous: 100 pulls / 6 hours]
-    A --> C[Free Authenticated: 200 pulls / 6 hours]
-    A --> D[Pro/Team: 5000 pulls / day]
+    A[Docker Hub Rate Limits] --> B[Unauthenticated: 100 pulls / 6 hours]
+    A --> C[Personal Authenticated: 200 pulls / 6 hours]
+    A --> D[Pro/Team: Unlimited]
     A --> E[Business: Unlimited]
 ```
 
