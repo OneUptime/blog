@@ -71,18 +71,11 @@ Define a comprehensive Fluentd configuration for collecting and processing Kuber
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fluentd-config
+  name: fluentd-config-fluentd
   namespace: fluentd
 data:
-  # Main Fluentd configuration
-  fluent.conf: |
-    # Accept internal Fluentd logs for troubleshooting
-    <label @FLUENT_LOG>
-      <match fluent.**>
-        @type stdout
-      </match>
-    </label>
-
+  # Custom Fluentd configuration loaded by the Helm chart
+  kubernetes.conf: |
     # Collect container logs from all pods
     <source>
       @type tail
@@ -237,23 +230,9 @@ spec:
             name: elasticsearch-credentials
             key: password
 
-    # Volume mounts for log access
-    volumes:
-      # Access container logs on the node
-      - name: varlog
-        hostPath:
-          path: /var/log
-      # Access container runtime logs
-      - name: dockercontainerlogdirectory
-        hostPath:
-          path: /var/lib/docker/containers
-
-    volumeMounts:
-      - name: varlog
-        mountPath: /var/log
-      - name: dockercontainerlogdirectory
-        mountPath: /var/lib/docker/containers
-        readOnly: true
+    # The chart mounts /var/log and /var/lib/docker/containers by default
+    mountVarLogDirectory: true
+    mountDockerContainersDirectory: true
 
     # Tolerations to run on all nodes including masters
     tolerations:
@@ -266,12 +245,6 @@ spec:
     # RBAC rules for accessing Kubernetes API
     rbac:
       create: true
-
-    # Persistent buffer storage to prevent data loss on pod restart
-    persistence:
-      enabled: true
-      size: 10Gi
-      storageClass: standard
 ```
 
 ## Step 5: Create the Kustomization
@@ -318,14 +291,17 @@ spec:
 To send logs to multiple destinations, update the Fluentd configuration with the copy output plugin.
 
 ```yaml
-# Additional configuration for multi-destination routing
+# Replacement configuration for the existing kubernetes.** match block
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fluentd-multi-output
+  name: fluentd-config-fluentd
   namespace: fluentd
 data:
-  multi-output.conf: |
+  kubernetes.conf: |
+    # Keep the same source and filter sections from the earlier example, then
+    # replace the Elasticsearch-only match with this copy output.
+
     # Route logs to multiple destinations simultaneously
     <match kubernetes.**>
       @type copy
@@ -368,6 +344,13 @@ data:
         @id debug_output
       </store>
     </match>
+```
+
+If you include the S3 output in the copy configuration while using the default Elasticsearch chart variant, add the S3 plugin to the HelmRelease values:
+
+```yaml
+plugins:
+  - fluent-plugin-s3
 ```
 
 ## Verifying the Deployment
