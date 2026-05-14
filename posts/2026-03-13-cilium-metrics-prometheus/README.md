@@ -12,7 +12,7 @@ Description: Configure Prometheus to scrape Cilium and Hubble metrics, understan
 
 Cilium exposes a comprehensive set of Prometheus metrics covering data plane performance (packet throughput, drop rates, conntrack usage), control plane health (endpoint policy calculation latency, BGP session state, Kubernetes API sync status), and Hubble flow statistics (flow rates per protocol, policy verdict distributions). These metrics give you quantitative visibility into both the health of Cilium itself and the network behavior of your cluster workloads.
 
-Unlike application metrics that tell you about business logic, Cilium metrics tell you about the network infrastructure that all your applications depend on. A spike in `cilium_drop_count_total` might indicate a network policy misconfiguration causing application errors. High `cilium_endpoint_regenerations_total` latency might explain slow pod startup times. Understanding these metrics and setting appropriate alerts is as important as monitoring your application SLIs.
+Unlike application metrics that tell you about business logic, Cilium metrics tell you about the network infrastructure that all your applications depend on. A spike in `cilium_drop_count_total` might indicate a network policy misconfiguration causing application errors. High `cilium_endpoint_regeneration_time_stats_seconds` latency might explain slow pod startup times. Understanding these metrics and setting appropriate alerts is as important as monitoring your application SLIs.
 
 This guide covers enabling Cilium's Prometheus metrics endpoint, configuring Prometheus scraping, and defining alerting rules for the most important Cilium health indicators.
 
@@ -31,8 +31,11 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set prometheus.enabled=true \
   --set prometheus.port=9962 \
+  --set prometheus.metricsService=true \
   --set operator.prometheus.enabled=true \
   --set operator.prometheus.port=9963 \
+  --set operator.prometheus.metricsService=true \
+  --set hubble.enabled=true \
   --set hubble.metrics.enableOpenMetrics=true \
   --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction}"
 ```
@@ -55,11 +58,16 @@ spec:
       - kube-system
   selector:
     matchLabels:
-      k8s-app: cilium
+      app.kubernetes.io/name: cilium-agent
   endpoints:
-    - port: prometheus
+    - port: metrics
       interval: 30s
       path: /metrics
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_pod_node_name
+          targetLabel: node
+          action: replace
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -72,10 +80,29 @@ spec:
       - kube-system
   selector:
     matchLabels:
+      io.cilium/app: operator
       name: cilium-operator
   endpoints:
-    - port: prometheus
+    - port: metrics
       interval: 30s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hubble
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: hubble
+  endpoints:
+    - port: hubble-metrics
+      interval: 30s
+      path: /metrics
 ```
 
 ## Step 3: Key Metrics to Monitor
@@ -85,23 +112,23 @@ spec:
 
 cilium_drop_count_total
 
-# Endpoint policy calculation time
-cilium_policy_regeneration_time_stats_seconds
+# Endpoint regeneration time
+cilium_endpoint_regeneration_time_stats_seconds
 
 # Number of active endpoints
 cilium_endpoint_state
 
 # BPF map pressure (approaching capacity)
-cilium_bpf_map_ops_total
+cilium_bpf_map_pressure
 
 # Hubble flow processing rate
 hubble_flows_processed_total
 
 # BGP session state
-cilium_bgp_session_state
+cilium_bgp_control_plane_session_state
 
-# Policy import errors
-cilium_policy_import_errors_total
+# Failed policy changes
+cilium_policy_change_total{outcome="fail"}
 ```
 
 ## Step 4: Prometheus Alerting Rules
@@ -135,20 +162,20 @@ spec:
           annotations:
             summary: "Cilium endpoint not ready"
 
-        - alert: CiliumPolicyImportErrors
+        - alert: CiliumPolicyChangeFailures
           expr: |
-            increase(cilium_policy_import_errors_total[5m]) > 0
+            increase(cilium_policy_change_total{outcome="fail"}[5m]) > 0
           labels:
             severity: critical
           annotations:
-            summary: "Cilium policy import error detected"
+            summary: "Cilium policy change failure detected"
 ```
 
 ## Step 5: Verify Metrics are Scraped
 
 ```bash
 # Port-forward to Cilium agent metrics
-kubectl port-forward -n kube-system ds/cilium 9962:9962
+kubectl port-forward -n kube-system svc/cilium-agent 9962:9962
 
 # Check raw metrics
 curl -s http://localhost:9962/metrics | grep cilium_drop
@@ -163,7 +190,7 @@ curl -s http://localhost:9962/metrics | grep cilium_drop
 flowchart TD
     A[Cilium Agent\n:9962/metrics] --> B[Prometheus]
     C[Cilium Operator\n:9963/metrics] --> B
-    D[Hubble Relay\n:9965/metrics] --> B
+    D[Hubble Metrics\n:9965/metrics] --> B
     B --> E[Grafana Dashboard]
     B --> F[AlertManager]
     F --> G[PagerDuty/Slack]
@@ -171,4 +198,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium's Prometheus metrics provide quantitative visibility into your Kubernetes network infrastructure. The drop rate metrics (`cilium_drop_count_total`) are the most critical to alert on - unexpected drops indicate security policy changes affecting legitimate traffic or data plane errors. Endpoint regeneration metrics help diagnose slow policy propagation during deployments, while BPF map operation metrics warn about capacity limits before they become service-affecting. Integrate Cilium metrics into the same Prometheus and Grafana setup as your application metrics for a unified observability platform.
+Cilium's Prometheus metrics provide quantitative visibility into your Kubernetes network infrastructure. The drop rate metrics (`cilium_drop_count_total`) are the most critical to alert on - unexpected drops indicate security policy changes affecting legitimate traffic or data plane errors. Endpoint regeneration metrics help diagnose slow policy propagation during deployments, while BPF map pressure metrics warn about capacity limits before they become service-affecting. Integrate Cilium metrics into the same Prometheus and Grafana setup as your application metrics for a unified observability platform.
