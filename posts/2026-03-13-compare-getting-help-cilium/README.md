@@ -29,7 +29,7 @@ Before reaching out for help, collect a diagnostic bundle so you can provide con
 ```bash
 # Generate a comprehensive Cilium diagnostic report
 
-cilium debuginfo
+cilium sysdump --output-filename cilium-sysdump
 
 # Check overall Cilium health status
 cilium status --verbose
@@ -38,7 +38,7 @@ cilium status --verbose
 kubectl -n kube-system logs -l k8s-app=cilium --tail=100 > cilium-agent.log
 
 # Capture Cilium operator logs
-kubectl -n kube-system logs -l name=cilium-operator --tail=100 > cilium-operator.log
+kubectl -n kube-system logs -l io.cilium/app=operator --tail=100 > cilium-operator.log
 ```
 
 ## Step 2: Check the Official Documentation
@@ -63,8 +63,8 @@ Many issues have already been reported and resolved. Search before opening a new
 # Use the GitHub CLI to search for related issues
 gh issue list --repo cilium/cilium --search "your error message here"
 
-# View existing discussions
-gh api repos/cilium/cilium/discussions --jq '.[].title'
+# View existing discussions:
+# https://github.com/cilium/cilium/discussions
 ```
 
 ## Step 4: Join the Slack Community
@@ -75,7 +75,6 @@ The Cilium Slack workspace is the most active real-time support channel.
 # Join at: https://cilium.io/slack
 # Key channels:
 #   #general       - general discussion
-#   #help          - getting help with issues
 #   #hubble        - Hubble observability questions
 #   #networkpolicy - network policy questions
 #   #ebpf          - eBPF internals discussion
@@ -87,7 +86,7 @@ If you've confirmed a bug, file a detailed GitHub issue with the information you
 
 ```bash
 # Generate a sysdump for attaching to GitHub issues
-cilium sysdump --output-filename cilium-sysdump.zip
+cilium sysdump --output-filename cilium-sysdump
 
 # Open a new issue at:
 # https://github.com/cilium/cilium/issues/new/choose
@@ -103,9 +102,9 @@ cilium sysdump --output-filename cilium-sysdump.zip
 ## Best Practices
 
 - Always include your Cilium version, Kubernetes version, and cloud provider when asking for help
-- Attach the output of `cilium status` and `cilium debuginfo` to every support request
+- Attach the output of `cilium status` and a `cilium sysdump` archive to every support request
 - Search existing issues and Slack history before posting - your question is likely already answered
-- Use the `#help` channel on Slack for quick questions and GitHub Issues for confirmed bugs
+- Use the `#general` channel on Slack for quick questions and GitHub Issues for confirmed bugs
 - Consider subscribing to the Cilium newsletter for updates: https://cilium.io/newsletter
 
 ## Conclusion
