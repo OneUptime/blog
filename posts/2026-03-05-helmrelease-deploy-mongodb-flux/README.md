@@ -55,7 +55,7 @@ spec:
   type: oci
   # Bitnami OCI registry URL
   url: oci://registry-1.docker.io/bitnamicharts
-  interval: 1h  # Check for new chart versions every hour
+  interval: 1h  # Ignored by Flux for OCI repositories
 ```
 
 ## Creating the HelmRelease for Standalone MongoDB
@@ -67,6 +67,11 @@ Create `mongodb-helmrelease.yaml`:
 ```yaml
 # mongodb-helmrelease.yaml
 # Deploys MongoDB as a standalone instance using the Bitnami chart
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -77,7 +82,7 @@ spec:
   chart:
     spec:
       chart: mongodb
-      version: "16.x"  # Semver constraint for chart version
+      version: "19.x"  # Semver constraint for chart version
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -122,6 +127,11 @@ For production workloads requiring high availability, deploy MongoDB as a replic
 ```yaml
 # mongodb-helmrelease-replicaset.yaml
 # Deploys MongoDB as a replica set for high availability
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -132,7 +142,7 @@ spec:
   chart:
     spec:
       chart: mongodb
-      version: "16.x"
+      version: "19.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
