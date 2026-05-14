@@ -10,7 +10,7 @@ Description: Learn how to use Git tags as release markers for promoting deployme
 
 ## Introduction
 
-Git tags provide immutable reference points in your repository history, making them an excellent mechanism for release promotion with Flux CD. Unlike branches, tags are fixed snapshots that cannot be accidentally modified. This makes them ideal for production deployments where you want absolute certainty about what is being deployed.
+Git tags provide stable reference points in your repository history, making them an excellent mechanism for release promotion with Flux CD. Unlike branches, tags do not automatically move as new commits are added, and you can protect release tags in your Git hosting platform to prevent accidental deletion or updates. This makes them ideal for production deployments where you want absolute certainty about what is being deployed.
 
 This guide shows you how to implement a tag-based release promotion strategy with Flux CD.
 
@@ -18,11 +18,11 @@ This guide shows you how to implement a tag-based release promotion strategy wit
 
 Tags offer several advantages over branch-based promotion:
 
-- Immutable references that cannot be changed after creation
+- Stable references that do not move automatically
 - Clear version numbering with semantic versioning
 - Easy rollback by pointing to a previous tag
 - Simple audit trail of what was deployed and when
-- No merge conflict issues since tags are read-only snapshots
+- No merge conflict issues since tags point to release snapshots
 
 ## The Promotion Flow
 
@@ -98,7 +98,7 @@ git tag v1.2.1
 
 ```yaml
 # clusters/staging/flux-config.yaml
-# Staging cluster tracks release candidate tags
+# Staging cluster tracks release candidate tags for the current release train
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -108,8 +108,8 @@ spec:
   interval: 1m
   url: https://github.com/myorg/fleet-repo.git
   ref:
-    # Use semver to automatically pick up the latest release candidate
-    semver: ">=1.0.0-rc.1"
+    # Use semver to pick up the latest RC for this release train
+    semver: ">=1.3.0-rc.1 <1.3.0"
   secretRef:
     name: git-credentials
 ---
@@ -387,10 +387,17 @@ on:
 jobs:
   tag-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Create release candidate tag
         if: inputs.type == 'rc'
@@ -419,7 +426,7 @@ jobs:
 
 ```bash
 # Check which tag is currently reconciled
-flux get source git fleet-repo -o yaml | grep -A5 "artifact"
+flux get sources git fleet-repo -o yaml | grep -A5 "artifact"
 
 # View all available tags
 git tag -l --sort=-v:refname | head -20
@@ -440,7 +447,7 @@ Stick to semantic versioning (major.minor.patch) so Flux's semver filtering work
 
 ### Never Delete or Move Tags
 
-Tags should be immutable. If a tag has a problem, create a new one rather than deleting and recreating.
+Treat release tags as immutable, and protect them in your Git hosting platform where possible. If a tag has a problem, create a new one rather than deleting and recreating.
 
 ### Keep a CHANGELOG
 
@@ -448,4 +455,4 @@ Maintain a CHANGELOG file that documents what each version includes. This helps 
 
 ## Conclusion
 
-Git tag-based release promotion with Flux CD gives you precise, immutable version control over your deployments. By using semantic versioning and Flux's semver filtering, you can automatically deploy release candidates to staging and stable releases to production. The approach provides clean rollback capabilities and integrates naturally with CI/CD pipelines for automated release workflows.
+Git tag-based release promotion with Flux CD gives you precise version control over your deployments when release tags are protected and treated as immutable. By using semantic versioning and Flux's semver filtering, you can automatically deploy release candidates to staging and stable releases to production. The approach provides clean rollback capabilities and integrates naturally with CI/CD pipelines for automated release workflows.
