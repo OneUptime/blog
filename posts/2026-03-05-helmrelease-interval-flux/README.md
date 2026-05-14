@@ -10,7 +10,7 @@ Description: Learn how to configure the reconciliation interval in a Flux CD Hel
 
 ## Introduction
 
-The `spec.interval` field in a Flux CD HelmRelease defines how often Flux checks whether the desired state in Git matches the actual state in the cluster. This reconciliation loop is fundamental to how Flux maintains drift detection and correction. Choosing the right interval balances responsiveness against cluster resource usage.
+The `spec.interval` field in a Flux CD HelmRelease defines how often Flux ensures the current Helm release matches the desired state described by the HelmRelease and its referenced chart artifact. This reconciliation loop is fundamental to how Flux maintains release convergence and, when configured, drift detection and correction. Choosing the right interval balances responsiveness against cluster resource usage.
 
 ## The spec.interval Field
 
@@ -45,7 +45,7 @@ The `interval` field accepts Go duration strings such as `30s`, `5m`, `1h`, or `
 
 Each reconciliation cycle involves the following steps:
 
-1. Flux checks if the chart source (HelmRepository, GitRepository, or Bucket) has a new artifact
+1. Flux checks the referenced chart artifact produced from the chart source (HelmRepository, GitRepository, or Bucket)
 2. Flux compares the desired HelmRelease spec (chart version, values) against the current Helm release state
 3. If differences are detected, Flux performs an upgrade (or install if the release does not exist)
 4. If drift detection is enabled, Flux checks whether cluster resources match the last applied state
@@ -97,7 +97,7 @@ Use long intervals for:
 
 ## Chart Interval vs HelmRelease Interval
 
-The `spec.chart.spec.interval` controls how often Flux checks the chart source for new versions, which is independent of the HelmRelease reconciliation interval.
+The `spec.chart.spec.interval` controls how often Flux checks the chart source for updates. It can be set independently of the HelmRelease reconciliation interval, and defaults to the HelmRelease `spec.interval` when omitted.
 
 ```yaml
 # helmrelease.yaml - Separate chart and release intervals
