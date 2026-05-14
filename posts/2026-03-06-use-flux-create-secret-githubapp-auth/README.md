@@ -16,7 +16,7 @@ This guide covers setting up GitHub App authentication end-to-end, from creating
 
 ## Prerequisites
 
-- Flux CLI v2.0 or later installed
+- Flux CLI v2.5 or later installed
 - kubectl configured with cluster access
 - Flux installed on your Kubernetes cluster
 - GitHub organization admin access to create a GitHub App
@@ -97,7 +97,7 @@ Where can this app be installed:
 flux create secret githubapp github-app-auth \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=./github-app-private-key.pem \
+  --app-private-key=./github-app-private-key.pem \
   --namespace=flux-system
 ```
 
@@ -108,7 +108,7 @@ flux create secret githubapp github-app-auth \
 flux create secret githubapp ghes-app-auth \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=./github-app-private-key.pem \
+  --app-private-key=./github-app-private-key.pem \
   --app-base-url=https://github.company.com/api/v3 \
   --namespace=flux-system
 ```
@@ -153,7 +153,7 @@ export GITHUB_APP_KEY_FILE="./my-app-private-key.pem"
 flux create secret githubapp github-app-auth \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=${GITHUB_APP_KEY_FILE} \
+  --app-private-key=${GITHUB_APP_KEY_FILE} \
   --namespace=flux-system
 
 # Step 3: Create the GitRepository source
@@ -179,18 +179,9 @@ flux create kustomization myapp \
 flux get kustomizations
 ```
 
-### Bootstrapping with GitHub App
+### Bootstrapping Note
 
-```bash
-# You can also use GitHub App auth during bootstrap
-flux bootstrap github \
-  --owner=myorg \
-  --repository=fleet-infra \
-  --branch=main \
-  --path=clusters/production \
-  --token-auth=false \
-  --ssh-hostname=github.com
-```
+The `flux bootstrap github` command does not accept GitHub App credentials. Bootstrap with a GitHub PAT or deploy key first, then create the GitHub App secret and update the generated `GitRepository` to reference it.
 
 ## Multiple Repository Access
 
@@ -201,7 +192,7 @@ A single GitHub App installation can access multiple repositories. Create one se
 flux create secret githubapp org-github-app \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=./github-app-private-key.pem \
+  --app-private-key=./github-app-private-key.pem \
   --namespace=flux-system
 ```
 
@@ -255,7 +246,7 @@ spec:
 flux create secret githubapp ghes-auth \
   --app-id=${GHES_APP_ID} \
   --app-installation-id=${GHES_APP_INSTALLATION_ID} \
-  --app-private-key-file=./ghes-app-key.pem \
+  --app-private-key=./ghes-app-key.pem \
   --app-base-url=https://github.company.com/api/v3 \
   --namespace=flux-system
 ```
@@ -283,7 +274,7 @@ spec:
 flux create secret githubapp github-app-auth \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=./github-app-private-key.pem \
+  --app-private-key=./github-app-private-key.pem \
   --namespace=flux-system \
   --export > github-app-secret.yaml
 
@@ -309,7 +300,7 @@ aws secretsmanager get-secret-value \
 flux create secret githubapp github-app-auth \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=/tmp/github-app-key.pem \
+  --app-private-key=/tmp/github-app-key.pem \
   --namespace=flux-system
 
 # Remove the temporary key file
@@ -325,7 +316,7 @@ rm /tmp/github-app-key.pem
 flux create secret githubapp github-app-auth \
   --app-id=${GITHUB_APP_ID} \
   --app-installation-id=${GITHUB_APP_INSTALLATION_ID} \
-  --app-private-key-file=./new-private-key.pem \
+  --app-private-key=./new-private-key.pem \
   --namespace=flux-system \
   --export | kubectl apply -f -
 
@@ -385,7 +376,8 @@ openssl rsa -in github-app-private-key.pem -check -noout
 ```bash
 # Check the secret exists and has the expected keys
 kubectl get secret github-app-auth -n flux-system -o json | jq '.data | keys'
-# Expected: ["githubAppBaseURL", "githubAppID", "githubAppInstallationID", "githubAppPrivateKey"]
+# Expected: ["githubAppID", "githubAppInstallationID", "githubAppPrivateKey"]
+# GitHub Enterprise Server secrets also include "githubAppBaseURL"
 
 # Verify the App ID stored in the secret
 kubectl get secret github-app-auth -n flux-system \
