@@ -75,7 +75,7 @@ spec:
 
 ### GitLab
 
-For GitLab, use a project access token or personal access token with `read_repository` scope. The username must be `oauth2` when using access tokens.
+For GitLab, use a project access token or personal access token with `read_repository` scope. The username can be any non-empty value for personal access tokens; this example uses `oauth2`, which GitLab recommends for OAuth access tokens.
 
 ```bash
 # Create the secret for GitLab HTTPS authentication
@@ -221,11 +221,11 @@ flux bootstrap github \
   --repository=fleet-config \
   --branch=main \
   --path=clusters/production \
-  --personal
+  --token-auth
 ```
 
 ```bash
-# Bootstrap with SSH (Flux generates and displays the deploy key)
+# Bootstrap with SSH (Flux configures a deploy key)
 flux bootstrap github \
   --owner=your-org \
   --repository=fleet-config \
@@ -234,7 +234,7 @@ flux bootstrap github \
   --ssh-key-algorithm=ed25519
 ```
 
-When using SSH bootstrap, Flux generates the key pair, creates the Kubernetes secret, and displays the public key for you to add as a deploy key.
+When using SSH bootstrap with GitHub, Flux generates the key pair, creates the Kubernetes secret, and configures the repository deploy key through the GitHub API.
 
 ## Self-Hosted Git Servers
 
@@ -282,7 +282,7 @@ After setting up authentication, verify that Flux can access the private reposit
 
 ```bash
 # Check the GitRepository status
-flux get source git my-private-app
+flux get sources git my-private-app
 
 # For detailed error messages if it fails
 kubectl describe gitrepository my-private-app -n flux-system
