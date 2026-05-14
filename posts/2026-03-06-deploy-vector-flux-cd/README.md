@@ -10,13 +10,13 @@ Description: A practical guide to deploying Vector on Kubernetes using Flux CD f
 
 ## Introduction
 
-Vector is a high-performance observability data pipeline built by Datadog. It collects, transforms, and routes logs, metrics, and traces with exceptional efficiency. Written in Rust, Vector delivers better performance and lower resource usage compared to traditional log collectors. Deploying Vector with Flux CD brings GitOps practices to your observability pipeline, making configuration changes auditable and reproducible.
+Vector is a high-performance observability data pipeline built by Datadog. It collects, transforms, and routes logs and metrics, with trace support available in supported components. Written in Rust, Vector delivers better performance and lower resource usage compared to traditional log collectors. Deploying Vector with Flux CD brings GitOps practices to your observability pipeline, making configuration changes auditable and reproducible.
 
 This guide covers deploying Vector in both Agent (DaemonSet) and Aggregator (StatefulSet) roles using Flux CD, configuring data transformations, and routing to multiple sinks.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.26 or later)
+- A Kubernetes cluster (v1.28 or later)
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
@@ -77,7 +77,7 @@ spec:
   chart:
     spec:
       chart: vector
-      version: "0.35.x"
+      version: "0.52.x"
       sourceRef:
         kind: HelmRepository
         name: vector
@@ -147,7 +147,7 @@ spec:
           source: |
             # Parse JSON log messages
             parsed, err = parse_json(.message)
-            if err == null {
+            if err == null && is_object(parsed) {
               . = merge(., parsed)
             }
 
@@ -219,7 +219,7 @@ spec:
   chart:
     spec:
       chart: vector
-      version: "0.35.x"
+      version: "0.52.x"
       sourceRef:
         kind: HelmRepository
         name: vector
@@ -227,7 +227,7 @@ spec:
   timeout: 10m
   values:
     # Deploy as StatefulSet for the aggregator role
-    role: Stateless-Aggregator
+    role: Aggregator
 
     # Scale the aggregator for throughput
     replicas: 2
@@ -254,18 +254,33 @@ spec:
           address: 0.0.0.0:6000
 
       transforms:
+        # Keep logs and metrics on separate paths
+        logs_only:
+          type: filter
+          inputs:
+            - vector_agents
+          condition:
+            type: is_log
+
+        metrics_only:
+          type: filter
+          inputs:
+            - vector_agents
+          condition:
+            type: is_metric
+
         # Route logs by namespace for different handling
         route_by_namespace:
           type: route
           inputs:
-            - vector_agents
+            - logs_only
           route:
             # Production namespace logs get special treatment
             production: '.kubernetes.pod_namespace == "production"'
             # System namespace logs
             system: '.kubernetes.pod_namespace == "kube-system"'
             # Everything else
-            default: 'exists(.kubernetes)'
+            default: 'exists(.kubernetes) && .kubernetes.pod_namespace != "production" && .kubernetes.pod_namespace != "kube-system"'
 
         # Enrich production logs with additional context
         enrich_production:
@@ -276,7 +291,7 @@ spec:
             .environment = "production"
             .retention_days = 90
             # Redact sensitive data patterns
-            .message = redact(string!(.message), filters: ["pattern"], redactor: {"type": "text", "replacement": "[REDACTED]"}, patterns: [r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'])
+            .message = redact(string!(.message), filters: [r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'], redactor: {"type": "text", "replacement": "[REDACTED]"})
 
         # Reduce system log verbosity
         reduce_system:
@@ -332,9 +347,8 @@ spec:
         prometheus:
           type: prometheus_remote_write
           inputs:
-            - vector_agents
+            - metrics_only
           endpoint: "http://victoriametrics.victoriametrics.svc:8428/api/v1/write"
-          # Only forward metric events
           healthcheck:
             enabled: true
 
@@ -342,7 +356,7 @@ spec:
     persistence:
       enabled: true
       size: 20Gi
-      storageClass: standard
+      storageClassName: standard
 ```
 
 ## Step 5: Create the Kustomization
@@ -375,7 +389,6 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/vector
   prune: true
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
@@ -403,11 +416,12 @@ kubectl get pods -n vector -l app.kubernetes.io/instance=vector-agent -o wide
 # Verify aggregator pods
 kubectl get pods -n vector -l app.kubernetes.io/instance=vector-aggregator
 
-# Check Vector API for component topology
-kubectl exec -n vector $(kubectl get pods -n vector -l app.kubernetes.io/instance=vector-agent -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:8686/api/health
+# Check the Vector API health endpoint
+kubectl port-forward -n vector svc/vector-agent 8686:8686 >/tmp/vector-agent-port-forward.log 2>&1 &
+curl -s http://localhost:8686/health
 
-# View Vector internal metrics
-kubectl exec -n vector $(kubectl get pods -n vector -l app.kubernetes.io/instance=vector-agent -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:8686/api/graphql -d '{"query": "{ componentErrors { totalCount } }"}'
+# View recent Vector agent logs
+kubectl logs -n vector -l app.kubernetes.io/instance=vector-agent --tail=100
 ```
 
 ## Troubleshooting
