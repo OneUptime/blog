@@ -27,6 +27,13 @@ This guide covers setting up the New Relic Kubernetes integration, configuring F
 Create a Kubernetes secret with your New Relic API credentials:
 
 ```bash
+# Create the namespace and license secret for the New Relic Helm release
+kubectl create namespace newrelic
+
+kubectl create secret generic newrelic-license \
+  --namespace=newrelic \
+  --from-literal=license-key=YOUR_LICENSE_KEY
+
 # Create the secret for Flagger to use when querying New Relic
 
 kubectl create secret generic newrelic-credentials \
@@ -84,13 +91,14 @@ apiVersion: helm.toolkit.fluxcd.io/v1
 kind: HelmRelease
 metadata:
   name: newrelic-bundle
-  namespace: newrelic
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: newrelic
   chart:
     spec:
       chart: nri-bundle
-      version: "5.x"
+      version: "7.x"
       sourceRef:
         kind: HelmRepository
         name: newrelic
@@ -99,19 +107,21 @@ spec:
     createNamespace: true
   values:
     global:
-      # Your New Relic license key
-      licenseKey: ""
       cluster: my-cluster
-    # Reference existing secret for the license key
-    newrelic-infrastructure:
-      licenseKey: ""
+      # Reference existing secret for the license key
       customSecretName: newrelic-license
       customSecretLicenseKey: license-key
     # Enable Kubernetes events forwarding
+    nri-kube-events:
+      enabled: true
+    # Enable kube-state-metrics
     kube-state-metrics:
       enabled: true
     # Enable Kubernetes metadata enrichment
     nri-metadata-injection:
+      enabled: true
+    # Enable Kubernetes APM auto-attach for supported runtimes
+    k8s-agents-operator:
       enabled: true
     # Enable log forwarding
     newrelic-logging:
@@ -123,7 +133,7 @@ spec:
 
 ## Step 3: Configure Application APM
 
-Ensure your application is instrumented with a New Relic APM agent. For a Go application, add the agent to your code. For containerized applications, you can use auto-instrumentation:
+Ensure your application is instrumented with a New Relic APM agent. For a Go application, add the agent to your code. For supported runtimes such as Java, Node.js, Python, Ruby, PHP, and .NET, you can use Kubernetes APM auto-attach with an `Instrumentation` custom resource:
 
 ```yaml
 # deployment.yaml with New Relic labels
@@ -143,12 +153,10 @@ spec:
         app: podinfo
         # Labels for New Relic Kubernetes metadata
         app.kubernetes.io/name: podinfo
-      annotations:
-        # Enable New Relic APM injection (if using auto-instrumentation)
-        instrumentation.newrelic.com/inject-java: "true"
     spec:
       containers:
         - name: podinfo
+          # Use an image that is instrumented with New Relic APM.
           image: ghcr.io/stefanprodan/podinfo:6.3.0
           ports:
             - containerPort: 9898
@@ -156,7 +164,9 @@ spec:
           env:
             # New Relic APM configuration
             - name: NEW_RELIC_APP_NAME
-              value: "podinfo-canary"
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app']
             - name: NEW_RELIC_LICENSE_KEY
               valueFrom:
                 secretKeyRef:
@@ -190,7 +200,7 @@ spec:
       filter(count(*), WHERE httpResponseCode >= '500') /
       count(*) * 100
     FROM Transaction
-    WHERE appName = '{{ target }}-canary'
+    WHERE appName = '{{ target }}'
     AND kubernetes_namespace = '{{ namespace }}'
     SINCE 1 minute ago
 ```
@@ -215,7 +225,7 @@ spec:
       count(*) * 100
     AS 'success_rate'
     FROM Transaction
-    WHERE appName = '{{ target }}-canary'
+    WHERE appName = '{{ target }}'
     AND kubernetes_namespace = '{{ namespace }}'
     SINCE 1 minute ago
 ```
@@ -237,7 +247,7 @@ spec:
   query: |
     SELECT percentile(duration, 99)
     FROM Transaction
-    WHERE appName = '{{ target }}-canary'
+    WHERE appName = '{{ target }}'
     AND kubernetes_namespace = '{{ namespace }}'
     SINCE 1 minute ago
 ```
@@ -259,7 +269,7 @@ spec:
   query: |
     SELECT rate(count(*), 1 second)
     FROM Transaction
-    WHERE appName = '{{ target }}-canary'
+    WHERE appName = '{{ target }}'
     AND kubernetes_namespace = '{{ namespace }}'
     SINCE 1 minute ago
 ```
@@ -281,7 +291,7 @@ spec:
   query: |
     SELECT apdex(duration, 0.5)
     FROM Transaction
-    WHERE appName = '{{ target }}-canary'
+    WHERE appName = '{{ target }}'
     AND kubernetes_namespace = '{{ namespace }}'
     SINCE 1 minute ago
 ```
@@ -304,7 +314,7 @@ spec:
     SELECT filter(count(*), WHERE name = 'WebTransaction/checkout' AND error IS true) /
       filter(count(*), WHERE name = 'WebTransaction/checkout') * 100
     FROM Transaction
-    WHERE appName = '{{ target }}-canary'
+    WHERE appName = '{{ target }}'
     AND kubernetes_namespace = '{{ namespace }}'
     SINCE 2 minutes ago
 ```
@@ -439,21 +449,21 @@ NRQL queries for your dashboard:
 -- Canary vs Primary Error Rate Comparison
 SELECT filter(count(*), WHERE httpResponseCode >= '500') / count(*) * 100
 FROM Transaction
-WHERE appName IN ('podinfo-primary', 'podinfo-canary')
+WHERE appName IN ('podinfo-primary', 'podinfo')
 FACET appName
 TIMESERIES SINCE 30 minutes ago
 
 -- Canary vs Primary Latency Comparison
 SELECT percentile(duration, 50, 95, 99)
 FROM Transaction
-WHERE appName IN ('podinfo-primary', 'podinfo-canary')
+WHERE appName IN ('podinfo-primary', 'podinfo')
 FACET appName
 SINCE 30 minutes ago
 
 -- Canary Traffic Volume
 SELECT count(*)
 FROM Transaction
-WHERE appName = 'podinfo-canary'
+WHERE appName = 'podinfo'
 TIMESERIES SINCE 30 minutes ago
 ```
 
@@ -476,7 +486,7 @@ SELECT
   count(*) * 100
 AS 'success_rate'
 FROM Transaction
-WHERE appName = 'podinfo-canary'
+WHERE appName = 'podinfo'
 AND kubernetes_namespace = 'demo'
 SINCE 1 minute ago
 ```
