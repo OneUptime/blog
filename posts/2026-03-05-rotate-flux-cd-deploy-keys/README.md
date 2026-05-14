@@ -124,8 +124,8 @@ gh repo deploy-key delete <KEY_ID> --repo myorg/fleet-repo
 Securely delete the private key from your local machine:
 
 ```bash
-# Securely delete the private key file
-shred -u flux-deploy-key 2>/dev/null || rm -P flux-deploy-key
+# Delete the private key file
+shred -u flux-deploy-key 2>/dev/null || rm -f flux-deploy-key
 
 # You can keep the public key for reference
 # rm flux-deploy-key.pub
@@ -145,7 +145,8 @@ set -euo pipefail
 REPO="myorg/fleet-repo"
 NAMESPACE="flux-system"
 SECRET_NAME="flux-system"
-KEY_FILE=$(mktemp)
+KEY_DIR=$(mktemp -d)
+KEY_FILE="${KEY_DIR}/flux-deploy-key"
 PUB_FILE="${KEY_FILE}.pub"
 DATE=$(date +%Y%m%d)
 
@@ -174,8 +175,9 @@ sleep 10
 flux get sources git flux-system
 
 echo "Cleaning up local key files..."
-shred -u "$KEY_FILE" 2>/dev/null || rm -P "$KEY_FILE"
+shred -u "$KEY_FILE" 2>/dev/null || rm -f "$KEY_FILE"
 rm -f "${PUB_FILE}"
+rmdir "$KEY_DIR"
 
 echo "Key rotation complete. Remember to remove the old deploy key from GitHub."
 ```
