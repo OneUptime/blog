@@ -28,7 +28,7 @@ Automated eBPF troubleshooting scripts also create reproducible diagnostic bundl
 set -euo pipefail
 
 BUNDLE_DIR="calico-ebpf-diag-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "${BUNDLE_DIR}"
+mkdir -p "${BUNDLE_DIR}/nodes"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
@@ -76,11 +76,11 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
 
   # NAT table
   kubectl exec -n calico-system "${POD}" -c calico-node -- \
-    calico-node -bpf-nat-dump 2>/dev/null > "${NODE_DIR}/nat-table.txt" || true
+    calico-node -bpf nat dump 2>/dev/null > "${NODE_DIR}/nat-table.txt" || true
 
   # Conntrack
   kubectl exec -n calico-system "${POD}" -c calico-node -- \
-    calico-node -bpf-conntrack-dump 2>/dev/null > "${NODE_DIR}/conntrack.txt" || true
+    calico-node -bpf conntrack dump 2>/dev/null > "${NODE_DIR}/conntrack.txt" || true
 
   # Felix logs (last 500 lines)
   kubectl logs -n calico-system "${POD}" -c calico-node \
@@ -100,7 +100,7 @@ log "Diagnostic bundle created: ${BUNDLE_DIR}.tar.gz"
 # Print summary
 echo ""
 echo "=== SUMMARY ==="
-echo "Nodes collected: $(ls ${BUNDLE_DIR}/nodes/ | wc -l)"
+echo "Nodes collected: $(find "${BUNDLE_DIR}/nodes" -mindepth 1 -maxdepth 1 -type d | wc -l)"
 echo "Total size: $(du -sh ${BUNDLE_DIR}.tar.gz | cut -f1)"
 echo "Bundle: ${BUNDLE_DIR}.tar.gz"
 ```
@@ -147,7 +147,8 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   [[ -z "${POD}" ]] && continue
 
   programs=$(kubectl exec -n calico-system "${POD}" -c calico-node -- \
-    bpftool prog list 2>/dev/null | grep -c calico || echo 0)
+    bpftool prog list 2>/dev/null | grep -c calico || true)
+  programs=${programs:-0}
 
   if [[ "${programs}" -gt 5 ]]; then
     EBPF_NODES=$((EBPF_NODES + 1))
