@@ -10,36 +10,24 @@ Description: Connect multiple Kubernetes clusters with Cilium Cluster Mesh to en
 
 ## Introduction
 
-As organizations grow their Kubernetes footprint across multiple regions, availability zones, or teams, the need for cross-cluster connectivity becomes critical. Cilium Cluster Mesh connects multiple Kubernetes clusters into a single logical network, enabling pods in cluster A to discover and connect to services in cluster B using standard Kubernetes DNS, and allowing network policies to reference endpoints in remote clusters.
+As organizations grow their Kubernetes footprint across multiple regions, availability zones, or teams, the need for cross-cluster connectivity becomes critical. Cilium Cluster Mesh connects multiple Kubernetes clusters into a single logical network, enabling pods in cluster A to reach services backed by endpoints in cluster B through global Kubernetes services, and allowing network policies to reference endpoints in remote clusters.
 
-Cluster Mesh works by connecting the Cilium agents across clusters through a shared key-value store (etcd). Each cluster exposes its etcd to peer clusters, and Cilium agents synchronize endpoint state across cluster boundaries. The result is that every Cilium agent in the mesh has visibility into all endpoints in all connected clusters, enabling native service discovery and consistent policy enforcement without a dedicated multi-cluster gateway.
+Cluster Mesh works by exposing each cluster's Cilium state through the Cluster Mesh API server. Cilium agents synchronize endpoint, identity, and service state across cluster boundaries; in current Cilium releases, KVStoreMesh is enabled by default and caches remote cluster information in the local key-value store for scalability. The result is that Cilium can program cross-cluster connectivity, service load balancing, and policy enforcement without a dedicated multi-cluster gateway.
 
 This guide covers deploying Cluster Mesh across two clusters, enabling global services, and validating cross-cluster connectivity.
 
 ## Prerequisites
 
-- Two or more Kubernetes clusters with Cilium v1.10+ installed
+- Two or more Kubernetes clusters with a supported Cilium release installed
 - Unique cluster names and cluster IDs for each cluster
-- Network connectivity between clusters (overlapping pod CIDRs are not supported without special configuration)
+- The same Cilium datapath mode on all clusters
+- Non-overlapping Pod CIDRs across all clusters and nodes
+- Node network connectivity between clusters, with the required Cluster Mesh ports allowed
 - `cilium` CLI installed on management machine
 
-## Step 1: Enable Cluster Mesh API Server
+## Step 1: Set Unique Cluster Identity
 
-On each cluster:
-
-```bash
-cilium clustermesh enable \
-  --service-type LoadBalancer \
-  --context cluster1
-
-cilium clustermesh enable \
-  --service-type LoadBalancer \
-  --context cluster2
-```
-
-## Step 2: Set Unique Cluster Identity
-
-Each cluster requires a unique name and ID in Cilium config:
+Each cluster requires a unique name and ID in Cilium config. It is best to set these values when installing Cilium; if you change them on clusters with running workloads, restart those workloads so identities are regenerated correctly:
 
 ```bash
 helm upgrade cilium cilium/cilium \
@@ -57,6 +45,23 @@ helm upgrade cilium cilium/cilium \
   --set cluster.id=2
 ```
 
+## Step 2: Enable Cluster Mesh API Server
+
+On each cluster:
+
+```bash
+cilium clustermesh enable \
+  --service-type LoadBalancer \
+  --context cluster1
+
+cilium clustermesh enable \
+  --service-type LoadBalancer \
+  --context cluster2
+
+cilium clustermesh status --context cluster1 --wait
+cilium clustermesh status --context cluster2 --wait
+```
+
 ## Step 3: Connect Clusters
 
 ```bash
@@ -67,8 +72,8 @@ cilium clustermesh connect \
   --destination-context cluster2
 
 # Verify mesh status
-cilium clustermesh status --context cluster1
-cilium clustermesh status --context cluster2
+cilium clustermesh status --context cluster1 --wait
+cilium clustermesh status --context cluster2 --wait
 ```
 
 ## Step 4: Create Global Services
@@ -84,6 +89,7 @@ metadata:
     service.cilium.io/global: "true"
     service.cilium.io/shared: "true"
 spec:
+  type: ClusterIP
   selector:
     app: web
   ports:
@@ -91,22 +97,24 @@ spec:
       targetPort: 8080
 ```
 
-Apply this service in both clusters.
+Apply this service in the same namespace in both clusters.
 
 ## Step 5: Validate Cross-Cluster Connectivity
 
 ```bash
-# From cluster1, reach service endpoint in cluster2
+# Run Cilium's multi-cluster connectivity test
+cilium connectivity test --context cluster1 --multi-cluster cluster2
+
+# From cluster1, reach the global service. Repeated requests can hit local or remote backends.
 kubectl exec --context cluster1 -n default test-pod -- \
   curl http://web-service/health
 
-# Check global endpoints in Cilium
-kubectl exec --context cluster1 -n kube-system cilium-xxxxx -- \
-  cilium endpoint list | grep cluster2
+# Check global service backends in Cilium
+kubectl exec --context cluster1 -n kube-system ds/cilium -- \
+  cilium-dbg service list
 
 # Use Hubble to observe cross-cluster flows
-hubble observe --context cluster1 \
-  --follow | grep cluster2
+hubble observe -P --follow | grep cluster2
 ```
 
 ## Cluster Mesh Architecture
@@ -121,7 +129,7 @@ flowchart TD
         A2[Pod B] --> CM2[Cluster Mesh API]
         B2[web-service endpoints]
     end
-    CM1 <-->|etcd sync\ncross-cluster| CM2
+    CM1 <-->|state sync\ncross-cluster| CM2
     A1 -->|DNS: web-service| D[Global Service LB]
     D -->|50% local| B1
     D -->|50% remote| B2
@@ -129,4 +137,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium Cluster Mesh enables true multi-cluster networking without proprietary gateways, overlay tunnels between clusters, or application changes for service discovery. Global services automatically load-balance across all cluster instances, and network policies can reference remote cluster endpoints using the same label selectors as local policies. The Cluster Mesh architecture makes active-active multi-region deployments operationally straightforward, with the same Cilium tooling you use within a single cluster applicable across the entire mesh.
+Cilium Cluster Mesh enables true multi-cluster networking without proprietary gateways or application changes for service discovery. Global services automatically load-balance across all cluster instances, and network policies can reference remote cluster endpoints by combining application labels with Cilium's cluster label. The Cluster Mesh architecture makes active-active multi-region deployments operationally straightforward, with the same Cilium tooling you use within a single cluster applicable across the entire mesh.
