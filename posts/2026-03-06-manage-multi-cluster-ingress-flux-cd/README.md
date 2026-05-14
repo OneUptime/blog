@@ -35,7 +35,7 @@ graph TD
 
 ## Step 1: Deploy Ingress Controller on Each Cluster
 
-Use Flux to deploy an ingress controller consistently across all clusters.
+Use Flux to deploy an ingress controller consistently across all clusters. The community `kubernetes/ingress-nginx` controller was retired in March 2026, so use this pattern only for existing ingress-nginx environments that you are maintaining during migration; for new deployments, prefer a maintained Gateway API or ingress controller.
 
 ```yaml
 # infrastructure/ingress-nginx/namespace.yaml
@@ -69,7 +69,7 @@ spec:
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.9.x"
+      version: "4.15.1"
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
@@ -93,7 +93,7 @@ spec:
         use-proxy-protocol: "true"
         compute-full-forwarded-for: "true"
         use-forwarded-headers: "true"
-      # Health check endpoint for global load balancer
+      # Controller probe endpoint; configure provider health checks to use /healthz where supported
       healthCheckPath: /healthz
 ```
 
@@ -117,7 +117,9 @@ patches:
             # AWS NLB annotation for us-east region
             service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
             service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-            service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+            service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
+            service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
+            service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz"
           externalTrafficPolicy: Local
       - op: add
         path: /spec/values/controller/replicaCount
@@ -153,6 +155,22 @@ patches:
 Deploy ExternalDNS to automatically create DNS records pointing to each cluster's ingress.
 
 ```yaml
+# infrastructure/external-dns/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-dns
+---
+# infrastructure/external-dns/helm-repo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: external-dns
+  namespace: external-dns
+spec:
+  interval: 1h
+  url: https://kubernetes-sigs.github.io/external-dns/
+---
 # infrastructure/external-dns/helm-release.yaml
 # ExternalDNS automatically manages DNS records based on Ingress resources
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -165,12 +183,13 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
   values:
-    provider: aws
+    provider:
+      name: aws
     # Only manage records for these domains
     domainFilters:
       - example.com
@@ -183,73 +202,36 @@ spec:
       - ingress
       - service
     # AWS-specific configuration
-    aws:
-      region: "${AWS_REGION}"
-      zoneType: public
-    # Set TTL for DNS records
+    extraArgs:
+      - --aws-region=${AWS_REGION}
+      - --aws-zone-type=public
+    # Set the ExternalDNS reconciliation interval
     interval: 1m
 ```
 
 ## Step 3: Configure Global Load Balancing with Route53
 
-Use weighted or latency-based DNS routing to distribute traffic across clusters.
+Use weighted or latency-based DNS routing to distribute traffic across clusters. ExternalDNS can associate records with existing Route53 health checks, but it does not create the health checks for you.
 
 ```yaml
-# infrastructure/dns/route53-health-check.yaml
-# Deploy a health check endpoint that Route53 can monitor
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: health-endpoint
-  namespace: ingress-nginx
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: health-endpoint
-  template:
-    metadata:
-      labels:
-        app: health-endpoint
-    spec:
-      containers:
-        - name: health
-          image: nginx:1.25-alpine
-          ports:
-            - containerPort: 80
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 80
-            initialDelaySeconds: 5
-            periodSeconds: 10
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: health-endpoint
-  namespace: ingress-nginx
-  annotations:
-    # ExternalDNS annotation for weighted routing
-    external-dns.alpha.kubernetes.io/hostname: "app.example.com"
-    # Weight determines traffic distribution (higher = more traffic)
-    external-dns.alpha.kubernetes.io/aws-weight: "${CLUSTER_WEIGHT}"
-    # Set identifier must be unique per cluster
-    external-dns.alpha.kubernetes.io/set-identifier: "${CLUSTER_NAME}"
-    # Health check integration
-    external-dns.alpha.kubernetes.io/aws-health-check-id: "${HEALTH_CHECK_ID}"
-spec:
-  selector:
-    app: health-endpoint
-  ports:
-    - port: 80
-      targetPort: 80
-  type: LoadBalancer
+# Add these annotations to the ingress controller LoadBalancer Service
+# through the controller.service.annotations Helm values.
+controller:
+  service:
+    annotations:
+      # ExternalDNS annotation for weighted routing
+      external-dns.alpha.kubernetes.io/hostname: "app.example.com"
+      # Weight determines traffic distribution (higher = more traffic)
+      external-dns.alpha.kubernetes.io/aws-weight: "${CLUSTER_WEIGHT}"
+      # Set identifier must be unique per cluster
+      external-dns.alpha.kubernetes.io/set-identifier: "${CLUSTER_NAME}"
+      # Health check integration; this Route53 health check must already exist
+      external-dns.alpha.kubernetes.io/aws-health-check-id: "${HEALTH_CHECK_ID}"
 ```
 
 ## Step 4: Use Kubernetes Gateway API for Multi-Cluster Ingress
 
-The Gateway API provides a more expressive and portable way to configure ingress.
+The Gateway API provides a more expressive and portable way to configure ingress. Gateway API resources require a compatible Gateway controller, such as Envoy Gateway, to reconcile the `GatewayClass` and `Gateway` resources.
 
 ```yaml
 # infrastructure/gateway-api/gateway-class.yaml
@@ -259,7 +241,7 @@ kind: GatewayClass
 metadata:
   name: multi-cluster-gateway
 spec:
-  controllerName: "example.com/multi-cluster-gateway-controller"
+  controllerName: "gateway.envoyproxy.io/gatewayclass-controller"
   description: "Gateway class for multi-cluster traffic routing"
 ---
 # infrastructure/gateway-api/gateway.yaml
@@ -287,7 +269,7 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # HTTP listener that redirects to HTTPS
+    # HTTP listener for plaintext traffic
     - name: http
       protocol: HTTP
       port: 80
