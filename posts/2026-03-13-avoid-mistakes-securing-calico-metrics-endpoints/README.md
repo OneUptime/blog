@@ -16,8 +16,9 @@ This guide covers avoid mistakes Calico Metrics in Calico with practical configu
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.26+ and Felix Prometheus metrics enabled
 - `calicoctl` and `kubectl` installed
+- Calico HostEndpoint resources for the nodes exposing metrics, labeled `running-calico == "true"`
 - Understanding of Calico's monitoring and security architecture
 
 ## Core Configuration
@@ -30,22 +31,25 @@ kind: GlobalNetworkPolicy
 metadata:
   name: secure-calico-metrics
 spec:
-  order: 100
-  selector: k8s-app == 'calico-node'
+  order: 500
+  selector: running-calico == "true"
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        namespaceSelector: team == 'observability'
+        namespaceSelector: team == "observability"
       destination:
         ports: [9091]
     - action: Allow
+      protocol: TCP
       source:
-        selector: app == 'prometheus'
+        selector: calico-prometheus-access == "true"
       destination:
         ports: [9091]
     - action: Deny
+      protocol: TCP
       destination:
-        ports: [9091, 9092, 9093]
+        ports: [9091]
   types:
     - Ingress
 ```
@@ -57,22 +61,22 @@ spec:
 calicoctl apply -f secure-calico-metrics.yaml
 
 # Verify only authorized access works
-kubectl exec -n monitoring prometheus-pod -- curl -s http://calico-node-ip:9091/metrics | head -5
+kubectl exec -n monitoring prometheus-pod -- curl -s http://<calico-node-ip>:9091/metrics | head -5
 echo "Prometheus access (should work): $?"
 
 # Verify unauthorized access is blocked
-kubectl exec -n default test-pod -- curl -s --max-time 5 http://calico-node-ip:9091/metrics
+kubectl exec -n default test-pod -- curl -s --max-time 5 http://<calico-node-ip>:9091/metrics
 echo "Unauthorized access (should timeout): $?"
 ```
 
 ## Verify Metrics Security
 
 ```bash
-# List all IPs that have accessed the metrics endpoint recently
-grep "port=9091" /var/log/calico/flow-logs/*.log | tail -20
+# Confirm the GlobalNetworkPolicy is installed
+calicoctl get globalnetworkpolicy secure-calico-metrics -o yaml
 
-# Check active policy for calico-node pods
-calicoctl get networkpolicies -n kube-system | grep metrics
+# Check that authorized Prometheus pods carry the access label
+kubectl get pods -n monitoring -l calico-prometheus-access=true
 ```
 
 ## Architecture
