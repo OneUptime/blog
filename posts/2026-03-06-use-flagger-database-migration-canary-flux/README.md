@@ -41,7 +41,7 @@ The expand-contract pattern splits breaking migrations into safe, backward-compa
 
 ### Phase 1: Expand (Add new columns/tables without removing old ones)
 
-```yaml
+```sql
 # migrations/V2__expand_add_email_column.sql
 
 -- Phase 1: Add new column without removing old one
@@ -55,10 +55,12 @@ UPDATE users SET email_address = email WHERE email_address IS NULL;
 CREATE OR REPLACE FUNCTION sync_email_columns()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.email IS DISTINCT FROM OLD.email THEN
+  IF TG_OP = 'INSERT' THEN
+    NEW.email_address := COALESCE(NEW.email_address, NEW.email);
+    NEW.email := COALESCE(NEW.email, NEW.email_address);
+  ELSIF NEW.email IS DISTINCT FROM OLD.email THEN
     NEW.email_address := NEW.email;
-  END IF;
-  IF NEW.email_address IS DISTINCT FROM OLD.email_address THEN
+  ELSIF NEW.email_address IS DISTINCT FROM OLD.email_address THEN
     NEW.email := NEW.email_address;
   END IF;
   RETURN NEW;
@@ -66,14 +68,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER email_sync_trigger
-  BEFORE UPDATE ON users
+  BEFORE INSERT OR UPDATE ON users
   FOR EACH ROW
   EXECUTE FUNCTION sync_email_columns();
 ```
 
 ### Phase 2: Contract (Remove old columns after full promotion)
 
-```yaml
+```sql
 # migrations/V3__contract_remove_old_email.sql
 -- Phase 2: Only run AFTER canary is fully promoted
 -- Remove the old column and sync trigger
@@ -86,18 +88,15 @@ ALTER TABLE users RENAME COLUMN email_address TO email;
 
 ## Step 2: Create Migration Job Configuration
 
-Run migrations as a Kubernetes Job that executes before the canary starts.
+Run migrations as a Kubernetes Job that is applied by the pre-rollout webhook before traffic is routed to the canary.
 
 ```yaml
-# apps/my-app/migration-job.yaml
+# apps/my-app/expand-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: my-app-migration
+  name: my-app-expand-migration
   namespace: production
-  annotations:
-    # Ensure this job runs before the canary analysis starts
-    flagger.app/pre-rollout: "true"
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 300
@@ -134,6 +133,8 @@ spec:
 ## Step 3: Configure the Canary with Migration Webhooks
 
 Use Flagger webhooks to orchestrate migrations as part of the canary process.
+
+For `kubectl` commands in Flagger webhooks, make sure the load tester image includes `kubectl`, the manifests are mounted or otherwise accessible at the paths used below, and the load tester service account has the RBAC permissions needed to create and wait for Jobs.
 
 ```yaml
 # apps/my-app/canary.yaml
@@ -190,8 +191,8 @@ spec:
           type: bash
           cmd: |
             # Verify both old and new app versions can connect
-            curl -sf http://my-app.production:8080/health/db
-            curl -sf http://my-app-canary.production:8080/health/db
+            curl -sf http://my-app.production/health/db
+            curl -sf http://my-app-canary.production/health/db
       # Step 3: Run load tests during canary analysis
       - name: load-test
         type: rollout
@@ -199,7 +200,7 @@ spec:
         timeout: 5m
         metadata:
           type: cmd
-          cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.production:8080/"
+          cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.production/"
       # Step 4: Run contract migration after successful promotion
       - name: run-contract-migration
         type: post-rollout
@@ -208,12 +209,16 @@ spec:
         metadata:
           type: bash
           cmd: |
-            # Only run contract migration after full promotion
-            kubectl apply -f /migrations/contract-job.yaml -n production
-            kubectl wait --for=condition=complete \
-              job/my-app-contract-migration \
-              -n production \
-              --timeout=300s
+            # post-rollout runs after promotion or rollback, so gate contract on promotion
+            if kubectl wait canary/my-app -n production --for=condition=promoted --timeout=1s; then
+              kubectl apply -f /migrations/contract-job.yaml -n production
+              kubectl wait --for=condition=complete \
+                job/my-app-contract-migration \
+                -n production \
+                --timeout=300s
+            else
+              echo "Canary was not promoted; skipping contract migration."
+            fi
 ```
 
 ## Step 4: Configure Database Health Check Metrics
@@ -402,10 +407,11 @@ spec:
       containers:
         - name: rollback
           image: my-app:latest
+          # Undo the expand migration only if you use Flyway Teams,
+          # have a matching undo migration, and the rollback is safe
           command:
             - "/bin/sh"
             - "-c"
-            # Undo the expand migration if canary fails
             - |
               echo "Rolling back expand migration..."
               flyway -url=jdbc:postgresql://${DB_HOST}:5432/${DB_NAME} \
@@ -418,22 +424,26 @@ spec:
                 name: db-credentials
 ```
 
-Configure Flagger to trigger the rollback job on failure:
+Configure Flagger to trigger the rollback job after an unsuccessful rollout. A Flagger `rollback` hook is for actively requesting a rollback during analysis, so use a guarded `post-rollout` hook for cleanup after Flagger has already decided the result.
 
 ```yaml
 # Add to canary.yaml webhooks section
       - name: rollback-migration
-        type: rollback
+        type: post-rollout
         url: http://flagger-loadtester.flagger-system/
         timeout: 5m
         metadata:
           type: bash
           cmd: |
-            kubectl apply -f /migrations/rollback-job.yaml -n production
-            kubectl wait --for=condition=complete \
-              job/my-app-rollback-migration \
-              -n production \
-              --timeout=300s
+            if kubectl wait canary/my-app -n production --for=condition=promoted --timeout=1s; then
+              echo "Canary was promoted; skipping rollback migration."
+            else
+              kubectl apply -f /migrations/rollback-job.yaml -n production
+              kubectl wait --for=condition=complete \
+                job/my-app-rollback-migration \
+                -n production \
+                --timeout=300s
+            fi
 ```
 
 ## Monitoring During Migration Canaries
@@ -465,4 +475,4 @@ kubectl get events -n production --field-selector reason=Synced --watch
 
 ## Summary
 
-Using Flagger for database migration canaries in Flux requires the expand-contract migration pattern. By splitting migrations into backward-compatible expand steps and post-promotion contract steps, both the primary and canary versions can safely share the same database. Flagger webhooks orchestrate the migration lifecycle, running expand migrations as pre-rollout hooks and contract migrations as post-rollout hooks. Custom metrics monitor database health throughout the process, and rollback hooks ensure clean recovery if the canary fails.
+Using Flagger for database migration canaries in Flux requires the expand-contract migration pattern. By splitting migrations into backward-compatible expand steps and post-promotion contract steps, both the primary and canary versions can safely share the same database. Flagger webhooks orchestrate the migration lifecycle, running expand migrations as pre-rollout hooks and contract or rollback cleanup from promotion-gated post-rollout hooks. Custom metrics monitor database health throughout the process, and rollback jobs ensure clean recovery if the canary fails.
