@@ -8,11 +8,11 @@ Description: Learn how to disable OpenAPI validation on HelmRelease in Flux CD t
 
 ---
 
-When Helm installs or upgrades a release, it validates the rendered manifests against the Kubernetes OpenAPI schema by default. This validation catches issues like incorrect field names, wrong types, and invalid resource structures before they hit the API server. However, there are cases where this validation gets in the way -- particularly with Custom Resource Definitions (CRDs) that are not yet registered, beta APIs, or charts that include resources with schemas not known to the cluster at validation time. Flux provides the `disableOpenAPIValidation` option to handle these situations.
+When Helm installs or upgrades a release, it validates the rendered manifests against the Kubernetes OpenAPI schema by default. This validation catches issues like incorrect field names, wrong types, and invalid resource structures before they hit the API server. However, there are cases where this validation gets in the way -- particularly with recently installed Custom Resource Definitions (CRDs), beta APIs, or charts that include resources with schemas not known to the cluster's OpenAPI schema at validation time. Flux provides the `disableOpenAPIValidation` option to handle these situations.
 
 ## What OpenAPI Validation Does
 
-Kubernetes exposes an OpenAPI schema that describes the structure of all known resource types. When Helm renders a chart, it can validate the output against this schema to catch errors early. This is equivalent to running `helm install --disable-openapi-validation=false` (the default).
+Kubernetes exposes an OpenAPI schema that describes the structure of all known resource types. When Helm renders a chart, it can validate the output against this schema to catch errors early. This is the default behavior when you run `helm install` or `helm upgrade` without `--disable-openapi-validation`.
 
 When validation is enabled and encounters a field that is not in the schema, the install or upgrade will fail with a validation error -- even though the Kubernetes API server might accept the resource just fine.
 
@@ -26,9 +26,9 @@ When validation is enabled and encounters a field that is not in the schema, the
 
 Common scenarios where disabling OpenAPI validation is necessary:
 
-1. **CRDs installed by the same chart** -- The chart installs CRDs and creates Custom Resources in a single release. The CRDs may not be registered when validation runs.
+1. **CRDs installed shortly before dependent resources** -- The chart or a dependency installs CRDs and then creates Custom Resources. The CRDs may not appear in the OpenAPI schema when validation runs.
 2. **Server-side unknown fields** -- Resources contain fields that are valid but not described in the cluster's OpenAPI schema (common with newer API versions or alpha/beta features).
-3. **Third-party CRDs** -- The chart references CRDs from another operator that may not be installed yet.
+3. **Third-party CRDs** -- The chart references CRDs from another operator that is installed, but not yet reflected in the cluster discovery or OpenAPI data.
 4. **Schema mismatches** -- The cluster's OpenAPI schema is outdated relative to the resources being deployed.
 
 ## Configuring disableOpenAPIValidation for Install
@@ -113,7 +113,7 @@ spec:
 
 ## Real-World Example: Installing a CRD-Heavy Operator
 
-Consider deploying cert-manager, which installs CRDs and Custom Resources in the same chart:
+Consider deploying cert-manager, which can install its CRDs as part of the Helm chart:
 
 ```yaml
 # cert-manager HelmRelease with OpenAPI validation disabled
@@ -133,13 +133,14 @@ spec:
         name: jetstack
         namespace: flux-system
   install:
-    # CRDs may not be registered when validation runs
+    # Use only if OpenAPI validation blocks the release in your cluster
     disableOpenAPIValidation: true
     createNamespace: true
   upgrade:
     disableOpenAPIValidation: true
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ```
 
 ## Understanding the Validation Flow
@@ -212,9 +213,8 @@ kubectl describe helmrelease my-operator -n default | grep -A 10 "Message"
 Common error messages include:
 - `error validating data: unknown field "spec.someField"`
 - `ValidationError: unknown field in object`
-- `the server could not find the requested resource`
 
-These errors indicate that disabling OpenAPI validation would allow the install to proceed.
+Unknown-field validation errors may indicate that disabling OpenAPI validation would allow the install to proceed. Errors such as `the server could not find the requested resource` or `no matches for kind` usually mean the API or CRD is not installed, and disabling OpenAPI validation will not fix that by itself.
 
 ## Best Practices
 
@@ -266,4 +266,4 @@ spec:
 
 ## Conclusion
 
-The `disableOpenAPIValidation` option in Flux HelmRelease is a targeted escape hatch for charts that include resources with schemas not yet known to the cluster. By configuring `spec.install.disableOpenAPIValidation` and `spec.upgrade.disableOpenAPIValidation`, you can work around CRD registration timing issues and unknown field errors. Use this option judiciously and prefer structural solutions like CRD dependency ordering when possible.
+The `disableOpenAPIValidation` option in Flux HelmRelease is a targeted escape hatch for charts that include resources with schemas not yet known to the cluster's OpenAPI schema. By configuring `spec.install.disableOpenAPIValidation` and `spec.upgrade.disableOpenAPIValidation`, you can work around CRD discovery timing issues and unknown field validation errors. Use this option judiciously and prefer structural solutions like CRD dependency ordering when possible.
