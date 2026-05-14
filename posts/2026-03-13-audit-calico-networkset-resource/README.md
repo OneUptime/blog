@@ -37,37 +37,73 @@ echo "GlobalNetworkSets: $(calicoctl get globalnetworksets -o json | python3 -c 
 
 ## Audit Check 2: Find Unreferenced NetworkSets
 
-NetworkSets not referenced by any policy are dead configuration - they consume resources and create confusion:
+NetworkSets not referenced by any policy are dead configuration - they consume resources and create confusion. The example below checks GlobalNetworkSets against GlobalNetworkPolicies and NetworkPolicies that use `namespaceSelector: global()`:
 
 ```bash
 #!/bin/bash
 # find-unreferenced-networksets.sh
 echo "=== Checking for unreferenced GlobalNetworkSets ==="
 
-for ns_name in $(calicoctl get globalnetworksets -o json | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-for item in data["items"]:
-    for k, v in item["metadata"].get("labels", {}).items():
-        print(f"{k}=={v}")
-' | sort -u); do
-  key=$(echo $ns_name | cut -d= -f1)
-  val=$(echo $ns_name | cut -d= -f3)
-  refs=$(calicoctl get globalnetworkpolicies -o json 2>/dev/null | \
-    python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-count = 0
-for p in data.get('items', []):
-    spec = json.dumps(p.get('spec', {}))
-    if '${key}' in spec and '${val}' in spec:
-        count += 1
-print(count)
-")
-  if [ "$refs" = "0" ]; then
-    echo "UNREFERENCED label: $ns_name"
-  fi
-done
+sets_json=$(mktemp)
+gnp_json=$(mktemp)
+np_json=$(mktemp)
+trap 'rm -f "$sets_json" "$gnp_json" "$np_json"' EXIT
+
+calicoctl get globalnetworksets -o json > "$sets_json"
+calicoctl get globalnetworkpolicies -o json > "$gnp_json"
+calicoctl get networkpolicies -A -o json > "$np_json"
+
+python3 - "$sets_json" "$gnp_json" "$np_json" <<'PY'
+import json, re, sys
+
+sets = json.load(open(sys.argv[1])).get("items", [])
+global_policies = json.load(open(sys.argv[2])).get("items", [])
+network_policies = json.load(open(sys.argv[3])).get("items", [])
+
+def entity_selectors(policy):
+    spec = policy.get("spec", {})
+    for direction in ("ingress", "egress"):
+        for rule in spec.get(direction, []) or []:
+            for side in ("source", "destination"):
+                entity = rule.get(side, {}) or {}
+                for field in ("selector", "notSelector"):
+                    selector = entity.get(field)
+                    if selector:
+                        yield selector, entity.get("namespaceSelector", "")
+
+def selector_matches_label(selector, key, value):
+    key_re = re.escape(key)
+    value_re = re.escape(value)
+    quoted = rf"{key_re}\s*==\s*['\"]{value_re}['\"]"
+    in_set = rf"{key_re}\s+in\s+\{{[^}}]*['\"]{value_re}['\"][^}}]*\}}"
+    return re.search(quoted, selector) or re.search(in_set, selector)
+
+def references_global_set(policy, labels, requires_global_namespace):
+    for selector, namespace_selector in entity_selectors(policy):
+        if requires_global_namespace and "global()" not in namespace_selector:
+            continue
+        if any(selector_matches_label(selector, k, v) for k, v in labels.items()):
+            return True
+    return False
+
+for item in sets:
+    name = item["metadata"]["name"]
+    labels = item["metadata"].get("labels", {})
+    if not labels:
+        print(f"UNREFERENCED GlobalNetworkSet with no labels: {name}")
+        continue
+    refs = sum(
+        references_global_set(policy, labels, requires_global_namespace=False)
+        for policy in global_policies
+    )
+    refs += sum(
+        references_global_set(policy, labels, requires_global_namespace=True)
+        for policy in network_policies
+    )
+    if refs == 0:
+        label_list = ", ".join(f"{k}={v}" for k, v in labels.items())
+        print(f"UNREFERENCED GlobalNetworkSet: {name} ({label_list})")
+PY
 ```
 
 ## Audit Check 3: Verify Threat Intelligence Blocklist Currency
@@ -125,20 +161,40 @@ for item in data['items']:
 ## Audit Check 5: Verify Policy-NetworkSet Label Alignment
 
 ```bash
-# Extract all selector expressions from policies and verify corresponding NetworkSets have matching labels
-calicoctl get globalnetworkpolicies -o json | python3 -c "
-import json, sys, re
-data = json.load(sys.stdin)
-selectors = set()
-for p in data.get('items', []):
-    spec_str = json.dumps(p.get('spec', {}))
-    # Find selector patterns in source/destination
-    matches = re.findall(r'\"selector\": \"([^\"]+)\"', spec_str)
-    selectors.update(matches)
-print('Policy selectors referencing NetworkSets:')
-for s in sorted(selectors):
-    print(f'  {s}')
-"
+# Extract simple label selectors from GlobalNetworkPolicies and verify at least one
+# GlobalNetworkSet has a matching label.
+sets_json=$(mktemp)
+policies_json=$(mktemp)
+trap 'rm -f "$sets_json" "$policies_json"' EXIT
+
+calicoctl get globalnetworksets -o json > "$sets_json"
+calicoctl get globalnetworkpolicies -o json > "$policies_json"
+
+python3 - "$sets_json" "$policies_json" <<'PY'
+import json, re, sys
+
+sets = json.load(open(sys.argv[1])).get("items", [])
+policies = json.load(open(sys.argv[2])).get("items", [])
+
+labels = {}
+for item in sets:
+    for key, value in item["metadata"].get("labels", {}).items():
+        labels.setdefault((key, value), []).append(item["metadata"]["name"])
+
+selector_re = re.compile(r"([\w./-]+)\s*==\s*['\"]([^'\"]+)['\"]")
+for policy in policies:
+    spec = policy.get("spec", {})
+    for direction in ("ingress", "egress"):
+        for rule in spec.get(direction, []) or []:
+            for side in ("source", "destination"):
+                selector = (rule.get(side, {}) or {}).get("selector", "")
+                for key, value in selector_re.findall(selector):
+                    matches = labels.get((key, value), [])
+                    if matches:
+                        print(f"OK: {key} == {value} matches {', '.join(matches)}")
+                    else:
+                        print(f"WARN: no GlobalNetworkSet has label {key}={value}")
+PY
 ```
 
 ## Audit Report Template
