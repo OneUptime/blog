@@ -135,7 +135,7 @@ rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["*"]
-  # Explicitly deny cluster-scoped resources
+  # No rules grant cluster-scoped resources.
   # Tenants cannot create namespaces, clusterroles, etc.
 ```
 
@@ -145,15 +145,16 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-alpha-apps
-  namespace: flux-system
+  namespace: team-alpha
 spec:
   interval: 5m
   sourceRef:
     kind: GitRepository
     name: team-alpha-repo
+    namespace: team-alpha
   path: ./apps
   prune: true
-  # Run as the tenant service account - enforces RBAC
+  # Run as the tenant service account in the Kustomization namespace - enforces RBAC
   serviceAccountName: team-alpha-reconciler
   # Confine all resources to the tenant namespace
   targetNamespace: team-alpha
@@ -186,11 +187,10 @@ spec:
           args:
             # Increase concurrent reconciliations
             - --concurrent=20
+            # Increase concurrent server-side apply operations
+            - --concurrent-ssa=20
             # Increase requeue dependency interval
             - --requeue-dependency=10s
-            # Enable rate limiting
-            - --kube-api-qps=200
-            - --kube-api-burst=300
 ```
 
 ```yaml
@@ -246,7 +246,7 @@ spec:
           args:
             - --concurrent=20
             # Leader election ensures only one active reconciler
-            - --leader-elect=true
+            - --enable-leader-election=true
       # Spread across nodes for resilience
       affinity:
         podAntiAffinity:
@@ -273,7 +273,7 @@ Enterprise teams need notifications routed to the right people. Flux supports mu
 
 ```yaml
 # Alert configuration for production issues
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-platform
@@ -284,19 +284,18 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-critical
   namespace: flux-system
 spec:
   type: pagerduty
-  channel: flux-critical
-  secretRef:
-    name: pagerduty-token
+  address: https://events.pagerduty.com
+  channel: <integration-key>
 ---
 # Route critical failures to PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-failures
@@ -314,7 +313,7 @@ spec:
       namespace: "*"
 ---
 # Route all events to Slack for visibility
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-events
@@ -385,7 +384,7 @@ apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: team-alpha-repo
-  namespace: flux-system
+  namespace: team-alpha
 spec:
   interval: 5m
   url: https://github.com/my-org/team-alpha-apps.git
