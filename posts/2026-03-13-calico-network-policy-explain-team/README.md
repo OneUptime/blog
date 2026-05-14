@@ -10,7 +10,7 @@ Description: A practical guide for teaching Calico network policy concepts to en
 
 ## Introduction
 
-Network policy is the mechanism by which Kubernetes achieves zero-trust networking - where every communication must be explicitly authorized. Explaining this to developers who are used to traditional firewall rules (IP-based, perimeter-focused) requires helping them make the mental shift to identity-based, pod-level policy.
+Network policy is the mechanism Kubernetes uses to move toward zero-trust networking - where selected workloads only accept the communication that policy explicitly allows. Explaining this to developers who are used to traditional firewall rules (IP-based, perimeter-focused) requires helping them make the mental shift to identity-based, pod-level policy.
 
 The most effective teaching approach combines a clear analogy for the policy model, a live demonstration of policy enforcement, and a hands-on exercise where team members write and test their own policies. This post provides all three.
 
@@ -18,7 +18,7 @@ The most effective teaching approach combines a clear analogy for the policy mod
 
 - A working Calico cluster
 - A simple two-tier application deployed (frontend and backend)
-- `kubectl` and `calicoctl` access for demonstrations
+- `kubectl` access for demonstrations, and `calicoctl` access if your cluster manages Calico resources that way
 
 ## The Analogy: Pod Passports, Not Network Zones
 
@@ -38,14 +38,14 @@ Walk your team through three steps:
 ```bash
 # No policy applied - all pods can reach all pods
 
-kubectl exec frontend-pod -- curl -s http://backend-svc
+kubectl exec -n frontend-ns frontend-pod -- curl -s http://backend-svc.backend-ns.svc.cluster.local
 # Success - the "open door" default
 ```
 
 **Step 2: Close the door**
 ```bash
 kubectl apply -f deny-all-ingress.yaml
-kubectl exec frontend-pod -- curl --max-time 5 -s http://backend-svc
+kubectl exec -n frontend-ns frontend-pod -- curl --max-time 5 -s http://backend-svc.backend-ns.svc.cluster.local
 # Timeout - door closed to everyone
 ```
 
@@ -62,14 +62,15 @@ spec:
   ingress:
   - action: Allow
     source:
+      namespaceSelector: projectcalico.org/name == 'frontend-ns'
       selector: app == 'frontend'
 ```
 
 ```bash
 kubectl apply -f allow-frontend-to-backend.yaml
-kubectl exec frontend-pod -- curl -s http://backend-svc
+kubectl exec -n frontend-ns frontend-pod -- curl -s http://backend-svc.backend-ns.svc.cluster.local
 # Success - frontend has a "passport" to enter
-kubectl exec other-pod -- curl --max-time 5 -s http://backend-svc
+kubectl exec -n frontend-ns other-pod -- curl --max-time 5 -s http://backend-svc.backend-ns.svc.cluster.local
 # Timeout - other-pod doesn't have the right passport
 ```
 
@@ -83,14 +84,15 @@ For developers who will write policies, explain the evaluation model clearly:
 graph TD
     Packet[Incoming packet] --> Check{Any policy\nselects this pod?}
     Check -->|No| OPEN[Allow all\ndefault behavior]
-    Check -->|Yes| EVAL[Evaluate rules\nTop to bottom]
-    EVAL --> MATCH{First matching rule}
+    Check -->|Yes| EVAL[Evaluate Calico policies\nby tier/order, then rules top to bottom]
+    EVAL --> MATCH{Matching rule action}
     MATCH --> ALLOW[Allow]
     MATCH --> DENY[Deny / Drop]
+    MATCH --> LOG[Log and continue]
     MATCH --> NOMATCH[No match in any rule\nImplicit deny]
 ```
 
-The "gotcha" moment: once any policy selects a pod, the default flips to deny-all. Every legitimate communication must be explicitly allowed.
+The "gotcha" moment: once a policy selects a pod for ingress or egress, the default for that direction flips to deny-all. Every legitimate communication in that direction must be explicitly allowed.
 
 ## Common Team Questions
 
@@ -101,7 +103,7 @@ A: You should write a policy for every service you want to restrict. Start with 
 A: Use a lab cluster first. Production policy changes should go through code review. We can also start in "log only" mode with Calico to observe what would be blocked before enforcing.
 
 **Q: Can two policies conflict?**
-A: Ingress rules from multiple policies that select the same pod are merged with OR logic - a packet is allowed if ANY policy allows it. This means a more permissive policy can unintentionally override a more restrictive one.
+A: Kubernetes NetworkPolicy allows are additive - a packet is allowed if any applicable policy allows it. Calico NetworkPolicy adds ordering and explicit `Deny`, so a matching `Allow` or `Deny` action is final according to tier and policy order. This means a more permissive policy can still unintentionally allow traffic unless you control ordering and review broad selectors carefully.
 
 ## Workshop Exercise
 
@@ -119,4 +121,4 @@ Have each team member write a NetworkPolicy for one service they own:
 
 ## Conclusion
 
-Teaching Calico network policy fundamentals is most effective with the passport analogy (identity-based access, not zone-based), the three-step demo (open, close, issue passport), and a hands-on workshop exercise. Once developers understand that the default flips to deny-all when any policy selects their pod, and that rules are evaluated top-to-bottom with first-match semantics, they can write and debug their own policies confidently.
+Teaching Calico network policy fundamentals is most effective with the passport analogy (identity-based access, not zone-based), the three-step demo (open, close, issue passport), and a hands-on workshop exercise. Once developers understand that the default flips to deny-all for a direction when policy selects their pod, and that Calico policies are evaluated by tier/order with rules evaluated top-to-bottom, they can write and debug their own policies confidently.
