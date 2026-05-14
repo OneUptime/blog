@@ -24,17 +24,17 @@ Understanding these pitfalls also helps you review your current deployment and i
 
 ## Mistake 1: Assuming All Editions Have the Same CRDs
 
-Calico Open Source does not include CRDs for Enterprise-only resources such as `GlobalThreatFeed`, `PacketCapture`, `PolicyRecommendation`, and `Tier` (with full RBAC). If you apply a manifest written for Enterprise against an Open Source cluster, it will fail with an unknown resource error.
+Calico Open Source and Calico Enterprise do not expose the exact same resource set. Enterprise-only resources include `GlobalThreatFeed`, `PacketCapture`, and policy recommendation configuration resources. Current Calico Open Source also supports `Tier` resources, so do not use the presence of `Tier` alone as proof that an Enterprise manifest is compatible. If you apply a manifest written for Enterprise against an Open Source cluster, it can fail with an unknown resource error.
 
-**Fix**: Always verify which CRDs are installed before applying manifests from external sources:
+**Fix**: Always verify which Calico API resources are available before applying manifests from external sources:
 
 ```bash
-kubectl get crd | grep calico
+kubectl api-resources | grep projectcalico.org
 ```
 
 ## Mistake 2: Migrating Editions Without Draining Policies First
 
-Migrating from Open Source to Enterprise without backing up and auditing existing policies can result in policy conflicts when Enterprise's tier ordering takes effect. The `default` tier in Enterprise has lower priority than any named tier - policies that previously applied globally may be shadowed.
+Migrating from Open Source to Enterprise without backing up and auditing existing policies can result in policy conflicts when tier ordering takes effect. The `default` tier is evaluated late, and named tiers with lower order values have higher priority - policies that previously applied globally may be shadowed.
 
 **Fix**: Before migration, export all existing policies:
 
@@ -68,12 +68,12 @@ Cross-reference with the Tigera documentation at `docs.tigera.io/calico/latest/g
 
 ## Mistake 5: Not Enabling the Calico API Server for Enterprise
 
-Calico Enterprise includes a dedicated API server that enables `kubectl` to manage Calico resources directly using the `crd.projectcalico.org` API group. Teams that skip enabling it lose access to `kubectl`-native policy management.
+Calico Enterprise includes a Tigera API server that enables access to the full set of Enterprise APIs and lets `kubectl` manage Calico resources using the `projectcalico.org/v3` API group. Newer Calico Open Source installations can also use native `projectcalico.org/v3` CRDs without the aggregation API server, but Enterprise installations should still verify that the Tigera API server is healthy when the installation requires it.
 
-**Fix**: Verify the API server is running after Enterprise installation:
+**Fix**: Verify the API server is available after Enterprise installation:
 
 ```bash
-kubectl get pods -n calico-system -l k8s-app=calico-apiserver
+kubectl get tigerastatus apiserver
 ```
 
 ## Best Practices
@@ -81,7 +81,7 @@ kubectl get pods -n calico-system -l k8s-app=calico-apiserver
 - Treat edition selection as a compliance decision, not just a technical one - document your rationale
 - Never assume feature parity between editions - always validate against the Tigera feature matrix
 - Test policy behavior in a lab after any edition change, even minor version upgrades
-- Keep `calicoctl` version in sync with the installed Calico version - version mismatches cause silent errors
+- Keep `calicoctl` version in sync with the installed Calico version - version mismatches can cause unexpected failures
 
 ## Conclusion
 
