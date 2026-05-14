@@ -10,12 +10,13 @@ Description: Build Grafana dashboards for Calico typha Prometheus metrics to vis
 
 ## Introduction
 
-Calico typha exposes Prometheus metrics on port 9093 that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
+Calico typha can expose Prometheus metrics that provide visibility into the policy distribution layer. In operator-managed Calico installations, enable typha metrics on port 9093 before scraping them. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
 
 ## Enable Metrics Collection
 
 ```bash
 # Test typha metrics endpoint
+kubectl patch installation default --type=merge -p '{"spec": {"typhaMetricsPort": 9093}}'
 
 POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
 
@@ -25,6 +26,22 @@ kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9093/metr
 ## ServiceMonitor
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: typha-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-typha
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-typha
+  ports:
+    - name: metrics
+      port: 9093
+      targetPort: 9093
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -53,7 +70,7 @@ spec:
     - name: calico.typha
       rules:
         - alert: CalicoTyphaMetricsDown
-          expr: up{job="calico-typha-metrics"} == 0
+          expr: up{job="typha-metrics-svc"} == 0
           for: 5m
           annotations:
             summary: "Calico typha metrics endpoint is unreachable"
