@@ -24,13 +24,12 @@ Learning from common mistakes is faster than discovering them in production. Thi
 
 Labels can be changed by anyone with `kubectl patch` access. If your zero trust policy relies on `role=admin` to grant elevated access, a user who can patch pods can bypass it.
 
-```bash
+```yaml
 # Dangerous - easily manipulated
 
 selector: role == 'admin'
 
-# Safer - use immutable metadata like service accounts
-# (covered in Service Account Policies section)
+# Safer - use service account selectors and RBAC controls
 ```
 
 ## Mistake 2: Forgetting That Selectors Are Case-Sensitive
@@ -86,7 +85,7 @@ kubectl get pods -n production --show-labels | grep -E "backend|api"
 ## Mistake 6: Over-Broad Selectors That Match Unintended Pods
 
 ```yaml
-# Too broad - matches any pod in any namespace with app label
+# Too broad - matches any in-scope pod with app label
 selector: has(app)
 
 # More precise
