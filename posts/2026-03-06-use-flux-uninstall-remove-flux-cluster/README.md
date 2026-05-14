@@ -19,6 +19,7 @@ This guide covers how to safely uninstall Flux while understanding the impact on
 - Flux CLI installed
 - A running Kubernetes cluster with Flux installed
 - kubectl configured with cluster access
+- Helm CLI installed if you want to list existing Helm releases
 - Cluster admin permissions
 
 ## Understanding What Gets Removed
@@ -88,16 +89,16 @@ Skip the confirmation prompt for automated workflows:
 flux uninstall --silent
 ```
 
-## Keeping Custom Resource Definitions
+## Keeping the Flux Namespace
 
-If you want to remove the controllers but keep the CRDs (useful for preserving resource definitions during migration):
+If you want to remove the controllers and CRDs but keep the namespace:
 
 ```bash
-# Uninstall controllers but keep CRDs
+# Uninstall Flux but keep the namespace
 flux uninstall --keep-namespace
 ```
 
-This removes the deployments, services, and service accounts but preserves the namespace and CRDs.
+This removes the deployments, services, service accounts, RBAC, Flux custom resources, and CRDs, but skips deletion of the namespace.
 
 ## Custom Namespace Uninstall
 
@@ -132,14 +133,14 @@ flux get helmreleases -A 2>/dev/null || echo "   None found"
 echo ""
 
 # 2. Check for Kustomizations with prune enabled
-echo "2. Kustomizations with prune enabled (these may delete resources):"
+echo "2. Kustomizations with prune enabled during normal reconciliation:"
 kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A \
   -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: prune={.spec.prune}{"\n"}{end}' \
   2>/dev/null || echo "   None found"
 echo ""
 
 # 3. Check for HelmReleases
-echo "3. Active HelmReleases (Helm releases will be uninstalled):"
+echo "3. Active HelmReleases (underlying Helm releases remain installed after Flux uninstall):"
 kubectl get helmreleases -A \
   -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' \
   2>/dev/null || echo "   None found"
@@ -148,9 +149,12 @@ echo ""
 # 4. Export current configuration for backup
 echo "4. Creating backup..."
 mkdir -p /tmp/flux-backup-pre-uninstall
-flux export source all -A > /tmp/flux-backup-pre-uninstall/sources.yaml 2>/dev/null || true
-flux export kustomization -A > /tmp/flux-backup-pre-uninstall/kustomizations.yaml 2>/dev/null || true
-flux export helmrelease -A > /tmp/flux-backup-pre-uninstall/helmreleases.yaml 2>/dev/null || true
+flux export source git --all -A > /tmp/flux-backup-pre-uninstall/sources.yaml 2>/dev/null || true
+flux export source oci --all -A >> /tmp/flux-backup-pre-uninstall/sources.yaml 2>/dev/null || true
+flux export source helm --all -A >> /tmp/flux-backup-pre-uninstall/sources.yaml 2>/dev/null || true
+flux export source bucket --all -A >> /tmp/flux-backup-pre-uninstall/sources.yaml 2>/dev/null || true
+flux export kustomization --all -A > /tmp/flux-backup-pre-uninstall/kustomizations.yaml 2>/dev/null || true
+flux export helmrelease --all -A > /tmp/flux-backup-pre-uninstall/helmreleases.yaml 2>/dev/null || true
 echo "   Backup saved to /tmp/flux-backup-pre-uninstall/"
 echo ""
 
@@ -162,19 +166,15 @@ echo "Review the above before proceeding with: flux uninstall"
 
 ### Handling Kustomization Pruning
 
-When Flux is uninstalled, Kustomizations with `prune: true` may trigger garbage collection. To prevent this:
+The Flux CLI uninstall process removes Flux finalizers from custom resources before deleting the Flux CRDs, and it does not prune workloads that were previously reconciled by Kustomizations. If you want an extra checkpoint before uninstalling, suspend reconciliation and confirm the managed workloads are healthy:
 
 ```bash
-# Step 1: Suspend all Kustomizations first
+# Step 1: Suspend Kustomizations in the Flux namespace
 flux suspend kustomization --all --namespace=flux-system
 
-# Step 2: Disable pruning on each Kustomization
-for ks in $(kubectl get kustomizations.kustomize.toolkit.fluxcd.io -n flux-system \
-  -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl patch kustomization "${ks}" -n flux-system \
-    --type=merge -p '{"spec":{"prune":false}}'
-  echo "Disabled prune for: ${ks}"
-done
+# Step 2: Confirm reconciled workloads are running
+kubectl get deployments -A
+kubectl get services -A
 
 # Step 3: Now uninstall Flux
 flux uninstall --silent
@@ -182,7 +182,7 @@ flux uninstall --silent
 
 ### Handling HelmReleases
 
-HelmReleases may be uninstalled when Flux is removed. To keep the Helm releases:
+The Flux uninstall command does not uninstall Helm releases that were reconciled by HelmRelease resources. If you want an extra checkpoint before uninstalling, suspend the HelmRelease resources and list the underlying Helm releases:
 
 ```bash
 # Step 1: Suspend all HelmReleases
@@ -190,14 +190,8 @@ for ns in $(kubectl get helmreleases -A -o jsonpath='{.items[*].metadata.namespa
   flux suspend helmrelease --all --namespace="${ns}" 2>/dev/null || true
 done
 
-# Step 2: Remove Flux finalizers from HelmReleases
-for hr in $(kubectl get helmreleases -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'); do
-  NS=$(echo "${hr}" | cut -d/ -f1)
-  NAME=$(echo "${hr}" | cut -d/ -f2)
-  kubectl patch helmrelease "${NAME}" -n "${NS}" \
-    --type=json -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
-  echo "Removed finalizers from: ${hr}"
-done
+# Step 2: Confirm Helm releases exist before uninstalling Flux
+helm list -A
 
 # Step 3: Uninstall Flux
 flux uninstall --silent
@@ -224,17 +218,22 @@ echo ""
 echo "Step 1: Creating backup..."
 BACKUP_DIR="/tmp/flux-uninstall-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${BACKUP_DIR}"
-flux export source all -A > "${BACKUP_DIR}/sources.yaml" 2>/dev/null || true
-flux export kustomization -A > "${BACKUP_DIR}/kustomizations.yaml" 2>/dev/null || true
-flux export helmrelease -A > "${BACKUP_DIR}/helmreleases.yaml" 2>/dev/null || true
-flux export alert -A > "${BACKUP_DIR}/alerts.yaml" 2>/dev/null || true
-flux export alert-provider -A > "${BACKUP_DIR}/providers.yaml" 2>/dev/null || true
+flux export source git --all -A > "${BACKUP_DIR}/sources.yaml" 2>/dev/null || true
+flux export source oci --all -A >> "${BACKUP_DIR}/sources.yaml" 2>/dev/null || true
+flux export source helm --all -A >> "${BACKUP_DIR}/sources.yaml" 2>/dev/null || true
+flux export source bucket --all -A >> "${BACKUP_DIR}/sources.yaml" 2>/dev/null || true
+flux export kustomization --all -A > "${BACKUP_DIR}/kustomizations.yaml" 2>/dev/null || true
+flux export helmrelease --all -A > "${BACKUP_DIR}/helmreleases.yaml" 2>/dev/null || true
+flux export alert --all -A > "${BACKUP_DIR}/alerts.yaml" 2>/dev/null || true
+flux export alert-provider --all -A > "${BACKUP_DIR}/providers.yaml" 2>/dev/null || true
 echo "  Backup saved to: ${BACKUP_DIR}"
 echo ""
 
 # Step 2: Suspend all reconciliation
 echo "Step 2: Suspending all reconciliation..."
-flux suspend kustomization --all -n "${FLUX_NAMESPACE}" 2>/dev/null || true
+for ns in $(kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o jsonpath='{.items[*].metadata.namespace}' 2>/dev/null | tr ' ' '\n' | sort -u); do
+  flux suspend kustomization --all -n "${ns}" 2>/dev/null || true
+done
 
 for ns in $(kubectl get helmreleases -A -o jsonpath='{.items[*].metadata.namespace}' 2>/dev/null | tr ' ' '\n' | sort -u); do
   flux suspend helmrelease --all -n "${ns}" 2>/dev/null || true
@@ -242,32 +241,8 @@ done
 echo "  All resources suspended."
 echo ""
 
-# Step 3: Disable pruning
-echo "Step 3: Disabling Kustomization pruning..."
-for ks in $(kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{end}' 2>/dev/null); do
-  NS=$(echo "${ks}" | cut -d/ -f1)
-  NAME=$(echo "${ks}" | cut -d/ -f2)
-  kubectl patch kustomization "${NAME}" -n "${NS}" \
-    --type=merge -p '{"spec":{"prune":false}}' 2>/dev/null || true
-done
-echo "  Pruning disabled."
-echo ""
-
-# Step 4: Remove finalizers from HelmReleases
-echo "Step 4: Removing HelmRelease finalizers..."
-for hr in $(kubectl get helmreleases -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{end}' 2>/dev/null); do
-  NS=$(echo "${hr}" | cut -d/ -f1)
-  NAME=$(echo "${hr}" | cut -d/ -f2)
-  kubectl patch helmrelease "${NAME}" -n "${NS}" \
-    --type=json -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
-done
-echo "  Finalizers removed."
-echo ""
-
-# Step 5: Uninstall Flux
-echo "Step 5: Uninstalling Flux..."
+# Step 3: Uninstall Flux
+echo "Step 3: Uninstalling Flux..."
 flux uninstall --namespace="${FLUX_NAMESPACE}" --silent
 echo ""
 
@@ -349,11 +324,11 @@ kubectl apply -f /tmp/flux-uninstall-backup/helmreleases.yaml
 
 1. **Always backup before uninstalling** using `flux export` to save all resource definitions.
 2. **Suspend before removing** to prevent race conditions during cleanup.
-3. **Disable pruning** on Kustomizations to prevent accidental workload deletion.
-4. **Remove finalizers** from HelmReleases if you want to keep the Helm releases installed.
+3. **Use `flux uninstall` instead of deleting Flux resources manually** so Flux finalizers and CRDs are handled correctly.
+4. **Remember Helm releases remain installed** but are no longer managed by Flux after uninstall.
 5. **Verify after uninstall** to ensure no leftover resources remain.
 6. **Document the uninstall** so your team knows what was done and how to re-install if needed.
 
 ## Summary
 
-The `flux uninstall` command provides a clean way to remove Flux CD from your cluster. However, an unthinking uninstall can lead to workload disruption if Kustomization pruning or HelmRelease finalizers are active. By following the safe uninstall process described in this guide -- suspending resources, disabling pruning, removing finalizers, and backing up before removal -- you can safely remove Flux while keeping your applications running.
+The `flux uninstall` command provides a clean way to remove Flux CD from your cluster. It removes Flux components, Flux custom resources, CRDs, RBAC, and finalizers without removing the Kubernetes workloads or Helm releases that Flux reconciled. By following the safe uninstall process described in this guide -- backing up resources, optionally suspending reconciliation, and using the Flux CLI for removal -- you can safely remove Flux while keeping your applications running.
