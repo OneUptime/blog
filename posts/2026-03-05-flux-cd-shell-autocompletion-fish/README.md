@@ -75,7 +75,8 @@ For all users on the system, save the script to the system completions directory
 
 ```bash
 # Install Flux completions system-wide (requires sudo)
-sudo flux completion fish > /usr/share/fish/vendor_completions.d/flux.fish
+sudo mkdir -p /usr/share/fish/vendor_completions.d
+flux completion fish | sudo tee /usr/share/fish/vendor_completions.d/flux.fish > /dev/null
 ```
 
 ### Option C: Source in config.fish
@@ -174,7 +175,7 @@ abbr --add f flux
 
 When you type `f` and press Space, Fish automatically expands it to `flux`. Completions work with the expanded command.
 
-To make the abbreviation persistent, it is saved automatically by Fish. You can also add it to your `config.fish`.
+To make the abbreviation persistent in current Fish versions, add it to your `config.fish`.
 
 ```bash
 # Add abbreviation to config.fish
