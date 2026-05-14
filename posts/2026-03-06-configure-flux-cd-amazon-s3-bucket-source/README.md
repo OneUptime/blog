@@ -29,13 +29,13 @@ Before starting, ensure you have:
 First, create an S3 bucket to store your Kubernetes manifests.
 
 ```bash
-# Create the S3 bucket in your desired region
+# Create the S3 bucket in us-east-1
 
 aws s3api create-bucket \
   --bucket flux-manifests-production \
   --region us-east-1
 
-# Enable versioning so Flux can detect changes
+# Optional: enable versioning to keep object history for rollbacks
 aws s3api put-bucket-versioning \
   --bucket flux-manifests-production \
   --versioning-configuration Status=Enabled
@@ -225,8 +225,8 @@ spec:
   path: ./
   # Automatically apply changes
   prune: true
-  # Wait for resources to become ready
-  wait: true
+  # Use the healthChecks list below instead of checking every applied resource
+  wait: false
   # Timeout for waiting on resources
   timeout: 5m
   # Health checks for deployed resources
@@ -262,9 +262,9 @@ kubectl get kustomization -n flux-system
 kubectl get events -n flux-system --sort-by='.lastTimestamp'
 ```
 
-## Step 9: Configure S3 Bucket Notifications (Optional)
+## Step 9: Create a Webhook Receiver (Optional)
 
-For faster reconciliation, configure S3 event notifications to trigger Flux via a webhook receiver.
+For faster reconciliation, create a Flux webhook receiver and invoke its generated URL from an intermediary such as Amazon EventBridge API Destinations, Amazon SNS HTTP/S delivery, or AWS Lambda. S3 bucket notifications cannot call a Flux webhook directly.
 
 ```yaml
 # webhook-receiver.yaml
