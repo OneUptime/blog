@@ -114,25 +114,10 @@ spec:
 If your cluster routes traffic through a proxy, the source-controller needs proxy environment variables. You can patch the source-controller deployment:
 
 ```bash
-# Patch the source-controller deployment to add proxy environment variables
-kubectl patch deployment source-controller -n flux-system --type=json -p='[
-  {
-    "op": "add",
-    "path": "/spec/template/spec/containers/0/env/-",
-    "value": {
-      "name": "HTTPS_PROXY",
-      "value": "http://proxy.example.com:3128"
-    }
-  },
-  {
-    "op": "add",
-    "path": "/spec/template/spec/containers/0/env/-",
-    "value": {
-      "name": "NO_PROXY",
-      "value": ".cluster.local,.svc,10.0.0.0/8"
-    }
-  }
-]'
+# Patch the source-controller manager container to add proxy environment variables
+kubectl set env deployment/source-controller -n flux-system -c manager \
+  HTTPS_PROXY=http://proxy.example.com:3128 \
+  NO_PROXY=.cluster.local.,.cluster.local,.svc,10.0.0.0/8
 ```
 
 ### 5. Timeout Issues
