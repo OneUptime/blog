@@ -89,14 +89,14 @@ steps:
     waitFor: ["build-image"]
 
   # Step 3: Install Flux CLI for OCI push
-  - name: "gcr.io/cloud-builders/curl"
+  - name: "gcr.io/cloud-builders/gcloud"
     id: "install-flux"
     entrypoint: "bash"
     args:
       - "-c"
       - |
-        curl -s https://fluxcd.io/install.sh | bash
-        cp /usr/local/bin/flux /workspace/flux
+        mkdir -p /workspace/bin
+        curl -s https://fluxcd.io/install.sh | bash -s /workspace/bin
     waitFor: ["-"]
 
   # Step 4: Package Kubernetes manifests as OCI artifact
@@ -106,19 +106,13 @@ steps:
     args:
       - "-c"
       - |
-        # Authenticate to Artifact Registry
-        gcloud auth print-access-token | \
-          /workspace/flux oci login \
-          us-central1-docker.pkg.dev \
-          --username=oauth2accesstoken \
-          --password-stdin
-
         # Push the Kubernetes manifests as an OCI artifact
-        /workspace/flux push artifact \
+        /workspace/bin/flux push artifact \
           oci://us-central1-docker.pkg.dev/$PROJECT_ID/flux-manifests/my-app:${TAG_NAME} \
           --path=./deploy/manifests \
-          --source="$(git config --get remote.origin.url)" \
-          --revision="${TAG_NAME}@sha1:${COMMIT_SHA}"
+          --source="https://github.com/$REPO_FULL_NAME" \
+          --revision="${TAG_NAME}@sha1:${COMMIT_SHA}" \
+          --provider=gcp
     waitFor: ["install-flux"]
 
   # Step 5: Tag the OCI artifact as latest
@@ -128,15 +122,10 @@ steps:
     args:
       - "-c"
       - |
-        gcloud auth print-access-token | \
-          /workspace/flux oci login \
-          us-central1-docker.pkg.dev \
-          --username=oauth2accesstoken \
-          --password-stdin
-
-        /workspace/flux tag artifact \
+        /workspace/bin/flux tag artifact \
           oci://us-central1-docker.pkg.dev/$PROJECT_ID/flux-manifests/my-app:${TAG_NAME} \
-          --tag=latest
+          --tag=latest \
+          --provider=gcp
     waitFor: ["push-manifests"]
 
 # Container images to push to Artifact Registry
@@ -151,6 +140,10 @@ options:
 ## Step 3: Create a Cloud Build Trigger
 
 ```bash
+# Create the build service account used by the trigger
+gcloud iam service-accounts create cloud-build-flux \
+  --display-name="Cloud Build Flux pipeline"
+
 # Create a trigger that fires on Git tags matching semver pattern
 gcloud builds triggers create github \
   --name="my-app-release" \
@@ -158,6 +151,7 @@ gcloud builds triggers create github \
   --repo-owner="${GITHUB_USER}" \
   --tag-pattern="v[0-9]+\.[0-9]+\.[0-9]+" \
   --build-config="cloudbuild.yaml" \
+  --service-account="projects/${PROJECT_ID}/serviceAccounts/cloud-build-flux@${PROJECT_ID}.iam.gserviceaccount.com" \
   --description="Build and push app on version tags"
 ```
 
@@ -263,7 +257,7 @@ Add a final step to your `cloudbuild.yaml` that triggers the Flux webhook.
 
 ```yaml
   # Step 6: Trigger Flux reconciliation via webhook
-  - name: "gcr.io/cloud-builders/curl"
+  - name: "gcr.io/cloud-builders/gcloud"
     id: "trigger-flux"
     entrypoint: "bash"
     args:
@@ -342,7 +336,7 @@ Configure Flux to send alerts about deployment status back to your team.
 
 ```yaml
 # infrastructure/notifications/flux-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: google-chat
@@ -351,7 +345,7 @@ spec:
   type: googlechat
   address: "https://chat.googleapis.com/v1/spaces/SPACE_ID/messages?key=KEY&token=TOKEN"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -375,9 +369,8 @@ spec:
 Ensure Cloud Build has the necessary permissions to push to Artifact Registry.
 
 ```bash
-# Get the Cloud Build service account
-export CB_SA=$(gcloud projects describe $PROJECT_ID \
-  --format='value(projectNumber)')@cloudbuild.gserviceaccount.com
+# Use the dedicated Cloud Build service account from the trigger
+export CB_SA=cloud-build-flux@${PROJECT_ID}.iam.gserviceaccount.com
 
 # Grant Artifact Registry writer role
 gcloud artifacts repositories add-iam-policy-binding app-images \
@@ -389,6 +382,11 @@ gcloud artifacts repositories add-iam-policy-binding flux-manifests \
   --location=us-central1 \
   --member="serviceAccount:${CB_SA}" \
   --role="roles/artifactregistry.writer"
+
+# Grant permission to write build logs to Cloud Logging
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${CB_SA}" \
+  --role="roles/logging.logWriter"
 ```
 
 ## Step 10: Verify the End-to-End Pipeline
