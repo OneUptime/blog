@@ -25,14 +25,15 @@ This guide covers installing the Hubble CLI, establishing connectivity to the Hu
 ## Step 1: Install Hubble CLI
 
 ```bash
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
 
 # Linux AMD64
 
-curl -L --remote-name-all \
-  "https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz"
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin/hubble
+curl -L --fail --remote-name-all \
+  "https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz" \
+  "https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz.sha256sum"
+sha256sum --check hubble-linux-amd64.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-amd64.tar.gz /usr/local/bin
 
 # macOS (Homebrew)
 brew install hubble
