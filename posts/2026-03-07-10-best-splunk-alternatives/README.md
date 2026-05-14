@@ -78,7 +78,7 @@ Datadog is the most direct commercial competitor to Splunk. The platform is genu
 
 **What stands out:**
 - Excellent UI and developer experience
-- Broad integration library (750+ integrations)
+- Broad integration library (1,000+ integrations)
 - Strong APM with distributed tracing
 - Log Patterns and Flex Logs for cost management
 
@@ -101,7 +101,7 @@ OpenObserve is a newer entrant that's explicitly positioned as a Splunk/Elastics
 
 **Trade-offs:** Younger project with a smaller community. The ecosystem of integrations and plugins is less mature. Documentation is improving but not yet on par with established players.
 
-**Pricing:** Open source (Apache 2.0). Cloud pricing is usage-based.
+**Pricing:** Open source (AGPLv3). Cloud pricing is usage-based.
 
 ## 6. Cribl + Your Backend of Choice
 
@@ -134,7 +134,7 @@ Axiom takes a "store everything, query when needed" approach. Zero configuration
 
 **Trade-offs:** Fully managed only - no self-hosting option. Smaller community than Elastic or Grafana. Enterprise features (RBAC, SSO) require higher-tier plans.
 
-**Pricing:** Free tier available (500GB ingest/month). Pro starts at $25/month.
+**Pricing:** Free tier available (500GB data loading/month on the Personal plan). Axiom Cloud starts at $25/month and includes a larger always-free allowance.
 
 ## 8. SigNoz
 
@@ -151,7 +151,7 @@ SigNoz is built from the ground up on OpenTelemetry and ClickHouse. It's one of 
 
 **Trade-offs:** Still maturing compared to Splunk. Some enterprise features (SSO, audit logs) are cloud-only. The team is smaller, which means feature velocity is solid but support options are more limited.
 
-**Pricing:** Open source (Apache 2.0 for core). Cloud pricing starts at $199/month.
+**Pricing:** Open source (Apache 2.0 for core). Cloud pricing starts at $49/month.
 
 ## 9. Sumo Logic
 
@@ -167,7 +167,7 @@ Sumo Logic has long been positioned as a cloud-native alternative to Splunk, par
 
 **Trade-offs:** The UI feels dated compared to newer platforms. Query performance can be inconsistent at large scale. The platform sometimes feels like it's trying to be everything to everyone without excelling at any one thing.
 
-**Pricing:** Free tier (500MB/day). Essentials starts at ~$3.00/GB.
+**Pricing:** Free tier available (1GB/day data volume limit). Paid plans use Sumo Logic credits and start with the Essentials tier.
 
 ## 10. ClickHouse + Custom Stack
 
