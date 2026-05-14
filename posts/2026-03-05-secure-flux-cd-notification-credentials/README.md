@@ -16,7 +16,7 @@ Flux notification providers use different credential types:
 
 - **Slack**: Webhook URL or Bot OAuth token
 - **Microsoft Teams**: Webhook URL
-- **PagerDuty**: Routing key
+- **PagerDuty**: Routing key in the Provider `channel` field
 - **Generic webhooks**: URL with optional auth headers
 - **GitHub**: Personal access token or App installation token
 - **Grafana**: API key
@@ -37,16 +37,6 @@ metadata:
 type: Opaque
 stringData:
   address: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
----
-# PagerDuty routing key secret
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pagerduty-routing-key
-  namespace: flux-system
-type: Opaque
-stringData:
-  token: "your-pagerduty-routing-key"
 ---
 # Generic webhook with auth header
 apiVersion: v1
@@ -69,11 +59,6 @@ kubectl create secret generic slack-webhook-url \
   --from-literal=address="https://hooks.slack.com/services/T00000000/B00000000/XXXX" \
   -n flux-system
 
-# Create PagerDuty secret
-kubectl create secret generic pagerduty-routing-key \
-  --from-literal=token="your-pagerduty-routing-key" \
-  -n flux-system
-
 # Create GitHub token secret for commit status notifications
 kubectl create secret generic github-token \
   --from-literal=token="ghp_your_github_token" \
@@ -82,36 +67,34 @@ kubectl create secret generic github-token \
 
 ## Step 2: Configure Notification Providers
 
-Reference the secrets in Flux Provider resources:
+Reference the secrets in Flux Provider resources where the provider supports `secretRef`:
 
 ```yaml
 # providers.yaml
 # Slack notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
-  channel: gitops-alerts
   secretRef:
     name: slack-webhook-url
 ---
 # PagerDuty notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
   namespace: flux-system
 spec:
   type: pagerduty
-  channel: "your-pagerduty-service-id"
-  secretRef:
-    name: pagerduty-routing-key
+  address: https://events.pagerduty.com
+  channel: "your-pagerduty-routing-key"
 ---
 # GitHub commit status provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -170,7 +153,7 @@ For production environments, use External Secrets Operator to sync credentials f
 ```yaml
 # external-secret-slack.yaml
 # Sync Slack webhook URL from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: slack-webhook-url
@@ -189,11 +172,11 @@ spec:
         key: flux/notifications/slack
         property: webhook_url
 ---
-# Sync PagerDuty routing key from HashiCorp Vault
-apiVersion: external-secrets.io/v1beta1
+# Sync GitHub token from HashiCorp Vault
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: pagerduty-routing-key
+  name: github-token
   namespace: flux-system
 spec:
   refreshInterval: 1h
@@ -201,13 +184,13 @@ spec:
     name: vault
     kind: ClusterSecretStore
   target:
-    name: pagerduty-routing-key
+    name: github-token
     creationPolicy: Owner
   data:
     - secretKey: token
       remoteRef:
-        key: secret/flux/pagerduty
-        property: routing_key
+        key: secret/flux/github
+        property: token
 ```
 
 ## Step 5: Restrict Access to Notification Secrets
@@ -226,7 +209,7 @@ rules:
   # Only notification-controller should read these secrets
   - apiGroups: [""]
     resources: ["secrets"]
-    resourceNames: ["slack-webhook-url", "pagerduty-routing-key", "github-token", "webhook-auth"]
+    resourceNames: ["slack-webhook-url", "github-token", "webhook-auth"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
