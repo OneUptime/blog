@@ -26,7 +26,7 @@ If you do not already have a GPG key for Flux, generate one. This key will be us
 ```bash
 # Generate a GPG key for the Flux bot
 
-# Use a passphrase-less key for automation purposes
+# Use a passphrase-less key for this example
 gpg --batch --gen-key <<EOF
 %no-protection
 Key-Type: eddsa
@@ -73,6 +73,8 @@ kubectl create secret generic flux-gpg-signing-key \
 ```
 
 The key name `git.asc` is the expected key within the secret data. The image-automation-controller looks for this specific key.
+
+If your private key is protected by a passphrase, include the passphrase in the same secret using the key name `passphrase`.
 
 ## Step 4: Configure ImageUpdateAutomation with Signing
 
@@ -175,11 +177,11 @@ kubectl create secret generic flux-gpg-signing-key \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-4. Restart the image-automation-controller to pick up the new key
+4. Reconcile the ImageUpdateAutomation resource so the controller uses the updated secret on the next run
 
 ```bash
-# Restart the controller to load the new signing key
-kubectl rollout restart deployment/image-automation-controller -n flux-system
+# Trigger the controller to use the updated signing key
+flux reconcile image update flux-system -n flux-system
 ```
 
 5. After confirming the new key works, remove the old public key from your Git provider
@@ -198,7 +200,7 @@ kubectl logs -n flux-system deployment/image-automation-controller --tail=100 \
 
 Common issues:
 - The secret does not contain a key named `git.asc`
-- The GPG key is passphrase-protected (automation keys must not have a passphrase)
+- The GPG key is passphrase-protected, but the secret does not contain the `passphrase` key
 - The key has expired
 
 ### Commits Are Not Showing as Verified
