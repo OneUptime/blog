@@ -93,12 +93,11 @@ kubectl create secret docker-registry ghcr-auth \
   --docker-password=ghp_your_token_here
 
 # For AWS ECR, generate a token first
-aws ecr get-login-password --region us-east-1 | \
-  kubectl create secret docker-registry ecr-auth \
+kubectl create secret docker-registry ecr-auth \
   -n flux-system \
   --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
-  --docker-password-stdin
+  --docker-password="$(aws ecr get-login-password --region us-east-1)"
 ```
 
 ## Common Cause 2: Scan Interval Too Long
@@ -188,7 +187,7 @@ The ImagePolicy selects which tag to use based on a policy. If the policy does n
 kubectl get imagepolicy -n flux-system my-app -o yaml
 
 # Check the latest selected image
-kubectl get imagepolicy -n flux-system my-app -o jsonpath='{.status.latestImage}'
+kubectl get imagepolicy -n flux-system my-app -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 ```
 
 ```yaml
@@ -204,7 +203,7 @@ status:
 ### Example: Semver Policy Does Not Match Tag Format
 
 ```yaml
-# Wrong: tags in the registry are like "v1.2.3" but policy expects "1.2.3"
+# Wrong: tags in the registry are like "release-1.2.3" but policy expects a semver-compatible tag
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -215,11 +214,11 @@ spec:
     name: my-app
   policy:
     semver:
-      # This expects tags like "1.2.3" without a "v" prefix
+      # This expects semver-compatible tags like "1.2.3" or "v1.2.3"
       range: ">=1.0.0"
 ```
 
-### Fix: Handle "v" Prefix in Tags
+### Fix: Handle Non-Semver Prefix in Tags
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -230,9 +229,9 @@ metadata:
 spec:
   imageRepositoryRef:
     name: my-app
-  # Use filterTags to strip the "v" prefix before applying semver
+  # Use filterTags to strip the non-semver prefix before applying semver
   filterTags:
-    pattern: '^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
+    pattern: '^release-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
   policy:
     semver:
@@ -440,7 +439,7 @@ kubectl get imagerepository -n flux-system my-app -o jsonpath='{.status.lastScan
 echo ""
 
 # Step 4: Check ImagePolicy selected image
-kubectl get imagepolicy -n flux-system my-app -o jsonpath='{.status.latestImage}'
+kubectl get imagepolicy -n flux-system my-app -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 echo ""
 
 # Step 5: Check ImageUpdateAutomation status
