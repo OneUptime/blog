@@ -14,12 +14,13 @@ When a HelmRelease is deleted from your Git repository or cluster, Flux CD perfo
 
 ## When Uninstall Happens
 
-Flux triggers an uninstall in two main scenarios:
+Flux triggers an uninstall in these common scenarios:
 
 1. The HelmRelease resource is deleted from the cluster
-2. The upgrade remediation strategy is set to `uninstall` and all retries are exhausted
+2. Install remediation runs after an install failure
+3. The upgrade remediation strategy is set to `uninstall` after an upgrade failure
 
-The `spec.uninstall` field controls the behavior of the `helm uninstall` operation in both cases.
+The `spec.uninstall` field controls the behavior of the `helm uninstall` operation in these cases.
 
 ## Basic Uninstall Configuration
 
@@ -155,7 +156,7 @@ spec:
   upgrade:
     remediation:
       retries: 3
-      # Uninstall instead of rollback when retries are exhausted
+      # Uninstall instead of rollback during upgrade remediation
       strategy: uninstall
   uninstall:
     keepHistory: false
