@@ -12,7 +12,7 @@ Description: Step-by-step procedure for migrating a live Kubernetes cluster from
 
 Migrating a production Kubernetes cluster's CNI plugin to Cilium requires a well-defined procedure that minimizes downtime and preserves workload connectivity. Unlike initial cluster installations, in-place migrations must handle running pods with IPs assigned by the old CNI, services with established endpoints, and potentially active user traffic. Cilium's migration support accommodates these constraints through a phased approach.
 
-The recommended migration approach uses Cilium's `--set cni.exclusive=false` mode to deploy Cilium alongside the existing CNI in a chained configuration during the transition. This allows nodes to be migrated one at a time while the rest of the cluster continues operating normally under the old CNI.
+The recommended migration approach uses Cilium's secondary mode with per-node configuration to deploy Cilium alongside the existing CNI during the transition. This allows nodes to be migrated one at a time while the rest of the cluster continues operating normally under the old CNI.
 
 This guide covers the complete migration procedure from deploying Cilium in migration mode through final cutover and cleanup.
 
@@ -26,44 +26,71 @@ This guide covers the complete migration procedure from deploying Cilium in migr
 
 ## Configure Migration Mode
 
-Install Cilium in per-node migration mode:
+Install Cilium in per-node migration mode. Choose a Cilium pod CIDR and encapsulation port that are distinct from the existing CNI:
 
 ```bash
-# Install Cilium in migration mode alongside existing CNI
+# Install Cilium in secondary mode alongside existing CNI
 
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set cni.exclusive=false \
-  --set tunnel=vxlan \
+  --set routingMode=tunnel \
+  --set tunnelProtocol=vxlan \
+  --set tunnelPort=8473 \
   --set ipam.mode=cluster-pool \
-  --set ipam.operator.clusterPoolIPv4PodCIDRList="{10.244.0.0/16}" \
+  --set ipam.operator.clusterPoolIPv4PodCIDRList="{10.245.0.0/16}" \
   --set ipam.operator.clusterPoolIPv4MaskSize=24 \
-  --set nodeinit.enabled=true \
+  --set cni.customConf=true \
+  --set cni.uninstall=false \
+  --set operator.unmanagedPodWatcher.restart=false \
+  --set bpf.hostLegacyRouting=true \
   --set policyEnforcementMode=never
 
-# Verify Cilium pods are running but not yet primary CNI
+# Verify Cilium pods are running but not yet managing pods
 kubectl -n kube-system get pods -l k8s-app=cilium
-cilium status
+cilium status --wait
+```
+
+Create the per-node configuration that makes Cilium the primary CNI only on labeled nodes:
+
+```bash
+cat <<EOF | kubectl apply --server-side -f -
+apiVersion: cilium.io/v2
+kind: CiliumNodeConfig
+metadata:
+  namespace: kube-system
+  name: cilium-default
+spec:
+  nodeSelector:
+    matchLabels:
+      io.cilium.migration/cilium-default: "true"
+  defaults:
+    write-cni-conf-when-ready: /host/etc/cni/net.d/05-cilium.conflist
+    custom-cni-conf: "false"
+    cni-chaining-mode: "none"
+    cni-exclusive: "true"
+EOF
 ```
 
 Migrate nodes one at a time:
 
 ```bash
+NODE="<node-name>"
+
 # Cordon and drain a node
-kubectl cordon <node-name>
-kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+kubectl cordon "$NODE"
+kubectl drain "$NODE" --ignore-daemonsets --delete-emptydir-data
 
-# On the node: remove old CNI configuration
-# (SSH to node or use kubectl debug)
-kubectl debug node/<node-name> -it --image=ubuntu -- \
-  bash -c "rm /etc/cni/net.d/10-<old-cni>.conf"
+# Label the node so the CiliumNodeConfig applies to it
+kubectl label node "$NODE" --overwrite "io.cilium.migration/cilium-default=true"
 
-# Make Cilium the primary CNI on this node
-kubectl debug node/<node-name> -it --image=ubuntu -- \
-  bash -c "ls /etc/cni/net.d/"
+# Restart Cilium on this node so it writes the CNI configuration
+kubectl -n kube-system delete pod --field-selector spec.nodeName="$NODE" -l k8s-app=cilium
+kubectl -n kube-system rollout status ds/cilium -w
+
+# Reboot the node or restart the VM/instance through your infrastructure provider
 
 # Uncordon to allow pods to be scheduled with Cilium networking
-kubectl uncordon <node-name>
+kubectl uncordon "$NODE"
 ```
 
 ## Troubleshoot Migration Issues
@@ -72,7 +99,7 @@ Diagnose issues during migration:
 
 ```bash
 # Check Cilium agent status on a specific node
-kubectl -n kube-system exec -it <cilium-pod-on-node> -- cilium status
+kubectl -n kube-system exec -it <cilium-pod-on-node> -- cilium-dbg status
 
 # View migration-related errors
 kubectl -n kube-system logs <cilium-pod-on-node> --tail=200 | grep -i "error\|failed\|migration"
@@ -89,14 +116,14 @@ Handle common migration errors:
 ```bash
 # Issue: Pods on migrated nodes can't reach pods on unmigrated nodes
 # Check tunnel/overlay configuration matches
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep tunnel
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config --all | grep -E "tunnel|host-legacy-routing"
 
 # Issue: IP address conflicts during migration
 kubectl get cep -A -o wide
 kubectl get pods -A -o wide | awk 'NR>1 {print $7}' | sort | uniq -d
 
 # Issue: DNS broken after node migration
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep kube-dns
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep kube-dns
 # Ensure CoreDNS pods are rescheduled after drain
 kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
 ```
@@ -106,17 +133,20 @@ kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide
 Verify each node migrates successfully:
 
 ```bash
-# Confirm node is using Cilium CNI
-kubectl get node <node-name> -o jsonpath='{.metadata.annotations}'
+# Confirm the node is selected for Cilium CNI takeover
+kubectl get node <node-name> -o jsonpath='{.metadata.labels.io\.cilium\.migration/cilium-default}'
 
-# Check all pods on migrated node have Cilium endpoints
+# Check Cilium endpoint registration during migration
 NODE="<node-name>"
 POD_COUNT=$(kubectl get pods -A --field-selector spec.nodeName=$NODE --no-headers | wc -l)
-CEP_COUNT=$(kubectl get cep -A -o wide | grep $NODE | wc -l)
+CEP_COUNT=$(kubectl get cep -A --no-headers | wc -l)
 echo "Pods: $POD_COUNT, Cilium Endpoints: $CEP_COUNT"
 
-# Run connectivity test targeting the migrated node
-cilium connectivity test --test-namespace cilium-test
+# Run a one-off pod on the migrated node and confirm it gets a Cilium CIDR IP
+kubectl -n kube-system run --attach --rm --restart=Never verify-network \
+  --overrides='{"spec":{"nodeName":"'"$NODE"'","tolerations":[{"operator":"Exists"}]}}' \
+  --image ghcr.io/nicolaka/netshoot:v0.8 -- \
+  /bin/bash -c 'ip -br addr && curl -s -k https://$KUBERNETES_SERVICE_HOST/healthz && echo'
 
 # Verify cross-node communication
 kubectl exec -it <pod-on-cilium-node> -- ping <pod-ip-on-old-cni-node>
@@ -132,8 +162,14 @@ helm uninstall <old-cni-release> -n kube-system
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
+  --set cni.customConf=false \
+  --set operator.unmanagedPodWatcher.restart=true \
+  --set bpf.hostLegacyRouting=false \
   --set policyEnforcementMode=default \
   --set cni.exclusive=true
+
+kubectl -n kube-system rollout restart daemonset cilium
+kubectl delete -n kube-system ciliumnodeconfig cilium-default
 
 # Final connectivity test
 cilium connectivity test
@@ -148,11 +184,12 @@ sequenceDiagram
     participant OC as Old CNI
     participant CC as Cilium
     A->>N: Cordon + Drain
-    A->>N: Remove old CNI config
+    A->>N: Apply migration label
     CC->>N: Becomes primary CNI
+    A->>N: Reboot node
     A->>N: Uncordon
     N->>CC: New pods get Cilium IPs
-    N->>OC: Old pods retain old IPs
+    OC->>OC: Unmigrated nodes keep old CNI IPs
     A->>A: Verify connectivity
     Note over OC,CC: Both CNIs coexist during migration
 ```
@@ -172,9 +209,9 @@ watch -n5 "kubectl get cep -A --no-headers | wc -l"
 kubectl get events -A --watch | grep -i "cilium\|cni\|network"
 
 # Monitor node connectivity
-watch -n10 "cilium status --brief"
+watch -n10 "cilium status"
 ```
 
 ## Conclusion
 
-A phased Cilium migration using non-exclusive CNI mode allows you to migrate production clusters with minimal risk. By migrating one node at a time, testing connectivity at each step, and deferring policy enforcement until migration completes, you maintain cluster stability throughout the transition. Always validate connectivity between pods on migrated and unmigrated nodes before proceeding to the next node, and run the full Cilium connectivity test suite after migration completes.
+A phased Cilium migration using secondary mode and per-node configuration allows you to migrate production clusters with minimal risk. By migrating one node at a time, testing connectivity at each step, and deferring policy enforcement until migration completes, you maintain cluster stability throughout the transition. Always validate connectivity between pods on migrated and unmigrated nodes before proceeding to the next node, and run the full Cilium connectivity test suite after migration completes.
