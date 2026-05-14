@@ -12,7 +12,7 @@ The `filterTags` field in Flux ImagePolicy provides powerful regular expression-
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux and image automation controllers installed
+- A Kubernetes cluster with Flux and the image-reflector-controller installed
 - An ImageRepository with scanned tags
 - Basic understanding of regular expressions
 - kubectl access to your cluster
@@ -131,9 +131,9 @@ spec:
       range: ">=1.0.0"
 ```
 
-## Step 5: Use Alternation in Patterns
+## Step 5: Use Optional Components in Patterns
 
-Match tags with different formats using the `|` operator.
+Match tags with different formats using optional pattern components.
 
 ```yaml
 # imagepolicy-alternation.yaml
@@ -228,8 +228,8 @@ filterTags:
 Before applying, test your regex patterns against actual tags.
 
 ```bash
-# List tags from the ImageRepository to test against
-kubectl get imagerepository my-app -n flux-system -o jsonpath='{.status.lastScanResult.tagCount}'
+# Show a sample of tags from the ImageRepository to test against
+kubectl get imagerepository my-app -n flux-system -o jsonpath='{.status.lastScanResult.latestTags}'
 
 # Check the ImagePolicy status to see if tags matched
 kubectl describe imagepolicy my-app -n flux-system
