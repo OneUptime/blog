@@ -16,7 +16,7 @@ This guide covers pushing OCI artifacts to Harbor, configuring Flux to authentic
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later)
 - The `flux` CLI installed
 - A Harbor instance (v2.6 or later, which supports OCI artifacts natively)
 - A Harbor project and robot account or user credentials
@@ -44,17 +44,17 @@ flux push artifact oci://harbor.example.com/flux-artifacts/app:v1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
   --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)" \
-  --creds=robot\$flux-reader:$HARBOR_SECRET
+  --creds=robot\$flux-artifacts+flux-reader:$HARBOR_SECRET
 ```
 
-Note the backslash before `$` in the robot account name -- Harbor robot accounts use the `robot$` prefix, which must be escaped in shell commands.
+Note the backslash before `$` in the robot account name -- Harbor robot accounts use the `robot$` prefix, which must be escaped in unquoted shell commands. Project robot account names include the project name, for example `robot$flux-artifacts+flux-reader`.
 
 Verify the artifact is available.
 
 ```bash
 # List tags for the pushed artifact
 flux list artifacts oci://harbor.example.com/flux-artifacts/app \
-  --creds=robot\$flux-reader:$HARBOR_SECRET
+  --creds=robot\$flux-artifacts+flux-reader:$HARBOR_SECRET
 ```
 
 ## Step 3: Create Authentication Secret
@@ -66,7 +66,7 @@ Create a Kubernetes secret so Flux can authenticate with your Harbor instance.
 kubectl create secret docker-registry harbor-auth \
   --namespace=flux-system \
   --docker-server=harbor.example.com \
-  --docker-username='robot$flux-reader' \
+  --docker-username='robot$flux-artifacts+flux-reader' \
   --docker-password=$HARBOR_SECRET
 ```
 
@@ -196,7 +196,7 @@ spec:
 
 ### Vulnerability Scanning
 
-Harbor can scan OCI artifacts for vulnerabilities. You can configure Harbor's project policies to prevent pulling artifacts with critical vulnerabilities. This adds a security gate before Flux deploys anything to your cluster.
+Harbor can scan supported OCI artifact types for vulnerabilities. You can configure Harbor's project policies to prevent pulling supported artifacts with critical vulnerabilities. This adds a security gate before Flux deploys anything to your cluster.
 
 ### Replication
 
