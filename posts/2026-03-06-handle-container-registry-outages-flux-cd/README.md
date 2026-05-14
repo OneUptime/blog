@@ -26,7 +26,7 @@ Existing running pods are not affected unless they restart, because images are a
 ```yaml
 # alerts/registry-outage-alert.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-registry
@@ -37,7 +37,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: registry-outage-alert
@@ -50,8 +50,8 @@ spec:
     # Watch image repositories for scan failures
     - kind: ImageRepository
       name: "*"
-    # Watch HelmRepository for chart pull failures
-    - kind: HelmRepository
+    # Watch HelmChart for chart pull failures
+    - kind: HelmChart
       name: "*"
 ```
 
@@ -72,7 +72,7 @@ spec:
         - alert: ImageScanFailing
           expr: |
             gotk_resource_info{
-              kind="ImageRepository",
+              customresource_kind="ImageRepository",
               ready="False"
             } == 1
           for: 10m
@@ -85,7 +85,7 @@ spec:
         - alert: HelmChartPullFailing
           expr: |
             gotk_resource_info{
-              kind="HelmChart",
+              customresource_kind="HelmChart",
               ready="False"
             } == 1
           for: 10m
@@ -140,7 +140,7 @@ metadata:
   name: registry-cache
   namespace: registry-system
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: registry-cache
@@ -202,15 +202,23 @@ spec:
 # On each node, configure containerd to use the pull-through cache
 # /etc/containerd/config.toml
 
-# Add the following mirror configuration:
+# In /etc/containerd/config.toml, enable per-registry host configuration:
 cat <<'EOF'
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-  endpoint = ["http://registry-cache.registry-system.svc:5000"]
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+EOF
 
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."ghcr.io"]
-  endpoint = ["http://registry-cache.registry-system.svc:5000"]
+# Then configure the Docker Hub mirror:
+mkdir -p /etc/containerd/certs.d/docker.io
+cat >/etc/containerd/certs.d/docker.io/hosts.toml <<'EOF'
+server = "https://registry-1.docker.io"
+
+[host."http://registry-cache.internal.example.com:5000"]
+  capabilities = ["pull", "resolve"]
 EOF
 ```
+
+Expose the registry cache through an address that every node can resolve and reach, such as an internal load balancer, NodePort, or node-level DNS name. The example cache proxies Docker Hub; use a separate pull-through cache for each upstream registry you want to mirror.
 
 ## Strategy 3: Multi-Registry Image Replication
 
@@ -313,7 +321,6 @@ spec:
   url: oci://ghcr.io/org/charts
   secretRef:
     name: ghcr-creds
-  suspend: true
 ```
 
 ## Strategy 5: Pre-Pull Critical Images
@@ -368,20 +375,14 @@ flux suspend image update --all -n flux-system
 # Step 2: Check which pods are affected
 kubectl get pods -A --field-selector status.phase!=Running | grep ImagePull
 
-# Step 3: Scale down and scale up affected deployments
-# (forces use of cached images with IfNotPresent policy)
+# Step 3: Identify affected pods before deciding whether to restart them
+# on nodes where the image is already cached
 kubectl get pods -A | grep -E "ImagePull|ErrImagePull" | \
   awk '{print $1, $2}' | while read ns pod; do
     echo "Pod $pod in namespace $ns has image pull errors"
   done
 
-# Step 4: If using a mirror, switch HelmRepository sources
-kubectl patch helmrepository my-charts -n flux-system \
-  --type=merge -p '{"spec":{"suspend":true}}'
-kubectl patch helmrepository my-charts-backup -n flux-system \
-  --type=merge -p '{"spec":{"suspend":false}}'
-
-# Step 5: Update HelmReleases to use backup chart source
+# Step 4: Update HelmReleases to use backup chart source
 kubectl patch helmrelease my-app -n default \
   --type=merge \
   -p '{"spec":{"chart":{"spec":{"sourceRef":{"name":"my-charts-backup"}}}}}'
@@ -393,11 +394,10 @@ kubectl patch helmrelease my-app -n default \
 # Step 1: Verify the registry is back
 crane ping registry.example.com
 
-# Step 2: Switch back to primary sources
-kubectl patch helmrepository my-charts -n flux-system \
-  --type=merge -p '{"spec":{"suspend":false}}'
-kubectl patch helmrepository my-charts-backup -n flux-system \
-  --type=merge -p '{"spec":{"suspend":true}}'
+# Step 2: Switch back to the primary chart source
+kubectl patch helmrelease my-app -n default \
+  --type=merge \
+  -p '{"spec":{"chart":{"spec":{"sourceRef":{"name":"my-charts"}}}}}'
 
 # Step 3: Resume image automation
 flux resume image repository --all -n flux-system
@@ -409,7 +409,7 @@ flux reconcile image repository my-app-primary -n flux-system
 
 # Step 5: Verify everything is healthy
 flux get sources all -A
-flux get image all -A
+flux get images all -A
 ```
 
 ## Best Practices
@@ -418,6 +418,6 @@ flux get image all -A
 2. **Set IfNotPresent** - Avoid unnecessary image pulls that fail during outages
 3. **Replicate critical images** - Mirror essential images to multiple registries
 4. **Pre-pull on nodes** - Use DaemonSets to cache critical images on every node
-5. **Monitor scan health** - Alert on ImageRepository and HelmRepository failures
+5. **Monitor scan health** - Alert on ImageRepository and HelmChart failures
 6. **Suspend automation** - Pause image updates during registry outages to prevent bad state
 7. **Test failover** - Regularly verify that your registry failover procedures work correctly
