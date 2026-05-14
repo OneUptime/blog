@@ -14,17 +14,21 @@ Validating the Calico API server requires confirming four things: the API server
 
 ## Prerequisites
 
-- A Calico lab cluster with the API server deployed (Enterprise, or Open Source with API server installed)
+- A Calico lab cluster with the API server deployed (Enterprise, or Open Source with the deprecated aggregated API server installed)
 - `kubectl` and `calicoctl` configured
 - A test service account for RBAC validation
+- The namespace where the API server is installed (`calico-system` for operator-managed installs, or `calico-apiserver` for manifest installs)
 
 ## Validation 1: API Server Pod Health
 
 ```bash
-kubectl get pods -n calico-system -l k8s-app=calico-apiserver
+CALICO_APISERVER_NAMESPACE=calico-system
+# For manifest-based installations, use: CALICO_APISERVER_NAMESPACE=calico-apiserver
+
+kubectl get pods -n "$CALICO_APISERVER_NAMESPACE" -l k8s-app=calico-apiserver
 # Expected: All pods in Running state
 
-kubectl logs -n calico-system -l k8s-app=calico-apiserver | tail -20
+kubectl logs -n "$CALICO_APISERVER_NAMESPACE" -l k8s-app=calico-apiserver | tail -20
 # Expected: No error messages; server startup logs visible
 
 ```
@@ -110,7 +114,7 @@ metadata:
 spec:
   selector: all()
   ingress:
-  - action: PERMIT  # Should be Allow, Deny, or Pass
+  - action: PERMIT  # Should be Allow, Deny, Log, or Pass
 EOF
 # Expected: Error from API server: invalid action value
 ```
@@ -160,23 +164,41 @@ Verify that policy enforcement continues when the API server is unavailable:
 
 ```bash
 # Deploy test pods and apply a policy
-kubectl run test-server --image=nginx
-kubectl run test-client --image=nicolaka/netshoot -- sleep 3600
-kubectl apply -f deny-test-server.yaml
+kubectl run test-server --image=nginx --labels=app=test-server
+kubectl run test-client --image=nicolaka/netshoot --labels=app=test-client -- sleep 3600
+kubectl wait --for=condition=Ready pod/test-server --timeout=120s
+kubectl wait --for=condition=Ready pod/test-client --timeout=120s
+
+kubectl apply -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: deny-test-server
+  namespace: default
+spec:
+  selector: app == 'test-server'
+  types:
+  - Ingress
+  ingress:
+  - action: Deny
+EOF
 
 # Verify policy is enforced
 kubectl exec test-client -- wget --timeout=5 -qO- http://$(kubectl get pod test-server -o jsonpath='{.status.podIP}')
 # Expected: timeout (policy enforced)
 
 # Scale API server to 0 (simulate failure)
-kubectl scale deployment calico-apiserver -n calico-system --replicas=0
+CALICO_APISERVER_NAMESPACE=calico-system
+# For manifest-based installations, use: CALICO_APISERVER_NAMESPACE=calico-apiserver
+ORIGINAL_REPLICAS=$(kubectl get deployment calico-apiserver -n "$CALICO_APISERVER_NAMESPACE" -o jsonpath='{.spec.replicas}')
+kubectl scale deployment calico-apiserver -n "$CALICO_APISERVER_NAMESPACE" --replicas=0
 
 # Verify policy enforcement still works (Felix doesn't need API server for enforcement)
 kubectl exec test-client -- wget --timeout=5 -qO- http://$(kubectl get pod test-server -o jsonpath='{.status.podIP}')
 # Expected: timeout (enforcement still active - Felix doesn't use API server for enforcement)
 
 # Restore API server
-kubectl scale deployment calico-apiserver -n calico-system --replicas=2
+kubectl scale deployment calico-apiserver -n "$CALICO_APISERVER_NAMESPACE" --replicas="$ORIGINAL_REPLICAS"
 ```
 
 ## Validation Checklist
