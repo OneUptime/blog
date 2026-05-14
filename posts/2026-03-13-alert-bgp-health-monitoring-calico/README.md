@@ -10,7 +10,7 @@ Description: Configure Calico observability capabilities for network visibility,
 
 ## Introduction
 
-Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), flow logs for connection-level visibility, and integration with Grafana for dashboards. This guide covers how to configure and use these capabilities effectively.
+Calico provides multiple observability mechanisms: Felix Prometheus metrics (port 9091), Calico Cloud and Calico Enterprise flow logs for connection-level visibility, and integration with Grafana for dashboards. This guide covers how to configure and use these capabilities effectively.
 
 ## Key Commands
 
@@ -60,11 +60,11 @@ spec:
   groups:
     - name: calico.network
       rules:
-        - alert: CalicoHighDenyRate
+        - alert: CalicoDataplaneFailures
           expr: rate(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           annotations:
-            summary: "High Calico policy deny rate on {{ $labels.instance }}"
+            summary: "Calico dataplane updates are failing on {{ $labels.instance }}"
         - alert: CalicoFelixMetricsDown
           expr: up{job="calico-node-metrics"} == 0
           for: 5m
@@ -74,4 +74,4 @@ spec:
 
 ## Conclusion
 
-Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates iptables programming errors), high policy deny rate (indicates policy misconfiguration or security events), and IPAM utilization (indicates capacity issues). Configure alerts for all three from day one in production clusters.
+Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data in Calico Cloud or Calico Enterprise, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates dataplane programming errors), high policy deny rate in Calico Enterprise policy metrics (indicates policy misconfiguration or security events), and IPAM utilization from kube-controllers metrics (indicates capacity issues). Configure alerts for all three from day one in production clusters.
