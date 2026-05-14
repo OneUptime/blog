@@ -8,7 +8,7 @@ Description: Learn how Flux CD handles network failures during source fetching a
 
 ---
 
-Network failures are inevitable in distributed systems. Git repositories may be temporarily unreachable, Helm chart registries may experience downtime, and OCI registries may throttle requests. Flux CD is designed to handle these transient failures gracefully through retry mechanisms, exponential backoff, and clear status reporting. In this post, we will explore how Flux CD responds to network failures and how to configure retry behavior.
+Network failures are inevitable in distributed systems. Git repositories may be temporarily unreachable, Helm chart registries may experience downtime, and OCI registries may throttle requests. Flux CD is designed to handle these transient failures gracefully through retry mechanisms, backoff, and clear status reporting. In this post, we will explore how Flux CD responds to network failures and how to configure retry behavior.
 
 ## Where Network Failures Occur
 
@@ -32,7 +32,7 @@ flowchart TD
 
 ## How Flux Retries Failed Source Fetches
 
-When the source controller fails to fetch a Git repository, Helm chart, or OCI artifact, it retries on the next reconciliation interval. The source's status is updated to reflect the failure.
+When the source-controller fails to fetch a Git repository, Helm chart, or OCI artifact, it keeps retrying with exponential backoff until the source becomes ready. The source's status is updated to reflect the failure.
 
 ```yaml
 # GitRepository status after a network failure
@@ -61,7 +61,7 @@ Key behavior: Even when a fetch fails, Flux preserves the last successfully fetc
 
 ## The Reconciliation Retry Loop
 
-Flux controllers follow a retry loop for all operations:
+Flux controllers follow retry loops, but the retry timing depends on the controller and resource type. Source resources retry failed fetches with exponential backoff, while Kustomizations can use `spec.retryInterval` for failed reconciliations.
 
 ```mermaid
 flowchart TD
@@ -69,9 +69,9 @@ flowchart TD
     B --> C{Success?}
     C -->|Yes| D[Update status: Ready=True]
     C -->|No| E[Update status: Ready=False]
-    E --> F{Transient error?}
+    E --> F{Resource supports retryInterval?}
     F -->|Yes| G[Requeue after retryInterval]
-    F -->|No| H[Requeue after interval]
+    F -->|No| H[Retry with controller backoff]
     G --> B
     H --> I[Wait for next interval]
     I --> B
@@ -81,7 +81,7 @@ flowchart TD
 
 ## Configuring Retry Intervals
 
-Flux provides two interval-related fields that control retry behavior:
+Kustomizations provide two interval-related fields that control retry behavior:
 
 ```yaml
 # Kustomization with retry configuration
@@ -105,10 +105,10 @@ spec:
 - **spec.interval**: The regular reconciliation interval. Used when the last reconciliation succeeded.
 - **spec.retryInterval**: The interval used when the last reconciliation failed. Typically set shorter than `spec.interval` to recover faster from transient errors.
 
-The same fields are available on source resources:
+Source resources such as `GitRepository` use `spec.interval` for their normal polling cadence. Failed source fetches are retried by the source-controller with exponential backoff; `GitRepository` does not have a `spec.retryInterval` field.
 
 ```yaml
-# GitRepository with retry configuration
+# GitRepository with fetch interval configuration
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -117,8 +117,6 @@ metadata:
 spec:
   # Normal fetch interval
   interval: 5m
-  # Retry more frequently after a fetch failure
-  retryInterval: 1m
   url: https://github.com/my-org/my-repo
   ref:
     branch: main
@@ -137,7 +135,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  retryInterval: 2m
   chart:
     spec:
       chart: my-chart
@@ -236,7 +233,7 @@ kubectl events -n flux-system --watch | grep -i "fail\|error\|timeout"
 flux logs --kind=GitRepository --name=my-repo --level=error
 
 # View metrics for reconciliation failures (if Prometheus is configured)
-# source_controller_reconcile_condition{type="Ready",status="False"}
+# gotk_reconcile_condition{type="Ready",status="False"}
 ```
 
 ## Handling Specific Network Scenarios
@@ -270,17 +267,15 @@ spec:
   url: https://git.internal.example.com/my-repo
   ref:
     branch: main
-  # Reference a secret containing the CA certificate
+  # Reference a secret containing credentials and/or the CA certificate
   secretRef:
     name: git-credentials
-  certSecretRef:
-    name: ca-cert
 ---
 # Secret containing the CA certificate
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ca-cert
+  name: git-credentials
   namespace: flux-system
 type: Opaque
 data:
@@ -289,7 +284,7 @@ data:
 
 ### Rate Limiting
 
-Git providers and container registries may rate-limit API calls. Flux handles this by respecting HTTP 429 responses and backing off:
+Git providers and container registries may rate-limit API calls. Flux surfaces these failures in status and logs, then retries according to the controller's normal retry behavior:
 
 ```yaml
 # Increase the interval to reduce API calls if you are being rate-limited
@@ -333,7 +328,7 @@ spec:
 
 ## Best Practices
 
-1. **Set retryInterval shorter than interval**: Use `retryInterval: 1m` or `retryInterval: 2m` to recover quickly from transient network failures while keeping the regular interval longer.
+1. **Set retryInterval shorter than interval where supported**: For Kustomizations, use `retryInterval: 1m` or `retryInterval: 2m` to recover quickly from transient failures while keeping the regular interval longer. For source resources, tune `interval` and the source-controller retry delay settings instead.
 
 2. **Configure appropriate timeouts**: Set timeouts based on your network conditions. Longer timeouts for slow networks, shorter for fast local networks.
 
@@ -347,4 +342,4 @@ spec:
 
 ## Conclusion
 
-Flux CD is designed to be resilient against network failures. Through configurable retry intervals, timeouts, and HelmRelease remediation, Flux automatically recovers from transient network issues without manual intervention. By understanding these mechanisms and configuring them appropriately for your environment, you can build a GitOps pipeline that gracefully handles the network instabilities inherent in distributed systems.
+Flux CD is designed to be resilient against network failures. Through controller retry behavior, configurable retry intervals where supported, timeouts, and HelmRelease remediation, Flux automatically recovers from transient network issues without manual intervention. By understanding these mechanisms and configuring them appropriately for your environment, you can build a GitOps pipeline that gracefully handles the network instabilities inherent in distributed systems.
