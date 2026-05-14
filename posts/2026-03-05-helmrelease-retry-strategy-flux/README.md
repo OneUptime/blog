@@ -12,7 +12,7 @@ Description: Learn how to configure retry strategies for HelmRelease install and
 
 Helm operations in Kubernetes can fail for transient reasons: network timeouts, temporary API server overload, slow volume provisioning, or brief resource contention. A well-configured retry strategy allows Flux CD to recover from these temporary failures automatically, without requiring manual intervention.
 
-Flux provides retry configuration through the `spec.install.remediation.retries` and `spec.upgrade.remediation.retries` fields on HelmRelease resources. This guide covers how to design effective retry strategies for different workload types and failure scenarios.
+For the default `RemediateOnFailure` strategy, Flux provides retry configuration through the `spec.install.remediation.retries` and `spec.upgrade.remediation.retries` fields on HelmRelease resources. This guide covers how to design effective retry strategies for different workload types and failure scenarios.
 
 ## Retry Configuration Fields
 
@@ -203,7 +203,7 @@ Use the following commands to monitor retry behavior:
 ```bash
 # Check the current retry count and status
 
-flux get helmrelease my-application -n production
+flux get helmreleases -n production
 
 # View detailed status including failure count
 kubectl get helmrelease my-application -n production \
@@ -233,9 +233,9 @@ The appropriate number of retries depends on your workload type and failure patt
 
 ## Combining Retries with Reconciliation Interval
 
-The `spec.interval` field works alongside the retry strategy. After all retries are exhausted and remediation occurs, the next reconciliation cycle (determined by `spec.interval`) will attempt the operation again if the desired state still differs from the current state.
+The `spec.interval` field determines how often Flux checks the HelmRelease for drift and new desired state. During a failed install or upgrade, Flux reattempts the action until the configured remediation retries are exhausted, or until the action succeeds.
 
-This means that even after all retries are used, Flux will keep trying on each interval cycle, as the following timeline illustrates:
+After retries are exhausted for the same desired state, Flux leaves the release in a failed state. To retry that same desired state, reset the failure counts with `flux reconcile helmrelease <name> --reset`, or change the desired state in Git so Flux has a new release attempt to process.
 
 ```mermaid
 sequenceDiagram
@@ -247,18 +247,18 @@ sequenceDiagram
     Flux->>Cluster: Upgrade attempt 1 (fails)
     Flux->>Cluster: Upgrade attempt 2 (retry, fails)
     Flux->>Cluster: Upgrade attempt 3 (retry, fails)
+    Flux->>Cluster: Upgrade attempt 4 (retry, fails)
     Flux->>Cluster: Rollback (remediateLastFailure)
-    Note over Flux: Wait for interval (10m)
-    Flux->>Cluster: Upgrade attempt 1 (new cycle)
-    Flux->>Cluster: Upgrade attempt 2 (retry, fails)
-    Note over Flux: Continues until Git is fixed
+    Note over Flux: Retries exhausted for this desired state
+    Git->>Flux: Git fix or reset requested
+    Flux->>Cluster: New upgrade attempt
 ```
 
 ## Best Practices
 
 1. **Match retry counts to workload characteristics** -- stateless applications need fewer retries than stateful ones.
-2. **Set timeouts per attempt** -- each retry will use the configured timeout, so total time equals `retries * timeout`.
-3. **Always enable remediateLastFailure** alongside retries to ensure the system recovers after exhausting retries.
+2. **Set timeouts per attempt** -- the initial attempt and each retry can use the configured timeout, plus any remediation time between attempts.
+3. **Use remediateLastFailure intentionally** alongside retries to control whether Flux remediates after exhausting retries. For upgrades, Flux defaults this to `true` when at least one retry is configured.
 4. **Monitor failure counts** to distinguish between transient issues (resolved by retries) and persistent issues (requiring Git fixes).
 5. **Use 3 retries as the default** for most workloads and adjust based on observed failure patterns.
 
