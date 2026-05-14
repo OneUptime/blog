@@ -12,14 +12,14 @@ Description: Understand how management traffic flows through the Calico API serv
 
 The Calico API server sits in the management plane, not the data plane. This means traffic flowing through it is management traffic - API requests from kubectl, CI pipelines, and admission webhooks - not pod-to-pod networking traffic. Understanding this distinction prevents a common misconception that the API server affects pod connectivity.
 
-When an operator runs `kubectl get globalnetworkpolicies`, that request travels from the client through the Kubernetes API server, which proxies it to the Calico API server pod, which reads from the Calico datastore and returns the result. This entire chain is the management traffic path.
+When an operator runs `kubectl get globalnetworkpolicies` in a cluster that uses the aggregated Calico API server, that request travels from the client through the Kubernetes API server, which proxies it to the Calico API server pod, which reads from the Calico datastore and returns the result. This entire chain is the management traffic path.
 
 Mapping these traffic flows helps you understand latency sources, debug authentication failures, and design network policies that protect the Calico API server without accidentally blocking its required connections.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico API server deployed
-- `kubectl` and `calicoctl` CLI configured
+- Kubernetes cluster with the aggregated Calico API server deployed. This component is deprecated for new Calico installations; clusters using native v3 CRDs manage `projectcalico.org/v3` resources directly through Kubernetes CRDs instead.
+- `kubectl` CLI configured
 - Basic understanding of Kubernetes aggregated API servers
 
 ## Step 1: Understand the Management Traffic Flow
@@ -51,10 +51,9 @@ Verify how the Kubernetes API server knows to route projectcalico.org requests t
 
 kubectl get apiservice v3.projectcalico.org -o yaml
 
-# The caBundle field contains the TLS certificate used to authenticate the Calico API server
-# The service field points to the calico-apiserver Service in calico-apiserver namespace
-kubectl get apiservice v3.projectcalico.org \
-  -o jsonpath='{.spec.service}' | jq .
+# The caBundle field contains the CA bundle used to verify the Calico API server's serving certificate
+# The service field points to the calico-api Service in the calico-apiserver namespace
+kubectl get apiservice v3.projectcalico.org -o json | jq '.spec.service'
 
 # Verify the Service and Endpoints are healthy
 kubectl get service -n calico-apiserver
@@ -97,7 +96,7 @@ Confirm each segment of the traffic path works correctly.
 
 ```bash
 # Test 1: kubectl can reach Kubernetes API server
-kubectl version --short
+kubectl version
 
 # Test 2: Kubernetes API server can proxy to Calico API server
 kubectl api-versions | grep projectcalico
@@ -127,7 +126,7 @@ kubectl delete globalnetworkpolicies.projectcalico.org traffic-path-test
 
 ## Best Practices
 
-- Keep the calico-apiserver Service IP stable - changes require updating the APIService registration
+- Keep the APIService service reference aligned with the Calico API server Service name, namespace, and port
 - Monitor APIService availability as the primary signal for API server health
 - Ensure network policies protecting the calico-apiserver namespace allow ingress from the Kubernetes API server
 - Use `kubectl get apiservice v3.projectcalico.org` as your first diagnostic step when `kubectl get` on Calico resources fails
