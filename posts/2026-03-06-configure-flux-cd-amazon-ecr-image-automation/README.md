@@ -28,6 +28,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
   --path=clusters/production \
+  --read-write-key \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
@@ -136,17 +137,6 @@ patches:
         name: image-reflector-controller
         annotations:
           eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-image-reflector
-  # Annotate image-automation-controller for Git write access
-  - target:
-      kind: ServiceAccount
-      name: image-automation-controller
-    patch: |
-      apiVersion: v1
-      kind: ServiceAccount
-      metadata:
-        name: image-automation-controller
-        annotations:
-          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-image-automation
 ```
 
 ## Step 3: Create the ImageRepository
@@ -262,7 +252,7 @@ kubectl get imagepolicy my-app -n flux-system
 
 # Expected output shows the latest image
 kubectl get imagepolicy my-app -n flux-system \
-  -o jsonpath='{.status.latestImage}'
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 ```
 
 ## Step 5: Configure Image Update Automation
@@ -346,10 +336,54 @@ The marker `# {"$imagepolicy": "flux-system:my-app"}` links the image field to t
 
 ## Step 7: Handle ECR Token Refresh
 
-ECR tokens expire after 12 hours. When using IRSA with `provider: aws`, Flux handles token refresh automatically. If you are not using IRSA, you need a CronJob to refresh the token:
+ECR tokens expire after 12 hours. When using IRSA with `provider: aws`, Flux handles token refresh automatically. If you are not using IRSA, use a Docker registry secret with `provider: generic` and `secretRef`, then refresh that secret before the token expires:
+
+```yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
+  interval: 5m
+  provider: generic
+  secretRef:
+    name: ecr-credentials
+```
 
 ```yaml
 # ecr-token-refresh.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecr-token-refresh
+  namespace: flux-system
+subjects:
+  - kind: ServiceAccount
+    name: ecr-token-refresh
+    namespace: flux-system
+roleRef:
+  kind: Role
+  name: ecr-token-refresh
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -362,22 +396,44 @@ spec:
       template:
         spec:
           serviceAccountName: ecr-token-refresh
+          volumes:
+            - name: token
+              emptyDir:
+                medium: Memory
+          initContainers:
+            - name: get-token
+              image: amazon/aws-cli:latest
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: AWS_REGION
+                  value: us-east-1
+              # If this CronJob does not use IRSA, load AWS_ACCESS_KEY_ID and
+              # AWS_SECRET_ACCESS_KEY from a Kubernetes Secret here.
+              command:
+                - /bin/sh
+                - -c
+                - aws ecr get-login-password --region "$AWS_REGION" > /token/ecr-token
+              volumeMounts:
+                - name: token
+                  mountPath: /token
           containers:
             - name: ecr-login
-              image: amazon/aws-cli:latest
+              image: ghcr.io/fluxcd/flux-cli:v2.6.4
+              imagePullPolicy: IfNotPresent
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Get ECR login token
-                  TOKEN=$(aws ecr get-login-password --region us-east-1)
                   # Update the Kubernetes secret
                   kubectl create secret docker-registry ecr-credentials \
                     -n flux-system \
                     --docker-server=123456789012.dkr.ecr.us-east-1.amazonaws.com \
                     --docker-username=AWS \
-                    --docker-password=$TOKEN \
+                    --docker-password="$(cat /token/ecr-token)" \
                     --dry-run=client -o yaml | kubectl apply -f -
+              volumeMounts:
+                - name: token
+                  mountPath: /token
           restartPolicy: OnFailure
 ```
 
