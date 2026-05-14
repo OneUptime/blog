@@ -54,7 +54,7 @@ metadata:
 
 ## Configuring Object Storage
 
-Create a secret with your S3 bucket configuration that Thanos components will use.
+Create secrets with your S3 bucket configuration that Thanos components will use. The same secret is needed in the `thanos` namespace for the Thanos chart and in the `monitoring` namespace for the Prometheus sidecar.
 
 ```yaml
 # clusters/my-cluster/thanos/objstore-secret.yaml
@@ -63,6 +63,26 @@ kind: Secret
 metadata:
   name: thanos-objstore-config
   namespace: thanos
+type: Opaque
+stringData:
+  objstore.yml: |
+    type: S3
+    config:
+      bucket: my-thanos-data
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      # Use IRSA or provide explicit credentials
+      # access_key: ""
+      # secret_key: ""
+      insecure: false
+      sse_config:
+        type: "SSE-S3"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thanos-objstore-config
+  namespace: monitoring
 type: Opaque
 stringData:
   objstore.yml: |
@@ -99,7 +119,7 @@ prometheus:
     # Enable Thanos sidecar
     thanos:
       # Container image for the sidecar
-      image: quay.io/thanos/thanos:v0.35.0
+      image: quay.io/thanos/thanos:v0.41.0
       # Object store configuration
       objectStorageConfig:
         existingSecret:
@@ -115,13 +135,13 @@ prometheus:
           memory: 1Gi
     # Disable compaction in Prometheus (Thanos compactor handles it)
     disableCompaction: true
-    # Retain data locally for 2 hours (minimum for Thanos)
-    retention: 2h
+    # Retain enough local data for sidecar uploads and recent queries
+    retention: 6h
     # External labels for deduplication
+    replicaExternalLabelName: replica
     externalLabels:
       cluster: my-cluster
       region: us-east-1
-      replica: "$(POD_NAME)"
 ```
 
 Create a Service for the Thanos sidecar gRPC endpoint.
@@ -160,7 +180,7 @@ spec:
   chart:
     spec:
       chart: thanos
-      version: "15.x"
+      version: "17.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -190,16 +210,15 @@ spec:
           cpu: 2000m
           memory: 2Gi
       # Connect to Thanos sidecar in Prometheus
-      stores:
-        - "dns+prometheus-thanos-sidecar.monitoring.svc:10901"
-        - "dns+thanos-storegateway.thanos.svc:10901"
-      # Deduplication settings
       dnsDiscovery:
-        sidecarsService: ""
-        sidecarsNamespace: ""
+        enabled: true
+        sidecarsService: prometheus-thanos-sidecar
+        sidecarsNamespace: monitoring
+      # Deduplication settings
+      replicaLabel:
+        - replica
       # Extra flags for query
       extraFlags:
-        - "--query.replica-label=replica"
         - "--query.auto-downsampling"
 
     # Query Frontend - caching layer for queries
@@ -309,7 +328,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: thanos
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -387,4 +405,4 @@ curl -s "http://localhost:9090/api/v1/query" \
 
 ## Conclusion
 
-You now have a fully functional Thanos deployment managed by Flux CD. The setup provides high availability for Prometheus with deduplication, unlimited long-term metrics retention in object storage, automatic downsampling for efficient historical queries, a global query view across multiple Prometheus instances, and centralized recording and alerting rules through the Thanos ruler. All components are version-controlled in Git and automatically reconciled by Flux CD, ensuring consistent infrastructure management.
+You now have a fully functional Thanos deployment managed by Flux CD. The setup provides high availability for Prometheus with deduplication, long-term metrics retention in object storage, automatic downsampling for efficient historical queries, a global query view across multiple Prometheus instances, and centralized recording and alerting rules through the Thanos ruler. All components are version-controlled in Git and automatically reconciled by Flux CD, ensuring consistent infrastructure management.
