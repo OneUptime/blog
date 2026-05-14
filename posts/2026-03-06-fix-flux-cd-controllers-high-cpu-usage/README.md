@@ -36,8 +36,8 @@ kubectl top pods -n flux-system
 kubectl get deployment -n flux-system -o custom-columns=\
 "NAME:.metadata.name,CPU_REQ:.spec.template.spec.containers[0].resources.requests.cpu,CPU_LIM:.spec.template.spec.containers[0].resources.limits.cpu"
 
-# Check for CPU throttling events
-kubectl describe pod -n flux-system <pod-name> | grep -A 5 "State:"
+# Check configured CPU requests and limits on a pod
+kubectl describe pod -n flux-system <pod-name> | grep -A 5 -E "Requests:|Limits:"
 
 # Check controller logs for reconciliation activity
 kubectl logs -n flux-system deploy/source-controller --tail=100 | \
@@ -148,62 +148,25 @@ patches:
       kind: Deployment
       name: source-controller
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: source-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-                  - --watch-all-namespaces=true
-                  - --log-level=info
-                  # Reduce concurrent reconciliations (default is 4)
-                  - --concurrent=2
-                  - --storage-adv-addr=source-controller.flux-system.svc.cluster.local.
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=1
   # Reduce kustomize-controller concurrency
   - target:
       kind: Deployment
       name: kustomize-controller
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: kustomize-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-                  - --watch-all-namespaces=true
-                  - --log-level=info
-                  # Reduce concurrent reconciliations
-                  - --concurrent=2
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=2
   # Reduce helm-controller concurrency
   - target:
       kind: Deployment
       name: helm-controller
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: helm-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-                  - --watch-all-namespaces=true
-                  - --log-level=info
-                  # Reduce concurrent reconciliations
-                  - --concurrent=2
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=2
 ```
 
 ## Common Cause 3: Large Number of Managed Resources
@@ -215,43 +178,106 @@ In large clusters with hundreds of Kustomizations and HelmReleases, a single con
 Flux supports sharding controllers by label, allowing you to distribute the load across multiple controller instances:
 
 ```yaml
-# Shard 1: manages resources labeled with shard=shard1
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller-shard1
-  namespace: flux-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: kustomize-controller-shard1
-  template:
-    metadata:
-      labels:
-        app: kustomize-controller-shard1
-    spec:
-      containers:
-        - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
-          args:
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --concurrent=4
-            # Only reconcile resources with this shard label
-            - --watch-label-selector=sharding.fluxcd.io/key=shard1
-          resources:
-            limits:
-              cpu: "1"
-              memory: 1Gi
-            requests:
-              cpu: 100m
-              memory: 256Mi
+# File: clusters/my-cluster/flux-system/shard1/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+resources:
+  - ../gotk-components.yaml
+nameSuffix: "-shard1"
+commonAnnotations:
+  sharding.fluxcd.io/role: "shard"
+patches:
+  # Keep the shared cluster-scoped Flux resources from gotk-components.yaml in the main install.
+  - target:
+      kind: (Namespace|CustomResourceDefinition|ClusterRole|ClusterRoleBinding|ServiceAccount|NetworkPolicy|ResourceQuota)
+      labelSelector: "app.kubernetes.io/part-of=flux"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  # Shard source-controller, kustomize-controller, and helm-controller.
+  - target:
+      kind: Deployment
+      name: source-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: source-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: source-controller-shard1
+      - op: replace
+        path: /spec/template/spec/containers/0/args/6
+        value: --storage-adv-addr=source-controller-shard1.$(RUNTIME_NAMESPACE).svc.cluster.local.
+  - target:
+      kind: Deployment
+      name: kustomize-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: kustomize-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: kustomize-controller-shard1
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: helm-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: helm-controller-shard1
+  - target:
+      kind: Deployment
+      name: (source-controller|kustomize-controller|helm-controller)
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --watch-label-selector=sharding.fluxcd.io/key=shard1
 ```
 
-Then label your Kustomizations to assign them to shards:
+Then add the shard directory to your main Flux kustomization and exclude sharded resources from the main controllers:
 
 ```yaml
+# File: clusters/my-cluster/flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+  - shard1
+patches:
+  - target:
+      kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller)"
+      annotationSelector: "!sharding.fluxcd.io/role"
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/0
+        value: --watch-label-selector=!sharding.fluxcd.io/key
+```
+
+Then label your sources and Kustomizations to assign them to shards:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+  labels:
+    sharding.fluxcd.io/key: shard1
+spec:
+  interval: 10m
+  url: https://github.com/myorg/fleet-infra.git
+  ref:
+    branch: main
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -269,11 +295,11 @@ spec:
     name: flux-system
 ```
 
-## Common Cause 4: Unnecessary Drift Detection
+## Common Cause 4: Frequent Drift Detection
 
-By default, Flux detects drift in applied resources by comparing the desired state with the actual state. This is CPU-intensive for large deployments.
+Flux detects and corrects drift when a Kustomization reconciles. This can be CPU-intensive for large deployments when intervals are too short.
 
-### Fix: Disable Drift Detection for Stable Resources
+### Fix: Reduce Drift Detection Frequency for Stable Resources
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -282,16 +308,13 @@ metadata:
   name: stable-infra
   namespace: flux-system
 spec:
+  # Drift detection and correction run on this interval.
   interval: 30m
   path: ./infrastructure
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Disable drift detection to reduce CPU usage
-  # Flux will still reconcile on source changes
-  force: false
-  wait: false
 ```
 
 ## Common Cause 5: Image Scanning Too Frequently
@@ -387,8 +410,8 @@ echo "Kustomizations: $(kubectl get kustomization -A --no-headers | wc -l)"
 echo "HelmReleases: $(kubectl get helmrelease -A --no-headers | wc -l)"
 echo "ImageRepositories: $(kubectl get imagerepository -A --no-headers 2>/dev/null | wc -l)"
 
-# Step 4: Check for CPU throttling
-kubectl describe pod -n flux-system <controller-pod> | grep -i throttl
+# Step 4: Check configured CPU requests and limits
+kubectl describe pod -n flux-system <controller-pod> | grep -A 5 -E "Requests:|Limits:"
 
 # Step 5: After applying changes, monitor improvement
 watch kubectl top pods -n flux-system
