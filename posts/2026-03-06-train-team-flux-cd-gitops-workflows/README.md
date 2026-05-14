@@ -330,7 +330,7 @@ data:
 # Option C: Via ExternalSecret (sensitive values)
 ---
 # apps/base/my-new-app/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-new-app-secrets
@@ -360,7 +360,7 @@ spec:
 ```bash
 # Issue 1: Kustomization is not reconciling
 # Check the kustomization status
-flux get kustomization my-app
+flux get kustomizations my-app
 
 # Look at events
 kubectl events -n flux-system --for kustomization/my-app
@@ -377,7 +377,7 @@ kubectl describe gitrepository flux-system -n flux-system
 
 # Issue 3: Helm release stuck in "pending-upgrade"
 # Check Helm release status
-flux get helmrelease my-chart -n my-namespace
+flux get helmreleases my-chart -n my-namespace
 
 # Check Helm history
 helm history my-chart -n my-namespace
