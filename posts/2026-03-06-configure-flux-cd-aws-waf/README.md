@@ -67,8 +67,7 @@ Create the rules file with AWS managed rule groups and custom rules.
     "Statement": {
       "ManagedRuleGroupStatement": {
         "VendorName": "AWS",
-        "Name": "AWSManagedRulesCommonRuleSet",
-        "ExcludedRules": []
+        "Name": "AWSManagedRulesCommonRuleSet"
       }
     },
     "OverrideAction": { "None": {} },
@@ -173,6 +172,25 @@ aws iam attach-role-policy \
 
 ```yaml
 # infrastructure/waf/ack-wafv2-controller.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ack-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: ack-wafv2-chart
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: oci://public.ecr.aws/aws-controllers-k8s/wafv2-chart
+  ref:
+    semver: "1.0.x"
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -180,14 +198,10 @@ metadata:
   namespace: ack-system
 spec:
   interval: 15m
-  chart:
-    spec:
-      chart: wafv2-chart
-      version: "1.0.x"
-      sourceRef:
-        kind: HelmRepository
-        name: ack-charts
-        namespace: flux-system
+  chartRef:
+    kind: OCIRepository
+    name: ack-wafv2-chart
+    namespace: flux-system
   install:
     createNamespace: true
     remediation:
@@ -221,27 +235,6 @@ spec:
     - "172.16.0.0/12"
     - "192.168.0.0/16"
   description: "Trusted internal IP ranges"
-  tags:
-    - key: ManagedBy
-      value: flux-cd
-```
-
-```yaml
-# infrastructure/waf/regex-pattern-set.yaml
-# Define regex patterns for matching
-apiVersion: wafv2.services.k8s.aws/v1alpha1
-kind: RegexPatternSet
-metadata:
-  name: blocked-user-agents
-  namespace: default
-spec:
-  name: blocked-user-agents
-  scope: REGIONAL
-  regularExpressionList:
-    - regexString: ".*BadBot.*"
-    - regexString: ".*Scrapy.*"
-    - regexString: ".*curl/.*"
-  description: "User agents to block"
   tags:
     - key: ManagedBy
       value: flux-cd
@@ -402,7 +395,6 @@ kind: Kustomization
 resources:
   - web-acl.yaml
   - ip-set.yaml
-  - regex-pattern-set.yaml
 ```
 
 ```yaml
@@ -481,8 +473,8 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/WAFV2 \
   --metric-name BlockedRequests \
   --dimensions Name=WebACL,Value=flux-managed-app-web-acl Name=Region,Value=us-east-1 Name=Rule,Value=ALL \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)" \
-  --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+  --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \
   --statistics Sum
 
@@ -491,7 +483,7 @@ aws wafv2 get-sampled-requests \
   --web-acl-arn "$WAF_ACL_ARN" \
   --rule-metric-name RateLimitRule \
   --scope REGIONAL \
-  --time-window StartTime="$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)",EndTime="$(date -u +%Y-%m-%dT%H:%M:%S)" \
+  --time-window StartTime="$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)",EndTime="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --max-items 10
 
 # Verify WAF association with ALB
