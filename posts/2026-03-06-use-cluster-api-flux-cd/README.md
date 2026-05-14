@@ -48,6 +48,9 @@ export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=<your-access-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret-key>
 
+# Create the IAM resources required by CAPA
+clusterawsadm bootstrap iam create-cloudformation-stack
+
 # Encode credentials for CAPI
 export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
 
@@ -65,7 +68,22 @@ Instead of using clusterctl directly, manage CAPI installation through Flux for 
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: capi-operator-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: capi-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capi-kubeadm-bootstrap-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capi-kubeadm-control-plane-system
 ---
 apiVersion: v1
 kind: Namespace
@@ -75,84 +93,81 @@ metadata:
 
 ```yaml
 # infrastructure/capi/helmrepository.yaml
-# Helm repositories for CAPI components
+# Helm repository for the Cluster API Operator
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: capi
+  name: capi-operator
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://kubernetes-sigs.github.io/cluster-api
----
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: capi-aws
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://kubernetes-sigs.github.io/cluster-api-provider-aws
+  url: https://kubernetes-sigs.github.io/cluster-api-operator
 ```
 
 ```yaml
-# infrastructure/capi/core-helmrelease.yaml
-# Install CAPI core controllers
+# infrastructure/capi/operator-helmrelease.yaml
+# Install the Cluster API Operator
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: capi-controller
+  name: capi-operator
+  namespace: capi-operator-system
+spec:
+  interval: 15m
+  chart:
+    spec:
+      chart: cluster-api-operator
+      sourceRef:
+        kind: HelmRepository
+        name: capi-operator
+        namespace: flux-system
+```
+
+```yaml
+# infrastructure/capi/providers.yaml
+# Install CAPI providers through the Cluster API Operator
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: CoreProvider
+metadata:
+  name: cluster-api
   namespace: capi-system
 spec:
-  interval: 15m
-  chart:
-    spec:
-      chart: cluster-api
-      version: "1.9.x"
-      sourceRef:
-        kind: HelmRepository
-        name: capi
-        namespace: flux-system
-  values:
-    # Core CAPI controller configuration
-    core:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-    # Bootstrap provider for kubeadm
-    kubeadmBootstrap:
-      enabled: true
-    # Control plane provider for kubeadm
-    kubeadmControlPlane:
-      enabled: true
-```
-
-```yaml
-# infrastructure/capi/aws-helmrelease.yaml
-# Install AWS infrastructure provider
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+  version: v1.13.0
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: BootstrapProvider
 metadata:
-  name: capi-aws-controller
+  name: kubeadm
+  namespace: capi-kubeadm-bootstrap-system
+spec:
+  version: v1.13.0
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: ControlPlaneProvider
+metadata:
+  name: kubeadm
+  namespace: capi-kubeadm-control-plane-system
+spec:
+  version: v1.13.0
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: capa-variables
+  namespace: capa-system
+type: Opaque
+stringData:
+  AWS_B64ENCODED_CREDENTIALS: <output-from-clusterawsadm-bootstrap-credentials>
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: InfrastructureProvider
+metadata:
+  name: aws
   namespace: capa-system
 spec:
-  interval: 15m
-  chart:
-    spec:
-      chart: cluster-api-provider-aws
-      version: "2.7.x"
-      sourceRef:
-        kind: HelmRepository
-        name: capi-aws
-        namespace: flux-system
-  values:
-    # AWS provider configuration
-    manager:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
+  version: v2.11.1
+  configSecret:
+    name: capa-variables
 ```
 
 ## Defining Workload Clusters
@@ -162,7 +177,7 @@ Create cluster definitions as YAML manifests in Git.
 ```yaml
 # clusters/definitions/production-east.yaml
 # Define a production Kubernetes cluster on AWS
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: production-east
@@ -170,6 +185,7 @@ metadata:
   labels:
     environment: production
     region: us-east-1
+    gitops: flux
 spec:
   clusterNetwork:
     pods:
@@ -179,11 +195,11 @@ spec:
       cidrBlocks:
         - 10.128.0.0/12
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: production-east-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: AWSCluster
     name: production-east
 ---
@@ -203,9 +219,11 @@ spec:
     subnets:
       - availabilityZone: us-east-1a
         cidrBlock: 10.0.1.0/24
+        id: subnet-0123456789abcdef0
         isPublic: true
       - availabilityZone: us-east-1a
         cidrBlock: 10.0.2.0/24
+        id: subnet-0123456789abcdef1
         isPublic: false
 ```
 
@@ -216,7 +234,7 @@ Configure the Kubernetes control plane for the workload cluster.
 ```yaml
 # clusters/definitions/production-east-control-plane.yaml
 # Kubeadm control plane configuration
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: production-east-control-plane
@@ -226,30 +244,36 @@ spec:
   replicas: 3
   version: v1.31.0
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-      kind: AWSMachineTemplate
-      name: production-east-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: AWSMachineTemplate
+        name: production-east-control-plane
   kubeadmConfigSpec:
     # Control plane kubeadm configuration
     clusterConfiguration:
       apiServer:
         extraArgs:
           # Enable audit logging
-          audit-log-maxage: "30"
-          audit-log-maxbackup: "10"
-          audit-log-maxsize: "100"
+          - name: audit-log-maxage
+            value: "30"
+          - name: audit-log-maxbackup
+            value: "10"
+          - name: audit-log-maxsize
+            value: "100"
     initConfiguration:
       nodeRegistration:
         name: "{{ ds.meta_data.local_hostname }}"
         kubeletExtraArgs:
           # Use the cloud provider for node identification
-          cloud-provider: external
+          - name: cloud-provider
+            value: external
     joinConfiguration:
       nodeRegistration:
         name: "{{ ds.meta_data.local_hostname }}"
         kubeletExtraArgs:
-          cloud-provider: external
+          - name: cloud-provider
+            value: external
 ---
 # Machine template for control plane nodes
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -276,7 +300,7 @@ Configure the worker node pool using MachineDeployment.
 ```yaml
 # clusters/definitions/production-east-workers.yaml
 # Worker node machine deployment
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-east-workers
@@ -285,23 +309,29 @@ spec:
   clusterName: production-east
   replicas: 3
   selector:
-    matchLabels: {}
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: production-east
+      nodepool: production-east-workers
   template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: production-east
+        nodepool: production-east-workers
     spec:
       clusterName: production-east
       version: v1.31.0
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: production-east-workers
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: AWSMachineTemplate
         name: production-east-workers
 ---
 # Kubeadm configuration for worker nodes
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: production-east-workers
@@ -313,7 +343,8 @@ spec:
         nodeRegistration:
           name: "{{ ds.meta_data.local_hostname }}"
           kubeletExtraArgs:
-            cloud-provider: external
+            - name: cloud-provider
+              value: external
 ---
 # Machine template for worker nodes
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -365,7 +396,7 @@ Use CAPI's ClusterResourceSet to automatically install Flux on new clusters.
 ```yaml
 # infrastructure/capi/flux-bootstrap-set.yaml
 # Automatically install Flux on every new workload cluster
-apiVersion: addons.cluster.x-k8s.io/v1beta1
+apiVersion: addons.cluster.x-k8s.io/v1beta2
 kind: ClusterResourceSet
 metadata:
   name: flux-bootstrap
@@ -430,7 +461,7 @@ To scale a cluster, update the YAML in Git and let Flux sync the change.
 ```yaml
 # clusters/definitions/production-east-workers.yaml
 # Update the replica count to scale the worker pool
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-east-workers
