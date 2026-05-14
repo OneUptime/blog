@@ -36,7 +36,7 @@ graph LR
     end
 ```
 
-The label `org=empire` maps to `team=payments`. The `class=tiefighter` maps to `app=api-gateway`. The pattern is identical; only the names change.
+The label `org=empire` maps to a trusted service ownership label such as `team=payments`. The `class=tiefighter` maps to `app=api-gateway`. The pattern is identical; only the names change.
 
 ## Equivalent Production Policy
 
@@ -56,6 +56,7 @@ spec:
   ingress:
   - fromEndpoints:
     - matchLabels:
+        k8s:io.kubernetes.pod.namespace: platform
         app: api-gateway
         team: platform
     toPorts:
@@ -104,7 +105,7 @@ In zero-trust, every service must authenticate every request and no network conn
 - Identity-based (label selectors, not IPs)
 
 ```yaml
-# Zero-trust default deny all ingress except explicit allows
+# Namespace-scoped zero-trust default deny for ingress and egress except explicit allows
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -139,6 +140,7 @@ Whether you're evaluating Cilium for the first time or deepening your understand
 - Cilium installed and running (`cilium status`)
 - `kubectl` configured and pointing to your cluster
 - `cilium` CLI installed
+- `hubble` CLI installed and able to reach the Hubble API
 
 ## Step 1: Deploy the Star Wars Demo Application
 
