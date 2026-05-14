@@ -143,16 +143,41 @@ data:
 
 ### Adding Custom DNS Entries
 
-Use the hosts plugin to add custom static DNS entries.
+Use the hosts plugin to add custom static DNS entries. Add the custom server block as another key in the same `coredns` ConfigMap, because the default CoreDNS Deployment mounts that ConfigMap under `/etc/coredns`.
 
 ```yaml
-# clusters/my-cluster/coredns-config/coredns-custom-entries.yaml
+# clusters/my-cluster/coredns-config/coredns-configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . 8.8.8.8 8.8.4.4 {
+           max_concurrent 1000
+        }
+        cache 30
+        loop
+        reload 10s
+        loadbalance
+    }
+
+    # Import custom server blocks mounted from this ConfigMap
+    import /etc/coredns/custom.server
+
   custom.server: |
     # Custom DNS entries for internal services
     internal.example.com:53 {
@@ -170,7 +195,7 @@ data:
     }
 ```
 
-Then reference this ConfigMap in the main CoreDNS configuration by importing it.
+The `import` line must point to a file that exists in the CoreDNS container.
 
 ```yaml
 # clusters/my-cluster/coredns-config/coredns-configmap.yaml
@@ -203,7 +228,7 @@ data:
     }
 
     # Import custom server blocks
-    import /etc/coredns/custom/*.server
+    import /etc/coredns/custom.server
 ```
 
 ## Conditional DNS Forwarding
@@ -316,6 +341,43 @@ Configure CoreDNS autoscaling through a proportional autoscaler.
 
 ```yaml
 # clusters/my-cluster/coredns-config/dns-autoscaler.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:dns-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["replicationcontrollers/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale", "replicasets/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:dns-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: dns-autoscaler
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:dns-autoscaler
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -333,6 +395,9 @@ spec:
       labels:
         k8s-app: dns-autoscaler
     spec:
+      priorityClassName: system-cluster-critical
+      nodeSelector:
+        kubernetes.io/os: linux
       serviceAccountName: dns-autoscaler
       containers:
         - name: autoscaler
@@ -342,13 +407,16 @@ spec:
             - --namespace=kube-system
             - --configmap=dns-autoscaler
             - --target=deployment/coredns
-            - --default-params={"linear":{"coresPerReplica":256,"nodesPerReplica":16,"min":2,"max":10,"preventSinglePointFailure":true}}
+            - --default-params={"linear":{"coresPerReplica":256,"nodesPerReplica":16,"min":2,"max":10,"preventSinglePointFailure":true,"includeUnschedulableNodes":true}}
             - --logtostderr=true
             - --v=2
           resources:
             requests:
               cpu: 20m
               memory: 10Mi
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
 ```
 
 ## NodeLocal DNS Cache
@@ -357,6 +425,66 @@ Deploy NodeLocal DNS Cache to improve DNS performance by running a local caching
 
 ```yaml
 # clusters/my-cluster/coredns-config/nodelocaldns-daemonset.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-local-dns
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-local-dns
+  namespace: kube-system
+data:
+  Corefile: |
+    cluster.local:53 {
+        errors
+        cache {
+           success 9984 30
+           denial 9984 5
+        }
+        reload
+        loop
+        bind 169.254.20.10
+        forward . __PILLAR__CLUSTER__DNS__ {
+           force_tcp
+        }
+        prometheus :9253
+        health 169.254.20.10:8080
+    }
+    in-addr.arpa:53 {
+        errors
+        cache 30
+        reload
+        loop
+        bind 169.254.20.10
+        forward . __PILLAR__CLUSTER__DNS__ {
+           force_tcp
+        }
+        prometheus :9253
+    }
+    ip6.arpa:53 {
+        errors
+        cache 30
+        reload
+        loop
+        bind 169.254.20.10
+        forward . __PILLAR__CLUSTER__DNS__ {
+           force_tcp
+        }
+        prometheus :9253
+    }
+    .:53 {
+        errors
+        cache 30
+        reload
+        loop
+        bind 169.254.20.10
+        forward . __PILLAR__UPSTREAM__SERVERS__
+        prometheus :9253
+    }
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -372,8 +500,12 @@ spec:
     metadata:
       labels:
         k8s-app: node-local-dns
+      annotations:
+        prometheus.io/port: "9253"
+        prometheus.io/scrape: "true"
     spec:
       priorityClassName: system-node-critical
+      serviceAccountName: node-local-dns
       hostNetwork: true
       dnsPolicy: Default
       tolerations:
@@ -385,7 +517,7 @@ spec:
           operator: Exists
       containers:
         - name: node-cache
-          image: registry.k8s.io/dns/k8s-dns-node-cache:1.23.1
+          image: registry.k8s.io/dns/k8s-dns-node-cache:1.26.8
           args:
             - "-localip"
             - "169.254.20.10"
@@ -393,6 +525,10 @@ spec:
             - "/etc/Corefile"
             - "-upstreamsvc"
             - "kube-dns"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
           ports:
             - containerPort: 53
               name: dns
@@ -408,9 +544,22 @@ spec:
               cpu: 25m
               memory: 5Mi
           volumeMounts:
+            - name: xtables-lock
+              mountPath: /run/xtables.lock
+              readOnly: false
             - name: config-volume
               mountPath: /etc/coredns
+            - name: kube-dns-config
+              mountPath: /etc/kube-dns
       volumes:
+        - name: xtables-lock
+          hostPath:
+            path: /run/xtables.lock
+            type: FileOrCreate
+        - name: kube-dns-config
+          configMap:
+            name: kube-dns
+            optional: true
         - name: config-volume
           configMap:
             name: node-local-dns
