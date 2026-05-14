@@ -61,8 +61,8 @@ kubectl apply -k /path/to/flux-system/
 kubectl get deployment kustomize-controller -n flux-system \
   -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n'
 
-# Restart the controller to pick up changes
-kubectl rollout restart deployment kustomize-controller -n flux-system
+# Wait for the controller rollout to complete
+kubectl rollout status deployment kustomize-controller -n flux-system
 ```
 
 ## Step 2: Verify Remote Bases Are Blocked
@@ -121,11 +121,12 @@ spec:
   url: https://github.com/external-org/k8s-manifests.git
   ref:
     # Pin to a specific commit SHA for immutability
-    commit: abc123def456789
+    commit: abc123def4567890abc123def4567890abc123def45
   verify:
-    # Optionally verify the commit signature
+    # Optionally verify the commit signature with trusted PGP public keys
     mode: HEAD
-    provider: github
+    secretRef:
+      name: external-manifests-pgp-keys
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -142,34 +143,27 @@ spec:
   serviceAccountName: restricted-deployer
 ```
 
-## Step 5: Use OPA Gatekeeper to Enforce Restrictions
+## Step 5: Use OPA in CI to Enforce Restrictions
 
-Add a policy layer that blocks remote base references in any Kustomize configuration committed to your repository:
+Add a policy layer that blocks remote base references in any Kustomize configuration committed to your repository. This check belongs in CI because Gatekeeper admission policies only see Kubernetes API objects, not the `kustomization.yaml` files stored in Git:
 
-```yaml
-# gatekeeper-no-remote-bases.yaml
-# OPA Gatekeeper constraint template to detect remote bases in manifests
-apiVersion: templates.gatekeeper.sh/v1
-kind: ConstraintTemplate
-metadata:
-  name: k8snoremotebases
-spec:
-  crd:
-    spec:
-      names:
-        kind: K8sNoRemoteBases
-  targets:
-    - target: admission.k8s.gatekeeper.sh
-      rego: |
-        package k8snoremotebases
-        violation[{"msg": msg}] {
-          input.review.object.kind == "Kustomization"
-          input.review.object.apiVersion == "kustomize.toolkit.fluxcd.io/v1"
-          # Check if the path references an external URL
-          path := input.review.object.spec.path
-          contains(path, "://")
-          msg := sprintf("Remote bases are not allowed in Kustomization %v", [input.review.object.metadata.name])
-        }
+```rego
+# policy/no_remote_bases.rego
+package main
+
+deny contains msg if {
+  input.kind == "Kustomization"
+  input.apiVersion == "kustomize.config.k8s.io/v1beta1"
+  resource := input.resources[_]
+  contains(resource, "://")
+  msg := sprintf("Remote bases are not allowed in %s", [data.conftest.file.name])
+}
+```
+
+Run the policy with Conftest:
+
+```bash
+conftest test --policy policy path/to/kustomization.yaml
 ```
 
 ## Best Practices
