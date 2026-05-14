@@ -81,10 +81,14 @@ metadata:
   namespace: flagger-system
 spec:
   interval: 30m
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   chart:
     spec:
       chart: flagger
-      version: "1.37.x"
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
@@ -121,10 +125,14 @@ metadata:
   namespace: flagger-system
 spec:
   interval: 30m
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   chart:
     spec:
       chart: flagger
-      version: "1.37.x"
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
@@ -132,10 +140,6 @@ spec:
   values:
     # Set the mesh provider to istio
     meshProvider: istio
-    # Istio control plane namespace
-    istio:
-      kubeconfig:
-        secretName: ""
     metricsServer: http://prometheus.istio-system:9090
     logLevel: info
     resources:
@@ -159,18 +163,24 @@ metadata:
   namespace: flagger-system
 spec:
   interval: 30m
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   chart:
     spec:
       chart: flagger
-      version: "1.37.x"
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
         namespace: flagger-system
   values:
-    # Set the mesh provider to linkerd
-    meshProvider: linkerd
+    # Set the mesh provider to Gateway API for Linkerd
+    meshProvider: gatewayapi:v1beta1
     metricsServer: http://prometheus.linkerd-viz:9090
+    linkerdAuthPolicy:
+      create: true
     logLevel: info
     resources:
       requests:
@@ -206,9 +216,6 @@ spec:
   values:
     # URL of your Prometheus instance
     url: http://prometheus-server.monitoring:80
-    # Default dashboard for canary analysis
-    dashboard:
-      enabled: true
 ```
 
 ## Step 4: Install the Flagger Load Tester (Optional)
@@ -237,7 +244,7 @@ spec:
     spec:
       containers:
         - name: loadtester
-          image: ghcr.io/fluxcd/flagger-loadtester:0.31.0
+          image: ghcr.io/fluxcd/flagger-loadtester:0.37.0
           ports:
             - containerPort: 8080
           command:
@@ -383,7 +390,7 @@ kubectl get crds | grep flagger
 
 ## Step 8: Validate the Installation with a Test Canary
 
-Create a simple test to confirm Flagger is working correctly.
+Create a simple test to confirm Flagger is working correctly. This example assumes a `test-app` Deployment exists in the `default` namespace and exposes port 8080.
 
 ```yaml
 # test/canary-test.yaml
@@ -398,6 +405,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: test-app
+  service:
+    port: 8080
   # Analysis configuration
   analysis:
     # Check interval
