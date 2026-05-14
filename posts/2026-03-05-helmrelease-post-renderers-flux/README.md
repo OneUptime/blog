@@ -36,13 +36,13 @@ Flux supports Kustomize-based post-renderers, which allow you to apply Kustomize
 
 - **Patches**: Strategic merge patches and JSON patches
 - **Images**: Image name and tag overrides
-- **Additional labels and annotations**: Applied to all or specific resources
+- **Additional labels and annotations**: Applied through patches targeted at specific resource kinds or selectors
 
 ## Basic Post-Renderer Configuration
 
 The `spec.postRenderers` field accepts a list of post-renderer configurations. Each post-renderer contains a `kustomize` field with Kustomize operations to apply.
 
-The following example adds labels to all resources rendered by the Helm chart:
+The following example adds labels to all Deployments rendered by the Helm chart:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -65,15 +65,24 @@ spec:
   # Post-renderers modify the Helm output before applying to the cluster
   postRenderers:
     - kustomize:
-        # Add labels to all rendered resources
-        patches: []
+        # Add labels to all rendered Deployments
+        patches:
+          - target:
+              kind: Deployment
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: not-used
+                labels:
+                  managed-by: flux
 ```
 
 ## Adding Labels and Annotations
 
 One of the most common post-renderer use cases is adding labels or annotations that the Helm chart does not natively support.
 
-The following example adds compliance and cost-tracking labels to all resources:
+The following example adds compliance and cost-tracking labels to all Deployments:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -104,7 +113,7 @@ spec:
               apiVersion: apps/v1
               kind: Deployment
               metadata:
-                name: all
+                name: not-used
                 labels:
                   # Add compliance and cost allocation labels
                   compliance/pci-dss: "true"
@@ -155,7 +164,7 @@ spec:
 
 For more precise modifications, you can use JSON 6902 patches to target specific fields within resources.
 
-The following example uses a JSON patch to modify resource limits on a specific container:
+The following example uses a JSON patch to add or replace resource limits on a specific container that already has a `resources` field:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -183,12 +192,11 @@ spec:
               kind: Deployment
               name: my-application
             patch: |
-              - op: replace
-                path: /spec/template/spec/containers/0/resources/limits/memory
-                value: "1Gi"
-              - op: replace
-                path: /spec/template/spec/containers/0/resources/limits/cpu
-                value: "500m"
+              - op: add
+                path: /spec/template/spec/containers/0/resources/limits
+                value:
+                  memory: "1Gi"
+                  cpu: "500m"
 ```
 
 ## Chaining Multiple Post-Renderers
@@ -225,7 +233,7 @@ spec:
               apiVersion: apps/v1
               kind: Deployment
               metadata:
-                name: all
+                name: not-used
                 labels:
                   team: platform
                   environment: production
