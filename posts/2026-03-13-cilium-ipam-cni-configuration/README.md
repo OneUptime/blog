@@ -12,7 +12,7 @@ Description: Understand how Cilium's CNI configuration interacts with its IPAM s
 
 The relationship between Cilium's CNI plugin and its IPAM subsystem determines how IP addresses are assigned to pods at the moment of their creation. When the kubelet calls the Cilium CNI plugin for a new pod, the CNI binary communicates with the Cilium Agent via Unix socket, which then consults the IPAM module to allocate an IP address from the appropriate pool. This IPAM-CNI integration is the critical path for pod IP allocation and must be correctly configured for reliable pod networking.
 
-While the CNI configuration file at `/etc/cni/net.d/05-cilium.conf` is intentionally minimal (deferring all configuration to the Cilium Agent), the IPAM mode and parameters configured in the Cilium Agent's ConfigMap directly affect what the CNI binary does when allocating IPs. The CNI configuration and IPAM configuration must be consistent - for example, configuring AWS ENI IPAM but not granting the necessary IAM permissions will cause the CNI to fail at IP allocation time.
+While the CNI configuration file at `/etc/cni/net.d/05-cilium.conflist` is intentionally minimal (deferring most configuration to the Cilium Agent), the IPAM mode and parameters configured in the Cilium Agent's ConfigMap directly affect what the CNI binary does when allocating IPs. The CNI configuration and IPAM configuration must be consistent - for example, configuring AWS ENI IPAM but not granting the necessary IAM permissions will cause the CNI to fail at IP allocation time.
 
 This guide covers the intersection of CNI and IPAM configuration, how they interact, troubleshooting IPAM-CNI integration failures, and validating end-to-end IP allocation through the CNI interface.
 
@@ -31,15 +31,20 @@ The CNI configuration for different IPAM modes:
 # View current CNI config (minimal - delegates to agent)
 
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conf
+  cat /host/etc/cni/net.d/05-cilium.conflist
 ```
 
 ```json
 {
   "cniVersion": "0.3.1",
   "name": "cilium",
-  "type": "cilium-cni",
-  "enable-debug": false
+  "plugins": [
+    {
+      "type": "cilium-cni",
+      "enable-debug": false,
+      "log-file": "/var/run/cilium/cilium-cni.log"
+    }
+  ]
 }
 ```
 
@@ -80,7 +85,7 @@ helm upgrade cilium cilium/cilium \
 
 # Check CNI logs for IPAM operations
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  tail -f /var/run/cilium/cilium-cni.log | grep -i "ipam\|alloc\|ip"
+  tail -f /host/var/run/cilium/cilium-cni.log | grep -i "ipam\|alloc\|ip"
 ```
 
 ## Troubleshoot IPAM-CNI Integration
@@ -97,14 +102,14 @@ kubectl -n kube-system logs ds/cilium | grep -i "ipam\|alloc\|ip" | tail -30
 
 # Check CNI log for specific allocation failure
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /var/run/cilium/cilium-cni.log | grep -i "error\|failed\|ipam"
+  cat /host/var/run/cilium/cilium-cni.log | grep -i "error\|failed\|ipam"
 
-# Verify IPAM pool has available IPs
+# Verify the node CIDR was assigned and no operator allocation error is present
 kubectl get ciliumnode <node-name> -o json | \
-  jq '{available: (.status.ipam.available | length), allocated: (.status.ipam.allocated | length)}'
+  jq '{podCIDRs: .spec.ipam.podCIDRs, operatorStatus: .status.ipam["operator-status"]}'
 
 # Check if agent IPAM module is responsive
-kubectl -n kube-system exec ds/cilium -- cilium ip list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-addresses
 ```
 
 Fix IPAM-CNI integration issues:
@@ -112,7 +117,7 @@ Fix IPAM-CNI integration issues:
 ```bash
 # Issue: CNI cannot connect to agent socket
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /var/run/cilium/cilium.sock
+  ls -la /host/var/run/cilium/cilium.sock
 
 # Fix: Restart Cilium agent to recreate socket
 NODE="worker-1"
@@ -122,7 +127,7 @@ kubectl -n kube-system delete pod $CILIUM_POD
 
 # Issue: IPAM pool mismatch between CNI call and agent state
 # Ensure ConfigMap IPAM settings match actual pod CIDR expectations
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep ipam
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config view | grep ipam
 kubectl get node <node-name> -o jsonpath='{.spec.podCIDR}'
 ```
 
@@ -148,9 +153,10 @@ python3 -c "import ipaddress; print('Valid' if ipaddress.ip_address('$POD_IP') i
 # Test 2: Verify IP released on pod deletion
 kubectl delete pod ipam-cni-test
 
-# Check IP is back in available pool
-kubectl get ciliumnode $NODE -o json | \
-  jq ".status.ipam.available | has(\"$POD_IP\")"
+# Check the deleted pod IP is no longer attached to a local endpoint
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  --field-selector spec.nodeName=$NODE -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec $CILIUM_POD -- cilium-dbg endpoint list | grep -F "$POD_IP" || true
 ```
 
 ## Monitor CNI-IPAM Health
@@ -171,22 +177,27 @@ graph TD
 Monitor IPAM metrics:
 
 ```bash
-# Watch IP allocation rate
-kubectl -n kube-system port-forward ds/cilium 9962:9962 &
-watch -n10 "curl -s http://localhost:9962/metrics | grep ipam_allocated"
+# Enable and watch IPAM capacity and allocated-address metrics
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set prometheus.enabled=true
 
-# Track available vs allocated IPs
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system port-forward pod/$CILIUM_POD 9962:9962 &
+watch -n10 "curl -s http://localhost:9962/metrics | grep -E 'cilium_ipam_capacity|cilium_ip_addresses|cilium_ipam_events_total'"
+
+# Track node PodCIDR allocation and operator IPAM status
 kubectl get ciliumnodes -o json | jq '[.items[] | {
   node: .metadata.name,
-  total: ((.status.ipam.available | length) + (.status.ipam.allocated | length)),
-  allocated: (.status.ipam.allocated | length),
-  available: (.status.ipam.available | length),
-  utilization_pct: ((.status.ipam.allocated | length) / ((.status.ipam.available | length) + (.status.ipam.allocated | length)) * 100 | floor)
+  podCIDRs: .spec.ipam.podCIDRs,
+  operatorStatus: .status.ipam["operator-status"]
 }]'
 
-# Alert when node IPAM > 80% utilized
+# Alert when node PodCIDR capacity or allocated-address metrics approach exhaustion
 ```
 
 ## Conclusion
 
-The CNI-IPAM integration in Cilium is the critical path through which every pod receives its IP address. While the CNI configuration file itself is minimal, the IPAM configuration in the Cilium Agent's ConfigMap determines the allocation behavior. Monitoring available IPs per node and the IPAM allocation rate provides early warning of pool exhaustion. Comprehensive debug logging through the CNI log file and Cilium agent logs enables rapid diagnosis of IP allocation failures that cause pods to get stuck in ContainerCreating state.
+The CNI-IPAM integration in Cilium is the critical path through which every pod receives its IP address. While the CNI configuration file itself is minimal, the IPAM configuration in the Cilium Agent's ConfigMap determines the allocation behavior. Monitoring node PodCIDR assignment and Cilium IPAM metrics provides early warning of pool exhaustion. Comprehensive debug logging through the CNI log file and Cilium agent logs enables rapid diagnosis of IP allocation failures that cause pods to get stuck in ContainerCreating state.
