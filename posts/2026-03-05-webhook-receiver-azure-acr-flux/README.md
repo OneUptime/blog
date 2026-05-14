@@ -12,14 +12,14 @@ Azure Container Registry (ACR) supports webhook notifications for container imag
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed, including the notification controller
+- A Kubernetes cluster with Flux CD installed, including the notification controller and image reflector controller
 - An Azure Container Registry instance
 - Contributor or Owner access to the ACR for webhook configuration
 - An ingress controller or load balancer to expose the receiver endpoint
 
 ## Step 1: Create the Webhook Secret
 
-Create a Kubernetes secret for webhook authentication.
+Create a Kubernetes secret with a token that Flux uses to generate the receiver webhook path.
 
 ```bash
 # Generate a random token
@@ -49,10 +49,7 @@ metadata:
 spec:
   # ACR webhook type
   type: acr
-  # ACR push events
-  events:
-    - "push"
-  # Secret for authentication
+  # Secret containing the token used to generate the webhook path
   secretRef:
     name: acr-webhook-secret
   # Resources to reconcile when new images are pushed
@@ -153,8 +150,6 @@ metadata:
   namespace: flux-system
 spec:
   type: acr
-  events:
-    - "push"
   secretRef:
     name: acr-webhook-secret
   resources:
