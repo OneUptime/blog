@@ -36,7 +36,7 @@ A healthy Provider should show `Ready: True` in its conditions.
 
 ```yaml
 # Example Slack Provider configuration
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -97,7 +97,7 @@ The Alert resource controls which events are forwarded to the Provider.
 
 ```yaml
 # Example Alert configuration
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: on-call-alerts
@@ -234,14 +234,14 @@ kubectl run -n flux-system curl-test --rm -it --restart=Never \
 ### Slack
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
-  # Optional: specify a channel (overrides webhook default)
+  # Optional: specify a channel when using the Slack API or a legacy webhook that supports it
   channel: "#flux-alerts"
   secretRef:
     name: slack-webhook-url
@@ -250,7 +250,7 @@ spec:
 ### Microsoft Teams
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
@@ -264,7 +264,7 @@ spec:
 ### Generic Webhook
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: generic-webhook
@@ -294,7 +294,7 @@ stringData:
 If notifications are partially working but you are missing specific events, check for exclusion rules.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: filtered-alerts
@@ -303,7 +303,7 @@ spec:
   providerRef:
     name: slack-provider
   eventSeverity: info
-  # Exclude events that match these labels
+  # Exclude events with messages that match these regexes
   exclusionList:
     # Skip events with "no changes" in the message
     - "no changes"
@@ -356,7 +356,8 @@ kubectl get helmreleases -A
 # 7. Test webhook connectivity from inside the cluster
 kubectl run curl-test -n flux-system --rm -it --restart=Never \
   --image=curlimages/curl -- curl -s -o /dev/null \
-  -w "%{http_code}" "YOUR_WEBHOOK_URL"
+  -w "%{http_code}" -X POST -H "Content-Type: application/json" \
+  -d '{"text":"Flux CD test notification"}' "YOUR_WEBHOOK_URL"
 ```
 
 ## Summary
