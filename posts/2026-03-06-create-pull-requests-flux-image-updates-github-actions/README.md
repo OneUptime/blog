@@ -66,6 +66,21 @@ spec:
       range: ">=1.0.0"
 ```
 
+Make sure the image fields you want Flux to update include image policy markers:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      containers:
+        - name: my-app
+          image: ghcr.io/my-org/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app"}
+```
+
 ## Step 2: Configure Flux to Push to a Staging Branch
 
 Instead of pushing directly to main, configure Flux image update automation to push to a separate branch. GitHub Actions will then create a PR from this branch.
@@ -106,7 +121,7 @@ spec:
 
 ## Step 3: Create the PR Automation Workflow
 
-Set up a GitHub Actions workflow that creates a pull request when Flux pushes to the staging branch.
+Set up a GitHub Actions workflow that creates a pull request when Flux pushes to the staging branch. Use a GitHub App installation token or a personal access token stored as `PR_CREATION_TOKEN` with `contents: read` and `pull-requests: write` permissions, because pull requests created with the default `GITHUB_TOKEN` do not trigger follow-up `pull_request` workflows such as validation checks.
 
 ```yaml
 # .github/workflows/flux-image-update-pr.yaml
@@ -119,8 +134,7 @@ on:
       - flux-image-updates
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   create-pr:
@@ -169,7 +183,7 @@ jobs:
 
           echo "existing_pr=$EXISTING_PR" >> $GITHUB_OUTPUT
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PR_CREATION_TOKEN }}
 
       - name: Create or update pull request
         run: |
@@ -217,7 +231,7 @@ jobs:
           )"
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PR_CREATION_TOKEN }}
 ```
 
 ## Step 4: Add Validation Checks to the PR
@@ -243,26 +257,33 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Flux CLI
         uses: fluxcd/flux2/action@main
 
-      - name: Validate Flux resources
+      - name: Install YAML parser
+        run: python3 -m pip install --user pyyaml
+
+      - name: Validate YAML syntax
         run: |
-          # Validate all Kustomization and HelmRelease files
-          find . -name "*.yaml" -o -name "*.yml" | while read file; do
+          # Validate YAML syntax for all manifests
+          find . \( -name "*.yaml" -o -name "*.yml" \) -print0 | while IFS= read -r -d '' file; do
             echo "Validating $file"
-            # Check for valid YAML syntax
-            python3 -c "
-          import yaml, sys
+            python3 - "$file" <<'PY'
+          import sys
+          import yaml
+
+          file_path = sys.argv[1]
           try:
-              with open('$file') as f:
-                  yaml.safe_load_all(f)
+              with open(file_path) as f:
+                  list(yaml.safe_load_all(f))
               print('  OK')
           except yaml.YAMLError as e:
               print(f'  FAILED: {e}')
               sys.exit(1)
-          "
+          PY
           done
 
       - name: Run kustomize build
@@ -279,7 +300,7 @@ jobs:
             fi
           done
 
-      - name: Diff against running cluster
+      - name: Diff against main
         if: github.event.pull_request.head.ref == 'flux-image-updates'
         run: |
           # Show what will change compared to main
@@ -323,17 +344,21 @@ jobs:
           IS_PATCH_ONLY=true
 
           # Parse old and new versions from image tags
-          OLD_VERSIONS=$(echo "$DIFF" | grep "^-.*image:" | grep -oP ':\K[0-9]+\.[0-9]+\.[0-9]+' || true)
-          NEW_VERSIONS=$(echo "$DIFF" | grep "^+.*image:" | grep -oP ':\K[0-9]+\.[0-9]+\.[0-9]+' || true)
+          mapfile -t OLD_VERSIONS < <(echo "$DIFF" | grep "^-.*image:" | grep -oP ':\K[0-9]+\.[0-9]+\.[0-9]+' || true)
+          mapfile -t NEW_VERSIONS < <(echo "$DIFF" | grep "^+.*image:" | grep -oP ':\K[0-9]+\.[0-9]+\.[0-9]+' || true)
 
-          # Compare major.minor versions
-          if [ -n "$OLD_VERSIONS" ] && [ -n "$NEW_VERSIONS" ]; then
-            OLD_MINOR=$(echo "$OLD_VERSIONS" | head -1 | cut -d. -f1,2)
-            NEW_MINOR=$(echo "$NEW_VERSIONS" | head -1 | cut -d. -f1,2)
+          # Compare major.minor versions for each changed image
+          if [ "${#OLD_VERSIONS[@]}" -eq 0 ] || [ "${#OLD_VERSIONS[@]}" -ne "${#NEW_VERSIONS[@]}" ]; then
+            IS_PATCH_ONLY=false
+          else
+            for i in "${!OLD_VERSIONS[@]}"; do
+              OLD_MINOR=$(echo "${OLD_VERSIONS[$i]}" | cut -d. -f1,2)
+              NEW_MINOR=$(echo "${NEW_VERSIONS[$i]}" | cut -d. -f1,2)
 
-            if [ "$OLD_MINOR" != "$NEW_MINOR" ]; then
-              IS_PATCH_ONLY=false
-            fi
+              if [ "$OLD_MINOR" != "$NEW_MINOR" ]; then
+                IS_PATCH_ONLY=false
+              fi
+            done
           fi
 
           echo "is_patch_only=$IS_PATCH_ONLY" >> $GITHUB_OUTPUT
@@ -364,10 +389,19 @@ Set up branch protection rules to enforce the review workflow:
 # Using the GitHub CLI to configure branch protection
 gh api repos/$GITHUB_REPOSITORY/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["validate"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1}' \
-  --field restrictions=null
+  --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["validate"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1
+  },
+  "restrictions": null
+}
+JSON
 ```
 
 ## Step 7: Add Notification for PR Creation
@@ -378,23 +412,17 @@ Notify the team when a new image update PR is created:
 # Add to the flux-image-update-pr.yaml workflow
       - name: Notify team on Slack
         if: steps.check-pr.outputs.existing_pr == ''
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "New Flux image update PR created",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "A new <${{ github.event.repository.html_url }}/pulls|pull request> has been created for Flux image updates. Please review and merge."
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "New Flux image update PR created"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "A new <${{ github.event.repository.html_url }}/pulls|pull request> has been created for Flux image updates. Please review and merge."
 ```
 
 ## Step 8: Verify the Workflow
@@ -406,7 +434,7 @@ Test the complete PR-based image update flow:
 docker tag my-app:latest ghcr.io/my-org/my-app:1.1.0
 docker push ghcr.io/my-org/my-app:1.1.0
 
-# Wait for Flux to detect the new image (up to 5 minutes)
+# Wait for Flux to detect the new image
 flux get image policy my-app --watch
 
 # Check that Flux pushed to the staging branch
@@ -417,8 +445,8 @@ git log origin/flux-image-updates --oneline -5
 gh pr list --head flux-image-updates
 
 # Review and merge the PR
-gh pr review --approve
-gh pr merge --squash
+gh pr review flux-image-updates --approve
+gh pr merge flux-image-updates --squash
 ```
 
 ## Troubleshooting
