@@ -21,6 +21,7 @@ This guide walks you through deploying Azure Front Door resources via Flux CD on
 - A registered domain name
 - Helm CLI installed
 - Flux CLI v2.0 or later
+- An Azure Private Link service for any AKS internal load balancer origin
 
 ## Architecture Overview
 
@@ -47,13 +48,13 @@ Create the necessary Azure resources before configuring Flux.
 
 az group create \
   --name rg-frontdoor \
-  --location global
+  --location eastus
 
-# Create an Azure Front Door profile
+# Create an Azure Front Door Premium profile
 az afd profile create \
   --resource-group rg-frontdoor \
   --profile-name flux-frontdoor \
-  --sku Standard_AzureFrontDoor
+  --sku Premium_AzureFrontDoor
 ```
 
 ## Step 2: Configure Flux Helm Source for Azure Resources
@@ -136,7 +137,7 @@ metadata:
   name: web-app
   namespace: production
   annotations:
-    # Use an internal load balancer for Front Door backends
+    # Use an internal load balancer and expose it to Front Door Premium through Private Link
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
 spec:
   type: LoadBalancer
@@ -185,6 +186,7 @@ spec:
     azureTenantID: "<tenant-id>"
     azureClientID: "<client-id>"
     installCRDs: true
+    crdPattern: "resources.azure.com/*;cdn.azure.com/*;network.frontdoor.azure.com/*"
 ```
 
 ## Step 5: Define Front Door Routing Rules
@@ -192,6 +194,28 @@ spec:
 Create Azure Front Door routing configuration managed by Flux.
 
 ```yaml
+# frontdoor-profile.yaml
+# Defines the resource group and Azure Front Door profile that own the child resources
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: rg-frontdoor
+  namespace: production
+spec:
+  location: eastus
+---
+apiVersion: cdn.azure.com/v1api20230501
+kind: Profile
+metadata:
+  name: flux-frontdoor
+  namespace: production
+spec:
+  owner:
+    name: rg-frontdoor
+  location: global
+  sku:
+    name: Premium_AzureFrontDoor
+---
 # frontdoor-endpoint.yaml
 # Defines the Azure Front Door endpoint
 apiVersion: cdn.azure.com/v1api20230501
@@ -246,6 +270,13 @@ spec:
   httpPort: 80
   httpsPort: 443
   originHostHeader: "app.example.com"
+  sharedPrivateLinkResource:
+    groupId: "<private-link-service-group-id>"
+    privateLink:
+      armId: "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/privateLinkServices/<private-link-service-name>"
+    privateLinkLocation: eastus
+    requestMessage: "Allow Azure Front Door to reach the AKS internal load balancer"
+    status: Pending
   priority: 1
   weight: 1000
   enabledState: Enabled
@@ -253,7 +284,7 @@ spec:
 # frontdoor-route.yaml
 # Defines routing rules for the Front Door endpoint
 apiVersion: cdn.azure.com/v1api20230501
-kind: AfdRoute
+kind: Route
 metadata:
   name: default-route
   namespace: production
@@ -262,6 +293,9 @@ spec:
     name: flux-app-endpoint
   originGroup:
     name: aks-backend-group
+  customDomains:
+    - reference:
+        name: app-custom-domain
   patternsToMatch:
     - "/*"
   supportedProtocols:
@@ -280,20 +314,22 @@ Deploy WAF policies to protect your application through GitOps.
 ```yaml
 # waf-policy.yaml
 # Defines a WAF policy for Azure Front Door managed via GitOps
-apiVersion: cdn.azure.com/v1api20230501
+apiVersion: network.frontdoor.azure.com/v1api20220501
 kind: WebApplicationFirewallPolicy
 metadata:
   name: flux-waf-policy
   namespace: production
 spec:
   location: global
+  owner:
+    name: rg-frontdoor
+  sku:
+    name: Premium_AzureFrontDoor
   policySettings:
     # Block malicious requests
     enabledState: Enabled
     mode: Prevention
     requestBodyCheck: Enabled
-    # Max request body size in KB
-    requestBodyInspectLimitInKB: 128
   managedRules:
     managedRuleSets:
       # Enable the default managed rule set
@@ -330,6 +366,32 @@ spec:
             matchValue:
               - "XX"
         action: Block
+---
+# security-policy.yaml
+# Associates the WAF policy with the Front Door endpoint
+apiVersion: cdn.azure.com/v1api20230501
+kind: SecurityPolicy
+metadata:
+  name: flux-waf-security-policy
+  namespace: production
+spec:
+  owner:
+    name: flux-frontdoor
+  parameters:
+    webApplicationFirewall:
+      type: WebApplicationFirewall
+      wafPolicy:
+        group: network.frontdoor.azure.com
+        kind: WebApplicationFirewallPolicy
+        name: flux-waf-policy
+      associations:
+        - domains:
+            - reference:
+                group: cdn.azure.com
+                kind: AfdEndpoint
+                name: flux-app-endpoint
+          patternsToMatch:
+            - "/*"
 ```
 
 ## Step 7: Configure Custom Domains and SSL
@@ -392,7 +454,7 @@ Set up alerts for Front Door configuration changes.
 ```yaml
 # alert-frontdoor.yaml
 # Sends notifications when Front Door resources are updated by Flux
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: frontdoor-alerts
@@ -410,7 +472,7 @@ spec:
 ---
 # teams-provider.yaml
 # Microsoft Teams notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams-provider
@@ -426,13 +488,13 @@ spec:
 
 ```bash
 # Check the Azure Service Operator status
-kubectl get afdendpoints,afdorigingroups,afdorigins,afdroutes -n production
+kubectl get profiles.cdn.azure.com,afdendpoints.cdn.azure.com,afdorigingroups.cdn.azure.com,afdorigins.cdn.azure.com,routes.cdn.azure.com,securitypolicies.cdn.azure.com -n production
 
 # Verify the Flux kustomization status
 flux get kustomization azure-front-door
 
 # Check ASO controller logs
-kubectl logs -n flux-system deploy/azure-service-operator-controller-manager
+kubectl logs -n flux-system deploy/azureserviceoperator-controller-manager
 ```
 
 ### WAF Blocking Legitimate Requests
@@ -442,7 +504,7 @@ kubectl logs -n flux-system deploy/azure-service-operator-controller-manager
 az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub>/resourceGroups/rg-frontdoor/providers/Microsoft.Cdn/profiles/flux-frontdoor" \
   --name "waf-diagnostics" \
-  --logs '[{"category": "FrontDoorWebApplicationFirewallLog", "enabled": true}]' \
+  --logs '[{"category": "FrontdoorWebApplicationFirewallLog", "enabled": true}]' \
   --workspace "<log-analytics-workspace-id>"
 ```
 
@@ -464,4 +526,4 @@ az afd custom-domain show \
 
 ## Summary
 
-In this guide, you configured Azure Front Door deployment and management through Flux CD and GitOps. You set up backend services on AKS exposed via internal load balancers, deployed Front Door routing rules and origin groups using Azure Service Operator, configured WAF policies for security, and managed custom domains with SSL certificates. All configurations are version-controlled in Git and automatically reconciled by Flux CD, ensuring consistent and auditable infrastructure management.
+In this guide, you configured Azure Front Door deployment and management through Flux CD and GitOps. You set up backend services on AKS exposed via internal load balancers and Private Link, deployed Front Door routing rules and origin groups using Azure Service Operator, configured WAF policies for security, and managed custom domains with SSL certificates. All configurations are version-controlled in Git and automatically reconciled by Flux CD, ensuring consistent and auditable infrastructure management.
