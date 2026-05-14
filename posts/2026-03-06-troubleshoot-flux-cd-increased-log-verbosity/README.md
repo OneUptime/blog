@@ -12,12 +12,12 @@ When Flux CD reconciliation fails or behaves unexpectedly, the default log outpu
 
 ## Understanding Flux CD Log Levels
 
-Flux CD controllers use structured logging with numeric verbosity levels. The higher the number, the more verbose the output:
+Flux CD controllers use structured logging with string log levels. The supported controller log levels are:
 
-- **Level 0** - Default. Errors, warnings, and key info messages.
-- **Level 1** - Additional info about reconciliation cycles.
-- **Level 2** - Detailed debug output including API calls and diffs.
-- **Level 3+** - Trace-level output for deep debugging.
+- **error** - Error messages only.
+- **info** - Default. Key reconciliation and status messages.
+- **debug** - More detailed troubleshooting output.
+- **trace** - The most verbose controller output for deep debugging.
 
 ## Method 1: Using the --log-level Flag at Bootstrap
 
@@ -111,18 +111,19 @@ patches:
 
 Commit and push this file. Flux will apply the patch to itself on the next reconciliation cycle.
 
-## Method 4: Using the flux CLI to Set Log Level at Runtime
+## Method 4: Using the flux CLI to Query Logs
 
-You can also use the Flux CLI to temporarily set log levels:
+The Flux CLI does not change controller log levels at runtime, but it can query and filter Flux logs from the cluster:
 
 ```bash
-# Check current log level for all controllers
-for dep in source-controller kustomize-controller helm-controller notification-controller; do
-  echo "=== $dep ==="
-  kubectl get deployment "$dep" -n flux-system \
-    -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n'
-  echo ""
-done
+# Stream error logs for Flux resources across all namespaces
+flux logs --follow --level=error --all-namespaces
+
+# Show logs for a specific Kustomization
+flux logs --kind=Kustomization --name=my-app --namespace=default
+
+# Show logs from the last 5 minutes
+flux logs --all-namespaces --since=5m
 ```
 
 ## Viewing Debug Logs
@@ -159,9 +160,9 @@ kubectl logs -n flux-system deployment/source-controller -f \
 kubectl logs -n flux-system deployment/source-controller -f \
   | grep "fleet-infra"
 
-# Filter for errors and warnings only
+# Filter for errors only
 kubectl logs -n flux-system deployment/kustomize-controller -f \
-  | grep -E '"level":"error"|"level":"warn"'
+  | grep '"level":"error"'
 
 # Filter for a specific Kustomization by name
 kubectl logs -n flux-system deployment/kustomize-controller -f \
@@ -181,18 +182,18 @@ kubectl logs -n flux-system deployment/source-controller --since=5m \
 kubectl logs -n flux-system deployment/source-controller --since=1h \
   | jq -r 'select(.level == "error") | "\(.ts) \(.msg)"'
 
-# Show reconciliation duration for each resource
+# Show finished reconciliation messages for each resource
 kubectl logs -n flux-system deployment/kustomize-controller --since=1h \
-  | jq -r 'select(.msg == "Reconciliation finished") | "\(.name): \(.duration)"'
+  | jq -r 'select(.msg | startswith("Reconciliation finished")) | "\(.name): \(.msg)"'
 
 # Find all failed reconciliations
 kubectl logs -n flux-system deployment/helm-controller --since=1h \
   | jq -r 'select(.msg | test("error|fail"; "i")) | "\(.ts) \(.name) \(.msg)"'
 ```
 
-## Setting Verbosity Per Controller with Numeric Levels
+## Setting Verbosity Per Controller with Trace Logging
 
-For even more granular control, use the `--log-encoding` and numeric verbosity arguments:
+For even more granular control, use the `trace` log level and set the log encoding explicitly:
 
 ```yaml
 # clusters/production/flux-system/kustomization.yaml
@@ -202,14 +203,14 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  # Set numeric verbosity level on source-controller
+  # Set trace logging on source-controller
   - target:
       kind: Deployment
       name: source-controller
     patch: |
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --log-level=debug
+        value: --log-level=trace
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: --log-encoding=json
@@ -217,16 +218,19 @@ patches:
 
 ## Enabling Event Recording Verbosity
 
-Flux also emits Kubernetes events. Increase event detail with:
+Flux also emits Kubernetes events. You can inspect those events with:
 
 ```bash
-# Watch Flux events in real time
-kubectl get events -n flux-system --watch
+# Watch Flux events in real time with the Flux CLI
+flux events --watch --all-namespaces
 
-# Filter events by type
-kubectl get events -n flux-system --field-selector type=Warning
+# Show events for a specific Kustomization
+flux events --for Kustomization/my-app -n default
 
-# Get events sorted by last timestamp
+# Filter warning events
+flux events --types Warning --all-namespaces
+
+# Get Kubernetes events sorted by last timestamp
 kubectl get events -n flux-system --sort-by='.lastTimestamp'
 ```
 
@@ -235,11 +239,8 @@ kubectl get events -n flux-system --sort-by='.lastTimestamp'
 After troubleshooting, always revert log levels to avoid excessive resource usage:
 
 ```bash
-# Remove the debug log level from source-controller
-kubectl patch deployment source-controller \
-  -n flux-system \
-  --type=json \
-  -p='[{"op": "remove", "path": "/spec/template/spec/containers/0/args/3"}]'
+# Revert a direct kubectl patch by rolling back the Deployment
+kubectl rollout undo deployment/source-controller -n flux-system
 ```
 
 Or if using the kustomization overlay, remove the patches and commit:
