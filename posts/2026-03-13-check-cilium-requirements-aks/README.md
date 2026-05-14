@@ -23,19 +23,19 @@ Understanding these requirements before creating your AKS cluster is far easier 
 ## Step 1: Check Kernel Version Requirements
 
 ```bash
-# AKS Ubuntu node image kernel versions
+# AKS node image kernel versions vary by OS SKU and image release
 
-# Ubuntu 22.04 (default for AKS 1.27+): kernel 5.15
-# Ubuntu 18.04 (legacy): kernel 5.4
+# Ubuntu 22.04 commonly uses kernel 5.15
+# Ubuntu 24.04 commonly uses newer kernels such as 6.8
+# Ubuntu 18.04 is retired in AKS and should not be used
 
 # Check current node kernel version
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
 # Minimum kernel for Cilium features:
-# Core: 4.9.17+
-# BPF host routing: 5.10+
-# WireGuard: 5.6+
-# Recommended: 5.15+
+# Core: 5.10+ or equivalent
+# Advanced features may require newer kernels
+# Recommended: use a current AKS Linux node image
 ```
 
 ## Step 2: Verify Network Plugin Compatibility
@@ -47,8 +47,8 @@ az aks show --name myAKSCluster --resource-group myRG \
 
 # Supported configurations with Cilium:
 # - Azure CNI Powered by Cilium (recommended for new clusters)
-# - Azure CNI + Cilium CNI chaining (for existing clusters)
-# - kubenet + Cilium (overlay mode)
+# - AKS BYO CNI with Cilium installed manually
+# - Azure CNI + Cilium CNI chaining (legacy)
 ```
 
 ## Step 3: Create a Cilium-Compatible AKS Cluster
@@ -65,7 +65,8 @@ az aks create \
   --location eastus \
   --generate-ssh-keys
 
-# Option 2: Standard Azure CNI with Cilium chaining
+# Option 2: Standard Azure CNI for legacy Cilium chaining
+# Requires additional Cilium chaining configuration after cluster creation
 az aks create \
   --name cilium-aks \
   --resource-group myRG \
@@ -84,8 +85,8 @@ az aks nodepool list \
   --query "[].{name:name, osType:osType, osDiskType:osDiskType, vmSize:vmSize}" \
   -o table
 
-# Cilium requires Linux node pools
-# Windows node pools are not supported
+# Azure CNI Powered by Cilium is available for Linux node pools
+# Windows node pools are not supported with Azure CNI Powered by Cilium
 
 # Check OS disk type (Ephemeral recommended for performance)
 az aks nodepool list \
@@ -103,8 +104,8 @@ az role assignment list \
   --resource-group myRG \
   --query "[].roleDefinitionName" -o tsv
 
-# Required: Contributor or Owner on the resource group
-# Or: Custom role with Microsoft.ContainerService/* permissions
+# Typical requirement: Contributor or Owner on the resource group
+# Custom roles must also include any required network and role-assignment permissions
 ```
 
 ## Step 6: Verify Post-Creation Requirements
@@ -114,9 +115,13 @@ az role assignment list \
 az aks get-credentials --name myAKSCluster --resource-group myRG
 
 # Check Cilium status if already installed
-cilium status
+cilium status --wait
 
-# Check Azure CNI Powered by Cilium is active
+# Check AKS network dataplane
+az aks show --name myAKSCluster --resource-group myRG \
+  --query "networkProfile.networkDataplane" -o tsv
+
+# Check Cilium pods
 kubectl get pods -n kube-system | grep cilium
 ```
 
@@ -124,12 +129,12 @@ kubectl get pods -n kube-system | grep cilium
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| Kubernetes version | 1.24 | 1.27+ |
-| Node OS | Ubuntu 18.04 | Ubuntu 22.04 |
-| Kernel version | 5.4 | 5.15 |
-| Network plugin | azure or kubenet | azure (overlay mode) |
+| Kubernetes version | 1.29 for Azure CNI Powered by Cilium | Current supported AKS version |
+| Node OS | Linux, Ubuntu 20.04+ | Current AKS Linux node image |
+| Kernel version | 5.10 or equivalent | Current AKS Linux node image |
+| Network plugin | azure or BYO CNI | azure (overlay mode) |
 | Node type | Linux only | Linux only |
 
 ## Conclusion
 
-Cilium on AKS is well-supported, especially with the "Azure CNI Powered by Cilium" option that integrates Cilium natively. By verifying kernel versions, network plugin settings, and node pool OS types before cluster creation, you avoid the most common compatibility issues. For new clusters, always use Ubuntu 22.04 node images and Azure CNI overlay mode to get the best Cilium feature support.
+Cilium on AKS is well-supported, especially with the "Azure CNI Powered by Cilium" option that integrates Cilium natively. By verifying kernel versions, network plugin settings, and node pool OS types before cluster creation, you avoid the most common compatibility issues. For new clusters, use a current AKS Linux node image and Azure CNI overlay mode to get the best Cilium feature support.
