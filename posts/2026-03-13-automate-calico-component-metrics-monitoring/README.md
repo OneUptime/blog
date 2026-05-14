@@ -37,6 +37,7 @@ observability/
 │   │   └── kube-controllers-servicemonitor.yaml
 │   ├── prometheusrules/
 │   │   └── calico-alerts.yaml
+│   ├── grafana-dashboard.yaml
 │   └── kustomization.yaml
 ```
 
@@ -57,6 +58,7 @@ resources:
   - servicemonitors/typha-servicemonitor.yaml
   - servicemonitors/kube-controllers-servicemonitor.yaml
   - prometheusrules/calico-alerts.yaml
+  - grafana-dashboard.yaml
 ```
 
 ## Flux Kustomization for Delivery
@@ -78,11 +80,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: cluster-config
-  healthChecks:
-    - apiVersion: monitoring.coreos.com/v1
-      kind: ServiceMonitor
-      name: calico-felix-metrics
-      namespace: monitoring
 ```
 
 ## Automated Grafana Dashboard Provisioning
@@ -109,15 +106,15 @@ data:
         },
         {
           "title": "Felix Policy Programming Latency (p99)",
-          "type": "graph",
+          "type": "timeseries",
           "targets": [{
-            "expr": "histogram_quantile(0.99, rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))"
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(felix_int_dataplane_apply_time_seconds_bucket[5m])))"
           }]
         },
         {
           "title": "Typha Connections",
-          "type": "graph",
-          "targets": [{"expr": "typha_connections_total"}]
+          "type": "timeseries",
+          "targets": [{"expr": "typha_connections_active"}]
         }
       ]
     }
@@ -134,6 +131,7 @@ metadata:
   namespace: monitoring
   labels:
     app: kube-prometheus-stack
+    release: kube-prometheus-stack
 spec:
   groups:
     - name: calico.felix
@@ -141,7 +139,7 @@ spec:
         - alert: FelixHighPolicyProgrammingLatency
           expr: |
             histogram_quantile(0.99,
-              rate(felix_int_dataplane_apply_time_seconds_bucket[5m])
+              sum by (le) (rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))
             ) > 1
           for: 10m
           labels:
@@ -150,7 +148,7 @@ spec:
             summary: "Felix policy programming latency >1s (p99)"
 
         - alert: FelixMetricsDown
-          expr: up{job="calico-felix-metrics"} == 0
+          expr: up{job="felix-metrics-svc"} == 0
           for: 5m
           labels:
             severity: critical
@@ -177,7 +175,7 @@ done
 
 # Check if Prometheus is actually scraping
 FELIX_TARGETS=$(curl -s "http://localhost:9090/api/v1/targets" 2>/dev/null | \
-  jq '[.data.activeTargets[] | select(.labels.job == "calico-felix-metrics")] | length')
+  jq '[.data.activeTargets[] | select(.labels.job == "felix-metrics-svc")] | length')
 echo "INFO: Felix targets in Prometheus: ${FELIX_TARGETS}"
 
 echo ""
@@ -186,4 +184,4 @@ echo "Validation complete: ${FAILURES} failures"
 
 ## Conclusion
 
-Automating Calico metrics monitoring through GitOps ensures consistent observability across all clusters without manual configuration steps. The GitOps approach manages FelixConfiguration, ServiceMonitors, Services, PrometheusRules, and Grafana dashboards as versioned code, making the monitoring stack reproducible and auditable. Combined with health checks in the Flux Kustomization, you get automatic validation that the monitoring components are deployed and healthy after each GitOps reconciliation.
+Automating Calico metrics monitoring through GitOps ensures consistent observability across all clusters without manual configuration steps. The GitOps approach manages FelixConfiguration, ServiceMonitors, Services, PrometheusRules, and Grafana dashboards as versioned code, making the monitoring stack reproducible and auditable. Combined with dependency ordering in the Flux Kustomization, you ensure the monitoring configuration is applied only after Calico and the monitoring stack are ready.
