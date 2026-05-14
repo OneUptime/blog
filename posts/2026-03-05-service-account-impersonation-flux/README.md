@@ -23,7 +23,7 @@ By default, the kustomize-controller and helm-controller use their own service a
 
 ## Step 1: Create a Dedicated Service Account
 
-First, create a service account in the target namespace where resources will be applied:
+First, create a service account in the namespace where the Flux Kustomization or HelmRelease will live. In this example, that is also the target namespace where resources will be applied:
 
 ```yaml
 # service-account-app-deployer.yaml
@@ -100,20 +100,20 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: webapp
-  namespace: flux-system
+  namespace: webapp
 spec:
   interval: 10m
   path: ./apps/webapp
   prune: true
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: webapp
   targetNamespace: webapp
   # Impersonate this service account when applying resources
   serviceAccountName: app-deployer
 ```
 
-When `serviceAccountName` is set, the kustomize-controller impersonates the specified service account instead of using its own permissions. If the service account lacks the required permissions, the reconciliation will fail with a Forbidden error, preventing unauthorized resource creation.
+When `serviceAccountName` is set, the kustomize-controller impersonates the specified service account from the Kustomization's namespace instead of using its own permissions. If the service account lacks the required permissions, the reconciliation will fail with a Forbidden error, preventing unauthorized resource creation.
 
 ## Step 5: Configure HelmRelease with Service Account Impersonation
 
@@ -126,7 +126,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis
-  namespace: flux-system
+  namespace: cache
 spec:
   interval: 30m
   chart:
@@ -136,7 +136,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: bitnami
-        namespace: flux-system
+        namespace: cache
   targetNamespace: cache
   # Impersonate this service account when installing the Helm chart
   serviceAccountName: cache-deployer
@@ -199,14 +199,14 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-alpha
-  namespace: flux-system
+  namespace: team-alpha
 spec:
   interval: 5m
   path: ./tenants/team-alpha
   prune: true
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: team-alpha
   targetNamespace: team-alpha
   serviceAccountName: team-alpha-deployer
 ```
@@ -217,7 +217,7 @@ The kustomize-controller and helm-controller need explicit permission to imperso
 
 ```yaml
 # clusterrole-impersonate.yaml
-# Grants the kustomize-controller permission to impersonate service accounts
+# Grants the Flux controllers permission to impersonate service accounts
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
