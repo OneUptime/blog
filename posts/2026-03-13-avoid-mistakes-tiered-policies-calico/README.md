@@ -55,7 +55,7 @@ kubectl get pods -n production -l "your-label-key=your-label-value"
 
 ## Mistake 4: Missing Bidirectional Rules
 
-Both ingress on destination AND egress on source must be permitted:
+When policies apply to both directions, both ingress on the destination AND egress on the source must be permitted:
 
 ```yaml
 # Source side - egress
