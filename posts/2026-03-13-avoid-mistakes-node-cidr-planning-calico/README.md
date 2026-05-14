@@ -23,7 +23,7 @@ Mistakes in CIDR planning often only surface at scale: when you try to add more 
 
 ## Step 1: Map All CIDRs Before Provisioning
 
-The first step is a complete CIDR inventory. All ranges must be non-overlapping.
+The first step is a complete CIDR inventory. Kubernetes pod and service ranges must be non-overlapping, and they must not conflict with any reachable infrastructure networks. Node IPs normally come from the VPC or datacenter subnet, so the node subnet should be contained in the infrastructure network rather than treated as a separate, non-overlapping range.
 
 ```bash
 # CIDR planning worksheet - fill in your values before creating the cluster
@@ -33,20 +33,21 @@ cat << 'EOF'
 
 Node CIDR (Kubernetes nodes):      ________________
   Example: 10.0.1.0/24 (254 nodes max)
+  Rule: Usually a subnet inside the VPC or datacenter network
 
 Pod CIDR (Calico IP pool):         ________________
   Example: 10.244.0.0/16 (65,534 IPs)
-  Rule: Must NOT overlap with Node CIDR
+  Rule: Must NOT overlap with Node, Service, VPC, or on-premises CIDRs
 
 Service CIDR (ClusterIP services): ________________
   Example: 10.96.0.0/12 (1,048,574 IPs)
-  Rule: Must NOT overlap with Pod or Node CIDRs
+  Rule: Must NOT overlap with Pod, Node, VPC, or on-premises CIDRs
 
 VPC CIDR (cloud provider):         ________________
-  Rule: None of the above should overlap with this
+  Rule: Node subnet should be inside this range; Pod and Service CIDRs should not overlap with it
 
 On-premises CIDR (if applicable):  ________________
-  Rule: None of the above should overlap with this
+  Rule: Pod and Service CIDRs should not overlap with this if networks are routed together
 
 Load Balancer IPs (if needed):     ________________
   Example: 203.0.113.0/24
@@ -64,24 +65,24 @@ PLANNED_MAX_NODES=100
 # A /22 provides 1,022 usable IPs - for 500+ node clusters
 # Rule: Node CIDR should accommodate max_nodes * 2 for replacement headroom
 echo "For ${PLANNED_MAX_NODES} nodes:"
-echo "  Minimum node CIDR: /$(python3 -c \"import math; print(32 - math.ceil(math.log2(${PLANNED_MAX_NODES} * 2)))\")"
+echo "  Minimum node CIDR: /$(python3 -c 'import math, sys; print(32 - math.ceil(math.log2(int(sys.argv[1]) * 2)))' "${PLANNED_MAX_NODES}")"
 
 # Pod CIDR sizing calculation
 PLANNED_MAX_PODS=$((PLANNED_MAX_NODES * 110))  # 110 pods per node default
 echo ""
 echo "For ${PLANNED_MAX_PODS} total pods:"
-echo "  Minimum pod CIDR: /$(python3 -c \"import math; print(32 - math.ceil(math.log2(${PLANNED_MAX_PODS} * 3)))\")"
+echo "  Minimum pod CIDR: /$(python3 -c 'import math, sys; print(32 - math.ceil(math.log2(int(sys.argv[1]) * 3)))' "${PLANNED_MAX_PODS}")"
 # Multiply by 3 for headroom: existing pods + rolling update pods + future growth
 ```
 
 ## Step 3: Validate CIDR Non-Overlap
 
-Before provisioning, verify all selected CIDRs are non-overlapping.
+Before provisioning, verify all selected CIDRs have the expected relationship to each other.
 
 ```python
 #!/usr/bin/env python3
 # scripts/validate-cidrs.py
-# Validates that all planned CIDRs are non-overlapping
+# Validates that planned Kubernetes CIDRs do not conflict with routed networks
 
 import ipaddress
 import sys
@@ -98,12 +99,25 @@ planned_cidrs = {
 networks = {name: ipaddress.ip_network(cidr) for name, cidr in planned_cidrs.items()}
 errors = []
 
-# Check all pairs for overlap
-names = list(networks.keys())
-for i, name1 in enumerate(names):
-    for name2 in names[i+1:]:
-        if networks[name1].overlaps(networks[name2]):
-            errors.append(f"OVERLAP: {name1} ({planned_cidrs[name1]}) overlaps with {name2} ({planned_cidrs[name2]})")
+# Node IPs should be allocated from the VPC/datacenter network.
+if not networks["node_cidr"].subnet_of(networks["vpc_cidr"]):
+    errors.append(
+        f"INVALID: node_cidr ({planned_cidrs['node_cidr']}) is not inside "
+        f"vpc_cidr ({planned_cidrs['vpc_cidr']})"
+    )
+
+# Pod and Service CIDRs must not conflict with node or routed infrastructure CIDRs.
+for name1, name2 in [
+    ("pod_cidr", "node_cidr"),
+    ("pod_cidr", "service_cidr"),
+    ("pod_cidr", "vpc_cidr"),
+    ("pod_cidr", "on_premises"),
+    ("service_cidr", "node_cidr"),
+    ("service_cidr", "vpc_cidr"),
+    ("service_cidr", "on_premises"),
+]:
+    if networks[name1].overlaps(networks[name2]):
+        errors.append(f"OVERLAP: {name1} ({planned_cidrs[name1]}) overlaps with {name2} ({planned_cidrs[name2]})")
 
 if errors:
     print("VALIDATION FAILED:")
@@ -111,7 +125,7 @@ if errors:
         print(f"  {e}")
     sys.exit(1)
 else:
-    print("VALIDATION PASSED: All CIDRs are non-overlapping")
+    print("VALIDATION PASSED: Kubernetes CIDRs do not conflict with routed networks")
 ```
 
 ## Step 4: Configure Calico With the Validated CIDRs
@@ -128,8 +142,9 @@ metadata:
 spec:
   # Use the validated pod CIDR from your planning worksheet
   cidr: 10.244.0.0/16
-  # blockSize based on max_pods_per_node (110 default: use /25 = 128 IPs)
-  blockSize: 25
+  # blockSize can only be set when the pool is created. Keep the default /26
+  # unless you have planned the route-scaling and per-node allocation tradeoffs.
+  blockSize: 26
   ipipMode: Never
   vxlanMode: CrossSubnet
   natOutgoing: true
@@ -138,8 +153,9 @@ spec:
 
 ```bash
 # When bootstrapping with kubeadm, pass the validated pod and service CIDRs
+# The pod network CIDR must match Calico's IPPool CIDR.
 kubeadm init \
-  --pod-network-cidr=10.244.0.0/16 \     # Must match Calico IPPool CIDR
+  --pod-network-cidr=10.244.0.0/16 \
   --service-cidr=10.96.0.0/12 \
   --kubernetes-version=1.29.0
 ```
@@ -165,7 +181,7 @@ python3 scripts/validate-cidrs.py
 
 ## Best Practices
 
-- Complete CIDR planning before cluster provisioning - none of these settings can be changed without full cluster recreation.
+- Complete CIDR planning before cluster provisioning - changing pod and service CIDRs later is disruptive, and changing Calico IP pools requires a planned migration.
 - Always involve your network team in CIDR planning to account for VPN routes, on-premises connectivity, and future expansions.
 - Reserve at least 20% of each CIDR range for future growth and rolling update overhead.
 - Document your CIDR allocation decisions in a network allocation register that is updated when new clusters are created.
