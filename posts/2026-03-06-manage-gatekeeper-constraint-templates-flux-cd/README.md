@@ -37,11 +37,12 @@ infrastructure/
         require-non-root.yaml
       networking/
         require-network-policy.yaml
-        restrict-host-ports.yaml
+        restrict-host-network.yaml
       general/
         required-labels.yaml
         required-annotations.yaml
         block-default-namespace.yaml
+        require-resource-limits.yaml
       mutations/
         inject-sidecar-label.yaml
     constraints/
@@ -288,9 +289,9 @@ spec:
         }
 ```
 
-## Template: Require Resource Limits
+## Template: Require Resource Requests and Limits
 
-Enforce that all containers have resource limits defined.
+Enforce that all containers have resource requests and limits defined.
 
 ```yaml
 # infrastructure/gatekeeper/templates/general/require-resource-limits.yaml
@@ -427,8 +428,6 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet", "DaemonSet"]
     namespaces:
       - "production"
       - "production-*"
@@ -449,8 +448,6 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet"]
     namespaces:
       - "production"
       - "production-*"
@@ -467,8 +464,8 @@ spec:
   enforcementAction: deny
   match:
     kinds:
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet"]
+      - apiGroups: [""]
+        kinds: ["Pod"]
     namespaces:
       - "production"
       - "production-*"
@@ -491,8 +488,6 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet", "DaemonSet"]
     namespaces:
       - "staging"
       - "staging-*"
