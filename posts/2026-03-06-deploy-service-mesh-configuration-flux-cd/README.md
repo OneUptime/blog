@@ -16,14 +16,15 @@ This guide covers deploying Istio and Linkerd with Flux CD, configuring traffic 
 
 ## Prerequisites
 
-- Kubernetes cluster v1.26 or later
+- Kubernetes cluster version supported by your selected service mesh release (Istio 1.29 supports Kubernetes 1.31-1.35)
 - Flux CD v2 installed and bootstrapped
 - Helm controller enabled in Flux
+- Gateway API CRDs installed when using current Linkerd releases
 - kubectl access to the cluster
 
 ## Installing Istio with Flux
 
-Deploy Istio using the Istio operator managed by Flux:
+Deploy Istio using Helm charts managed by Flux:
 
 ```yaml
 # infrastructure/service-mesh/istio-helmrepo.yaml
@@ -44,13 +45,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-base
-  namespace: istio-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: istio-system
   chart:
     spec:
       chart: base
-      version: "1.23.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -65,13 +67,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod
-  namespace: istio-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: istio-system
   chart:
     spec:
       chart: istiod
-      version: "1.23.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -87,10 +90,10 @@ spec:
     # Enable access logging
     meshConfig:
       accessLogFile: /dev/stdout
-      # Enable mutual TLS by default
+      # Hold application containers until the sidecar proxy is ready
       defaultConfig:
         holdApplicationUntilProxyStarts: true
-      # Strict mTLS across the mesh
+      # Automatically use mTLS between Istio sidecars when possible
       enableAutoMtls: true
 ```
 
@@ -278,13 +281,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-crds
-  namespace: linkerd
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: linkerd
   chart:
     spec:
       chart: linkerd-crds
-      version: "1.x"
+      version: "2026.5.x"
       sourceRef:
         kind: HelmRepository
         name: linkerd
@@ -299,22 +303,35 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-control-plane
-  namespace: linkerd
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: linkerd
   chart:
     spec:
       chart: linkerd-control-plane
-      version: "1.x"
+      version: "2026.5.x"
       sourceRef:
         kind: HelmRepository
         name: linkerd
         namespace: flux-system
   dependsOn:
     - name: linkerd-crds
+  # Store real PEM-encoded values in this Secret instead of committing certificates to Git.
+  valuesFrom:
+    - kind: Secret
+      name: linkerd-identity
+      valuesKey: identityTrustAnchorsPEM
+      targetPath: identityTrustAnchorsPEM
+    - kind: Secret
+      name: linkerd-identity
+      valuesKey: issuer.crtPEM
+      targetPath: identity.issuer.tls.crtPEM
+    - kind: Secret
+      name: linkerd-identity
+      valuesKey: issuer.keyPEM
+      targetPath: identity.issuer.tls.keyPEM
   values:
-    identityTrustAnchorsPEM: |
-      # Reference your trust anchor certificate
     identity:
       issuer:
         scheme: kubernetes.io/tls
@@ -386,7 +403,7 @@ spec:
 
 ```yaml
 # infrastructure/service-mesh/monitoring/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: mesh-alerts
@@ -398,7 +415,7 @@ spec:
   eventSources:
     - kind: HelmRelease
       name: istiod
-      namespace: istio-system
+      namespace: flux-system
     - kind: Kustomization
       name: mesh-policies
       namespace: flux-system
@@ -409,7 +426,7 @@ spec:
 ```bash
 # Check Istio installation
 istioctl version
-istioctl verify-install
+istioctl analyze -A
 
 # View mesh configuration
 kubectl get peerauthentication --all-namespaces
@@ -422,7 +439,7 @@ istioctl proxy-status
 
 # Verify Flux reconciliation
 flux get kustomizations service-mesh
-flux get helmreleases -n istio-system
+flux get helmreleases -n flux-system
 ```
 
 ## Best Practices
