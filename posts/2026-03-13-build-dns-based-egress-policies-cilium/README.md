@@ -12,13 +12,13 @@ Description: Build precise DNS-based egress policies in Cilium that allow traffi
 
 DNS-based egress policies in Cilium allow you to control outbound traffic by domain name rather than IP address, which is essential when destinations use dynamic IPs (CDNs, cloud services, SaaS APIs). Unlike traditional IP-based firewall rules, DNS-based policies remain accurate even as backend IPs rotate.
 
-Cilium implements DNS policies through a DNS proxy that intercepts DNS queries and dynamically updates eBPF policy maps with the resolved IPs. This allows policy like "allow traffic to api.github.com" without hardcoding any IPs.
+Cilium implements DNS policies through a DNS proxy that intercepts DNS queries, records DNS-to-IP mappings in the agent's FQDN cache, and uses those mappings for policy decisions. This allows policy like "allow traffic to api.github.com" without hardcoding any IPs.
 
 However, misconfigured DNS policies can break external access by blocking DNS itself or by not accounting for initial DNS resolution timing. This guide shows how to build DNS policies that are both restrictive and reliable.
 
 ## Prerequisites
 
-- Cilium 1.10+ with DNS proxy enabled
+- Cilium with L7 proxy support enabled for DNS policy enforcement
 - `kubectl` CLI
 - Pods that make external API calls
 
@@ -29,7 +29,7 @@ flowchart TD
     A[Pod] -->|DNS query| B[Cilium DNS Proxy]
     B -->|Forward if allowed| C[CoreDNS / kube-dns]
     C -->|Response with IPs| B
-    B -->|Cache IPs in eBPF map| D[Policy Map]
+    B -->|Record DNS-to-IP mapping| D[FQDN Cache]
     B -->|Return response to pod| A
     A -->|HTTP request to resolved IP| E{Policy Check}
     E -->|IP in allowed set| F[External Service]
@@ -53,12 +53,12 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
           rules:
             dns:
               - matchPattern: "*"
@@ -106,4 +106,4 @@ kubectl exec -n kube-system ds/cilium -- \
 
 ## Conclusion
 
-Building DNS-based egress policies in Cilium requires allowing DNS traffic first, then restricting egress to specific FQDNs on appropriate ports. The DNS proxy caches resolved IPs in eBPF maps, enabling domain-name-based policies that remain accurate as IPs change. Always test DNS resolution before applying default-deny policies.
+Building DNS-based egress policies in Cilium requires allowing DNS traffic first, then restricting egress to specific FQDNs on appropriate ports. The DNS proxy records resolved IPs in the FQDN cache, enabling domain-name-based policies that remain accurate as IPs change. Always test DNS resolution before applying default-deny policies.
