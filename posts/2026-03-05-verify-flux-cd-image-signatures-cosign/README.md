@@ -54,22 +54,22 @@ Verify each Flux controller image using Cosign's keyless verification. The certi
 ```bash
 # Verify source-controller image signature
 cosign verify ghcr.io/fluxcd/source-controller:v1.4.1 \
-  --certificate-identity-regexp="^https://github.com/fluxcd/source-controller/.*" \
+  --certificate-identity-regexp="^https://github\\.com/fluxcd/source-controller/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 
 # Verify kustomize-controller image signature
 cosign verify ghcr.io/fluxcd/kustomize-controller:v1.4.0 \
-  --certificate-identity-regexp="^https://github.com/fluxcd/kustomize-controller/.*" \
+  --certificate-identity-regexp="^https://github\\.com/fluxcd/kustomize-controller/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 
 # Verify helm-controller image signature
 cosign verify ghcr.io/fluxcd/helm-controller:v1.1.0 \
-  --certificate-identity-regexp="^https://github.com/fluxcd/helm-controller/.*" \
+  --certificate-identity-regexp="^https://github\\.com/fluxcd/helm-controller/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 
 # Verify notification-controller image signature
 cosign verify ghcr.io/fluxcd/notification-controller:v1.4.0 \
-  --certificate-identity-regexp="^https://github.com/fluxcd/notification-controller/.*" \
+  --certificate-identity-regexp="^https://github\\.com/fluxcd/notification-controller/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
@@ -91,8 +91,8 @@ FAIL=0
 
 for IMAGE in $FLUX_IMAGES; do
   # Extract the controller name from the image path
-  CONTROLLER=$(echo "$IMAGE" | sed 's|.*/\(.*\):.*|\1|')
-  IDENTITY="^https://github.com/fluxcd/${CONTROLLER}/.*"
+  CONTROLLER=$(echo "$IMAGE" | sed -E 's|.*/([^:@]+)([:@].*)?$|\1|')
+  IDENTITY="^https://github\\.com/fluxcd/${CONTROLLER}/.*$"
 
   echo "Verifying: $IMAGE"
   if cosign verify "$IMAGE" \
@@ -127,13 +127,13 @@ You can inspect the full certificate details of a signed image:
 ```bash
 # View the full signature payload and certificate
 cosign verify ghcr.io/fluxcd/source-controller:v1.4.1 \
-  --certificate-identity-regexp="^https://github.com/fluxcd/source-controller/.*" \
+  --certificate-identity-regexp="^https://github\\.com/fluxcd/source-controller/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --output text
 
 # View signature annotations in JSON format
 cosign verify ghcr.io/fluxcd/source-controller:v1.4.1 \
-  --certificate-identity-regexp="^https://github.com/fluxcd/source-controller/.*" \
+  --certificate-identity-regexp="^https://github\\.com/fluxcd/source-controller/.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --output json | jq '.[0].optional'
 ```
@@ -171,10 +171,10 @@ jobs:
       - name: Verify all Flux images
         run: |
           while IFS= read -r IMAGE; do
-            CONTROLLER=$(echo "$IMAGE" | sed 's|.*/\(.*\):.*|\1|')
+            CONTROLLER=$(echo "$IMAGE" | sed -E 's|.*/([^:@]+)([:@].*)?$|\1|')
             echo "Verifying $IMAGE..."
             cosign verify "$IMAGE" \
-              --certificate-identity-regexp="^https://github.com/fluxcd/${CONTROLLER}/.*" \
+              --certificate-identity-regexp="^https://github\\.com/fluxcd/${CONTROLLER}/.*$" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
           done < flux-images.txt
 ```
@@ -186,30 +186,34 @@ Use a policy engine to enforce that only signed Flux images can run in the clust
 ```yaml
 # kyverno-verify-flux-images.yaml
 # Kyverno policy to enforce Cosign signatures on Flux controller images
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: NamespacedImageValidatingPolicy
 metadata:
   name: verify-flux-images
+  namespace: flux-system
 spec:
-  validationFailureAction: Enforce
-  background: false
-  rules:
-    - name: verify-flux-image-signature
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaces:
-                - flux-system
-      verifyImages:
-        - imageReferences:
-            - "ghcr.io/fluxcd/*"
-          attestors:
-            - entries:
-                - keyless:
-                    subject: "https://github.com/fluxcd/*"
-                    issuer: "https://token.actions.githubusercontent.com"
+  validationActions: [Deny]
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchImageReferences:
+    - glob: "ghcr.io/fluxcd/*"
+  attestors:
+    - name: flux
+      cosign:
+        keyless:
+          identities:
+            - subjectRegExp: "^https://github\\.com/fluxcd/.*$"
+              issuer: "https://token.actions.githubusercontent.com"
+        ctlog:
+          url: "https://rekor.sigstore.dev"
+  validations:
+    - expression: "images.containers.map(image, verifyImageSignatures(image, [attestors.flux])).all(result, result > 0)"
+      message: "Flux controller images must be signed by the Flux project"
 ```
 
 ## Best Practices
