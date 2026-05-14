@@ -109,7 +109,8 @@ spec:
           restartPolicy: Never
           containers:
             - name: ecr-login
-              image: amazon/aws-cli:2.15.0
+              # Use an image that includes both aws and kubectl.
+              image: alpine/k8s:1.32.13
               envFrom:
                 - secretRef:
                     name: ecr-credentials-sync-aws
@@ -160,19 +161,46 @@ On EKS, IRSA is the preferred approach. It eliminates the need for static AWS cr
 ### Step 1: Create an IAM Role with IRSA
 
 ```bash
+# Associate an IAM OIDC provider with the EKS cluster if you have not already
+eksctl utils associate-iam-oidc-provider \
+  --cluster my-cluster \
+  --approve
+
 # Create an IAM role for the image-reflector-controller service account
 eksctl create iamserviceaccount \
   --name image-reflector-controller \
   --namespace flux-system \
   --cluster my-cluster \
   --attach-policy-arn arn:aws:iam::123456789012:policy/FluxECRReadOnly \
+  --role-name flux-ecr-readonly \
   --override-existing-serviceaccounts \
   --approve
 ```
 
-### Step 2: Patch the Controller Deployment
+### Step 2: Persist the ServiceAccount Annotation and Restart
 
-After creating the IRSA association, restart the image-reflector-controller to pick up the new service account annotations.
+After creating the IRSA association, add the service account annotation to your Flux bootstrap repository so Flux does not remove it during reconciliation. Then restart the image-reflector-controller to pick up the new service account annotations.
+
+```yaml
+# flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: image-reflector-controller
+        namespace: flux-system
+        annotations:
+          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-ecr-readonly
+    target:
+      kind: ServiceAccount
+      name: image-reflector-controller
+```
 
 ```bash
 # Restart the image-reflector-controller to use IRSA credentials
