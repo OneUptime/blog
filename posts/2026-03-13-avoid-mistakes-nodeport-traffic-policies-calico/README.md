@@ -10,15 +10,16 @@ Description: Avoid Mistakes Calico NodePort traffic policies to secure Kubernete
 
 ## Introduction
 
-NodePort Traffic Policies in Calico gives you control over how traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure NodePort Traffic traffic effectively while maintaining service availability.
+NodePort Traffic Policies in Calico gives you control over how external traffic flows through Kubernetes service networking. The `projectcalico.org/v3` API provides the tools needed to secure NodePort traffic effectively while maintaining service availability.
 
-Proper NodePort Traffic policy configuration is essential for clusters that expose services to external traffic. Without it, any source can reach your NodePort or ClusterIP services, creating significant attack surface.
+Proper NodePort Traffic policy configuration is essential for clusters that expose services to external traffic. Without it, any source that can reach your node IPs can reach exposed NodePort services, creating significant attack surface.
 
 This guide covers avoid mistakes NodePort Traffic policies in Calico with practical, production-tested configurations.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
+- Calico host endpoints configured for Kubernetes nodes
 - `calicoctl` and `kubectl` installed
 - Understanding of Kubernetes service networking
 
@@ -36,15 +37,17 @@ spec:
   selector: has(kubernetes.io/hostname)
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
           - 172.16.0.0/12
       destination:
-        ports: [30000-32767]
+        ports: ['30000:32767']
     - action: Deny
+      protocol: TCP
       destination:
-        ports: [30000-32767]
+        ports: ['30000:32767']
   types:
     - Ingress
 ```
@@ -58,8 +61,10 @@ spec:
 
 calicoctl apply -f avoid-mistakes-nodeport-traffic.yaml
 
-# Verify traffic behavior
-kubectl exec -n test test-pod -- curl -s --max-time 5 http://service-name:8080
+# Verify external NodePort traffic behavior
+NODE_IP=$(kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+NODE_PORT=$(kubectl get svc service-name -o jsonpath='{.spec.ports[0].nodePort}')
+curl -s --max-time 5 "http://${NODE_IP}:${NODE_PORT}"
 echo "Result: $?"
 ```
 
