@@ -4,35 +4,35 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Notation, Image Signing, Supply Chain Security, Kubernetes, GitOps, Container Security
 
-Description: Learn how to configure Flux CD with Notation for container image signing and verification to secure your software supply chain in a GitOps workflow.
+Description: Learn how to configure Flux CD with Notation for OCI artifact signing and verification to secure your software supply chain in a GitOps workflow.
 
 ---
 
 ## Introduction
 
-Container image signing is a critical component of software supply chain security. Notation is an open-source project from the CNCF that provides a standards-based solution for signing and verifying container images and other OCI artifacts. When combined with Flux CD, you can enforce that only signed and verified images are deployed to your Kubernetes clusters.
+Container image signing is a critical component of software supply chain security. Notation is an open-source project from the CNCF that provides a standards-based solution for signing and verifying container images and other OCI artifacts. When combined with Flux CD's OCI source support, you can enforce that signed and verified OCI artifacts are used as GitOps sources before they are applied to your Kubernetes clusters.
 
-This guide walks through setting up Notation with Flux CD to create a secure, end-to-end GitOps pipeline with image verification.
+This guide walks through setting up Notation with Flux CD to create a secure GitOps pipeline with OCI artifact verification. Flux verifies signed OCI sources such as manifest bundles and OCI Helm chart artifacts. If you need admission-time enforcement for application container images referenced inside Deployments, pair this with a Kubernetes admission policy engine that supports Notation.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.28 or later)
-- Flux CD v2.4 or later installed
+- A Kubernetes cluster supported by your Flux version
+- Flux CD installed with a `source.toolkit.fluxcd.io/v1` `OCIRepository` API
 - notation CLI installed locally
 - An OCI-compliant container registry (e.g., Azure Container Registry, AWS ECR, or Harbor)
 - Access to a key management system or local keys for signing
 
-## Understanding the Image Signing Workflow
+## Understanding the OCI Signing Workflow
 
 ```mermaid
 graph TD
     A[Developer pushes code] --> B[CI builds container image]
-    B --> C[CI pushes image to registry]
-    C --> D[Notation signs the image]
-    D --> E[Signed image in registry]
-    E --> F[Flux CD pulls image metadata]
+    B --> C[CI packages manifests as OCI artifact]
+    C --> D[Notation signs the OCI artifact]
+    D --> E[Signed artifact in registry]
+    E --> F[Flux CD pulls OCI source artifact]
     F --> G{Verify signature with Notation}
-    G -->|Valid| H[Deploy to cluster]
+    G -->|Valid| H[Apply manifests to cluster]
     G -->|Invalid| I[Reject and alert]
 ```
 
@@ -65,8 +65,9 @@ For production environments, use a proper key management solution. Here is an ex
 
 ```bash
 # Install the Azure Key Vault plugin for Notation
-notation plugin install azure-kv \
-  --url https://github.com/Azure/notation-azure-kv/releases/download/v1.2.0/notation-azure-kv_1.2.0_linux_amd64.tar.gz
+notation plugin install \
+  --url https://github.com/Azure/notation-azure-kv/releases/download/v1.2.1/notation-azure-kv_1.2.1_linux_amd64.tar.gz \
+  --sha256sum 67c5ccaaf28dd44d2b6572684d84e344a02c2258af1d65ead3910b3156d3eaf5
 
 # Add the signing key from Azure Key Vault
 notation key add "production-key" \
@@ -74,9 +75,9 @@ notation key add "production-key" \
   --plugin azure-kv
 ```
 
-## Signing Container Images with Notation
+## Signing OCI Artifacts with Notation
 
-Sign your container images as part of your CI pipeline:
+Sign your OCI artifacts as part of your CI pipeline. The same `notation sign` command can sign container images, but the Flux verification examples below use a signed OCI artifact containing Kubernetes manifests:
 
 ```yaml
 # .github/workflows/build-and-sign.yaml
@@ -91,69 +92,100 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Flux CLI
+        run: curl -s https://fluxcd.io/install.sh | sudo bash
+
       - name: Build and push image
         run: |
-          # Build the container image
+          # Build the application container image
           docker build -t myregistry.azurecr.io/myapp:${{ github.sha }} .
-          # Push to registry
           docker push myregistry.azurecr.io/myapp:${{ github.sha }}
 
-      - name: Sign image with Notation
+          # Package the Kubernetes manifests as a Flux OCI artifact
+          flux push artifact \
+            oci://myregistry.azurecr.io/myapp-manifests:${{ github.sha }} \
+            --path="./clusters/my-cluster" \
+            --source="${{ github.server_url }}/${{ github.repository }}" \
+            --revision="${{ github.ref_name }}@sha1:${{ github.sha }}"
+
+      - name: Install and configure Notation
         run: |
           # Install notation
           curl -Lo notation.tar.gz \
-            https://github.com/notaryproject/notation/releases/download/v1.2.0/notation_1.2.0_linux_amd64.tar.gz
-          tar xzf notation.tar.gz -C /usr/local/bin notation
+            https://github.com/notaryproject/notation/releases/download/v1.3.2/notation_1.3.2_linux_amd64.tar.gz
+          sudo tar xzf notation.tar.gz -C /usr/local/bin notation
 
-          # Sign the image using the configured key
+          # Install the Azure Key Vault plugin
+          notation plugin install \
+            --url https://github.com/Azure/notation-azure-kv/releases/download/v1.2.1/notation-azure-kv_1.2.1_linux_amd64.tar.gz \
+            --sha256sum 67c5ccaaf28dd44d2b6572684d84e344a02c2258af1d65ead3910b3156d3eaf5
+
+          # Register the signing key used by this workflow
+          notation key add "production-key" \
+            --id "${{ secrets.AZURE_KEY_VAULT_KEY_ID }}" \
+            --plugin azure-kv
+
+      - name: Sign artifact with Notation
+        run: |
+          # Sign the Flux OCI artifact using the configured key
           notation sign \
             --key "production-key" \
-            myregistry.azurecr.io/myapp:${{ github.sha }}
+            myregistry.azurecr.io/myapp-manifests:${{ github.sha }}
 
       - name: Verify the signature
         run: |
-          # Verify the signature was applied correctly
-          notation verify \
-            myregistry.azurecr.io/myapp:${{ github.sha }}
+          # Verify the signature using the trust policy and trust store checked into CI
+          notation cert add \
+            --type ca \
+            --store production-certs \
+            .github/notation/truststore/x509/ca/production-certs/ca.crt
+          notation policy import .github/notation/trustpolicy.json
+          notation verify myregistry.azurecr.io/myapp-manifests:${{ github.sha }}
 ```
 
-## Configuring Flux CD for Image Verification
+## Configuring Flux CD for OCI Artifact Verification
 
-### Step 1: Create a Verification Policy
+### Step 1: Create a Verified OCI Repository
 
-Define a verification policy that tells Flux which images to verify and which keys to trust:
+Define an `OCIRepository` that tells Flux which OCI artifact to pull and which Notation trust configuration to use:
 
 ```yaml
-# clusters/my-cluster/image-verification/notation-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
+# clusters/my-cluster/image-verification/oci-repository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
 metadata:
-  name: notation-verification
+  name: myapp-manifests
   namespace: flux-system
 spec:
-  imageRepositoryRef:
-    name: myapp-repo
-  # Verification configuration
-  verification:
+  interval: 5m
+  url: oci://myregistry.azurecr.io/myapp-manifests
+  ref:
+    tag: v1.0.0
+  secretRef:
+    name: registry-credentials
+  verify:
     provider: notation
-    # Reference to the trust policy
     secretRef:
-      name: notation-trust-policy
+      name: notation-config
 ```
 
 ### Step 2: Create the Trust Policy Secret
 
-The trust policy defines which certificates to trust for signature verification:
+The trust policy defines which certificates to trust for signature verification. For Flux, the same Secret must contain the `trustpolicy.json` file and one or more CA certificates with a `.pem` or `.crt` key name:
 
 ```yaml
 # clusters/my-cluster/image-verification/trust-policy-secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: notation-trust-policy
+  name: notation-config
   namespace: flux-system
 type: Opaque
 stringData:
+  production-certs.crt: |
+    -----BEGIN CERTIFICATE-----
+    # Your PEM-encoded CA certificate
+    -----END CERTIFICATE-----
   # Notation trust policy configuration
   trustpolicy.json: |
     {
@@ -162,7 +194,7 @@ stringData:
         {
           "name": "production-images",
           "registryScopes": [
-            "myregistry.azurecr.io/myapp"
+            "myregistry.azurecr.io/myapp-manifests"
           ],
           "signatureVerification": {
             "level": "strict"
@@ -178,39 +210,43 @@ stringData:
     }
 ```
 
-### Step 3: Store the Verification Certificate
+### Step 3: Reference the Verified Source
 
-Create a secret containing the public certificate used for verification:
-
-```yaml
-# clusters/my-cluster/image-verification/verification-cert.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: notation-verification-cert
-  namespace: flux-system
-type: Opaque
-data:
-  # Base64-encoded public certificate
-  # Generate with: cat cert.pem | base64 -w0
-  ca.crt: LS0tLS1CRUdJTi... # Your base64-encoded certificate
-```
-
-## Configuring the Image Repository
-
-Set up the ImageRepository to scan for new tags and verify signatures:
+Use the verified OCI source from a Flux `Kustomization`. The kustomize-controller will consume the artifact only after source-controller has fetched and verified it:
 
 ```yaml
-# clusters/my-cluster/image-verification/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
+# clusters/my-cluster/image-verification/kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: myapp-repo
+  name: myapp
   namespace: flux-system
 spec:
-  # Container registry URL
-  image: myregistry.azurecr.io/myapp
-  # How often to scan for new images
+  interval: 5m
+  path: ./
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: myapp-manifests
+```
+
+## Configuring the OCI Source
+
+Set up the `OCIRepository` to fetch signed GitOps manifests from your registry:
+
+```yaml
+# clusters/my-cluster/image-verification/oci-source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: myapp-manifests
+  namespace: flux-system
+spec:
+  # OCI artifact URL
+  url: oci://myregistry.azurecr.io/myapp-manifests
+  ref:
+    semver: ">=1.0.0"
+  # How often to check for new artifacts
   interval: 5m
   # Registry authentication
   secretRef:
@@ -218,19 +254,27 @@ spec:
   # Enable Notation verification
   verify:
     provider: notation
-    # Reference to the trust policy secret
     secretRef:
-      name: notation-trust-policy
-    # Reference to the verification certificate
-    certRef:
-      name: notation-verification-cert
+      name: notation-config
 ```
 
 ## Setting Up Image Update Automation
 
-Configure Flux to automatically update image tags, but only for verified images:
+Flux image automation can update image tags in manifests, but it does not verify Notation signatures on the workload images it scans. Keep using `ImageRepository`, `ImagePolicy`, and `ImageUpdateAutomation` for tag updates, and use `OCIRepository.spec.verify` for signed OCI GitOps sources:
 
 ```yaml
+# clusters/my-cluster/image-verification/image-repository.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: myapp-repo
+  namespace: flux-system
+spec:
+  image: myregistry.azurecr.io/myapp
+  interval: 5m
+  secretRef:
+    name: registry-credentials
+---
 # clusters/my-cluster/image-verification/image-policy.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
@@ -240,11 +284,11 @@ metadata:
 spec:
   imageRepositoryRef:
     name: myapp-repo
-  # Select the latest verified image
+  # Select the latest matching image tag
   policy:
     semver:
       range: ">=1.0.0"
-  # Only allow verified images
+  # Restrict the tag format selected by the policy
   filterTags:
     pattern: '^(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
@@ -269,9 +313,11 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        chore: update {{ .AutomatedResource.Kind }}/{{ .AutomatedResource.Name }}
-        Image: {{ range .Updated.Images }}{{println .}}{{ end }}
-        Signature: verified with Notation
+        chore: update {{ .AutomationObject.Namespace }}/{{ .AutomationObject.Name }}
+        Changes:
+        {{- range $filename, $_ := .Changed.FileChanges }}
+        - {{ $filename }}
+        {{- end }}
     push:
       branch: main
   update:
@@ -292,6 +338,18 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
+  azure-production.crt: |
+    -----BEGIN CERTIFICATE-----
+    # Azure production CA certificate
+    -----END CERTIFICATE-----
+  aws-staging.crt: |
+    -----BEGIN CERTIFICATE-----
+    # AWS staging CA certificate
+    -----END CERTIFICATE-----
+  vendor-certs.crt: |
+    -----BEGIN CERTIFICATE-----
+    # Vendor CA certificate
+    -----END CERTIFICATE-----
   trustpolicy.json: |
     {
       "version": "1.0",
@@ -299,7 +357,7 @@ stringData:
         {
           "name": "production-acr",
           "registryScopes": [
-            "prodregistry.azurecr.io/*"
+            "prodregistry.azurecr.io/team-a/myapp"
           ],
           "signatureVerification": {
             "level": "strict"
@@ -314,7 +372,7 @@ stringData:
         {
           "name": "staging-ecr",
           "registryScopes": [
-            "123456789.dkr.ecr.us-east-1.amazonaws.com/*"
+            "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp"
           ],
           "signatureVerification": {
             "level": "permissive"
@@ -329,7 +387,7 @@ stringData:
         {
           "name": "third-party",
           "registryScopes": [
-            "ghcr.io/trusted-vendor/*"
+            "ghcr.io/trusted-vendor/agent"
           ],
           "signatureVerification": {
             "level": "strict"
@@ -338,7 +396,7 @@ stringData:
             "ca:vendor-certs"
           ],
           "trustedIdentities": [
-            "x509.subject: C=US, O=TrustedVendor"
+            "x509.subject: C=US, ST=CA, O=TrustedVendor"
           ]
         }
       ]
@@ -347,11 +405,11 @@ stringData:
 
 ## Setting Up Alerts for Verification Failures
 
-Get notified when image verification fails:
+Get notified when OCI artifact verification fails:
 
 ```yaml
 # clusters/my-cluster/notifications/verification-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-verification-alert
@@ -360,16 +418,16 @@ spec:
   # Alert on errors only
   eventSeverity: error
   eventSources:
-    - kind: ImageRepository
+    - kind: OCIRepository
       name: "*"
       namespace: flux-system
-  # Include verification-related events
-  eventMetadata:
-    reason: "VerificationFailed"
+  # Include verification-related event messages
+  inclusionList:
+    - ".*failed to verify.*"
   providerRef:
     name: slack-security
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-security
@@ -386,23 +444,26 @@ spec:
 Test the complete signing and verification workflow:
 
 ```bash
-# Build and push a test image
-docker build -t myregistry.azurecr.io/myapp:v1.0.0-test .
-docker push myregistry.azurecr.io/myapp:v1.0.0-test
+# Package and push a test GitOps artifact
+DIGEST_URL=$(flux push artifact \
+  oci://myregistry.azurecr.io/myapp-manifests:v1.0.0-test \
+  --path="./clusters/my-cluster" \
+  --source="$(git config --get remote.origin.url)" \
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)" \
+  --output json | jq -r '.repository + "@" + .digest')
 
-# Sign the image
-notation sign --key "production-key" \
-  myregistry.azurecr.io/myapp:v1.0.0-test
+# Sign the artifact by digest
+notation sign --key "production-key" "$DIGEST_URL"
 
 # Verify locally
-notation verify myregistry.azurecr.io/myapp:v1.0.0-test
+notation verify "$DIGEST_URL"
 
 # Check Flux verification status
-kubectl get imagerepositories -n flux-system
-kubectl describe imagerepository myapp-repo -n flux-system
+kubectl get ocirepositories -n flux-system
+kubectl describe ocirepository myapp-manifests -n flux-system
 
 # Check for verification events
-kubectl events -n flux-system --for imagerepository/myapp-repo
+kubectl events -n flux-system --for ocirepository/myapp-manifests
 ```
 
 ## Troubleshooting
@@ -411,13 +472,13 @@ kubectl events -n flux-system --for imagerepository/myapp-repo
 
 ```bash
 # Check if the certificate is correctly configured
-kubectl get secret notation-verification-cert -n flux-system -o jsonpath='{.data.ca\.crt}' | base64 -d
+kubectl get secret notation-config -n flux-system -o jsonpath='{.data.production-certs\.crt}' | base64 -d
 
 # Verify the trust policy is valid JSON
-kubectl get secret notation-trust-policy -n flux-system -o jsonpath='{.data.trustpolicy\.json}' | jq .
+kubectl get secret notation-config -n flux-system -o jsonpath='{.data.trustpolicy\.json}' | base64 -d | jq .
 
-# Check the image repository controller logs
-kubectl logs -n flux-system deploy/image-reflector-controller | grep -i notation
+# Check the source controller logs
+kubectl logs -n flux-system deploy/source-controller | grep -i notation
 ```
 
 ### Registry Authentication Issues
@@ -427,7 +488,7 @@ kubectl logs -n flux-system deploy/image-reflector-controller | grep -i notation
 kubectl get secret registry-credentials -n flux-system
 
 # Test registry access
-flux reconcile image repository myapp-repo
+flux reconcile source oci myapp-manifests
 ```
 
 ## Best Practices
@@ -446,4 +507,4 @@ flux reconcile image repository myapp-repo
 
 ## Conclusion
 
-Configuring Flux CD with Notation for image signing creates a robust software supply chain security posture. By verifying image signatures before deployment, you ensure that only trusted, tamper-free images reach your Kubernetes clusters. Combined with Flux CD's GitOps model, this provides a fully auditable and secure deployment pipeline from build to production.
+Configuring Flux CD with Notation creates a stronger software supply chain security posture for OCI-based GitOps sources. By verifying signatures before Flux makes an OCI artifact available to the rest of the reconciliation pipeline, you ensure that only trusted, tamper-free manifest bundles or OCI chart artifacts are applied to your Kubernetes clusters. Combined with admission-time controls for workload container images, this provides a more auditable and secure deployment pipeline from build to production.
