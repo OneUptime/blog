@@ -102,7 +102,7 @@ spec:
 
         Objects:
         {{ range $resource, $_ := .Changed.Objects -}}
-        - {{ $resource.Resource.Kind }} {{ $resource.Resource.Namespace }}/{{ $resource.Resource.Name }}
+        - {{ $resource.Kind }} {{ $resource.Namespace }}/{{ $resource.Name }}
         {{ end -}}
 ```
 
@@ -135,7 +135,7 @@ spec:
         Automated image update
 
         {{ range $resource, $changes := .Changed.Objects -}}
-        {{ $resource.Resource.Kind }}/{{ $resource.Resource.Name }}:
+        {{ $resource.Kind }}/{{ $resource.Name }}:
         {{ range $_, $change := $changes -}}
           - {{ $change.OldValue }} -> {{ $change.NewValue }}
         {{ end -}}
@@ -251,7 +251,7 @@ kubectl -n flux-system logs deployment/image-automation-controller
 
 **Template rendering errors**: If the Go template syntax is invalid, the controller will log an error and skip the commit. Common mistakes include missing closing braces or referencing nonexistent fields.
 
-**Empty file or object lists**: If the template references `.Changed.FileChanges` but no files were changed, that section will be empty. This is normal when the automation runs but finds no new images.
+**No new images**: If the automation runs but finds no new images, Flux does not create a commit, so no commit message is rendered.
 
 **Excessive blank lines**: Use the `-` whitespace trimming markers in your Go template actions to eliminate unwanted blank lines in the output.
 
