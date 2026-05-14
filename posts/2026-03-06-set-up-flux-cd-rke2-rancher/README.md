@@ -30,15 +30,20 @@ Install RKE2 on the first node (server/control plane):
 
 ```bash
 # Install RKE2 server
-
+sudo mkdir -p /etc/rancher/rke2
 curl -sfL https://get.rke2.io | sudo sh -
 
-# Enable and start the RKE2 server service
-sudo systemctl enable rke2-server.service
-sudo systemctl start rke2-server.service
+# Prepare host requirements for the CIS profile
+sudo useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+if [ -f /usr/share/rke2/rke2-cis-sysctl.conf ]; then
+  sudo cp -f /usr/share/rke2/rke2-cis-sysctl.conf /etc/sysctl.d/60-rke2-cis.conf
+else
+  sudo cp -f /usr/local/share/rke2/rke2-cis-sysctl.conf /etc/sysctl.d/60-rke2-cis.conf
+fi
+sudo systemctl restart systemd-sysctl
 
-# Check the service status
-sudo systemctl status rke2-server.service
+# Enable the RKE2 server service
+sudo systemctl enable rke2-server.service
 ```
 
 ## Configuring RKE2
@@ -52,7 +57,7 @@ write-kubeconfig-mode: "0644"
 tls-san:
   - "10.0.0.10"
   - "rke2-server.example.com"
-# Enable CIS 1.23 hardening profile
+# Enable the current CIS hardening profile for this RKE2 version
 profile: "cis"
 # Use Canal (Calico + Flannel) as the CNI
 cni:
@@ -82,11 +87,19 @@ plugins:
       exemptions:
         namespaces:
           - kube-system
-          - cis-operator-system
-          # Exempt flux-system from restricted PSA
-          - flux-system
+          - compliance-operator-system
+          - tigera-operator
         runtimeClasses: []
         usernames: []
+```
+
+Start RKE2 after the configuration files are in place:
+
+```bash
+sudo systemctl start rke2-server.service
+
+# Check the service status
+sudo systemctl status rke2-server.service
 ```
 
 ## Configuring kubectl Access
@@ -115,7 +128,15 @@ On each worker node, install RKE2 as an agent:
 
 ```bash
 # Install RKE2 agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_TYPE="agent" sh -
+
+# Prepare host requirements for the CIS profile
+if [ -f /usr/share/rke2/rke2-cis-sysctl.conf ]; then
+  sudo cp -f /usr/share/rke2/rke2-cis-sysctl.conf /etc/sysctl.d/60-rke2-cis.conf
+else
+  sudo cp -f /usr/local/share/rke2/rke2-cis-sysctl.conf /etc/sysctl.d/60-rke2-cis.conf
+fi
+sudo systemctl restart systemd-sysctl
 
 # Create the agent configuration
 sudo mkdir -p /etc/rancher/rke2
@@ -185,10 +206,10 @@ kind: Namespace
 metadata:
   name: flux-system
   labels:
-    # Allow Flux controllers to run with required permissions
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/audit: privileged
-    pod-security.kubernetes.io/warn: privileged
+    # Flux controllers are compatible with the restricted Pod Security Standard
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 ```
 
 ```bash
@@ -226,7 +247,7 @@ kubectl get pods -n flux-system
 # Verify Git source
 flux get sources git
 
-# Confirm pods are running without SCC issues
+# Confirm pods are running without PSA warnings
 kubectl describe pods -n flux-system | grep -A2 "Warning"
 ```
 
@@ -351,14 +372,14 @@ spec:
       # Pod-level security context for restricted PSA compliance
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: app
-          image: nginx:1.27-alpine
+          image: nginxinc/nginx-unprivileged:1.27-alpine
           ports:
             - containerPort: 8080
           resources:
@@ -492,7 +513,7 @@ kubectl get pods -n flux-system
 
 ```yaml
 # clusters/rke2/apps/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -503,7 +524,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rke2-alerts
@@ -538,7 +559,7 @@ kubectl get events -A --field-selector reason=FailedCreate | grep -i "forbidden"
 sudo journalctl -u rke2-server -f
 
 # Check CIS benchmark compliance
-kubectl get pods -n cis-operator-system
+kubectl get pods -n compliance-operator-system
 
 # Verify network policies are not blocking Flux
 kubectl describe networkpolicy -n flux-system
