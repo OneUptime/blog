@@ -22,7 +22,7 @@ Flux CD uses a dedicated **Helm Controller** that operates as a separate compone
 
 ### ArgoCD Helm Architecture
 
-ArgoCD treats Helm charts as one of several manifest generation tools. It renders Helm templates into plain Kubernetes manifests and then applies them using its standard sync mechanism. This means ArgoCD does not use `helm install` or `helm upgrade` under the hood -- it uses `helm template` and then applies the output with `kubectl`.
+ArgoCD treats Helm charts as one of several manifest generation tools. It renders Helm templates into plain Kubernetes manifests and then applies them using its standard sync mechanism. This means ArgoCD does not use `helm install` or `helm upgrade` under the hood -- it uses `helm template` and then applies the output through its normal sync engine.
 
 ## Feature Comparison Table
 
@@ -30,17 +30,17 @@ ArgoCD treats Helm charts as one of several manifest generation tools. It render
 |---|---|---|
 | Helm SDK Integration | Native (helm install/upgrade) | Template-only (helm template) |
 | HelmRelease CRD | Yes | No (uses Application CRD) |
-| Chart Sources | HelmRepository, GitRepository, S3, OCI | Helm repos, Git repos, OCI |
+| Chart Sources | HelmRepository, GitRepository, Bucket/S3, OCIRepository | Helm repos, Git repos, OCI |
 | Values Files | Multiple files, inline values | Multiple files, inline values |
 | Values From Secrets/ConfigMaps | Yes (native support) | Limited (via plugins) |
-| Helm Hooks | Full support | Partial (PreSync/PostSync annotations) |
+| Helm Hooks | Full support | Many hooks mapped to ArgoCD hooks; test and rollback hooks unsupported |
 | Helm Tests | Supported via HelmRelease | Not natively supported |
-| Rollback Support | Automatic rollback on failure | Manual rollback via UI/CLI |
+| Rollback Support | Configurable automatic remediation/rollback | Manual rollback via UI/CLI |
 | Dependency Management | chart dependencies resolved | chart dependencies resolved |
 | OCI Registry Support | Yes | Yes |
 | Drift Detection | Via Helm release state | Via manifest comparison |
 | Post-Renderers | Supported (Kustomize overlays) | Not supported |
-| CRD Installation Policy | Configurable (Create, CreateReplace) | Automatic |
+| CRD Installation Policy | Configurable (Skip, Create, CreateReplace) | Automatic by default; can skip with `skipCrds` |
 
 ## Chart Source Configuration
 
@@ -176,9 +176,9 @@ spec:
     # Load sensitive values from a Secret
     - kind: Secret
       name: my-app-secret-values
-      valuesKey: secrets.yaml
-      # Optional: target a specific path in the values
-      targetPath: database.credentials
+      valuesKey: password
+      # Optional: target a specific scalar value path
+      targetPath: database.credentials.password
   # Inline values take highest priority
   values:
     image:
@@ -190,7 +190,7 @@ spec:
 
 ### ArgoCD: Values Files and Parameters
 
-ArgoCD supports values files from the same repository and inline parameters.
+ArgoCD supports values files from the same repository, values files from separate repositories with multiple sources in ArgoCD v2.6+, and inline parameters.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -256,7 +256,7 @@ spec:
 
 ### ArgoCD Hook Support
 
-ArgoCD maps Helm hooks to its own sync wave system. Some hooks translate directly, while others require adaptation:
+ArgoCD maps many Helm hook annotations to its own hook phases and sync waves, but the lifecycle semantics are not identical to Helm. Unsupported Helm hooks such as test and rollback hooks are ignored, and if you define any ArgoCD hook annotations directly, Helm hook annotations in the same chart are ignored. Some charts therefore require adaptation:
 
 ```yaml
 # ArgoCD uses its own annotation system for hooks
@@ -310,13 +310,13 @@ spec:
     # Number of retries on upgrade failure
     remediation:
       retries: 3
-      # Automatically rollback on failure
+      # Remediate the last failure after retries are exhausted
       remediateLastFailure: true
     # Clean up failed resources before retrying
     cleanupOnFail: true
   # Rollback configuration
   rollback:
-    # Keep the rollback history
+    # Clean up new resources if rollback fails
     cleanupOnFail: true
     # Recreate resources if needed
     recreate: false
@@ -350,18 +350,23 @@ Both tools support OCI-based Helm registries, but the configuration differs.
 ### Flux CD OCI Configuration
 
 ```yaml
-# OCI HelmRepository source
+# OCIRepository source for a Helm chart
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: oci-charts
+  name: my-app-chart
   namespace: flux-system
 spec:
-  # OCI registry type
-  type: oci
   # OCI registry URL
-  url: oci://ghcr.io/my-org/charts
+  url: oci://ghcr.io/my-org/charts/my-app
   interval: 10m
+  # Chart version selection
+  ref:
+    tag: "1.0.0"
+  # Select the Helm chart layer
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   # Authentication via Kubernetes secret
   secretRef:
     name: oci-registry-creds
@@ -374,14 +379,10 @@ metadata:
   namespace: default
 spec:
   interval: 5m
-  chart:
-    spec:
-      chart: my-app
-      version: "1.0.0"
-      sourceRef:
-        kind: HelmRepository
-        name: oci-charts
-        namespace: flux-system
+  chartRef:
+    kind: OCIRepository
+    name: my-app-chart
+    namespace: flux-system
 ```
 
 ### ArgoCD OCI Configuration
@@ -448,7 +449,7 @@ spec:
 ### Choose Flux CD for Helm If
 
 - You need full Helm lifecycle hook support
-- You require automatic rollback on upgrade failure
+- You require configurable automatic remediation or rollback on upgrade failure
 - You want to inject values from Kubernetes Secrets and ConfigMaps
 - You need post-rendering with Kustomize overlays
 - You prefer a declarative, CRD-based approach for all Helm configuration
@@ -465,4 +466,4 @@ spec:
 
 ## Conclusion
 
-Both Flux CD and ArgoCD are capable GitOps tools for managing Helm deployments. Flux CD offers deeper Helm integration with native SDK usage, automatic rollback, and advanced features like post-rendering and values from secrets. ArgoCD provides a more unified approach with its visual dashboard and simpler configuration model. Your choice should depend on how heavily you rely on Helm-specific features versus preferring a generalized GitOps platform with a strong UI.
+Both Flux CD and ArgoCD are capable GitOps tools for managing Helm deployments. Flux CD offers deeper Helm integration with native SDK usage, configurable automatic remediation, and advanced features like post-rendering and values from secrets. ArgoCD provides a more unified approach with its visual dashboard and simpler configuration model. Your choice should depend on how heavily you rely on Helm-specific features versus preferring a generalized GitOps platform with a strong UI.
