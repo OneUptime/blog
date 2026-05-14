@@ -24,22 +24,31 @@ This guide covers setting up the Datadog Agent, configuring Flagger to use Datad
 
 ## Step 1: Store Datadog Credentials
 
-Create a Kubernetes secret with your Datadog API and application keys:
+Create Kubernetes secrets with your Datadog API and application keys. Flagger's Datadog provider and the Datadog Helm chart expect different key names, so keep separate secrets:
 
 ```bash
-# Create the secret in the namespace where your canary resources live
+# Create the Flagger secret in the namespace where your MetricTemplates live
 
 kubectl create secret generic datadog-credentials \
   --namespace=demo \
   --from-literal=datadog_api_key=YOUR_API_KEY \
   --from-literal=datadog_application_key=YOUR_APP_KEY
+
+# Create the Datadog Agent secret in the release namespace
+
+kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic datadog-agent-credentials \
+  --namespace=datadog \
+  --from-literal=api-key=YOUR_API_KEY \
+  --from-literal=app-key=YOUR_APP_KEY
 ```
 
 For a GitOps approach, use a sealed secret or external secrets operator:
 
 ```yaml
 # datadog-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: datadog-credentials
@@ -56,6 +65,26 @@ spec:
       remoteRef:
         key: datadog/api-key
     - secretKey: datadog_application_key
+      remoteRef:
+        key: datadog/app-key
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: datadog-agent-credentials
+  namespace: datadog
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secretsmanager
+    kind: ClusterSecretStore
+  target:
+    name: datadog-agent-credentials
+  data:
+    - secretKey: api-key
+      remoteRef:
+        key: datadog/api-key
+    - secretKey: app-key
       remoteRef:
         key: datadog/app-key
 ```
@@ -96,10 +125,11 @@ spec:
   values:
     datadog:
       # Reference existing secret for API key
-      apiKeyExistingSecret: datadog-credentials
-      appKeyExistingSecret: datadog-credentials
-      # Enable Kubernetes metrics collection
-      kubeStateMetricsEnabled: true
+      apiKeyExistingSecret: datadog-agent-credentials
+      appKeyExistingSecret: datadog-agent-credentials
+      # Enable Kubernetes state metrics collection
+      kubeStateMetricsCore:
+        enabled: true
       # Enable APM for request-level metrics
       apm:
         portEnabled: true
@@ -117,6 +147,19 @@ spec:
 ## Step 3: Install Flagger
 
 Install Flagger with your mesh provider. Datadog is configured per MetricTemplate, not at the Flagger installation level:
+
+```yaml
+# flagger-helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: flagger
+  namespace: flux-system
+spec:
+  interval: 1h
+  type: oci
+  url: oci://ghcr.io/fluxcd/charts
+```
 
 ```yaml
 # flagger-helmrelease.yaml
@@ -163,11 +206,13 @@ spec:
       name: datadog-credentials
   query: |
     sum:trace.http.request.errors{
-      service:{{ target }}-canary,
+      service:{{ target }},
+      kube_deployment:{{ target }},
       kube_namespace:{{ namespace }}
     }.as_count() /
     sum:trace.http.request.hits{
-      service:{{ target }}-canary,
+      service:{{ target }},
+      kube_deployment:{{ target }},
       kube_namespace:{{ namespace }}
     }.as_count() * 100
 ```
@@ -188,8 +233,9 @@ spec:
     secretRef:
       name: datadog-credentials
   query: |
-    p99:trace.http.request.duration{
-      service:{{ target }}-canary,
+    p99:trace.http.request{
+      service:{{ target }},
+      kube_deployment:{{ target }},
       kube_namespace:{{ namespace }}
     }
 ```
@@ -212,11 +258,13 @@ spec:
   query: |
     100 - (
       sum:trace.http.request.errors{
-        service:{{ target }}-canary,
+        service:{{ target }},
+        kube_deployment:{{ target }},
         kube_namespace:{{ namespace }}
       }.as_count() /
       sum:trace.http.request.hits{
-        service:{{ target }}-canary,
+        service:{{ target }},
+        kube_deployment:{{ target }},
         kube_namespace:{{ namespace }}
       }.as_count() * 100
     )
@@ -238,10 +286,16 @@ spec:
     secretRef:
       name: datadog-credentials
   query: |
-    avg:kubernetes.cpu.usage.total{
-      kube_deployment:{{ target }}-canary,
+    (
+      avg:kubernetes.cpu.usage.total{
+        kube_deployment:{{ target }},
+        kube_namespace:{{ namespace }}
+      } / 1000000000
+    ) /
+    avg:kubernetes.cpu.limits{
+      kube_deployment:{{ target }},
       kube_namespace:{{ namespace }}
-    }
+    } * 100
 ```
 
 ### Custom APM Metric
@@ -261,7 +315,8 @@ spec:
       name: datadog-credentials
   query: |
     sum:trace.http.request.hits{
-      service:{{ target }}-canary,
+      service:{{ target }},
+      kube_deployment:{{ target }},
       kube_namespace:{{ namespace }}
     }.as_rate()
 ```
@@ -313,7 +368,7 @@ spec:
         templateRef:
           name: datadog-error-rate
           namespace: demo
-      # CPU usage - should not spike above 80%
+      # CPU usage against configured CPU limits - should not spike above 80%
       - name: datadog-cpu-usage
         thresholdRange:
           max: 80
@@ -382,9 +437,9 @@ Create a Datadog dashboard to visualize canary metrics:
 1. Log into your Datadog console
 2. Create a new dashboard
 3. Add widgets for the following metrics:
-   - `trace.http.request.hits` filtered by canary service
-   - `trace.http.request.errors` filtered by canary service
-   - `trace.http.request.duration` percentiles
+   - `trace.http.request.hits` filtered by canary workload
+   - `trace.http.request.errors` filtered by canary workload
+   - `trace.http.request` percentiles
    - `kubernetes.cpu.usage.total` by deployment
 
 ## Step 9: Configure Datadog Monitors as Webhooks
