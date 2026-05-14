@@ -92,8 +92,10 @@ Organize your repository to separate platform infrastructure from tenant workloa
 # │   │   ├── rbac.yaml
 # │   │   ├── network-policy.yaml
 # │   │   ├── resource-quota.yaml
+# │   │   ├── flux-deployer-sa.yaml
 # │   │   └── kustomization.yaml
 # │   └── instances/
+# │       ├── kustomization.yaml # Lists tenant instances
 # │       ├── team-alpha/
 # │       ├── team-beta/
 # │       └── team-gamma/
@@ -207,6 +209,7 @@ resources:
   - rbac.yaml
   - resource-quota.yaml
   - network-policy.yaml
+  - flux-deployer-sa.yaml
 ```
 
 ## Step 3: Onboard a New Tenant
@@ -220,6 +223,7 @@ kind: Kustomization
 resources:
   - ../../base
   # Team Alpha's Flux source for their app repository
+  - tenant-vars.yaml
   - git-source.yaml
   - app-kustomization.yaml
 patches:
@@ -244,8 +248,10 @@ replacements:
           kind: Namespace
         fieldPaths:
           - metadata.name
+          - metadata.labels.[platform.example.com/tenant]
       - select:
           kind: RoleBinding
+          name: tenant-admin
         fieldPaths:
           - metadata.namespace
       - select:
@@ -256,8 +262,48 @@ replacements:
           kind: NetworkPolicy
         fieldPaths:
           - metadata.namespace
----
-# ConfigMap holding tenant-specific variables
+          - spec.ingress.0.from.0.namespaceSelector.matchLabels.[platform.example.com/tenant]
+          - spec.egress.1.to.0.namespaceSelector.matchLabels.[platform.example.com/tenant]
+      - select:
+          kind: ServiceAccount
+        fieldPaths:
+          - metadata.name
+        options:
+          delimiter: "-"
+          index: 0
+      - select:
+          kind: Role
+        fieldPaths:
+          - metadata.name
+          - metadata.namespace
+        options:
+          delimiter: "-"
+          index: 0
+      - select:
+          kind: RoleBinding
+          name: "${TENANT_NAME}-deployer"
+        fieldPaths:
+          - metadata.name
+          - metadata.namespace
+          - roleRef.name
+          - subjects.0.name
+        options:
+          delimiter: "-"
+          index: 0
+  - source:
+      kind: ConfigMap
+      name: tenant-vars
+      fieldPath: data.TENANT_GROUP
+    targets:
+      - select:
+          kind: RoleBinding
+          name: tenant-admin
+        fieldPaths:
+          - subjects.0.name
+```
+
+```yaml
+# tenants/instances/team-alpha/tenant-vars.yaml -- Team Alpha's tenant variables
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -300,18 +346,24 @@ spec:
   # Restrict deployments to the tenant's namespace only
   targetNamespace: team-alpha
   serviceAccountName: team-alpha-deployer
-  # Health checks ensure deployments are actually running
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: "*"
-      namespace: team-alpha
+  # Wait checks the health of all reconciled resources
+  wait: true
   timeout: 10m
 ```
 
 ## Step 4: Configure Multi-Cluster Tenant Distribution
 
 Use a cluster-level Kustomization to roll out tenants across environments.
+
+```yaml
+# tenants/instances/kustomization.yaml -- Lists tenant instances
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - team-alpha
+  - team-beta
+  - team-gamma
+```
 
 ```yaml
 # clusters/dev/tenants.yaml -- Deploy all tenants to the dev cluster
@@ -392,6 +444,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - tenant-vars.yaml
   - git-source.yaml
   - app-kustomization.yaml
 replacements:
@@ -404,7 +457,62 @@ replacements:
           kind: Namespace
         fieldPaths:
           - metadata.name
----
+          - metadata.labels.[platform.example.com/tenant]
+      - select:
+          kind: RoleBinding
+          name: tenant-admin
+        fieldPaths:
+          - metadata.namespace
+      - select:
+          kind: ResourceQuota
+        fieldPaths:
+          - metadata.namespace
+      - select:
+          kind: NetworkPolicy
+        fieldPaths:
+          - metadata.namespace
+          - spec.ingress.0.from.0.namespaceSelector.matchLabels.[platform.example.com/tenant]
+          - spec.egress.1.to.0.namespaceSelector.matchLabels.[platform.example.com/tenant]
+      - select:
+          kind: ServiceAccount
+        fieldPaths:
+          - metadata.name
+        options:
+          delimiter: "-"
+          index: 0
+      - select:
+          kind: Role
+        fieldPaths:
+          - metadata.name
+          - metadata.namespace
+        options:
+          delimiter: "-"
+          index: 0
+      - select:
+          kind: RoleBinding
+          name: "\${TENANT_NAME}-deployer"
+        fieldPaths:
+          - metadata.name
+          - metadata.namespace
+          - roleRef.name
+          - subjects.0.name
+        options:
+          delimiter: "-"
+          index: 0
+  - source:
+      kind: ConfigMap
+      name: tenant-vars
+      fieldPath: data.TENANT_GROUP
+    targets:
+      - select:
+          kind: RoleBinding
+          name: tenant-admin
+        fieldPaths:
+          - subjects.0.name
+EOF
+
+# Generate tenant-specific variables
+cat > "${TENANT_DIR}/tenant-vars.yaml" <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -445,6 +553,8 @@ spec:
   path: ./deploy
   prune: true
   targetNamespace: ${TEAM_NAME}
+  serviceAccountName: ${TEAM_NAME}-deployer
+  wait: true
   timeout: 10m
 EOF
 
@@ -522,9 +632,10 @@ metadata:
   namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: "${TENANT_NAME}-deployer"
+  namespace: "${TENANT_NAME}"
 rules:
   # Tenants can only create these resource types
   - apiGroups: ["apps"]
@@ -542,12 +653,13 @@ rules:
   # Tenants cannot create ClusterRoles, PVs, or CRDs
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: "${TENANT_NAME}-deployer"
+  namespace: "${TENANT_NAME}"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: "${TENANT_NAME}-deployer"
 subjects:
   - kind: ServiceAccount
