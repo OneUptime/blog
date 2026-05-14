@@ -34,13 +34,13 @@ kubectl get pods -n calico-system -l k8s-app=calico-typha
 kubectl top pods -n kube-system -l component=kube-apiserver
 ```
 
-**Fix**: Enable Typha in the Calico Installation resource:
+**Fix**: For operator-managed installations, verify that the operator-managed Typha Deployment is present. Operator installations include Typha; `typhaMetricsPort` only enables Typha metrics:
 ```yaml
 spec:
   typhaMetricsPort: 9093
 ```
 
-Calico operator automatically deploys Typha based on cluster size (enabled by default for clusters > 100 nodes).
+For manifest-based installations, install the `calico-typha` Deployment and configure `calico-node` to connect to it.
 
 ## Mistake 2: Felix Running with Insufficient Resources
 
@@ -54,7 +54,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node
 # Check CPU usage vs. limits
 ```
 
-**Fix**: Increase Felix resource limits in the Installation resource (see architecture choose-production post for specific values).
+**Fix**: Increase Felix resource requests and limits through the operator-managed `calicoNodeDaemonSet` settings in the Installation resource (see architecture choose-production post for specific values).
 
 ## Mistake 3: BGP Route Reflector Single Point of Failure
 
@@ -62,17 +62,21 @@ In large clusters using BGP with route reflectors, having only one route reflect
 
 **Symptom**: Cross-node traffic fails after a specific node goes down. `calicoctl node status` shows BGP sessions as Idle or Active.
 
-**Fix**: Deploy at least two route reflectors with node anti-affinity:
+**Fix**: Choose at least two dedicated route reflector nodes, configure each with a route reflector cluster ID, and configure non-reflector nodes to peer with the route reflectors:
+
+```bash
+kubectl annotate node rr-node-1 projectcalico.org/RouteReflectorClusterID=244.0.0.1
+kubectl label node rr-node-1 route-reflector=true
+```
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
-  name: route-reflector-1
+  name: peer-with-route-reflectors
 spec:
-  peerIP: 10.0.0.1
-  asNumber: 65000
-  nodeSelector: route-reflector == 'true'
+  nodeSelector: "!has(route-reflector)"
+  peerSelector: route-reflector == 'true'
 ```
 
 Label two or more nodes as route reflectors and configure all other nodes to peer with both.
@@ -98,16 +102,18 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
 
 **Prevention**: Wait for Felix to report "in sync" before testing policy changes, especially in CI/CD pipelines:
 ```bash
-# Wait for Felix to sync
-kubectl wait pod -n calico-system -l k8s-app=calico-node \
-  --for=condition=Ready --timeout=60s
+# Check that Felix reports datastore-to-dataplane sync state 3 ("in sync")
+POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n calico-system pod/$POD 9091:9091
+curl -s http://localhost:9091/metrics | grep '^felix_resync_state'
 ```
 
 ## Best Practices
 
-- Enable Typha for any cluster with more than 50 nodes
+- Ensure Typha is present for any cluster with more than 50 nodes
 - Set explicit resource requests and limits on calico-node pods based on your node pod density
-- Deploy route reflectors in pairs on infrastructure nodes with taint preventing general workload scheduling
+- Deploy route reflectors in pairs on infrastructure nodes with taints preventing general workload scheduling
 - Never modify calico-node DaemonSet spec directly - use the Calico Installation operator resource
 
 ## Conclusion
