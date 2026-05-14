@@ -42,28 +42,27 @@ This tells systemd to expect a watchdog ping every 30 seconds. If no ping arrive
 
 ## Step 2: Send Watchdog Notifications from Your Application
 
-Your application must call `sd_notify("WATCHDOG=1")` periodically. The recommended interval is half of `WatchdogSec`.
+Your application must call `sd_notify(0, "WATCHDOG=1")` or the equivalent language binding periodically. The recommended interval is half of `WatchdogSec`.
 
 ### Python Example
 
 ```python
 import time
-import sdnotify
+from systemd.daemon import notify
 
-n = sdnotify.SystemdNotifier()
-n.notify("READY=1")
+notify("READY=1")
 
 while True:
     # Do work here
     do_work()
-    n.notify("WATCHDOG=1")
+    notify("WATCHDOG=1")
     time.sleep(10)  # Notify every 10 seconds for a 30-second timeout
 ```
 
 Install the library:
 
 ```bash
-pip install sdnotify
+sudo dnf install python3-systemd
 ```
 
 ### Bash Example
@@ -102,12 +101,14 @@ int main() {
 Customize what happens when the watchdog fires:
 
 ```ini
+[Unit]
+StartLimitBurst=3
+StartLimitIntervalSec=300
+
 [Service]
 WatchdogSec=30
 Restart=on-watchdog
 WatchdogSignal=SIGABRT
-StartLimitBurst=3
-StartLimitIntervalSec=300
 ```
 
 For generating a core dump on watchdog failure:
