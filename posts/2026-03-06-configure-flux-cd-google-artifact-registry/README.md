@@ -18,7 +18,7 @@ This guide covers how to configure Flux CD to authenticate with and pull from Go
 
 - A GKE cluster with Flux CD installed and Workload Identity enabled
 - gcloud CLI installed and configured
-- Flux CLI v2.0 or later
+- Flux CLI and controllers with the current v1 GitOps Toolkit APIs installed
 - kubectl configured for your cluster
 
 ## Step 1: Create Artifact Registry Repositories
@@ -93,7 +93,7 @@ kubectl rollout restart deployment/source-controller -n flux-system
 kubectl rollout restart deployment/image-reflector-controller -n flux-system
 ```
 
-## Step 3: Configure Flux OCIRepository for Docker Images
+## Step 3: Configure Flux OCIRepository for OCI Artifacts
 
 Set up Flux to pull Kubernetes manifests stored as OCI artifacts in GAR.
 
@@ -276,7 +276,7 @@ spec:
       author:
         name: flux-image-automation
         email: flux@example.com
-      messageTemplate: "Update image {{ .Changed.Name }} to {{ .Changed.NewTag }}"
+      messageTemplate: "Update image{{ range .Changed.Changes }} {{ .Setter }} to {{ .NewValue }}{{ end }}"
     push:
       branch: main
   update:
