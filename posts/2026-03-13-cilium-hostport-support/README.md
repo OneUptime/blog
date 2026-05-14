@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, HostPort, eBPF, Networking
 
-Description: Configure and validate Cilium's eBPF-based HostPort implementation that maps container ports to node ports without kube-proxy or iptables rules.
+Description: Configure and validate Cilium's eBPF-based HostPort implementation that maps container ports to host ports without kube-proxy or iptables rules.
 
 ---
 
 ## Introduction
 
-Kubernetes HostPort allows a pod to bind directly to a port on the node's host network interface, making it accessible as if it were a process running directly on the node. This is commonly used for DaemonSet-based workloads like log collectors, monitoring agents, and ingress controllers that need to expose a consistent port on every node. In standard Kubernetes, HostPort is implemented by kube-proxy or the CNI plugin using iptables DNAT rules.
+Kubernetes HostPort allows a pod to bind directly to a port on the node's host network interface, making it accessible as if it were a process running directly on the node. This is commonly used for DaemonSet-based workloads like log collectors, monitoring agents, and ingress controllers that need to expose a consistent port on every node. In standard Kubernetes, HostPort support depends on the container runtime or CNI plugin, and common implementations use iptables DNAT rules.
 
-Cilium implements HostPort natively using eBPF without any iptables rules. The eBPF program intercepts packets destined for the host port and forwards them directly to the pod using the same efficient hash-map lookup used for ClusterIP services. This means HostPort in Cilium has O(1) lookup time, no connection tracking overhead from iptables, and is fully consistent with Cilium's kube-proxy replacement when kube-proxy is removed from the cluster.
+Cilium implements HostPort natively using eBPF without HostPort-specific iptables rules when kube-proxy replacement is enabled. The eBPF program intercepts packets destined for the host port and forwards them directly to the pod using Cilium's load-balancing maps. This means HostPort in Cilium avoids iptables DNAT chain traversal and is fully consistent with Cilium's kube-proxy replacement when kube-proxy is removed from the cluster.
 
 This guide covers enabling Cilium HostPort support, deploying pods with HostPort, and validating that connectivity works correctly.
 
 ## Prerequisites
 
-- Cilium v1.10+
-- `kubeProxyReplacement=true` or `hostPort.enabled=true`
+- Cilium v1.8+
+- `kubeProxyReplacement=true`
 - `kubectl` installed
 - Nodes with available ports to bind
 
@@ -36,18 +36,23 @@ helm upgrade cilium cilium/cilium \
   --set k8sServicePort=6443
 ```
 
-For standalone HostPort support without full kube-proxy replacement:
+If Cilium is running with `kubeProxyReplacement=false`, use the CNI portmap plugin instead of Cilium's native eBPF HostPort implementation:
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set hostPort.enabled=true
+  --set cni.chainingMode=portmap
 ```
 
 ## Step 2: Deploy a Pod with HostPort
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -80,18 +85,19 @@ spec:
 kubectl get pods -n monitoring -o wide
 
 # Confirm HostPort is registered in Cilium's service list
-cilium service list | grep "HostPort\|9100"
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg service list | grep "HostPort\|9100"
 
 # Check eBPF map entry for HostPort
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium bpf lb list | grep 9100
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg bpf lb list | grep 9100
 ```
 
 ## Step 4: Test HostPort Connectivity
 
 ```bash
 # Get a node IP
-NODE_IP=$(kubectl get node worker-0 -o jsonpath='{.status.addresses[0].address}')
+NODE_IP=$(kubectl get node worker-0 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
 
 # Test HostPort from outside the cluster
 curl http://${NODE_IP}:9100/metrics | head -5
@@ -104,13 +110,13 @@ kubectl exec -n default test-pod -- curl http://${NODE_IP}:9100/metrics | head -
 
 ```bash
 # Confirm no iptables rules were created for HostPort
-kubectl exec -n kube-system cilium-xxxxx -- \
-  iptables -t nat -L | grep -i hostport
+kubectl -n kube-system exec ds/cilium -- \
+  iptables-save | grep HOSTPORT
 # Expected: No output (Cilium uses eBPF, not iptables)
 
 # Confirm eBPF handles the connection
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium monitor --type drop --type trace 2>&1 | head -20
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg monitor --type drop --type trace 2>&1 | head -20
 ```
 
 ## HostPort Traffic Flow
