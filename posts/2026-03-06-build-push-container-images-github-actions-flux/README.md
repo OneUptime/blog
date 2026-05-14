@@ -53,14 +53,14 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -68,7 +68,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -80,18 +80,18 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # Tag with short SHA for every commit
-            type=sha,prefix=
+            # Tag with the full SHA for every commit
+            type=sha,prefix=,format=long
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           # Only push on main branch and tags, not PRs
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Enable build caching via registry
+          # Enable build caching via GitHub Actions cache
           cache-from: type=gha
           cache-to: type=gha,mode=max
 ```
@@ -123,19 +123,19 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU for multi-arch builds
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           # Install QEMU emulators for cross-platform builds
           platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -143,16 +143,16 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
+            type=sha,prefix=,format=long
 
       - name: Build and push multi-arch image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           # Build for both AMD64 and ARM64
@@ -174,7 +174,7 @@ Define a clear tagging strategy that works well with Flux image automation.
 # Extract semver tags for Flux to track
 - name: Extract metadata with semver
   id: meta
-  uses: docker/metadata-action@v5
+  uses: docker/metadata-action@v6
   with:
     images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
     tags: |
@@ -197,7 +197,7 @@ Define a clear tagging strategy that works well with Flux image automation.
 
 - name: Extract metadata with timestamp
   id: meta
-  uses: docker/metadata-action@v5
+  uses: docker/metadata-action@v6
   with:
     images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
     tags: |
@@ -212,14 +212,14 @@ Define a clear tagging strategy that works well with Flux image automation.
 ```yaml
 - name: Extract metadata with build number
   id: meta
-  uses: docker/metadata-action@v5
+  uses: docker/metadata-action@v6
   with:
     images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
     tags: |
       # Branch name with run number: main-42
       type=raw,value=${{ github.ref_name }}-${{ github.run_number }}
-      # Short SHA
-      type=sha,prefix=
+      # Full SHA
+      type=sha,prefix=,format=long
 ```
 
 ## Step 4: Configure Flux Image Automation
@@ -367,9 +367,13 @@ Add vulnerability scanning to your build pipeline:
   scan:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
     steps:
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: "sarif"
@@ -377,9 +381,12 @@ Add vulnerability scanning to your build pipeline:
           # Fail the build on critical vulnerabilities
           severity: "CRITICAL,HIGH"
           exit-code: "1"
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: "trivy-results.sarif"
@@ -391,26 +398,32 @@ Use build caching and layer optimization to speed up builds.
 
 ```dockerfile
 # Dockerfile with optimized layer caching
-# Stage 1: Install dependencies (cached unless package files change)
+# Stage 1: Install all dependencies for the build (cached unless package files change)
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
-# Stage 2: Build the application
+# Stage 2: Install production dependencies
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Stage 3: Build the application
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-# Stage 3: Production image (minimal size)
+# Stage 4: Production image (minimal size)
 FROM node:20-alpine AS runner
 WORKDIR /app
 # Run as non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/dist ./dist
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 USER appuser
 EXPOSE 8080
 CMD ["node", "dist/server.js"]
@@ -459,8 +472,8 @@ flux get image repository my-app
 # Force a scan
 flux reconcile image repository my-app
 
-# Check source controller logs
-kubectl logs -n flux-system deployment/source-controller
+# Check image reflector controller logs
+kubectl logs -n flux-system deployment/image-reflector-controller
 ```
 
 ### GHCR Permission Issues
