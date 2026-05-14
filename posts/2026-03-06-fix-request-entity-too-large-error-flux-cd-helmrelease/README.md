@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, HelmRelease, Request Entity Too Large, Helm, Secret size, Troubleshooting, Kubernetes, GitOps
 
-Description: A guide to resolving the 'request entity too large' error in Flux CD HelmRelease caused by Helm release secret size limits in etcd.
+Description: A guide to resolving the 'request entity too large' error in Flux CD HelmRelease caused by Helm release Secret size limits.
 
 ---
 
 ## Introduction
 
-The "request entity too large" error in Flux CD occurs when a Helm release creates a Kubernetes Secret that exceeds the etcd storage limit. Helm stores the entire rendered manifest of each release as a Secret in the cluster, and etcd has a hard limit of approximately 1.5 MB per object. This guide explains why this happens and provides multiple strategies to fix it.
+The "request entity too large" error in Flux CD can occur when a Helm release creates a Kubernetes Secret that exceeds Kubernetes API or storage limits. Helm stores the rendered manifest and release metadata for each release revision as a Secret in the cluster. Individual Kubernetes Secrets are limited to 1 MiB, and etcd also has a default request size limit. This guide explains why this happens and provides multiple strategies to fix it.
 
 ## Understanding the Error
 
@@ -46,7 +46,7 @@ Helm stores each release revision as a Kubernetes Secret. This Secret contains:
 - The release metadata
 - The values used
 
-When a chart has many templates, large ConfigMaps, or embedded data, the resulting Secret can exceed etcd limits.
+When a chart has many templates, large ConfigMaps, or embedded data, the resulting Secret can exceed Kubernetes API or storage limits.
 
 ```bash
 # Check the size of existing Helm release secrets
@@ -55,14 +55,14 @@ kubectl get secrets -n <namespace> -l owner=helm -o json | \
 import sys, json, base64
 data = json.load(sys.stdin)
 for item in data['items']:
-    total = sum(len(v) for v in item['data'].values())
+    total = sum(len(base64.b64decode(v)) for v in item.get('data', {}).values())
     print(f\"{item['metadata']['name']}: {total/1024:.0f} KB\")
 "
 ```
 
 ## Fix 1: Reduce Release History with maxHistory
 
-The most common fix is to limit how many release revisions Helm keeps:
+One useful fix is to limit how many release revisions Helm keeps:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -101,13 +101,13 @@ kubectl delete secret sh.helm.release.v1.<release-name>.v2 -n <namespace>
 # Keep the latest revision
 ```
 
-## Fix 2: Use Helm Storage Driver as ConfigMap or SQL
+## Fix 2: Understand Helm Storage Driver Limits
 
-By default, Helm stores releases as Secrets. You can change this to use ConfigMaps (which have the same size limit) or an external SQL database.
+By default, Helm stores releases as Secrets. Helm CLI supports other storage drivers such as ConfigMaps or SQL, but Flux helm-controller stores Helm release metadata as Kubernetes release Secrets and does not expose a HelmRelease field to switch an individual release to SQL storage.
 
-### Using SQL Storage (Advanced)
+### Using ConfigMap or SQL Storage
 
-This requires running a SQL database and configuring the helm-controller to use it. This is typically only done in very large deployments.
+Using ConfigMaps would not solve this error because ConfigMaps also have a 1 MiB data limit. SQL storage is a Helm CLI storage backend, but it is not a practical HelmRelease-level fix in Flux. For Flux HelmReleases, focus on reducing the rendered release size.
 
 ## Fix 3: Reduce Chart Output Size
 
@@ -223,35 +223,37 @@ Helm compresses release data by default using gzip. Verify compression is workin
 
 ```bash
 # Check the compression of a release secret
-kubectl get secret sh.helm.release.v1.<release-name>.v1 -n <namespace> -o jsonpath='{.data.release}' | base64 -d | head -c 2 | xxd
+kubectl get secret sh.helm.release.v1.<release-name>.v1 -n <namespace> -o jsonpath='{.data.release}' | base64 -d | base64 -d | head -c 2 | xxd
 # If it starts with 1f 8b, it is gzip compressed
 ```
 
-If for some reason compression is disabled, ensure the helm-controller does not have `--storage-driver` flags that bypass it.
+Helm release data is gzip-compressed before it is stored. If a release still exceeds the limit after compression, reduce the rendered chart output instead.
 
-## Fix 5: Increase etcd Object Size Limit
+## Fix 5: Do Not Rely on Increasing Cluster Limits
 
-If you control the Kubernetes cluster, you can increase the etcd limit. This is a cluster-level change and should be done with caution.
+If you control the Kubernetes cluster, you may be able to change etcd's `--max-request-bytes` setting. This is a cluster-level change and should be done with caution. It does not bypass the Kubernetes 1 MiB limit for individual Secrets or ConfigMaps, so it will not fix errors like `data: Too long: must have at most 1048576 bytes`.
 
 ### For kubeadm Clusters
 
 ```yaml
-# In the kubeadm config or kube-apiserver manifest
-apiVersion: kubeadm.k8s.io/v1beta3
+# In the kubeadm config for local etcd
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-apiServer:
-  extraArgs:
-    # Increase the max request body size (default is 3MB)
-    max-request-bytes: "10485760"  # 10MB
+etcd:
+  local:
+    extraArgs:
+      # Increase the etcd request size limit
+      - name: "max-request-bytes"
+        value: "10485760"  # 10MB
 ```
 
 ### For Managed Kubernetes
 
-Most managed Kubernetes services (EKS, GKE, AKS) do not allow changing etcd limits. In these cases, you must reduce the chart output size instead.
+Most managed Kubernetes services (EKS, GKE, AKS) do not allow changing etcd limits. In these cases, and for Kubernetes Secret or ConfigMap size errors, you must reduce the chart output size instead.
 
 ## Fix 6: Post-Renderer to Strip Unnecessary Data
 
-Use a post-renderer to strip comments, labels, or other unnecessary data before the release is stored:
+Use a post-renderer to strip large annotations or other unnecessary rendered metadata before the release is stored:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -278,6 +280,7 @@ spec:
           - target:
               kind: ConfigMap
               name: ".*"
+              annotationSelector: kubectl.kubernetes.io/last-applied-configuration
             patch: |
               - op: remove
                 path: /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
@@ -291,7 +294,7 @@ helm template my-app my-repo/my-chart \
   --version 1.2.3 \
   --namespace my-namespace \
   --values values.yaml | wc -c
-# If this is over 1MB, the release Secret will likely hit the limit
+# If this is over 1MB before Helm's release compression, inspect the rendered output for large resources
 
 # Find the largest rendered templates
 helm template my-app my-repo/my-chart \
@@ -347,4 +350,4 @@ spec:
 
 ## Summary
 
-The "request entity too large" error is caused by Helm release Secrets exceeding etcd size limits. The most effective fixes are: setting `maxHistory: 2` to limit stored revisions, externalizing large ConfigMaps out of the Helm chart, splitting large charts into smaller releases, and disabling unnecessary chart components. For most cases, reducing chart output size combined with a low `maxHistory` value resolves the issue without requiring cluster-level changes.
+The "request entity too large" error is caused by Helm release Secrets exceeding Kubernetes API or storage limits. The most effective fixes are: reducing chart output size, externalizing large ConfigMaps out of the Helm chart, splitting large charts into smaller releases, disabling unnecessary chart components, and setting `maxHistory: 2` to limit stored revisions. For most cases, reducing chart output size combined with a low `maxHistory` value resolves the issue without requiring cluster-level changes.
