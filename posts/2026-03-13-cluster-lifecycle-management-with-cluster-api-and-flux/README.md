@@ -64,7 +64,8 @@ metadata:
 spec:
   interval: 5m
   path: ./clusters/workloads/dev-02
-  prune: false
+  prune: true
+  deletionPolicy: WaitForTermination
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -86,7 +87,7 @@ Upgrading Kubernetes version requires updating the `version` field in multiple r
 ```yaml
 # clusters/workloads/production-01/control-plane.yaml
 # Before upgrade:
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: production-01-control-plane
@@ -96,7 +97,7 @@ spec:
   ...
 
 # After upgrade (in a pull request):
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: production-01-control-plane
@@ -108,7 +109,7 @@ spec:
 ```yaml
 # clusters/workloads/production-01/workers.yaml
 # Also update the MachineDeployment version
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-01-workers
@@ -125,7 +126,7 @@ Scale a node pool by updating the `replicas` field in a pull request.
 ```yaml
 # clusters/workloads/production-01/workers.yaml
 # Scale from 3 to 6 nodes
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-01-workers
@@ -149,7 +150,7 @@ Temporarily pause reconciliation without deleting the cluster.
 
 ```yaml
 # clusters/workloads/production-01/cluster.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: production-01
@@ -167,25 +168,26 @@ Remove a cluster from the fleet safely.
 
 ```bash
 # Step 1: Drain all workloads from the cluster first
-KUBECONFIG=target-cluster.kubeconfig \
-  kubectl drain --all-namespaces --ignore-daemonsets --delete-emptydir-data
+kubectl --kubeconfig=target-cluster.kubeconfig get nodes -o name | \
+  xargs -r kubectl --kubeconfig=target-cluster.kubeconfig drain \
+    --ignore-daemonsets --delete-emptydir-data --force
 
 # Step 2: Remove the Flux Kustomization for the cluster
-# This prevents Flux from re-applying the cluster manifests
+# With prune enabled, deleting the Kustomization deletes the applied CAPI resources
 git rm clusters/management/workloads/dev-02.yaml
 git commit -m "chore: remove dev-02 cluster from Flux"
 git push origin main
 
-# Step 3: Wait for Flux to reconcile (the Kustomization is pruned)
+# Step 3: Wait for Flux to reconcile the management configuration
 flux reconcile kustomization flux-system --with-source
 
-# Step 4: Delete the cluster manifests from Git
+# Step 4: Watch CAPI deprovision the cloud resources
+kubectl get cluster dev-02 -n default --watch
+
+# Step 5: After the Cluster object is gone, delete the manifests from Git
 git rm -r clusters/workloads/dev-02/
 git commit -m "chore: remove dev-02 cluster manifests"
 git push origin main
-
-# Step 5: Watch CAPI deprovision the cloud resources
-kubectl get cluster dev-02 -n default --watch
 ```
 
 ## Step 7: Monitor Cluster Fleet Status
