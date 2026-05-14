@@ -10,13 +10,13 @@ Description: Learn how to configure the chart reference in a Flux CD HelmRelease
 
 ## Introduction
 
-The chart reference in a HelmRelease tells the Flux Helm Controller where to find the Helm chart to install. The `spec.chart.spec` section defines the chart name, version, and source reference. Getting this configuration right is essential because it determines which chart gets deployed and from where it is fetched.
+The chart reference in a HelmRelease tells the Flux Helm Controller where to find the Helm chart to install. When using a chart template, the `spec.chart.spec` section defines the chart name, version, and source reference. Getting this configuration right is essential because it determines which chart gets deployed and from where it is fetched.
 
 This guide covers how to configure chart references for different source types, version constraints, and advanced options.
 
 ## Chart Reference Structure
 
-Every HelmRelease contains a `spec.chart.spec` section with the following key fields.
+A HelmRelease that uses a chart template contains a `spec.chart.spec` section with the following key fields.
 
 ```yaml
 # Structure of the chart reference in a HelmRelease
@@ -86,7 +86,7 @@ spec:
 
 ## Referencing an OCI HelmRepository
 
-For charts stored in OCI-compliant registries, use a HelmRepository with `type: oci`.
+For charts stored in OCI-compliant registries, you can use a HelmRepository with `type: oci`. This API remains supported, but it is in maintenance mode; for new OCI chart workflows, Flux recommends using an `OCIRepository` source with `spec.chartRef`.
 
 ```yaml
 # OCI-based HelmRepository source
@@ -97,6 +97,7 @@ metadata:
   namespace: flux-system
 spec:
   type: oci
+  # This field is ignored for OCI HelmRepository sources
   interval: 1h
   url: oci://ghcr.io/stefanprodan/charts
 ```
@@ -278,7 +279,7 @@ spec:
         namespace: flux-system
 ```
 
-This allows you to define shared Helm repositories in a central namespace and reference them from HelmReleases across the cluster.
+This allows you to define shared Helm repositories in a central namespace and reference them from HelmReleases across the cluster, unless the helm-controller is configured with `--no-cross-namespace-refs=true`.
 
 ## Troubleshooting Chart References
 
