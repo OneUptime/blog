@@ -12,33 +12,33 @@ Reconciliation success rate measures the percentage of Flux CD reconciliations t
 
 ## Key Metrics for Success Rate
 
-Flux CD exposes several metrics relevant to success rate calculation:
+Flux CD and kube-state-metrics expose several metrics relevant to success rate calculation:
 
-- `gotk_reconcile_condition{type="Ready"}` - Current condition of each resource (status="True" means healthy)
+- `gotk_resource_info{ready="True"}` - Current state of each Flux resource from kube-state-metrics
 - `controller_runtime_reconcile_total{result="success"}` - Counter of successful reconciliations
 - `controller_runtime_reconcile_total{result="error"}` - Counter of failed reconciliations
 - `controller_runtime_reconcile_errors_total` - Counter of reconciliation errors
 
 ## Step 1: Calculate the Instantaneous Success Rate
 
-The simplest success rate calculation uses the `gotk_reconcile_condition` gauge.
+The simplest success rate calculation uses the `gotk_resource_info` info metric from kube-state-metrics.
 
 ```yaml
 # PromQL: Percentage of resources in Ready state
 
 # Returns a value between 0 and 1
-sum(gotk_reconcile_condition{type="Ready", status="True"})
+sum(gotk_resource_info{ready="True"})
 /
-count(gotk_reconcile_condition{type="Ready"})
+count(gotk_resource_info)
 ```
 
 For per-namespace (per-tenant) success rate:
 
 ```yaml
 # PromQL: Per-namespace health percentage
-sum by (namespace) (gotk_reconcile_condition{type="Ready", status="True"})
+sum by (exported_namespace) (gotk_resource_info{ready="True"})
 /
-count by (namespace) (gotk_reconcile_condition{type="Ready"})
+count by (exported_namespace) (gotk_resource_info)
 ```
 
 ## Step 2: Calculate the Reconciliation Success Rate Over Time
@@ -51,7 +51,7 @@ sum by (controller) (rate(controller_runtime_reconcile_total{result="success"}[5
 /
 sum by (controller) (rate(controller_runtime_reconcile_total[5m]))
 
-# PromQL: Error rate over the last 5 minutes (inverse of success)
+# PromQL: Reconciliation error rate over the last 5 minutes
 sum by (controller) (rate(controller_runtime_reconcile_errors_total[5m]))
 /
 sum by (controller) (rate(controller_runtime_reconcile_total[5m]))
@@ -76,23 +76,23 @@ spec:
         # Overall cluster success rate (instant)
         - record: flux:cluster:ready_ratio
           expr: |
-            sum(gotk_reconcile_condition{type="Ready", status="True"})
+            sum(gotk_resource_info{ready="True"})
             /
-            count(gotk_reconcile_condition{type="Ready"})
+            count(gotk_resource_info)
 
         # Per-namespace success rate (instant)
         - record: flux:namespace:ready_ratio
           expr: |
-            sum by (namespace) (gotk_reconcile_condition{type="Ready", status="True"})
+            sum by (exported_namespace) (gotk_resource_info{ready="True"})
             /
-            count by (namespace) (gotk_reconcile_condition{type="Ready"})
+            count by (exported_namespace) (gotk_resource_info)
 
         # Per-kind success rate (instant)
         - record: flux:kind:ready_ratio
           expr: |
-            sum by (kind) (gotk_reconcile_condition{type="Ready", status="True"})
+            sum by (customresource_kind) (gotk_resource_info{ready="True"})
             /
-            count by (kind) (gotk_reconcile_condition{type="Ready"})
+            count by (customresource_kind) (gotk_resource_info)
 
         # Controller reconciliation success rate (5m window)
         - record: flux:controller:success_rate_5m
@@ -108,15 +108,15 @@ spec:
             /
             sum by (controller) (rate(controller_runtime_reconcile_total[1h]))
 
-        # Per-namespace reconciliation error count
-        - record: flux:namespace:error_count_5m
+        # Controller reconciliation error count
+        - record: flux:controller:error_count_5m
           expr: |
-            sum by (namespace) (increase(controller_runtime_reconcile_errors_total[5m]))
+            sum by (controller) (increase(controller_runtime_reconcile_errors_total[5m]))
 
         # Not-ready resource count
         - record: flux:cluster:not_ready_count
           expr: |
-            sum(gotk_reconcile_condition{type="Ready", status="False"})
+            sum(gotk_resource_info{ready!="True"})
 ```
 
 ## Step 4: Set Up SLO-Based Alerts
@@ -151,11 +151,11 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Namespace {{ $labels.namespace }} readiness is {{ $value | humanizePercentage }}"
-            description: "Namespace {{ $labels.namespace }} has less than 95% of Flux resources in Ready state."
+            summary: "Namespace {{ $labels.exported_namespace }} readiness is {{ $value | humanizePercentage }}"
+            description: "Namespace {{ $labels.exported_namespace }} has less than 95% of Flux resources in Ready state."
 
-        # Controller error rate exceeds 5% over 5 minutes
-        - alert: FluxControllerHighErrorRate
+        # Controller success rate below 95% over 5 minutes
+        - alert: FluxControllerLowSuccessRate
           expr: flux:controller:success_rate_5m < 0.95
           for: 10m
           labels:
@@ -167,24 +167,24 @@ spec:
         # Any resource stuck in not-ready for extended time
         - alert: FluxResourceStuckNotReady
           expr: |
-            gotk_reconcile_condition{type="Ready", status="False"} == 1
+            gotk_resource_info{ready!="True"} == 1
           for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "{{ $labels.kind }}/{{ $labels.name }} stuck in not-ready state"
-            description: "{{ $labels.kind }}/{{ $labels.name }} in {{ $labels.namespace }} has been not-ready for 30+ minutes."
+            summary: "{{ $labels.customresource_kind }}/{{ $labels.name }} stuck in not-ready state"
+            description: "{{ $labels.customresource_kind }}/{{ $labels.name }} in {{ $labels.exported_namespace }} has been not-ready for 30+ minutes."
 
-        # Zero successful reconciliations (controller may be down)
+        # No reconciliation activity observed
         - alert: FluxControllerNoReconciliations
           expr: |
-            rate(controller_runtime_reconcile_total[10m]) == 0
+            sum by (controller) (rate(controller_runtime_reconcile_total[10m])) == 0
           for: 15m
           labels:
             severity: critical
           annotations:
-            summary: "{{ $labels.controller }} has no reconciliations"
-            description: "Controller {{ $labels.controller }} has not performed any reconciliations in 15 minutes. It may be down."
+            summary: "{{ $labels.controller }} has no reconciliation activity"
+            description: "Controller {{ $labels.controller }} has no observed reconciliation activity for 15 minutes."
 ```
 
 ## Step 5: Build a Success Rate Dashboard
@@ -200,15 +200,15 @@ Key Grafana panels for monitoring success rates.
 # Query: flux:namespace:ready_ratio * 100
 
 # Panel 3: Controller Success Rate Over Time (Time Series)
-# Query 1: flux:controller:success_rate_5m{controller="kustomize-controller"}
-# Query 2: flux:controller:success_rate_5m{controller="helm-controller"}
-# Query 3: flux:controller:success_rate_5m{controller="source-controller"}
+# Query 1: flux:controller:success_rate_5m{controller="kustomization"}
+# Query 2: flux:controller:success_rate_5m{controller="helmrelease"}
+# Query 3: flux:controller:success_rate_5m{controller="gitrepository"}
 
 # Panel 4: Not-Ready Resources (Table)
-# Query: gotk_reconcile_condition{type="Ready", status="False"} == 1
+# Query: gotk_resource_info{ready!="True"} == 1
 
-# Panel 5: Error Count by Namespace (Time Series)
-# Query: flux:namespace:error_count_5m
+# Panel 5: Error Count by Controller (Time Series)
+# Query: flux:controller:error_count_5m
 
 # Panel 6: SLO Burn Rate
 # Query: 1 - flux:cluster:ready_ratio
@@ -255,4 +255,4 @@ sum by (controller) (increase(controller_runtime_reconcile_total[7d]))
 
 ## Summary
 
-Monitoring Flux CD reconciliation success rate involves tracking both the instant readiness ratio (using `gotk_reconcile_condition`) and the time-windowed success rate (using `controller_runtime_reconcile_total`). Create recording rules that pre-compute these rates at different granularities (cluster, namespace, controller), and set up SLO-based alerts that trigger when success rates drop below acceptable thresholds. A healthy Flux CD deployment should maintain above 99% readiness for all managed resources, with controller success rates above 95%.
+Monitoring Flux CD reconciliation success rate involves tracking both the instant readiness ratio (using `gotk_resource_info`) and the time-windowed success rate (using `controller_runtime_reconcile_total`). Create recording rules that pre-compute these rates at different granularities (cluster, namespace, controller), and set up SLO-based alerts that trigger when success rates drop below acceptable thresholds. A healthy Flux CD deployment should maintain above 99% readiness for all managed resources, with controller success rates above 95%.
