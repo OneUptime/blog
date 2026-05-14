@@ -64,7 +64,7 @@ Define a Provider resource for NATS.
 ```yaml
 # provider-nats.yaml
 # Configures Flux to publish events to NATS
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: nats-provider
@@ -93,7 +93,7 @@ Create an Alert that defines which events are published to NATS.
 ```yaml
 # alert-nats.yaml
 # Publishes Flux events to NATS
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: nats-alert
@@ -135,8 +135,9 @@ Subscribe to the NATS subject and trigger a reconciliation to verify events are 
 In one terminal, subscribe to the subject:
 
 ```bash
-# Subscribe to the Flux events subject using the NATS CLI
-nats sub "flux.events" --server nats://nats.nats-system.svc.cluster.local:4222
+# Subscribe to the Flux events subject using the NATS CLI from inside the cluster
+kubectl exec -it -n nats-system deployment/nats-box -- \
+  nats sub "flux.events" --server nats://nats:4222
 ```
 
 In another terminal, trigger a reconciliation:
@@ -168,7 +169,7 @@ NATS supports hierarchical subjects with wildcard subscriptions. You can leverag
 
 ```yaml
 # Provider that publishes to a hierarchical subject
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: nats-kustomizations
@@ -180,7 +181,7 @@ spec:
   secretRef:
     name: nats-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: nats-helmreleases
