@@ -10,11 +10,11 @@ Description: Learn how to configure deployment ordering between HelmReleases usi
 
 ## Introduction
 
-In real-world Kubernetes environments, applications often depend on other services. A web application might need a database to be running first. A monitoring stack might depend on a certificate manager. Flux CD provides the `spec.dependsOn` field in HelmRelease to define these ordering relationships, ensuring that dependent releases are installed only after their prerequisites are ready.
+In real-world Kubernetes environments, applications often depend on other services. A web application might need a database to be running first. A monitoring stack might depend on a certificate manager. Flux CD provides the `spec.dependsOn` field in HelmRelease to define these ordering relationships, ensuring that dependent releases proceed only after their prerequisites are ready.
 
 ## How dependsOn Works
 
-The `spec.dependsOn` field accepts a list of HelmRelease references. Flux will not start reconciling a HelmRelease until all its dependencies have been successfully installed and report a `Ready` status. If a dependency fails, the dependent HelmRelease will wait.
+The `spec.dependsOn` field accepts a list of HelmRelease references. Flux will not proceed with a HelmRelease until all its dependencies report a `Ready` status. If a dependency fails, the dependent HelmRelease will wait.
 
 ```mermaid
 graph TD
@@ -79,7 +79,7 @@ spec:
 
 ## Multiple Dependencies
 
-A HelmRelease can depend on multiple other releases. All must be Ready before reconciliation begins.
+A HelmRelease can depend on multiple other releases. All must be Ready before reconciliation proceeds.
 
 ```yaml
 # my-app.yaml - Application with multiple dependencies
@@ -114,7 +114,7 @@ spec:
 
 ## Cross-Namespace Dependencies
 
-Dependencies can reference HelmReleases in other namespaces using the `namespace` field.
+Dependencies can reference HelmReleases in other namespaces using the `namespace` field, as long as the helm-controller allows cross-namespace references.
 
 ```yaml
 # Application depending on infrastructure in another namespace
@@ -316,7 +316,7 @@ kubectl get helmrelease my-app -n production -o jsonpath='{.status.conditions[*]
 
 There are several behaviors to understand when using dependsOn:
 
-- **Install only**: dependsOn is primarily enforced during the initial install. Once all releases are installed, they reconcile independently based on their own intervals.
+- **Install and upgrade ordering**: dependsOn is checked when a HelmRelease reconciles and is used to order Helm install and upgrade actions. Releases still reconcile on their own intervals; a dependency changing does not automatically force every dependent release to upgrade unless that dependent release also has a change to apply.
 - **No circular dependencies**: Flux does not detect circular dependencies. A circular chain will result in all involved HelmReleases waiting indefinitely.
 - **Failure propagation**: If a dependency fails, dependent releases will remain pending. Fix the failing dependency to unblock the chain.
 - **Deletion order**: dependsOn does not control deletion order. If you need ordered deletion, remove resources manually or use finalizers.
