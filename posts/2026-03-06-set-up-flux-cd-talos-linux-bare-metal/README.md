@@ -19,7 +19,7 @@ This guide covers provisioning a Talos Linux cluster on bare metal hardware and 
 Before you begin, ensure you have:
 
 - At least two bare metal machines (one control plane, one worker) with PXE boot or USB boot capability
-- A workstation with `talosctl`, `kubectl`, and `flux` CLI tools installed
+- A workstation with `talosctl`, `kubectl`, `helm`, and `flux` CLI tools installed
 - A GitHub account and personal access token with repo permissions
 - Network connectivity between all machines
 - A DHCP server on the network (or static IP assignments)
@@ -41,6 +41,14 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 
 # Verify Flux CLI
 flux --version
+
+# Install Helm CLI
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+
+# Verify Helm CLI
+helm version
 ```
 
 ## Generating Talos Configuration
@@ -75,7 +83,7 @@ machine:
   install:
     # Specify the disk to install Talos on
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.8.0
+    image: ghcr.io/siderolabs/installer:v1.13.2
   network:
     hostname: cp-01
     interfaces:
@@ -90,6 +98,11 @@ machine:
     servers:
       - time.cloudflare.com
 cluster:
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true
   # Allow Flux to schedule on control plane if needed
   allowSchedulingOnControlPlanes: true
 ```
@@ -100,7 +113,7 @@ cluster:
 machine:
   install:
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.8.0
+    image: ghcr.io/siderolabs/installer:v1.13.2
   network:
     hostname: worker-01
     interfaces:
@@ -121,7 +134,6 @@ Apply the patches to generate final configurations:
 # Generate patched control plane config
 talosctl gen config k8s-flux-cluster https://10.0.0.10:6443 \
   --with-secrets secrets.yaml \
-  --config-patch @_out/controlplane-patch.yaml \
   --config-patch-control-plane @_out/controlplane-patch.yaml \
   --config-patch-worker @_out/worker-patch.yaml \
   --output-dir _out/patched
@@ -133,7 +145,7 @@ Boot your machines from the Talos Linux ISO (download from the Talos releases pa
 
 ```bash
 # Set up talosctl config
-export TALOSCONFIG=_out/talosconfig
+export TALOSCONFIG=_out/patched/talosconfig
 talosctl config endpoint 10.0.0.10
 talosctl config node 10.0.0.10
 
@@ -155,9 +167,6 @@ After the machines reboot with their new configuration, bootstrap Kubernetes:
 ```bash
 # Bootstrap the Kubernetes cluster on the control plane
 talosctl bootstrap --nodes 10.0.0.10
-
-# Wait for the cluster to be ready
-talosctl health --nodes 10.0.0.10
 ```
 
 Retrieve the kubeconfig:
@@ -170,6 +179,35 @@ talosctl kubeconfig --nodes 10.0.0.10 -f ~/.kube/talos-config
 export KUBECONFIG=~/.kube/talos-config
 
 # Verify cluster access
+kubectl get nodes
+```
+
+The nodes may remain `NotReady` until Cilium is installed.
+
+## Installing a CNI for Flux
+
+Talos Linux ships with Flannel as the default CNI. Because this guide disables the default CNI and kube-proxy in the machine configuration, install Cilium before bootstrapping Flux CD:
+
+```bash
+# Add the Cilium Helm repository
+helm repo add cilium https://helm.cilium.io/
+helm repo update
+
+# Install Cilium with Talos-specific values
+helm install cilium cilium/cilium \
+  --version 1.18.0 \
+  --namespace kube-system \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=true \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup \
+  --set k8sServiceHost=localhost \
+  --set k8sServicePort=7445
+
+# Wait for the cluster to be ready
+talosctl health --nodes 10.0.0.10
 kubectl get nodes
 ```
 
@@ -195,6 +233,7 @@ export GITHUB_USER=<your-github-username>
 
 # Bootstrap Flux CD
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=$GITHUB_USER \
   --repository=talos-gitops \
   --branch=main \
@@ -235,9 +274,9 @@ mkdir -p apps/base
 mkdir -p apps/production
 ```
 
-## Installing a CNI with Flux
+## Managing Cilium with Flux
 
-Talos Linux does not ship with a CNI by default when using custom configurations. Deploy Cilium via Flux:
+After Cilium is installed and Flux is running, you can manage future Cilium changes via Flux:
 
 ```yaml
 # infrastructure/sources/cilium.yaml
@@ -263,7 +302,7 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.16.x"
+      version: "1.18.x"
       sourceRef:
         kind: HelmRepository
         name: cilium
@@ -288,6 +327,10 @@ spec:
           - FOWNER
           - SETGID
           - SETUID
+        cleanCiliumState:
+          - NET_ADMIN
+          - SYS_ADMIN
+          - SYS_RESOURCE
     cgroup:
       # Talos mounts cgroup2 at this path
       hostRoot: /sys/fs/cgroup
@@ -379,10 +422,29 @@ spec:
 ```
 
 ```yaml
+# clusters/bare-metal/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - infrastructure.yaml
+  - apps/demo-app.yaml
+  - apps/image-automation.yaml
+```
+
+```yaml
+# apps/base/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+```
+
+```yaml
 # apps/base/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - namespace.yaml
   - deployment.yaml
 ```
 
@@ -396,7 +458,7 @@ metadata:
 spec:
   interval: 5m
   dependsOn:
-    # Ensure infrastructure (CNI) is ready before deploying apps
+    # Ensure infrastructure is ready before deploying apps
     - name: infrastructure
   path: ./apps/base
   prune: true
@@ -411,9 +473,23 @@ spec:
   timeout: 3m
 ```
 
-## Managing Talos Upgrades via GitOps
+## Adding Talos Cloud Controller Manager
 
-You can manage Talos machine configuration updates through a GitOps workflow using the Talos System Extensions:
+If you need cloud-provider style node metadata, prepare the Talos machine configuration for an external cloud provider and Talos API access, then manage the Talos Cloud Controller Manager chart with Flux:
+
+```yaml
+# infrastructure/sources/talos-ccm.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: talos-cloud-controller-manager
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: oci://ghcr.io/siderolabs/charts/talos-cloud-controller-manager
+  ref:
+    tag: v1.12.0
+```
 
 ```yaml
 # infrastructure/controllers/talos-ccm.yaml
@@ -425,14 +501,10 @@ metadata:
   namespace: flux-system
 spec:
   interval: 15m
-  chart:
-    spec:
-      chart: talos-cloud-controller-manager
-      version: ">=1.6.0"
-      sourceRef:
-        kind: HelmRepository
-        name: siderolabs
-        namespace: flux-system
+  chartRef:
+    kind: OCIRepository
+    name: talos-cloud-controller-manager
+    namespace: flux-system
   targetNamespace: kube-system
   values:
     tolerations:
@@ -440,9 +512,11 @@ spec:
         key: node-role.kubernetes.io/control-plane
 ```
 
-## Setting Up Image Automation
+Add these manifests to `clusters/bare-metal/infrastructure/kustomization.yaml` only after the Talos machine configuration has the required external cloud provider settings.
 
-Automate container image updates on your bare metal cluster:
+## Setting Up Image Policy Scanning
+
+Track container image tags and select an alpine-based tag for your bare metal cluster:
 
 ```yaml
 # clusters/bare-metal/apps/image-automation.yaml
