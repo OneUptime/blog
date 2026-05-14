@@ -10,21 +10,40 @@ Description: Configure Prometheus alerts for Calico typha metrics to detect dist
 
 ## Introduction
 
-Calico Typha exposes Prometheus metrics on port 9091 that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
+Calico Typha can expose Prometheus metrics that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
 
 ## Enable Metrics Collection
 
 ```bash
+# Enable typha metrics for Calico operator installations
+kubectl patch installation default --type=merge -p '{"spec": {"typhaMetricsPort":9093}}'
+
 # Test typha metrics endpoint
 
 POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9091/metrics | head -30
+kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9093/metrics | head -30
 ```
 
 ## ServiceMonitor
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: typha-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-typha
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-typha
+  ports:
+    - name: metrics
+      port: 9093
+      targetPort: 9093
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -53,7 +72,7 @@ spec:
     - name: calico.typha
       rules:
         - alert: CalicoTyphaMetricsDown
-          expr: up{job="calico-typha-metrics"} == 0
+          expr: up{job="typha-metrics-svc"} == 0
           for: 5m
           annotations:
             summary: "Calico typha metrics endpoint is unreachable"
@@ -63,7 +82,7 @@ spec:
 
 ```mermaid
 flowchart LR
-    A[calico-typha\nport 9091] --> B[Prometheus]
+    A[calico-typha\nport 9093] --> B[Prometheus]
     B --> C[Grafana]
     B --> D[Alertmanager]
 ```
