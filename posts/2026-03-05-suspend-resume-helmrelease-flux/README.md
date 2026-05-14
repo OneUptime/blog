@@ -10,7 +10,7 @@ Description: Learn how to suspend and resume HelmRelease reconciliation in Flux 
 
 ## Introduction
 
-There are times when you need to temporarily stop Flux from reconciling a HelmRelease. Perhaps you are debugging a failing deployment, performing manual maintenance, or testing changes interactively before committing them to Git. The `spec.suspend` field and the corresponding `flux suspend` and `flux resume` CLI commands let you pause and restart HelmRelease reconciliation without deleting or modifying the resource.
+There are times when you need to temporarily stop Flux from reconciling a HelmRelease. Perhaps you are debugging a failing deployment, performing manual maintenance, or testing changes interactively before committing them to Git. The `spec.suspend` field and the corresponding `flux suspend` and `flux resume` CLI commands let you pause and restart HelmRelease reconciliation without deleting the resource.
 
 ## How Suspend Works
 
@@ -226,7 +226,7 @@ When a HelmRelease is resumed:
 1. The `spec.suspend` field is set to `false`
 2. An immediate reconciliation is triggered
 3. Flux checks the current state against the desired state
-4. If drift is detected (for example, from manual changes during suspend), Flux reconciles back to the desired state
+4. If the Helm release state differs from the desired state, Flux reconciles it back; cluster-state drift from manual `kubectl` changes is corrected when Helm drift detection is enabled
 
 ```bash
 # Resume triggers immediate reconciliation
