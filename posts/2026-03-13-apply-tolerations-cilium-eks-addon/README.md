@@ -1,24 +1,24 @@
-# How to Apply Tolerations to the Cilium EKS Add-On
+# How to Apply Tolerations to Cilium on EKS
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, EKS, Toleration, AWS, Operation
 
-Description: Configure custom tolerations for the Cilium EKS add-on to allow Cilium agents to schedule on tainted nodes including Windows nodes, GPU nodes, and spot instances.
+Description: Configure custom tolerations for Cilium on EKS to allow Cilium agents to schedule on tainted Linux nodes including GPU nodes, spot instances, and dedicated node groups.
 
 ---
 
 ## Introduction
 
-The Cilium EKS add-on deploys Cilium as a managed DaemonSet on your EKS cluster. When you add specialized node groups with taints-such as GPU nodes, spot instance groups, Windows nodes, or dedicated infrastructure nodes-the Cilium DaemonSet needs matching tolerations to schedule on those nodes.
+Cilium deploys the Cilium agent as a DaemonSet on your EKS cluster. When you add specialized Linux node groups with taints-such as GPU nodes, spot instance groups, or dedicated infrastructure nodes-the Cilium DaemonSet needs matching tolerations to schedule on those nodes.
 
 Without proper tolerations, Cilium agents won't run on tainted nodes, leaving those nodes without network policy enforcement and potentially causing CNI failures when pods try to schedule there.
 
 ## Prerequisites
 
-- EKS cluster with Cilium add-on installed
+- EKS cluster with Cilium installed
 - Node groups with custom taints
-- AWS CLI and `kubectl` configured
+- Helm and `kubectl` configured
 
 ## Understand the Problem
 
@@ -46,29 +46,31 @@ flowchart TD
     B -->|Has taint| D{Matching toleration?}
     D -->|Yes| C
     D -->|No| E[Cilium pod not scheduled]
-    E --> F[Node missing CNI]
+    E --> F[Node missing Cilium agent]
     F --> G[Pod scheduling fails]
 ```
 
 ## Add Tolerations via Helm Values
 
-Cilium is not an AWS-managed EKS addon and must be installed via Helm. To apply tolerations, update your Helm values:
+Cilium is not an Amazon EKS managed add-on for cloud nodes and is commonly installed via Helm. AWS supports Cilium for EKS Hybrid Nodes through AWS-maintained Helm charts. To apply tolerations with Helm, include the default wildcard toleration if you still want Cilium to tolerate all taints:
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --set tolerations[0].key=dedicated \
-  --set tolerations[0].value=gpu \
-  --set tolerations[0].effect=NoSchedule \
-  --set tolerations[0].operator=Equal \
-  --set tolerations[1].key=spot \
+  --reuse-values \
+  --set tolerations[0].operator=Exists \
+  --set tolerations[1].key=dedicated \
+  --set tolerations[1].value=gpu \
   --set tolerations[1].effect=NoSchedule \
-  --set tolerations[1].operator=Exists
+  --set tolerations[1].operator=Equal \
+  --set tolerations[2].key=spot \
+  --set tolerations[2].effect=NoSchedule \
+  --set tolerations[2].operator=Exists
 ```
 
 ## Add Tolerations via Helm
 
-If managing Cilium via Helm instead of EKS add-on:
+If you want to replace the default wildcard toleration with a narrower set, specify every taint that Cilium must tolerate:
 
 ```bash
 helm upgrade cilium cilium/cilium \
@@ -91,11 +93,11 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 ```
 
-Every node should have a corresponding Cilium pod.
+Every Linux node that Cilium manages should have a corresponding Cilium pod.
 
 ## Node Selector vs Tolerations
 
-Tolerations allow scheduling on tainted nodes but don't require it. If you want Cilium on ALL nodes including tainted ones, verify there is no `nodeSelector` restriction that excludes them:
+Tolerations allow scheduling on tainted nodes but don't require it. If you want Cilium on all managed Linux nodes including tainted ones, verify there is no `nodeSelector` restriction that excludes them:
 
 ```bash
 kubectl get ds -n kube-system cilium \
@@ -104,4 +106,4 @@ kubectl get ds -n kube-system cilium \
 
 ## Conclusion
 
-Applying tolerations to the Cilium EKS add-on ensures that all node types-GPU, spot, Windows, and custom tainted nodes-have the Cilium agent running. Missing Cilium agents on nodes causes CNI failures for pods scheduled there and leaves those nodes without network policy enforcement.
+Applying tolerations to Cilium on EKS ensures that all managed Linux node types-GPU, spot, and custom tainted nodes-have the Cilium agent running. Missing Cilium agents on nodes can cause CNI failures for pods scheduled there and leaves those nodes without network policy enforcement.
