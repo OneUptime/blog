@@ -48,7 +48,7 @@ Define a Provider resource for Google Chat.
 ```yaml
 # provider-googlechat.yaml
 # Configures Flux to send notifications to Google Chat
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: googlechat-provider
@@ -75,7 +75,7 @@ Define an Alert that specifies which events to forward.
 ```yaml
 # alert-googlechat.yaml
 # Routes Flux events to the Google Chat provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: googlechat-alert
@@ -130,14 +130,14 @@ graph LR
     C -->|HTTP POST| D[Google Chat Space]
 ```
 
-The notification controller formats events into Google Chat card messages and posts them to the webhook endpoint. Google Chat renders them as interactive cards in the space.
+The notification controller formats events into Google Chat card messages and posts them to the webhook endpoint. Google Chat renders them as cards in the space.
 
 ## Error-Only Alerts
 
 To reduce noise, configure an alert for errors only:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: googlechat-errors
@@ -159,7 +159,7 @@ You can route different notifications to different Google Chat spaces by creatin
 
 ```yaml
 # Provider for the SRE space
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: googlechat-sre
@@ -170,7 +170,7 @@ spec:
     name: googlechat-sre-webhook
 ---
 # Provider for the development space
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: googlechat-dev
