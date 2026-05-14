@@ -16,9 +16,10 @@ This guide walks through generating Cosign keys, signing OCI artifacts, and conf
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.8 or later)
 - The `flux` CLI installed
 - The `cosign` CLI installed (v2.0 or later)
+- The `jq` CLI installed
 - An OCI-compatible container registry
 - `kubectl` configured to access your cluster
 
@@ -43,21 +44,23 @@ Push your Kubernetes manifests as an OCI artifact to your registry.
 
 ```bash
 # Push manifests as an OCI artifact
-flux push artifact oci://registry.example.com/manifests/app:v1.0.0 \
+DIGEST_URL=$(flux push artifact oci://registry.example.com/manifests/app:v1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
   --revision="main@sha1:$(git rev-parse HEAD)" \
-  --creds=username:$REGISTRY_PASSWORD
+  --creds="username:$REGISTRY_PASSWORD" \
+  --output json | \
+  jq -r '.repository + "@" + .digest')
 ```
 
 ## Step 3: Sign the OCI Artifact with Cosign
 
-Sign the artifact using the private key generated in Step 1.
+Sign the artifact digest using the private key generated in Step 1.
 
 ```bash
 # Sign the OCI artifact with Cosign
 cosign sign --key cosign.key \
-  registry.example.com/manifests/app:v1.0.0
+  "$DIGEST_URL"
 ```
 
 You can verify the signature locally before configuring Flux.
@@ -65,7 +68,7 @@ You can verify the signature locally before configuring Flux.
 ```bash
 # Verify the signature locally using the public key
 cosign verify --key cosign.pub \
-  registry.example.com/manifests/app:v1.0.0
+  "$DIGEST_URL"
 ```
 
 If verification succeeds, you will see the signature payload printed to stdout.
@@ -134,8 +137,8 @@ Cosign also supports keyless signing using Sigstore's Fulcio and Rekor services.
 
 ```bash
 # Keyless signing in CI (uses ambient OIDC credentials)
-COSIGN_EXPERIMENTAL=1 cosign sign \
-  registry.example.com/manifests/app:v1.0.0
+cosign sign \
+  "$DIGEST_URL"
 ```
 
 ### Configure Flux for Keyless Verification
@@ -157,8 +160,8 @@ spec:
   verify:
     provider: cosign
     matchOIDCIdentity:
-      - issuer: "https://token.actions.githubusercontent.com"
-        subject: "https://github.com/YOUR_ORG/YOUR_REPO/.github/workflows/push.yaml@refs/heads/main"
+      - issuer: '^https://token\.actions\.githubusercontent\.com$'
+        subject: '^https://github\.com/YOUR_ORG/YOUR_REPO/\.github/workflows/push\.yaml@refs/heads/main$'
 ```
 
 This configuration verifies that the artifact was signed by a specific GitHub Actions workflow, providing strong supply chain assurance without managing any keys.
@@ -175,12 +178,12 @@ sequenceDiagram
     participant K8s as Kubernetes Cluster
 
     CI->>Reg: flux push artifact
-    CI->>Reg: cosign sign
+    CI->>Reg: cosign sign artifact digest
     Flux->>Reg: Pull artifact
     Flux->>Reg: Fetch Cosign signature
     Flux->>Flux: Verify signature with public key
     alt Verification passes
-        Flux->>K8s: Reconcile manifests
+        Flux->>K8s: Make verified source available to downstream reconciliation
     else Verification fails
         Flux->>Flux: Reject artifact, report error
     end
@@ -213,21 +216,29 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Push artifact
+        id: push
         run: |
-          flux push artifact \
+          digest_url=$(flux push artifact \
             oci://ghcr.io/${{ github.repository }}/manifests:${{ github.sha }} \
             --path=./deploy \
             --source="${{ github.repositoryUrl }}" \
             --revision="main@sha1:${{ github.sha }}" \
-            --creds=flux:${{ secrets.GITHUB_TOKEN }}
+            --output json | \
+            jq -r '.repository + "@" + .digest')
+          echo "digest_url=$digest_url" >> "$GITHUB_OUTPUT"
 
       - name: Sign artifact (keyless)
         run: |
-          cosign sign \
-            ghcr.io/${{ github.repository }}/manifests:${{ github.sha }}
-        env:
-          COSIGN_EXPERIMENTAL: "1"
+          cosign sign --yes \
+            "${{ steps.push.outputs.digest_url }}"
 ```
 
 ## Troubleshooting
