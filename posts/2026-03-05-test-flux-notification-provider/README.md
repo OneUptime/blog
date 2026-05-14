@@ -54,7 +54,7 @@ Create a simple alert that watches all Kustomization events with info severity. 
 
 ```yaml
 # Test alert to verify notification delivery
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: test-alert
@@ -134,7 +134,7 @@ If you have multiple providers, create test alerts for each one.
 
 ```yaml
 # Test alert for Slack provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: test-slack
@@ -149,7 +149,7 @@ spec:
       namespace: flux-system
 ---
 # Test alert for Teams provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: test-teams
