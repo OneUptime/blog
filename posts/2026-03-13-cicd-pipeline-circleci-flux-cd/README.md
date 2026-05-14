@@ -12,7 +12,7 @@ Description: Learn how to use CircleCI for continuous integration and Flux CD fo
 
 CircleCI is known for its fast pipelines and Docker-native build environment, making it an excellent partner for container-based workflows. When combined with Flux CD, you get a system where CircleCI handles compilation, testing, and image publishing, while Flux CD manages the cluster reconciliation loop entirely through Git.
 
-The handoff point between CircleCI and Flux CD is the fleet repository. CircleCI writes a new image tag to a manifest or Kustomize patch file in the fleet repository after a successful build. Flux CD detects this commit, validates the change, and applies it to the cluster. This design eliminates direct cluster access from CI while preserving full traceability.
+The handoff point between CircleCI and Flux CD is the fleet repository. CircleCI writes a new image tag to a manifest or Kustomize image override in the fleet repository after a successful build. Flux CD detects this commit, builds the manifests, and applies them to the cluster. This design eliminates direct cluster access from CI while preserving full traceability.
 
 This guide shows how to configure a CircleCI config alongside Flux CD resources to build a production-ready GitOps pipeline.
 
@@ -74,9 +74,9 @@ spec:
   timeout: 3m
 ```
 
-## Step 3: Create a Kustomize Patch File for Image Updates
+## Step 3: Create a Kustomize Image Override for Image Updates
 
-Instead of editing the base deployment directly, use a Kustomize patch to isolate image changes:
+Instead of editing the base deployment directly, use Kustomize's `images` field to isolate image changes:
 
 ```yaml
 # apps/myapp/kustomization.yaml
@@ -87,7 +87,7 @@ resources:
   - service.yaml
 images:
   - name: docker.io/your-org/myapp
-    newTag: "1.0.0" # {"$imagepolicy": "flux-system:myapp:tag"}
+    newTag: "1.0.0"
 ```
 
 ## Step 4: Write the CircleCI Configuration
@@ -129,7 +129,6 @@ jobs:
             IMAGE_TAG="docker.io/$DOCKER_ORG/myapp:$CIRCLE_TAG"
             docker build -t "$IMAGE_TAG" .
             docker push "$IMAGE_TAG"
-            # Also push a semver-clean tag for Flux ImagePolicy
             echo "IMAGE_TAG=$IMAGE_TAG" >> $BASH_ENV
       - run:
           name: Update fleet repository
@@ -176,7 +175,9 @@ In the CircleCI dashboard, create two contexts:
 
 This scopes secrets to only the jobs that need them.
 
-## Step 6: Configure the Flux Image Policy
+## Step 6: Optionally Configure the Flux Image Policy
+
+If you want Flux to scan the image repository and report the latest matching image tag, add an `ImageRepository` and `ImagePolicy`. In this pipeline, CircleCI still updates the fleet repository; Flux image policies do not update Git unless you also configure an `ImageUpdateAutomation`.
 
 ```yaml
 # clusters/production/apps/myapp-image.yaml
