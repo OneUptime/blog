@@ -19,7 +19,7 @@ This guide walks you through setting up Flux CD using the official Terraform pro
 Before starting, ensure you have:
 
 - A Kubernetes cluster (EKS, GKE, AKS, or local)
-- Terraform v1.5 or later installed
+- Terraform v1.10 or later installed
 - A GitHub personal access token with repo permissions
 - kubectl configured to access your cluster
 
@@ -32,7 +32,7 @@ Start by creating a new Terraform project with the required providers.
 
 # Define required providers for Flux CD bootstrapping
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     # The Flux provider handles Flux CD installation and configuration
@@ -141,6 +141,8 @@ provider "flux" {
 
 Create an SSH key pair for Flux to authenticate with your Git repository.
 
+For production deployments, be aware that `tls_private_key` stores the generated private key in Terraform state. Use encrypted remote state with strict access controls, or generate and manage the private key outside Terraform if your security requirements prohibit storing private keys in state.
+
 ```hcl
 # main.tf - SSH key generation
 # Generate an ED25519 SSH key pair for Flux Git authentication
@@ -157,7 +159,7 @@ resource "github_repository" "flux" {
 }
 
 # Add the public key as a deploy key to the GitHub repository
-# Write access is required so Flux can push status updates
+# Write access is required so the bootstrap process can commit the initial manifests
 resource "github_repository_deploy_key" "flux" {
   title      = "Flux CD - ${var.cluster_name}"
   repository = github_repository.flux.name
@@ -193,7 +195,7 @@ resource "flux_bootstrap_git" "this" {
   namespace = "flux-system"
 
   # Set the Flux version to install
-  version = "v2.4.0"
+  version = "v2.8.7"
 }
 ```
 
@@ -219,6 +221,12 @@ output "cluster_path" {
 output "flux_namespace" {
   description = "Namespace where Flux is installed"
   value       = flux_bootstrap_git.this.namespace
+}
+
+# Output the public deploy key for troubleshooting
+output "flux_public_key" {
+  description = "Public SSH deploy key registered with GitHub"
+  value       = tls_private_key.flux.public_key_openssh
 }
 ```
 
@@ -307,13 +315,13 @@ For team collaboration, configure remote state storage.
 
 ```hcl
 # backend.tf
-# Store Terraform state in S3 with DynamoDB locking
+# Store Terraform state in S3 with S3 lockfile locking
 terraform {
   backend "s3" {
     bucket         = "my-org-terraform-state"
     key            = "flux-bootstrap/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -329,8 +337,8 @@ resource "flux_bootstrap_git" "this" {
   depends_on = [github_repository_deploy_key.flux]
   path       = "clusters/${var.environment}/${var.cluster_name}"
 
-  # Upgrade to a newer Flux version
-  version = "v2.5.0"
+  # Upgrade to the desired supported Flux version
+  version = "v2.8.7"
 
   # Add image automation controllers for automated image updates
   components_extra = [
@@ -358,7 +366,7 @@ terraform destroy \
 
 ### Deploy Key Permission Errors
 
-If Flux cannot push to the repository, verify the deploy key has write access:
+If the bootstrap process cannot push to the repository, verify the deploy key has write access:
 
 ```bash
 # Check the deploy key in GitHub
