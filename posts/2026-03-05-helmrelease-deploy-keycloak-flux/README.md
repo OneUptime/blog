@@ -56,12 +56,23 @@ spec:
   type: oci
   # Bitnami OCI registry for Helm charts
   url: oci://registry-1.docker.io/bitnamicharts
-  interval: 1h  # Check for new chart versions every hour
+  interval: 1h  # Required by the API; ignored for OCI HelmRepository sources
 ```
 
 ## Creating the HelmRelease
 
 Define the HelmRelease that instructs Flux to deploy Keycloak.
+
+Create `keycloak-namespace.yaml`:
+
+```yaml
+# keycloak-namespace.yaml
+# Namespace for the HelmRelease and Keycloak resources
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+```
 
 Create `keycloak-helmrelease.yaml`:
 
@@ -78,7 +89,7 @@ spec:
   chart:
     spec:
       chart: keycloak
-      version: "24.x"  # Semver constraint for the chart version
+      version: "25.x"  # Semver constraint for the chart version
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -115,7 +126,7 @@ spec:
     production: true
 
     # Proxy configuration (needed when running behind a load balancer)
-    proxy: edge  # edge, reencrypt, or passthrough
+    proxyHeaders: xforwarded  # Use xforwarded or forwarded when TLS terminates at the ingress
 
     # PostgreSQL database configuration (bundled with the chart)
     postgresql:
@@ -156,7 +167,7 @@ spec:
   chart:
     spec:
       chart: keycloak
-      version: "24.x"
+      version: "25.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -172,7 +183,7 @@ spec:
 
     replicaCount: 2
     production: true
-    proxy: edge
+    proxyHeaders: xforwarded
 
     # Disable the bundled PostgreSQL
     postgresql:
@@ -189,7 +200,7 @@ spec:
 
 ## Securing Credentials
 
-Store sensitive values in a Kubernetes Secret:
+Store sensitive values in a Kubernetes Secret, and encrypt the manifest before committing it to Git:
 
 ```yaml
 # keycloak-secret.yaml
@@ -231,7 +242,7 @@ Commit and push the manifests:
 
 ```bash
 # Commit Keycloak manifests
-git add keycloak-helmrepository.yaml keycloak-helmrelease.yaml
+git add keycloak-namespace.yaml keycloak-helmrepository.yaml keycloak-helmrelease.yaml keycloak-secret.yaml
 git commit -m "Add Keycloak HelmRelease for Flux CD deployment"
 git push origin main
 ```
