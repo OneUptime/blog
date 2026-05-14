@@ -28,14 +28,14 @@ flowchart TD
     D -->|Yes| E[Retry Upgrade]
     E --> A
     D -->|No| F{remediateLastFailure?}
-    F -->|true| G[Rollback to Previous Version]
+    F -->|true| G[Remediate Last Failure]
     F -->|false| H[Leave Failed State - Stall]
-    G --> I[Previous Version Restored]
+    G --> I[Rollback or Uninstall Completed]
 ```
 
 ## Basic Upgrade Remediation
 
-The simplest upgrade remediation configuration specifies how many times Flux should retry a failed upgrade.
+The simplest upgrade remediation configuration specifies how many times Flux should retry a failed upgrade. With the default upgrade remediation strategy, Flux performs a rollback between failed attempts.
 
 The following example configures Flux to retry upgrades up to 3 times:
 
@@ -58,7 +58,7 @@ spec:
   # Configure upgrade remediation
   upgrade:
     remediation:
-      # Retry the upgrade up to 3 times before giving up
+      # Retry the upgrade up to 3 times
       retries: 3
   values:
     replicaCount: 3
@@ -69,7 +69,7 @@ spec:
 
 ## Configuring remediateLastFailure for Rollback
 
-The `remediateLastFailure` field is where upgrade remediation becomes powerful. When set to `true`, Flux will automatically roll back to the last successful release version after all retries are exhausted. This ensures your application remains available even when an upgrade fails.
+The `remediateLastFailure` field controls whether Flux remediates the final failed attempt when no retries remain. For upgrade remediation, it defaults to `true` when `retries` is greater than `0`; setting it explicitly makes the behavior clear. With the default upgrade remediation strategy, Flux rolls back to the last successful release revision after all retries are exhausted. This helps your application remain available even when an upgrade fails.
 
 The following example enables automatic rollback on upgrade failure:
 
@@ -148,9 +148,9 @@ spec:
 
 When `remediateLastFailure` is set to `true` for upgrade remediation, Flux performs a Helm rollback to the previous release revision. This is equivalent to running `helm rollback` manually. The rollback restores the Helm release values and templates from the last successful revision.
 
-After a rollback, the HelmRelease will be marked with a failure condition. The Flux controller will continue to attempt the upgrade on subsequent reconciliation cycles because the desired state (the new chart version or values in Git) still differs from the current state (the rolled-back version).
+After a rollback, the HelmRelease will be marked with failure and remediation conditions. Flux uses failure counters to decide whether it is allowed to retry the same desired state. Those counters are reset when a new configuration is applied to the HelmRelease, the values change, a new Helm chart version is discovered, or the retries are reset manually.
 
-This creates a useful pattern: if you push a broken upgrade to Git and Flux rolls it back, fixing the issue in Git and pushing again will trigger a new upgrade attempt with a fresh retry counter.
+This creates a useful pattern: if you push a broken upgrade to Git and Flux rolls it back, fixing the issue in Git by changing the chart version or values will trigger a new upgrade attempt with a fresh retry counter. You can also reset retries manually with `flux reconcile helmrelease my-application -n production --reset`.
 
 ## Monitoring Upgrade Remediation
 
@@ -161,7 +161,7 @@ Check the HelmRelease status to see upgrade and rollback information:
 ```bash
 # View the HelmRelease status
 
-flux get helmrelease my-application -n production
+flux get helmreleases -n production
 
 # Check for upgrade and rollback events
 kubectl events --for helmrelease/my-application -n production
@@ -230,7 +230,7 @@ spec:
 
 ## Best Practices
 
-1. **Always enable remediateLastFailure for production upgrades** -- a rolled-back application is better than a broken one.
+1. **Explicitly enable remediateLastFailure for production upgrades** -- a rolled-back application is better than a broken one, and the explicit setting documents the intended behavior.
 2. **Set appropriate timeouts** -- the upgrade timeout should account for rolling update times, especially for large Deployments.
 3. **Use cleanupOnFail** in the upgrade spec to remove resources created during a failed upgrade before retrying.
 4. **Configure alerts** on HelmRelease failures so your team is notified when an upgrade exhausts its retries and rolls back.
@@ -239,4 +239,4 @@ spec:
 
 ## Conclusion
 
-Upgrade remediation is essential for maintaining application availability in a GitOps workflow. By configuring `spec.upgrade.remediation` with appropriate retries and enabling `remediateLastFailure`, you ensure that failed upgrades are automatically rolled back while Flux continues to attempt the desired state on subsequent reconciliations. This creates a self-healing deployment pipeline that keeps your services running even when upgrades fail.
+Upgrade remediation is essential for maintaining application availability in a GitOps workflow. By configuring `spec.upgrade.remediation` with appropriate retries and enabling `remediateLastFailure`, you ensure that failed upgrades are automatically rolled back and can be retried after you change the desired state or reset the retry counters. This creates a self-healing deployment pipeline that keeps your services running even when upgrades fail.
