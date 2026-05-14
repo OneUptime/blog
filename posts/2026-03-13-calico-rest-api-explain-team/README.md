@@ -16,7 +16,7 @@ Explaining the REST API to your team means helping them understand when it is th
 
 ## Prerequisites
 
-- A Calico cluster with the API server deployed
+- A Calico cluster exposing `projectcalico.org/v3` resources, either through the Calico API server or native v3 CRDs
 - Team familiarity with REST APIs in general
 - Understanding of Kubernetes service accounts and RBAC
 
@@ -37,9 +37,9 @@ The REST API is the right choice when you need to:
 
 ## The Key Concept: It's Just the Kubernetes API
 
-The most important thing to explain is that the Calico REST API is not a separate service:
+The most important thing to explain is that the Calico REST API is exposed through the Kubernetes API endpoint:
 
-> "The Calico REST API is just the Kubernetes API server serving the `projectcalico.org/v3` API group. You authenticate the same way you authenticate to Kubernetes - service account tokens, kubeconfig, OIDC. You use the same RBAC. You call the same HTTPS endpoint. It behaves exactly like any other Kubernetes API resource."
+> "The Calico REST API is the Kubernetes API endpoint serving the `projectcalico.org/v3` API group. Depending on your Calico installation, those resources are served by the aggregated Calico API server or by native v3 CRDs. You authenticate the same way you authenticate to Kubernetes - service account tokens, kubeconfig, OIDC. You use Kubernetes RBAC. You call the same HTTPS endpoint. It behaves like other Kubernetes API resources from the client side."
 
 This is a huge simplification for teams already familiar with the Kubernetes API.
 
@@ -72,8 +72,12 @@ Example workflow:
 ```bash
 # In CI/CD pipeline setup (one-time):
 kubectl create serviceaccount ci-policy-manager -n ci-system
+kubectl create role calico-policy-manager \
+  --verb=get,list,watch,create,update,patch,delete \
+  --resource=networkpolicies.projectcalico.org \
+  -n production
 kubectl create rolebinding ci-policy-manager \
-  --clusterrole=calico-policy-manager \
+  --role=calico-policy-manager \
   --serviceaccount=ci-system:ci-policy-manager \
   -n production
 
@@ -101,10 +105,10 @@ The watch endpoint returns a stream of change events - your controller can react
 ## Common Team Questions
 
 **Q: Do I need the Calico API server deployed for REST API access?**
-A: Yes - the `projectcalico.org/v3` API group is only available when the Calico API server is deployed. Without it, you can only access `crd.projectcalico.org/v1` resources.
+A: It depends on the installation mode. In API server mode, yes - the `projectcalico.org/v3` API group is served by the Calico API server. In native v3 CRD mode, `projectcalico.org/v3` resources are Kubernetes CRDs and do not require the aggregated Calico API server.
 
 **Q: Is the REST API stable across Calico versions?**
-A: The `v3` API is versioned and stable within the Calico 3.x lifecycle. Breaking changes come with major version bumps (e.g., v4). Plan for updates when upgrading Calico major versions.
+A: The `projectcalico.org/v3` API is versioned. Plan to review Calico release notes and API changes when upgrading Calico, especially across major versions or when moving between API server mode and native v3 CRDs.
 
 ## Best Practices
 
@@ -114,4 +118,4 @@ A: The `v3` API is versioned and stable within the Calico 3.x lifecycle. Breakin
 
 ## Conclusion
 
-The Calico REST API is the same as the Kubernetes API - same server, same auth, same RBAC - just serving the `projectcalico.org/v3` API group. For teams building automation, explaining it as "Kubernetes API for Calico resources" removes the mystery and makes implementation straightforward. The key practices: use short-lived service account tokens, minimal RBAC, and always test with `dryRun` before applying in production.
+The Calico REST API is accessed through the Kubernetes API endpoint - same client auth model, same Kubernetes RBAC, and the `projectcalico.org/v3` API group. For teams building automation, explaining it as "Kubernetes API for Calico resources" removes the mystery and makes implementation straightforward. The key practices: use short-lived service account tokens, minimal RBAC, and always test with `dryRun` before applying in production.
