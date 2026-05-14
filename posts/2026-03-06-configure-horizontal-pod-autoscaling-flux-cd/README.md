@@ -19,6 +19,7 @@ This guide covers everything from basic CPU-based autoscaling to advanced custom
 - Kubernetes cluster v1.26 or later
 - Flux CD v2 installed and bootstrapped
 - Metrics Server installed in the cluster
+- A custom or external metrics adapter installed for Prometheus, SQS, or other non-resource metrics
 - kubectl access to the cluster
 
 ## Repository Structure
@@ -357,13 +358,13 @@ spec:
               memory: 512Mi
 ```
 
-## Monitoring HPA with Flux Notifications
+## Monitoring HPA Manifests with Flux Notifications
 
-Set up alerts for autoscaling events:
+Set up alerts for Flux reconciliation events on your autoscaling manifests:
 
 ```yaml
 # clusters/my-cluster/hpa-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: hpa-alerts
