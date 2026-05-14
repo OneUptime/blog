@@ -36,34 +36,35 @@ metadata:
   namespace: flux-system
   annotations:
     description: "Change classification and approval requirements"
-data: |
-  standard-change:
-    description: "Routine, pre-approved changes with known low risk"
-    examples:
-      - Dependency patch version updates (Renovate PRs)
-      - ConfigMap value updates within approved ranges
-    approval-required: "1 reviewer"
-    testing-required: "CI validation only"
-    change-window: "Any time during business hours"
+data:
+  change-classification.yaml: |
+    standard-change:
+      description: "Routine, pre-approved changes with known low risk"
+      examples:
+        - Dependency patch version updates (Renovate PRs)
+        - ConfigMap value updates within approved ranges
+      approval-required: "1 reviewer"
+      testing-required: "CI validation only"
+      change-window: "Any time during business hours"
 
-  normal-change:
-    description: "Changes requiring individual assessment and approval"
-    examples:
-      - Application image version promotions
-      - Infrastructure configuration changes
-      - New service deployments
-    approval-required: "2 reviewers including CODEOWNER"
-    testing-required: "Staging validation + CI"
-    change-window: "Deployment window only"
+    normal-change:
+      description: "Changes requiring individual assessment and approval"
+      examples:
+        - Application image version promotions
+        - Infrastructure configuration changes
+        - New service deployments
+      approval-required: "2 reviewers including CODEOWNER"
+      testing-required: "Staging validation + CI"
+      change-window: "Deployment window only"
 
-  emergency-change:
-    description: "Critical fixes that bypass normal approval gates"
-    examples:
-      - Production outage fixes
-      - Critical security patches
-    approval-required: "Incident commander + 1 reviewer"
-    testing-required: "Basic validation; full review post-incident"
-    change-window: "Any time with IC authorization"
+    emergency-change:
+      description: "Critical fixes that bypass normal approval gates"
+      examples:
+        - Production outage fixes
+        - Critical security patches
+      approval-required: "Incident commander + 1 reviewer"
+      testing-required: "Basic validation; full review post-incident"
+      change-window: "Any time with IC authorization"
 ```
 
 ## Step 2: Configure Branch Protection per Change Classification
@@ -74,12 +75,27 @@ GitHub branch protection rules implement the approval requirements:
 # Configure via GitHub CLI (run once by admin)
 gh api repos/your-org/fleet-infra/branches/main/protection \
   --method PUT \
-  --field required_pull_request_reviews='{"required_approving_review_count":2,"dismiss_stale_reviews":true,"require_code_owner_reviews":true}' \
-  --field required_status_checks='{"strict":true,"contexts":["validate-flux-manifests","security-scan"]}' \
-  --field enforce_admins=true \
-  --field restrictions='{"users":[],"teams":["platform-admins"]}' \
-  --field allow_force_pushes=false \
-  --field allow_deletions=false
+  --input - <<'JSON'
+{
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2,
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true
+  },
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["validate-flux-manifests", "security-scan"]
+  },
+  "enforce_admins": true,
+  "restrictions": {
+    "users": [],
+    "teams": ["platform-admins"],
+    "apps": []
+  },
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
 ```
 
 For environments that require different approval thresholds, use separate repository branches:
@@ -139,6 +155,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   risk-analysis:
     runs-on: ubuntu-latest
@@ -168,7 +188,7 @@ jobs:
 
           # Large number of files changed
           CHANGED=$(git diff --name-only origin/main...HEAD | wc -l)
-          if [ "$CHANGED" -gt 10 ]; then
+          if [ "$RISK_LEVEL" = "low" ] && [ "$CHANGED" -gt 10 ]; then
             RISK_LEVEL="medium"
             WARNINGS="$WARNINGS\n⚠️ $CHANGED files changed - consider splitting into smaller PRs"
           fi
@@ -205,8 +225,8 @@ jobs:
       - name: Update ITSM Change Record
         run: |
           # Extract change ticket number from PR description
-          TICKET=$(echo "${{ github.event.pull_request.body }}" \
-            | grep "CHG-" | grep -oP 'CHG-\d{4}-\d{4}' | head -1)
+          TICKET=$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" \
+            | grep "CHG-" | grep -oP 'CHG-\d{4}-\d{4}' | head -1 || true)
 
           if [ -n "$TICKET" ]; then
             # Update the change record with merge details
@@ -235,7 +255,8 @@ MERGE_SHA=$(git log --merges --oneline -1 --format="%H")
 echo "Recent merge: $MERGE_SHA"
 
 # Get PR details via GitHub API
-gh pr list --state merged --json number,mergedAt,reviews,author \
+gh pr list --state merged --search "$MERGE_SHA" --limit 1 \
+  --json number,mergedAt,reviews,author \
   --jq '.[0] | {
     pr: .number,
     merged_at: .mergedAt,
