@@ -168,15 +168,24 @@ spec:
 
 ## Step 6: Use Harbor with Insecure Registry (Development Only)
 
-For development environments where Harbor runs without TLS, you may need to configure the image reflector controller to allow insecure connections. This is not recommended for production.
+For development environments where Harbor runs without TLS, you can set `insecure: true` on the ImageRepository to allow an HTTP registry connection. This is not recommended for production.
 
-You can add the `--insecure-registry` flag to the image reflector controller deployment. Edit the controller deployment.
+Add the `insecure` field to the ImageRepository.
 
-```bash
-# Patch the image reflector controller to allow insecure registries (dev only)
-kubectl patch deployment image-reflector-controller -n flux-system \
-  --type=json \
-  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--insecure-registry=harbor.dev.example.com"}]'
+```yaml
+# imagerepository-harbor-insecure.yaml
+# Scan Harbor over HTTP in development only
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: my-app-dev
+  namespace: flux-system
+spec:
+  image: harbor.dev.example.com/my-project/my-app
+  interval: 5m0s
+  secretRef:
+    name: harbor-credentials
+  insecure: true
 ```
 
 ## Step 7: Verify the Harbor ImageRepository
