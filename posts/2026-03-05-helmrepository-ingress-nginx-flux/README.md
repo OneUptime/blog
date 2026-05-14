@@ -138,7 +138,6 @@ spec:
         compute-full-forwarded-for: "true"
         # Connection and request limits
         proxy-body-size: "50m"
-        client-max-body-size: "50m"
         # Timeouts
         proxy-read-timeout: "120"
         proxy-send-timeout: "120"
@@ -212,7 +211,7 @@ controller:
 controller:
   service:
     annotations:
-      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/l4-rbs: "enabled"
 ```
 
 ```yaml
@@ -292,9 +291,9 @@ kubectl get pods -n ingress-nginx
 kubectl get svc -n ingress-nginx
 
 # Test the ingress controller health endpoint
-kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+kubectl port-forward -n ingress-nginx deploy/ingress-nginx-controller 10254:10254
 # In another terminal:
-curl -v http://localhost:8080/healthz
+curl -v http://localhost:10254/healthz
 ```
 
 ## Testing with a Sample Ingress
