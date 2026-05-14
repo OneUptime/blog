@@ -40,13 +40,13 @@ spec:
         namespace: flux-system
   # Upgrade action configuration
   upgrade:
-    # Clean up resources from previous releases that are no longer in the chart
+    # Clean up new resources created during a failed upgrade
     cleanupOnFail: true
     # Remediation configuration for failed upgrades
     remediation:
       # Number of retries before giving up
       retries: 3
-      # Strategy when retries are exhausted: rollback or uninstall
+      # Remediation strategy between retries: rollback or uninstall
       strategy: rollback
   values:
     replicaCount: 3
@@ -77,7 +77,7 @@ spec:
     remediation:
       # Number of retries after the initial upgrade failure
       retries: 5
-      # What to do when all retries are exhausted
+      # Remediation strategy to use between retries
       # Options: rollback (default) or uninstall
       strategy: rollback
       # Whether to remediate the last failure when no retries remain
@@ -90,13 +90,15 @@ The remediation flow works as follows.
 graph TD
     A[Upgrade Attempt] -->|Success| B[Release Ready]
     A -->|Failure| C{Retries Remaining?}
-    C -->|Yes| D[Retry Upgrade]
-    D --> A
-    C -->|No| E{strategy?}
-    E -->|rollback| F[Rollback to Last Successful]
-    E -->|uninstall| G[Uninstall Release]
-    F --> H[Wait for Next Reconciliation]
-    G --> H
+    C -->|Yes| D{strategy?}
+    D -->|rollback| E[Rollback to Last Successful]
+    D -->|uninstall| F[Uninstall Release]
+    E --> G[Retry Upgrade]
+    F --> G
+    G --> A
+    C -->|No| H{remediateLastFailure?}
+    H -->|true| I[Run Final Remediation]
+    H -->|false| J[Leave Release Failed]
 ```
 
 ## Cleanup on Failure
@@ -118,7 +120,7 @@ This is useful when a failed upgrade creates orphaned resources (like new Config
 
 ## Force Upgrades
 
-The `force` option forces resource updates through a delete and recreate strategy rather than patching.
+The `force` option forces resource updates through Helm's replacement strategy rather than normal patching.
 
 ```yaml
 # Upgrade with force enabled
@@ -130,7 +132,7 @@ spec:
       retries: 3
 ```
 
-Use `force` sparingly. It causes downtime because resources are deleted before being recreated. It can be useful when certain immutable fields on a resource need to change.
+Use `force` sparingly. It can cause disruption because resources may be replaced during the upgrade. It can be useful when certain immutable fields on a resource need to change.
 
 ## Preserve Values on Upgrade
 
@@ -141,7 +143,7 @@ The `preserveValues` option tells Helm to reuse the last applied values and merg
 spec:
   upgrade:
     # Merge new values on top of previously applied values
-    preserveValues: false
+    preserveValues: true
     remediation:
       retries: 3
 ```
@@ -165,7 +167,7 @@ spec:
 | Policy | Behavior |
 |---|---|
 | `Create` | Only create new CRDs, do not update existing ones |
-| `CreateReplace` | Create new CRDs and replace existing ones |
+| `CreateReplace` | Create new CRDs and replace existing ones, but do not delete CRDs removed from the chart |
 | `Skip` | Do not touch CRDs during upgrades |
 
 ## Disable Wait on Upgrade
@@ -252,7 +254,7 @@ spec:
       remediateLastFailure: true
 ```
 
-Install and upgrade have different remediation defaults. Install defaults to no retries and no rollback (since there is nothing to roll back to). Upgrade defaults to `strategy: rollback` when retries are exhausted.
+Install and upgrade have different remediation defaults. Install defaults to no retries and no remediation action. Upgrade remediation also defaults to no retries, but when upgrade remediation is configured, its default strategy is `rollback`.
 
 ## Monitoring Upgrades
 
