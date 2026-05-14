@@ -78,7 +78,7 @@ spec:
   chart:
     spec:
       chart: argo-workflows
-      version: "0.41.x"
+      version: "1.0.x"
       sourceRef:
         kind: HelmRepository
         name: argo
@@ -86,16 +86,13 @@ spec:
   values:
     # Server configuration
     server:
-      extraArgs:
-        - --auth-mode=server
+      authModes:
+        - server
     # Controller configuration
     controller:
       workflowNamespaces:
         - argo
         - default
-    # Use emissary executor for better compatibility
-    executor:
-      type: emissary
 ```
 
 ## Step 2: Install Argo Events for Git Webhook Triggers
@@ -123,6 +120,19 @@ spec:
   values:
     crds:
       install: true
+```
+
+```yaml
+# infrastructure/argo-events/eventbus.yaml
+# Required EventBus for EventSources and Sensors in the argo namespace
+apiVersion: argoproj.io/v1alpha1
+kind: EventBus
+metadata:
+  name: default
+  namespace: argo
+spec:
+  jetstream:
+    version: "2.10.10"
 ```
 
 ## Step 3: Create the CI Workflow Template
@@ -195,7 +205,7 @@ spec:
     # Run application tests
     - name: run-tests
       container:
-        image: golang:1.22
+        image: golang:1.26
         command: [sh, -c]
         args:
           - |
@@ -208,13 +218,15 @@ spec:
     # Build and push the container image using Kaniko
     - name: build-and-push
       container:
-        image: gcr.io/kaniko-project/executor:latest
-        command: [/kaniko/executor]
+        image: gcr.io/kaniko-project/executor:debug
+        command: [sh, -c]
         args:
-          - --context=/workspace/src
-          - --dockerfile=/workspace/src/Dockerfile
-          - "--destination={{workflow.parameters.image-name}}:$(cat /workspace/git-sha)"
-          - "--destination={{workflow.parameters.image-name}}:latest"
+          - |
+            /kaniko/executor \
+              --context=/workspace/src \
+              --dockerfile=/workspace/src/Dockerfile \
+              --destination="{{workflow.parameters.image-name}}:$(cat /workspace/git-sha)" \
+              --destination="{{workflow.parameters.image-name}}:latest"
         volumeMounts:
           - name: workspace
             mountPath: /workspace
@@ -270,6 +282,47 @@ spec:
 Create an EventSource and Sensor to listen for GitHub webhooks and trigger the CI workflow.
 
 ```yaml
+# infrastructure/argo-events/workflow-rbac.yaml
+# Allow the Sensor to create Workflow resources
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operate-workflow-sa
+  namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: operate-workflow-role
+  namespace: argo
+rules:
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - workflows
+      - workflowtemplates
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: operate-workflow-role-binding
+  namespace: argo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: operate-workflow-role
+subjects:
+  - kind: ServiceAccount
+    name: operate-workflow-sa
+    namespace: argo
+```
+
+```yaml
 # infrastructure/argo-events/github-eventsource.yaml
 # Listen for GitHub webhook events
 apiVersion: argoproj.io/v1alpha1
@@ -278,6 +331,11 @@ metadata:
   name: github
   namespace: argo
 spec:
+  service:
+    ports:
+      - name: myapp-push
+        port: 12000
+        targetPort: 12000
   github:
     myapp-push:
       # GitHub repository to watch
@@ -293,13 +351,14 @@ spec:
         endpoint: /push
         port: "12000"
         method: POST
+        url: https://argo-events.example.com/push
       # GitHub API token for webhook management
       apiToken:
         name: github-access
         key: token
       webhookSecret:
         name: github-access
-        key: webhook-secret
+        key: secret
       active: true
       contentType: json
 ```
@@ -313,6 +372,8 @@ metadata:
   name: ci-trigger
   namespace: argo
 spec:
+  template:
+    serviceAccountName: operate-workflow-sa
   dependencies:
     - name: github-push
       eventSourceName: github
@@ -418,7 +479,7 @@ kubectl create secret generic git-credentials \
 # Create GitHub webhook secret for Argo Events
 kubectl create secret generic github-access \
   --from-literal=token=ghp_xxxxxxxxxxxx \
-  --from-literal=webhook-secret=my-webhook-secret \
+  --from-literal=secret=my-webhook-secret \
   -n argo
 ```
 
