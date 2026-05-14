@@ -20,7 +20,7 @@ Container image repositories often contain many tags that are not relevant for d
 
 The `exclusionList` field in the ImageRepository spec accepts a list of regular expression patterns. Any tag that matches one or more of these patterns will be excluded from the scan results. The image reflector controller applies these filters before storing the tag list. This reduces the number of tags that ImagePolicy resources need to evaluate.
 
-By default, if no `exclusionList` is specified, all discovered tags are included.
+By default, if no `exclusionList` is specified, Flux uses `"^.*\\.sig$"` to exclude tags ending in `.sig`, which are commonly created by Cosign.
 
 ## Step 1: Create a Basic Exclusion List
 
@@ -30,7 +30,7 @@ Here is an ImageRepository that excludes the `latest` tag.
 # imagerepository-exclude-latest.yaml
 
 # Exclude the 'latest' tag from scan results
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -57,7 +57,7 @@ CI/CD systems often push tags based on Git commit SHAs. These tags are usually n
 ```yaml
 # imagerepository-exclude-sha.yaml
 # Exclude SHA-based tags from CI/CD pipelines
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -81,7 +81,7 @@ Some CI pipelines tag images with branch names. Exclude these to focus on versio
 ```yaml
 # imagerepository-exclude-branches.yaml
 # Exclude branch-name tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -108,7 +108,7 @@ If you only want stable release tags, exclude pre-release versions.
 ```yaml
 # imagerepository-exclude-prerelease.yaml
 # Exclude pre-release and development tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ Filter out old versions that are no longer relevant.
 ```yaml
 # imagerepository-exclude-old.yaml
 # Exclude old major versions
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -161,7 +161,7 @@ A comprehensive exclusion list might combine several types of patterns.
 ```yaml
 # imagerepository-comprehensive-exclusion.yaml
 # Comprehensive exclusion list for a production application
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -235,9 +235,9 @@ exclusionList:
 
 Using exclusion lists has tangible performance benefits:
 
-1. **Reduced memory usage** -- Fewer tags are stored in the ImageRepository status.
+1. **Reduced memory usage** -- Fewer tags are stored in the image reflector controller's internal database, and `.status.lastScanResult.tagCount` is calculated after exclusions are applied.
 2. **Faster ImagePolicy evaluation** -- The ImagePolicy has fewer tags to sort and filter.
-3. **Lower API response sizes** -- Less data is transferred and processed per scan.
+3. **Less tag data to process** -- Excluded tags are filtered before they are stored for policy evaluation.
 
 For repositories with thousands of tags (like the official nginx image), exclusion lists can significantly improve performance.
 
