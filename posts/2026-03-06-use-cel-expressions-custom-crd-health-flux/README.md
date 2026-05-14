@@ -16,7 +16,7 @@ This guide provides ready-to-use CEL health check expressions for popular CRDs f
 
 ## Prerequisites
 
-- Flux CD v2.5+ with CEL health check support
+- Flux CD v2.5+ introduced CEL health check support; use a currently supported Flux release
 - Kubernetes cluster with one or more operators installed
 - kubectl access to your cluster
 
@@ -46,7 +46,7 @@ Look for these common patterns in the status:
 
 ### Step 3: Write the Expression
 
-Flux uses the `.spec.healthCheckExprs` field for CEL-based health checks on custom resources. Each entry specifies an `apiVersion`, `kind`, and CEL expressions for `current` (healthy) and `failed` (unhealthy) states. The expressions match all resources of that kind managed by the Kustomization.
+Flux uses the `.spec.healthCheckExprs` field for CEL-based health checks on custom resources. Each entry specifies an `apiVersion`, `kind`, and CEL expressions for `current` (healthy) and `failed` (unhealthy) states. The expressions are evaluated when `.spec.wait` is enabled or `.spec.healthChecks` is specified, and match resources of that kind managed by the Kustomization.
 
 ## Cert-Manager Resources
 
@@ -97,12 +97,12 @@ healthCheckExprs:
 healthCheckExprs:
   - apiVersion: networking.istio.io/v1
     kind: VirtualService
-    failed: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'False')
-    current: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'True')
+    failed: status.conditions.filter(e, e.type == 'PassedAnalysis').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'PassedAnalysis').all(e, e.status == 'True')
   - apiVersion: networking.istio.io/v1
     kind: DestinationRule
-    failed: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'False')
-    current: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'True')
+    failed: status.conditions.filter(e, e.type == 'PassedAnalysis').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'PassedAnalysis').all(e, e.status == 'True')
 ```
 
 ## Prometheus Operator Resources
