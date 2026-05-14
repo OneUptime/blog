@@ -12,7 +12,7 @@ Red Hat OpenShift is an enterprise Kubernetes platform with stricter security de
 
 ## Prerequisites
 
-- An OpenShift 4.x cluster (tested on OpenShift 4.12+)
+- An OpenShift 4.x cluster with a Kubernetes version supported by the Flux release you install. OpenShift 4.12 and 4.13 map to older Kubernetes releases and require a compatible Flux release.
 - `oc` CLI installed and authenticated to your cluster
 - `kubectl` CLI installed (OpenShift includes this, but the standalone version works too)
 - A GitHub personal access token with `repo` permissions
@@ -55,7 +55,7 @@ Run the Flux pre-flight checks to validate OpenShift compatibility.
 flux check --pre
 ```
 
-The checks should pass on a properly configured OpenShift 4.x cluster. If you see warnings about Kubernetes version compatibility, ensure your OpenShift version maps to a supported Kubernetes version (OpenShift 4.12 uses Kubernetes 1.25, OpenShift 4.13 uses 1.26, etc.).
+The checks should pass on a properly configured OpenShift 4.x cluster. If you see warnings about Kubernetes version compatibility, ensure your OpenShift version maps to a Kubernetes version supported by your Flux release (OpenShift 4.12 uses Kubernetes 1.25, OpenShift 4.13 uses Kubernetes 1.26, etc.).
 
 ## Step 4: Create the Flux System Namespace
 
@@ -68,7 +68,7 @@ oc create namespace flux-system
 
 ## Step 5: Configure Security Context Constraints
 
-OpenShift uses SCCs instead of Pod Security Standards. Flux controllers need the `nonroot-v2` or `restricted-v2` SCC. On OpenShift 4.11+, the `restricted-v2` SCC is the default and works with Flux controllers out of the box. However, if you encounter permission issues, you can explicitly grant the necessary SCC.
+OpenShift uses SCCs instead of Pod Security Standards. Current Flux controller manifests are compatible with the `restricted-v2` SCC defaults on OpenShift 4.11+ because they run as non-root, disable privilege escalation, drop capabilities, and use the runtime default seccomp profile. However, if you encounter permission issues on a cluster with custom SCC policy, you can explicitly grant a suitable SCC such as `nonroot-v2`.
 
 ```bash
 # Grant the restricted SCC to the Flux service accounts
@@ -92,44 +92,53 @@ export GITHUB_USER=<your-github-username>
 
 ## Step 7: Bootstrap Flux CD with OpenShift Patches
 
-OpenShift requires that containers run as non-root with specific security contexts. Flux CD respects this by default, but you should bootstrap with explicit patches to ensure compatibility.
+OpenShift requires that containers run as non-root with specific security contexts. Current Flux manifests already include OpenShift-compatible container security contexts, but you can use Flux bootstrap customization if your cluster requires explicit patches.
 
-Create a directory for your bootstrap patches.
+Create the bootstrap customization files in the same path Flux will manage in Git.
 
 ```bash
-# Create a patches directory locally
-mkdir -p flux-patches
+# Create the bootstrap customization directory
+mkdir -p clusters/openshift-cluster/flux-system
+touch clusters/openshift-cluster/flux-system/gotk-components.yaml \
+  clusters/openshift-cluster/flux-system/gotk-sync.yaml
 ```
 
-Create a patch file that ensures Flux controllers comply with OpenShift security requirements.
+Create a `kustomization.yaml` file that patches the generated Flux controller deployments.
 
 ```yaml
-# flux-patches/patch-security-context.yaml
+# clusters/openshift-cluster/flux-system/kustomization.yaml
 # Patch to ensure Flux controllers comply with OpenShift SCCs
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: all
-spec:
-  template:
-    spec:
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=flux
+    patch: |
+      - op: add
+        path: /spec/template/spec/securityContext/seccompProfile
+        value:
           type: RuntimeDefault
-      containers:
-        - name: manager
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/allowPrivilegeEscalation
+        value: false
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/capabilities
+        value:
+          drop:
+            - ALL
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/runAsNonRoot
+        value: true
 ```
 
-Now bootstrap Flux CD with the patches.
+Commit these files before bootstrapping, then bootstrap Flux CD.
 
 ```bash
-# Bootstrap Flux CD on OpenShift with security patches
+# Bootstrap Flux CD on OpenShift
 flux bootstrap github \
   --owner=$GITHUB_USER \
   --repository=fleet-infra \
@@ -240,9 +249,9 @@ oc get pods -n default -l app=podinfo
 
 - **Network policies**: OpenShift may enforce network policies by default. Ensure the `flux-system` namespace can reach the Kubernetes API server and your Git provider. If using OpenShift SDN or OVN-Kubernetes, check that egress is not blocked.
 - **Image registry**: OpenShift has a built-in container registry. You can configure Flux image automation to scan and update images from the OpenShift internal registry at `image-registry.openshift-image-registry.svc:5000`.
-- **Operator Hub**: While OpenShift has an Operator Hub with a Flux operator, the CLI bootstrap method described here gives you more control and is the officially recommended approach by the Flux project.
+- **Operator Hub**: While OpenShift can install operators from OperatorHub, the CLI bootstrap method described here gives you direct control over the generated Flux manifests and is a documented installation approach from the Flux project.
 - **RBAC**: OpenShift extends Kubernetes RBAC with additional roles and cluster roles. The Flux bootstrap process creates all necessary RBAC resources, but if you have custom RBAC policies, verify they do not conflict.
-- **Monitoring**: OpenShift includes Prometheus-based monitoring. Flux controllers expose Prometheus metrics that you can scrape by creating `ServiceMonitor` resources in the `flux-system` namespace.
+- **Monitoring**: OpenShift includes Prometheus-based monitoring. Flux controllers expose Prometheus metrics that you can scrape by creating `ServiceMonitor` resources in the `flux-system` namespace when user workload monitoring or compatible Prometheus Operator CRDs are available.
 
 ## Uninstalling Flux CD
 
