@@ -10,9 +10,9 @@ Description: Learn how to avoid the common mistakes when running Calico-managed 
 
 ## Introduction
 
-Many organizations run Kubernetes clusters alongside legacy firewall infrastructure that was designed for static IP environments. Legacy firewalls enforce rules based on specific IP addresses or narrow CIDR ranges - a model that conflicts with Calico's dynamic IP allocation, where pods can receive any IP from a large pool and that IP changes when pods are rescheduled.
+Many organizations run Kubernetes clusters alongside legacy firewall infrastructure that was designed for static IP environments. Legacy firewalls enforce rules based on specific IP addresses or narrow CIDR ranges - a model that conflicts with Calico's dynamic IP allocation, where pods can receive any IP from a large pool and that IP can change when pods are replaced or rescheduled.
 
-The most common mistakes are: whitelisting individual pod IPs in firewall rules (which break on pod restarts), not accounting for Calico's block-level routing in firewall rules, and misunderstanding which traffic goes through the node IP vs. the pod IP when `natOutgoing` is involved.
+The most common mistakes are: whitelisting individual pod IPs in firewall rules (which break when pods are replaced or rescheduled), not accounting for Calico's block-level routing in firewall rules, and misunderstanding which traffic goes through the node IP vs. the pod IP when `natOutgoing` is involved.
 
 ## Prerequisites
 
@@ -24,13 +24,13 @@ The most common mistakes are: whitelisting individual pod IPs in firewall rules 
 
 ## Step 1: Mistake - Whitelisting Individual Pod IPs in Firewall Rules
 
-The most fundamental mistake is writing firewall rules for specific pod IPs. Pod IPs change every time a pod is rescheduled.
+The most fundamental mistake is writing firewall rules for specific pod IPs. Pod IPs can change when a pod is replaced or rescheduled.
 
 ```bash
 # WRONG: Firewall rule targeting a specific pod IP
 
 # iptables -A FORWARD -s 10.244.1.5 -d 10.10.0.100 -j ACCEPT
-# This rule breaks the next time the pod restarts and gets a new IP
+# This rule breaks the next time the pod is replaced or rescheduled and gets a new IP
 
 # CORRECT approach 1: Whitelist the entire pod CIDR
 # iptables -A FORWARD -s 10.244.0.0/16 -d 10.10.0.100 -j ACCEPT
@@ -52,7 +52,7 @@ Whether traffic exits from the pod IP or the node IP depends on `natOutgoing` in
 ```yaml
 # ippool-nat-behavior.yaml
 # natOutgoing=true: external destinations see the node IP (NAT)
-# natOutgoing=false: external destinations see the pod IP (BGP routing required)
+# natOutgoing=false: external destinations see the pod IP (pod CIDRs must be routable, commonly via BGP)
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -60,7 +60,7 @@ metadata:
 spec:
   cidr: 10.244.0.0/16
   natOutgoing: true    # With this: firewall must allow node IPs (10.0.1.0/24)
-  # natOutgoing: false # With this: firewall must allow pod CIDR (10.244.0.0/16)
+  # natOutgoing: false # With this: firewall must allow pod CIDR (10.244.0.0/16), and the network must route it
   ipipMode: Never
   vxlanMode: CrossSubnet
 ```
@@ -71,34 +71,34 @@ calicoctl get ippool -o yaml | grep -E "name:|natOutgoing:"
 
 # Test which source IP appears at an external server
 # Run a curl from a pod and check the server's access log
-kubectl run test-pod --image=alpine --restart=Never -- curl -s http://external-server.example.com/log-ip
+kubectl run test-pod --image=curlimages/curl:8.8.0 --restart=Never -- -s http://external-server.example.com/log-ip
 kubectl logs test-pod
 ```
 
 ## Step 3: Account for Calico Block-Level Routing
 
-Calico routes at the block level (e.g., `/26` blocks), not at the individual pod IP level. Legacy firewalls need rules that allow entire block CIDRs, not just specific IPs.
+Calico normally aggregates workload routes at the block level (e.g., `/26` blocks), not at the individual pod IP level. Legacy firewalls need rules that allow entire block CIDRs, not just specific IPs.
 
 ```bash
-# List all Calico block CIDRs (these are the routes Calico advertises)
-calicoctl ipam show --show-blocks | awk 'NR>1 {print $1}'
+# List all Calico block CIDRs (these are the allocation blocks Calico uses to aggregate routes)
+calicoctl ipam show --show-blocks | awk '$2 == "Block" {print $4}'
 
 # For legacy firewalls that need explicit route permissions:
 # Each block in the output needs to be allowed if you're using natOutgoing=false
 
 # Generate a list of block CIDRs for firewall rule automation
-calicoctl ipam show --show-blocks | awk 'NR>1 {print $1}' | sort -u > calico-block-cidrs.txt
+calicoctl ipam show --show-blocks | awk '$2 == "Block" {print $4}' | sort -u > calico-block-cidrs.txt
 cat calico-block-cidrs.txt
 ```
 
 ## Step 4: Use Calico Network Policies as Firewall Complement
 
-Rather than trying to make legacy firewalls work with dynamic pod IPs, use Calico network policies to enforce access control at the pod level, and simplify the legacy firewall to allow the entire pod CIDR.
+Rather than trying to make legacy firewalls work with dynamic pod IPs, use Calico network policies to enforce access control at the pod level, and simplify the legacy firewall to allow the relevant Kubernetes address range.
 
 ```yaml
 # calico-policy-replace-fw-rule.yaml
 # This Calico policy replaces individual firewall rules per pod
-# The legacy firewall only needs to allow 10.244.0.0/16 → external server
+# The legacy firewall only needs to allow the pod CIDR, or the node CIDR when natOutgoing=true, to the external server
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
@@ -109,6 +109,7 @@ spec:
     - Egress
   egress:
     - action: Allow
+      protocol: TCP
       destination:
         # Allow only to the specific external database, not all external destinations
         nets:
@@ -126,19 +127,19 @@ Provide your firewall team with a CIDR-based summary of Calico's addressing, not
 # Generate a summary of Calico IPAM topology for the firewall team
 echo "=== Calico IPAM Summary for Firewall Configuration ==="
 echo ""
-echo "Pod CIDR (allow as a whole for NAT mode):"
-calicoctl get ippool -o wide | grep -v "DISABLED"
+echo "Pod CIDR (allow for direct routing / natOutgoing=false):"
+calicoctl get ippool -o wide
 echo ""
 echo "Node CIDR (traffic seen by external hosts with natOutgoing=true):"
 kubectl get nodes -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}' | sort
 echo ""
-echo "Service CIDR (for service-to-external traffic):"
+echo "Service CIDR (not normally the source of pod-to-external traffic, but document it if your firewall filters service VIPs):"
 kubectl cluster-info dump | grep service-cluster-ip-range | head -1
 ```
 
 ## Best Practices
 
-- Never whitelist individual pod IPs in legacy firewall rules - they change on every pod restart.
+- Never whitelist individual pod IPs in legacy firewall rules - they can change when pods are replaced or rescheduled.
 - Provide your firewall team with CIDR ranges (pod CIDR or node CIDR depending on NAT mode), not individual IPs.
 - When `natOutgoing: true`, legacy firewalls should allow the node CIDR; when `natOutgoing: false`, allow the pod CIDR.
 - Use Calico network policies to enforce fine-grained access control between pods and external resources, reducing the firewall rule surface area.
@@ -146,4 +147,4 @@ kubectl cluster-info dump | grep service-cluster-ip-range | head -1
 
 ## Conclusion
 
-Legacy firewalls and dynamic Kubernetes networking are inherently in tension. The correct integration approach is to treat the entire pod CIDR (or node CIDR with NAT) as the Kubernetes address space in your firewall, and use Calico's native network policies for pod-level access control. This simplifies firewall management while maintaining security - and eliminates the fragile IP-per-pod whitelisting that breaks on every pod restart.
+Legacy firewalls and dynamic Kubernetes networking are inherently in tension. The correct integration approach is to treat the entire pod CIDR (or node CIDR with NAT) as the Kubernetes address space in your firewall, and use Calico's native network policies for pod-level access control. This simplifies firewall management while maintaining security - and eliminates the fragile IP-per-pod whitelisting that breaks when pods are replaced or rescheduled.
