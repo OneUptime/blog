@@ -114,7 +114,8 @@ spec:
         level: info
         format: console
       metricServer:
-        level: "0"
+        zapLevel: info
+        zapEncoder: console
 
     # Prometheus monitoring
     prometheus:
@@ -155,8 +156,9 @@ spec:
     - type: rabbitmq
       metadata:
         host: amqp://guest:guest@rabbitmq.rabbitmq.svc.cluster.local:5672/
+        mode: QueueLength
         queueName: my-queue
-        queueLength: "5"
+        value: "5"
 ```
 
 ## Scaling Based on Prometheus Metrics
@@ -211,8 +213,9 @@ spec:
     - type: rabbitmq
       metadata:
         host: amqp://guest:guest@rabbitmq.rabbitmq.svc.cluster.local:5672/
+        mode: QueueLength
         queueName: batch-queue
-        queueLength: "1"
+        value: "1"
 ```
 
 ## Verifying the Deployment
