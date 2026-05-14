@@ -4,19 +4,20 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, AWS, CodeCommit, GitOps, Kubernetes, IAM, Git
 
-Description: Learn how to configure Flux CD to use AWS CodeCommit as a Git source, including HTTPS with IAM credentials, SSH key authentication, and git-remote-codecommit setup.
+Description: Learn how to configure Flux CD to use AWS CodeCommit as a Git source, including HTTPS with IAM credentials, SSH key authentication, and EKS authentication considerations.
 
 ---
 
-AWS CodeCommit is a managed Git service that integrates natively with IAM for authentication. Configuring Flux CD to work with CodeCommit requires specific setup for authentication since CodeCommit does not support standard Git username/password or personal access tokens. This guide covers all authentication methods for integrating Flux CD with CodeCommit.
+AWS CodeCommit is a managed Git service that integrates natively with IAM for authentication. Configuring Flux CD to work with CodeCommit requires specific setup for authentication since CodeCommit does not support standard Git username/password or personal access tokens. This guide covers the supported authentication methods for integrating Flux CD with CodeCommit.
 
 ## Understanding CodeCommit Authentication Options
 
-CodeCommit supports three authentication methods:
+For Flux `GitRepository` resources, CodeCommit supports two practical authentication methods:
 
 1. **HTTPS with Git Credentials** - IAM-generated username and password
 2. **SSH with IAM-managed keys** - SSH public key uploaded to IAM
-3. **HTTPS with IRSA** - Using IAM Roles for Service Accounts on EKS
+
+CodeCommit also supports AWS credential helpers and `git-remote-codecommit` for local Git clients, but Flux's source-controller does not run those Git helpers for `GitRepository` reconciliation.
 
 ## Method 1: HTTPS with IAM Git Credentials
 
@@ -103,7 +104,7 @@ kubectl describe gitrepository fleet-infra -n flux-system
 
 ```bash
 # Generate an SSH key pair for Flux
-ssh-keygen -t rsa -b 4096 -f /tmp/flux-codecommit -N "" -C "flux-codecommit"
+ssh-keygen -t rsa -b 4096 -m PEM -f /tmp/flux-codecommit -N "" -C "flux-codecommit"
 ```
 
 ### Step 2: Upload the Public Key to IAM
@@ -152,121 +153,17 @@ spec:
 
 Replace `YOUR_SSH_KEY_ID` with the `SSHPublicKeyId` returned when you uploaded the key.
 
-## Method 3: IRSA on Amazon EKS (Recommended)
+## Method 3: IRSA on Amazon EKS
 
-This is the most secure method as it uses no static credentials.
+IRSA is useful for AWS SDK-based access from Flux controllers, but Flux `GitRepository` does not currently support an `aws` provider for Git authentication. Current Flux `GitRepository` provider values are `generic`, `azure`, and `github`, with `generic` used by default.
 
-### Step 1: Create the IAM Policy
-
-```bash
-# Create a policy with CodeCommit read access
-cat > /tmp/flux-codecommit-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "FluxCodeCommitAccess",
-      "Effect": "Allow",
-      "Action": [
-        "codecommit:GitPull",
-        "codecommit:GetRepository",
-        "codecommit:GetBranch",
-        "codecommit:ListBranches",
-        "codecommit:GetCommit",
-        "codecommit:BatchGetCommits"
-      ],
-      "Resource": "arn:aws:codecommit:us-east-1:123456789012:fleet-infra"
-    }
-  ]
-}
-EOF
-
-aws iam create-policy \
-  --policy-name FluxCodeCommitAccess \
-  --policy-document file:///tmp/flux-codecommit-policy.json
-```
-
-### Step 2: Create the IAM Role with IRSA Trust Policy
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-OIDC_ID=$(aws eks describe-cluster \
-  --name my-cluster \
-  --query "cluster.identity.oidc.issuer" \
-  --output text | cut -d'/' -f5)
-
-cat > /tmp/flux-codecommit-trust.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/${OIDC_ID}"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "oidc.eks.us-east-1.amazonaws.com/id/${OIDC_ID}:sub": "system:serviceaccount:flux-system:source-controller",
-          "oidc.eks.us-east-1.amazonaws.com/id/${OIDC_ID}:aud": "sts.amazonaws.com"
-        }
-      }
-    }
-  ]
-}
-EOF
-
-aws iam create-role \
-  --role-name flux-codecommit-role \
-  --assume-role-policy-document file:///tmp/flux-codecommit-trust.json
-
-aws iam attach-role-policy \
-  --role-name flux-codecommit-role \
-  --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/FluxCodeCommitAccess
-```
-
-### Step 3: Annotate the Source Controller Service Account
-
-```yaml
-# clusters/production/flux-system/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
-patches:
-  - target:
-      kind: ServiceAccount
-      name: source-controller
-    patch: |
-      apiVersion: v1
-      kind: ServiceAccount
-      metadata:
-        name: source-controller
-        annotations:
-          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-codecommit-role
-```
-
-### Step 4: Configure the GitRepository for IRSA
-
-```yaml
-# git-repository-irsa.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: fleet-infra
-  namespace: flux-system
-spec:
-  interval: 1m
-  url: https://git-codecommit.us-east-1.amazonaws.com/v1/repos/fleet-infra
-  ref:
-    branch: main
-  provider: aws  # Tells Flux to use IRSA/AWS credentials
-```
+Do not configure `provider: aws` for a CodeCommit `GitRepository`. On EKS, use HTTPS Git credentials or SSH authentication for CodeCommit, and grant the IAM user at least `codecommit:GitPull` access to the repository.
 
 ## Bootstrapping Flux Directly with CodeCommit
 
 You can bootstrap Flux directly to a CodeCommit repository:
+
+The credentials used for bootstrap must have pull and push access to the CodeCommit repository because `flux bootstrap git` commits the Flux manifests before configuring the cluster sync.
 
 ```bash
 # Bootstrap with HTTPS credentials
@@ -329,14 +226,14 @@ kubectl run dns-test --rm -it --restart=Never \
   -n flux-system --image=busybox:1.36 \
   -- nslookup git-codecommit.us-east-1.amazonaws.com
 
-# Check if VPC endpoints are needed for private clusters
-aws ec2 describe-vpc-endpoints --filters "Name=service-name,Values=com.amazonaws.us-east-1.codecommit"
+# Check if the Git VPC endpoint is needed for private clusters
+aws ec2 describe-vpc-endpoints --filters "Name=service-name,Values=com.amazonaws.us-east-1.git-codecommit"
 ```
 
 ## Setting Up Notifications for CodeCommit Events
 
 ```yaml
-# codecommit-receiver.yaml - Receive webhook events from CodeCommit via SNS
+# codecommit-receiver.yaml - Generic receiver that can be called after CodeCommit events
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
@@ -347,7 +244,8 @@ spec:
   secretRef:
     name: receiver-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: fleet-infra
 ```
 
@@ -364,4 +262,4 @@ kubectl get receiver codecommit-receiver -n flux-system \
 
 ## Summary
 
-Flux CD integrates with AWS CodeCommit through three authentication methods: HTTPS with IAM Git credentials, SSH with IAM-managed keys, and IRSA on EKS. IRSA is the recommended approach for EKS environments as it eliminates static credentials entirely. Whichever method you choose, ensure the IAM permissions include at minimum `codecommit:GitPull` access to your repository, and verify connectivity from the source-controller pod to the CodeCommit endpoint.
+Flux CD integrates with AWS CodeCommit through HTTPS with IAM Git credentials or SSH with IAM-managed keys. IRSA is not currently a direct authentication method for Flux `GitRepository` access to CodeCommit. Whichever supported method you choose, ensure the IAM permissions include at minimum `codecommit:GitPull` access to your repository, and verify connectivity from the source-controller pod to the CodeCommit endpoint.
