@@ -58,13 +58,14 @@ steps:
     commands:
       - go test ./...
 
-  # Step 2: Build and push the Docker image with a tag based on the commit SHA
+  # Step 2: Build and push the Docker image with tags based on the commit SHA and pipeline number
   build:
     image: woodpeckerci/plugin-docker-buildx
     settings:
       repo: *image_name
       tags:
         - "${CI_COMMIT_SHA:0:8}"
+        - "build-${CI_PIPELINE_NUMBER}"
         - latest
       registry: registry.example.com
       username:
@@ -72,22 +73,25 @@ steps:
       password:
         from_secret: registry_password
     when:
-      branch: main
-      event: push
+      - branch: main
+        event: push
 
   # Step 3: Update the Kubernetes manifests repository to trigger Flux CD
   update-manifests:
     image: alpine/git
+    environment:
+      MANIFEST_REPO_TOKEN:
+        from_secret: manifest_repo_token
     commands:
       # Install required tools
-      - apk add --no-cache bash curl
+      - apk add --no-cache curl
 
       # Clone the manifests repository
-      - git clone https://$MANIFEST_REPO_TOKEN@github.com/myorg/k8s-manifests.git
+      - git clone https://x-access-token:$MANIFEST_REPO_TOKEN@github.com/myorg/k8s-manifests.git
       - cd k8s-manifests
 
       # Update the image tag in the deployment manifest
-      - "sed -i \"s|image: registry.example.com/myapp:.*|image: registry.example.com/myapp:${CI_COMMIT_SHA:0:8}|\" apps/myapp/deployment.yaml"
+      - 'sed -i ''s|image: registry.example.com/myapp:.*|image: registry.example.com/myapp:${CI_COMMIT_SHA:0:8} # {"$imagepolicy": "flux-system:myapp"}|'' apps/myapp/deployment.yaml'
 
       # Commit and push the change
       - git config user.email "woodpecker@ci.local"
@@ -95,11 +99,9 @@ steps:
       - git add .
       - git commit -m "Update myapp image to ${CI_COMMIT_SHA:0:8}"
       - git push origin main
-    secrets:
-      - manifest_repo_token
     when:
-      branch: main
-      event: push
+      - branch: main
+        event: push
 ```
 
 ## Step 2: Set Up the Flux Manifest Repository
@@ -137,8 +139,8 @@ spec:
     spec:
       containers:
         - name: myapp
-          # This image tag gets updated by Woodpecker CI
-          image: registry.example.com/myapp:latest
+          # This image tag gets updated by Woodpecker CI or Flux Image Automation
+          image: registry.example.com/myapp:latest # {"$imagepolicy": "flux-system:myapp"}
           ports:
             - containerPort: 8080
           resources:
@@ -238,9 +240,12 @@ metadata:
 spec:
   imageRepositoryRef:
     name: myapp
-  # Use alphabetical ordering since we use commit SHA tags
+  # Use a sortable build number tag for image automation
+  filterTags:
+    pattern: '^build-(?P<number>[0-9]+)$'
+    extract: '$number'
   policy:
-    alphabetical:
+    numerical:
       order: asc
 ```
 
@@ -265,7 +270,7 @@ spec:
       author:
         email: flux@example.com
         name: Flux Image Automation
-      messageTemplate: "Update image to {{.NewImage}}"
+      messageTemplate: 'Update image {{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}'
     push:
       branch: main
   update:
@@ -279,38 +284,38 @@ Configure the secrets in Woodpecker CI that the pipeline needs. You can do this 
 
 ```bash
 # Add container registry credentials
-woodpecker-cli secret add \
+woodpecker-cli repo secret add \
   --repository myorg/myapp \
   --name registry_username \
   --value "my-registry-user"
 
-woodpecker-cli secret add \
+woodpecker-cli repo secret add \
   --repository myorg/myapp \
   --name registry_password \
   --value "my-registry-password"
 
 # Add Git token for updating the manifests repository
-woodpecker-cli secret add \
+woodpecker-cli repo secret add \
   --repository myorg/myapp \
   --name manifest_repo_token \
   --value "ghp_xxxxxxxxxxxx"
 ```
 
-## Step 6: Set Up Flux Notifications for Woodpecker
+## Step 6: Set Up Flux Notifications
 
 Configure Flux to send deployment notifications so you can track the status of deployments triggered by Woodpecker CI builds.
 
 ```yaml
 # clusters/my-cluster/notification-provider.yaml
 # Send notifications to a webhook endpoint
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
-  name: woodpecker-webhook
+  name: deployment-webhook
   namespace: flux-system
 spec:
   type: generic
-  address: https://woodpecker.example.com/api/hook
+  address: https://deployments.example.com/flux-events
   secretRef:
     name: webhook-secret
 ```
@@ -318,14 +323,14 @@ spec:
 ```yaml
 # clusters/my-cluster/notification-alert.yaml
 # Alert on deployment events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: myapp-deployment
   namespace: flux-system
 spec:
   providerRef:
-    name: woodpecker-webhook
+    name: deployment-webhook
   eventSeverity: info
   eventSources:
     - kind: Kustomization
@@ -340,7 +345,7 @@ After pushing a change to your application repository, verify the pipeline works
 
 ```bash
 # Check Woodpecker CI build status (via the Woodpecker UI or CLI)
-woodpecker-cli build ls myorg/myapp
+woodpecker-cli pipeline ls myorg/myapp
 
 # Check if Flux detected the manifest change
 flux get sources git myapp-manifests
@@ -387,7 +392,7 @@ If the update-manifests step fails, verify the Git token has write access:
 
 ```bash
 # Test Git access manually
-git clone https://<token>@github.com/myorg/k8s-manifests.git
+git clone https://x-access-token:<token>@github.com/myorg/k8s-manifests.git
 ```
 
 ## Summary
