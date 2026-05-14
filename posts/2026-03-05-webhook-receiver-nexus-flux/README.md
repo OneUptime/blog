@@ -49,9 +49,6 @@ metadata:
 spec:
   # Nexus webhook type
   type: nexus
-  # Nexus component events
-  events:
-    - "CREATED"
   # Secret for authentication
   secretRef:
     name: nexus-webhook-secret
@@ -102,7 +99,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -121,7 +118,7 @@ Set up the webhook capability in Nexus Repository Manager.
 4. Select **Webhook: Repository**
 5. Configure the capability:
    - **Repository**: Select your Docker repository
-   - **Event Type**: Select **Component** with the **Created** action
+   - **Event Types**: Select the repository component or asset events you want Nexus to send, such as created events for pushed images
    - **URL**: Enter `https://flux-webhook.example.com/<webhook-path>`
    - **Secret Key**: Enter the token from Step 1
 6. Click **Create capability**
@@ -130,7 +127,7 @@ Nexus webhooks are configured as capabilities rather than per-repository setting
 
 ## Step 6: Configure for Multiple Repositories
 
-Watch for image pushes across multiple Nexus repositories.
+Trigger scans for multiple Flux ImageRepository resources. To receive events from multiple Nexus repositories, create a Nexus repository webhook capability for each repository and point each one at the same Flux receiver URL.
 
 ```yaml
 # Receiver triggering multiple ImageRepository scans from Nexus
@@ -141,8 +138,6 @@ metadata:
   namespace: flux-system
 spec:
   type: nexus
-  events:
-    - "CREATED"
   secretRef:
     name: nexus-webhook-secret
   resources:
@@ -194,7 +189,7 @@ kubectl get secret nexus-webhook-secret -n flux-system
 curl -I https://flux-webhook.example.com/
 ```
 
-In Nexus, check the capability status to see if it is active and verify that the event type matches what the Flux receiver expects. Also check the Nexus system logs for webhook delivery errors.
+In Nexus, check the capability status to see if it is active and verify that the selected repository event types are the ones you want to send to Flux. Also check the Nexus system logs for webhook delivery errors.
 
 ## Summary
 
