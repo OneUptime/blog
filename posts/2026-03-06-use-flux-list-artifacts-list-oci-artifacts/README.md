@@ -40,19 +40,19 @@ The output typically includes:
 
 - Tag name
 - Digest (SHA256)
-- Last modified timestamp
-- Size
+- Source
+- Revision
 
 ### Example Output
 
 ```yaml
-ARTIFACT                                         DIGEST                                                                   LAST UPDATED
-oci://ghcr.io/myorg/app-config:v1.0.0           sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  2026-03-01T10:00:00Z
-oci://ghcr.io/myorg/app-config:v1.1.0           sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3  2026-03-03T14:30:00Z
-oci://ghcr.io/myorg/app-config:v1.2.0           sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4  2026-03-05T09:15:00Z
-oci://ghcr.io/myorg/app-config:latest           sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4  2026-03-05T09:15:00Z
-oci://ghcr.io/myorg/app-config:staging          sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4  2026-03-05T09:15:00Z
-oci://ghcr.io/myorg/app-config:production       sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3  2026-03-03T14:30:00Z
+ARTIFACT                                    DIGEST                                                                 SOURCE                                  REVISION
+oci://ghcr.io/myorg/app-config:v1.0.0      sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  https://github.com/myorg/app-config.git  v1.0.0@sha1:1111111111111111111111111111111111111111
+oci://ghcr.io/myorg/app-config:v1.1.0      sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3  https://github.com/myorg/app-config.git  v1.1.0@sha1:2222222222222222222222222222222222222222
+oci://ghcr.io/myorg/app-config:v1.2.0      sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4  https://github.com/myorg/app-config.git  v1.2.0@sha1:3333333333333333333333333333333333333333
+oci://ghcr.io/myorg/app-config:latest      sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4  https://github.com/myorg/app-config.git  v1.2.0@sha1:3333333333333333333333333333333333333333
+oci://ghcr.io/myorg/app-config:staging     sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4  https://github.com/myorg/app-config.git  v1.2.0@sha1:3333333333333333333333333333333333333333
+oci://ghcr.io/myorg/app-config:production  sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3  https://github.com/myorg/app-config.git  v1.1.0@sha1:2222222222222222222222222222222222222222
 ```
 
 ## Authentication for Listing
@@ -105,8 +105,8 @@ flux list artifacts oci://ghcr.io/myorg/app-config | grep "production"
 # Find all semantic version tags
 flux list artifacts oci://ghcr.io/myorg/app-config | grep -E "v[0-9]+\.[0-9]+\.[0-9]+"
 
-# Find artifacts from a specific date
-flux list artifacts oci://ghcr.io/myorg/app-config | grep "2026-03-05"
+# Find artifacts from a specific source revision
+flux list artifacts oci://ghcr.io/myorg/app-config | grep "v1.2.0@sha1:"
 ```
 
 ### Finding Tags That Share a Digest
@@ -114,20 +114,20 @@ flux list artifacts oci://ghcr.io/myorg/app-config | grep "2026-03-05"
 ```bash
 # Identify which tags point to the same artifact
 # This is useful for verifying promotions
-flux list artifacts oci://ghcr.io/myorg/app-config | sort -k2
+flux list artifacts oci://ghcr.io/myorg/app-config | tail -n +2 | sort -k2
 
 # Extract just the digests and tags
-flux list artifacts oci://ghcr.io/myorg/app-config | awk '{print $2, $1}'
+flux list artifacts oci://ghcr.io/myorg/app-config | tail -n +2 | awk '{print $2, $1}'
 ```
 
 ### Counting Artifacts
 
 ```bash
 # Count total number of tags
-flux list artifacts oci://ghcr.io/myorg/app-config | wc -l
+flux list artifacts oci://ghcr.io/myorg/app-config | tail -n +2 | wc -l
 
 # Count unique artifacts (by digest)
-flux list artifacts oci://ghcr.io/myorg/app-config | awk '{print $2}' | sort -u | wc -l
+flux list artifacts oci://ghcr.io/myorg/app-config | tail -n +2 | awk '{print $2}' | sort -u | wc -l
 ```
 
 ## Practical Use Cases
@@ -173,7 +173,7 @@ ENVIRONMENTS=("dev" "staging" "production")
 echo "=== Promotion Status ==="
 
 # Get all artifacts with their digests
-ALL_ARTIFACTS=$(flux list artifacts "${ARTIFACT_URL}")
+ALL_ARTIFACTS=$(flux list artifacts "${ARTIFACT_URL}" | tail -n +2)
 
 for env in "${ENVIRONMENTS[@]}"; do
   # Find the digest for this environment tag
@@ -240,27 +240,19 @@ fi
 echo "$CURRENT" > "$STATE_FILE"
 ```
 
-### Cleanup Old Artifacts
+### Identify Artifacts by Tag Pattern
 
 ```bash
 #!/bin/bash
-# identify-old-artifacts.sh
-# Identify artifacts older than a specified number of days
+# identify-tagged-artifacts.sh
+# Identify artifacts with tags that match a regex
 # Note: Actual deletion requires registry-specific APIs
 
 ARTIFACT_URL="oci://ghcr.io/myorg/app-config"
-MAX_AGE_DAYS=30
-CUTOFF_DATE=$(date -u -v-${MAX_AGE_DAYS}d +%Y-%m-%d 2>/dev/null || date -u -d "${MAX_AGE_DAYS} days ago" +%Y-%m-%d)
+TAG_PATTERN="^v1\\."
 
-echo "Artifacts older than ${CUTOFF_DATE}:"
-flux list artifacts "${ARTIFACT_URL}" | while read -r line; do
-  # Extract the date from the last updated column
-  ARTIFACT_DATE=$(echo "$line" | grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2}" | tail -1)
-
-  if [ -n "$ARTIFACT_DATE" ] && [[ "$ARTIFACT_DATE" < "$CUTOFF_DATE" ]]; then
-    echo "  OLD: $line"
-  fi
-done
+echo "Artifacts matching ${TAG_PATTERN}:"
+flux list artifacts "${ARTIFACT_URL}" --filter-regex="${TAG_PATTERN}"
 ```
 
 ## CI/CD Integration
@@ -294,7 +286,7 @@ jobs:
 
       - name: Count artifacts
         run: |
-          COUNT=$(flux list artifacts oci://ghcr.io/${{ github.repository }}/deploy | wc -l)
+          COUNT=$(flux list artifacts oci://ghcr.io/${{ github.repository }}/deploy | tail -n +2 | wc -l)
           echo "Total artifacts: $COUNT" >> $GITHUB_STEP_SUMMARY
 ```
 
@@ -314,8 +306,8 @@ docker login ghcr.io
 # Verify you have pushed artifacts to this path
 flux push artifact oci://ghcr.io/myorg/app-config:test \
   --path="./test-dir" \
-  --source="local" \
-  --revision="test"
+  --source="https://github.com/myorg/app-config.git" \
+  --revision="main@sha1:0000000000000000000000000000000000000000"
 
 # Then list again
 flux list artifacts oci://ghcr.io/myorg/app-config
