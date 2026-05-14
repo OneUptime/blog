@@ -34,6 +34,8 @@ spec:
         email: flux@example.com
         name: Flux Bot
       messageTemplate: 'Automated image update'
+      messageTemplateValues:
+        cluster: production
       signingKey:
         secretRef:
           name: signing-key
@@ -81,11 +83,11 @@ spec:
         email: flux@example.com
 ```
 
-Both `name` and `email` are required. Without them, the controller cannot create valid Git commits. Use a dedicated bot account email to distinguish automated commits from human ones.
+The `email` field is required, while `name` is optional. Use a dedicated bot account email to distinguish automated commits from human ones.
 
 ## Message Template Configuration
 
-The `messageTemplate` field supports Go template syntax. The template has access to the `.AutomationObject` variable (the namespace/name of the ImageUpdateAutomation) and the `.Changed` variable containing details about what was modified.
+The `messageTemplate` field supports Go template syntax. The template has access to the `.AutomationObject` variable (the namespace/name of the ImageUpdateAutomation), the `.Changed` variable containing details about what was modified, and any custom values provided through `messageTemplateValues`.
 
 A minimal template:
 
@@ -96,7 +98,7 @@ spec:
       messageTemplate: 'Automated image update'
 ```
 
-A detailed template with all available fields:
+A detailed template using the change data:
 
 ```yaml
 spec:
@@ -112,8 +114,19 @@ spec:
 
         Objects updated:
         {{ range $resource, $_ := .Changed.Objects -}}
-        - {{ $resource.Resource.Kind }} {{ $resource.Resource.Namespace }}/{{ $resource.Resource.Name }}
+        - {{ $resource.Kind }} {{ $resource.Namespace }}/{{ $resource.Name }}
         {{ end -}}
+```
+
+Custom values can be supplied to the template:
+
+```yaml
+spec:
+  git:
+    commit:
+      messageTemplate: 'Automated image update for {{ .Values.cluster }}'
+      messageTemplateValues:
+        cluster: production
 ```
 
 ## Signing Key Configuration
@@ -196,6 +209,8 @@ spec:
         {{ range $filename, $_ := .Changed.FileChanges -}}
         - {{ $filename }}
         {{ end -}}
+      messageTemplateValues:
+        cluster: production
       signingKey:
         secretRef:
           name: signing-key
@@ -261,9 +276,9 @@ git log -1 --show-signature
 
 ## Troubleshooting
 
-**Commit author errors**: Both `name` and `email` are mandatory. Check that they are properly indented under `spec.git.commit.author`.
+**Commit author errors**: The `email` field is mandatory and `name` is optional. Check that they are properly indented under `spec.git.commit.author`.
 
-**Template rendering failures**: Invalid Go template syntax causes the controller to skip the commit. Check controller logs for template errors.
+**Template rendering failures**: Invalid Go template syntax causes the ImageUpdateAutomation to report an error and become stalled. Check controller logs for template errors.
 
 **Signing failures**: Ensure the GPG key secret exists in the correct namespace and contains the key in the `git.asc` field. Verify the key is not expired or revoked.
 
