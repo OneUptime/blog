@@ -122,10 +122,12 @@ This is the key step: annotate the image field in your deployment with the polic
 ```yaml
 # apps/myapp/deployment.yaml
 spec:
-  containers:
-    - name: myapp
-      # The comment tells Flux Image Automation which policy governs this field
-      image: ghcr.io/your-org/myapp:1.0.0 # {"$imagepolicy": "flux-system:myapp"}
+  template:
+    spec:
+      containers:
+        - name: myapp
+          # The comment tells Flux Image Automation which policy governs this field
+          image: ghcr.io/your-org/myapp:1.0.0 # {"$imagepolicy": "flux-system:myapp"}
 ```
 
 For Kustomize `kustomization.yaml` images field:
@@ -143,10 +145,11 @@ images:
 # ArgoCD Image Updater used a secret in argocd namespace
 # Flux needs it in flux-system namespace
 
-# Copy the credentials to flux-system
-kubectl get secret ghcr-credentials -n argocd -o yaml | \
-  sed 's/namespace: argocd/namespace: flux-system/' | \
-  kubectl apply -f -
+# Copy the Docker registry credentials to flux-system
+kubectl create secret generic ghcr-credentials \
+  --from-file=.dockerconfigjson=<(kubectl get secret ghcr-credentials -n argocd -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d) \
+  --type=kubernetes.io/dockerconfigjson \
+  --namespace=flux-system
 ```
 
 Or create a new secret:
@@ -182,7 +185,10 @@ git log --oneline -10 origin/main
 kubectl annotate application myapp -n argocd \
   argocd-image-updater.argoproj.io/image-list- \
   argocd-image-updater.argoproj.io/myapp.update-strategy- \
+  argocd-image-updater.argoproj.io/myapp.allow-tags- \
+  argocd-image-updater.argoproj.io/myapp.pull-secret- \
   argocd-image-updater.argoproj.io/write-back-method- \
+  argocd-image-updater.argoproj.io/git-branch- \
   --overwrite
 
 # After full Flux migration, uninstall ArgoCD Image Updater
