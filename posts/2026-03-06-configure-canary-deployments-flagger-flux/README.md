@@ -19,7 +19,7 @@ This guide walks through configuring canary deployments from scratch, including 
 - A running Kubernetes cluster (v1.26 or later)
 - Flux CD installed and bootstrapped
 - Flagger installed (see the Flagger installation guide)
-- NGINX Ingress Controller or a service mesh (Istio, Linkerd)
+- A supported ingress controller or service mesh (the examples below use NGINX Ingress; for new production installs, prefer Gateway API or another actively maintained ingress controller)
 - Prometheus for metrics collection
 - kubectl configured to access your cluster
 
@@ -28,7 +28,7 @@ This guide walks through configuring canary deployments from scratch, including 
 ```mermaid
 graph TD
     A[New Version Deployed] --> B[Flagger Detects Change]
-    B --> C[Create Canary Pod]
+    B --> C[Create Canary Deployment]
     C --> D[Route 10% Traffic to Canary]
     D --> E{Metrics OK?}
     E -->|Yes| F[Increase to 20%]
@@ -151,6 +151,9 @@ metadata:
   name: podinfo
   namespace: podinfo
 spec:
+  # Provider used for traffic routing
+  provider: nginx
+
   # Reference to the target deployment
   targetRef:
     apiVersion: apps/v1
@@ -173,10 +176,6 @@ spec:
   service:
     port: 9898
     targetPort: 9898
-    # Gateway API or Ingress annotations
-    apex:
-      annotations:
-        nginx.ingress.kubernetes.io/canary-by-header: "x-canary"
 
   # Progressive delivery analysis configuration
   analysis:
@@ -229,7 +228,7 @@ spec:
 
 ## Step 3: Create the Ingress for Traffic Shifting
 
-Flagger uses the NGINX Ingress Controller's canary annotations for traffic shifting.
+With the NGINX provider, Flagger creates and manages a canary Ingress with the required NGINX canary annotations for traffic shifting.
 
 ```yaml
 # apps/podinfo/ingress.yaml
@@ -460,7 +459,7 @@ Simulate a failed deployment to verify that rollback works.
 ```bash
 # Deploy a version that returns errors
 # (podinfo supports fault injection via command flags)
-# Update the deployment to inject 50% errors
+# Update the deployment to inject random errors
 ```
 
 ```yaml
@@ -475,7 +474,7 @@ spec:
             - ./podinfo
             - --port=9898
             - --port-metrics=9797
-            # Inject HTTP 500 errors for 50% of requests
+            # Inject random HTTP 500 errors
             - --h2c
             - --random-error
 ```
