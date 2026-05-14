@@ -16,7 +16,7 @@ When a Kustomization specifies a `serviceAccountName`, Flux impersonates that se
 
 ## Step 1: Understand the Default RBAC Setup
 
-The `flux create tenant` command creates a RoleBinding to the `cluster-admin` ClusterRole within the tenant namespace. This gives the tenant full control over all resources in their namespace.
+The `flux create tenant` command creates a RoleBinding to the `cluster-admin` ClusterRole within the tenant namespace. This gives the tenant full control over namespaced resources in that namespace.
 
 ```yaml
 # Default RBAC created by flux create tenant
@@ -36,7 +36,7 @@ subjects:
     namespace: team-alpha
 ```
 
-This is often too permissive for production. A tenant with cluster-admin in their namespace can create any resource type, including Roles and RoleBindings that could escalate their privileges.
+This is often too permissive for production. A tenant with cluster-admin in their namespace can create any namespaced resource type, including Roles and RoleBindings that can grant broad permissions within that namespace.
 
 ## Step 2: Create a Restricted Tenant Role
 
@@ -76,7 +76,7 @@ rules:
     verbs: ["get", "list", "watch"]
 ```
 
-Notice that this role does not include permissions for RBAC resources (`roles`, `rolebindings`, `clusterroles`, `clusterrolebindings`), which prevents privilege escalation.
+Notice that this role does not include permissions for RBAC resources (`roles`, `rolebindings`, `clusterroles`, `clusterrolebindings`), which removes one common privilege-escalation path through RBAC changes.
 
 ## Step 3: Bind the Custom Role
 
@@ -214,7 +214,7 @@ kubectl auth can-i --list \
 
 ## Common Pitfalls
 
-- Granting access to `roles` and `rolebindings` allows privilege escalation. Avoid this unless absolutely necessary.
+- Granting access to `roles` and `rolebindings` can allow privilege escalation. Avoid this unless absolutely necessary.
 - Flux needs `delete` permissions on resources when `prune: true` is set on the Kustomization. Without delete permissions, pruning will fail.
 - If a tenant tries to create a resource type not covered by their RBAC, the Kustomization will show a reconciliation error. Check events with `kubectl describe kustomization -n team-alpha`.
 
