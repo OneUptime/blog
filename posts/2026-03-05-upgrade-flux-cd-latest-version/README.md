@@ -25,11 +25,10 @@ Start by identifying the version of Flux CD currently running in your cluster.
 
 ```bash
 # Check the installed Flux CLI version
+flux version --client
 
+# Check the CLI and server-side controller versions
 flux version
-
-# Check the versions of all Flux controllers running in the cluster
-flux version --server
 ```
 
 The output will show both the CLI version and the server-side controller versions. Note these down so you can verify the upgrade later.
@@ -39,7 +38,7 @@ The output will show both the CLI version and the server-side controller version
 Before upgrading, review the Flux CD release notes for any breaking changes or migration steps required between your current version and the target version.
 
 ```bash
-# List available Flux CLI releases
+# Check your installed Flux CLI version before comparing it with the release notes
 flux version --client
 
 # You can also check releases on GitHub
@@ -86,7 +85,7 @@ Address any issues reported by the pre-check before proceeding. Common issues in
 Export your current Flux configuration as a safety measure.
 
 ```bash
-# Export all Flux resources from the flux-system namespace
+# Export commonly used Flux resources
 kubectl get gitrepositories,kustomizations,helmreleases,helmrepositories,helmcharts -A -o yaml > flux-backup.yaml
 
 # Also back up the flux-system namespace secrets
@@ -119,7 +118,7 @@ If you installed Flux without bootstrap (using `flux install`), upgrade with:
 flux install
 ```
 
-This upgrades all Flux controllers to match the CLI version. The command applies the latest manifests to the `flux-system` namespace.
+This upgrades the installed default Flux controllers to match the CLI version. If you installed extra components, such as the image automation controllers, include the same `--components-extra` values you used during installation. The command applies the latest manifests to the `flux-system` namespace.
 
 ## Step 7: Verify the Upgrade
 
@@ -146,8 +145,8 @@ Ensure that no pods are in a CrashLoopBackOff or Error state.
 Confirm that your workloads are still being reconciled correctly after the upgrade.
 
 ```bash
-# Trigger a reconciliation of all Kustomizations
-flux reconcile kustomization flux-system
+# Trigger a reconciliation of the Flux system Kustomization and its source
+flux reconcile kustomization flux-system --with-source
 
 # Check the status of all GitRepositories
 flux get sources git -A
@@ -172,22 +171,15 @@ If you used bootstrap, revert the commit in your Git repository that updated the
 
 ## Automating Flux Upgrades
 
-You can automate Flux upgrades by using Flux itself to monitor its own releases. Create a Kustomization that references the Flux install manifests.
+You can automate Flux upgrades by using a scheduled CI job to update the Flux component manifests in Git after a new Flux release is available.
 
-The following manifest configures Flux to watch for new versions of itself:
+The following commands regenerate the component manifests so a CI job can open a pull request with the change:
 
-```yaml
-# flux-system/gotk-sync.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: flux-monitoring
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://github.com/fluxcd/flux2
-  ref:
-    semver: ">=2.0.0"
+```bash
+flux install --export > ./clusters/my-cluster/flux-system/gotk-components.yaml
+git add ./clusters/my-cluster/flux-system/gotk-components.yaml
+git commit -m "Update $(flux --version) on my-cluster"
+git push
 ```
 
 However, for production environments, it is recommended to upgrade manually after reviewing release notes and testing in a staging environment first.
