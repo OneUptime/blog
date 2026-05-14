@@ -136,8 +136,8 @@ The HelmRepository fetches the chart index periodically. If the cache is stale, 
 ### Diagnosing the Issue
 
 ```bash
-# Check when the HelmRepository was last updated
-kubectl get helmrepository -n flux-system my-repo -o jsonpath='{.status.conditions[0].lastTransitionTime}'
+# Check when the HelmRepository artifact was last updated
+kubectl get helmrepository -n flux-system my-repo -o jsonpath='{.status.artifact.lastUpdateTime}'
 
 # Check the HelmRepository interval
 kubectl get helmrepository -n flux-system my-repo -o jsonpath='{.spec.interval}'
@@ -236,32 +236,48 @@ spec:
     name: helm-repo-creds
 ```
 
-## Common Cause 5: OCI-Based Helm Repository Not Refreshing
+## Common Cause 5: OCI-Based Helm Chart Source Not Refreshing
 
-If you use an OCI registry for Helm charts, the configuration is different from HTTP-based repositories.
+If you use an OCI registry for Helm charts, the configuration is different from HTTP-based repositories. OCI HelmRepository resources do not fetch an `index.yaml`, do not report an artifact status, and ignore the `interval` field. For improved OCI support, Flux recommends using an OCIRepository source.
 
 ### Diagnosing the Issue
 
 ```bash
-# Check the HelmRepository type
-kubectl get helmrepository -n flux-system my-repo -o jsonpath='{.spec.type}'
+# Check whether the HelmRelease uses an OCIRepository chart reference
+kubectl get helmrelease -n my-namespace my-release -o jsonpath='{.spec.chartRef.kind}'
 ```
 
-### Fix: Configure OCI HelmRepository Properly
+### Fix: Configure OCIRepository Properly
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: my-oci-repo
   namespace: flux-system
 spec:
   interval: 5m
-  # Must set type to oci for OCI registries
-  type: oci
-  url: oci://ghcr.io/myorg/charts
+  url: oci://ghcr.io/myorg/charts/my-chart
+  ref:
+    # Select the latest chart version matching this semver range
+    semver: "1.x"
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   secretRef:
     name: oci-registry-creds
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: my-release
+  namespace: my-namespace
+spec:
+  interval: 5m
+  chartRef:
+    kind: OCIRepository
+    name: my-oci-repo
+    namespace: flux-system
 ---
 apiVersion: v1
 kind: Secret
