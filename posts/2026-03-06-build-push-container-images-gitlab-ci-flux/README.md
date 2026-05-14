@@ -48,83 +48,69 @@ Create a `.gitlab-ci.yml` file in the root of your application repository. This 
 
 stages:
   - build
-  - push
 
 variables:
   # Use the GitLab Container Registry
-  REGISTRY: registry.gitlab.com
-  IMAGE_NAME: $CI_PROJECT_PATH
-  # Tag images with the git commit SHA for traceability
-  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+  # Tag images with the pipeline IID so Flux can select the newest tag numerically
+  IMAGE_TAG: main-$CI_PIPELINE_IID
 
-# Build the container image
-build-image:
+# Build and push the container image in the same job
+build-and-push-image:
   stage: build
-  image: docker:24.0
+  image: docker:24.0.5-cli
   services:
-    - docker:24.0-dind
+    - name: docker:24.0.5-dind
+      variables:
+        HEALTHCHECK_TCP_PORT: "2375"
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    # Authenticate with the GitLab Container Registry
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
   script:
-    # Build the Docker image with commit SHA tag
-    - docker build -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG .
+    # Build the Docker image with a Flux-friendly monotonic tag
+    - docker build -t "$IMAGE_NAME:$IMAGE_TAG" .
     # Also tag with the branch name for convenience
-    - docker tag $REGISTRY/$IMAGE_NAME:$IMAGE_TAG $REGISTRY/$IMAGE_NAME:$CI_COMMIT_REF_SLUG
+    - docker tag "$IMAGE_NAME:$IMAGE_TAG" "$IMAGE_NAME:$CI_COMMIT_REF_SLUG"
+    # Push both tags to the registry
+    - docker push "$IMAGE_NAME:$IMAGE_TAG"
+    - docker push "$IMAGE_NAME:$CI_COMMIT_REF_SLUG"
   rules:
     # Only run on the main branch
     - if: $CI_COMMIT_BRANCH == "main"
-
-# Push the image to the registry
-push-image:
-  stage: push
-  image: docker:24.0
-  services:
-    - docker:24.0-dind
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-  before_script:
-    # Authenticate with the GitLab Container Registry
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $REGISTRY -u $CI_REGISTRY_USER --password-stdin
-  script:
-    # Push both tags to the registry
-    - docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-    - docker push $REGISTRY/$IMAGE_NAME:$CI_COMMIT_REF_SLUG
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
 ```
 
-## Step 2: Use Kaniko for Rootless Builds
+## Step 2: Use Buildah for Daemonless Builds
 
-For better security, you can use Kaniko instead of Docker-in-Docker. Kaniko builds images without requiring a Docker daemon.
+For better security, you can use Buildah instead of Docker-in-Docker. Buildah builds images without requiring a Docker daemon, and it can run in rootless runner setups when the runner is configured for it.
 
 ```yaml
-# .gitlab-ci.yml using Kaniko (recommended for security)
+# .gitlab-ci.yml using Buildah (recommended for daemonless builds)
 
 stages:
   - build
 
 variables:
-  REGISTRY: registry.gitlab.com
-  IMAGE_NAME: $CI_PROJECT_PATH
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+  IMAGE_TAG: main-$CI_PIPELINE_IID
 
 build-and-push:
   stage: build
-  image:
-    # Kaniko executor image
-    name: gcr.io/kaniko-project/executor:v1.19.2-debug
-    entrypoint: [""]
+  image: quay.io/buildah/stable:v1.43.0
+  variables:
+    STORAGE_DRIVER: vfs
+    BUILDAH_FORMAT: docker
+    BUILDAH_ISOLATION: chroot
+  before_script:
+    # Authenticate with the GitLab Container Registry
+    - buildah login -u "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
   script:
-    # Create the Docker config for registry authentication
-    - mkdir -p /kaniko/.docker
-    - |
-      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" \
-        > /kaniko/.docker/config.json
-    # Build and push in a single step
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --destination $REGISTRY/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
-      --destination $REGISTRY/$IMAGE_NAME:latest
+    # Build and push the image
+    - buildah build -t "$IMAGE_NAME:$IMAGE_TAG" -t "$IMAGE_NAME:latest" .
+    - buildah push "$IMAGE_NAME:$IMAGE_TAG"
+    - buildah push "$IMAGE_NAME:latest"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
@@ -177,12 +163,13 @@ metadata:
 spec:
   imageRepositoryRef:
     name: my-app
-  # Use alphabetical ordering to select the latest commit SHA tag
+  # Use numerical ordering to select the highest pipeline IID tag
   filterTags:
-    # Match short commit SHA tags (7+ hex characters)
-    pattern: '^[a-f0-9]{7,40}$'
+    # Match tags such as main-123 and compare only the numeric part
+    pattern: '^main-(?P<iid>[0-9]+)$'
+    extract: '$iid'
   policy:
-    alphabetical:
+    numerical:
       order: asc
 ```
 
@@ -201,7 +188,7 @@ spec:
   policy:
     semver:
       # Select the latest patch version in the 1.x range
-      range: ">=1.0.0"
+      range: ">=1.0.0 <2.0.0"
 ```
 
 ## Step 6: Configure Image Update Automation
@@ -277,7 +264,7 @@ spec:
       containers:
         - name: my-app
           # The marker comment tells Flux which ImagePolicy to use
-          image: registry.gitlab.com/my-org/my-app:abc1234 # {"$imagepolicy": "flux-system:my-app"}
+          image: registry.gitlab.com/my-org/my-app:main-123 # {"$imagepolicy": "flux-system:my-app"}
           ports:
             - containerPort: 8080
           resources:
@@ -313,20 +300,18 @@ generate-version:
 
 build-and-push:
   stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:v1.19.2-debug
-    entrypoint: [""]
+  image: quay.io/buildah/stable:v1.43.0
+  variables:
+    STORAGE_DRIVER: vfs
+    BUILDAH_FORMAT: docker
+    BUILDAH_ISOLATION: chroot
+  before_script:
+    - buildah login -u "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
   script:
     - VERSION=$(cat version.txt)
-    - mkdir -p /kaniko/.docker
-    - |
-      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" \
-        > /kaniko/.docker/config.json
     # Tag with the semantic version
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --destination $CI_REGISTRY_IMAGE:$VERSION
+    - buildah build -t "$CI_REGISTRY_IMAGE:$VERSION" .
+    - buildah push "$CI_REGISTRY_IMAGE:$VERSION"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
