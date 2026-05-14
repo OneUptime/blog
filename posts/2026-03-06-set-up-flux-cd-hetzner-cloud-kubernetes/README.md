@@ -60,18 +60,19 @@ Install k3s on the control plane node and join the workers.
 ```bash
 # On the control plane node, install k3s
 # The --disable local-storage flag is used so we can use Hetzner CSI instead
+# Disable the built-in K3s cloud controller and ServiceLB for Hetzner CCM
 ssh root@<control-plane-ip> \
-  "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--disable local-storage --disable traefik' sh -"
+  "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--disable local-storage --disable traefik --disable-cloud-controller --disable servicelb --kubelet-arg=cloud-provider=external' sh -"
 
 # Get the node token
 ssh root@<control-plane-ip> "cat /var/lib/rancher/k3s/server/node-token"
 
 # On each worker node, join the cluster
 ssh root@<worker-1-ip> \
-  "curl -sfL https://get.k3s.io | K3S_URL=https://<control-plane-ip>:6443 K3S_TOKEN=<node-token> sh -"
+  "curl -sfL https://get.k3s.io | K3S_URL=https://<control-plane-ip>:6443 K3S_TOKEN=<node-token> INSTALL_K3S_EXEC='--kubelet-arg=cloud-provider=external' sh -"
 
 ssh root@<worker-2-ip> \
-  "curl -sfL https://get.k3s.io | K3S_URL=https://<control-plane-ip>:6443 K3S_TOKEN=<node-token> sh -"
+  "curl -sfL https://get.k3s.io | K3S_URL=https://<control-plane-ip>:6443 K3S_TOKEN=<node-token> INSTALL_K3S_EXEC='--kubelet-arg=cloud-provider=external' sh -"
 ```
 
 Copy the kubeconfig to your local machine:
@@ -99,7 +100,7 @@ Generate an API token that the CSI driver and Cloud Controller Manager will use.
 # Store it as a Kubernetes secret
 kubectl create namespace kube-system --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create secret generic hcloud-token \
+kubectl create secret generic hcloud \
   --namespace kube-system \
   --from-literal=token=<your-hcloud-api-token>
 ```
@@ -119,7 +120,8 @@ flux bootstrap github \
   --repository=flux-hetzner-config \
   --branch=main \
   --path=clusters/hetzner-production \
-  --personal
+  --personal \
+  --toleration-keys=node.cloudprovider.kubernetes.io/uninitialized
 ```
 
 Verify the installation:
@@ -170,7 +172,7 @@ spec:
         name: hetzner-csi
         namespace: flux-system
   values:
-    # Use the existing hcloud-token secret
+    # Use the existing hcloud secret
     storageClasses:
       - name: hcloud-volumes
         defaultStorageClass: true
@@ -232,8 +234,8 @@ spec:
         namespace: flux-system
   values:
     networking:
-      # Enable if using Hetzner private networks
-      enabled: true
+      # Set to true only if you also add a network key to the hcloud secret
+      enabled: false
       clusterCIDR: 10.244.0.0/16
 ```
 
@@ -247,6 +249,16 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: database
+
+---
+# apps/postgres/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: database
+stringData:
+  password: <replace-with-a-secure-password>
 
 ---
 # apps/postgres/statefulset.yaml
@@ -336,6 +348,24 @@ spec:
 Deploy an ingress controller that integrates with Hetzner Cloud Load Balancers:
 
 ```yaml
+# infrastructure/ingress-nginx/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+
+---
+# infrastructure/ingress-nginx/helmrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: ingress-nginx
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://kubernetes.github.io/ingress-nginx
+
+---
 # infrastructure/ingress-nginx/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -359,8 +389,8 @@ spec:
           # Hetzner Load Balancer annotations
           load-balancer.hetzner.cloud/name: "flux-lb"
           load-balancer.hetzner.cloud/location: "nbg1"
-          load-balancer.hetzner.cloud/use-private-ip: "true"
-          load-balancer.hetzner.cloud/health-check-interval: "5s"
+          load-balancer.hetzner.cloud/use-private-ip: "false"
+          load-balancer.hetzner.cloud/health-check-interval: "5"
 ```
 
 ## Step 9: Configure Notifications
@@ -369,19 +399,18 @@ Set up Flux notifications to monitor deployments:
 
 ```yaml
 # clusters/hetzner-production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: discord
   namespace: flux-system
 spec:
   type: discord
-  channel: deployments
   secretRef:
     name: discord-webhook-url
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: hetzner-alerts
@@ -430,7 +459,7 @@ kubectl get pods -n kube-system -l app=hcloud-csi
 kubectl logs -n kube-system -l app=hcloud-csi-controller
 
 # Verify the hcloud token secret exists
-kubectl get secret hcloud-token -n kube-system
+kubectl get secret hcloud -n kube-system
 ```
 
 ### Node Not Ready
