@@ -10,14 +10,14 @@ Description: Avoid Mistakes Kubernetes NetworkPolicy basics using Calico as the 
 
 ## Introduction
 
-Common Mistakes to Avoid with Kubernetes NetworkPolicy Basics requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle kubernetes networkpolicy basics while maintaining strict access controls.
+Common Mistakes to Avoid with Kubernetes NetworkPolicy Basics requires careful policy design in Calico to balance security with performance and availability. Kubernetes `NetworkPolicy` uses the `networking.k8s.io/v1` API and can be enforced by Calico; Calico's `projectcalico.org/v3` API provides additional policy features when you need them.
 
 This guide covers avoid mistakes Kubernetes NetworkPolicy Basics in Calico with production-ready configurations.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
-- `calicoctl` and `kubectl` installed
+- `kubectl` installed
 
 ## Core Configuration
 
@@ -61,7 +61,7 @@ spec:
 # Apply Kubernetes NetworkPolicy
 kubectl apply -f basic-network-policy.yaml
 
-# Verify policy is enforced by Calico
+# Verify the NetworkPolicy object was created
 kubectl describe networkpolicy allow-frontend-to-backend -n production
 
 # Test connectivity
