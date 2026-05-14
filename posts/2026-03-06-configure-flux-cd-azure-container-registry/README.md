@@ -19,7 +19,7 @@ This guide covers three authentication methods for connecting Flux CD to ACR: ma
 - An AKS cluster with Flux CD installed
 - Azure CLI (v2.50 or later)
 - Flux CLI (v2.2 or later)
-- An Azure Container Registry (Standard or Premium tier)
+- An Azure Container Registry (Basic, Standard, or Premium tier)
 
 ## Authentication Methods Overview
 
@@ -103,18 +103,38 @@ az identity federated-credential create \
 ### Step 3: Annotate the Flux Service Account
 
 ```yaml
-# File: flux-system/patches/sa-workload-identity.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: source-controller
-  namespace: flux-system
-  annotations:
-    # Link the Kubernetes SA to the Azure managed identity
-    azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    # Enable workload identity injection
-    azure.workload.identity/use: "true"
+# File: flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        annotations:
+          # Link the Kubernetes SA to the Azure managed identity
+          azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
+        labels:
+          azure.workload.identity/use: "true"
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        labels:
+          azure.workload.identity/use: "true"
+      spec:
+        template:
+          metadata:
+            labels:
+              # Enable workload identity injection for the controller pod
+              azure.workload.identity/use: "true"
 ```
 
 ### Step 4: Create an OCI Repository Source with Azure Provider
@@ -320,14 +340,14 @@ spec:
 # Check that the OCI source is reconciling
 flux get sources oci
 
-# Check Helm repository status
+# Check the Helm repository object
 flux get sources helm
 
 # View source-controller logs for any authentication errors
 kubectl logs -n flux-system deployment/source-controller \
   --tail=100 | grep -i "acr\|auth\|error"
 
-# List artifacts in ACR to confirm they exist
+# List repositories in ACR to confirm they exist
 az acr repository list --name $ACR_NAME --output table
 ```
 
