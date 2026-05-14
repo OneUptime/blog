@@ -18,7 +18,7 @@ In this guide, you will learn how to install and configure Flagger with Linkerd 
 
 Before you begin, make sure you have the following:
 
-- A running Kubernetes cluster (v1.25 or later)
+- A running Kubernetes cluster compatible with your Linkerd release
 - kubectl configured to communicate with your cluster
 - Flux CLI installed on your local machine
 - Linkerd CLI installed on your local machine
@@ -31,7 +31,7 @@ Start by bootstrapping Flux into your cluster. This installs the Flux controller
 # Bootstrap Flux with your GitHub repository
 
 flux bootstrap github \
-  --owner=your-org \
+  --owner=your-github-username \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/my-cluster \
@@ -67,15 +67,24 @@ linkerd check
 Create a Flux HelmRepository and HelmRelease to install Flagger with Linkerd as the mesh provider.
 
 ```yaml
+# flagger-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flagger-system
+```
+
+```yaml
 # flagger-helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: flagger
-  namespace: flux-system
+  namespace: flagger-system
 spec:
   interval: 1h
-  url: https://flagger.app
+  type: oci
+  url: oci://ghcr.io/fluxcd/charts
 ```
 
 ```yaml
@@ -84,22 +93,28 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
-  namespace: flux-system
+  namespace: flagger-system
 spec:
   interval: 1h
   releaseName: flagger
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   chart:
     spec:
       chart: flagger
       version: "1.x"
+      interval: 6h
       sourceRef:
         kind: HelmRepository
         name: flagger
-        namespace: flux-system
   # Set the mesh provider to Linkerd
   values:
     meshProvider: linkerd
     metricsServer: http://prometheus.linkerd-viz:9090
+    linkerdAuthPolicy:
+      create: true
 ```
 
 Apply these resources to your Git repository and let Flux reconcile them:
@@ -120,6 +135,11 @@ linkerd viz install | kubectl apply -f -
 
 # Verify the Viz extension is healthy
 linkerd viz check
+
+# Install the Linkerd SMI extension used by Flagger's Linkerd TrafficSplit support
+curl --proto '=https' --tlsv1.2 -sSfL https://linkerd.github.io/linkerd-smi/install | sh
+linkerd smi install | kubectl apply -f -
+linkerd smi check
 ```
 
 Alternatively, you can manage this through Flux with a Kustomization resource.
@@ -295,7 +315,7 @@ Watch the canary progress using kubectl:
 kubectl describe canary podinfo -n demo
 
 # Stream Flagger logs to see analysis decisions
-kubectl logs -f deploy/flagger -n flux-system
+kubectl logs -f deploy/flagger -n flagger-system
 ```
 
 You can also use the Linkerd Viz dashboard to observe traffic splitting:
