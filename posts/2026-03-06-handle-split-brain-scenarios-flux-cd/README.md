@@ -46,7 +46,6 @@ kind: ClusterPolicy
 metadata:
   name: deny-direct-changes
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: deny-non-flux-changes
@@ -71,11 +70,12 @@ spec:
             operator: NotEquals
             value: "system:serviceaccount:flux-system:helm-controller"
       validate:
+        failureAction: Enforce
         message: "Direct cluster changes are not allowed. Use Git to make changes."
         deny: {}
 ```
 
-### Enable Drift Detection in Kustomizations
+### Enable Drift Correction in Kustomizations
 
 ```yaml
 # clusters/base/apps.yaml
@@ -92,9 +92,12 @@ spec:
   path: ./clusters/base/apps
   prune: true
   wait: true
-  # Force corrects any manual drift back to Git state
+  # Flux performs a server-side apply dry-run on each interval
+  # and corrects drift back to the Git state.
+  # force only recreates resources when immutable field changes
+  # cannot be patched, so keep it disabled by default.
   force: false
-  # Detect and report drift
+  # Include key resources in health assessment
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -196,8 +199,15 @@ spec:
                 - -c
                 - |
                   # Generate a hash of current cluster state
-                  STATE_HASH=$(kubectl get deployments,services,configmaps \
-                    -n default -o json | sha256sum | cut -d' ' -f1)
+                  STATE_SNAPSHOT=$(
+                    kubectl get deployments -n default \
+                      -o jsonpath='{range .items[*]}deployment/{.metadata.name} replicas={.spec.replicas} images={range .spec.template.spec.containers[*]}{.image},{end}{"\n"}{end}'
+                    kubectl get services -n default \
+                      -o jsonpath='{range .items[*]}service/{.metadata.name} type={.spec.type} ports={range .spec.ports[*]}{.port}:{.targetPort},{end}{"\n"}{end}'
+                    kubectl get configmaps -n default \
+                      -o jsonpath='{range .items[*]}configmap/{.metadata.name} data={.data}{"\n"}{end}'
+                  )
+                  STATE_HASH=$(printf '%s' "$STATE_SNAPSHOT" | sort | sha256sum | cut -d' ' -f1)
 
                   CLUSTER_NAME=$(kubectl get configmap cluster-config \
                     -n default -o jsonpath='{.data.cluster-name}')
@@ -238,6 +248,16 @@ spec:
                   value: "https://cluster-a.example.com"
                 - name: CLUSTER_B_API
                   value: "https://cluster-b.example.com"
+                - name: CLUSTER_A_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: cluster-api-tokens
+                      key: cluster-a
+                - name: CLUSTER_B_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: cluster-api-tokens
+                      key: cluster-b
                 - name: SLACK_WEBHOOK
                   valueFrom:
                     secretKeyRef:
@@ -250,11 +270,11 @@ spec:
                   # Fetch Flux resource status from both clusters
                   CLUSTER_A_STATUS=$(curl -s -k \
                     "$CLUSTER_A_API/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/apps" \
-                    -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+                    -H "Authorization: Bearer $CLUSTER_A_TOKEN")
 
                   CLUSTER_B_STATUS=$(curl -s -k \
                     "$CLUSTER_B_API/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/apps" \
-                    -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)")
+                    -H "Authorization: Bearer $CLUSTER_B_TOKEN")
 
                   # Compare last applied revision
                   REV_A=$(echo "$CLUSTER_A_STATUS" | grep -o '"lastAppliedRevision":"[^"]*"' | head -1)
@@ -279,7 +299,7 @@ spec:
 
 ```yaml
 # alerts/divergence-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: reconciliation-failure
@@ -326,7 +346,7 @@ echo "Git HEAD: $CURRENT_GIT_REV"
 # Compare with each cluster
 for ctx in cluster-a cluster-b; do
   CLUSTER_REV=$(kubectl --context=$ctx get gitrepository flux-system \
-    -n flux-system -o jsonpath='{.status.artifact.revision}' | cut -d'/' -f2)
+    -n flux-system -o jsonpath='{.status.artifact.revision}' | sed 's/.*@sha1://')
   if [ "$CLUSTER_REV" = "$CURRENT_GIT_REV" ]; then
     echo "$ctx is in sync with Git"
   else
@@ -356,7 +376,7 @@ kubectl --context=$DIVERGED_CLUSTER annotate --overwrite \
   reconcile.fluxcd.io/requestedAt="$(date +%s)"
 
 kubectl --context=$DIVERGED_CLUSTER annotate --overwrite \
-  kustomization flux-system -n flux-system \
+  kustomization apps -n flux-system \
   reconcile.fluxcd.io/requestedAt="$(date +%s)"
 
 # Wait and verify
