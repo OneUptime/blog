@@ -98,7 +98,7 @@ spec:
           simple: ROUND_ROBIN
 ```
 
-Here are the available load balancing algorithms:
+Here are common load balancing algorithms:
 
 ```yaml
 # round-robin-lb.yaml
@@ -115,18 +115,18 @@ spec:
       # ROUND_ROBIN distributes requests evenly
       simple: ROUND_ROBIN
 ---
-# least-conn-lb.yaml
-# DestinationRule with least-connections load balancing
+# least-request-lb.yaml
+# DestinationRule with least-request load balancing
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: service-least-conn
+  name: service-least-request
   namespace: my-app
 spec:
   host: my-service
   trafficPolicy:
     loadBalancer:
-      # LEAST_REQUEST sends to the instance with fewest active requests
+      # LEAST_REQUEST favors instances with fewer outstanding requests
       simple: LEAST_REQUEST
 ---
 # random-lb.yaml
@@ -167,14 +167,15 @@ spec:
         # TCP connection timeout
         connectTimeout: 5s
       http:
-        # Maximum number of pending HTTP requests
+        # Use the mesh default HTTP/2 upgrade policy
         h2UpgradePolicy: DEFAULT
+        # Maximum number of pending HTTP requests
         http1MaxPendingRequests: 100
         # Maximum number of concurrent HTTP requests
         http2MaxRequests: 1000
         # Maximum number of requests per connection
         maxRequestsPerConnection: 10
-        # Maximum number of retries
+        # Maximum number of concurrent retries across all hosts
         maxRetries: 3
     # Outlier detection (the actual circuit breaker)
     outlierDetection:
@@ -232,7 +233,7 @@ spec:
         http2MaxRequests: 2000
         # Maximum requests per connection before closing
         maxRequestsPerConnection: 100
-        # Maximum number of retries across all hosts
+        # Maximum number of concurrent retries across all hosts
         maxRetries: 10
         # Idle timeout for connections
         idleTimeout: 300s
@@ -314,13 +315,7 @@ spec:
             to:
               "us-west-2/us-west-2a/*": 80
               "us-east-1/us-east-1a/*": 20
-        # Define failover order
-        failover:
-          - from: us-east-1
-            to: us-west-2
-          - from: us-west-2
-            to: us-east-1
-    # Outlier detection is required for locality failover
+    # Outlier detection is required for locality distribution to function properly
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
