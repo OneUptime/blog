@@ -24,19 +24,22 @@ Linode Kubernetes Engine (LKE), now part of Akamai Connected Cloud, provides a m
 
 ```bash
 # Create a Kubernetes cluster on LKE
+linode-cli lke versions-list
+
+export KUBERNETES_VERSION=1.32
 
 linode-cli lke cluster-create \
   --label flux-cluster \
   --region us-east \
-  --k8s_version 1.29 \
+  --k8s_version ${KUBERNETES_VERSION} \
   --node_pools '[{
     "type": "g6-standard-2",
     "count": 3
   }]'
 
 # Get the cluster ID from the output
-export CLUSTER_ID=$(linode-cli lke clusters-list \
-  --label flux-cluster --json | jq -r '.[0].id')
+export CLUSTER_ID=$(linode-cli lke clusters-list --json | \
+  jq -r '.[] | select(.label == "flux-cluster") | .id')
 
 # Download kubeconfig
 linode-cli lke kubeconfig-view ${CLUSTER_ID} \
@@ -55,10 +58,22 @@ Linode does not have a native container registry, so you can use Docker Hub, Git
 
 ```bash
 # Create a Kubernetes secret for GHCR authentication
+export GITHUB_TOKEN=<your-github-personal-access-token>
+export GITHUB_USER=<your-github-username>
+
 kubectl create namespace flux-system 2>/dev/null || true
 
 kubectl create secret docker-registry ghcr-credentials \
   --namespace=flux-system \
+  --docker-server=ghcr.io \
+  --docker-username=${GITHUB_USER} \
+  --docker-password=${GITHUB_TOKEN}
+
+# Create the same pull secret in each application namespace that uses it
+kubectl create namespace web-app 2>/dev/null || true
+
+kubectl create secret docker-registry ghcr-credentials \
+  --namespace=web-app \
   --docker-server=ghcr.io \
   --docker-username=${GITHUB_USER} \
   --docker-password=${GITHUB_TOKEN}
@@ -115,19 +130,17 @@ spec:
 ## Step 3: Bootstrap Flux CD
 
 ```bash
-# Export GitHub credentials
-export GITHUB_TOKEN=<your-github-personal-access-token>
-export GITHUB_USER=<your-github-username>
-
 # Run pre-flight checks
 flux check --pre
 
 # Bootstrap Flux on LKE
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=${GITHUB_USER} \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/lke-cluster \
+  --read-write-key \
   --personal
 ```
 
@@ -146,21 +159,12 @@ flux get sources git
 
 ## Step 4: Configure Storage Class for LKE
 
-LKE provides Linode Block Storage as the default storage class. Ensure your Flux-managed applications use it correctly.
+LKE provides Linode Block Storage storage classes, including `linode-block-storage-retain` as the default retain-policy class. Ensure your Flux-managed applications use it correctly.
 
-```yaml
-# infrastructure/storage/storage-class.yaml
-# Linode Block Storage with retain policy for critical data
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: linode-block-storage-retain
-provisioner: linodebs.csi.linode.com
-reclaimPolicy: Retain
-allowVolumeExpansion: true
-parameters:
-  # Linode Block Storage does not require additional parameters
-  type: ext4
+```bash
+# Verify the LKE-provided Linode Block Storage classes
+kubectl get storageclass linode-block-storage-retain
+kubectl get storageclass linode-block-storage
 ```
 
 ## Step 5: Deploy an Application
@@ -366,7 +370,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "56.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -387,8 +391,7 @@ spec:
           endpoints:
             - port: http-prom
               interval: 30s
-    # Use Linode Block Storage for persistence
-    prometheus:
+      # Use Linode Block Storage for persistence
       prometheusSpec:
         storageSpec:
           volumeClaimTemplate:
@@ -407,8 +410,17 @@ spec:
 ## Step 9: Set Up Flux Notifications
 
 ```yaml
+# infrastructure/notifications/slack-webhook-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook
+  namespace: flux-system
+stringData:
+  address: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+---
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -420,7 +432,7 @@ spec:
     name: slack-webhook
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: lke-alerts
