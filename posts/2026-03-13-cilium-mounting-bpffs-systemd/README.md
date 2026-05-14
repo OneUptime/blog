@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
-Description: Learn how to persistently mount the BPF filesystem using systemd for Cilium deployments, ensuring eBPF maps survive node reboots and preventing Cilium initialization failures on fresh nodes.
+Description: Learn how to persistently mount the BPF filesystem using systemd for Cilium deployments, ensuring the bpffs mount is available after node reboots and preventing Cilium initialization failures on fresh nodes.
 
 ---
 
 ## Introduction
 
-Cilium relies on the BPF filesystem (`bpffs`) mounted at `/sys/fs/bpf` to store eBPF maps that persist across Cilium agent restarts. These maps contain the current state of network policies, connection tracking tables, and load balancing rules. If the BPF filesystem is not mounted when Cilium starts, the agent will fail to initialize, leaving nodes with non-functional networking.
+Cilium relies on the BPF filesystem (`bpffs`) mounted at `/sys/fs/bpf` to pin eBPF maps that persist across Cilium agent restarts. These maps contain the current state of network policies, connection tracking tables, and load balancing rules. If the BPF filesystem is not mounted when Cilium starts, Cilium will normally try to mount it automatically; in environments where automatic mounting is disabled or blocked, the agent can fail to initialize correctly or warn that restarts may disrupt networking.
 
-While the Cilium DaemonSet can mount the BPF filesystem via an init container, this approach is fragile: if the init container fails or the mount is lost, subsequent Cilium restarts will fail. The recommended approach is to mount the BPF filesystem persistently via systemd before any container runtime or Kubernetes components start. This ensures the mount point is always available, regardless of Cilium's init container state.
+While Cilium can mount the BPF filesystem itself, this approach can be fragile in environments where automatic mounting is disabled or the host mount is lost. The recommended approach for systemd-managed nodes is to mount the BPF filesystem persistently via systemd. This ensures the mount point is available after node boot, regardless of Cilium's own mount logic.
 
 This guide covers how to configure a persistent BPF filesystem mount using systemd, troubleshoot mount failures, validate correct mounting, and monitor mount health.
 
@@ -113,8 +113,8 @@ systemctl status sys-fs-bpf.mount
 journalctl -u sys-fs-bpf.mount --no-pager
 
 # Check if kernel supports BPF FS
-grep CONFIG_BPF_SYSCALL /boot/config-$(uname -r) 2>/dev/null || \
-  grep CONFIG_BPF_SYSCALL /proc/config.gz 2>/dev/null || \
+grep CONFIG_BPF_FS /boot/config-$(uname -r) 2>/dev/null || \
+  zgrep CONFIG_BPF_FS /proc/config.gz 2>/dev/null || \
   echo "Check /boot/config-$(uname -r)"
 
 # Check Cilium init container logs for BPF mount errors
@@ -126,9 +126,10 @@ Fix common BPF mount errors:
 
 ```bash
 # Issue: Mount fails with "unknown filesystem type 'bpf'"
-# Kernel module needs to be loaded
-modprobe bpf 2>/dev/null || echo "BPF built-in to kernel"
-# Check: CONFIG_BPF=y in kernel config
+# Kernel must include bpffs support
+grep CONFIG_BPF_FS /boot/config-$(uname -r) 2>/dev/null || \
+  zgrep CONFIG_BPF_FS /proc/config.gz 2>/dev/null || \
+  echo "Check that CONFIG_BPF_FS is enabled in the kernel"
 
 # Issue: Permission denied on /sys/fs/bpf
 ls -la /sys/fs/
@@ -155,9 +156,9 @@ Confirm the BPF filesystem is correctly mounted and functional:
 mount | grep /sys/fs/bpf
 # Expected: bpffs on /sys/fs/bpf type bpf (rw,nosuid,nodev,noexec,relatime,mode=700)
 
-# Validate Cilium can create BPF maps
+# Validate Cilium can read BPF maps
 kubectl -n kube-system exec ds/cilium -- \
-  cilium bpf ct list global | head -5
+  cilium-dbg bpf ct list | head -5
 # If this fails, BPF FS is not working
 
 # Check BPF maps exist
@@ -165,8 +166,8 @@ kubectl -n kube-system exec ds/cilium -- ls /sys/fs/bpf/tc/globals/
 
 # Verify across all nodes
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  STATUS=$(kubectl debug node/$node --image=ubuntu -q -- \
-    mountpoint /sys/fs/bpf && echo "MOUNTED" || echo "NOT MOUNTED" 2>/dev/null)
+  STATUS=$(kubectl debug node/$node --image=ubuntu --attach=true -q -- \
+    chroot /host mountpoint /sys/fs/bpf && echo "MOUNTED" || echo "NOT MOUNTED" 2>/dev/null)
   echo "$node: $STATUS"
 done
 ```
@@ -213,4 +214,4 @@ chmod +x /usr/local/bin/check-bpf-mount.sh
 
 ## Conclusion
 
-Persistently mounting the BPF filesystem via systemd is a best practice for production Cilium deployments. The systemd mount unit ensures the BPF filesystem is available before any container runtime or Kubernetes components start, eliminating a common class of Cilium initialization failures. Validate BPF mount presence on all nodes after any infrastructure maintenance and include it in your node provisioning automation to prevent issues on newly added nodes.
+Persistently mounting the BPF filesystem via systemd is a best practice for production Cilium deployments. The systemd mount unit ensures the BPF filesystem is available after node boot, eliminating a common class of Cilium initialization failures in environments where Cilium cannot mount bpffs automatically. Validate BPF mount presence on all nodes after any infrastructure maintenance and include it in your node provisioning automation to prevent issues on newly added nodes.
