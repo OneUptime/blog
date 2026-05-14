@@ -18,6 +18,7 @@ Understanding these mistakes is particularly important because FIPS-related fail
 
 - Calico deployed or being deployed with FIPS mode
 - Basic understanding of FIPS 140-2 requirements
+- Awareness that Calico FIPS mode is deprecated in current Calico documentation and will be removed in a future release
 
 ## Mistake 1: Setting fipsMode Without Enabling OS FIPS
 
@@ -42,23 +43,23 @@ kubectl patch installation default --type=merge \
   -p '{"spec":{"fipsMode":"Enabled"}}'
 ```
 
-## Mistake 2: Using Non-FIPS Calico Images
+## Mistake 2: Overriding the Operator-Selected FIPS Images
 
-Standard Calico images are not compiled with BoringCrypto. Using them with `fipsMode: Enabled` results in a configuration mismatch:
+Calico `fipsMode: Enabled` uses images and features backed by FIPS 140-2 validated cryptographic modules. Problems usually happen when custom registries, image paths, image prefixes, or ImageSets accidentally override the operator-selected FIPS images with the wrong image digests:
 
 ```bash
-# Check if your current images are FIPS-enabled
-kubectl get pods -n calico-system ds/calico-node \
-  -o jsonpath='{.spec.containers[0].image}'
+# Check the calico-node image currently rendered by the operator
+kubectl get ds calico-node -n calico-system \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="calico-node")].image}{"\n"}'
 
-# FIPS images typically have indicators like:
-# - "-fips" suffix in the tag
-# - A specific FIPS digest listed in Calico release notes
-# - Different quay.io/tigera path vs quay.io/calico
+# Check whether the Installation spec and status reflect FIPS mode
+kubectl get installation default \
+  -o jsonpath='{.spec.fipsMode}{"\n"}{.status.imageSet}{"\n"}'
 
-# Verify image is FIPS-compiled by checking Go build info
-kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  /usr/bin/calico-node -version 2>/dev/null | grep -i fips
+# If you use ImageSet digests, compare them with the digests approved
+# for the Calico version you are deploying.
+kubectl get imageset "$(kubectl get installation default \
+  -o jsonpath='{.status.imageSet}')" -o yaml
 ```
 
 ## Mistake 3: Mixed Nodes with Different FIPS States
@@ -69,7 +70,7 @@ In autoscaled clusters, new nodes may launch without FIPS enabled if the launch 
 # Check FIPS status across all nodes - they should all show 1
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   fips=$(kubectl debug node/${node} --image=alpine -it --quiet -- \
-    cat /proc/sys/crypto/fips_enabled 2>/dev/null | tr -d '\r\n')
+    cat /host/proc/sys/crypto/fips_enabled 2>/dev/null | tr -d '\r\n')
   echo "${node}: ${fips}"
 done
 
@@ -79,41 +80,32 @@ done
 
 ## Mistake 4: Not Updating the ImageSet When Upgrading
 
-When upgrading Calico, many operators update the Installation version but forget to update the ImageSet to the FIPS-enabled variant of the new version:
+When upgrading Calico in clusters that use ImageSets, many operators update the Installation version but forget to create an ImageSet with approved image digests for the new version:
 
 ```bash
 # After upgrading Calico version, verify the ImageSet uses FIPS images
 kubectl get imageset calico-v3.28.0 -o yaml
 
-# If ImageSet references non-FIPS images, update it
-# The naming convention for FIPS images may differ per Calico release
-# Always check the release notes for FIPS image digests
+# If ImageSet references unapproved images, create an ImageSet for
+# the new Calico version before upgrading the cluster.
+# Always check the release notes or approved image digest list.
 ```
 
 ## Mistake 5: Forgetting Felix-Typha mTLS
 
-FIPS mode restricts cipher suites for Felix-Typha communication. If Felix-Typha mTLS is not configured, they communicate in plaintext which is a separate compliance gap:
+FIPS mode restricts cipher suites for Calico component communication. Operator-based Calico installations automatically configure mutual TLS for Felix-to-Typha connections, but manifest-based or heavily customized deployments should still verify that the Typha and Felix TLS settings are present:
 
 ```bash
-# Verify Felix-Typha mTLS is enabled
-kubectl get installation default -o jsonpath='{.spec.typhaAffinity}' | jq .
+# Operator installs should have FIPS mode enabled in the Installation
+kubectl get installation default -o jsonpath='{.spec.fipsMode}{"\n"}'
 
-# Check if Felix is connecting to Typha with TLS
-kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  ss -tnp | grep 5473  # Typha port
+# In manifest-based installs, verify the Typha TLS server settings
+kubectl get deployment calico-typha -n calico-system -o yaml | \
+  grep -E 'TYPHA_(CAFILE|SERVERCERTFILE|SERVERKEYFILE|CLIENTCN|CLIENTURISAN)'
 
-# If not using mTLS, configure it:
-kubectl patch installation default --type=merge -p '{
-  "spec": {
-    "typhaAffinity": {
-      "nodeAffinity": {
-        "requiredDuringSchedulingIgnoredDuringExecution": {
-          "nodeSelectorTerms": [{}]
-        }
-      }
-    }
-  }
-}'
+# Verify the Felix client-side Typha TLS settings
+kubectl get ds calico-node -n calico-system -o yaml | \
+  grep -E 'FELIX_TYPHA(CAFILE|CERTFILE|KEYFILE|CN|URISAN)'
 ```
 
 ## Common Mistakes Summary
@@ -138,4 +130,4 @@ mindmap
 
 ## Conclusion
 
-Calico FIPS mode failures typically stem from partial enablement rather than complete misconfiguration. Always enable FIPS at the OS level before setting `fipsMode: Enabled`, use FIPS-specific container images, ensure all nodes in autoscaling groups have FIPS-enabled launch templates, and configure Felix-Typha mTLS alongside FIPS mode. Establish a regular compliance validation cadence to catch drift before it becomes an audit finding.
+Calico FIPS mode failures typically stem from partial enablement rather than complete misconfiguration. Always enable FIPS at the OS level before setting `fipsMode: Enabled`, avoid overriding the operator-selected FIPS images with unapproved image digests, ensure all nodes in autoscaling groups have FIPS-enabled launch templates, and verify Felix-Typha mTLS alongside FIPS mode. Establish a regular compliance validation cadence to catch drift before it becomes an audit finding.
