@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Trace, Dependencies, Debugging, DevOps
 
-Description: A practical guide to using the flux trace command to trace the dependency chain and ownership of Kubernetes resources managed by Flux CD.
+Description: A practical guide to using the flux trace command to trace the ownership and source chain of Kubernetes resources managed by Flux CD.
 
 ---
 
 ## Introduction
 
-In a Flux CD-managed cluster, resources are often part of complex dependency chains. A Deployment might be managed by a Kustomization, which depends on a GitRepository source, which fetches from a specific branch. When something goes wrong, understanding this chain is critical for effective debugging.
+In a Flux CD-managed cluster, resources are often part of complex management chains. A Deployment might be managed by a Kustomization, which references a GitRepository source that fetches from a specific branch. When something goes wrong, understanding this chain is critical for effective debugging.
 
-The `flux trace` command traces the complete ownership and dependency chain for any Kubernetes resource back to its Flux source, giving you full visibility into how a resource is managed.
+The `flux trace` command traces the ownership and source chain for any Kubernetes resource back to its Flux source, giving you visibility into how a resource is managed.
 
 ## Prerequisites
 
@@ -36,15 +36,14 @@ flux check
 The `flux trace` command takes a standard Kubernetes resource (such as a Deployment, Service, or ConfigMap) and traces it back through the Flux resource chain to identify:
 
 1. Which Kustomization or HelmRelease manages the resource
-2. Which source (GitRepository, HelmRepository, etc.) provides the configuration
+2. Which source (GitRepository, OCIRepository, HelmRepository, etc.) provides the configuration
 3. The current status of each resource in the chain
 
 ```mermaid
 graph BT
     D[Deployment: my-app] -->|managed by| K[Kustomization: apps]
-    K -->|depends on| GR[GitRepository: my-repo]
+    K -->|sourceRef| GR[GitRepository: my-repo]
     GR -->|fetches from| G[Git: github.com/org/repo]
-    K -->|depends on| KI[Kustomization: infrastructure]
 ```
 
 ## Basic Syntax
@@ -130,9 +129,15 @@ Status:         Managed by Flux
 ---
 HelmRelease:    nginx-ingress
 Namespace:      flux-system
+Revision:       4.8.3
+Status:         Last reconciled at 2026-03-06T09:45:00Z
+---
+HelmChart:      flux-system-nginx-ingress
+Namespace:      flux-system
 Chart:          nginx-ingress
 Version:        4.8.3
-Status:         Last reconciled at 2026-03-06T09:45:00Z
+Revision:       4.8.3
+Status:         Last reconciled at 2026-03-06T09:44:30Z
 ---
 HelmRepository: bitnami
 Namespace:      flux-system
@@ -146,10 +151,10 @@ When multiple resource types share a name, specify the API version:
 
 ```bash
 # Trace with an explicit API version
-flux trace deployment my-app --namespace default --api-version apps/v1
+flux trace my-app --namespace default --kind Deployment --api-version apps/v1
 
 # Trace a custom resource
-flux trace certificate my-cert --namespace default --api-version cert-manager.io/v1
+flux trace my-cert --namespace default --kind Certificate --api-version cert-manager.io/v1
 ```
 
 ## Practical Debugging Scenarios
@@ -166,7 +171,7 @@ flux trace deployment my-app --namespace production
 # (compare the revision in the trace output with the latest Git commit)
 
 # Step 3: If the revision is outdated, check the Git source
-flux get source git my-repo
+flux get sources git
 
 # Step 4: Force reconciliation if needed
 flux reconcile source git my-repo
@@ -187,7 +192,7 @@ flux trace configmap my-app-config --namespace production
 # Navigate to the path shown in the trace output
 
 # Step 4: Verify the revision matches what you expect
-flux get source git my-repo
+flux get sources git
 ```
 
 ### Scenario 3: Understanding Multi-Tier Dependencies
@@ -198,10 +203,10 @@ In complex setups with infrastructure and application layers:
 # Trace an application deployment
 flux trace deployment my-app --namespace production
 
-# The output will show the full chain:
+# The output will show the management chain:
 # Deployment -> Kustomization (apps) -> GitRepository
-# And if the Kustomization has dependencies:
-flux get kustomization apps
+# To inspect Kustomization dependencies separately:
+flux get kustomizations
 ```
 
 Check dependency status:
@@ -210,8 +215,8 @@ Check dependency status:
 # See what the apps kustomization depends on
 kubectl get kustomization apps -n flux-system -o jsonpath='{.spec.dependsOn}'
 
-# Trace resources in the dependency chain
-flux get kustomization infrastructure
+# Check Kustomizations in the dependency chain
+flux get kustomizations
 flux events --for Kustomization/infrastructure
 ```
 
@@ -229,7 +234,7 @@ flux trace deployment my-app --namespace production
 
 ## Tracing Unmanaged Resources
 
-If you trace a resource that Flux does not manage, the output will indicate this:
+If you trace a resource that Flux does not manage, the command reports that the object is not managed by Flux:
 
 ```bash
 # Trace a resource not managed by Flux
@@ -238,17 +243,15 @@ flux trace deployment manual-deployment --namespace default
 
 Output:
 
-```yaml
-Object:        Deployment/manual-deployment
-Namespace:     default
-Status:        Not managed by Flux
+```text
+failed to trace Deployment/manual-deployment in namespace default: object not managed by Flux
 ```
 
 This is useful for verifying whether a resource is under GitOps control.
 
-## Building a Dependency Map
+## Building an Ownership Map
 
-Use `flux trace` across multiple resources to build a dependency map:
+Use `flux trace` across multiple resources to build an ownership map:
 
 ```bash
 #!/bin/bash
@@ -280,10 +283,10 @@ flux trace deployment my-app --namespace production
 # Output shows: Kustomization/apps using GitRepository/my-repo
 
 # Step 2: Check the Kustomization status
-flux get kustomization apps
+flux get kustomizations
 
 # Step 3: Check the source status
-flux get source git my-repo
+flux get sources git
 
 # Step 4: View events for the managing Kustomization
 flux events --for Kustomization/apps
@@ -297,8 +300,8 @@ flux logs --kind=Kustomization --name=apps --level=error
 | Flag | Description |
 |------|-------------|
 | `--namespace` | Namespace of the resource being traced |
-| `--api-version` | API version of the resource (e.g., apps/v1) |
-| `--kind` | Kind of the resource (alternative to positional argument) |
+| `--api-version` | API version of the resource (e.g., apps/v1); use together with `--kind` |
+| `--kind` | Kind of the resource; use together with `--api-version` |
 
 ## Troubleshooting
 
@@ -342,9 +345,9 @@ flux get sources all
 
 1. **Use trace as a first debugging step** - Understanding the ownership chain helps focus your investigation
 2. **Verify ownership after changes** - After restructuring Kustomizations, trace resources to confirm correct ownership
-3. **Map critical paths** - Document the dependency chains for your most important applications
+3. **Map critical paths** - Document the management chains for your most important applications
 4. **Compare revisions** - Use the revision information in trace output to verify resources are up to date
-5. **Automate ownership audits** - Script traces across all resources to maintain an up-to-date dependency map
+5. **Automate ownership audits** - Script traces across all resources to maintain an up-to-date ownership map
 
 ## Summary
 
