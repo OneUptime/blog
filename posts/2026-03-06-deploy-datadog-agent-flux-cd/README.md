@@ -140,7 +140,6 @@ spec:
 
       # Enable process monitoring
       processAgent:
-        enabled: true
         processCollection: true
 
       # Enable network performance monitoring
@@ -151,7 +150,7 @@ spec:
       containerExclude: "image:gcr.io/datadoghq/agent"
 
       # Kubernetes integration settings
-      kubeStateMetricsEnabled: true
+      kubeStateMetricsEnabled: false
       kubeStateMetricsCore:
         enabled: true
 
@@ -346,10 +345,10 @@ flux get helmreleases -n datadog
 kubectl get pods -n datadog -o wide
 
 # Check agent status on a specific node
-kubectl exec -n datadog $(kubectl get pods -n datadog -l app=datadog -o jsonpath='{.items[0].metadata.name}') -- agent status
+kubectl exec -n datadog $(kubectl get pods -n datadog -l app=datadog-agent -o jsonpath='{.items[0].metadata.name}') -c agent -- agent status
 
 # Verify cluster agent is running
-kubectl get pods -n datadog -l app=datadog-cluster-agent
+kubectl get pods -n datadog -l app=datadog-agent-cluster-agent
 ```
 
 ## Troubleshooting
@@ -358,7 +357,7 @@ kubectl get pods -n datadog -l app=datadog-cluster-agent
 - **No logs appearing**: Ensure `logs.enabled` and `containerCollectAll` are both set to true. Check agent logs for permission errors on `/var/log/pods`.
 - **APM traces missing**: Verify that application pods have the correct `DD_AGENT_HOST` environment variable pointing to the node IP via the downward API.
 - **High memory usage**: Adjust the agent memory limits or exclude high-volume containers from log collection using `containerExclude`.
-- **Network monitoring not working**: Network Performance Monitoring requires kernel headers. Check if your node OS supports eBPF.
+- **Network monitoring not working**: Cloud Network Monitoring uses eBPF. Check that your node OS and kernel version are supported and that you are using a Datadog Helm chart version that supports `datadog.networkMonitoring.enabled`.
 
 ## Conclusion
 
