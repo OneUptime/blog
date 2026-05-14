@@ -18,7 +18,7 @@ Flux tracks which resources it manages by applying labels and annotations to eve
 
 ## Enabling Garbage Collection
 
-Garbage collection is controlled by the `spec.prune` field. It is not enabled by default -- you must explicitly set it to `true`.
+Garbage collection is controlled by the required `spec.prune` field. It is not enabled unless you explicitly set it to `true`.
 
 ```yaml
 # Kustomization with garbage collection enabled
@@ -77,7 +77,7 @@ flowchart TD
 
 ## What Happens When prune Is false
 
-If `spec.prune` is set to `false` (or omitted, since `false` is the default), Flux will never delete resources from the cluster, even if they are removed from Git.
+If `spec.prune` is set to `false`, Flux will not delete resources from the cluster when they are removed from Git.
 
 ```yaml
 # Kustomization without garbage collection -- orphaned resources will remain
@@ -139,7 +139,7 @@ With the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation, Flux will ski
 
 ## Garbage Collection and Kustomization Deletion
 
-When you delete a Kustomization resource itself (not just the manifests it manages), Flux's behavior depends on the `prune` setting.
+When you delete a Kustomization resource itself (not just the manifests it manages), Flux's default behavior mirrors the `prune` setting. You can override this with `spec.deletionPolicy`.
 
 ```bash
 # If prune: true, deleting the Kustomization deletes all managed resources
@@ -147,15 +147,15 @@ kubectl delete kustomization app-frontend -n flux-system
 # This will delete ALL resources that app-frontend was managing
 
 # To delete the Kustomization without deleting managed resources,
-# first set prune to false, then delete
+# first set deletionPolicy to Orphan, then delete
 kubectl patch kustomization app-frontend -n flux-system \
-  --type=merge -p '{"spec":{"prune":false}}'
+  --type=merge -p '{"spec":{"deletionPolicy":"Orphan"}}'
 # Wait for reconciliation
 kubectl delete kustomization app-frontend -n flux-system
 # Managed resources are now orphaned but still running
 ```
 
-This is a critical distinction. If you are decommissioning a Kustomization but want to keep the workloads running (for example, during a migration to a new Kustomization structure), disable pruning first.
+This is a critical distinction. If you are decommissioning a Kustomization but want to keep the workloads running (for example, during a migration to a new Kustomization structure), set `deletionPolicy: Orphan` first.
 
 ## Garbage Collection with dependsOn
 
