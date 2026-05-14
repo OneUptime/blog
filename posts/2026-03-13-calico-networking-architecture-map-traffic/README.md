@@ -10,7 +10,7 @@ Description: A walkthrough of how Calico's architectural components - Felix, BIR
 
 ## Introduction
 
-Understanding Calico's architecture in the abstract is useful - but seeing how Felix, BIRD, Typha, and the CNI plugin interact for a specific traffic event makes the architecture concrete. This post traces three real events through the architecture: a new pod being created, a network policy being applied, and a cross-node packet being routed.
+Understanding Calico's architecture in the abstract is useful - but seeing how Felix, BIRD, Typha, and the CNI plugin interact for a specific traffic event makes the architecture concrete. This post traces four real events through the architecture: a new pod being created, a network policy being applied, a cross-node packet being routed, and a mass policy update being fanned out.
 
 ## Prerequisites
 
@@ -19,24 +19,30 @@ Understanding Calico's architecture in the abstract is useful - but seeing how F
 
 ## Event 1: New Pod Creation
 
-This is the most complete architecture walkthrough - it involves every component:
+This is the most complete architecture walkthrough - it involves several core components:
 
 ```mermaid
 sequenceDiagram
     participant Kubelet
     participant CNI as CNI Plugin
     participant IPAM
+    participant Datastore
+    participant Typha
     participant Felix
     participant Dataplane as iptables/eBPF
+    participant BIRD
 
     Kubelet->>CNI: ADD call (new pod)
     CNI->>IPAM: Allocate IP from IPPool
     IPAM-->>CNI: IP allocated: 10.0.1.5
     CNI->>CNI: Create veth pair\nConfigure pod network namespace
-    CNI->>Felix: Notify: new endpoint (via socket)
+    CNI->>Datastore: Record/update pod endpoint state
+    Datastore->>Typha: Endpoint update (if Typha enabled)
+    Typha->>Felix: Fan out endpoint update
     Felix->>Dataplane: Add host route: 10.0.1.5 dev cali<hash>
     Felix->>Dataplane: Program policy rules for new endpoint
-    Felix->>Dataplane: Export route to BIRD (BGP mode)
+    Dataplane-->>BIRD: Local route visible in kernel FIB (BGP mode)
+    BIRD->>BIRD: Advertise route to BGP peers
 ```
 
 **Verifiable artifacts after pod creation**:
@@ -68,7 +74,7 @@ graph TD
     Felix2 --> IPTB[iptables update\nor eBPF map update]
 ```
 
-The propagation chain: kubectl → etcd → Typha → Felix → dataplane. Each arrow introduces a small latency. Total policy propagation time in a healthy cluster is typically less than 500ms.
+The propagation chain: kubectl → Kubernetes API/etcd → Typha → Felix → dataplane. Each arrow introduces a small latency. Total policy propagation time depends on cluster size, API server load, Typha/Felix health, and dataplane update cost.
 
 **Observe the propagation**:
 ```bash
@@ -90,12 +96,12 @@ For a packet traveling from a pod on Node 1 to a pod on Node 2 in BGP mode:
 graph LR
     Pod1[Pod A\n10.0.1.5\nNode 1] -->|Packet: dst 10.0.2.5| VethA[veth-pod-a]
     VethA --> Felix1[Felix/iptables\nPolicy check]
-    Felix1 -->|Route lookup: 10.0.2.0/26 via Node2| BGPRoute[BGP-learned route\nProgrammed by Felix from BIRD]
+    Felix1 -->|Route lookup: 10.0.2.0/26 via Node2| BGPRoute[BGP-learned route\ninstalled from BIRD]
     BGPRoute --> Node2[Node 2\n10.0.0.2]
     Node2 -->|Route: 10.0.2.5 dev cali<hash>| Pod2[Pod B\n10.0.2.5]
 ```
 
-The BGP route on Node 1 was learned from BIRD, which received it from Node 2's BIRD (or a route reflector). Felix programmed the route into the Linux routing table when BIRD received it.
+The BGP route on Node 1 was learned by BIRD, which received it from Node 2's BIRD (or a route reflector), and installed it into the Linux routing table. Felix programs local workload routes into the kernel FIB; BIRD notices and distributes those routes to BGP peers.
 
 **Verify the BGP route chain**:
 ```bash
@@ -121,7 +127,7 @@ graph LR
     Typha --> FN[Felix Node N\nAll receive same update]
 ```
 
-Without Typha, the single etcd write would generate N simultaneous API server watch events (one per Felix). With Typha, it generates one event that Typha fans out.
+Without Typha, each Felix instance would maintain its own watch and receive the update independently from the datastore/API server. With Typha, Typha maintains the datastore watch, caches and deduplicates updates, and fans them out to its Felix clients.
 
 ## Best Practices
 
