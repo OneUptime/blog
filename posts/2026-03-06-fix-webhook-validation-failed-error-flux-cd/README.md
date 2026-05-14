@@ -33,7 +33,7 @@ Status:
     - Type: Ready
       Status: "False"
       Reason: ReconciliationFailed
-      Message: 'Internal error occurred: failed calling webhook "validate.cert-manager.io":
+      Message: 'Internal error occurred: failed calling webhook "webhook.cert-manager.io":
         failed to call webhook: Post "https://cert-manager-webhook.cert-manager.svc:443/validate":
         dial tcp 10.96.xxx.xxx:443: connect: connection refused'
 ```
@@ -122,17 +122,20 @@ Webhooks communicate over TLS. If the TLS certificate is expired, not yet issued
 kubectl get validatingwebhookconfiguration cert-manager-webhook \
   -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d | openssl x509 -text -noout
 
-# Check if cert-manager has issued the webhook certificate
-kubectl get certificates -n cert-manager
+# Check the cert-manager webhook CA secret
+kubectl get secret cert-manager-webhook-ca -n cert-manager
 
-# Check certificate status
-kubectl describe certificate cert-manager-webhook-ca -n cert-manager
+# Check the CA secret details
+kubectl describe secret cert-manager-webhook-ca -n cert-manager
 ```
 
 ### Fix: Restart the Webhook to Regenerate Certificates
 
 ```bash
-# Restart the webhook deployment to regenerate its TLS certificate
+# Remove the dynamic serving CA secret so the webhook can recreate it
+kubectl delete secret cert-manager-webhook-ca -n cert-manager
+
+# Restart the webhook deployment
 kubectl rollout restart deployment cert-manager-webhook -n cert-manager
 
 # Wait for the rollout to complete
@@ -144,7 +147,7 @@ kubectl rollout status deployment cert-manager-webhook -n cert-manager
 If the CA bundle in the webhook configuration is stale:
 
 ```bash
-# Get the current CA from the webhook service secret
+# Get the current CA from the webhook CA secret
 CA_BUNDLE=$(kubectl get secret cert-manager-webhook-ca \
   -n cert-manager \
   -o jsonpath='{.data.ca\.crt}')
@@ -251,7 +254,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-limits
@@ -266,6 +268,7 @@ spec:
               namespaces:
                 - flux-system
       validate:
+        failureAction: Enforce
         message: "Resource limits are required"
         pattern:
           spec:
@@ -280,7 +283,7 @@ spec:
 
 ## Cause 4: Webhook Timeout
 
-Webhooks have a default timeout (usually 10 or 30 seconds). If the webhook service is slow to respond, requests time out.
+Admission webhooks default to a 10 second timeout, and Kubernetes allows `timeoutSeconds` values from 1 to 30 seconds. If the webhook service is slow to respond, requests time out.
 
 ### Fix: Increase Webhook Timeout
 
@@ -291,7 +294,7 @@ kubectl get validatingwebhookconfiguration <name> -o jsonpath='{.webhooks[0].tim
 # Increase the timeout
 kubectl patch validatingwebhookconfiguration <name> \
   --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
+  -p='[{"op": "add", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
 ```
 
 ### Fix: Set Failure Policy to Ignore
@@ -306,7 +309,7 @@ kubectl get validatingwebhookconfiguration <name> \
 # Change to Ignore (use with caution)
 kubectl patch validatingwebhookconfiguration <name> \
   --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
+  -p='[{"op": "add", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
 ```
 
 ## Cause 5: Webhook Blocks During Cluster Restoration
