@@ -12,7 +12,7 @@ Description: Learn how to configure Cilium's CNI plugin settings, understand the
 
 The Container Network Interface (CNI) plugin configuration is the low-level interface between Kubernetes and Cilium's networking implementation. When a pod is created, the kubelet invokes the CNI plugin specified in `/etc/cni/net.d/` with instructions to configure the pod's network namespace. Cilium installs its own CNI configuration file that tells the kubelet to invoke the Cilium CNI binary (`/opt/cni/bin/cilium-cni`) for all pod networking operations.
 
-Cilium's CNI configuration is distinct from the higher-level Cilium configuration in the ConfigMap. The CNI config is written to each node during Cilium installation and specifies parameters like the CNI binary path, chaining mode (for use alongside other CNI plugins), and configuration file name. Incorrect CNI configuration is often the cause of pods getting stuck in `ContainerCreating` state with "failed to configure netns" errors.
+Cilium's CNI configuration is distinct from the higher-level Cilium configuration in the ConfigMap. The CNI config is written to each node during Cilium installation and specifies parameters like the plugin type, log file, and chaining plugin list (for use alongside other CNI plugins). Incorrect CNI configuration is often the cause of pods getting stuck in `ContainerCreating` state with "failed to configure netns" errors.
 
 This guide covers how to configure Cilium's CNI plugin, troubleshoot CNI configuration issues, validate that the CNI is correctly installed on all nodes, and monitor for CNI-level failures.
 
@@ -31,19 +31,23 @@ Understand and configure Cilium's CNI installation:
 # Check Cilium CNI configuration on a node
 
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conf
+  cat /host/etc/cni/net.d/05-cilium.conflist
 
 # Typical Cilium CNI configuration:
-cat /etc/cni/net.d/05-cilium.conf
+cat /etc/cni/net.d/05-cilium.conflist
 ```
 
 ```json
 {
   "cniVersion": "0.3.1",
   "name": "cilium",
-  "type": "cilium-cni",
-  "enable-debug": false,
-  "log-file": "/var/run/cilium/cilium-cni.log"
+  "plugins": [
+    {
+      "type": "cilium-cni",
+      "enable-debug": false,
+      "log-file": "/var/run/cilium/cilium-cni.log"
+    }
+  ]
 }
 ```
 
@@ -77,12 +81,12 @@ Verify CNI binary is installed on nodes:
 ```bash
 # Check CNI binary exists
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls -la /opt/cni/bin/cilium-cni
+  ls -la /host/opt/cni/bin/cilium-cni
 
 # Check CNI config file name takes priority (lower number = higher priority)
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  ls /etc/cni/net.d/ | sort
-# Cilium should be first (05-cilium.conf before 10-*)
+  ls /host/etc/cni/net.d/ | sort
+# Cilium should be first (05-cilium.conflist before 10-*)
 ```
 
 ## Troubleshoot CNI Configuration
@@ -98,19 +102,19 @@ kubectl describe pod <stuck-pod>
 # Check CNI binary is present on the node
 NODE=$(kubectl get pod <stuck-pod> -o jsonpath='{.spec.nodeName}')
 kubectl debug node/$NODE -it --image=ubuntu -- \
-  ls /opt/cni/bin/cilium-cni
+  ls /host/opt/cni/bin/cilium-cni
 
 # Check CNI configuration file
 kubectl debug node/$NODE -it --image=ubuntu -- \
-  cat /etc/cni/net.d/05-cilium.conf
+  cat /host/etc/cni/net.d/05-cilium.conflist
 
 # Check Cilium CNI logs
 kubectl debug node/$NODE -it --image=ubuntu -- \
-  cat /var/run/cilium/cilium-cni.log | tail -50
+  cat /host/var/run/cilium/cilium-cni.log | tail -50
 
 # Check if Cilium socket is accessible (CNI binary communicates via socket)
 kubectl debug node/$NODE -it --image=ubuntu -- \
-  ls /var/run/cilium/cilium.sock
+  ls /host/var/run/cilium/cilium.sock
 ```
 
 Fix common CNI errors:
@@ -121,16 +125,16 @@ Fix common CNI errors:
 kubectl -n kube-system get pods -l k8s-app=cilium --field-selector spec.nodeName=$NODE
 
 # Issue: Multiple CNI configs (conflict)
-kubectl debug node/$NODE -it --image=ubuntu -- ls /etc/cni/net.d/
+kubectl debug node/$NODE -it --image=ubuntu -- ls /host/etc/cni/net.d/
 # Remove non-Cilium configs or use exclusive=true
 
 # Issue: CNI config invalid JSON
-kubectl debug node/$NODE -it --image=ubuntu -- \
-  python3 -c "import json; json.load(open('/etc/cni/net.d/05-cilium.conf'))"
+kubectl debug node/$NODE -it --image=python:3.12-slim -- \
+  python3 -m json.tool /host/etc/cni/net.d/05-cilium.conflist >/dev/null
 
 # Issue: Wrong permissions on CNI binary
 kubectl debug node/$NODE -it --image=ubuntu -- \
-  stat /opt/cni/bin/cilium-cni
+  stat /host/opt/cni/bin/cilium-cni
 # Should be executable: -rwxr-xr-x
 ```
 
@@ -142,7 +146,7 @@ Confirm CNI is correctly installed and functional:
 # Validate CNI binary is executable on all nodes
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   STATUS=$(kubectl debug node/$node --image=ubuntu -q -- \
-    test -x /opt/cni/bin/cilium-cni && echo "OK" || echo "MISSING" 2>/dev/null)
+    test -x /host/opt/cni/bin/cilium-cni && echo "OK" || echo "MISSING" 2>/dev/null)
   echo "$node: $STATUS"
 done
 
@@ -154,7 +158,7 @@ kubectl delete pod cni-test
 
 # Validate CNI version compatibility
 kubectl debug node/<node-name> -it --image=ubuntu -- \
-  /opt/cni/bin/cilium-cni --version
+  sh -c 'CNI_COMMAND=VERSION /host/opt/cni/bin/cilium-cni'
 ```
 
 ## Monitor CNI Health
@@ -173,7 +177,7 @@ graph TD
 Monitor CNI operations:
 
 ```bash
-# Watch CNI logs for errors on all nodes
+# Watch CNI logs for errors from one Cilium pod
 kubectl -n kube-system exec ds/cilium -- \
   tail -f /var/run/cilium/cilium-cni.log | grep -i error
 
