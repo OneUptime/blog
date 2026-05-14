@@ -42,9 +42,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
@@ -74,9 +75,7 @@ spec:
         ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
         use-forwarded-headers: "true"
       # Pod disruption budget for availability
-      podDisruptionBudget:
-        enabled: true
-        minAvailable: 1
+      minAvailable: 1
 ```
 
 ## Basic Ingress Resource
@@ -90,9 +89,6 @@ metadata:
   namespace: production
   labels:
     app.kubernetes.io/managed-by: flux
-  annotations:
-    # Specify the ingress controller class
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
@@ -113,18 +109,31 @@ spec:
 First, install cert-manager with Flux:
 
 ```yaml
+# infrastructure/cert-manager/helmrepo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+```
+
+```yaml
 # infrastructure/cert-manager/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
-      version: "1.x"
+      version: "v1.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -132,7 +141,8 @@ spec:
   install:
     createNamespace: true
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     replicaCount: 2
 ```
 
@@ -339,9 +349,12 @@ patches:
         path: /spec/rules/0/host
         # Production domain
         value: app.example.com
-      - op: replace
-        path: /spec/tls/0/hosts/0
-        value: app.example.com
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts:
+              - app.example.com
+            secretName: app-example-com-tls
 ```
 
 ```yaml
@@ -359,9 +372,12 @@ patches:
         path: /spec/rules/0/host
         # Staging domain
         value: staging.app.example.com
-      - op: replace
-        path: /spec/tls/0/hosts/0
-        value: staging.app.example.com
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts:
+              - staging.app.example.com
+            secretName: staging-app-example-com-tls
 ```
 
 ## Flux Kustomization for Ingress Resources
