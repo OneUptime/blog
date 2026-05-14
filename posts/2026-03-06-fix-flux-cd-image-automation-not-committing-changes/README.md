@@ -71,7 +71,7 @@ kubectl get imagepolicies -A
 kubectl get imagepolicy my-app -n flux-system -o yaml
 ```
 
-Look for the `status.latestImage` field. If it is empty, the policy cannot resolve a tag.
+Look for the `status.latestRef` field. If it is empty, the policy cannot resolve a tag.
 
 ```yaml
 # Example ImagePolicy using semver
@@ -94,7 +94,7 @@ Common issues with ImagePolicy:
 ```bash
 # Verify the policy resolves correctly
 kubectl get imagepolicy my-app -n flux-system \
-  -o jsonpath='{.status.latestImage}'
+  -o jsonpath='{.status.latestRef.image}:{.status.latestRef.tag}'
 
 # If empty, check events for errors
 kubectl events -n flux-system --for imagepolicy/my-app
@@ -122,7 +122,7 @@ spec:
         # Branch to check out for reading current manifests
         branch: main
     commit:
-      # Author information is REQUIRED
+      # Author email is REQUIRED; name is optional
       author:
         email: fluxcdbot@example.com
         name: fluxcdbot
@@ -154,7 +154,7 @@ spec:
 
 ### Common Mistake 1: Missing Git Author
 
-The `git.commit.author` field is required. Without it, the controller cannot create commits.
+The `git.commit.author` field is required, and `git.commit.author.email` must be set. Without it, the controller cannot create commits.
 
 ```bash
 # Check if author is configured
@@ -222,15 +222,17 @@ containers:
 
 ## Step 5: Check Git Repository Write Access
 
-The source controller needs write access to push commits. Read-only deploy keys are a common blocker.
+The Git credentials referenced by the GitRepository need write access because the image-automation-controller uses them to push commits. Read-only deploy keys are a common blocker.
 
 ```bash
 # Check the GitRepository source and its secret
 kubectl get gitrepository flux-system -n flux-system -o yaml
 
-# Verify the secret exists and has the right keys
-kubectl get secret flux-system -n flux-system -o jsonpath='{.data}' | \
-  python3 -c "import sys,json; print(list(json.loads(sys.stdin.read()).keys()))"
+# Verify the referenced secret exists and has the right keys
+SECRET_NAME=$(kubectl get gitrepository flux-system -n flux-system \
+  -o jsonpath='{.spec.secretRef.name}')
+kubectl get secret "$SECRET_NAME" -n flux-system -o json | \
+  python3 -c "import sys,json; print(list(json.load(sys.stdin).get('data', {}).keys()))"
 ```
 
 If using SSH deploy keys, ensure the key has **write** access:
