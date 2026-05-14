@@ -97,10 +97,10 @@ spec:
     - name: flux-reconciliation-duration
       interval: 30s
       rules:
-        # Average duration by kind
+        # Average duration by resource
         - record: flux:reconcile:avg_duration_seconds
           expr: |
-            avg by (kind) (
+            (
               rate(gotk_reconcile_duration_seconds_sum[5m])
               /
               rate(gotk_reconcile_duration_seconds_count[5m])
@@ -124,22 +124,22 @@ spec:
               )
             )
 
-        # P99 duration by kind
+        # P99 duration by kind and namespace
         - record: flux:reconcile:p99_duration_seconds
           expr: |
             histogram_quantile(0.99,
-              sum by (le, kind) (
+              sum by (le, kind, namespace) (
                 rate(gotk_reconcile_duration_seconds_bucket[5m])
               )
             )
 
-        # Maximum observed duration (approximation using the highest bucket)
+        # Estimated maximum observed duration
         - record: flux:reconcile:max_duration_seconds
           expr: |
-            max by (kind, namespace) (
-              rate(gotk_reconcile_duration_seconds_sum[5m])
-              /
-              rate(gotk_reconcile_duration_seconds_count[5m])
+            histogram_quantile(1,
+              sum by (le, kind, namespace) (
+                rate(gotk_reconcile_duration_seconds_bucket[5m])
+              )
             )
 ```
 
@@ -167,7 +167,7 @@ spec:
             severity: warning
           annotations:
             summary: "Kustomization reconciliation is slow"
-            description: "Average Kustomization reconciliation duration is {{ $value | humanizeDuration }}."
+            description: "Average Kustomization reconciliation duration for {{ $labels.namespace }}/{{ $labels.name }} is {{ $value | humanizeDuration }}."
 
         # Alert when P95 exceeds 5 minutes
         - alert: FluxReconcileP95High
@@ -211,7 +211,7 @@ Create a Grafana dashboard focused on reconciliation duration.
 # Key panels for a duration dashboard:
 
 # Panel 1: Average Duration by Kind (Time Series)
-# Query: flux:reconcile:avg_duration_seconds
+# Query: avg by (kind) (flux:reconcile:avg_duration_seconds)
 
 # Panel 2: P50 vs P95 vs P99 Duration (Time Series)
 # Query 1: flux:reconcile:p50_duration_seconds
@@ -225,7 +225,7 @@ Create a Grafana dashboard focused on reconciliation duration.
 # Query: topk(10, flux:reconcile:avg_duration_seconds)
 
 # Panel 5: Duration by Namespace (for multi-tenant)
-# Query: flux:reconcile:p95_duration_seconds by (namespace)
+# Query: avg by (namespace) (flux:reconcile:p95_duration_seconds)
 ```
 
 ## Step 7: Investigate Slow Reconciliations
@@ -234,7 +234,7 @@ When you detect slow reconciliations, use these commands to investigate.
 
 ```bash
 # Check the reconciliation status and timing
-flux get kustomizations -A -o wide
+flux get kustomizations -A
 
 # Look at events for slow resources
 kubectl describe kustomization <name> -n <namespace>
@@ -244,7 +244,7 @@ kubectl logs -n flux-system deployment/kustomize-controller | \
   grep "<resource-name>"
 
 # Check if the source fetch is slow
-flux get sources git -A -o wide
+flux get sources git -A
 
 # Check resource count in the Kustomization
 kubectl get kustomization <name> -n <namespace> -o jsonpath='{.status.inventory.entries}' | jq length
