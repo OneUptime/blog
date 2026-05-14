@@ -405,7 +405,7 @@ flux get kustomizations --kubeconfig=/path/to/control-plane-kubeconfig
 
 ## Step 8: Set Up Karmada Failover
 
-Configure Karmada's cluster failover behavior so workloads can be rescheduled when a member cluster is tainted with `NoExecute`. The `Failover` feature gate must be enabled on `karmada-controller-manager`.
+Configure Karmada's cluster failover behavior so workloads can be rescheduled when a member cluster is tainted with `NoExecute`. The `Failover` feature gate and `--enable-no-execute-taint-eviction=true` must be enabled on `karmada-controller-manager`.
 
 ```yaml
 # base/policies/failover-policy.yaml

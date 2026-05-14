@@ -19,7 +19,8 @@ Tutorial / Guide
 - Karmada Override Policy documentation: https://karmada.io/docs/userguide/scheduling/override-policy/
 - Karmada PropagationPolicy API reference: https://karmada.io/docs/reference/karmada-api/policy-resources/propagation-policy-v1alpha1/
 - Karmada Cluster Failover documentation: https://karmada.io/docs/userguide/failover/cluster-failover/
-- Karmada cluster registration documentation: https://karmada.io/docs/v1.12/userguide/clustermanager/cluster-registration/
+- Karmada Cluster Taint Management documentation: https://karmada.io/docs/userguide/failover/cluster-taint-management/
+- Karmada cluster registration documentation: https://karmada.io/docs/userguide/clustermanager/cluster-registration/
 - Karmada Helm chart documentation and chart index: https://github.com/karmada-io/karmada/tree/master/charts/karmada
 - Flux bootstrap GitHub CLI documentation: https://fluxcd.io/flux/cmd/flux_bootstrap_github/
 - Flux Kustomization remote kubeConfig documentation: https://fluxcd.io/flux/components/kustomize/kustomizations/
@@ -32,6 +33,7 @@ Tutorial / Guide
 - The weighted PropagationPolicy omitted `replicaDivisionPreference: Weighted`, which is required to make `weightPreference` define weighted replica division. This field was added.
 - The OverridePolicy examples used deprecated top-level `targetCluster` and `overriders` fields and applied Deployment-specific patches without resource selectors. They were updated to use `resourceSelectors` and `overrideRules`.
 - The failover example used an invalid current schema, `clusterFailoverPolicy`, and the deprecated purge mode spelling `Graciously`. It was corrected to `failover.cluster.purgeMode: Gracefully`, and the text now notes that cluster failover depends on `NoExecute` taints and the `Failover` feature gate.
+- The failover prerequisites omitted the current `--enable-no-execute-taint-eviction=true` controller-manager flag required for `NoExecute` eviction handling. This was added alongside the `Failover` feature gate note.
 - The Flux status command used the Karmada kubeconfig even though Flux now runs on the host control plane cluster. It was changed to use the host control plane kubeconfig.
 
 ## Review Notes
