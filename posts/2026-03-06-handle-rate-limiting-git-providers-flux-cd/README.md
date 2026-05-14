@@ -10,17 +10,17 @@ Description: A practical guide to identifying, preventing, and handling rate lim
 
 ## Introduction
 
-When Flux CD reconciles your Git repositories, it makes API calls to your Git provider (GitHub, GitLab, Bitbucket, etc.). At scale, these calls can hit rate limits, causing reconciliation failures, delayed deployments, and degraded cluster operations. This guide covers how to detect, prevent, and handle rate limiting from Git providers in Flux CD.
+When Flux CD reconciles your Git repositories, it makes network requests to your Git provider (GitHub, GitLab, Bitbucket, etc.). Depending on the provider, protocol, and authentication method, these requests can hit Git or API rate limits, causing reconciliation failures, delayed deployments, and degraded cluster operations. This guide covers how to detect, prevent, and handle rate limiting from Git providers in Flux CD.
 
 ## Understanding Git Provider Rate Limits
 
-Different Git providers enforce different rate limits:
+Different Git providers enforce different rate limits. Common published limits include:
 
-- **GitHub**: 5,000 requests per hour for authenticated users, 60 for unauthenticated
-- **GitLab**: 300 requests per minute for authenticated users
-- **Bitbucket**: 1,000 requests per hour for authenticated users
+- **GitHub REST API**: 5,000 requests per hour for most authenticated users, 60 for unauthenticated requests
+- **GitLab.com**: 2,000 authenticated API requests per minute per user, with other endpoint-specific limits such as 300 requests per minute for raw endpoint traffic per project, commit, or file path
+- **Bitbucket Cloud**: 1,000 requests per hour for repository data API access, with higher limits for authenticated Git over HTTPS requests
 
-Flux CD controllers continuously poll Git repositories for changes, and each poll consumes API quota.
+Flux CD controllers continuously check Git repositories for changes. Each check consumes provider capacity, but whether it counts against a REST API quota or a Git-service limit depends on the provider and authentication method.
 
 ## Identifying Rate Limiting Issues
 
@@ -66,7 +66,7 @@ spec:
 
 ## Adjusting Reconciliation Intervals
 
-The most effective way to reduce API calls is to increase reconciliation intervals.
+The most effective way to reduce provider requests is to increase reconciliation intervals.
 
 ### Configure GitRepository Intervals
 
@@ -78,14 +78,14 @@ metadata:
   name: my-app
   namespace: flux-system
 spec:
-  # Increase interval from default 1m to 5m to reduce API calls
+  # Increase interval from 1m to 5m to reduce provider requests
   interval: 5m
   url: https://github.com/my-org/my-app
   ref:
     branch: main
   secretRef:
     name: git-credentials
-  # Use .sourceignore to skip unnecessary files and reduce payload
+  # Use .spec.ignore or a .sourceignore file to skip unnecessary files and reduce artifact size
   ignore: |
     # Ignore non-deployment files to reduce clone size
     docs/
@@ -140,8 +140,8 @@ stringData:
 
 ```yaml
 # github-app-secret.yaml
-# GitHub Apps get 5,000 requests per hour per installation
-# This is separate from user rate limits
+# GitHub Apps get a separate installation rate limit
+# Start at 5,000 requests per hour per installation
 apiVersion: v1
 kind: Secret
 metadata:
@@ -149,8 +149,7 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  # GitHub App credentials provide higher rate limits
-  # 5,000 requests per hour per installation vs per user
+  # Reference this secret from a GitRepository with spec.provider: github
   githubAppID: "12345"
   githubAppInstallationID: "67890"
   githubAppPrivateKey: |
@@ -266,7 +265,7 @@ spec:
 
 ## Setting Up Webhook Receivers
 
-Replace polling with webhook-based reconciliation to eliminate unnecessary API calls.
+Use webhook-based reconciliation to trigger Flux immediately on changes, while keeping periodic polling as a safety net.
 
 ### Configure a Flux Webhook Receiver
 
@@ -324,8 +323,8 @@ spec:
             pathType: Prefix
             backend:
               service:
-                # The notification-controller creates this service
-                name: notification-controller
+                # The Flux installation includes this service for receiver traffic
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -345,7 +344,7 @@ metadata:
   namespace: flux-system
 spec:
   # With webhooks, polling is only a safety net
-  # Set a long interval to minimize API calls
+  # Set a long interval to minimize provider requests
   interval: 30m
   url: https://github.com/my-org/platform-config
   ref:
@@ -372,7 +371,7 @@ spec:
         # Alert when reconciliation failures spike
         - alert: FluxGitReconciliationFailures
           expr: |
-            rate(gotk_reconcile_condition{type="Ready",status="False",kind="GitRepository"}[5m]) > 0.1
+            gotk_reconcile_condition{type="Ready",status="False",kind="GitRepository"} == 1
           for: 10m
           labels:
             severity: warning
@@ -382,7 +381,7 @@ spec:
         # Alert on increased reconciliation duration
         - alert: FluxGitReconciliationSlow
           expr: |
-            gotk_reconcile_duration_seconds{kind="GitRepository"} > 60
+            histogram_quantile(0.95, sum(rate(gotk_reconcile_duration_seconds_bucket{kind="GitRepository"}[5m])) by (le, name, namespace)) > 60
           for: 5m
           labels:
             severity: warning
@@ -391,9 +390,9 @@ spec:
             description: "GitRepository {{ $labels.name }} reconciliation taking over 60 seconds."
 ```
 
-## Implementing Retry Backoff Strategy
+## Handling Persistent Rate Limits
 
-Configure Flux to handle transient rate limit errors gracefully.
+Flux source-controller retries failed reconciliations according to the controller retry settings. For persistent rate limits, reduce reconciliation frequency and suspend a noisy source temporarily if needed.
 
 ```yaml
 # gitrepository-with-retry.yaml
@@ -404,9 +403,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  # Retry interval when reconciliation fails
-  # This applies exponential backoff on failures
-  retryInterval: 2m
   url: https://github.com/my-org/my-app
   ref:
     branch: main
@@ -421,13 +417,13 @@ spec:
 
 1. **Always authenticate** - Use tokens or SSH keys to get higher rate limits
 2. **Use GitHub Apps** - They provide separate, higher rate limits than personal tokens
-3. **Consolidate repositories** - Fewer GitRepository objects means fewer API calls
+3. **Consolidate repositories** - Fewer GitRepository objects means fewer provider requests
 4. **Increase intervals** - Set reconciliation intervals to 5-10 minutes for non-critical workloads
-5. **Implement webhooks** - Push-based triggers eliminate unnecessary polling
+5. **Implement webhooks** - Push-based triggers reduce reliance on frequent polling
 6. **Monitor proactively** - Set up alerts before rate limits become an issue
 7. **Use .sourceignore** - Reduce clone payloads by excluding unnecessary files
-8. **Stagger reconciliation** - Offset intervals across GitRepository objects to spread API calls
+8. **Stagger reconciliation** - Use varied intervals or controller jitter to spread provider requests
 
 ## Conclusion
 
-Rate limiting from Git providers is a common challenge when running Flux CD at scale. By consolidating repositories, increasing reconciliation intervals, implementing webhook receivers, and monitoring API usage, you can maintain reliable GitOps workflows without hitting rate limits. The key principle is to minimize unnecessary polling while ensuring timely delivery of configuration changes.
+Rate limiting from Git providers is a common challenge when running Flux CD at scale. By consolidating repositories, increasing reconciliation intervals, implementing webhook receivers, and monitoring provider usage, you can maintain reliable GitOps workflows without hitting rate limits. The key principle is to minimize unnecessary polling while ensuring timely delivery of configuration changes.
