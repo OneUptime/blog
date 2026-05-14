@@ -55,10 +55,8 @@ cilium hubble enable
 # Check Hubble relay service
 kubectl get svc -n kube-system | grep hubble
 
-# Test Hubble port-forward
-cilium hubble port-forward &
-sleep 2
-hubble status
+# Test Hubble API access
+hubble status -P
 ```
 
 ## Troubleshooting: Policy Breaking Connectivity
@@ -68,7 +66,7 @@ hubble status
 kubectl get CiliumNetworkPolicy --all-namespaces
 
 # Temporarily remove suspect policy
-kubectl delete CiliumNetworkPolicy suspect-policy-name
+kubectl delete CiliumNetworkPolicy -n policy-namespace suspect-policy-name
 
 # Test connectivity
 kubectl exec test-pod -- curl -s http://target-service
@@ -77,20 +75,17 @@ kubectl exec test-pod -- curl -s http://target-service
 # Fix the policy before re-applying
 
 # Monitor drops to identify policy source
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop
 
-# Use policy trace to identify the blocking rule
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod default:source-pod \
-  --dst-k8s-pod default:target-pod \
-  --dport 80
+# Monitor policy verdicts to identify the blocking rule
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 ```
 
 ## Troubleshooting: Encryption Issues
 
 ```bash
 # Check encryption status
-kubectl exec -n kube-system ds/cilium -- cilium encrypt status
+cilium encryption status
 
 # If WireGuard:
 kubectl exec -n kube-system ds/cilium -- wg show
@@ -99,13 +94,16 @@ kubectl exec -n kube-system ds/cilium -- wg show
 kubectl exec -n kube-system ds/cilium -- ip xfrm state list
 
 # Test connectivity with encryption
-cilium connectivity test --test encryption
+cilium connectivity test --test pod-to-pod-encryption
 
-# If encryption is blocking traffic, temporarily disable to isolate
-cilium encrypt disable
+# If encryption is blocking traffic, temporarily disable it in Helm values or
+# the Cilium ConfigMap, restart Cilium, and retest to isolate
 cilium connectivity test
-# If passes, re-enable and investigate encryption config
-cilium encrypt enable --type wireguard
+# If passes, re-enable with Helm values and investigate encryption config
+helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values \
+  --set encryption.enabled=true \
+  --set encryption.type=wireguard
+kubectl rollout restart daemonset/cilium -n kube-system
 ```
 
 ## Troubleshooting: Metrics Not Appearing
@@ -125,7 +123,7 @@ kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[*].status.
 ## Recovery Procedures
 
 ```bash
-# Full Cilium reset (use with caution - resets all policies and state)
+# Restart Cilium components (use with caution - may temporarily disrupt networking)
 kubectl rollout restart daemonset/cilium -n kube-system
 kubectl rollout restart deployment/cilium-operator -n kube-system
 
@@ -139,4 +137,4 @@ cilium connectivity test
 
 ## Conclusion
 
-Post-installation issues in Cilium almost always fall into one of four categories: Hubble configuration failures, policy-induced connectivity breaks, encryption negotiation problems, or monitoring integration gaps. The troubleshooting approach for each is the same: isolate the change that introduced the problem, use `cilium monitor` and `cilium policy trace` to identify the specific failure, and fix the root cause rather than the symptom. Systematic isolation prevents wasted debugging time.
+Post-installation issues in Cilium almost always fall into one of four categories: Hubble configuration failures, policy-induced connectivity breaks, encryption negotiation problems, or monitoring integration gaps. The troubleshooting approach for each is the same: isolate the change that introduced the problem, use `cilium-dbg monitor` to identify the specific failure, and fix the root cause rather than the symptom. Systematic isolation prevents wasted debugging time.
